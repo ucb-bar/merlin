@@ -29,7 +29,17 @@ opcodes:
   COMMIT:
     operands: {src: acc_handle, dst: output_tensor, bias: "tensor (optional)"}
     attributes:
-      epilogue: "ordered subset of [bias_add, requant, acc_scale, relu, maxpool]"
+      # THE epilogue vocabulary of this ABI. It has exactly ONE definition --
+      # merlin.runtime.commandbuffer.EPILOGUE_STAGES -- from which this line, the strict validator's enum
+      # in schemas/command_buffer.schema.json, interface_dialect_contract.yaml and the dialect verifiers
+      # are all derived; build_tools/scripts/check_epilogue_vocabulary.py fails if any of them drifts.
+      # It is deliberately NOT derived per-target: this schema is target-INDEPENDENT (one validator for
+      # every target), so no single target's RTL can define it. It is the set of stages the command-buffer
+      # ENGINES implement. Whether a given target can EXECUTE a stage is a separate question, answered by
+      # its own capability manifest and, at run time, by its oracle -- and an engine that does not
+      # implement a listed stage REJECTS IT BY NAME rather than skipping it (see `semantics` below).
+      # The per-opcode lines further down are documented SUBSETS of this one, never extensions.
+      epilogue: "ordered subset of [bias_add, bias, requant, acc_scale, relu, maxpool]"
       output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
       acc_scale: "f32; applied as clamp_i8(round_near_even(acc * scale)); required iff acc_scale in epilogue"
       requant_shift: "int; only for the integer requant stage (round-half-up arithmetic shift)"
@@ -64,6 +74,18 @@ opcodes:
       identity load->store round-trip through the accelerator: dst holds src's values UNCHANGED,
       only the container dtype widens. No clamp, no requantize -- the point of the capsule is that
       the data survives the trip bit-for-bit.
+  ATTENTION_QK:
+    operands: {q: tensor, k: tensor, dst: output_tensor}
+    attributes:
+      epilogue: "ordered subset of [acc_scale, requant, relu]"
+      output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
+    semantics: >-
+      dst = q @ transpose(k), the first matmul of attention: q is [m, d] and k is [n, d] -- K is stored
+      ROW-PER-KEY, so the contraction is over the TRAILING head dim of BOTH operands and dst is [m, n].
+      The transpose is part of the op's definition and is NOT spelled as an attribute: there is no
+      transpose_rhs / rhs_transposed / transpose_b flag, and an unrecognised attribute is rejected rather
+      than ignored. Operand keys are exactly q / k / dst (the interface grammar's positional operands for
+      the `attention_qk` mnemonic).
   ATTENTION_PV:
     operands: {p: tensor, v: tensor, dst: output_tensor}
     attributes:

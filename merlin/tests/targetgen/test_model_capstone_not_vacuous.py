@@ -257,7 +257,8 @@ def _passed(r):
     return {t: v for t, v in _statuses(r).items() if v == "pass"}
 
 
-def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=15, fallback=0):
+def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=15, fallback=0,
+                dispatch_ledger=None):
     """Drive the tier-derivation block with a synthetic TILE-certification record.
 
     The tile record lives under ``mesh_tile_verification``; ``mesh_execution`` is the separate record of
@@ -276,7 +277,9 @@ def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=1
            "mesh_tile_verification": mesh_exec,
            "mesh_execution": {"target": "gemmini", "matmul_layers_routed": on_mesh + fallback,
                               "matmul_layers_on_mesh": on_mesh,
-                              "matmul_layers_host_fallback": fallback}}
+                              "matmul_layers_host_fallback": fallback,
+                              **({"dispatch_ledger": dispatch_ledger}
+                                 if dispatch_ledger is not None else {})}}
     # `_grade_model_capsule` imports compile_model INSIDE the function, so the module attribute is what
     # has to move.
     real = CCLI.compile_model
@@ -292,6 +295,63 @@ def test_a_tier_passes_when_every_tile_passed():
                      "n_unavailable": 0, "n_unsynthesizable": 0})
     assert _passed(r) == {"L3": "pass"}, r["tiers"]
     assert r["status"] == "pass", r
+
+
+def test_model_tier_preserves_aggregate_rtl_provenance_and_dynamic_cycles():
+    oracle = {"result": "pass", "derived_from_rtl": True,
+              "cycle_accurate": True, "cycles": 569}
+    ledger = [
+        {"ordinal": 0, "symbol": "layer0", "lane": "on_mesh", "status": "pass",
+         "oracle_evidence": dict(oracle)},
+        {"ordinal": 1, "symbol": "layer1", "lane": "on_mesh", "status": "pass",
+         "oracle_evidence": dict(oracle)},
+    ]
+    tiles = {
+        "n_tiles": 2, "n_passed": 2, "n_failed": 0,
+        "n_unavailable": 0, "n_unsynthesizable": 0,
+        "per_tile": [
+            {"status": "pass", "derived_from_rtl": True, "cycle_accurate": True, "cycles": 569},
+            {"status": "pass", "derived_from_rtl": True, "cycle_accurate": True, "cycles": 569},
+        ],
+    }
+
+    from merlin.targetgen import capsule_runner as CR
+
+    model_exec = {"matmul_layers_on_mesh": 2, "matmul_layers_host_fallback": 0,
+                  "dispatch_ledger": ledger}
+    l3 = CR._model_tier_map(["L0", "L1", "L2", "L3"], "gemmini",
+                            model_exec, tiles)["L3"].to_dict()
+
+    assert l3["status"] == "pass"
+    assert l3["derived_from_rtl"] is True
+    assert l3["cycle_accurate"] is True
+    assert l3["cycles"] == 1138, "synthetic tile cycles must not be double-counted"
+    assert l3["evidence"] == (
+        "mesh_execution.dispatch_ledger + mesh_tile_verification.per_tile"
+    )
+
+
+def test_model_tier_fidelity_fails_closed_when_any_contributor_omits_it():
+    ledger = [
+        {"ordinal": 0, "symbol": "layer0", "lane": "on_mesh", "status": "pass",
+         "oracle_evidence": {"result": "pass", "derived_from_rtl": True,
+                             "cycle_accurate": True, "cycles": 7}},
+    ]
+    tiles = {
+        "n_tiles": 1, "n_passed": 1, "n_failed": 0,
+        "n_unavailable": 0, "n_unsynthesizable": 0,
+        "per_tile": [{"status": "pass", "derived_from_rtl": True}],
+    }
+
+    from merlin.targetgen import capsule_runner as CR
+
+    model_exec = {"matmul_layers_on_mesh": 1, "matmul_layers_host_fallback": 0,
+                  "dispatch_ledger": ledger}
+    l3 = CR._model_tier_map(["L0", "L1", "L2", "L3"], "gemmini",
+                            model_exec, tiles)["L3"].to_dict()
+
+    assert l3["derived_from_rtl"] is True
+    assert l3["cycle_accurate"] is False
 
 
 def test_a_tier_that_ran_and_failed_is_not_a_pass():

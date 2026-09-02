@@ -99,18 +99,64 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     console = backend.run_elf(elf, simulator=simulator, timeout=timeout)
     _t2 = time.perf_counter()
     outputs, raw = backend.parse_output(console)
-    out = {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles", 0),
-           "oracle": backend.ORACLE[simulator], "elf": str(elf), "console": console,
-           "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
-                      "oracle_wait_s": 0.0}}
+    result = {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles", 0),
+              "oracle": backend.ORACLE[simulator], "elf": str(elf), "console": console,
+              "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
+                         "oracle_wait_s": 0.0}}
+    # Counter markers are a target-independent wire protocol.  The event names/codes remain the
+    # target's own: this boundary merely preserves readings the runner already paid to collect.  If
+    # they exactly cover a structurally derived joint-occupancy block, compute eta; otherwise retain
+    # the raw named readings without guessing what they mean.
+    from merlin.perf import hw_counters
+    readings = hw_counters.parse_counter_output(console)
+    if readings:
+        discovery = hw_counters.counters_for_target(target)
+        measured_schema = hw_counters.parse_counter_schema(console)
+        report: dict[str, Any] = {"status": "measured", "readings": readings,
+                                  "discovery": discovery,
+                                  "measured_header_sha256": measured_schema}
+        if (discovery.get("status") == "derived"
+                and measured_schema == discovery.get("header_sha256")):
+            header = Path(discovery["header"]).read_text(encoding="utf-8", errors="replace")
+            occupancy = hw_counters.derive_occupancy_counters(header)
+            required = set(occupancy.by_combination.values())
+            if required and required <= set(readings):
+                report["occupancy"] = occupancy.to_dict()
+                partition_reader = getattr(backend, "counter_partition_inputs", None)
+                partition = partition_reader() if callable(partition_reader) else {
+                    "status": "unknown",
+                    "why": "the target backend exposes no CIRCT counter-partition artifact",
+                }
+                if partition.get("status") == "available":
+                    report["overlap"] = hw_counters.eta_from_counters(
+                        readings, occupancy, hw_text=partition["hw_text"],
+                        codes=hw_counters.event_codes(header), module=partition["module"],
+                        counter_module=partition["counter_module"],
+                        measurement_cycles=raw.get("cycles"), source=partition["source"])
+                else:
+                    report["overlap"] = {
+                        "state": "unknown", "eta": None,
+                        "why": partition.get("why", "CIRCT counter-partition proof is unavailable"),
+                    }
+        elif discovery.get("status") == "derived":
+            report["status"] = "unknown"
+            report["overlap"] = {
+                "state": "unknown", "eta": None,
+                "why": "the measured ELF counter-schema digest does not match current discovery",
+            }
+        result["counters"] = report
+    # Beside that report, the `observations` wire-contract block: the report above proves the
+    # readings' provenance and computes eta, while the block below is the shape
+    # `headroom.composition_operator` and the falsifier actually consume. Keeping both is not
+    # duplication -- neither reads the other's output.
     _obs, _cap = _counter_observations(console, target=target, simulator=simulator,
                                        cycles=raw.get("cycles"),
                                        oracle=backend.ORACLE[simulator])
     if _obs:
-        out["timing_observations"] = _obs
+        result["timing_observations"] = _obs
     if _cap:
-        out["timing_capability"] = _cap
-    return out
+        result["timing_capability"] = _cap
+    return result
 
 
 def _counter_observations(console: str, *, target: str, simulator: str, cycles: Any,

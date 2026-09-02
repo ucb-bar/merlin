@@ -18,6 +18,7 @@ from typing import Any
 
 _COMPUTE = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
 _CONFIG = {"CONFIG_EX", "CONFIG_LD", "CONFIG_ST"}
+_MVIN = {"MVIN", "MVIN2", "MVIN3"}
 
 
 def _classes(trace: dict) -> list[str]:
@@ -111,7 +112,7 @@ def check(trace: dict, expected: dict, cb: dict | None = None,
             violations.append("trace does not close with a FENCE")
     if "FLUSH" in present:
         flush_i = classes.index("FLUSH")
-        first_work = _first_index(classes, _COMPUTE | {"MVIN", "MVOUT"})
+        first_work = _first_index(classes, _COMPUTE | _MVIN | {"MVOUT"})
         if first_work is not None and flush_i > first_work:
             violations.append("FLUSH appears after the first MVIN/MVOUT/COMPUTE")
 
@@ -123,7 +124,7 @@ def check(trace: dict, expected: dict, cb: dict | None = None,
                 violations.append(f"{cfg} appears after first {label}")
 
     _before("CONFIG_EX", _COMPUTE | {"PRELOAD"}, "PRELOAD/COMPUTE")
-    _before("CONFIG_LD", {"MVIN"}, "MVIN")
+    _before("CONFIG_LD", _MVIN, "MVIN")
     _before("CONFIG_ST", {"MVOUT"}, "MVOUT")
 
     # preload/compute pairing: every COMPUTE must be immediately preceded by a PRELOAD
@@ -173,7 +174,7 @@ def check(trace: dict, expected: dict, cb: dict | None = None,
         bad = present & _COMPUTE | (present & {"PRELOAD"})
         if bad:
             violations.append(f"mode movement declared but compute instructions present: {sorted(bad)}")
-        if "MVIN" not in present or "MVOUT" not in present:
+        if not present & _MVIN or "MVOUT" not in present:
             violations.append("mode movement declared but trace lacks MVIN/MVOUT")
 
     # 5. optional cross-validation against the command buffer tile geometry
@@ -213,7 +214,14 @@ def _check_tiles(classes: list[str], cb: dict, violations: list[str]) -> None:
     M = lhs["shape"][0]
     N = wsrc["shape"][1]
     Mt, Nt = _ceil16(M) // 16, _ceil16(N) // 16
-    exp_mvout = Mt * Nt
+    # A fused pooling store retains all Mt row tiles as one spatial plane, then issues one MVOUT for
+    # each channel tile. Counting one store per compute tile would diagnose the required retained-plane
+    # schedule as missing stores (GP1 is Mt=2, Nt=2 but correctly has two, not four, MVOUTs).
+    commits = [c for c in cmds if c.get("opcode") == "COMMIT"]
+    pooled = len(commits) == 1 and "maxpool" in (
+        (commits[0].get("attributes") or {}).get("epilogue") or [])
+    exp_mvout = Nt if pooled else Mt * Nt
     got = classes.count("MVOUT")
     if got != exp_mvout:
-        violations.append(f"MVOUT count {got} != expected Mt*Nt={exp_mvout} (M={M},N={N})")
+        basis = "Nt for retained-plane maxpool" if pooled else "Mt*Nt"
+        violations.append(f"MVOUT count {got} != expected {basis}={exp_mvout} (M={M},N={N})")

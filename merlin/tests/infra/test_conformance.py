@@ -6,6 +6,7 @@ transcript + submission, no live run, no target.
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from pathlib import Path
 
@@ -73,6 +74,45 @@ def test_regex_and_missing_tools_flagged(tmp_path):
     assert {"no_regex_ok", "asm_used", "cca_used", "full_selfcheck"} <= bad
     assert v["checks"]["isa_tools_used"] is True                                   # disasm counts
     assert any(h["kind"] == "re.search" for h in v["regex_hits"])
+
+
+def test_byte_identical_vendored_xdsl_regex_is_attributed_not_charged(
+        tmp_path, monkeypatch: pytest.MonkeyPatch):
+    vendored = "import re\nx = re.search('a', 'b')\n"
+    digest = hashlib.sha256(vendored.encode()).hexdigest()
+    monkeypatch.setattr(C, "_vendored_xdsl_hashes", lambda: frozenset({digest}))
+    sub = _submission(tmp_path, {"compiler.py": "import ast\n"})
+    (sub / "xdsl").mkdir()
+    (sub / "xdsl/parser.py").write_text(vendored)
+    tp = _transcript(tmp_path / "t.jsonl", [
+        ("bash", {"command": "python3 agent_selfcheck.py --capsules all"}),
+    ])
+    v = C.compute(tp, sub, "merlin_assisted", "inline_asm_insn",
+                  resolved_tools={"xdsl_kit"})
+    assert v["checks"]["no_regex_ok"] is True
+    assert v["regex_hits"] == []
+    assert v["vendored_regex_files"] == [{
+        "file": "xdsl/parser.py", "n_hits": 1,
+        "attribution": "byte_identical_granted_xdsl",
+    }]
+
+
+def test_xdsl_directory_name_does_not_exempt_modified_regex(
+        tmp_path, monkeypatch: pytest.MonkeyPatch):
+    upstream = "import re\nx = re.search('a', 'b')\n"
+    digest = hashlib.sha256(upstream.encode()).hexdigest()
+    monkeypatch.setattr(C, "_vendored_xdsl_hashes", lambda: frozenset({digest}))
+    sub = _submission(tmp_path, {})
+    (sub / "xdsl").mkdir()
+    (sub / "xdsl/parser.py").write_text(upstream + "agent_change = True\n")
+    tp = _transcript(tmp_path / "t.jsonl", [
+        ("bash", {"command": "python3 agent_selfcheck.py --capsules all"}),
+    ])
+    v = C.compute(tp, sub, "merlin_assisted", "inline_asm_insn",
+                  resolved_tools={"xdsl_kit"})
+    assert v["checks"]["no_regex_ok"] is False
+    assert any(hit["file"] == "xdsl/parser.py" for hit in v["regex_hits"])
+    assert v["vendored_regex_files"] == []
 
 
 def test_prose_mention_is_not_a_tool_use(tmp_path):

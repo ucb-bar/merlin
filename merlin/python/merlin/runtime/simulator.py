@@ -41,6 +41,17 @@ _CONV2D_ATTRS = frozenset({"kernel", "stride", "padding", "dilation", "layout",
                            "pool_in_dims", "pool_size", "pool_stride", "pool_padding",
                            "pool_pad_value"})
 
+_ATTENTION_ATTRS = frozenset({"epilogue", "output_dtype", "acc_scale", "requant_shift", "semantic"})
+
+
+def _validate_attention_attrs(attrs: dict[str, Any], op: str) -> None:
+    """Reject attributes that the native attention semantics would otherwise silently ignore."""
+    unknown = sorted(set(attrs) - _ATTENTION_ATTRS)
+    if unknown:
+        raise SimulationError(
+            f"{op} does not implement attribute(s) {unknown}; it implements "
+            f"{sorted(_ATTENTION_ATTRS)}")
+
 
 def _pool(t: Tensor, stage: str, attrs: dict[str, Any], op: str) -> Tensor:
     """Apply a pooling epilogue stage, translating the runtime's ``ValueError`` into this engine's
@@ -306,6 +317,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             # same q/k/dst operand contract the backends emit, so the functional tier agrees with the
             # oracle instead of raising 'unknown opcode' on a conformant command buffer.
             q, k, dst = ops["q"], ops["k"], ops["dst"]
+            _validate_attention_attrs(attrs, f"ATTENTION_QK {dst!r}")
             qt, kt = env[q], env[k]
             (m, d), (n, d2) = qt.shape, kt.shape
             if d != d2:
@@ -342,6 +354,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             # not define this op until now, so all 7 shipped flash-attention capsules parsed without it
             # and the runner scored a program that never multiplied by V.
             p, v, dst = ops["p"], ops["v"], ops["dst"]
+            _validate_attention_attrs(attrs, f"ATTENTION_PV {dst!r}")
             pt, vt = env[p], env[v]
             (m, s), (s2, d) = pt.shape, vt.shape
             if s != s2:

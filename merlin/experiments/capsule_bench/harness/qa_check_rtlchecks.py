@@ -41,8 +41,13 @@ def _redact_rtl(r: dict) -> dict:
               "expected": c.get("expected"), "got": c.get("got"), "ratio": c.get("ratio"),
               "fix_hint": c.get("fix_hint")}
              for c in screen.get("checks", []) if c.get("status") == "fail"]
+    # SKIPPED checks are surfaced too, with their reason: a check that could not run must never be
+    # indistinguishable from one that passed. The reasons are answer-free (they name a missing artifact
+    # or an undecidable declaration, never a value).
+    not_run = [{"id": k.get("id"), "reason": k.get("reason")} for k in (screen.get("skipped") or [])]
     return {"capsule": r.get("capsule"), "verdict": r.get("verdict"),
-            "filecheck": fc, "screen_verdict": screen.get("verdict"), "findings": fails}
+            "filecheck": fc, "screen_verdict": screen.get("verdict"), "findings": fails,
+            "not_run": not_run}
 
 
 def _rtl_block(runs_root) -> list[dict]:
@@ -82,7 +87,26 @@ def run(submission: str, capsules_root: str, runs_root, labels, no_oracle: bool,
             "ADVISORY RTL-derived checks (FileCheck over emitted MLIR + decoded RoCC trace; bounds from "
             "CIRCT-extracted hardware facts). Does NOT gate pass/fail. Fix encoding/tile/capacity findings "
             "before the RTL oracle would; a clean result means ISA structure is hardware-legal, not that "
-            "numerics are correct.")
+            "numerics are correct. Four of the findings are STRUCTURAL and worth reading first, because "
+            "each one is a defect the numeric plane can only report as a value error: "
+            "T0.output_store_coverage (a declared output with no covering store, or a store past its "
+            "declared extent), T0.extent_tile_legalization (a declared extent the RTL-derived array edge "
+            "does not divide, with no tail sequence legalizing it), T0.conv_lowering (a declared "
+            "convolution whose Kh*Kw window was never folded into the contraction), and "
+            "T0.encoded_field_intent (does the DRAM base pointer of each emitted move carry the tensor "
+            "the kernel ABI puts in that argument slot? The argument order is RESOLVED from "
+            "kernel_abi.arg_order_by_command_shape for YOUR buffer's own command shape -- there is one "
+            "order per shape and it is NOT the capsule's or the interface's declaration order, which "
+            "coincides with it only for buffers that happen to declare the tensors in that same order. "
+            "A buffer resolving against no contract shape, or against two, is reported UNKNOWN rather "
+            "than screened against a guess. The check also compares each store's readout dtype, the "
+            "store activation and accumulator scale, and each move's column extent against what your own "
+            "declaration derives. Both command-buffer planes read the DECLARATION, so an encoding whose "
+            "pointer binding disagrees with it passes them and diverges only on the oracle). Every bound "
+            "is derived from your capsule's DECLARED shapes plus the array geometry extracted from the "
+            "RTL, and every finding is computed from YOUR OWN emitted artifact. A field for which no "
+            "intent is derivable produces NO finding and is listed under fields_not_derivable in the "
+            "check's evidence instead; a check listed under not_run did NOT run and is not a pass.")
     except Exception as e:  # advisory must never break the gate
         verdict["rtl_checks_error"] = repr(e)
     return verdict

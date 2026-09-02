@@ -287,6 +287,148 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
     return sorted(written)
 
 
+#: A build dir is only collectable once it is at least this old AND provably unheld. Age is a
+#: heuristic about *staleness*; it is NOT a liveness proof, and treating it as one is what produced a
+#: 1/32 official verdict for a submission that passes 33/34 (see the GC in ``public_capsules_for``).
+_GC_MIN_AGE_S = 900
+
+_BUILD_INFIX = ".build."
+_LEASE_PREFIX = ".lease."
+
+
+def _build_owner_pid(name: str) -> int | None:
+    """The PID that built a ``.<target>.build.<pid>.<hex>`` staging dir, or None if ``name`` is not one.
+
+    Parsed STRUCTURALLY (``str.partition``), never by regex: a too-narrow pattern here fails open --
+    it would report "not a staging dir" for a real one and let the GC delete it.
+    """
+    _, sep, tail = name.partition(_BUILD_INFIX)
+    if not sep:
+        return None
+    pid_text, _, rest = tail.partition(".")
+    if not rest:                      # a build dir always carries the uuid suffix too
+        return None
+    try:
+        return int(pid_text)
+    except ValueError:
+        return None
+
+
+def _lease_owner_pid(name: str) -> int | None:
+    """The PID holding a ``.lease.<pid>.<hex>`` reader lease, or None if unparseable."""
+    if not name.startswith(_LEASE_PREFIX):
+        return None
+    tail = name[len(_LEASE_PREFIX):]
+    pid_text, _, rest = tail.partition(".")
+    if not rest:
+        return None
+    try:
+        return int(pid_text)
+    except ValueError:
+        return None
+
+
+def _pid_alive(pid: int | None) -> bool:
+    """Whether ``pid`` still exists. FAIL CLOSED: anything we cannot determine counts as ALIVE, so an
+    unreadable/odd entry is never the reason a live reader's inputs get deleted."""
+    if pid is None or pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True                   # exists, owned by another user
+    except OSError:
+        return True                   # cannot tell -> treat as held
+    return True
+
+
+def _staging_dir_of(path: str | Path) -> Path | None:
+    """The ``.<target>.build.<pid>.<hex>`` staging dir a resolved path lies inside, or None.
+
+    Checked on the path itself and each ancestor, because the cert-tier grade is handed a LIST of
+    per-capsule directories under the cohort (``<build>/<CAPSULE>``) rather than the cohort root, and a
+    self-only check silently pinned nothing for exactly the grade that holds its paths longest.
+    """
+    real = Path(path).resolve()
+    for cand in (real, *real.parents):
+        if _build_owner_pid(cand.name) is not None:
+            return cand
+    return None
+
+
+def pin_cohort_builds(*roots: str | Path) -> list[Path]:
+    """Pin the materialized cohort build(s) behind ``roots`` for this process, returning the leases taken
+    (empty when none of them is a staged build -- e.g. a plain committed corpus dir, which nothing GCs).
+
+    WHY a reader needs this. ``public_capsules_for`` returns the per-target SYMLINK, but a grader resolves
+    it to the concrete build dir ONCE and then reads capsules out of that absolute path for as long as the
+    grade runs (``capsule_grade.grade`` does exactly that, so the root cannot move under a sibling
+    thread's chdir). The functional grade of ~32 capsules already exceeds the GC's 15-minute cutoff; the
+    cert tier is ~30-40 min PER capsule. Meanwhile any concurrent self-check or debug-broker request
+    re-materializes the same target, republishes the symlink and collects old builds. Without a lease the
+    collector cannot tell "old" from "old and still being read", and it guessed wrong.
+
+    A lease is a SYMLINK named for the holding PID and pointing at the build dir it protects: atomic to
+    create, self-describing, and a dead holder is detectable with no bookkeeping. Taking new leases DROPS
+    this process's previous ones, so a long-lived loop process holds only what it is currently reading and
+    cannot pin every generation it ever graded. Leases are advisory -- losing one costs a stale directory
+    its early collection, never a live reader its inputs.
+    """
+    release_cohort_builds()
+    taken: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        try:
+            staging = _staging_dir_of(root)
+        except OSError:
+            continue
+        if staging is None or staging in seen:
+            continue
+        seen.add(staging)
+        lease = staging.parent / f"{_LEASE_PREFIX}{os.getpid()}.{uuid.uuid4().hex[:8]}"
+        try:
+            os.symlink(staging.name, lease)
+        except OSError:
+            continue          # unwritable cache -> no lease; the GC still honours builder liveness
+        taken.append(lease)
+    return taken
+
+
+def release_cohort_builds() -> None:
+    """Drop every lease this process holds. Safe to call repeatedly."""
+    from merlin.common.artifacts import cache_dir
+
+    try:
+        base = cache_dir("capsule_bench_public")
+    except OSError:
+        return
+    for lease in base.glob(f"{_LEASE_PREFIX}{os.getpid()}.*"):
+        try:
+            lease.unlink()
+        except OSError:
+            pass
+
+
+def _held_build_names(base: Path) -> set[str]:
+    """Build-dir names a LIVE reader still holds a lease on, clearing leases whose holder is gone."""
+    held: set[str] = set()
+    for lease in base.glob(f"{_LEASE_PREFIX}*"):
+        try:
+            target_name = os.readlink(lease)
+        except OSError:
+            continue
+        if _pid_alive(_lease_owner_pid(lease.name)):
+            held.add(Path(target_name).name)
+            continue
+        try:
+            lease.unlink()
+        except OSError:
+            pass
+    return held
+
+
 def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     """The public-capsule set to grade / self-check against for a target — DERIVED from its descriptor's
     ``capsule_corpus`` (+ sibling corpora), materialized into a per-target cache and returned. This is the
@@ -345,7 +487,9 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     # missing capsules -> wrong grades). Instead build into a UNIQUE versioned dir, then ATOMICALLY repoint a
     # per-target symlink at it (os.replace is atomic even over an existing symlink). A reader always follows
     # the symlink to a COMPLETE, immutable build; the last writer wins the symlink; nobody rmtrees a dir
-    # another arm is reading. The cache namespace is purgeable, so stale builds are best-effort GC'd by age.
+    # another arm is reading. The cache namespace is purgeable, so stale builds are best-effort GC'd once
+    # they are old AND provably unheld -- see the GC at the end of this function for why "old" alone was
+    # not enough to make that last clause true.
     base = cache_dir("capsule_bench_public")
     base.mkdir(parents=True, exist_ok=True)
     link = base / te.target
@@ -407,12 +551,29 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     if link.exists() and not link.is_symlink():
         shutil.rmtree(link, ignore_errors=True)   # one-time migration off the old in-place real dir
     os.replace(tmp_link, link)                # atomic publish (replaces the prior symlink in one step)
-    # Best-effort GC: drop this target's OTHER finished builds that are old enough (>15 min) that no live
-    # reader can still hold a path into them; never the just-published one (the symlink points at it).
-    cutoff = time.time() - 900
-    for old in base.glob(f".{te.target}.build.*"):
+    # Best-effort GC of this target's OTHER finished builds. AGE IS NOT A LIVENESS PROOF, and assuming it
+    # was is the bug this block used to be: the old rule collected any build older than 15 minutes "that no
+    # live reader can still hold a path into". Readers hold them far longer than that. ``capsule_grade.grade``
+    # resolves the per-target symlink to a CONCRETE build dir once, up front, and then reads capsules out of
+    # that absolute path for the whole grade -- tens of minutes to hours once a cert tier runs. Measured: an
+    # arm materialized this target at 03:14:22, the age-only GC rmtree'd the build dir a LIVE sibling grade
+    # had already resolved, and every capsule that grade touched afterwards surfaced as
+    # ``schema / structural_invariant_violation`` -- a 1/32 official verdict blaming the agent's package for
+    # an input the harness had deleted, while the same submission scored 33/34 minutes earlier.
+    #
+    # So a build is collected only when it is old AND provably unheld, on both counts we can actually
+    # check: its BUILDER is gone (the pid is in the dir name) and no LIVE READER holds a lease on it. Every
+    # unknown answers "held" -- an uncollected stale dir costs disk in a purgeable namespace, while a
+    # wrongly collected one costs a run its verdict.
+    cutoff = time.time() - _GC_MIN_AGE_S
+    held = _held_build_names(base)
+    for old in base.glob(f".{te.target}{_BUILD_INFIX}*"):
+        if old.name == ver.name or old.name in held:
+            continue
+        if _pid_alive(_build_owner_pid(old.name)):
+            continue
         try:
-            if old.name != ver.name and old.stat().st_mtime < cutoff:
+            if old.stat().st_mtime < cutoff:
                 shutil.rmtree(old, ignore_errors=True)
         except OSError:
             pass

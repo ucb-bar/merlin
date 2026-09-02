@@ -17,6 +17,7 @@ import pytest
 
 
 def score(tiers: dict, status: str, declared: str, declared_ran: bool = False,
+          required: set[str] | None = None,
           mandatory: bool = True, blocked_by_selection: bool = False) -> tuple[bool, str]:
     """Mirror of agent_selfcheck's barrier resolution (kept in sync by the tests below).
 
@@ -25,11 +26,19 @@ def score(tiers: dict, status: str, declared: str, declared_ran: bool = False,
     """
     bar = tiers.get(declared)
     used = declared
-    if bar is None and not declared_ran:
-        ran = [k for k, v in tiers.items() if v not in (None, "skipped")]
-        if ran:
-            used = max(ran)
+    if bar is None:
+        required = set(tiers) if required is None else required
+        ran_required = [k for k, v in tiers.items()
+                        if k in required and v not in (None, "skipped", "unavailable")]
+        deeper_required = [k for k in ran_required if k > declared]
+        if deeper_required:
+            used = max(deeper_required)
             bar = tiers.get(used)
+        elif not declared_ran:
+            ran = [k for k, v in tiers.items() if v not in (None, "skipped")]
+            if ran:
+                used = max(ran)
+                bar = tiers.get(used)
     # SCORING, as shipped. A capsule is CERTIFIED when it passed and the bar itself passed. It is
     # SCREENED when the bar could not run because this oracle selection supplies no adapter for it,
     # every tier that DID run was clean, and nothing failed -- absence of evidence about the backend,
@@ -92,6 +101,28 @@ def test_a_capsule_that_fell_short_of_a_REAL_barrier_still_fails():
     assert used == "L2", "the row must still report the bar it was held to"
 
 
+def test_a_model_capsule_that_ran_a_deeper_required_tier_uses_its_own_barrier():
+    """A per-op screen tier is not necessarily part of a whole-model result.
+
+    Measured on gemmini's mixed suite: ordinary op capsules made the corpus-wide ``declared_ran``
+    true for L2, while the M3 whole-model capsule legitimately reported
+    ``{L0: skipped, L1: skipped, L3: pass}``.  Holding that capsule to the unrelated L2 row produced
+    ``pass: false, barrier_status: null`` beside a top-level and numeric pass.  Reaching the deeper L3
+    required tier is stronger evidence, not a fallback to a weaker screen.
+    """
+    model = {"L0": "skipped", "L1": "skipped", "L3": "pass"}
+    ok, used = score(model, "pass", "L2", declared_ran=True)
+    assert ok, "a deeper required tier that actually passed must certify the model capsule"
+    assert used == "L3"
+
+
+def test_a_deeper_advisory_tier_cannot_replace_the_real_barrier():
+    tiers = {"L0": "pass", "L1": "pass", "L3": "pass"}
+    ok, used = score(tiers, "pass", "L2", declared_ran=True, required={"L0", "L1"})
+    assert not ok
+    assert used == "L2"
+
+
 def test_the_fallback_survives_when_the_tier_exists_nowhere():
     """The atlas case is unchanged: no capsule anywhere produced L4, so the bar is not real."""
     ok, used = score(ATLAS, "pass", "L4", declared_ran=False)
@@ -110,5 +141,8 @@ def test_the_helper_matches_the_shipped_implementation():
     assert "screened = (not certified) and _blocked_by_selection" in src
     assert "passed = certified or screened" in src
     # the whole-corpus gate: without it the fallback is a leniency hole
-    assert "if bar is None and not _declared_ran:" in src
+    assert "if bar is None:" in src
+    assert "_deeper_required" in src
+    assert 'bool((v or {}).get("mandatory"))' in src
+    assert "elif not _declared_ran:" in src
     assert "_declared_ran = True" in src

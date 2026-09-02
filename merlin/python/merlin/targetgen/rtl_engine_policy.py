@@ -31,6 +31,16 @@ ENGINE_PRIORITY: tuple[str, ...] = ("vcs", "gsim", "verilator")
 ELABORATED_RTL = "elaborated_rtl"
 
 
+class UnrecordedSelection(RuntimeError):
+    """An engine reported itself available without saying why. Refused: a tier that resolved to an engine
+    for no recorded reason cannot be audited afterwards, and reads as if it were the declared one."""
+
+    def __init__(self, target: str, engine: str):
+        self.target, self.engine = target, engine
+        super().__init__(f"{target}: engine {engine!r} reported available with no reason recorded; a "
+                         f"selection that cannot be explained afterwards is refused, not defaulted")
+
+
 class NoEngineAvailable(RuntimeError):
     """No elaborated-RTL engine can run for this target. Carries the per-engine reasons."""
 
@@ -62,6 +72,11 @@ def select(target: str, engines: dict[str, Callable[[], tuple[bool, str]]]) -> d
         except Exception as exc:                      # noqa: BLE001 - a broken probe is not availability
             ok, reason = False, f"probe raised {type(exc).__name__}: {exc}"
         considered.append({"engine": name, "available": bool(ok), "reason": reason})
+        if ok and not str(reason or "").strip():
+            # An engine that resolved for NO RECORDED REASON is the silent-degradation shape: the tier
+            # answers with a different engine than the capsule asked for, the numbers look right, and the
+            # result gets cited. Refuse it rather than defaulting.
+            raise UnrecordedSelection(target, name)
         if ok:
             return {"engine": name, "fidelity": ELABORATED_RTL, "reason": reason,
                     "considered": considered,

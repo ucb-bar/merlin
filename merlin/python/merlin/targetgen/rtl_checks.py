@@ -19,9 +19,26 @@ rules. There is NO path that reads a golden trace or a per-capsule expected inst
 are GENERAL compiler-level invariants of the hardware, identical for every shape — never hand-kernels
 and never per-shape magic numbers.
 
-This module is **advisory and un-wired**: it is imported by NOTHING in the frozen runner/grader/schema
-path, modifies no existing file, and changes no pass/fail verdict. It is scaffolding for the phased
-plan in ``artifacts/perf-bench/gemmini/rtl_checks_layer_design.md``.
+Four of the checks are STRUCTURAL rather than numeric, and each exists because the plane that would
+otherwise catch the defect reports it as something else:
+
+* :func:`_check_output_store_coverage` — a declared output with no covering store, or a store past its
+  declared extent. Those bytes are never produced, so the numeric plane reports ``mismatch_count > 0``
+  with ``max_abs_error == 0``: a writeback failure wearing an arithmetic failure's clothes.
+* :func:`_check_extent_tile_legalization` — a declared extent the RTL-derived array edge does not
+  divide, with nothing in the stream legalizing the ragged band. Silent in both directions: the tail is
+  either dropped or written past.
+* :func:`_check_conv_lowering` — a declared convolution whose ``Kh*Kw`` window was never folded into the
+  contraction. The stream is well-formed and fully covering; it computes a different operation.
+* :func:`_check_encoded_field_intent` — a move whose DRAM base pointer is not the argument slot the
+  kernel ABI puts its tensor in. A correctly-NAMED instruction carrying a wrong FIELD is not an illegal
+  instruction, and both command-buffer planes (numeric + trace) read the DECLARATION — so a package
+  whose command buffer is right and whose emitted encoding binds the pointers in another order passes
+  both and diverges only on the oracle, as a value error. The argument order is RESOLVED from the ABI
+  contract for the buffer's own command shape (there is one order per shape), never assumed.
+
+All four are severity ``warn``, so they can never move this report's verdict to ``reject`` and can never
+cost a run its oracle. This module changes no pass/fail verdict.
 
 Run it against any existing decoded trace::
 
@@ -74,6 +91,7 @@ def load_default_facts(target: str) -> dict[str, Any]:
 # balance). Movement-only ops legitimately emit no COMPUTE; these do not.
 _COMPUTE_OPS = {"matmul", "resident_reuse", "conv2d", "conv", "matmul_resident"}
 _COMPUTE_CLASSES = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
+_MVIN_CLASSES = {"MVIN", "MVIN2", "MVIN3"}
 
 
 @dataclasses.dataclass
@@ -224,7 +242,7 @@ def _check_decode_clean(trace: dict) -> Check:
 def _check_movement_compute_balance(trace: dict, capsule: dict | None) -> Check:
     classes = _classes(trace)
     n_cmp = sum(classes.count(c) for c in _COMPUTE_CLASSES)
-    n_mvin = classes.count("MVIN")
+    n_mvin = sum(classes.count(c) for c in _MVIN_CLASSES)
     n_mvout = classes.count("MVOUT")
     op = _declared_op(capsule)
     if op is None:
@@ -324,7 +342,8 @@ def _check_data_movement_reuse(trace: dict, capsule: dict | None, rtl_facts: dic
     if pred is None:
         return Check("T0.data_movement_reuse", "T0", "info", "skipped",
                      "mlc Model-3 reuse model unavailable (MERLIN_MLC_DIR) — advisory skipped")
-    n_mvin = _classes(trace).count("MVIN")
+    classes = _classes(trace)
+    n_mvin = sum(classes.count(c) for c in _MVIN_CLASSES)
     ideal_loads = pred["footprint_tiles"] * pred["refetch"]     # resident tiles, re-streamed on spill
     ev = {"footprint_rows": pred["footprint_rows"], "capacity_rows": pred["capacity_rows"],
           "fits": pred["fits"], "refetch": pred["refetch"], "ideal_tile_loads": ideal_loads,
@@ -366,7 +385,7 @@ def _check_spad_capacity(trace: dict, rtl_facts: dict) -> Check:
     # rows = bytes / (cols-per-row * elem_bytes); i8 => 1 byte, row holds DIM columns.
     rows_capacity = spad_bytes // (mr * 1)
     addrs = [i.get("decoded", {}).get("spad_addr") for i in trace.get("instructions", [])
-             if i.get("class") == "MVIN"]
+             if i.get("class") in _MVIN_CLASSES]
     addrs = [a for a in addrs if isinstance(a, int)]
     if not addrs:
         return Check("T0.spad_capacity", "T0", "error", "skipped",
@@ -374,7 +393,7 @@ def _check_spad_capacity(trace: dict, rtl_facts: dict) -> Check:
     max_addr = max(addrs)
     if max_addr >= rows_capacity:
         bad = [i["index"] for i in trace.get("instructions", [])
-               if i.get("class") == "MVIN"
+               if i.get("class") in _MVIN_CLASSES
                and isinstance(i.get("decoded", {}).get("spad_addr"), int)
                and i["decoded"]["spad_addr"] >= rows_capacity][:8]
         return Check("T0.spad_capacity", "T0", "error", "fail",
@@ -481,15 +500,1191 @@ def _check_config_before_use(trace: dict) -> Check:
     return Check("T0.config_before_use", "T0", "error", "pass", "configs precede their first use")
 
 
+# ------------------------------------------------------------- declared geometry (declarations only)
+# Everything below derives from (a) the capsule's DECLARED shapes/attributes -- the problem statement the
+# author was handed -- and (b) the RTL facts, and compares them against the author's OWN emitted stream.
+# No golden, no expected value and no hidden capsule name is read on any path here.
+
+
+def _attrs(capsule: dict | None) -> dict:
+    return ((capsule or {}).get("operation") or {}).get("attributes") or {}
+
+
+def _input_shape(capsule: dict | None, name: str | None, role: str | None = None):
+    """A declared input's shape, by NAME first (the operation attributes reference inputs by name) and by
+    ROLE as the fallback. None when the capsule declares neither."""
+    ins = (capsule or {}).get("inputs") or []
+    for t in ins:
+        if name is not None and t.get("name") == name:
+            return t.get("shape")
+    if role is not None:
+        for t in ins:
+            if t.get("role") == role:
+                return t.get("shape")
+    return None
+
+
+def _declared_elem_bytes(entry: dict, capsule: dict | None) -> int | None:
+    """Byte width of a declared commit, from the commit's own ``output_dtype`` and, failing that, from the
+    capsule's declared numeric policy. Both are DECLARATIONS (the problem statement), never a golden."""
+    dt = entry.get("output_dtype") or ((capsule or {}).get("numeric_policy") or {}).get("dtype")
+    return _DTYPE_BYTES.get(str(dt).lower()) if dt else None
+
+
+def _pooled_rows(rows: int, entry: dict) -> tuple[int | None, str]:
+    """Rows after a declared pooling stage, or ``(None, reason)``. The window and the extent the rows
+    unflatten to come from the DECLARED pool attributes through the runtime's own geometry function, so
+    this check and the engines cannot disagree about what extent a pooled commit has."""
+    pid, ps, pst = entry.get("pool_in_dims"), entry.get("pool_size"), entry.get("pool_stride")
+    pp = entry.get("pool_padding") or [0, 0, 0, 0]
+    if not (pid and ps and pst):
+        return None, ("the declared epilogue contains a pooling stage but no pool_in_dims/pool_size/"
+                      "pool_stride is declared, so the committed extent is not derivable")
+    from merlin.runtime.tensor import pool_out_dims          # the ONE pooled-extent definition
+    H, W = int(pid[0]), int(pid[1])
+    if H * W <= 0 or rows % (H * W):
+        return None, (f"declared pool_in_dims [{H}, {W}] does not divide the {rows} accumulator rows, "
+                      f"so the pooled extent is not derivable")
+    Ho, Wo = pool_out_dims(H, W, ps, pst, pp)
+    return (rows // (H * W)) * Ho * Wo, ""
+
+
+def declared_outputs(capsule: dict | None) -> tuple[list[dict], str]:
+    """Every DECLARED output's committed extent, in kernel-argument order — or ``([], reason)``.
+
+    ``[{name, rows, cols, elem_bytes, arg_index}]``, derived only from the capsule's declaration:
+
+    * a contraction commits ``[M, N]`` — M the declared lhs rows, N the declared weight columns;
+    * a residency capsule commits one such tensor per declared matmul, in declaration order;
+    * a convolution commits ``[N*Ho*Wo, Co]``, the spatial extent through the runtime's own
+      ``conv_out_dims`` so this check and the engines share one geometry;
+    * a movement commits its declared source's extent;
+    * any of those whose DECLARED epilogue contains a pooling stage pools the row axis down.
+
+    ``arg_index`` is the harness ABI: the harness calls ``<kernel>(<declared inputs, in order>,
+    <outputs>)``, so the j-th output is argument ``len(inputs) + j``. That order is the HARNESS's, not the
+    kernel's — the kernel does not get to choose it.
+
+    FAIL CLOSED: anything not derivable returns ``([], reason)`` and every consumer reports *skipped with
+    that reason*, never a pass."""
+    a = _attrs(capsule)
+    op = _declared_op(capsule)
+    ins = (capsule or {}).get("inputs")
+    if not isinstance(ins, list):
+        return [], "capsule declares no input list, so the harness argument order is not derivable"
+    base = len(ins)
+
+    def _commit(name, rows, cols, entry) -> tuple[dict | None, str]:
+        eb = _declared_elem_bytes(entry, capsule)
+        if eb is None:
+            return None, (f"commit {name!r} declares no output_dtype and the capsule declares no numeric "
+                          f"policy dtype, so a DRAM byte extent is not derivable")
+        if "maxpool" in (entry.get("epilogue") or []):
+            rows, why = _pooled_rows(rows, entry)
+            if rows is None:
+                return None, f"commit {name!r}: {why}"
+        return {"name": str(name), "rows": int(rows), "cols": int(cols), "elem_bytes": int(eb)}, ""
+
+    outs: list[dict] = []
+    if op == "resident_reuse":
+        w = _input_shape(capsule, a.get("weight"), "weight")
+        mms = a.get("matmuls")
+        if not (isinstance(w, list) and len(w) == 2 and isinstance(mms, list) and mms):
+            return [], "declared residency capsule has no [K, N] weight or no matmul list"
+        for mm in mms:
+            lhs = _input_shape(capsule, mm.get("lhs"))
+            if not (isinstance(lhs, list) and len(lhs) == 2) or not mm.get("out"):
+                return [], "a declared matmul has no 2-D lhs shape or no output name"
+            rec, why = _commit(mm["out"], int(lhs[0]), int(w[1]), mm)
+            if rec is None:
+                return [], why
+            outs.append(rec)
+    elif op in ("matmul", "matmul_resident"):
+        shape = _declared_output_shape(capsule)
+        if shape is None or not a.get("out"):
+            return [], "could not derive the declared (M, N) and output name from the declaration"
+        rec, why = _commit(a["out"], shape[0], shape[1], a)
+        if rec is None:
+            return [], why
+        outs.append(rec)
+    elif op in ("conv2d", "conv"):
+        ifm = _input_shape(capsule, a.get("ifm"), "input")
+        w = _input_shape(capsule, a.get("weight"), "weight")
+        if not (isinstance(ifm, list) and len(ifm) == 4 and isinstance(w, list) and len(w) == 2
+                and a.get("out")):
+            return [], "declared conv is not [N, H, W, Ci] x [Kh*Kw*Ci, Co] with a named output"
+        try:
+            from merlin.runtime.commandbuffer import conv_out_dims   # the ONE conv-geometry definition
+            Ho, Wo = conv_out_dims(int(ifm[1]), int(ifm[2]), int(a["kh"]), int(a["kw"]),
+                                   a.get("stride", [1, 1]), a.get("padding", [0, 0, 0, 0]),
+                                   a.get("dilation", [1, 1]))
+        except (KeyError, TypeError, ValueError) as e:
+            return [], f"declared conv geometry is incomplete ({type(e).__name__})"
+        rec, why = _commit(a["out"], int(ifm[0]) * Ho * Wo, int(w[1]), a)
+        if rec is None:
+            return [], why
+        outs.append(rec)
+    elif op == "movement":
+        src = _input_shape(capsule, a.get("src"), "input")
+        if not (isinstance(src, list) and len(src) == 2) or not a.get("out"):
+            return [], "declared movement has no 2-D source shape or no output name"
+        rec, why = _commit(a["out"], int(src[0]), int(src[1]), a)
+        if rec is None:
+            return [], why
+        outs.append(rec)
+    else:
+        return [], f"declared op {op or '<absent>'!r} has no derived commit extent in this check"
+    for j, rec in enumerate(outs):
+        rec["arg_index"] = base + j
+    return outs, ""
+
+
+def declared_contractions(capsule: dict | None) -> list[tuple[int, int, int]]:
+    """``[(M, N, K)]`` for every DECLARED matrix product, in declaration order. A convolution contributes
+    its im2col form ``(N*Ho*Wo, Co, Kh*Kw*Ci)`` — the contraction the mesh actually has to perform, which
+    is the whole point: a convolution lowered as if K were the raw channel count is a different
+    operation. Empty when the capsule declares no product (a pure movement)."""
+    a = _attrs(capsule)
+    op = _declared_op(capsule)
+    if op == "resident_reuse":
+        w = _input_shape(capsule, a.get("weight"), "weight")
+        out = []
+        for mm in (a.get("matmuls") or []):
+            lhs = _input_shape(capsule, mm.get("lhs"))
+            if isinstance(lhs, list) and len(lhs) == 2 and isinstance(w, list) and len(w) == 2:
+                out.append((int(lhs[0]), int(w[1]), int(lhs[1])))
+        return out
+    if op in ("matmul", "matmul_resident"):
+        mkn = _declared_mkn(capsule)
+        return [mkn] if mkn else []
+    if op in ("conv2d", "conv"):
+        outs, _ = declared_outputs(capsule)
+        try:
+            K = int(a["kh"]) * int(a["kw"]) * int(a["ci"])
+        except (KeyError, TypeError, ValueError):
+            return []
+        return [(outs[0]["rows"], outs[0]["cols"], K)] if outs else []
+    return []
+
+
+# ------------------------------------------------------------------- emitted-stream move extraction
+def _moves(trace: dict, move_class: str, stride_class: str, stride_key: str) -> list[dict]:
+    """Every ``move_class`` instruction with the DRAM row pitch in force at that point.
+
+    The class names callers pass are the SHARED, human-owned semantic vocabulary the decoder maps every
+    RoCC target's funct CODES into (the codes are RTL-derived; the vocabulary is the compiler's), which
+    is the same vocabulary the checks above this one already use — not a per-target spelling. A
+    self-hosted-ISA target never reaches this module at all: the runner routes it to the kernel-decode
+    check instead.
+
+    The pitch is the one the author's OWN most recent ``stride_class`` command configured (its decoded
+    ``stride_key``): a move's DRAM operand is a byte offset from a kernel argument, and turning that into
+    a (row, column) needs the pitch the kernel itself declared. A move reached with no pitch configured,
+    or missing an extent, keeps ``None`` in that field — the caller reports UNKNOWN and asserts nothing,
+    rather than assuming a pitch."""
+    stride = None
+    out: list[dict] = []
+    for i in trace.get("instructions", []):
+        d = i.get("decoded") or {}
+        if i.get("class") == stride_class:
+            v = d.get(stride_key)
+            stride = int(v) if isinstance(v, int) and v > 0 else None
+        elif i.get("class") == move_class:
+            dram = d.get("dram") if isinstance(d.get("dram"), dict) else {}
+            out.append({"index": i.get("index"), "kind": dram.get("kind"),
+                        "arg_index": dram.get("arg_index"), "offset": dram.get("offset"),
+                        "rows": d.get("rows"), "cols": d.get("cols"), "stride": stride})
+    return out
+
+
+def _store_coverage(trace: dict, outputs: list[dict]) -> dict:
+    """Per-declared-output DRAM store coverage, computed from the author's own stores.
+
+    ``{name: {"status": "covered"|"uncovered"|"absent"|"unknown", ...}}``. Row/column coverage is tracked
+    as SETS OF INDICES so a kernel that legalizes a ragged extent by any means (a shorter final band, or
+    many one-row bands) is judged by what it actually covers, not by the shape of its loop."""
+    stores = _moves(trace, "MVOUT", "CONFIG_ST", "out_stride_bytes")
+    rep: dict[str, dict] = {}
+    for o in outputs:
+        mine = [s for s in stores if s["kind"] == "argbase" and s["arg_index"] == o["arg_index"]]
+        rec: dict = {"n_stores_total": len(stores), "n_stores_to_output": len(mine),
+                     "arg_index": o["arg_index"], "extent": [o["rows"], o["cols"]],
+                     "arg_indices_stored_to": sorted({s["arg_index"] for s in stores
+                                                      if s["arg_index"] is not None}),
+                     "n_baked_address_stores": sum(1 for s in stores if s["kind"] == "const")}
+        if not mine:
+            # "No store addresses this output" is a CLAIM, and it is only sound when every store's
+            # address operand was decodable. A store whose DRAM operand the decoder could not resolve
+            # (no `dram` provenance at all) might be the missing one, so it makes the answer UNKNOWN
+            # rather than making the output absent — the difference between "your kernel dropped this
+            # store" and "our decoder could not read your addresses", which must never be collapsed.
+            blind = [s["index"] for s in stores if s["kind"] not in ("argbase", "const")]
+            if blind:
+                rec.update(status="unknown", undecodable_instruction_indices=blind[:8],
+                           unknown_reason="store(s) carry no decodable DRAM address operand")
+            else:
+                rec["status"] = "absent"
+            rep[o["name"]] = rec
+            continue
+        undecodable = [s["index"] for s in mine
+                       if not isinstance(s["stride"], int)
+                       or not all(isinstance(s[k], int) for k in ("offset", "rows", "cols"))]
+        if undecodable:
+            rec.update(status="unknown", undecodable_instruction_indices=undecodable[:8],
+                       unknown_reason="store(s) carry no decodable offset/rows/cols/row-pitch")
+            rep[o["name"]] = rec
+            continue
+        R, C, eb = o["rows"], o["cols"], o["elem_bytes"]
+        # Exact coverage by a ROW-STRIP sweep rather than a per-cell set: a whole-model commit can be
+        # millions of cells, and a check that runs out of memory on a big shape is a check that does not
+        # run. Strip boundaries come from the stores themselves, so the sweep is O(stores^2) at worst and
+        # trivial for the tens of stores a real kernel emits.
+        tiles = [(s_["offset"] // s_["stride"], (s_["offset"] % s_["stride"]) // eb,
+                  s_["rows"], s_["cols"], s_["index"]) for s_ in mine]
+        overrun = [{"instruction_index": ix, "rows": [r0, r0 + nr], "cols": [c0, c0 + nc]}
+                   for (r0, c0, nr, nc, ix) in tiles if r0 + nr > R or c0 + nc > C]
+        bounds = sorted({0, R} | {b for (r0, _c, nr, _nc, _i) in tiles
+                                  for b in (r0, r0 + nr) if 0 <= b <= R})
+        covered_cells = 0
+        first_missing = None
+        for a_, b_ in zip(bounds, bounds[1:]):
+            if b_ <= a_:
+                continue
+            spans = sorted((max(c0, 0), min(c0 + nc, C)) for (r0, c0, nr, nc, _ix) in tiles
+                           if r0 <= a_ and r0 + nr >= b_)
+            merged: list[list[int]] = []
+            for lo_, hi_ in spans:
+                if hi_ <= lo_:
+                    continue
+                if merged and lo_ <= merged[-1][1]:
+                    merged[-1][1] = max(merged[-1][1], hi_)
+                else:
+                    merged.append([lo_, hi_])
+            width = sum(hi_ - lo_ for lo_, hi_ in merged)
+            covered_cells += (b_ - a_) * width
+            if width < C and first_missing is None:
+                gap = 0
+                for lo_, hi_ in merged:
+                    if gap < lo_:
+                        break
+                    gap = max(gap, hi_)
+                first_missing = (a_, gap)
+        # A row/column "band nothing writes" is one no store's extent reaches at all — the shape a
+        # dropped tail band takes. Reporting every merely-PARTIALLY covered index instead names both
+        # axes for a one-axis defect, which reads as noise.
+        touched_rows = {r for (r0, _c0, nr, _nc, _ix) in tiles
+                        for r in range(max(r0, 0), min(r0 + nr, R))}
+        touched_cols = {c for (_r0, c0, _nr, nc, _ix) in tiles
+                        for c in range(max(c0, 0), min(c0 + nc, C))}
+        miss_rows = [r for r in range(R) if r not in touched_rows]
+        miss_cols = [c for c in range(C) if c not in touched_cols]
+        rec.update(status="covered" if covered_cells == R * C and not overrun else "uncovered",
+                   covered_cells=covered_cells, declared_cells=R * C, overrunning_stores=overrun[:8],
+                   uncovered_rows=miss_rows[:16], uncovered_cols=miss_cols[:16],
+                   first_uncovered_cell=list(first_missing) if first_missing else None)
+        rep[o["name"]] = rec
+    return rep
+
+
+def _name_tokens(name: str) -> set[str]:
+    """Identifier -> its lowercase underscore-separated TOKENS (never substrings, so ``ws`` can never
+    match inside ``rows``). Same discipline as the capability-discovery lexicons."""
+    return {t for t in str(name).lower().replace("-", "_").split("_") if t}
+
+
+#: Word stems that mark an instruction class, in a target's OWN funct->class vocabulary, as a HARDWARE
+#: LOOP performing a whole tiled nest in one command (so the per-tile instructions a software nest emits
+#: are legitimately absent). Generic dataflow words in the vocabulary any accelerator's interface uses;
+#: whether this target HAS one, and at which funct code, is derived from its own facts.
+_LOOP_STEMS = ("loop",)
+#: …and the stem that additionally marks such a loop as the CONVOLUTION loop (window gather in hardware).
+_CONV_STEMS = ("conv",)
+
+
+def _vocabulary_classes(target: str, stems: tuple[str, ...]) -> tuple[set[str], str]:
+    """Instruction-class names in the TARGET'S OWN funct->class vocabulary whose tokens match ``stems``.
+
+    The vocabulary is the target's reviewed funct-CODE -> class map — the same map the decoder classified
+    THIS trace with — so the names compared here are this target's own names, never a class list written
+    down in advance. An underivable vocabulary returns an empty set WITH a reason; callers then report
+    UNKNOWN and assert nothing, never 'absent'."""
+    try:
+        from .rocc.decode import funct_class_for
+        vocab = funct_class_for(target)
+    except Exception as e:  # noqa: BLE001 - not derivable -> UNKNOWN, never a substituted default
+        return set(), f"UNKNOWN (funct->class vocabulary not derivable: {type(e).__name__})"
+    return ({str(c) for c in vocab.values() if _name_tokens(c) & set(stems)},
+            f"derived from the target's funct->class map ({len(vocab)} codes)")
+
+
+# ----------------------------------------------------------------------------- new structural checks
+def _check_output_store_coverage(trace: dict, capsule: dict | None, rtl_facts: dict) -> Check:
+    """Every DECLARED output must be covered by stores in the emitted stream, and by no store past it.
+
+    This is detectable with NO simulation, and it is the failure mode that reads as ``mismatch_count > 0``
+    with ``max_abs_error == 0``: bytes that were never produced have no value to diff, so the numeric
+    plane reports what looks like an arithmetic error for what is really a DROPPED or MIS-ADDRESSED
+    store. Everything it needs is a declaration or the author's own artifact: the extent from the declared
+    shapes, the output's kernel argument from the harness ABI, the DRAM row pitch from the author's own
+    store configuration, and the store extents from the author's own instructions.
+
+    ANSWER-FREE: it says which part of the declared output nothing writes. It never reads, computes, or
+    hints at a value."""
+    outs, why = declared_outputs(capsule)
+    if not outs:
+        return Check("T0.output_store_coverage", "T0", "warn", "skipped",
+                     f"declared output extent not derivable: {why}")
+    cov = _store_coverage(trace, outs)
+    unknown = {n: r for n, r in cov.items() if r["status"] == "unknown"}
+    if unknown:
+        return Check("T0.output_store_coverage", "T0", "warn", "skipped",
+                     f"DRAM coverage of output(s) {sorted(unknown)} is UNKNOWN — asserted neither way ("
+                     + "; ".join(f"{n}: {r.get('unknown_reason')}" for n, r in unknown.items()) + ")",
+                     evidence=unknown)
+    absent = [n for n, r in cov.items() if r["status"] == "absent"]
+    bad = [n for n, r in cov.items() if r["status"] == "uncovered"]
+    n_ok = len(outs) - len(absent) - len(bad)
+    if absent:
+        r0 = cov[absent[0]]
+        seen = r0["arg_indices_stored_to"]
+        baked = r0["n_baked_address_stores"]
+        return Check("T0.output_store_coverage", "T0", "warn", "fail",
+                     f"declared output(s) {absent} have NO store addressing them in the emitted stream "
+                     f"(your kernel stores to {n_ok} of {len(outs)} declared outputs). Under the harness "
+                     f"ABI — the declared inputs in order, then the outputs — "
+                     + ", ".join(f"{n} is kernel argument #{cov[n]['arg_index']}" for n in absent)
+                     + f"; the {r0['n_stores_total']} store(s) present address argument(s) {seen or '[]'}"
+                     + (f", of which {baked} use a baked constant address" if baked else "")
+                     + ". This is a DROPPED or MIS-ADDRESSED store, not an arithmetic problem: those "
+                       "bytes are never produced, so nothing downstream has anything to diff.",
+                     expected=f"a store to argument(s) "
+                              f"{[cov[n]['arg_index'] for n in absent]}",
+                     got=f"stores to {seen or '[]'}", evidence={n: cov[n] for n in absent},
+                     fix_hint="address every declared output's store from ITS kernel-argument pointer, "
+                              "and make sure the commit is not optimized away before the readback")
+    if bad:
+        parts = []
+        for n in bad:
+            r = cov[n]
+            if r["overrunning_stores"] and r["covered_cells"] == r["declared_cells"]:
+                parts.append(f"{n} ({r['extent'][0]}x{r['extent'][1]}): "
+                             f"{len(r['overrunning_stores'])} store(s) write PAST the declared extent — "
+                             f"a whole tile stored over an extent the tile does not divide writes into "
+                             f"memory this buffer does not own")
+            else:
+                where = []
+                if r["uncovered_rows"]:
+                    where.append(f"row band {r['uncovered_rows']} is never written by any store")
+                if r["uncovered_cols"]:
+                    where.append(f"column band {r['uncovered_cols']} is never written by any store")
+                if not where:
+                    where.append(f"the first cell nothing writes is {r['first_uncovered_cell']}")
+                parts.append(f"{n} ({r['extent'][0]}x{r['extent'][1]}): stores cover "
+                             f"{r['covered_cells']} of {r['declared_cells']} declared cells; "
+                             + "; ".join(where))
+        return Check("T0.output_store_coverage", "T0", "warn", "fail",
+                     "declared output(s) not exactly covered by the emitted stores: " + "; ".join(parts),
+                     expected="every declared cell stored exactly once, none past the extent",
+                     got=f"{len(bad)} of {len(outs)} output(s) mis-covered",
+                     evidence={n: cov[n] for n in bad},
+                     fix_hint="extend the store loop over every declared band (including the final "
+                              "partial one) and clamp each band's store extent to the declared remainder")
+    return Check("T0.output_store_coverage", "T0", "warn", "pass",
+                 f"all {len(outs)} declared output(s) "
+                 + ", ".join(f"{o['name']} ({o['rows']}x{o['cols']})" for o in outs)
+                 + " are fully covered by the emitted stores, with no store past the declared extent",
+                 evidence=cov)
+
+
+def _check_extent_tile_legalization(trace: dict, capsule: dict | None, rtl_facts: dict,
+                                    target: str) -> Check:
+    """A DECLARED extent the RTL-derived tile edge does not divide must be LEGALIZED.
+
+    Three axes, each measured against the edge DERIVED from the introspected array geometry (never a
+    constant — a target with a different array is screened against its own edge, and a target whose array
+    is UNKNOWN is skipped with that reason rather than screened against a guess):
+
+    * the committed ROWS and COLUMNS — legalized iff the author's own stores cover the declared band
+      EXACTLY (a shorter final band, many short bands, anything: the test is coverage, not loop shape);
+    * the CONTRACTION LENGTH — legalized iff the emitted compute steps reach the count the tile geometry
+      forces, ``ceil(M/edge_rows) * ceil(K/edge_rows) * ceil(N/edge_cols)`` summed over the declared
+      products. A ragged K whose final partial band is never accumulated lands exactly here: the stream
+      is well-formed, every store covers its output, and one slice of the sum is simply missing.
+
+    A hardware loop that walks the nest itself legalizes all three, so its presence (derived from the
+    target's own class vocabulary) is accepted in place of the per-tile evidence."""
+    mesh = _mesh(rtl_facts)
+    if mesh is None:
+        return Check("T0.extent_tile_legalization", "T0", "warn", "skipped",
+                     "mesh dims UNKNOWN (no RTL facts derived) — no tile edge to legalize against")
+    mr, mc = mesh
+    outs, why = declared_outputs(capsule)
+    contractions = declared_contractions(capsule)
+    if not outs and not contractions:
+        return Check("T0.extent_tile_legalization", "T0", "warn", "skipped",
+                     f"no declared extent to legalize: {why}")
+    axes: list[dict] = []
+    for o in outs:
+        axes.append({"output": o["name"], "axis": "committed rows", "extent": o["rows"], "edge": mr,
+                     "edge_from": "RTL facts arrays[mesh].rows"})
+        axes.append({"output": o["name"], "axis": "committed columns", "extent": o["cols"], "edge": mc,
+                     "edge_from": "RTL facts arrays[mesh].cols"})
+    for (M, N, K) in contractions:
+        axes.append({"output": None, "axis": "contraction length", "extent": K, "edge": mr,
+                     "edge_from": "RTL facts arrays[mesh].rows"})
+    ragged = [a for a in axes if a["edge"] and a["extent"] % a["edge"]]
+    if not ragged:
+        return Check("T0.extent_tile_legalization", "T0", "warn", "pass",
+                     f"every declared extent is a whole multiple of the RTL-derived {mr}x{mc} tile edge",
+                     evidence={"axes": axes})
+    loops, loop_basis = _vocabulary_classes(target, _LOOP_STEMS)
+    in_trace = loops & set(_classes(trace))
+    if in_trace:
+        return Check("T0.extent_tile_legalization", "T0", "warn", "pass",
+                     f"the ragged extent(s) {[a['axis'] for a in ragged]} are legalized by the hardware "
+                     f"loop {sorted(in_trace)}, which walks the tail itself",
+                     evidence={"axes": axes, "loop_classes": sorted(in_trace), "basis": loop_basis})
+    cov = _store_coverage(trace, outs)
+    n_compute = sum(1 for c in _classes(trace) if c in _COMPUTE_CLASSES)
+    min_compute = sum(math.ceil(M / mr) * math.ceil(K / mr) * math.ceil(N / mc)
+                      for (M, N, K) in contractions)
+    unlegalized: list[dict] = []
+    unknown: list[dict] = []
+    for a in ragged:
+        rem = a["extent"] % a["edge"]
+        rec = dict(a, remainder=rem)
+        if a["axis"] == "contraction length":
+            if not n_compute:
+                # This trace names no instruction class this module recognizes as a matrix-compute
+                # step, so the count bound has nothing to count. That is a limit of THIS check's
+                # vocabulary on THIS target, not evidence about the kernel — report UNKNOWN. (A
+                # genuinely compute-free contraction is already an ERROR from the movement/compute
+                # balance check, so nothing is lost by staying quiet here.)
+                unknown.append(dict(rec, reason="no recognized matrix-compute class in this trace"))
+            elif contractions and n_compute < min_compute:
+                rec.update(min_compute_steps=min_compute, observed_compute=n_compute)
+                unlegalized.append(rec)
+            continue
+        c = cov.get(a["output"])
+        if c is None or c["status"] == "unknown":
+            unknown.append(rec)
+        elif c["status"] != "covered":                 # 'absent' carries no cell counts; see below
+            rec.update(covered_cells=c.get("covered_cells"), declared_cells=c.get("declared_cells"),
+                       uncovered_rows=c.get("uncovered_rows"), uncovered_cols=c.get("uncovered_cols"),
+                       overrunning_stores=c.get("overrunning_stores"))
+            unlegalized.append(rec)
+    if unlegalized:
+        parts = []
+        for u in unlegalized:
+            head = (f"{u['axis']}" + (f" of {u['output']}" if u["output"] else "") +
+                    f" is {u['extent']}, which the RTL-derived tile edge {u['edge']} ({u['edge_from']}) "
+                    f"does not divide — the final band is {u['remainder']} wide")
+            if u["axis"] == "contraction length":
+                parts.append(head + f", and the stream carries {u['observed_compute']} compute step(s) "
+                                    f"where the tile geometry needs at least {u['min_compute_steps']}: "
+                                    f"a partial band of the sum is never accumulated")
+            elif u.get("declared_cells") is None:
+                parts.append(head + ", and no store in the emitted stream addresses that output at all")
+            else:
+                parts.append(head + f", and the emitted stores do not cover it exactly "
+                                    f"({u.get('covered_cells')} of {u.get('declared_cells')} cells, "
+                                    f"{len(u.get('overrunning_stores') or [])} store(s) past the extent)")
+        return Check("T0.extent_tile_legalization", "T0", "warn", "fail",
+                     "ragged extent(s) not legalized: " + "; ".join(parts),
+                     expected="every ragged axis covered exactly (or walked by the hardware loop)",
+                     got=f"{len(unlegalized)} unlegalized axis/axes",
+                     evidence={"axes": axes, "unlegalized": unlegalized,
+                               "loop_classes_available": sorted(loops), "basis": loop_basis},
+                     fix_hint="emit the final band at its true remainder extent (pad the operand if you "
+                              "must, but clamp the store); a whole tile over a ragged extent either "
+                              "drops the tail or writes past it, and both are silent")
+    if unknown:
+        return Check("T0.extent_tile_legalization", "T0", "warn", "skipped",
+                     f"ragged axis/axes {[u['axis'] for u in unknown]} could not be judged: the stores "
+                     f"carry no decodable extent or row pitch — UNKNOWN, asserted neither way",
+                     evidence={"axes": axes, "unknown": unknown})
+    return Check("T0.extent_tile_legalization", "T0", "warn", "pass",
+                 f"every ragged extent {[(a['axis'], a['extent']) for a in ragged]} is legalized against "
+                 f"the RTL-derived {mr}x{mc} tile edge", evidence={"axes": axes})
+
+
+# ----------------------------------------------- kernel-argument ABI, resolved from the ABI CONTRACT
+class _Unresolvable(Exception):
+    """A contract arg_order token this resolver cannot expand against a buffer. Raised, never guessed:
+    an argument order resolved wrongly would bind every field comparison to the wrong tensor."""
+
+
+def _kernel_abi_rows() -> tuple[list[dict], dict, str]:
+    """``(arg_order_by_command_shape rows, arg_order_tokens, reason)`` from the OOT backend ABI contract.
+
+    The contract is the SINGLE source of truth for the pointer list: there is not one argument order but
+    one per command shape, and the contract carries both the prose and a machine-checkable ``order``
+    token list per shape. Nothing about the order is written down here. ``([], {}, reason)`` when the
+    contract cannot be read — the consuming check then reports *skipped with that reason*."""
+    from merlin.common.paths import data_path
+    path = data_path("contract", "mlir_oot_backend_contract.yaml")
+    if not path.is_file():
+        return [], {}, f"the kernel-ABI contract is not readable at {path.name}, so the argument order " \
+                       f"the harness calls with is not derivable"
+    try:
+        import yaml
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as e:  # noqa: BLE001 — unreadable contract -> UNKNOWN, never an assumed order
+        return [], {}, f"the kernel-ABI contract could not be parsed ({type(e).__name__}), so the " \
+                       f"argument order is not derivable"
+    abi = doc.get("kernel_abi") or {}
+    rows = abi.get("arg_order_by_command_shape")
+    tokens = abi.get("arg_order_tokens") or {}
+    if not isinstance(rows, list) or not rows:
+        return [], {}, "the kernel-ABI contract declares no arg_order_by_command_shape rows, so the " \
+                       "argument order is not derivable"
+    return rows, tokens, ""
+
+
+def _resident_groups(cb: dict) -> list[tuple[str, list[tuple[str, str]]]]:
+    """``[(weight, [(lhs, committed_out), ...]), ...]`` in resident-pack order, group-major per group —
+    the grouping the contract's resident_matmul tokens are written against."""
+    res_to_weight: dict[str, str] = {}
+    order: list[str] = []
+    for cmd in cb.get("commands") or []:
+        if cmd.get("opcode") != "RES_PACK":
+            continue
+        ops = cmd.get("operands") or {}
+        dst, src = ops.get("dst"), ops.get("src")
+        if not isinstance(dst, str) or not isinstance(src, str):
+            raise _Unresolvable("a RES_PACK command names no src/dst pair")
+        if dst not in res_to_weight:
+            res_to_weight[dst] = src
+            order.append(dst)
+    if not order:
+        raise _Unresolvable("the buffer carries no RES_PACK command")
+    commit_of = {(c.get("operands") or {}).get("src"): (c.get("operands") or {}).get("dst")
+                 for c in (cb.get("commands") or []) if c.get("opcode") == "COMMIT"}
+    jobs: dict[str, list[tuple[str, str]]] = {res: [] for res in order}
+    for cmd in cb.get("commands") or []:
+        if cmd.get("opcode") not in ("MATMUL", "MATMUL_RESIDENT"):
+            continue
+        ops = cmd.get("operands") or {}
+        res, lhs, out = ops.get("rhs"), ops.get("lhs"), commit_of.get((ops.get("dst")))
+        if res not in jobs:
+            raise _Unresolvable(f"a matmul's rhs {res!r} resolves to no resident weight")
+        if not isinstance(lhs, str) or not isinstance(out, str):
+            raise _Unresolvable("a matmul has no lhs and/or no committed output")
+        jobs[res].append((lhs, out))
+    if not any(jobs.values()):
+        raise _Unresolvable("the buffer carries no matmul over a resident weight")
+    return [(res_to_weight[res], jobs[res]) for res in order]
+
+
+def _movement_command(cb: dict) -> dict:
+    for cmd in cb.get("commands") or []:
+        if cmd.get("opcode") == "MOVEMENT":
+            return cmd
+        if cmd.get("opcode") == "VECTOR_MAP" and (cmd.get("attributes") or {}).get("combine") == "identity":
+            return cmd
+    raise _Unresolvable("the buffer carries no MOVEMENT / identity VECTOR_MAP command")
+
+
+#: The external tensor roles the contract's ``interface_external_tensors_in_declaration_order`` token
+#: names. Roles are the target-INDEPENDENT command-buffer ABI's own vocabulary (one validator for every
+#: target), not a per-target fact.
+_EXTERNAL_ROLES = ("input", "weight", "bias", "output")
+
+
+def _resolve_arg_order_token(token: str, cb: dict) -> list[str]:
+    """The pointer argument name(s) one contract ``order`` token expands to for ``cb``.
+
+    One token, one resolution rule. A token this function does not know is a REFUSAL — so when the
+    contract grows a shape, the consuming check reports UNKNOWN with that reason rather than screening
+    a stream against an order it invented."""
+    if token == "movement_src":
+        ops = _movement_command(cb).get("operands") or {}
+        name = ops.get("src") or ops.get("lhs")
+        if not isinstance(name, str):
+            raise _Unresolvable("the movement command names no src/lhs")
+        return [name]
+    if token == "movement_dst":
+        name = (_movement_command(cb).get("operands") or {}).get("dst")
+        if not isinstance(name, str):
+            raise _Unresolvable("the movement command names no dst")
+        return [name]
+    if token == "interface_external_tensors_in_declaration_order":
+        names = [n for n, spec in (cb.get("tensors") or {}).items()
+                 if (spec or {}).get("role") in _EXTERNAL_ROLES]
+        if not names:
+            raise _Unresolvable("the buffer declares no external tensor")
+        return names
+    if token == "resident_weights_in_resident_pack_order":
+        return [w for w, _jobs in _resident_groups(cb)]
+    if token == "matmul_lhs_group_major":
+        return [lhs for _w, jobs in _resident_groups(cb) for lhs, _o in jobs]
+    if token == "commit_outputs_group_major":
+        return [out for _w, jobs in _resident_groups(cb) for _l, out in jobs]
+    raise _Unresolvable(f"the ABI contract names an arg_order token {token!r} this resolver does not "
+                        f"know how to expand")
+
+
+def resolve_kernel_arg_order(command_buffer: dict | None) -> tuple[list[str], str, str]:
+    """``(argument names in harness call order, contract shape name, reason)`` for a command buffer.
+
+    Which argument order applies DEPENDS ON THE COMMAND SHAPE — the contract carries one row per shape,
+    and the harness dispatches between them. This resolves the buffer against every row's ``order``
+    tokens and demands a UNIQUE answer:
+
+    * a row whose declared ``opcodes`` list is present applies only when the buffer carries exactly one
+      command with one of those opcodes (the contract's own discriminator, read as data);
+    * any other row applies when every one of its ``order`` tokens expands;
+    * if NO row applies, or if MORE THAN ONE does, the result is ``([], "", reason)`` — UNKNOWN. Two
+      harness paths exist and a buffer that could be called either way must not be screened against a
+      guess. UNKNOWN is also returned when the same tensor would occupy two argument slots, since the
+      binding would then be ambiguous.
+
+    Nothing about any order is written here: the rows, their tokens and the whole-op opcode list are all
+    read from the contract."""
+    if not command_buffer:
+        return [], "", ("no command buffer was passed alongside the trace, so which declared tensor each "
+                        "kernel argument carries is not derivable")
+    if not isinstance(command_buffer.get("commands"), list) or not command_buffer["commands"]:
+        return [], "", "the command buffer declares no commands, so no argument order is derivable"
+    if not isinstance(command_buffer.get("tensors"), dict) or not command_buffer["tensors"]:
+        return [], "", "the command buffer declares no tensors, so no argument order is derivable"
+    rows, _tokens, why = _kernel_abi_rows()
+    if not rows:
+        return [], "", why
+    opcodes_present = [c.get("opcode") for c in command_buffer["commands"]]
+    applicable: list[tuple[str, list[str]]] = []
+    refusals: list[str] = []
+    for row in rows:
+        shape = str(row.get("shape") or "<unnamed>")
+        order = row.get("order")
+        if not isinstance(order, list) or not order:
+            refusals.append(f"{shape}: the contract row carries no machine-checkable order token list")
+            continue
+        gate = row.get("opcodes")
+        if isinstance(gate, list) and gate:
+            hits = [o for o in opcodes_present if o in gate]
+            if len(hits) != 1 or len(opcodes_present) != 1:
+                refusals.append(f"{shape}: the buffer does not carry exactly one of the shape's "
+                                f"declared opcodes {sorted(gate)}")
+                continue
+        try:
+            names: list[str] = []
+            for token in order:
+                names.extend(_resolve_arg_order_token(str(token), command_buffer))
+        except _Unresolvable as e:
+            refusals.append(f"{shape}: {e}")
+            continue
+        applicable.append((shape, names))
+    if not applicable:
+        return [], "", ("no kernel-ABI contract shape resolves against this command buffer, so the "
+                        "argument order the harness calls with is UNKNOWN — " + "; ".join(refusals))
+    if len(applicable) > 1:
+        return [], "", ("this command buffer resolves against " + str(len(applicable)) +
+                        " kernel-ABI contract shapes (" + ", ".join(s for s, _ in applicable) +
+                        "), so which argument order the harness calls with is UNKNOWN; it is not "
+                        "screened against a guess")
+    shape, names = applicable[0]
+    if len(set(names)) != len(names):
+        return [], "", (f"the {shape} argument order resolves to {names}, in which a tensor occupies two "
+                        f"argument slots, so the per-argument binding is ambiguous")
+    return names, shape, ""
+
+
+def kernel_argument_binding(command_buffer: dict | None,
+                            capsule: dict | None) -> tuple[list[dict], str, str]:
+    """``(binding, contract shape, reason)`` — every kernel argument's DECLARED tensor, in the order the
+    ABI contract says the harness calls with.
+
+    ``[{index, name, role, rows, cols, elem_bytes, packed_bytes}]``. The order comes from
+    :func:`resolve_kernel_arg_order` (the contract, dispatched on the buffer's command shape);
+    ``rows`` x ``cols`` is the declared shape flattened to the 2-D form a DRAM move addresses (``cols``
+    the trailing dim, ``rows`` the product of the leading dims), and ``elem_bytes`` its declared dtype's
+    width — all three read off the command buffer's own declaration.
+
+    ``capsule`` is used ONLY as a cross-check of the pointer count where the capsule's declaration makes
+    one available; it never supplies the order (the capsule's interface declaration order is precisely
+    what a package must NOT assume the harness uses).
+
+    FAIL CLOSED: ``([], shape, reason)`` whenever the order is UNKNOWN, a named tensor is missing from
+    the declaration, carries no shape, or has a dtype whose byte width is unknown."""
+    names, shape, why = resolve_kernel_arg_order(command_buffer)
+    if not names:
+        return [], shape, why
+    tensors = (command_buffer or {}).get("tensors") or {}
+    binding: list[dict] = []
+    for index, name in enumerate(names):
+        spec = tensors.get(name)
+        if not isinstance(spec, dict):
+            return [], shape, (f"the {shape} argument order names {name!r} at argument {index}, which the "
+                               f"command buffer does not declare as a tensor")
+        srec = spec.get("shape")
+        if not isinstance(srec, list) or not srec:
+            return [], shape, f"declared tensor {name!r} carries no shape, so its DRAM extent is not " \
+                              f"derivable"
+        elem_bytes = _DTYPE_BYTES.get(str(spec.get("dtype")).lower())
+        if elem_bytes is None:
+            return [], shape, (f"declared tensor {name!r} has dtype {spec.get('dtype')!r}, whose byte "
+                               f"width this check does not know, so its DRAM extent is not derivable")
+        rows = 1
+        for dim in srec[:-1]:
+            rows *= int(dim)
+        binding.append({"index": index, "name": str(name), "role": str(spec.get("role")),
+                        "rows": int(rows), "cols": int(srec[-1]), "elem_bytes": int(elem_bytes),
+                        "packed_bytes": int(rows) * int(srec[-1]) * int(elem_bytes)})
+    return binding, shape, ""
+
+
+def _declared_commit(command_buffer: dict | None) -> tuple[dict | None, str]:
+    """The single command whose declared attributes configure the store path (its ``epilogue``), or
+    ``(None, reason)``. One such command means each store-path configuration field has ONE intended
+    value; two or more share one configuration in the stream, and which commit a given configuration was
+    meant for is not derivable — so those fields are compared for neither."""
+    if not command_buffer:
+        return None, "no command buffer was passed alongside the trace"
+    cmds = [c for c in (command_buffer.get("commands") or [])
+            if isinstance((c.get("attributes") or {}).get("epilogue"), list)]
+    if not cmds:
+        return None, "no declared command carries an epilogue, so no store-path intent is declared"
+    if len(cmds) > 1:
+        return None, (f"{len(cmds)} declared commands carry an epilogue and share one store-path "
+                      f"configuration in the stream, so which commit a configuration was meant for is "
+                      f"not derivable")
+    return cmds[0].get("attributes") or {}, ""
+
+
+def _binding_permutation(binding: list[dict], volume: dict[int, int]) -> list[dict]:
+    """The argument slots whose EMITTED DRAM byte volume is another slot's DECLARED extent.
+
+    A kernel compiled against a permuted pointer list moves each tensor's own byte volume, just through
+    the wrong pointer — so the volumes are a PERMUTATION of the declared extents. Computed purely as
+    data: a slot is reported only when its volume differs from its own declared extent and matches
+    exactly ONE other slot's, and only when the resulting map is a non-identity permutation (every
+    reported slot is also somebody's target). Anything less exact reports nothing — an argument order is
+    not guessed from a coincidence."""
+    by_index = {b["index"]: b for b in binding}
+    declared = {b["index"]: b["packed_bytes"] for b in binding}
+    mapping: dict[int, int] = {}
+    for arg, moved in sorted(volume.items()):
+        b = by_index.get(arg)
+        if b is None or moved <= 0:
+            continue                      # a slot no move reached carries no evidence either way
+        if moved == declared.get(arg):
+            continue                      # this slot receives exactly its own tensor's volume
+        matches = [i for i, v in declared.items() if v == moved and i != arg]
+        if len(matches) != 1:
+            return []                     # ambiguous or unexplained -> assert nothing
+        mapping[arg] = matches[0]
+    if not mapping or set(mapping) != set(mapping.values()):
+        return []                         # not a closed permutation -> assert nothing
+    return [{"arg_index": a, "declared_tensor": by_index[a]["name"],
+             "declared_bytes": declared[a], "moved_bytes": volume[a],
+             "is_the_declared_extent_of": by_index[t]["name"], "at_arg_index": t}
+            for a, t in sorted(mapping.items())]
+
+
+def _check_encoded_field_intent(trace: dict, capsule: dict | None, rtl_facts: dict,
+                                command_buffer: dict | None) -> Check:
+    """Does the pointer each emitted instruction dereferences carry the tensor the ABI says it does?
+
+    The hole this fills: a correctly-NAMED instruction carrying a wrong FIELD is not an illegal
+    instruction, so the ISA linter passes it. And the numeric and trace planes both read the command
+    buffer — the DECLARATION — so a package whose command buffer is right and whose emitted hardware
+    encoding is wrong passes both and then diverges on the oracle, which can report it as nothing but a
+    value error.
+
+    THE INVARIANT: the DRAM base pointer field of every move must be the argument slot the ABI
+    contract's ``arg_order`` (for THIS buffer's command shape) puts that move's tensor in. Which order
+    applies is resolved from the contract, never assumed — there is one order per command shape and more
+    than one harness path, so a buffer that resolves against no row, or against two, yields UNKNOWN with
+    that reason rather than a screening against a guess.
+
+    Two derivable, answer-free signals say the pointer list is permuted, and NEITHER is a claim about
+    addressing arithmetic:
+
+    * a slot's accesses leave the declared extent of the tensor the ABI binds to it — reading memory the
+      declaration does not give it, under the most permissive layout the declared shape admits (rows and
+      columns each rounded up to the RTL-derived array edge);
+    * the DRAM byte volume the slots receive is an exact PERMUTATION of the declared extents — each
+      tensor's own volume moved through the wrong pointer.
+
+    When those agree the finding is reported as ``argument_binding`` and says so explicitly: the
+    addressing arithmetic is SELF-CONSISTENT and would be correct against the permuted order, so the
+    defect is the argument order, not the address or pitch computation. The per-move address and pitch
+    divergences are then carried as that finding's evidence, never as findings of their own — flagging
+    them separately would blame arithmetic that is right.
+
+    Also compared, each against the value the declaration derives for it, and each SILENT unless it
+    actually diverges: a store's readout dtype (the declared dtype of the output tensor bound to the slot
+    it writes), the store configuration's activation and accumulator scale (the single declared commit's
+    epilogue; identity scale when no scaling stage is declared), and a move's column extent (the bound
+    tensor's declared trailing dim, tile-padded).
+
+    NOTHING here re-derives a field layout. Every field value is the one the target's own RoCC decoder
+    (:mod:`merlin.targetgen.rocc.decode`) already extracted, whose bit positions come from that target's
+    RTL facts + capability manifest; every field is compared AS DATA (a parsed int/str against a computed
+    int/str), never string-matched against a literal.
+
+    Fields with NO derivable intent produce NO finding and are recorded under
+    ``evidence["fields_not_derivable"]`` with the reason. A confidently wrong intended value is worse
+    than silence.
+
+    Severity ``warn``: advisory only, and it can never move this report's verdict to ``reject``."""
+    cid = "T0.encoded_field_intent"
+    mesh = _mesh(rtl_facts)
+    if mesh is None:
+        return Check(cid, "T0", "warn", "skipped",
+                     "mesh dims UNKNOWN (no RTL facts derived) — the tile-padded extent a declared "
+                     "tensor may legally occupy is not derivable, so no field is compared")
+    mr, mc = mesh
+    binding, shape, why = kernel_argument_binding(command_buffer, capsule)
+    if not binding:
+        return Check(cid, "T0", "warn", "skipped", why)
+    by_index = {b["index"]: b for b in binding}
+    commit, commit_why = _declared_commit(command_buffer)
+
+    findings: list[dict] = []           # divergences that stand on their own
+    addressing: list[dict] = []         # per-move address/pitch divergences (binding evidence)
+    undecidable: list[dict] = []
+    n_compared = 0
+    volume: dict[int, int] = {}
+    ld_pitch: int | None = None
+    st_pitch: int | None = None
+
+    def _padded_cols(b: dict) -> int:
+        return math.ceil(b["cols"] / mc) * mc
+
+    def _pitches(b: dict) -> tuple[int, int]:
+        return b["cols"] * b["elem_bytes"], _padded_cols(b) * b["elem_bytes"]
+
+    def _extent(b: dict) -> int:
+        """The tile-padded byte extent — the most permissive layout the declared shape admits."""
+        return math.ceil(b["rows"] / mr) * mr * _pitches(b)[1]
+
+    for inst in trace.get("instructions", []):
+        cls = inst.get("class")
+        dec = inst.get("decoded") or {}
+        idx = inst.get("index")
+        if cls == "CONFIG_LD":
+            v = dec.get("stride")
+            ld_pitch = int(v) if isinstance(v, int) and v > 0 else None
+            continue
+        if cls == "CONFIG_ST":
+            v = dec.get("out_stride_bytes")
+            st_pitch = int(v) if isinstance(v, int) and v > 0 else None
+            if commit is None:
+                undecidable.append({"index": idx, "field": "store_activation", "reason": commit_why})
+                undecidable.append({"index": idx, "field": "config_scale", "reason": commit_why})
+                continue
+            epilogue = commit.get("epilogue") or []
+            got_relu = dec.get("relu")
+            if got_relu is None:
+                undecidable.append({"index": idx, "field": "store_activation",
+                                    "reason": "the decoder extracted no activation field here"})
+            else:
+                n_compared += 1
+                want_relu = "relu" in epilogue
+                if bool(got_relu) != want_relu:
+                    findings.append({
+                        "index": idx, "instruction": cls, "field": "store_activation",
+                        "emitted": bool(got_relu), "intended": want_relu,
+                        "intent_from": f"declared epilogue {list(epilogue)}"})
+            got_scale = dec.get("acc_scale")
+            want_scale = commit.get("acc_scale")
+            if want_scale is None and "acc_scale" not in epilogue:
+                want_scale = 1.0            # no declared scaling stage => the identity scale
+            if got_scale is None:
+                undecidable.append({"index": idx, "field": "config_scale",
+                                    "reason": "the decoder extracted no accumulator-scale field here"})
+            elif want_scale is None:
+                undecidable.append({"index": idx, "field": "config_scale",
+                                    "reason": "the declared epilogue contains a scaling stage but "
+                                              "declares no acc_scale value, so the intended scale is "
+                                              "not derivable"})
+            else:
+                n_compared += 1
+                if float(got_scale) != float(want_scale):
+                    findings.append({
+                        "index": idx, "instruction": cls, "field": "config_scale",
+                        "emitted": float(got_scale), "intended": float(want_scale),
+                        "intent_from": (f"declared acc_scale {commit['acc_scale']!r}"
+                                        if "acc_scale" in commit else
+                                        f"declared epilogue {list(epilogue)} names no scaling stage, so "
+                                        f"the intended scale is the identity")})
+            continue
+        if cls not in _MVIN_CLASSES | {"MVOUT"}:
+            continue
+        dram = dec.get("dram") if isinstance(dec.get("dram"), dict) else {}
+        if dram.get("kind") != "argbase":
+            undecidable.append({"index": idx, "field": "dram_base_pointer",
+                                "reason": f"this move's DRAM operand is {dram.get('kind') or 'absent'!r},"
+                                          f" not a kernel argument, so no declared tensor bounds it"})
+            continue
+        arg = dram.get("arg_index")
+        b = by_index.get(arg)
+        if b is None:
+            undecidable.append({"index": idx, "field": "dram_base_pointer",
+                                "reason": f"this move addresses kernel argument {arg}, which the "
+                                          f"{shape} argument order's {len(binding)} slot(s) do not cover"})
+            continue
+        offset, rows, cols = dram.get("offset"), dec.get("rows"), dec.get("cols")
+        pitch = ld_pitch if cls in _MVIN_CLASSES else st_pitch
+        packed_pitch, padded_pitch = _pitches(b)
+        base = {"index": idx, "instruction": cls, "arg_index": arg, "tensor": b["name"],
+                "declared_shape": [b["rows"], b["cols"]], "declared_elem_bytes": b["elem_bytes"]}
+        if cols is not None:
+            volume[arg] = volume.get(arg, 0) + max(0, int(rows or 0)) * int(cols) * b["elem_bytes"]
+            n_compared += 1
+            if int(cols) > _padded_cols(b):
+                findings.append({**base, "field": "column_extent", "emitted": int(cols),
+                                 "intended": f"<={_padded_cols(b)}",
+                                 "intent_from": f"declared trailing dim {b['cols']} of {b['name']!r}, "
+                                                f"padded to the RTL-derived {mc}-column array edge"})
+        else:
+            undecidable.append({"index": idx, "field": "column_extent",
+                                "reason": "the decoder extracted no column extent here"})
+        if cls == "MVOUT":
+            got_dt = dec.get("readout")
+            want_dt = ((command_buffer or {}).get("tensors") or {}).get(b["name"], {}).get("dtype")
+            if got_dt is None or want_dt is None:
+                undecidable.append({"index": idx, "field": "readout_dtype",
+                                    "reason": "the store carries no decoded readout dtype and/or the "
+                                              "bound tensor declares no dtype"})
+            else:
+                n_compared += 1
+                if str(got_dt) != str(want_dt):
+                    findings.append({**base, "field": "readout_dtype", "emitted": str(got_dt),
+                                     "intended": str(want_dt),
+                                     "intent_from": f"declared dtype of output tensor {b['name']!r}"})
+        if offset is None or rows is None or cols is None:
+            undecidable.append({"index": idx, "field": "dram_base_pointer",
+                                "reason": "the decoder extracted no byte offset and/or extent here, so "
+                                          "the span this move touches is not derivable"})
+            continue
+        if int(rows) > 1 and pitch is None:
+            undecidable.append({"index": idx, "field": "dram_base_pointer",
+                                "reason": f"this {rows}-row move is reached with no DRAM row pitch "
+                                          f"configured, so the span it touches is not derivable"})
+            continue
+        n_compared += 1
+        if int(rows) > 1 and int(pitch) not in (packed_pitch, padded_pitch):
+            addressing.append({**base, "aspect": "row_pitch", "emitted": int(pitch),
+                               "this_tensors_own_row": f"{packed_pitch} (packed) or "
+                                                       f"{padded_pitch} (tile-padded)"})
+        span_end = int(offset) + max(0, int(rows) - 1) * int(pitch or 0) + int(cols) * b["elem_bytes"]
+        extent = _extent(b)
+        if span_end > extent:
+            addressing.append({**base, "aspect": "past_declared_extent", "emitted": span_end,
+                               "this_tensors_extent": extent, "byte_offset": int(offset),
+                               "rows": int(rows), "cols": int(cols), "row_pitch": int(pitch or 0)})
+
+    permutation = _binding_permutation(binding, volume)
+    overruns = [a for a in addressing if a["aspect"] == "past_declared_extent"]
+    ev = {"contract_command_shape": shape,
+          "argument_binding": binding,
+          "argument_order_from": "kernel_abi.arg_order_by_command_shape in the OOT backend ABI contract",
+          "mesh": [mr, mc],
+          "declared_packed_bytes": {str(b["index"]): b["packed_bytes"] for b in binding},
+          "emitted_moved_bytes": {str(k): v for k, v in sorted(volume.items())},
+          "fields_compared": n_compared,
+          "fields_not_derivable": undecidable[:40],
+          "n_fields_not_derivable": len(undecidable),
+          "addressing_evidence": addressing[:40], "n_addressing_evidence": len(addressing),
+          "findings": findings[:40], "n_findings": len(findings)}
+    if permutation:
+        ev["argument_volume_permutation"] = permutation
+
+    if permutation:
+        # The pointer list is permuted. Report THAT, and say plainly that the addressing arithmetic is
+        # not the defect: it is self-consistent and would be correct against the order the stream assumes.
+        swaps = ", ".join(
+            f"slot {p['arg_index']} carries {p['declared_tensor']!r} ({p['declared_bytes']} B declared) "
+            f"but receives {p['moved_bytes']} B, exactly the declared extent of "
+            f"{p['is_the_declared_extent_of']!r} at slot {p['at_arg_index']}"
+            for p in permutation)
+        msg = (f"the DRAM base pointer of the emitted moves does not carry the tensor this buffer's ABI "
+               f"puts in that argument slot: the kernel-ABI contract resolves this buffer to the "
+               f"{shape!r} command shape, whose argument order is "
+               f"{[b['name'] for b in binding]}, and the byte volume the slots receive is an exact "
+               f"PERMUTATION of the declared extents ({swaps})")
+        if overruns:
+            w = max(overruns, key=lambda a: a["emitted"])
+            msg += (f"; consistently, {len(overruns)} move(s) reach past the declared extent of the "
+                    f"tensor bound to the slot they address — the furthest at instruction {w['index']} "
+                    f"touching byte {w['emitted']} of {w['tensor']!r}, whose declared "
+                    f"[{by_index[w['arg_index']]['rows']}, {by_index[w['arg_index']]['cols']}] x "
+                    f"{w['declared_elem_bytes']} byte(s) occupies at most {w['this_tensors_extent']} "
+                    f"byte(s) even tile-padded to the RTL-derived {mr}x{mc} array edge")
+        msg += (". The addressing arithmetic itself is NOT the finding: it is self-consistent and would "
+                "be correct against the permuted order, so what diverges is which argument slot each "
+                "tensor is read from")
+        # expected/got are the two pointer lists as DATA: the order the contract gives, and the order
+        # the emitted volumes say each slot actually received (the slots no move reached stay as declared,
+        # since a slot with no traffic carries no evidence either way).
+        received = {p["arg_index"]: p["is_the_declared_extent_of"] for p in permutation}
+        return Check(cid, "T0", "warn", "fail", msg,
+                     expected=[b["name"] for b in binding],
+                     got=[received.get(b["index"], b["name"]) for b in binding],
+                     evidence=ev,
+                     fix_hint=f"the harness calls the kernel with the {shape!r} shape's argument order "
+                              f"from kernel_abi.arg_order_by_command_shape — NOT the capsule's or the "
+                              f"interface's declaration order, which coincides with it only for buffers "
+                              f"that happen to declare the tensors in that same order. Resolve the "
+                              f"pointer list from the command buffer's own command shape and re-emit; "
+                              f"the address and pitch computation does not need changing")
+
+    if overruns:
+        # No permutation established, so the overrun stands on its own: a move addressing memory the
+        # declaration does not give that slot, with no evidence that a permuted pointer list explains it.
+        w = max(overruns, key=lambda a: a["emitted"])
+        findings.append({**{k: w[k] for k in ("index", "instruction", "arg_index", "tensor",
+                                              "declared_shape", "declared_elem_bytes")},
+                         "field": "dram_base_pointer", "emitted": w["emitted"],
+                         "intended": f"<={w['this_tensors_extent']}",
+                         "n_moves": len(overruns),
+                         "intent_from": f"declared {w['declared_shape']} x {w['declared_elem_bytes']} "
+                                        f"byte(s) of {w['tensor']!r}, rows and columns padded to the "
+                                        f"RTL-derived {mr}x{mc} array edge"})
+    pitch_only = [a for a in addressing if a["aspect"] == "row_pitch"]
+    if pitch_only and not overruns:
+        a0 = pitch_only[0]
+        findings.append({**{k: a0[k] for k in ("index", "instruction", "arg_index", "tensor",
+                                              "declared_shape", "declared_elem_bytes")},
+                         "field": "row_pitch", "emitted": a0["emitted"],
+                         "intended": a0["this_tensors_own_row"], "n_moves": len(pitch_only),
+                         "intent_from": f"declared trailing dim of {a0['tensor']!r}, packed or padded to "
+                                        f"the RTL-derived {mc}-column array edge"})
+    ev["findings"] = findings[:40]          # refreshed: the two blocks above may have appended
+    ev["n_findings"] = len(findings)
+
+    if not n_compared:
+        return Check(cid, "T0", "warn", "skipped",
+                     "no emitted instruction carried a field this check could compare against a derived "
+                     "intent — UNKNOWN, asserted neither way", evidence=ev)
+    if not findings:
+        return Check(cid, "T0", "warn", "pass",
+                     f"the emitted moves all address the argument slot the {shape!r} command shape's "
+                     f"contract order gives their tensor, and every one of the {n_compared} decoded "
+                     f"field(s) this check could derive an intent for agrees with the declaration "
+                     f"({len(undecidable)} field instance(s) had no derivable intent and were compared "
+                     f"for neither)", evidence=ev)
+
+    def _extreme(group: list[dict]) -> dict:
+        numeric = [g for g in group if isinstance(g.get("emitted"), (int, float))
+                   and not isinstance(g.get("emitted"), bool)]
+        return max(numeric, key=lambda g: abs(g["emitted"])) if numeric else group[0]
+
+    by_field: dict[str, list[dict]] = {}
+    for f in findings:
+        by_field.setdefault(f["field"], []).append(f)
+    parts = []
+    for field, group in by_field.items():
+        g = _extreme(group)
+        where = (f"kernel argument slot {g['arg_index']} (which the {shape!r} contract order binds to "
+                 f"declared tensor {g['tensor']!r}, shape {g['declared_shape']})") \
+            if "arg_index" in g else "the stream"
+        parts.append(f"{field}: {g.get('n_moves', len(group))} {g['instruction']} instruction(s) on "
+                     f"{where} diverge, the furthest at instruction {g['index']} emitting "
+                     f"{g['emitted']!r} where the declaration derives {g['intended']!r} "
+                     f"[intent from {g['intent_from']}]")
+    worst = _extreme(findings)
+    return Check(cid, "T0", "warn", "fail",
+                 "emitted-encoding field(s) disagree with the declaration this buffer's command shape "
+                 "and the capsule make, while the instruction NAMES are all legal — " + "; ".join(parts),
+                 expected=worst.get("intended"), got=worst.get("emitted"), evidence=ev,
+                 fix_hint=f"each field above is compared against the value YOUR OWN command buffer + "
+                          f"capsule declare for the tensor the ABI contract's {shape!r} argument order "
+                          f"binds to that slot; check both the encoded field and which argument slot you "
+                          f"read it from")
+
+
+def _check_conv_lowering(trace: dict, capsule: dict | None, rtl_facts: dict, target: str) -> Check:
+    """A DECLARED convolution must actually materialize its kernel window.
+
+    Two lowerings exist on a mesh target, and both are derivable: the target's OWN fused convolution loop
+    (the window gather in hardware), or an im2col'd contraction whose depth is ``Kh*Kw*Ci``. A
+    convolution lowered as if the contraction were only ``Ci`` deep emits a legal, well-formed, fully
+    covering stream that computes a DIFFERENT operation — nothing before the oracle notices, and the
+    oracle reports it as a value error.
+
+    The bound is the tile geometry the declared shapes and the RTL-derived array force; both the
+    fused-loop vocabulary and the array edge are derived, neither is written down here."""
+    op = _declared_op(capsule)
+    if op not in ("conv2d", "conv"):
+        return Check("T0.conv_lowering", "T0", "warn", "skipped", "capsule declares no convolution")
+    a = _attrs(capsule)
+    mesh = _mesh(rtl_facts)
+    if mesh is None:
+        return Check("T0.conv_lowering", "T0", "warn", "skipped",
+                     "mesh dims UNKNOWN (no RTL facts derived) — no tile bound derivable")
+    conv_loops, basis = _vocabulary_classes(target, _CONV_STEMS)
+    in_trace = conv_loops & set(_classes(trace))
+    if in_trace:
+        return Check("T0.conv_lowering", "T0", "warn", "pass",
+                     f"the convolution is lowered through the target's own fused convolution loop "
+                     f"{sorted(in_trace)}; the window gather is in hardware",
+                     evidence={"conv_loop_classes": sorted(in_trace), "basis": basis})
+    try:
+        kh, kw, ci = int(a["kh"]), int(a["kw"]), int(a["ci"])
+    except (KeyError, TypeError, ValueError):
+        return Check("T0.conv_lowering", "T0", "warn", "skipped",
+                     "capsule declares no kh/kw/ci, so the im2col contraction depth is not derivable")
+    contractions = declared_contractions(capsule)
+    if not contractions:
+        return Check("T0.conv_lowering", "T0", "warn", "skipped",
+                     "the declared conv's im2col contraction shape is not derivable")
+    if kh * kw <= 1:
+        return Check("T0.conv_lowering", "T0", "warn", "pass",
+                     "declared 1x1 kernel: the im2col matrix IS the activation, so there is no window "
+                     "to materialize", evidence={"basis": basis})
+    mr, mc = mesh
+    P, Co, K = contractions[0]
+    lo = math.ceil(P / mr) * math.ceil(K / mr) * math.ceil(Co / mc)
+    shallow = math.ceil(P / mr) * math.ceil(ci / mr) * math.ceil(Co / mc)
+    n_compute = sum(1 for c in _classes(trace) if c in _COMPUTE_CLASSES)
+    ev = {"im2col_depth_kh_kw_ci": K, "raw_channel_depth_ci": ci, "contraction": [P, Co, K],
+          "mesh": [mr, mc], "min_compute_steps": lo, "observed_compute": n_compute,
+          "compute_steps_a_ci_deep_contraction_would_take": shallow,
+          "conv_loop_classes_available": sorted(conv_loops), "basis": basis}
+    if not n_compute:
+        return Check("T0.conv_lowering", "T0", "warn", "skipped",
+                     "this trace names neither a fused convolution loop nor any instruction class this "
+                     "check recognizes as a matrix-compute step, so the im2col depth is UNKNOWN here — "
+                     "asserted neither way (a compute-free contraction is reported by "
+                     "T0.movement_compute_balance)", evidence=ev)
+    if n_compute < lo:
+        note = (" — which is what a contraction over the RAW channel depth alone would take, not over "
+                "the im2col depth Kh*Kw*Ci") if n_compute and n_compute <= shallow else ""
+        return Check("T0.conv_lowering", "T0", "warn", "fail",
+                     f"the declared {kh}x{kw} convolution emits neither this target's fused convolution "
+                     f"loop {sorted(conv_loops) or '(this target names none)'} nor enough compute for an "
+                     f"im2col'd contraction: covering [{P}, {K}] x [{K}, {Co}] over the RTL-derived "
+                     f"{mr}x{mc} array takes at least {lo} compute step(s) and the stream carries "
+                     f"{n_compute}{note}. The kernel window is not being folded into the contraction.",
+                     expected=f">={lo}", got=n_compute,
+                     ratio=round(n_compute / lo, 3) if lo else None, evidence=ev,
+                     fix_hint="gather the Kh*Kw*Ci window into the contraction (im2col) or emit the fused "
+                              "convolution loop; contracting over the channel depth alone is a "
+                              "different operation, however well-formed the stream looks")
+    return Check("T0.conv_lowering", "T0", "warn", "pass",
+                 f"the declared {kh}x{kw} convolution is lowered as an im2col'd contraction of depth "
+                 f"{K}: {n_compute} compute step(s) >= the {lo} the tile geometry requires", evidence=ev)
+
+
 # ----------------------------------------------------------------------------------- public API
 def screen(trace: dict, capsule: dict | None = None,
-           rtl_facts: dict | None = None, *, target: str) -> CheckReport:
+           rtl_facts: dict | None = None, *, target: str,
+           command_buffer: dict | None = None) -> CheckReport:
     """Run the Phase-0 T0 checks over a decoded trace; return an advisory :class:`CheckReport`.
 
     Pure function: no simulation, no frozen-runner imports, no verdict mutation. ``trace`` is a
     ``rocc.decode`` output dict; ``capsule`` is a loaded capsule.yaml dict (for declared
     shapes/modes); ``target`` is REQUIRED and selects the base RTL facts (the run's resolved target,
     via :func:`load_default_facts`); ``rtl_facts`` optionally OVERRIDES specific fact keys on top.
+
+    ``command_buffer`` is the package's OWN emitted command buffer (the declaration the numeric and
+    trace planes both read). It is what binds each kernel argument to a declared tensor, so
+    :func:`_check_encoded_field_intent` needs it; omitted, that check reports *skipped with that
+    reason* — never a pass.
     """
     facts = load_default_facts(target)
     if rtl_facts:
@@ -508,6 +1703,14 @@ def screen(trace: dict, capsule: dict | None = None,
     rep.checks.append(_check_preload_before_compute(trace))
     rep.checks.append(_check_config_before_use(trace))
     rep.checks.append(_check_fence_bracket(trace))
+    # Structural checks over the DECLARED geometry + the author's own emitted stream. Severity 'warn' on
+    # purpose: they are feedback, and a warn can never move this report's verdict to 'reject' (which an
+    # opt-in caller may use to skip an oracle run). A structurally-odd but conformant kernel must never
+    # lose its oracle over an advisory finding.
+    rep.checks.append(_check_output_store_coverage(trace, capsule, facts))
+    rep.checks.append(_check_extent_tile_legalization(trace, capsule, facts, target))
+    rep.checks.append(_check_conv_lowering(trace, capsule, facts, target))
+    rep.checks.append(_check_encoded_field_intent(trace, capsule, facts, command_buffer))
     return rep
 
 

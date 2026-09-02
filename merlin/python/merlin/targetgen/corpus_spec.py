@@ -437,9 +437,15 @@ def _numeric_policy(binding: CorpusBinding, output_dtype: str, acc_scale: float 
     return np_
 
 
-def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str]) -> str:
-    """Output dtype: the accumulate dtype, unless an acc_scale epilogue requants to a narrow output (the
-    target declares that narrow dtype in its datapath as ``requant_output_dtype``, e.g. i8 for gemmini)."""
+def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str], requested: str | None = None) -> str:
+    """Resolve the operation's authored output dtype.
+
+    An explicit profile value wins: narrowing can be a property of a fused hardware readout, not only
+    of an ``acc_scale`` stage. Otherwise the historical acc-scale/default-accumulator rule remains.
+    """
+    if requested is not None:
+        binding.cap_dtype(str(requested))  # validate through the canonical dtype registry
+        return str(requested)
     if "acc_scale" in epilogue and binding.requant_output_dtype:
         return binding.requant_output_dtype
     return binding.accum_dtype
@@ -613,7 +619,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         # Ahead of _resolve_output_dtype, which reads the epilogue to decide the committed dtype.
         epilogue.insert(0, "bias_add")
     acc_scale = entry.get("acc_scale")
-    output_dtype = _resolve_output_dtype(binding, epilogue)
+    output_dtype = _resolve_output_dtype(binding, epilogue, entry.get("output_dtype"))
+    op = entry.get("op", "matmul")
     odt = binding.cap_dtype(output_dtype)
     idt = binding.cap_dtype(binding.operand_dtype)
     bias, bias_dt = _bias_operand(entry, epilogue, N, binding, op)
@@ -1118,7 +1125,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     Ho, Wo = conv_out_dims(H, W, kh, kw, stride, padding, dilation)
     Kdim = kh * kw * ci
     epilogue = list(entry.get("epilogue", []))
-    output_dtype = _resolve_output_dtype(binding, epilogue)
+    output_dtype = _resolve_output_dtype(binding, epilogue, entry.get("output_dtype"))
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(output_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(output_dtype)
     attrs = {"ifm": ifm, "weight": weight, "out": out, "ci": ci, "kh": kh, "kw": kw,

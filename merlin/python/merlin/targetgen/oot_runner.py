@@ -22,6 +22,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -118,6 +119,52 @@ class CertFailure(Exception):
         self.plane = plane
         self.category = category
         self.detail = detail
+
+
+#: The plane for a failure that is NOT about the graded artifact at all -- the harness could not put a
+#: declared input in front of it. It is deliberately NOT one of the submission planes (schema, parse,
+#: build, integrity, contract, oracle_*, ...) so that no reader, report or brief can mistake it for a
+#: verdict on the submission.
+INFRASTRUCTURE_PLANE = "infrastructure"
+
+
+class InfraCategory(str, Enum):
+    """Categories for :class:`InfraFailure`.
+
+    ``aet``'s :class:`~aet.core.failures.FailureCategory` enumerates ways a SUBMISSION can be wrong --
+    every member names something the graded artifact did (a syntax error, a numeric mismatch, a protocol
+    violation). A harness that could not stage its own inputs has done nothing of the kind, and borrowing
+    one of those names to say so is what this class exists to stop.
+    """
+
+    #: The staged capsule cohort is not on disk: never materialized, or collected mid-grade.
+    COHORT_NOT_MATERIALIZED = "cohort_not_materialized"
+
+    def __str__(self) -> str:
+        # The three recorders in this repo serialize a category differently -- `cf.category.value`
+        # (oot_runner), `str(cf.category)` (capsule_grade) and a `hasattr(..., "value")` probe
+        # (capsule_runner). Making __str__ agree with .value keeps the recorded string identical
+        # whichever one writes the row, instead of leaking "InfraCategory.COHORT_NOT_MATERIALIZED"
+        # into one report and the honest token into another.
+        return self.value
+
+
+class InfraFailure(CertFailure):
+    """The HARNESS failed, not the submission -- a declared input was missing, so nothing was measured.
+
+    A subclass of :class:`CertFailure` on purpose: every existing recorder already catches CertFailure
+    and writes ``plane``/``category``/``detail``, so an infrastructure fault is recorded honestly through
+    the paths that already exist, while a caller that wants to treat it specially (and the per-capsule
+    status mapping in ``capsule_runner`` does) can catch this narrower type first.
+
+    Why it exists. A grade resolves the per-target cohort symlink to a concrete staging dir once and then
+    reads capsules out of it for the whole grade; when a sibling materialization collected that dir, the
+    missing interface MLIR was raised as ``schema / structural_invariant_violation``, and an official
+    round-0 verdict recorded 31 of 33 capsules as structurally invalid SUBMISSIONS -- for a package that
+    scored 33/34 minutes earlier, with ``gradeable: True`` asserting the number was a real measurement.
+    The number was then handed to the next round as the agent's own failure history. A harness fault that
+    can wear a verdict's clothes is worse than a crash, because it gets believed and cited.
+    """
 
 
 class BackendDeclined(Exception):

@@ -30,7 +30,7 @@ dialect:
       result: "tensor<MxNxDT>   # M pools to batch*Ho*Wo when the epilogue contains maxpool"
       attrs:
         name: string
-        epilogue: "ordered subset of [bias_add, requant, acc_scale, relu, maxpool]"
+        epilogue: "ordered subset of [bias_add, bias, requant, acc_scale, relu, maxpool]"
         output_dtype: "enum[i32,i8]"
         acc_scale: "f32 (required iff acc_scale in epilogue)"
         pool_in_dims: "[H, W] (required iff maxpool in epilogue) -- the extent the M rows unflatten to"

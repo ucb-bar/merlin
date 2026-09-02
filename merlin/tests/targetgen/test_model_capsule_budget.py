@@ -188,6 +188,85 @@ def test_no_budget_runs_inline(monkeypatch):
     assert seen == {"capsule": "M0", "target": "t", "timeout": 7}
 
 
+def test_budgeted_grade_pins_capsule_assets_before_starting_child(tmp_path, monkeypatch):
+    """Cache GC may remove a materialized capsule while a long model child is still using it.
+
+    The child must receive a private immutable copy, not the cache generation's path.  This is the
+    production failure from ``merlincirct_arm4_func_20260901_codex1``: M3 started with a
+    ``.gemmini.build.*`` ``__dir__`` and later failed opening ``capsule.yaml`` after cache GC removed
+    that generation.
+    """
+    capsule = _copy_model_capsule(tmp_path / "source")
+    original = Path(capsule["__dir__"])
+    observed = {}
+
+    class _FinishedChild:
+        returncode = 0
+        pid = 1
+
+        def __init__(self, cmd, **_kwargs):
+            spec_path = Path(cmd[cmd.index("--model-grade") + 1])
+            out_path = Path(cmd[cmd.index("--model-grade-out") + 1])
+            spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            pinned = Path(spec["capsule"]["__dir__"])
+            observed.update(original=original, pinned=pinned)
+            assert pinned != original
+            shutil.rmtree(original)
+            assert (pinned / "capsule.yaml").is_file()
+            out_path.write_text(json.dumps({"capsule": capsule["name"], "status": "pass"}))
+
+        def communicate(self, timeout=None):
+            return ("", None)
+
+    import subprocess as sp
+    monkeypatch.setattr(sp, "Popen", _FinishedChild)
+    out = CR._grade_model_capsule_unlocked(
+        capsule, target="gemmini", timeout=10, budget_s=60)
+
+    assert out["status"] == "pass"
+    assert observed["pinned"].parent != observed["original"].parent
+
+
+def test_suite_pins_model_assets_before_build_and_op_grading(tmp_path, monkeypatch):
+    """The public-cache generation may be collected while the preceding op phase is still running.
+
+    Pinning only when the model child starts is too late: ``run_suite`` discovers every capsule first,
+    then can spend longer than the materializer's GC age building the package and grading ops before it
+    reaches the models.
+    """
+    source = tmp_path / "source" / "M"
+    source.mkdir(parents=True)
+    (source / "capsule.yaml").write_text("name: M\nkind: model\n", encoding="utf-8")
+    original = source.resolve()
+    model = {"name": "M", "kind": "model", "__dir__": str(original),
+             "gate": {"after_op_pass_fraction": 0.0}}
+    op = {"name": "A", "kind": "isa"}
+    observed = {}
+
+    monkeypatch.setattr(CR, "load_package", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(CR, "integrity_scan", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(CR, "build_package", lambda *_args, **_kwargs: shutil.rmtree(original))
+    monkeypatch.setattr(CR, "_split_ineligible", lambda caps, _target: (caps, []))
+    monkeypatch.setattr(CR._tier_policy, "covering_set", lambda _caps: [])
+
+    def _run(capsule, *_args, **_kwargs):
+        if capsule["name"] == "A":
+            return {"capsule": "A", "kind": "isa", "status": "pass"}
+        pinned = Path(capsule["__dir__"])
+        observed["pinned"] = pinned
+        assert pinned != original
+        assert (pinned / "capsule.yaml").is_file()
+        return {"capsule": "M", "kind": "model", "status": "pass"}
+
+    monkeypatch.setattr(CR, "run_capsule", _run)
+    out = CR.run_suite([op, model], tmp_path / "package", runs_root=tmp_path / "runs",
+                       target="gemmini", max_workers=1)
+
+    assert [row["status"] for row in out] == ["pass", "pass"]
+    assert "pinned" in observed
+    assert not observed["pinned"].exists(), "suite pin must be cleaned after the model result lands"
+
+
 @pytest.mark.parametrize("budget", [3.0])
 def test_budget_stops_a_grade_that_overruns(tmp_path, monkeypatch, budget):
     """The ceiling is enforced on the CAPSULE. A grade that overruns is stopped and reported."""

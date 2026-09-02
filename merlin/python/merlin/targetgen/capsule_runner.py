@@ -25,6 +25,7 @@ import dataclasses
 import datetime as _dt
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -53,7 +54,8 @@ from .contract import schemas
 from .capsule_common import (NOT_MEASURED_STATUSES, _cat, _flat,  # noqa: F401
                              discover_capsules, load_capsule,
                              make_run_paths, run_entrypoints)
-from .oot_runner import (BackendDeclined, CertFailure, Package, build_package, integrity_scan,
+from .oot_runner import (BackendDeclined, CertFailure, InfraFailure, Package,
+                             build_package, integrity_scan,
                          load_package, run_entrypoint)
 
 SUITE = "gemmini-capsule-bench"
@@ -144,6 +146,10 @@ class TierResult:
                                       # its buckets partition the timeline, its alias accounting, and
                                       # everything it refused. An unread signal is UNMEASURED, never
                                       # zero, and this is where that distinction is recorded.
+    measurement_conditions: dict | None = None
+                                      # Exact measurement protocol/window reported by the adapter.
+                                      # Requested warmups are not silently promoted to observed cache
+                                      # state; downstream calibration can audit this record.
 
     toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
                                       # scaled MX capsule is graded on the harness's own reference MX
@@ -176,6 +182,8 @@ class TierResult:
             d["timing_observations"] = list(self.timing_observations)
         if self.timing_capability:
             d["timing_capability"] = dict(self.timing_capability)
+        if self.measurement_conditions:
+            d["measurement_conditions"] = dict(self.measurement_conditions)
         # Concurrency and submission ride the record ONLY when they were established. An absent
         # field is "unrecorded", which is the honest state for every run taken before the stamp
         # existed; a defaulted one would be a claim.
@@ -1419,7 +1427,7 @@ def suite_for(target: str, *, dtype: str = "i8xi8_i32") -> str:
 
 def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: bool,
                               cb: dict | None = None, capsule: dict | None = None,
-                              trace: dict | None = None) -> str:
+                              trace: dict | None = None, target: str | None = None) -> str:
     """A mandatory hardware/oracle tier failed while the cheap tiers already passed (numeric fails raise
     earlier), so the defect is in the emitted hardware artifact, NOT the command buffer. Return a
     target-agnostic localization hint so the failure is never an opaque 'oracle != golden' — plus the first
@@ -1433,10 +1441,12 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
     (never a golden value, never a fix). The oracle stays the arbiter; a field it cannot anchor is simply
     not flagged, so the generic hint always still fires underneath."""
     concrete = ""
+    _dl_notes: list[str] = []
     if trace is not None:
         try:
             from . import divergence_localizer as _DL
-            concrete = _DL.format_finding(_DL.localize(cb, capsule, trace))
+            concrete = _DL.format_finding(
+                _DL.localize(cb, capsule, trace, target=target, notes=_dl_notes))
         except Exception:  # noqa: BLE001 — the localizer is advisory; never let it break the failure path
             concrete = ""
     findings = (trace_check_res or {}).get("violations") or []
@@ -1452,6 +1462,10 @@ def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: b
                 "against your intent.")
     if findings:
         hint += f" Your own artifact check also flagged: {findings[0]}"
+    # A cross-check that COULD NOT RUN is surfaced, never silently absent: "no advisory" must not read
+    # as "the advisory looked and found nothing".
+    if not concrete and _dl_notes:
+        hint += " " + " ".join(_dl_notes) + "."
     # The concrete cross-check (when derivable) is the most actionable line — lead with it.
     return (concrete + hint) if concrete else hint
 
@@ -1520,8 +1534,49 @@ def _numeric_not_compared(engine: str, measured_on: str, verify: dict | None,
             "gate": verify or None, "detail": detail}
 
 
+def _model_tier_evidence(model_exec: dict | None, tile_exec: dict | None) -> dict:
+    """Aggregate whole-model tier provenance without counting synthetic work as model latency.
+
+    Dynamic dispatch entries prove what the model actually executed; synthesized tiles independently
+    prove the backend's shape coverage.  Both contribute to the fidelity claim, so one missing flag
+    makes the aggregate flag false.  Only dynamic calls contribute cycles: adding tile-probe latency
+    would double-count work that the model never executed.
+    """
+    ledger = (model_exec or {}).get("dispatch_ledger")
+    dynamic = ([entry for entry in ledger
+                if isinstance(entry, dict) and entry.get("lane") == "on_mesh"]
+               if isinstance(ledger, list) else [])
+    per_tile = (tile_exec or {}).get("per_tile")
+    tiles = list(per_tile) if isinstance(per_tile, list) else []
+    call_oracles = [entry.get("oracle_evidence")
+                    if isinstance(entry.get("oracle_evidence"), dict) else {}
+                    for entry in dynamic]
+    tile_records = [tile if isinstance(tile, dict) else {} for tile in tiles]
+    contributors = [*call_oracles, *tile_records]
+
+    dynamic_cycles = [oracle.get("cycles") for oracle in call_oracles]
+    cycles = (sum(dynamic_cycles)
+              if dynamic_cycles and all(isinstance(v, int) and not isinstance(v, bool)
+                                        for v in dynamic_cycles)
+              else None)
+    evidence_parts = []
+    if isinstance(ledger, list):
+        evidence_parts.append("mesh_execution.dispatch_ledger")
+    if isinstance(per_tile, list):
+        evidence_parts.append("mesh_tile_verification.per_tile")
+    derived = bool(contributors) and all(r.get("derived_from_rtl") is True for r in contributors)
+    accurate = bool(contributors) and all(r.get("cycle_accurate") is True for r in contributors)
+    return {
+        "cycles": cycles,
+        "derived_from_rtl": derived,
+        "cycle_accurate": accurate,
+        "evidence": " + ".join(evidence_parts) or None,
+        "fidelity": "elaborated_rtl" if derived else None,
+    }
+
+
 def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | None,
-                    ) -> "dict[str, TierResult]":
+                    tile_exec: dict | None = None) -> "dict[str, TierResult]":
     """The tier block for a WHOLE-MODEL capsule, derived from the model's OWN layer accounting.
 
     A model capsule used to carry no tier block at all on most paths -- the derivation ran only when
@@ -1551,19 +1606,22 @@ def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | 
         return tiers
     on = (model_exec or {}).get("matmul_layers_on_mesh")
     fb = (model_exec or {}).get("matmul_layers_host_fallback")
+    evidence = _model_tier_evidence(model_exec, tile_exec)
     if on is None:
         tiers[tier] = TierResult(tier, "unavailable", True,
                                  reason="no mesh execution counters were reported, so whether this "
-                                        "model's layers ran on the accelerator is UNKNOWN")
+                                        "model's layers ran on the accelerator is UNKNOWN", **evidence)
     elif int(fb or 0) > 0:
         tiers[tier] = TierResult(tier, "fail", True,
-                                 reason=f"{int(fb)} matmul layer(s) fell back to the host kernel")
+                                 reason=f"{int(fb)} matmul layer(s) fell back to the host kernel",
+                                 **evidence)
     elif int(on) == 0:
         tiers[tier] = TierResult(tier, "skipped", True,
-                                 reason="no matmul layer executed on the accelerator")
+                                 reason="no matmul layer executed on the accelerator", **evidence)
     else:
         tiers[tier] = TierResult(tier, "pass", True,
-                                 reason=f"{int(on)} matmul layer(s) executed on the accelerator")
+                                 reason=f"{int(on)} matmul layer(s) executed on the accelerator",
+                                 **evidence)
     return tiers
 
 
@@ -1758,8 +1816,28 @@ def _grade_model_capsule_unlocked(capsule: dict, *, target: str | None = None, t
                 "failure": {"plane": "model", "category": "NOT_RUN_IS_NOT_PASS", "detail": detail}}
 
     with _tf.TemporaryDirectory(prefix="model_grade_") as _td:
-        spec_p, out_p = Path(_td) / "spec.json", Path(_td) / "result.json"
-        spec_p.write_text(json.dumps({"capsule": capsule, "target": target, "timeout": timeout,
+        temp_root = Path(_td)
+        spec_p, out_p = temp_root / "spec.json", temp_root / "result.json"
+
+        # Pin the capsule bytes for the lifetime of the budgeted child. Public capsule discovery returns
+        # an immutable, versioned cache generation, but the materializer is called repeatedly by the QA
+        # brokers and garbage-collects old generations after 15 minutes. A model grade can legitimately
+        # run for 40 minutes or hours; serializing its original ``__dir__`` therefore handed the child a
+        # path that could disappear mid-grade. Measured on M3 in
+        # ``merlincirct_arm4_func_20260901_codex1``: the child later failed to open ``capsule.yaml`` from
+        # a collected ``.gemmini.build.*`` directory. The temporary directory already has exactly the
+        # required lifetime, so copy the frozen capsule into it before starting the child and point the
+        # child only at those pinned bytes. Preserve symlinks so the existing runtime-bundle validation
+        # can reject them rather than following a capsule-local link outside the frozen source.
+        capsule_for_child = dict(capsule)
+        capsule_dir = capsule.get("__dir__")
+        if capsule_dir:
+            source_dir = Path(capsule_dir)
+            pinned_dir = temp_root / "capsule"
+            shutil.copytree(source_dir, pinned_dir, symlinks=True)
+            capsule_for_child["__dir__"] = str(pinned_dir)
+
+        spec_p.write_text(json.dumps({"capsule": capsule_for_child, "target": target, "timeout": timeout,
                                       "package_dir": str(package_dir) if package_dir else None}),
                           encoding="utf-8")
         # `-c` rather than `-m`: the preamble sets PR_SET_PDEATHSIG in the first milliseconds, before
@@ -2474,7 +2552,7 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
     n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
     # Set BEFORE the fail-closed branches below, every one of which returns early: a refusal must still
     # say which tier refused it, and this block used to be attached only on the success path.
-    _model_tiers = _model_tier_map(declared, target, model_exec)
+    _model_tiers = _model_tier_map(declared, target, model_exec, mesh_exec)
     result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
     exercised: dict[str, str] = {}
     # THE LANE CONTRACT IS EVALUATED UNCONDITIONALLY. It used to sit inside `if n_tiles:` below, so a
@@ -2594,7 +2672,8 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
     # Overlay the per-tile verdict where one exists; the counter-derived map is the floor.
     for _t, _s in exercised.items():
         base = _model_tiers.get(_t)
-        _model_tiers[_t] = TierResult(_t, _s, True, reason=(base.reason if base else None))
+        _model_tiers[_t] = (dataclasses.replace(base, status=_s, mandatory=True) if base else
+                            TierResult(_t, _s, True))
     result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
     # The tile record, kept beside the verdict as the SEPARATE and weaker evidence it is: it speaks about
     # synthesized tiles of this model's shapes, never about the model.
@@ -3052,6 +3131,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     failure: dict | None = None
     declined: dict | None = None                  # the backend's STATED refusal ({reason, shape, op})
     status = "pass"
+    cb: dict | None = None
 
     try:
         # shared front half: build + the 4 contract entrypoints (parse/target/cb/artifact), validated.
@@ -3493,7 +3573,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu,
                     timing_observations=res.get("timing_observations"),
                     counters=res.get("counters"),
-                    timing_capability=res.get("timing_capability"), concurrency=_conc)
+                    timing_capability=res.get("timing_capability"),
+                    measurement_conditions=res.get("measurement_conditions"), concurrency=_conc)
                 continue
             if independent_float:
                 # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
@@ -3581,7 +3662,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, utilization=_util,
                 timing_observations=res.get("timing_observations"),
                 counters=res.get("counters"),
-                timing_capability=res.get("timing_capability"), fidelity=_fidelity,
+                timing_capability=res.get("timing_capability"),
+                measurement_conditions=res.get("measurement_conditions"), fidelity=_fidelity,
                 concurrency=_conc)
             if res.get("console") is not None:
                 (paths.artifacts_dir / f"{_ev_name}_console.log").write_text(
@@ -3595,7 +3677,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _cf = CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
                                   _mismatch_reason + _encoding_divergence_hint(
                                       trace_check_res, independent_float,
-                                      cb=cb, capsule=capsule, trace=decoded_trace))
+                                      cb=cb, capsule=capsule, trace=decoded_trace,
+                                      target=eff_target))
                 # COMPLETE THE LADDER, then fail. Raising here aborts the loop, so every tier ordered
                 # AFTER the refuting one is left with no record at all -- not "skipped", absent. Measured
                 # on atlas: 11 of 26 capsules carried an L4 fail and NO L3 entry, 1 the reverse, because
@@ -3626,6 +3709,15 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         status = "declined"
         declined = bd.to_dict()
         failure = {"plane": "backend_declined", "category": "DECLINED", "detail": bd.reason}
+    except InfraFailure as inf:
+        # The harness could not stage this capsule's declared inputs, so NOTHING about the submission was
+        # measured. `fail` would be a lie in the agent's direction and `pass` a lie in ours; this is the
+        # third thing, and it is excluded from the pass/fail denominators (NOT_MEASURED_STATUSES) while
+        # `capsule_grade.grade` refuses to call the run gradeable at all. Caught before CertFailure
+        # because InfraFailure IS one -- the order is what keeps it out of the submission's verdict.
+        status = "infrastructure_fault"
+        cat = inf.category.value if hasattr(inf.category, "value") else str(inf.category)
+        failure = {"plane": inf.plane, "category": cat, "detail": inf.detail}
     except CertFailure as cf:
         status = "fail"
         cat = cf.category.value if hasattr(cf.category, "value") else str(cf.category)
@@ -3636,12 +3728,31 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                    "detail": f"{type(e).__name__}: {e}",
                    "traceback": _traceback.format_exc()}
 
+    # The compute-work receipt is derived from the exact compiler command buffer graded above.  It is
+    # attached as evidence, never used to decide functional correctness, and therefore cannot alter a
+    # capsule verdict.  Performance consumers no longer need a hand-entered corpus MAC count.
+    from merlin.perf.work_volume import work_from_command_buffer
+    _work_volume = work_from_command_buffer(cb).to_dict() if isinstance(cb, dict) else {
+        "basis": "compiler_command_buffer", "exact_macs": None, "is_lower_bound": True,
+        "refusals": ["the graded path produced no command buffer"]}
+    # Preserve the actual compiler product beside the derived work summary. Performance consumers
+    # must be able to recompute the work and verify that the artifact hash is the one executed; a
+    # pre-computed MAC total is not a substitute for those bytes. This is evidence only and cannot
+    # influence the capsule verdict above.
+    _command_buffer_artifact = ({
+        "command_buffer": cb,
+        "artifact_sha256": _work_volume.get("artifact_sha256"),
+        "compiler_provenance": "command buffer emitted by the frozen compiler and graded by run_capsule",
+    } if isinstance(cb, dict) else None)
     return _finalize_capsule_result(
         submission=submission_identity(package_dir, run_id=run_id),
         name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
         trace_check_res=trace_check_res, numeric=numeric, required=required,
         no_oracle=no_oracle, eff_target=eff_target, paths=paths, run_id=run_id,
-        cfg=cfg, contract=contract, executability=executability, declined=declined)
+        cfg=cfg, contract=contract, executability=executability, declined=declined,
+        extra={"work_volume": _work_volume,
+               **({"command_buffer_artifact": _command_buffer_artifact}
+                  if _command_buffer_artifact is not None else {})})
 
 
 def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
@@ -3662,6 +3773,41 @@ def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
     }
     (paths.run_path / "run_manifest.yaml").write_text(
         yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
+
+
+def _pin_model_capsules_for_suite(capsules: list[dict]):
+    """Copy model assets before the op phase; return ``(capsules, temporary owner)``.
+
+    Discovery points into an immutable cache generation, but another broker can publish a replacement
+    and collect the old generation after 15 minutes. Since ``run_suite`` grades ops before models, a
+    model's discovered path can otherwise disappear before the model child even starts. The returned
+    ``TemporaryDirectory`` must remain live until all model results land.
+
+    The budget-child pin remains intentional: this pin covers discovery through scheduling; its second
+    copy binds an individual child to the child's lifetime.
+    """
+    import tempfile
+
+    if not capsules:
+        return capsules, None
+    owner = tempfile.TemporaryDirectory(prefix="model_capsule_suite_")
+    root = Path(owner.name)
+    pinned = []
+    try:
+        for index, capsule in enumerate(capsules):
+            clone = dict(capsule)
+            source = capsule.get("__dir__")
+            if source:
+                destination = root / f"capsule_{index:04d}"
+                # Preserve aliases so _model_asset rejects them later. Following a symlink here would
+                # turn an unsafe capsule-local path into apparently ordinary frozen bytes.
+                shutil.copytree(Path(source), destination, symlinks=True)
+                clone["__dir__"] = str(destination)
+            pinned.append(clone)
+    except BaseException:
+        owner.cleanup()
+        raise
+    return pinned, owner
 
 
 
@@ -3702,6 +3848,10 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     package_dir = str(Path(package_dir).resolve())
     if contract is not None and Path(contract).exists():
         contract = str(Path(contract).resolve())
+    # Pin immediately on entry, before even building the submission package: package setup and the op
+    # phase are both allowed to be long, while the cache path discovery stamped into each model is not.
+    model_caps = [c for c in capsules if c.get("kind") == "model"]
+    model_caps, _model_capsule_pin = _pin_model_capsules_for_suite(model_caps)
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
     build_package(pkg)
@@ -3777,7 +3927,6 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     # op capsules first; if no model capsule is present this is exactly the original single-pass behavior.
     from .capsule_source import model_gate_satisfied
     op_caps = [c for c in capsules if c.get("kind") != "model"]
-    model_caps = [c for c in capsules if c.get("kind") == "model"]
 
     # DO NOT GRADE what this target provably cannot do. A capsule outside the contract's declared
     # capability can never pass, so grading it (a) spends oracle time on a foregone conclusion, (b)
@@ -3859,7 +4008,10 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
                 "failure": {"plane": "gate", "category": "GATED",
                             "detail": f"whole-model capsule deferred: op pass fraction {frac:.2f} "
                                       f"< gate {thr}"}})
-    return op_results + model_results
+    out = op_results + model_results
+    if _model_capsule_pin is not None:
+        _model_capsule_pin.cleanup()
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:

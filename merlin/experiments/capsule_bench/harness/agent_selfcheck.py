@@ -117,7 +117,10 @@ def _target() -> str:
     return _target_sim_via()[0]
 
 
-SIM_TIER = {"spike": "L2", "verilator": "L3", "vcs": "L4"}
+# gsim shares verilator's rung: both are elaborated-RTL, cycle-accurate engines over the SAME
+# design (GemminiGsimMonitorsConfig is GemminiRocketConfig plus a harness-level clock
+# instantiator, so the DUT is identical). It is the tier that differs by ENGINE, never by name.
+SIM_TIER = {"spike": "L2", "verilator": "L3", "gsim": "L3", "vcs": "L4"}
 
 
 def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
@@ -128,8 +131,13 @@ def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
     the hardcoded spike/verilator adapters ran the gemmini/RVV lowering path and crashed (AW4)."""
     if sim_via == "chipyard":
         ad = {"L2": CR._spike_verilator_adapter("spike", target)}
-        if sim in ("verilator", "vcs"):
-            ad["L3"] = CR._spike_verilator_adapter("verilator", target)
+        if sim in ("verilator", "vcs", "gsim"):
+            # Build L3 from the engine the caller NAMED. This used to hardcode "verilator", which made
+            # --sim gsim silently certify on verilator -- a result attributed to the wrong engine. The
+            # adapter factory is engine-generic (it forwards simulator=sim and gates on
+            # backend.available(sim)), so an absent engine fails closed here rather than substituting.
+            _l3_engine = "gsim" if sim == "gsim" else "verilator"
+            ad["L3"] = CR._spike_verilator_adapter(_l3_engine, target)
         if sim == "vcs":
             try:
                 from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
@@ -209,7 +217,7 @@ def main(argv=None):
     # which PASSES the screen goes on to certify instead of stopping there. Choosing "spike"
     # explicitly is a legitimate fast screen, but it CANNOT certify: the mandatory cert tier
     # reports unavailable and the capsule is not a pass.
-    ap.add_argument("--sim", choices=["spike", "verilator", "vcs"], default="verilator")
+    ap.add_argument("--sim", choices=["spike", "verilator", "gsim", "vcs"], default="verilator")
     ap.add_argument("--capsules", default="all", help="'all' or comma-separated capsule names")
     ap.add_argument("--workers", type=int, default=8, help="parallel sim workers (verilator/vcs)")
     ap.add_argument("--timeout", type=int, default=1800)
@@ -360,22 +368,36 @@ def main(argv=None):
         name = d.get("capsule", cr.parent.name)
         if want and name not in want:
             continue
-        tiers = {t: (v or {}).get("status") for t, v in (d.get("tiers") or {}).items()}
+        _tier_results = d.get("tiers") or {}
+        tiers = {t: (v or {}).get("status") for t, v in _tier_results.items()}
         bar = tiers.get(barrier_tier)
         bar_used = barrier_tier
-        if bar is None and not _declared_ran:
-            # The declared barrier never ran for ANY capsule, so scoring against it marks EVERY capsule
-            # failed no matter what the grade said. Measured on atlas: the barrier resolved to L4 (the
-            # lexicographic max of a wider adapter set) while its results carry only {L0 skipped, L1
-            # skipped, L2 pass} -- so 110 consecutive self-checks reported 0/11 while the operator grade
-            # of the same submission was 10/11. An agent told it fails everything cannot converge; it
-            # rewrites working code. Fall back to the deepest tier that actually produced a verdict.
-            # This can only reclassify a capsule the grade RAN and PASSED: `status == "pass"` is still
-            # required below, and a 'skipped' tier is never treated as a barrier.
-            ran = [k for k, v in tiers.items() if v not in (None, "skipped")]
-            if ran:
-                bar_used = max(ran)
+        if bar is None:
+            # A mixed suite can legitimately have different tier shapes. Whole-model capsules, for
+            # example, do not produce the per-op command-buffer screen tier, but can produce a DEEPER
+            # required model/RTL verdict. A corpus-wide `_declared_ran` must not let an unrelated op's
+            # L2 result veto that stronger per-capsule L3 evidence. Derive this exception entirely from
+            # the capsule result: the substitute must be mandatory, must actually have run, and must be
+            # deeper than the missing barrier. Thus an op that stopped at L0/L1 still fails closed, and
+            # an advisory tier cannot certify it.
+            _ran_required = [t for t, v in _tier_results.items()
+                             if bool((v or {}).get("mandatory"))
+                             and (v or {}).get("status") not in
+                             (None, "skipped", "unavailable")]
+            _deeper_required = [t for t in _ran_required if t > barrier_tier]
+            if _deeper_required:
+                bar_used = max(_deeper_required)
                 bar = tiers.get(bar_used)
+            elif not _declared_ran:
+                # The declared barrier never ran for ANY capsule, so scoring against it marks EVERY
+                # capsule failed no matter what the grade said. Measured on atlas: the barrier resolved
+                # to L4 while its results carry only {L0 skipped, L1 skipped, L2 pass}. Fall back to the
+                # deepest tier that actually produced a verdict. `status == "pass"` is still required
+                # below, and a skipped tier is never treated as a barrier.
+                ran = [k for k, v in tiers.items() if v not in (None, "skipped")]
+                if ran:
+                    bar_used = max(ran)
+                    bar = tiers.get(bar_used)
         # CLASSIFY UNDER THE ORACLE SELECTION IN FORCE.
         #
         # A capsule declares the tiers it requires; an oracle selection supplies adapters for some subset.
@@ -428,7 +450,9 @@ def main(argv=None):
         console_tail = None
         for lg in (cr.parent / "artifacts").glob("*_console.log") if (cr.parent / "artifacts").is_dir() else []:
             console_tail = lg.read_text()[-800:]
-        row = {"capsule": name, "pass": passed, "barrier_tier": bar_used,
+        row = {"capsule": name, "pass": passed,
+               "execution_digest": _qc._execution_digest_from_result(cr),
+               "barrier_tier": bar_used,
                "barrier_declared": barrier_tier, "barrier_status": bar}
         # A STATED DECLINE IS THE MOST ACTIONABLE THING THIS REPORT CAN CARRY, so it rides the row
         # whether or not the capsule passed, and ahead of the numeric block. Without it a declined

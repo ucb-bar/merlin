@@ -36,6 +36,7 @@ from pathlib import Path
 # This retires one of the three triplicated copies (the decoder's). GARBAGE/MASK32 are universal.
 GARBAGE = 0xFFFFFFFF
 MASK32 = 0xFFFFFFFF
+_MVIN_CLASSES = {"MVIN", "MVIN2", "MVIN3"}
 
 
 def _load_isa(target: str) -> dict:
@@ -271,7 +272,7 @@ def _decode_one(funct: int, rs1: _Val | None, rs2: _Val | None, isa: dict) -> tu
             dec = {"subtype": "EX"}
         return (sub if sub != "CONFIG_UNKNOWN" else "UNKNOWN"), dec
 
-    if base in ("MVIN",):
+    if base in _MVIN_CLASSES:
         dec = {"dram": _operand(rs1)}
         if r2 is not None:
             dec.update(_pack_fields(r2))

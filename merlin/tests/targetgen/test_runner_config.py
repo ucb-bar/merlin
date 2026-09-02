@@ -75,3 +75,13 @@ def test_counters_ride_the_tier_record_only_when_reported() -> None:
     # A target whose oracle reports none is byte-identical to before.
     assert "counters" not in TierResult("L3", "pass", True, cycles=100).to_dict()
     assert "counters" not in TierResult("L3", "pass", True, cycles=100, counters={}).to_dict()
+
+
+def test_measurement_protocol_is_preserved_without_claiming_cache_state() -> None:
+    from merlin.targetgen.capsule_runner import TierResult
+
+    conditions = {"cache_state": "unknown", "cache_state_observed": False,
+                  "cache_protocol": "one_unmeasured_predecessor"}
+    row = TierResult("L3", "pass", True, measurement_conditions=conditions).to_dict()
+    assert row["measurement_conditions"] == conditions
+    assert "measurement_conditions" not in TierResult("L3", "pass", True).to_dict()

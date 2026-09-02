@@ -78,6 +78,8 @@ _ISA_CLASS_FAMILY: dict[str, str] = {
     "LOOP_CONV": "contraction",
     # data motion without arithmetic
     "MVIN": "movement",
+    "MVIN2": "movement",
+    "MVIN3": "movement",
     "MVOUT": "movement",
     "LOAD": "movement",
     "STORE": "movement",
