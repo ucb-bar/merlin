@@ -155,9 +155,21 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
         dtype_ok += int(d.get("dtype_ok") or 0)
         dtype_blocked += int(d.get("dtype_blocked") or 0)
     denominator = routed + fallback
+    # ⚠️ THE TWO HALVES CAN BE COMPUTED OVER DIFFERENT MODEL SETS, and saying so is the point. The census
+    # reads `prov.aten` tags out of the module text; routing PARSES the module. Measured: smolvla's
+    # capture yields its op tags fine and fails `model_coverage.load_module` with a ParseError, so the
+    # operator count came from four models and the routing fraction from three -- and one sentence
+    # carrying both numbers read as though it were four. Both sets are recorded, and `claim_sentence`
+    # names each half's own denominator rather than picking one and hoping they agree.
+    counted = sorted(n for n, d in (cen.get("per_model") or {}).items() if d.get("status") == "ok")
+    routed_models = sorted(n for n, d in per_model.items() if d.get("status") != "unreadable")
+    unparsed = sorted(n for n, d in per_model.items() if d.get("status") == "unreadable")
     return {
         "target": target,
         "opset": {"n_core": cen["n_core"], "torch": (opset or {}).get("torch")},
+        "models": {"counted_for_operators": counted, "measured_for_routing": routed_models,
+                   "unparsed_for_routing": unparsed,
+                   "agree": counted == routed_models},
         "observed": {"n_core_observed": cen["n_observed_core"],
                      "core_fraction": (cen["n_observed_core"] / cen["n_core"]) if cen["n_core"] else None,
                      "non_core_observed": cen["non_core_observed"]},
@@ -178,17 +190,29 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
 
 
 def claim_sentence(report: dict) -> str:
-    """The one sentence the report supports, with nothing in it that the numbers do not carry."""
+    """The one sentence the report supports, with nothing in it that the numbers do not carry.
+
+    Each half names its OWN model set. They are usually the same set and are not guaranteed to be:
+    counting operators only needs the module's op tags, while routing has to parse it, so a capture
+    that parses in one and not the other puts the two numbers over different denominators. Stating one
+    count for both is how a coverage sentence stops being true without anyone editing it.
+    """
     obs = report["observed"]
     rt = report["routing"]
+    ms = report.get("models") or {}
+    counted = ms.get("counted_for_operators") or []
+    measured = ms.get("measured_for_routing") or []
     frac = obs.get("core_fraction")
     rfrac = rt.get("routed_fraction")
-    models = [n for n, d in (report.get("per_model") or {}).items() if d.get("status") != "unreadable"]
+    unparsed = ms.get("unparsed_for_routing") or []
     return (
-        f"Across {len(models)} captured model(s), {obs['n_core_observed']} of "
+        f"Across {len(counted)} captured model(s) ({', '.join(counted)}), {obs['n_core_observed']} of "
         f"{report['opset']['n_core']} PyTorch Core ATen operators appear"
         + (f" ({frac:.1%})" if frac is not None else "")
-        + f"; on {report['target']}, {rt['routed']} of {rt['denominator']} classifiable regions route "
-          f"to the accelerator"
+        + f"; on {report['target']}, over the {len(measured)} of those whose capture could be parsed, "
+          f"{rt['routed']} of {rt['denominator']} classifiable regions route to the accelerator"
         + (f" ({rfrac:.1%})" if rfrac is not None else "")
-        + f", with {rt['unclassified']} region(s) unclassified and reported separately.")
+        + f", with {rt['unclassified']} region(s) unclassified and reported separately"
+        + (f"; {', '.join(unparsed)} did not parse and contributed no routing evidence" if unparsed
+           else "")
+        + ".")
