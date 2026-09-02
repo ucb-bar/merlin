@@ -130,6 +130,28 @@ def graded_capsule_roots(target: str, *, hidden: bool = False) -> list[Path]:
     return roots or capsule_corpus_roots()[:1]
 
 
+def perf_capsule_roots(target: str) -> list[Path]:
+    """The roots holding ``target``'s PERFORMANCE capsules, or ``[]`` when it ships none.
+
+    The library-facing form of :meth:`TargetExperiment.perf_roots`, resolved from a target NAME like
+    its graded and hidden siblings here. Performance capsules are excluded from the functional suite by
+    the underscore convention, so asking the graded roots for them reports that they do not exist --
+    which reads as "this target has no performance families" and is how an optimization run comes to
+    refuse on capsules that are sitting right there.
+    """
+    desc = descriptor_path(target)
+    if not desc.is_file():
+        return []
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+        te = load_target_experiment(desc)
+        if str(getattr(te, "target", "")) != target:      # an override naming a DIFFERENT target
+            return []
+        return [r for r in te.perf_roots() if r.is_dir()]
+    except Exception:                                     # noqa: BLE001 — unreadable descriptor
+        return []
+
+
 def find_capsule(name: str) -> Path | None:
     """Locate a capsule directory by name across the corpus roots (first match wins)."""
     for root in capsule_corpus_roots():
