@@ -44,25 +44,34 @@ def _is_expressible(token: str) -> bool | None:
 
 
 def best_format(target: str, *, preference: list | tuple | None = None,
-                family: str = "contraction") -> dict:
+                family: str = "contraction", admitted: "set | frozenset | None" = None) -> dict:
     """The highest-ranked precision ``target`` admits for ``family``, with the rejections named.
 
     ``preference`` defaults to the target's declared ``workload_spec.precision_preference``. Every
     rejected token carries WHY, because "we preferred int8 and this target has no int8 datapath" and
     "int8 is a typo" send a reader to different places.
+
+    ``admitted`` (capsule spellings) lets a caller that ALREADY holds the derived requirement pass it in
+    instead of having this re-read the manifest. That is not an optimisation: :mod:`corpus_synth` is
+    supposed to decide from the requirement document alone, and a second read of the manifest there
+    would be a second source of truth for what the target admits -- the exact defect that produces two
+    answers to one question.
     """
     from merlin.targetgen import conformance as CF
 
     # BOTH SIDES IN ONE SPELLING. `admitted` speaks the registry's tokens and a cell speaks the capsule's
     # ("int8" vs "i8"); comparing them raw reported every admitted dtype as not-admitted, which is the
     # same spelling bug `corpus_synth.filtered_precision` was written to avoid.
-    admitted_by_family = CF.admitted(target)
-    admitted = set()
-    for d in (admitted_by_family.get(family) or ()):
-        try:
-            admitted.add(CF.capsule_dtype(str(d)))
-        except Exception:                          # noqa: BLE001 -- keep an unmappable token visible
-            admitted.add(str(d))
+    if admitted is not None:
+        admitted = {str(d) for d in admitted}
+    else:
+        admitted_by_family = CF.admitted(target)
+        admitted = set()
+        for d in (admitted_by_family.get(family) or ()):
+            try:
+                admitted.add(CF.capsule_dtype(str(d)))
+            except Exception:                      # noqa: BLE001 -- keep an unmappable token visible
+                admitted.add(str(d))
 
     if preference is None:
         preference = _declared_preference(target)
@@ -113,14 +122,18 @@ def best_format(target: str, *, preference: list | tuple | None = None,
 
 
 def _declared_preference(target: str) -> list:
-    """The target's own declared precision preference, or an empty ranking."""
+    """The target's own declared precision preference, or an empty ranking.
+
+    The descriptor is located by ``corpora.descriptor_path`` rather than by assembling the path here:
+    where a target's descriptor lives is the corpora module's fact, and a second copy of that layout is
+    a second thing to update when it moves.
+    """
     try:
-        from merlin.common.paths import merlin_dir
+        from merlin.targetgen.corpora import descriptor_path
         from merlin.targetgen.target_experiment import load_target_experiment
 
-        p = (merlin_dir() / "experiments" / "capsule_bench" / "targets" / target
-             / "target_experiment.yaml")
-        if not p.is_file():
+        p = descriptor_path(target)
+        if p is None or not p.is_file():
             return []
         ws: dict[str, Any] = dict(getattr(load_target_experiment(p), "workload_spec", None) or {})
         return [str(x) for x in (ws.get("precision_preference") or ())]

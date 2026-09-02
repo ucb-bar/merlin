@@ -91,3 +91,38 @@ def test_e8m0_scale_stream_is_rigorous_and_bounded():
 
 def test_scale_rigor_flags_constant_stream():
     assert scale_rigor_findings([[127] * 16])             # all-equal (inert) scale stream is flagged
+
+
+# ------------------------------------------- a demand the alphabet cannot meet is not a finding
+
+def test_a_single_row_operand_is_judged_against_what_its_alphabet_can_reach():
+    """A `1 x N` operand's columns are single values, so at most `alphabet` of them can differ. Demanding
+    N distinct columns is arithmetic, not rigor: no stimulus over that alphabet could pass. Measured on
+    the corpus -- a `1 x 32` rmsnorm gamma over the shared 4-value stimulus was reported degenerate."""
+    from merlin.runtime.tensor import Tensor
+
+    vals = [float(v) for v in Tensor.deterministic("G", (1, 32), "f32").data]
+    assert len({*vals}) > 1, "the fixture must not be constant, or this would pass for the wrong reason"
+    assert rigor_findings(vals, (1, 32)) == []
+
+
+def test_what_the_alphabet_cannot_reach_is_recorded_rather_than_dropped():
+    """The limit is real even though it is not a finding: some column swaps in that gamma ARE invisible.
+    Relaxing the gate without recording why would lose the fact, which is the failure mode the corpus
+    rigor machinery exists to prevent."""
+    from merlin.runtime.tensor import Tensor
+    from merlin.targetgen.corpus_operands import rigor_limits
+
+    vals = [float(v) for v in Tensor.deterministic("G", (1, 32), "f32").data]
+    limits = rigor_limits(vals, (1, 32))
+    assert limits and "4-value alphabet" in limits[0]
+    # A wide operand with rows enough to carry distinct column tuples has no such limit.
+    wide = [float(v) for v in Tensor.deterministic("A0", (16, 32), "i8").data]
+    assert rigor_limits(wide, (16, 32)) == []
+
+
+def test_an_operand_worse_than_its_alphabet_allows_is_still_flagged():
+    """The relaxation must not become a licence. Two identical rows over an alphabet that could easily
+    have made them differ is still a row-addressing blind spot."""
+    dup = [0.0, 1.0, 2.0, 3.0] * 2          # 2x4, both rows identical
+    assert any("row" in f for f in rigor_findings(dup, (2, 4)))

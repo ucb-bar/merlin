@@ -97,6 +97,24 @@ answer_surfaces:
 # `branch` is informational: branches move, and the same branch name on a fork and on upstream are
 # different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
 # a checkout that is the right repo on a plausible branch and missing the schedule is caught.
+# THE WORKLOAD SPEC — the only input capsule synthesis cannot derive.
+#
+# Three keys, and every one of them is a DECISION rather than a fact about the hardware, which is why
+# they are declared here instead of extracted: which real networks this target is meant to compile, in
+# what order to prefer precisions when the requirement leaves the choice open, and how many synthesized
+# capsules are acceptable. Everything else about the corpus -- families, dtypes, alignments, memory
+# regimes, lanes, compositions, extents, goldens, oracle tiers -- is derived from the RTL facts and the
+# capability manifest by `merlin.targetgen.corpus_synth`.
+#
+# The ranking is narrowest-first and is the same one gemmini and radiance declare; it is filtered
+# against what THIS target admits (bf16 and fp8_e4m3 for a contraction), so int8 and mxfp8 are simply
+# rejected here as not-admitted rather than silently widening anything. `precision_policy.best_format`
+# reports each rejection with its reason.
+workload_spec:
+  models: [resnet50, lstmnetvit, smolvla, tiny_llama]
+  precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
+  max_synthesized_capsules: 160
+
 host_lane:
   description: >-
     The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work

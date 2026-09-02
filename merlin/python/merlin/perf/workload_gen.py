@@ -509,6 +509,15 @@ class _Program:
     def emit(self, mnemonic: str, **operands: int) -> None:
         self._items.append((mnemonic, dict(operands)))
 
+    def items(self) -> tuple[tuple[str, dict], ...]:
+        """The emitted (mnemonic, operands) sequence, in issue order.
+
+        The builder already holds this, and it is the only lossless form: `words` are encoded and
+        recovering operands from them needs a decoder, while `kernel_s` carries the same information as
+        comment TEXT. A dependence analysis wants the structure, so it is exposed rather than re-derived.
+        """
+        return tuple((m, dict(o)) for m, o in self._items)
+
     def branch(self, mnemonic: str, target: str, *, imm_operand: str = "imm", **operands: int) -> None:
         """A conditional branch to ``target``, followed by the machine's delay slot(s) filled with an
         instruction that is harmless on both paths. The delay slot is filled HERE rather than left to the
@@ -912,6 +921,10 @@ class MatmulPlan:
     section_words: dict[str, int] = field(default_factory=dict)
     operands: dict[str, Any] = field(default_factory=dict)      # logical float arrays, when supplied
     golden: Any = None                                          # [m, n] reference, when computable
+    #: The emitted (mnemonic, operands) sequence in issue order -- what a dependence
+    #: analysis needs. Defaults to empty so an older caller constructing a plan by hand
+    #: still type-checks; `plan_matmul` always supplies it.
+    instructions: tuple[tuple[str, dict], ...] = ()
 
     # -- addressing --------------------------------------------------------------------------------
     def placement(self, name: str) -> Placement:
@@ -1313,4 +1326,4 @@ def plan_matmul(facts: MachineFacts, ops: KernelOps, *, m: int, k: int, n: int,
                       section_words={"prologue": _prologue_words, "k_step": _k_step_words,
                                      "tile_epilogue": _tile_epilogue_words,
                                      "total": len(p)},
-                      operands=operands, golden=golden)
+                      operands=operands, golden=golden, instructions=p.items())

@@ -1,8 +1,12 @@
-name: GX0_interop_rvv_lane
+name: SY_model_tiny_llama
 kind: model
 source_role: pytorch_model_slice
-source_reference: "small_llama int8 composed across the systolic mesh and the host\
-  \ scalar/RVV lane \u2014 asserts both lanes carried work"
+source_reference: 'synthesized for the roster axis: whole model ''tiny_llama'' at
+  int8, the highest-ranked precision this target''s manifest admits for a contraction
+  out of the declared preference [''int8'', ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'',
+  ''fp32''], captured with int8_dyn_act_int8_weight so the program contains the target''s
+  own arithmetic rather than a float matmul over dequantized weights. Accuracy in
+  that format is not_established'
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -15,7 +19,7 @@ inputs:
 operation:
   op: model
   attributes:
-    model: small_llama
+    model: tiny_llama
     dtype: i8
     out: Y0
     compile_dtype: int8
@@ -50,7 +54,6 @@ gate:
 lanes:
   require:
   - on_mesh
-  - scalar_rvv_lane
 pytorch_ref:
   op: model
   dtype: i8
@@ -61,13 +64,16 @@ semantic:
   generalization_axis: model
   must_accelerate: false
   not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
-    under test, so host/RVV-lane work is expected and required. The accelerator demand
-    is expressed as lanes.require [on_mesh, scalar_rvv_lane], which fails unless both
-    lanes carried work.'
+    under test, so host-lane work is expected and required. The accelerator demand
+    is expressed as lanes.require, which fails unless every named lane actually carried
+    work.'
   eligible: auto
+pass_requirements:
+- region-partition
+- target-isa-lowering
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125
-  ceiling_atol: 1.7476110291481017
+  ceiling_atol: 16.233952980041504
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true

@@ -7,10 +7,16 @@ provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: atlas
   n_required_cells: 12
-  n_entries: 15
+  n_entries: 19
   budget: 160
-  precision_preference_kept: []
-  precision_preference_dropped: []
+  precision_preference_kept:
+  - fp8_e4m3
+  - bf16
+  precision_preference_dropped:
+  - i8
+  - mxfp8
+  - fp16
+  - f32
   cells_no_writer_can_express: []
   cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
     writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
@@ -342,6 +348,110 @@ capsules:
     - on_mesh
   semantic:
     generalization_axis: composition
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_resnet50
+  model: resnet50
+  out: Y0
+  operand_dtype: fp8_e4m3
+  quant_scheme: float8_dyn_act_float8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''resnet50'' at fp8_e4m3, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with float8_dyn_act_float8_weight
+    so the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_lstmnetvit
+  model: lstmnetvit
+  out: Y0
+  operand_dtype: fp8_e4m3
+  quant_scheme: float8_dyn_act_float8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''lstmnetvit'' at fp8_e4m3, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with float8_dyn_act_float8_weight
+    so the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_smolvla
+  model: smolvla
+  out: Y0
+  operand_dtype: fp8_e4m3
+  quant_scheme: float8_dyn_act_float8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''smolvla'' at fp8_e4m3, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with float8_dyn_act_float8_weight
+    so the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
+  pass_requirements:
+  - region-partition
+  - target-isa-lowering
+- cat: model
+  kind: model
+  op: model
+  name: SY_model_tiny_llama
+  model: tiny_llama
+  out: Y0
+  operand_dtype: fp8_e4m3
+  quant_scheme: float8_dyn_act_float8_weight
+  source_role: derived_sweep
+  source_reference: 'synthesized for the roster axis: whole model ''tiny_llama'' at fp8_e4m3, the highest-ranked
+    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
+    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with float8_dyn_act_float8_weight
+    so the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
+    Accuracy in that format is not_established'
+  label: public
+  gate:
+    after_op_pass_fraction: 0.8
+  lanes:
+    require:
+    - on_mesh
+  semantic:
+    generalization_axis: roster
+  source: pytorch
   pass_requirements:
   - region-partition
   - target-isa-lowering

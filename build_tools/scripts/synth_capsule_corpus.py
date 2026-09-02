@@ -220,7 +220,10 @@ def main(argv=None) -> int:
             print(f"== {target}: {len(res['capsules'])} entry/entries from "
                   f"{res['provenance']['n_required_cells']} required cell(s)")
             for e in res["capsules"]:
-                print(f"     {e['name']:38s} op={e['op']:12s} dtype={e['operand_dtype']}")
+                # A whole-model entry names neither: its program is the model and its dtype is the
+                # compile format the roster axis derived. Printing "-" says that, where indexing raised.
+                print(f"     {e['name']:38s} op={str(e.get('op') or '-'):12s} "
+                      f"dtype={e.get('operand_dtype') or '-'}")
     return rc
 
 
