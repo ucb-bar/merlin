@@ -106,6 +106,8 @@ Measured: grading this package on the older lineage fails **6 capsules** — `A1
 | | what | how it is found |
 |---|---|---|
 | Python | 3.13 venv at `.venv` (uv) | `.venv/bin/python`; plain `python` is not on PATH |
+| `.env` | external-path map | copy `.env.example`; without it collection dies with `external path 'chipyard' unset` |
+| `third_party/llvm-install` | the LLVM 23 host toolchain | **see the trap below** — a fresh checkout does not have it |
 | RISC-V toolchain | for the bare-metal harness link | chipyard's `esp-tools`/`riscv-tools` env |
 | chipyard + gemmini RTL | the L2/L3 oracles | `MERLIN_CHIPYARD`; **verify the revision** against `gemmini_rtl` in `merlin/contract/hardware_pins.yaml` |
 | L2 oracle | spike + `libgemmini` | built in chipyard |
@@ -227,6 +229,12 @@ computes that fraction as `0.00` and gates everything.
 
 ## Traps
 
+- **A missing host toolchain looks like 43 compiler failures.** A fresh checkout has no
+  `third_party/llvm-install`, and every capsule then fails as
+  `spike / tool_crash: [Errno 2] No such file or directory: .../bin/clang-23`. Measured: 43 graded,
+  43 failed, which reads exactly like a broken backend and is not one. Link or install it first:
+  `ln -s <llvm-23-install> third_party/llvm-install`, then confirm `third_party/llvm-install/bin/clang-23`
+  resolves. With it in place the same package graded 17/17 on the same commit.
 - **A shared venv can shadow the tree.** `import merlin` may resolve to a *different* worktree than
   your `cwd`. Always pin `PYTHONPATH`, and check `merlin.__file__` if a result surprises you.
 - **`TMPDIR=/tmp` is not enough space** for whole-model builds, and an empty `TMPDIR` fails oddly.
