@@ -427,6 +427,42 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     return cells, diagnostics
 
 
+def host_only_dtypes(captures: dict, families) -> dict:
+    """``family -> capsule dtype`` for families the HOST must carry, read from the captures themselves.
+
+    A host-only family has no admitted dtype by construction -- the hardware declares no capability for
+    it -- so the dtype cannot come from the manifest the way a cell's does. It comes from the real
+    captures instead: the dtype those regions actually carry, most frequent first. A family nobody could
+    size is ABSENT from the result rather than defaulted, because a host capsule emitted at a dtype no
+    model uses tests a program nobody runs.
+    """
+    from collections import Counter
+
+    from merlin.targetgen import model_coverage as mc
+
+    want = {str(f) for f in families}
+    if not want:
+        return {}
+    seen: dict[str, Counter] = {f: Counter() for f in want}
+    for path in captures.values():
+        try:
+            regions = mc.regions_from_module(mc.load_module(Path(path)))
+        except Exception:                          # noqa: BLE001 -- an unreadable capture is not evidence
+            continue
+        for region in regions:
+            fam = region.resolved_family()
+            if fam in want and getattr(region, "in_dtype", None):
+                seen[fam][str(region.in_dtype)] += 1
+    out = {}
+    for fam, counts in seen.items():
+        if counts:
+            try:
+                out[fam] = capsule_dtype(counts.most_common(1)[0][0])
+            except Exception:                      # noqa: BLE001 -- an unmappable spelling is not a dtype
+                continue
+    return out
+
+
 def spec(target: str, captures: dict[str, str | Path], *,
          declared: dict[str, dict] | None = None,
          personas: dict[str, dict] | None = None) -> dict:
@@ -505,6 +541,9 @@ def spec(target: str, captures: dict[str, str | Path], *,
             # diagnostics where nothing could require it, which is why `H` was only ever covered
             # incidentally.
             "families": list(diag.get("families_needed_but_not_admitted") or ()),
+            # The dtype each host family is actually observed in. It cannot come from the manifest -- the
+            # hardware declares no capability for these -- so it comes from the captures.
+            "dtypes": host_only_dtypes(captures, diag.get("families_needed_but_not_admitted") or ()),
             "observed_in": {f: n for f, n in (diag.get("families_observed") or {}).items()
                             if f in set(diag.get("families_needed_but_not_admitted") or ())},
             "basis": (

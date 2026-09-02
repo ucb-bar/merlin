@@ -294,6 +294,45 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the NEGATIVE lane ------------------------------------------------------------------------
+    # Families a real capture CONTAINS and this target's manifest does NOT admit. The compiler must leave
+    # them on the host, and accelerating one is as much a defect as failing to accelerate an admitted
+    # family -- but the requirement derived that set into `host_only` and nothing ever demanded it, so
+    # the negative lane was covered only by whatever a hand-authored capsule happened to assert.
+    #
+    # These declare `forbid` alone. Requiring the host lane as well would add a demand no op-path grade
+    # can measure, and an unmeasurable requirement turns the capsule into a permanent `incomplete`
+    # instead of a test. The forbid IS enforceable: a decoded accelerator instruction violates it.
+    host_block = spec_doc.get("host_only") or {}
+    host_dtypes = dict(host_block.get("dtypes") or {})
+    unsized_host: list[str] = []
+    for family in sorted(str(f) for f in (host_block.get("families") or ())):
+        op = op_for_family(family, admitted_ops=pool)
+        dtype = host_dtypes.get(family)
+        if op is None or not dtype:
+            unsized_host.append(f"{family} ({'no materializable op' if op is None else 'no observed dtype'})")
+            continue
+        entry = {
+            "cat": "model_slices", "kind": "model_slice",
+            "name": f"{SYNTH_PREFIX}_host_only_{family}".replace("-", "_"),
+            "op": op, "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
+            "source": "pytorch",
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for host-only family {family!r}: real captures contain it and this "
+                f"target's capability manifest admits no capability for it, so the compiler must leave "
+                f"it on the host lane. dtype {dtype} is the one the captures carry for this family"),
+            "label": "public", "modes": {},
+            "lanes": {"forbid": ["on_mesh"]},
+            "semantic": {"must_accelerate": False, "eligible": False,
+                         "not_asserted_reason": (
+                             "the target declares no capability for this family; the capsule exists to "
+                             "prove the compiler does NOT accelerate it")},
+            **extents_for("aligned", probes),
+        }
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     if unexpressable:
         raise SynthesisError(
             "no materializable op expresses these required cells, so synthesizing would silently leave "
@@ -317,6 +356,11 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "budget": cap,
             "precision_preference_kept": kept,
             "precision_preference_dropped": dropped,
+            "host_only_unsynthesizable": unsized_host,
+            "host_only_note": (
+                "a host-only family with no materializable op or no dtype observed in any capture. "
+                "Reported rather than dropped: a negative lane nobody demanded reads downstream exactly "
+                "like one nothing violates"),
             "memory_regimes_status": "resolved" if regimes_resolved else "not_resolved",
             "memory_regimes_unreachable": unreachable_regimes,
             "memory_regime_note": (

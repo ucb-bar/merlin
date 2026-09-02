@@ -189,3 +189,50 @@ class TestQuantizedCapture:
         assert spec["quant_scheme"] == "int8_dyn_act_int8_weight"
         assert "quant_scheme" not in _capture_spec(
             {"name": "y", "op": "linear", "M": 16, "K": 32, "N": 16}, _B())
+
+
+# --- the negative lane -------------------------------------------------------------------------------
+# Families a real capture CONTAINS and the manifest does NOT admit. The requirement derived that set and
+# nothing demanded it, so the negative lane was covered only where a hand-authored capsule asserted it.
+
+_HOST_SPEC = {
+    "target": "t",
+    "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
+               "alignment": "aligned", "basis": "observed"}],
+    "boundaries": {"extent_probes": [{"boundary": "tile_edge", "edge": 16, "points": [15, 16, 17, 32]}]},
+    "host_only": {"families": ["normalization", "reduction"],
+                  "dtypes": {"normalization": "bf16", "reduction": "bf16"}},
+}
+
+
+def test_a_host_only_family_becomes_a_forbidding_capsule():
+    out = CS.synthesize(_HOST_SPEC)
+    made = {e["name"]: e for e in out["capsules"]}
+    for family in ("normalization", "reduction"):
+        e = made[f"{CS.SYNTH_PREFIX}_host_only_{family}"]
+        assert e["lanes"] == {"forbid": ["on_mesh"]}
+        assert e["semantic"]["must_accelerate"] is False
+        assert e["operand_dtype"] == "bf16"
+
+
+def test_a_host_only_capsule_requires_no_lane_it_cannot_be_graded_on():
+    """Requiring the host lane too would add a demand no op-path grade can measure, turning the capsule
+    into a permanent `incomplete` instead of a test. The forbid alone IS enforceable."""
+    out = CS.synthesize(_HOST_SPEC)
+    e = next(x for x in out["capsules"] if x["name"].endswith("_host_only_normalization"))
+    assert "require" not in e["lanes"]
+
+
+def test_a_host_family_with_no_observed_dtype_is_reported_not_defaulted():
+    """A host capsule emitted at a dtype no model uses tests a program nobody runs."""
+    spec = {**_HOST_SPEC, "host_only": {"families": ["normalization"], "dtypes": {}}}
+    out = CS.synthesize(spec)
+    assert any("normalization" in x for x in out["provenance"]["host_only_unsynthesizable"])
+    assert not any("host_only" in e["name"] for e in out["capsules"])
+
+
+def test_a_target_with_no_host_only_families_synthesizes_none():
+    spec = {**_HOST_SPEC, "host_only": {"families": [], "dtypes": {}}}
+    out = CS.synthesize(spec)
+    assert out["provenance"]["host_only_unsynthesizable"] == []
+    assert not any("host_only" in e["name"] for e in out["capsules"])
