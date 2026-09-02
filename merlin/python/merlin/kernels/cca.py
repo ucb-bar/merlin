@@ -570,17 +570,33 @@ def scalar_math_calls(stream) -> dict[str, str]:
     return out
 
 
-def _has_transcendental_libm_call(stream) -> bool:
-    """True iff a call targets a scalar math routine (any kind). Kept as the boolean the activation
-    inference wants; :func:`scalar_math_calls` is the form that names WHAT was found."""
-    return bool(scalar_math_calls(stream))
+def _has_transcendental_libm_call(stream, *, undefined_symbols=None) -> bool:
+    """True iff a scalar math routine is called -- whether it is RESOLVED in this disassembly or
+    merely an UNDEFINED symbol the object will link against.
+
+    Both sources are needed, and leaving out the second made this axis structurally blind on our own
+    code. ``scalar_math_calls`` classifies call TARGETS as they appear in the disassembly, which works
+    on a linked ELF. But the beam lifts OUR side from an unlinked ``model.o``, where a call to ``expf``
+    is a relocation against an undefined symbol with no ``<expf>`` label to read -- so it found
+    nothing and the axis lifted None. MEASURED on small_llama fp32: the object's undefined symbols are
+    ('cosf', 'expf', 'rsqrtf', 'sinf') and the dynamic profile puts scalar `exp` at 16.48% of real
+    model work, while this axis reported None -- so the divergence never fired, the routed action's
+    promise could not be checked, and ``vectorized_transcendental_activation`` measured 1.00x on the
+    board with the scalar calls still there and nothing able to say so. Same defect class as the
+    unlinked EXPERT fixtures, one side over.
+    """
+    if scalar_math_calls(stream):
+        return True
+    if undefined_symbols is None:
+        return False
+    return any(math_call_kind(str(sym)) for sym in undefined_symbols)
 
 
-def _infer_activation_vectorization(stream, op) -> str | None:
+def _infer_activation_vectorization(stream, op, *, undefined_symbols=None) -> str | None:
     """A transcendental activation evaluated as a SCALAR libm call loop vs a VECTORIZED minimax
     polynomial (vfmacc chain). None when the region is not an activation (no transcendental op/call),
     so a matmul/plain kernel is never misclassified."""
-    trans_call = _has_transcendental_libm_call(stream)
+    trans_call = _has_transcendental_libm_call(stream, undefined_symbols=undefined_symbols)
     is_activation = bool(op) and any(s in op.lower() for s in _ACTIVATION_OPS)
     if not (trans_call or is_activation):
         return None
@@ -727,7 +743,8 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv",
             register_block=reg_block,
             accumulator_resident=acc_resident,
             nr_is_vsetvlmax=nr_is_vsetvlmax,
-            activation_vectorization=_infer_activation_vectorization(stream, op),
+            activation_vectorization=_infer_activation_vectorization(
+                stream, op, undefined_symbols=undefined_symbols),
         ),
         vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy, tail=_dominant_tail(stream)),
         memory=_lift_memory(stream),

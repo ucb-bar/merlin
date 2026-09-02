@@ -486,3 +486,43 @@ def test_the_qd8_expert_blindness_is_fixed_at_the_source():
     assert "memory" not in axes
     # anything still unanswerable must be NAMED, not silent
     assert all(v in ("expert", "ours") for v in axes.values())
+
+
+def test_the_activation_axis_reads_undefined_symbols_not_only_resolved_calls():
+    """The seventh observation defect in this series, and the same class as the other six.
+
+    `scalar_math_calls` classifies call TARGETS as they appear in the disassembly, which works on a
+    linked ELF. But the beam lifts OUR side from an unlinked `model.o`, where a call to `expf` is a
+    relocation against an undefined symbol with no `<expf>` label to read. So the axis lifted None,
+    the divergence never fired, the routed action's promise could not be checked, and
+    `vectorized_transcendental_activation` measured 1.00x on the K1 with the scalar calls still there
+    and nothing able to say so. MEASURED on small_llama fp32: undefined symbols are
+    ('cosf','expf','rsqrtf','sinf') and the dynamic profile puts scalar exp at 16.48% of real work.
+    """
+    from merlin.kernels.decode import rvv
+
+    # a stream with a call but no resolvable math label -- exactly an unlinked object
+    stream = rvv.decode_text(
+        "0000000000000000 <forward>:\n"
+        "   0:\t000000ef          \tjal\tra, 0x0 <forward+0x4>\n"
+        "   4:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n")
+    blind = cca.lift_asm(stream, op="matmul", source="ours")
+    seeing = cca.lift_asm(stream, op="matmul", source="ours",
+                          undefined_symbols=("expf", "cosf", "sinf", "rsqrtf"))
+    assert blind.compute.activation_vectorization is None, "no symbol table -> nothing to classify"
+    assert seeing.compute.activation_vectorization == "scalar_libm_call", (
+        "an undefined expf IS a scalar transcendental call; reporting None here is what made the "
+        "single largest fp32-specific cost invisible to the search")
+
+
+def test_a_non_math_undefined_symbol_does_not_invent_an_activation():
+    """Fail closed the other way too: `memrefCopy` and `malloc` are undefined symbols but are not
+    transcendentals, and a matmul must not be reclassified as an activation because it allocates."""
+    from merlin.kernels.decode import rvv
+    stream = rvv.decode_text(
+        "0000000000000000 <forward>:\n"
+        "   0:\t000000ef          \tjal\tra, 0x0 <forward+0x4>\n"
+        "   4:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n")
+    c = cca.lift_asm(stream, op="matmul", source="ours",
+                     undefined_symbols=("malloc", "free", "memrefCopy", "memset"))
+    assert c.compute.activation_vectorization is None
