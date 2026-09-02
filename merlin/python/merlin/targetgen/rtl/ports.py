@@ -191,6 +191,67 @@ def modules_exposing(ports: dict, field_name: str) -> dict:
     return found
 
 
+def elaboration_kind(target: str) -> tuple[str, str]:
+    """``(kind, detail)`` for the elaboration this target's facts were extracted from.
+
+    ⚠️ "THE NAMED FILE IS MISSING" AND "THE FACTS NAME NO .fir AT ALL" ARE DIFFERENT REPAIRS, and
+    collapsing them sent a reader looking for a file that was never named. Measured: atlas's facts name
+    ``inputs.hw_mlir``/``core_hw_mlir`` and a ``facts.interfaces.hw_source`` pointing at a CIRCT
+    ``hw.mlir`` that EXISTS (4.3 MB on this host) -- there is no ``source.fir`` to locate. gemmini's
+    facts do name one, which is why its port facts derive and atlas's do not.
+
+    ``kind`` is ``"fir"`` (a .fir is named), ``"hw_mlir"`` (the elaboration is recorded as CIRCT hw
+    dialect, which this reader does not parse yet), or ``"none"``.
+    """
+    try:
+        from merlin.targetgen.rtl.facts import load_facts
+        doc = load_facts(target) or {}
+    except Exception as exc:                                   # noqa: BLE001
+        return "none", f"facts unreadable: {type(exc).__name__}: {exc}"
+    body = doc.get("facts") or {}
+    # `facts.source` is a MAPPING carrying a `fir` key on one target and a bare STRING on another.
+    # Both are read; assuming either shape turns a target with a recorded elaboration into one that
+    # reports none, which is the direction that hides a fixable gap.
+    source = body.get("source")
+    if isinstance(source, dict):
+        named = str(source.get("fir") or "").strip()
+    elif isinstance(source, str):
+        named = source.strip() if source.strip().endswith(".fir") else ""
+    else:
+        named = ""
+    if named:
+        return "fir", named
+    inputs = doc.get("inputs") or {}
+    hw = [str(v) for k, v in inputs.items() if isinstance(v, str) and str(v).endswith(".mlir")]
+    # `facts.interfaces` is a MAPPING on one target and a LIST of interface records on another, so
+    # both shapes are walked rather than one assumed -- an AttributeError here would report a target
+    # with a perfectly good elaboration as having none.
+    ifaces = body.get("interfaces")
+    records: list = []
+    if isinstance(ifaces, dict):
+        records = [ifaces] + [v for v in ifaces.values() if isinstance(v, dict)]
+    elif isinstance(ifaces, list):
+        records = [v for v in ifaces if isinstance(v, dict)]
+    for rec in records:
+        src = rec.get("hw_source") or ""
+        if isinstance(src, str) and src.endswith(".mlir"):
+            hw.append(src)
+    if hw:
+        return "hw_mlir", ("this target's elaboration is recorded as CIRCT hw dialect "
+                           f"({', '.join(sorted(set(hw))[:2])}), and this reader parses .fir only")
+    return "none", "the facts name no elaboration artifact of either kind"
+
+
+def _why_no_fir(target: str) -> str:
+    """Why no FIRRTL resolved, distinguishing a missing file from a different artifact kind."""
+    kind, detail = elaboration_kind(target)
+    if kind == "fir":
+        return f"the elaborated FIRRTL this target's facts name ({detail}) could not be located"
+    if kind == "hw_mlir":
+        return detail
+    return f"no elaboration artifact is named by this target's facts ({detail})"
+
+
 def fir_path_for(target: str) -> Path | None:
     """The elaborated FIRRTL this target's facts were extracted from, or ``None``.
 
@@ -236,8 +297,8 @@ def port_facts(target: str, *, fields=("completed", "busy"), fir=None) -> dict:
     path = Path(fir) if fir else fir_path_for(target)
     if path is None or not path.is_file():
         return {"status": "unavailable", "fir": str(path) if path else None,
-                "why": "the elaborated FIRRTL this target's facts name could not be located; port "
-                       "facts are UNKNOWN, which is not the same as the RTL exposing no such port",
+                "why": (f"{_why_no_fir(target)}; port facts are UNKNOWN, which is not the same as "
+                        f"the RTL exposing no such port"),
                 "fields": {}}
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
