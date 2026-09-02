@@ -1151,8 +1151,14 @@ def lane_report(capsule: dict, routing_plan: dict | None,
     one device branch and no notion of an in-contract vector unit. It stays plan-evidenced, with the
     caveat, rather than being quietly promoted alongside the two lanes that can be measured.
     """
-    req = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
-    if not req:
+    _lanes_decl = capsule.get("lanes") or {}
+    req = [str(x) for x in (_lanes_decl.get("require") or [])]
+    forbid = [str(x) for x in (_lanes_decl.get("forbid") or [])]
+    both = sorted(set(req) & set(forbid))
+    if both:
+        raise ValueError(f"capsule lanes {both} are both required and forbidden; one of the two "
+                         f"assertions can never hold")
+    if not req and not forbid:
         return None
     plan = routing_plan or {}
     lanes = {k: v for k, v in plan.items() if isinstance(v, dict)}
@@ -1169,7 +1175,7 @@ def lane_report(capsule: dict, routing_plan: dict | None,
         except (TypeError, ValueError):
             return None
 
-    evidence = {ln: "routing_plan" for ln in req}
+    evidence = {ln: "routing_plan" for ln in (*req, *forbid)}
     # Each lane believes its own accounting when it exists. The mesh has had this since the plan-vs-
     # execution divergence was measured (15 assigned, 15 fell back); the host lane gets it here.
     for lane, count in (("on_mesh", _measured(me.get("matmul_layers_on_mesh"))),
@@ -1183,12 +1189,24 @@ def lane_report(capsule: dict, routing_plan: dict | None,
         else:
             carried.discard(lane)
     unexercised = [ln for ln in req if ln not in carried]
+    # A FORBIDDEN LANE IS JUDGED ONLY ON EXECUTION. "The router planned no work here" is not "the
+    # compiler put no work here", and a negative assertion is exactly where a plan-only pass is most
+    # dangerous: absence of a plan entry is the DEFAULT state, so believing it would make the assertion
+    # vacuously true for free. A forbidden lane with no execution evidence is therefore neither
+    # violated nor satisfied -- it is unmeasured, and reported as such.
+    violated = [ln for ln in forbid if evidence.get(ln) == "execution" and ln in carried]
+    unmeasured_forbid = [ln for ln in forbid if evidence.get(ln) != "execution"]
     out = {"required": req, "observed": sorted(carried), "unexercised": unexercised,
-           "evidence": {ln: evidence[ln] for ln in req},
+           "evidence": {ln: evidence[ln] for ln in (*req, *forbid)},
            # Contractions apart from kernels: the host lane is mostly norms and activations, so a bare
            # kernel count is satisfied by any model at all. Reported rather than gated -- a capsule may
            # legitimately put only elementwise work on the host.
            "host_contractions_ran": _measured(he.get("contractions_ran"))}
+    if forbid:
+        out["forbidden"] = forbid
+        out["violated"] = violated
+        if unmeasured_forbid:
+            out["unmeasured_forbidden"] = unmeasured_forbid
     plan_only = [ln for ln in req if evidence[ln] == "routing_plan"]
     if plan_only:
         out["caveat"] = (f"no execution accounting was recorded for {plan_only}, so those lanes report "
@@ -2027,6 +2045,28 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
         # side, precisely the defect already fixed on the mesh side: 15 matmuls assigned to the mesh and
         # 15 host fallbacks at run time. `incomplete` rather than `fail` -- nothing about the submission
         # was disproved, we simply did not measure it.
+        # A FORBIDDEN LANE THAT CARRIED WORK IS A FAIL, not an incomplete: this was measured, and the
+        # compiler accelerated a family the target's manifest does not admit. That is as much a defect
+        # as failing to accelerate an admitted one.
+        if _lane_rep.get("violated"):
+            _lane_ok = False
+            result.update(status="fail",
+                          failure={"plane": "model", "category": "ACCELERATED_A_FORBIDDEN_LANE",
+                                   "detail": f"capsule forbids lane(s) {_lane_rep['violated']} but work "
+                                             f"executed there; this target's capability manifest does "
+                                             f"not admit this capsule's family, so the compiler must "
+                                             f"route it to the host lane"})
+            return result
+        # A forbidden lane nobody measured is UNMEASURED, never satisfied. Absence of a routing-plan
+        # entry is the default state, so accepting it would make the negative assertion vacuously true.
+        if _lane_rep.get("unmeasured_forbidden"):
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"capsule forbids lane(s) "
+                                             f"{_lane_rep['unmeasured_forbidden']} but no execution "
+                                             f"accounting was recorded for them; a routing plan cannot "
+                                             f"establish that nothing ran"})
+            return result
         if _lane_ok and _lane_rep.get("plan_only_lanes"):
             result.update(status="incomplete",
                           failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",

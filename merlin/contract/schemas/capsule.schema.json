@@ -4,87 +4,224 @@
   "title": "Workload capsule (capsule_bench_v0)",
   "description": "A compiler-input workload capsule: describes what to compile, the numeric golden policy, the expected Gemmini instruction coverage, the required oracle tiers, and the public/dev/hidden label. A capsule is an INPUT to the backend-under-test, never a kernel.",
   "type": "object",
-  "required": ["name", "kind", "source_role", "label", "operation", "numeric_policy", "expected", "required_oracle_tiers"],
+  "required": [
+    "name",
+    "kind",
+    "source_role",
+    "label",
+    "operation",
+    "numeric_policy",
+    "expected",
+    "required_oracle_tiers"
+  ],
   "properties": {
-    "name": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
-    "kind": {"type": "string", "enum": ["isa", "layer", "model_slice", "model"]},
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_]+$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "isa",
+        "layer",
+        "model_slice",
+        "model"
+      ]
+    },
     "source_role": {
       "type": "string",
-      "enum": ["behavioral_specimen", "pytorch_model_slice", "handauthored_compiler_test", "uplifted_from_bareMetalC", "spec_derived", "derived_sweep"],
+      "enum": [
+        "behavioral_specimen",
+        "pytorch_model_slice",
+        "handauthored_compiler_test",
+        "uplifted_from_bareMetalC",
+        "spec_derived",
+        "derived_sweep"
+      ],
       "description": "where this capsule came from. derived_sweep = expanded from a profile's declared tile-relative sweep, so its shapes track the target's geometry rather than being written down; the sweep's prose is carried in source_reference along with the tile the extents resolved against"
     },
-    "source_reference": {"type": "string", "description": "bareMetalC path / torch module slice / ISA section / local spec id"},
-    "label": {"type": "string", "enum": ["public", "dev", "hidden"]},
-    "interface_mlir": {"type": "string", "description": "relative path to capsule.interface.mlir"},
+    "source_reference": {
+      "type": "string",
+      "description": "bareMetalC path / torch module slice / ISA section / local spec id"
+    },
+    "label": {
+      "type": "string",
+      "enum": [
+        "public",
+        "dev",
+        "hidden"
+      ]
+    },
+    "interface_mlir": {
+      "type": "string",
+      "description": "relative path to capsule.interface.mlir"
+    },
     "inputs": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "role", "shape", "dtype"],
+        "required": [
+          "name",
+          "role",
+          "shape",
+          "dtype"
+        ],
         "properties": {
-          "name": {"type": "string"},
-          "role": {"type": "string", "enum": ["input", "weight", "bias", "output", "scale"],
-                   "description": "Operand role. 'scale' is a block-scale stream: a microscaling operand is a PAIR -- quantized elements plus one shared exponent per fixed-length block of them -- so a block-scaled capsule declares its scales as operands a backend can be handed, rather than leaving them reachable only by the reference kernel."},
-          "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "input",
+              "weight",
+              "bias",
+              "output",
+              "scale"
+            ],
+            "description": "Operand role. 'scale' is a block-scale stream: a microscaling operand is a PAIR -- quantized elements plus one shared exponent per fixed-length block of them -- so a block-scaled capsule declares its scales as operands a backend can be handed, rather than leaving them reachable only by the reference kernel."
+          },
+          "shape": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minItems": 1
+          },
           "dtype": {
             "type": "string",
             "minLength": 1,
             "description": "Element type of this tensor. Not a fixed enum: the numeric-format vocabulary is data, declared in merlin/schemas/quant_formats.registry.yaml (where a new format -- MX, NVFP4, a GGUF k-quant -- is an entry, not a code change), so a list copied here goes stale the moment a target brings a format the list predates. Validity is enforced by merlin.targetgen.contract.schemas.validate_capsule against that registry plus plain machine accumulator widths, and an unknown token is still a hard ContractViolation."
           },
-          "layout": {"type": "string"},
-          "scale_of": {"type": "string", "description": "For a 'scale' operand: the operand whose blocks it scales. Names the pairing explicitly so a backend need not infer it from operand order."},
-          "block": {"type": "integer", "minimum": 1, "description": "For a 'scale' operand: how many elements of the scaled operand share one exponent, along the contraction axis. Derived from the target's declared scale group, never assumed -- a different microscaling profile uses a different run length."}
+          "layout": {
+            "type": "string"
+          },
+          "scale_of": {
+            "type": "string",
+            "description": "For a 'scale' operand: the operand whose blocks it scales. Names the pairing explicitly so a backend need not infer it from operand order."
+          },
+          "block": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "For a 'scale' operand: how many elements of the scaled operand share one exponent, along the contraction axis. Derived from the target's declared scale group, never assumed -- a different microscaling profile uses a different run length."
+          }
         },
         "additionalProperties": false
       }
     },
     "operation": {
       "type": "object",
-      "required": ["op"],
+      "required": [
+        "op"
+      ],
       "properties": {
         "op": {
           "type": "string",
-          "enum": ["matmul", "linear", "conv2d", "depthwise_conv2d", "maxpool2d", "avgpool2d", "global_average", "movement", "attention_qk", "attention_pv", "attention_mx", "resident_reuse", "rmsnorm", "rmsnorm_qkv", "attention_full", "softmax", "layernorm", "geglu", "rope", "rope_qkv", "gelu", "silu", "add", "reduce_sum", "bias_add", "fused_matmul_bias", "k_chain", "logit_softcap", "embed_scale", "gemma_4norm", "gemv_batched", "patch_embed", "requant", "model"],
+          "enum": [
+            "matmul",
+            "linear",
+            "conv2d",
+            "depthwise_conv2d",
+            "maxpool2d",
+            "avgpool2d",
+            "global_average",
+            "movement",
+            "attention_qk",
+            "attention_pv",
+            "attention_mx",
+            "resident_reuse",
+            "rmsnorm",
+            "rmsnorm_qkv",
+            "attention_full",
+            "softmax",
+            "layernorm",
+            "geglu",
+            "rope",
+            "rope_qkv",
+            "gelu",
+            "silu",
+            "add",
+            "reduce_sum",
+            "bias_add",
+            "fused_matmul_bias",
+            "k_chain",
+            "logit_softcap",
+            "embed_scale",
+            "gemma_4norm",
+            "gemv_batched",
+            "patch_embed",
+            "requant",
+            "model"
+          ],
           "description": "The workload the capsule asks the backend to compile. Unlike dtype this IS a closed set, because an op is only expressible if the tooling can build its interface MLIR and produce its golden -- the vocabulary is code, not data. Its sources are merlin.targetgen.corpus_spec.BUILDERS (capsule + interface MLIR) and capsule_golden._recompute_golden (integer goldens; float ops carry an independent golden.yaml instead). Adding a builder without adding it here rejects the whole corpus at load, which is why merlin/tests/targetgen/test_capsule_vocabulary.py pins this list against BUILDERS."
         },
-        "attributes": {"type": "object", "additionalProperties": true}
+        "attributes": {
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       "additionalProperties": false
     },
     "numeric_policy": {
       "type": "object",
-      "required": ["compare", "dtype"],
+      "required": [
+        "compare",
+        "dtype"
+      ],
       "properties": {
-        "compare": {"type": "string", "enum": ["exact_int", "tolerance_float"]},
+        "compare": {
+          "type": "string",
+          "enum": [
+            "exact_int",
+            "tolerance_float"
+          ]
+        },
         "dtype": {
           "type": "string",
           "minLength": 1,
           "description": "Element type the golden comparison is performed in. Same open vocabulary as inputs[].dtype -- see that field."
         },
-        "acc_scale": {"type": "number"},
-        "requant_shift": {"type": "integer"},
-        "rtol": {"type": "number"},
-        "atol": {"type": "number"}
+        "acc_scale": {
+          "type": "number"
+        },
+        "requant_shift": {
+          "type": "integer"
+        },
+        "rtol": {
+          "type": "number"
+        },
+        "atol": {
+          "type": "number"
+        }
       },
       "additionalProperties": false
     },
     "expected": {
       "type": "object",
-      "required": ["instruction_classes"],
+      "required": [
+        "instruction_classes"
+      ],
       "properties": {
         "instruction_classes": {
           "type": "array",
           "description": "Required instruction classes, DERIVED per-target from the target's own ISA (e.g. gemmini RoCC classes, or a self-hosted ISA's semantic op patterns like MXUMatMul/TensorBaseOffset). Not a fixed enum: the class vocabulary is the target's, so validity is enforced by the per-target derivation (isa_taxonomy) + its coverage checker, not a hardcoded list here.",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "forbidden_classes": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "modes": {
           "type": "object",
           "description": "Coverage axes this capsule exercises, as {mode: true}. Open for the same reason instruction_classes is: a mode names a datapath feature of the target under test, so the vocabulary belongs to the corpus and its target, not to this file. The closed list this replaced was gemmini's eight (i8/relu/acc_scale/k_accumulate/resident_reuse/conv2d/movement/padded_edge) and it rejected radiance's whole corpus over `rmsnorm: true`. coverage_report keeps those eight as the BASELINE always-reported axes so a 0 stays an explicit 'not covered' row, and unions in whatever else a corpus declares rather than dropping it.",
-          "additionalProperties": {"type": "boolean"}
+          "additionalProperties": {
+            "type": "boolean"
+          }
         }
       },
       "additionalProperties": false
@@ -92,49 +229,176 @@
     "required_oracle_tiers": {
       "type": "array",
       "minItems": 1,
-      "items": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", "L5"]}
+      "items": {
+        "type": "string",
+        "enum": [
+          "L0",
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5"
+        ]
+      }
     },
     "pass_requirements": {
       "description": "Target-independent compiler requirement classes this capsule must exercise.",
       "type": "array",
       "uniqueItems": true,
-      "items": {"type": "string", "minLength": 1}
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "depends_on": {
       "type": "array",
       "minItems": 1,
-      "items": {"type": "string", "minLength": 1},
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "description": "Which parts of a submission this capsule's certificate rides on, so an edit requeues only the capsules it can actually affect. Names come from the SUBMISSION's own declared entrypoints -- the manifest's `commands` keys (parse / lower_interface_to_target / emit_command_buffer / lower_target_to_llvm, plus whatever else a target declares), which is the same axis the grader drives the package through -- and the submission's manifest maps each of those to the files that implement it (top-level `components:`). OMITTING this field means the capsule depends on the WHOLE submission and any edit invalidates it: that is the fail-closed default, and an empty or unrecognized entry lands there too. Never read as 'depends on nothing' -- a stale certificate that looks valid is far worse than a re-run. Bytes no component claims are a dependency of every capsule regardless of what is declared here."
     },
-    "vcs": {"type": "string", "enum": ["required", "optional", "unavailable"]},
-    "firesim": {"type": "string", "enum": ["required", "optional", "unavailable"]},
-    "verilator": {"type": "string", "enum": ["required", "optional", "unavailable"], "description": "Availability of the cycle-accurate Verilator RTL-cert tier (L3). optional = graded when the sim is available but NOT a pass-gate; the mandatory numeric tier is whatever the capsule lists in required_oracle_tiers (e.g. L2 = a functional oracle). A prototype/not-RTL-certified target sets this optional so an unavailable/slow RTL sim never forces incomplete."},
+    "vcs": {
+      "type": "string",
+      "enum": [
+        "required",
+        "optional",
+        "unavailable"
+      ]
+    },
+    "firesim": {
+      "type": "string",
+      "enum": [
+        "required",
+        "optional",
+        "unavailable"
+      ]
+    },
+    "verilator": {
+      "type": "string",
+      "enum": [
+        "required",
+        "optional",
+        "unavailable"
+      ],
+      "description": "Availability of the cycle-accurate Verilator RTL-cert tier (L3). optional = graded when the sim is available but NOT a pass-gate; the mandatory numeric tier is whatever the capsule lists in required_oracle_tiers (e.g. L2 = a functional oracle). A prototype/not-RTL-certified target sets this optional so an unavailable/slow RTL sim never forces incomplete."
+    },
     "semantic": {
       "type": "object",
       "description": "Target-conditioned semantic-coverage annotations (Acceleratable Region Recall). semantic_family is the canonical computation family this capsule exercises (derived from operation.op when omitted); eligible is an author override of the independent eligibility oracle (auto = derive); must_accelerate makes a fallback on an eligible region a FAIL; generalization_axis records which held-out axis this capsule probes.",
       "properties": {
-        "semantic_family": {"type": "string", "enum": ["contraction", "reduction", "elementwise_map", "movement", "synchronization", "attention", "normalization", "softmax"]},
-        "eligible": {"oneOf": [{"type": "boolean"}, {"type": "string", "enum": ["auto"]}]},
-        "must_accelerate": {"type": "boolean"},
-        "not_asserted_reason": {"type": "string", "description": "why must_accelerate is NOT asserted: the demand could not be grounded in the target's own capabilities, so no acceleration is required of a submission. Recorded rather than left implicit — an absent must_accelerate reads identically whether the author decided against it or the derivation failed."},
-        "fallback_allowed": {"type": "boolean"},
-        "generalization_axis": {"type": "string", "enum": ["seen", "shape", "layout", "dtype", "surface", "composition", "fusion", "model", "kernel"]},
-        "composed_families": {"type": "array", "items": {"type": "string", "enum": ["contraction", "reduction", "elementwise_map", "movement", "synchronization", "attention", "normalization", "softmax"]}, "description": "Families this capsule exercises IN COMPOSITION with semantic_family, derived from its epilogue. A target may declare a family reachable only when fused (composed_with), which makes a standalone capsule for it the wrong capsule -- the eligibility oracle refuses one as a false fallback -- so a fused capsule is the only thing that can ever evidence that cell. Crediting a capsule for exactly one family left such a cell permanently uncoverable while the requirement kept demanding it."},
-        "composed_families_unresolved": {"type": "array", "items": {"type": "string"}, "description": "Epilogue stage names whose family could not be resolved. Recorded rather than dropped: silently withholding coverage a capsule earned is the failure composed_families exists to fix, and an unmapped stage name is exactly how that would recur."}
+        "semantic_family": {
+          "type": "string",
+          "enum": [
+            "contraction",
+            "reduction",
+            "elementwise_map",
+            "movement",
+            "synchronization",
+            "attention",
+            "normalization",
+            "softmax"
+          ]
+        },
+        "eligible": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "auto"
+              ]
+            }
+          ]
+        },
+        "must_accelerate": {
+          "type": "boolean"
+        },
+        "not_asserted_reason": {
+          "type": "string",
+          "description": "why must_accelerate is NOT asserted: the demand could not be grounded in the target's own capabilities, so no acceleration is required of a submission. Recorded rather than left implicit \u2014 an absent must_accelerate reads identically whether the author decided against it or the derivation failed."
+        },
+        "fallback_allowed": {
+          "type": "boolean"
+        },
+        "generalization_axis": {
+          "type": "string",
+          "enum": [
+            "seen",
+            "shape",
+            "layout",
+            "dtype",
+            "surface",
+            "composition",
+            "fusion",
+            "model",
+            "kernel"
+          ]
+        },
+        "composed_families": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "contraction",
+              "reduction",
+              "elementwise_map",
+              "movement",
+              "synchronization",
+              "attention",
+              "normalization",
+              "softmax"
+            ]
+          },
+          "description": "Families this capsule exercises IN COMPOSITION with semantic_family, derived from its epilogue. A target may declare a family reachable only when fused (composed_with), which makes a standalone capsule for it the wrong capsule -- the eligibility oracle refuses one as a false fallback -- so a fused capsule is the only thing that can ever evidence that cell. Crediting a capsule for exactly one family left such a cell permanently uncoverable while the requirement kept demanding it."
+        },
+        "composed_families_unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Epilogue stage names whose family could not be resolved. Recorded rather than dropped: silently withholding coverage a capsule earned is the failure composed_families exists to fix, and an unmapped stage name is exactly how that would recur."
+        }
       },
       "additionalProperties": false
     },
     "gate": {
       "type": "object",
       "description": "Scheduling gate: a whole-model capsule is only run once the op-level suite has proven itself. `after_op_pass_fraction` is the minimum fraction of graded op capsules that must PASS before this capsule is scheduled.",
-      "properties": {"after_op_pass_fraction": {"type": "number", "minimum": 0, "maximum": 1}},
+      "properties": {
+        "after_op_pass_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
       "additionalProperties": false
     },
     "lanes": {
       "type": "object",
-      "description": "INTEROP contract. `require` names the execution lanes that must each have carried work, using the routing plan's own keys (e.g. `on_mesh`, `in_contract_vector_scalar`, `scalar_rvv_lane`). A capsule that names lanes asserts COMPOSITION across backends -- part of the model on the accelerator, part on the scalar/vector lane the target also owns -- so work reaching the other lane is the behaviour under test, not a fallback failure. `semantic.must_accelerate` is withheld for such a capsule for the same reason. A named lane the routing plan does not report fails the capsule with that lane named.",
-      "properties": {"require": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-      "required": ["require"],
+      "description": "INTEROP contract. `require` names the execution lanes that must each have carried work, using the routing plan's own keys (e.g. `on_mesh`, `in_contract_vector_scalar`, `scalar_rvv_lane`). A capsule that names lanes asserts COMPOSITION across backends -- part of the model on the accelerator, part on the scalar/vector lane the target also owns -- so work reaching the other lane is the behaviour under test, not a fallback failure. `semantic.must_accelerate` is withheld for such a capsule for the same reason, unless it explicitly reclaims it. A named lane the routing plan does not report fails the capsule with that lane named.\n\n`forbid` is the NEGATIVE case and the content of a host-only capsule: lanes that must have carried NOTHING, because the target's capability manifest does not admit this capsule's family and accelerating it would be as wrong as failing to accelerate admitted work. It is honoured ONLY against execution evidence, never a routing plan -- 'the router planned no work here' is not 'the compiler put no work here', and this is the direction in which a plan-only pass is most dangerous. A lane may not appear in both lists.",
+      "properties": {
+        "require": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "forbid": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "require"
+      ],
       "additionalProperties": false
     }
   },

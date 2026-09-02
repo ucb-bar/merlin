@@ -483,6 +483,23 @@ def spec(target: str, captures: dict[str, str | Path], *,
                 "a memory-mapping failure of any kind, and on a hardware-interlocked target nothing "
                 "else will report it either -- the schedule is correct whatever it chooses"),
         },
+        "host_only": {
+            # THE NEGATIVE LANE. Families real captures contain that this target's manifest does NOT
+            # admit -- so the compiler must place them on the host, and a target that accelerates one is
+            # as wrong as one that misses admitted work. The set was already derived; it sat in
+            # diagnostics where nothing could require it, which is why `H` was only ever covered
+            # incidentally.
+            "families": list(diag.get("families_needed_but_not_admitted") or ()),
+            "observed_in": {f: n for f, n in (diag.get("families_observed") or {}).items()
+                            if f in set(diag.get("families_needed_but_not_admitted") or ())},
+            "basis": (
+                "families a real capture contains and this target's capability manifest does not admit. "
+                "The compiler must route them to the host lane; accelerating one is as much a defect as "
+                "failing to accelerate an admitted family. EMPTY means no negative lane is derivable "
+                "for this target -- every family its captures contain is admitted -- and never that "
+                "none is needed: a target with an empty complement simply cannot be asked this "
+                "question, which is a different fact from passing it"),
+        },
         "diagnostics": diag,
         "personas": personas or {},
         "cells": [{"cell": c.key(), "family": c.family, "dtype": c.dtype,
@@ -530,6 +547,58 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
         gap["status"] = "ok"
         gap["covered_by"] = corpus["by_kind"]
         out["composition"] = gap
+
+    # THE NEGATIVE LANE, measured the same way and reported beside the others. A family the hardware
+    # does not admit must be shown landing on the HOST -- and shown by a capsule built to prove it, not
+    # by one that merely happens to contain a host stretch. `corpus_boundaries` credits `H` to any
+    # capsule containing one, so without the family clause below `H` is trivially covered by every
+    # routing-shaped capsule and means nothing as a requirement.
+    host_only = spec_doc.get("host_only")
+    if host_only is None:
+        out["host_only"] = {"status": "not_measured",
+                            "detail": "this spec predates the negative-lane axis; regenerate it with "
+                                      "--write to derive the requirement"}
+    elif not (host_only.get("families") or ()):
+        out["host_only"] = {"status": "undeterminable", "families": [],
+                            "detail": "every family this target's captures contain is admitted by its "
+                                      "manifest, so no negative lane is derivable here. NOT the same as "
+                                      "a negative lane that passed"}
+    else:
+        import yaml as _yaml
+        from pathlib import Path as _P
+
+        from merlin.targetgen import boundary as BD
+        want_fams = set(host_only["families"])
+        covered_by: dict[str, list[str]] = {}
+        roots = [corpus_roots] if isinstance(corpus_roots, (str, _P)) else list(corpus_roots)
+        labelset = set(labels or {"public"})
+        skip = set(exclude or ())
+        for root in roots:
+            for cy in sorted(_P(root).glob("*/capsule.yaml")):
+                try:
+                    cap = _yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+                except _yaml.YAMLError:
+                    continue
+                name = str(cap.get("name") or cy.parent.name)
+                if name in skip or str(cap.get("label")) not in labelset:
+                    continue
+                fam = str((cap.get("semantic") or {}).get("semantic_family") or "")
+                if fam not in want_fams:
+                    continue
+                prof = BD.profile_capsule(cy.parent, str(spec_doc.get("target") or ""))
+                if prof.kind == BD.HOST_ONLY:
+                    covered_by.setdefault(fam, []).append(name)
+        out["host_only"] = {
+            "status": "ok",
+            "families": sorted(want_fams),
+            "n_required": len(want_fams),
+            "n_covered": len(covered_by),
+            "uncovered": sorted(want_fams - set(covered_by)),
+            "covered_by": covered_by,
+            "note": ("a family the hardware does not admit, shown landing on the host lane by a capsule "
+                     "whose OWN family is that one -- not merely by a capsule that contains a host "
+                     "stretch, which every routing-shaped capsule does"),
+        }
 
     mem_req = (spec_doc.get("memory_mapping") or {}).get("required")
     if mem_req is None:

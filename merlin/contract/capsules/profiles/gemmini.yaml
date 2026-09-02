@@ -357,6 +357,25 @@ capsules:
 - {cat: model_slices, name: GF3_geglu_bf16_pt, kind: model_slice, op: geglu, operand_dtype: bf16,
    source: pytorch, M: 16, K: 16, N: 32, out: Y0, source_role: pytorch_model_slice,
    source_reference: 'PyTorch GeGLU bf16 (tiled_matmul_ws_igelu family)', label: public, modes: {}}
+# --- THE NEGATIVE LANE. A family real captures contain that this target's manifest does NOT admit, so
+# the compiler must place it on the host -- and a target that accelerates it is as wrong as one that
+# misses admitted work. Derived, not chosen: `conformance.spec.host_only.families` reads `normalization`
+# out of the complement (admitted families minus the families the captures contain), and it is observed
+# 1146 times across them. `H` was previously reported COVERED but only INCIDENTALLY, by whole-model
+# capsules named for a different shape; nothing was built to prove it.
+#
+# `forbid` is the content of the assertion and is honoured ONLY against execution evidence -- "the router
+# planned no work here" is not "the compiler put no work here", and absence of a plan entry is the
+# default state, so a plan-only pass would make the claim vacuously true for free.
+- {cat: model_slices, name: GN0_layernorm_host_only_bf16_pt, kind: model_slice, op: layernorm,
+   operand_dtype: bf16, source: pytorch, M: 16, K: 32, out: Y0, source_role: pytorch_model_slice,
+   source_reference: 'PyTorch LayerNorm bf16 — the negative lane: this target declares no normalization
+     capability, so every region must land on the host and none may reach the mesh',
+   label: public, modes: {},
+   lanes: {require: [scalar_rvv_lane], forbid: [on_mesh]},
+   generalization: {must_accelerate: false, not_asserted_reason: 'host-only capsule: this target admits
+     no normalization family, so accelerating any region would be the defect. The demand is the inverted
+     one -- lanes.forbid [on_mesh] -- checked against execution, never a routing plan.'}}
 # --- More int8 matmul-family (direct-MLIR int engine): Q@K^T attention scores.
 - {cat: model_slices, name: C7_attention_qk_i8, kind: model_slice, op: attention_qk, M_tiles: 1,
    K_tiles: 2, q: Q, k: K, out: Y0, source_role: pytorch_model_slice,

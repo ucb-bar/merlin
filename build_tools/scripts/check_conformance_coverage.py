@@ -116,6 +116,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         "corpus_cells_not_required": gap["extra_cells"],
         "composition": gap.get("composition") or {"status": "not_measured"},
         "memory_mapping": gap.get("memory_mapping") or {"status": "not_measured"},
+        "host_only": gap.get("host_only") or {"status": "not_measured"},
         "diagnostics": doc.get("diagnostics") or {},
     }
 
@@ -250,6 +251,19 @@ def main(argv=None) -> int:
                           f"{100.0 * float(lw.get('fraction_of_capacity') or 0):.2f}% of capacity")
             elif mem:
                 print(f"   memory regime : {mem.get('status')} — {mem.get('detail', '')}")
+            ho = r.get("host_only") or {}
+            if ho.get("status") == "ok":
+                print(f"   host-only lane: {ho['n_covered']} / {ho['n_required']} family/families the "
+                      f"hardware must NOT accelerate")
+                for fam in ho["uncovered"]:
+                    mark = " " if _debt(r["target"], fam, "host_only") in ratchet else "*"
+                    print(f"     {mark} {fam:34s} no capsule proves it lands on the host lane")
+                for fam, names in sorted((ho.get("covered_by") or {}).items()):
+                    print(f"       {fam:32s} proven host-only by {names}")
+            elif ho.get("status") == "undeterminable":
+                print(f"   host-only lane: UNDETERMINABLE — {ho.get('detail', '')}")
+            elif ho:
+                print(f"   host-only lane: {ho.get('status')} — {ho.get('detail', '')}")
             if r["corpus_cells_not_required"]:
                 print(f"   corpus cells not in the requirement: {r['corpus_cells_not_required']}")
                 print("     (a cell the hardware does not admit for that family — e.g. an int8 movement "
@@ -268,6 +282,11 @@ def main(argv=None) -> int:
     bad += [_debt(r["target"], k, "memory") for r in reports if r["status"] == "ok"
             for k in ((r.get("memory_mapping") or {}).get("uncovered") or [])
             if _debt(r["target"], k, "memory") not in ratchet]
+    # The negative lane carries its own axis tag for the same reason the others do: a family name and a
+    # composition shape must never collide in one flat ratchet file.
+    bad += [_debt(r["target"], k, "host_only") for r in reports if r["status"] == "ok"
+            for k in ((r.get("host_only") or {}).get("uncovered") or [])
+            if _debt(r["target"], k, "host_only") not in ratchet]
     if bad and a.fail_on_uncovered:
         print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
         return 1

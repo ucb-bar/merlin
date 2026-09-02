@@ -1,0 +1,67 @@
+name: GN0_layernorm_host_only_bf16_pt
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: "PyTorch LayerNorm bf16 \u2014 the negative lane: this target declares\
+  \ no normalization capability, so every region must land on the host and none may\
+  \ reach the mesh"
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: bf16
+- name: W
+  role: input
+  shape:
+  - 32
+  dtype: bf16
+- name: B
+  role: input
+  shape:
+  - 32
+  dtype: bf16
+operation:
+  op: layernorm
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    - W
+    - B
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.03125
+  rtol: 0.02
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: layernorm
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: normalization
+  generalization_axis: composition
+  must_accelerate: false
+  not_asserted_reason: 'host-only capsule: this target admits no normalization family,
+    so accelerating any region would be the defect. The demand is the inverted one
+    -- lanes.forbid [on_mesh] -- checked against execution, never a routing plan.'
+  eligible: auto
+lanes:
+  require:
+  - scalar_rvv_lane
+  forbid:
+  - on_mesh

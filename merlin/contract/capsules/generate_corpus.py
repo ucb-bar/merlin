@@ -1175,6 +1175,7 @@ def _write_capsule(entry, binding, out_root):
         cap["semantic"] = CS._semantic_block(entry, eb)
         dirty = True
     dirty = _backfill_required_classes(cap, binding) or dirty
+    _validate_lane_declaration(entry, binding)
     dirty = _carry_declared_blocks(entry, cap) or dirty
     if dirty:
         capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
@@ -1199,7 +1200,12 @@ def _write_capsule(entry, binding, out_root):
 #:                      (``check_pass_obligations.py`` rejects a pass no capsule obliges). It was
 #:                      hand-written onto two capsules and unknown to this generator, so every
 #:                      regeneration silently deleted the corpus's only pass obligations.
-_DECLARED_BLOCKS = ("performance", "comparison_group", "pass_requirements")
+#: ``lanes``               the interop/negative-lane contract: which execution lanes must have carried
+#:                      work, and (``forbid``) which must have carried none. Only the whole-model writer
+#:                      emitted it, so a model_slice capsule declaring lanes silently lost them -- which
+#:                      is how the first host-only capsule generated with `lanes: None` and asserted
+#:                      nothing at all.
+_DECLARED_BLOCKS = ("performance", "comparison_group", "pass_requirements", "lanes")
 
 
 def _carry_declared_blocks(entry: dict, cap: dict) -> bool:
@@ -1213,6 +1219,34 @@ def _carry_declared_blocks(entry: dict, cap: dict) -> bool:
         cap[key] = dict(value) if isinstance(value, dict) else value
         dirty = True
     return dirty
+
+
+def _validate_lane_declaration(entry: dict, binding) -> None:
+    """Refuse an unreachable or self-contradictory lane declaration AT GENERATION TIME.
+
+    The whole-model writer already ran ``_checked_lanes``; the other writers did not, because they never
+    carried lanes at all. Now that every writer does, the check has to move with it -- a bar the target's
+    declared units make unreachable is not a capability test, it is a wall, and the place to catch it is
+    where an author can still fix it.
+    """
+    lanes = entry.get("lanes") or {}
+    if not lanes:
+        return
+    from merlin.targetgen.capsule_source import _checked_lanes
+    _checked_lanes(entry, binding)                      # raises on an unreachable `require`
+    forbid = [str(x) for x in (lanes.get("forbid") or ())]
+    both = sorted(set(str(x) for x in (lanes.get("require") or ())) & set(forbid))
+    if both:
+        raise ValueError(f"{entry.get('name')!r}: lane(s) {both} are both required and forbidden; one "
+                         f"of the two assertions can never hold")
+    target = getattr(binding, "target", None)
+    if forbid and target:
+        from merlin.targetgen.routing import reachable_lanes
+        unreachable = sorted(set(forbid) - reachable_lanes(target))
+        if unreachable:
+            raise ValueError(
+                f"{entry.get('name')!r}: forbids lane(s) {unreachable} that {target!r} cannot populate "
+                f"anyway, so the assertion is vacuously true and tests nothing")
 
 
 def _write_capsule_readme(entry: dict, cap: dict, d: Path) -> None:
