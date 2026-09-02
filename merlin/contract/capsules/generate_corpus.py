@@ -48,6 +48,21 @@ _PERFORMANCE_FIELDS = frozenset({
     "level", "family", "lever", "comparand", "falsifier", "gate", "regime", "emitter", "cost",
 })
 _PERFORMANCE_CLAIMS = frozenset({"RECOVERS", "PREDICTS", "DIFFERENTIAL"})
+#: The optimization LEVELS a performance family may declare. DOCUMENTED rather than enforced: several
+#: test fixtures declare synthetic levels to prove the validator is generic, so closing this set is a
+#: change to make deliberately alongside those fixtures rather than as a side effect. What it is for:
+#:
+#: The ladder is tile -> layer -> inter-layer -> global, and two rungs were missing from it. `L4_boundary`
+#: is the host/accelerator seam -- the H->A break-even and the cost of an A->H->A island -- which is
+#: where a placement decision is actually made and paid for. `L6_global` is the whole-program decision:
+#: quantization, packing, encoding, layout propagation. Declaring them here does not create the
+#: families; it makes them nameable, so a family that needs one is not forced to file under a level
+#: that means something else. `merlin.perf.profile` now carries the canonical trait an L6 family needs
+#: (`multiple_operand_encodings`), which was the part that could not be added in YAML at all.
+_PERFORMANCE_LEVELS = frozenset({
+    "L1_tile", "L1_separation_floor", "L2_intra_layer", "L3_inter_layer",
+    "L4_boundary", "L5_fusion", "L6_global",
+})
 _PERFORMANCE_NESTED_FIELDS = {
     "comparand": frozenset({"kind", "against", "cancels", "demand_equal"}),
     "falsifier": frozenset({"observation", "fires_when", "negative_control"}),

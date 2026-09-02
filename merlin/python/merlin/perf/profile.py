@@ -102,6 +102,11 @@ TRAITS: tuple[str, ...] = (
     "explicit_completion",
     "structural_pipeline_depth",
     "feedback_sequenced_units",
+    # The gate an `L6_global` (encoding / packing / layout) family needs: a lever over operand
+    # encoding only exists where the target admits more than one. `evaluate_gate` refuses any trait
+    # outside this tuple, so declaring such a family without adding it here is not a YAML edit away --
+    # it is unrepresentable.
+    "multiple_operand_encodings",
 )
 
 #: Evidence tier tokens for :attr:`TargetProfile.trait_tier`. What a term built on this trait may
@@ -837,7 +842,43 @@ def _t_feedback_sequenced_units(sources: Sources) -> tuple[Trait, str]:
                  evidence=f"all {len(walk.modules)} walked modules resolved a finite depth"), TIER_FACTS
 
 
+def _t_multiple_operand_encodings(sources: Sources) -> tuple[Trait, str]:
+    """Can this target compute the SAME contraction in more than one operand encoding?
+
+    The gate an ``L6_global`` family needs. A packing/encoding/layout lever only exists where there is
+    a choice to make: on a single-format machine the question is not hard, it is absent, and the honest
+    answer is a REFUTATION rather than an unestablished trait -- a refuted gate leaves an
+    evidence-bearing skip that says "this target has one format", which is informative, where an
+    unestablished one says only "we could not tell".
+
+    Derived from the contraction family's declared dtypes, which is where the choice actually lives.
+    """
+    try:
+        from merlin.targetgen.eligibility import capability_map_for_target
+        cap = (capability_map_for_target(sources.target) or {}).get("contraction")
+    except Exception as exc:                       # noqa: BLE001 -- an unresolvable map is not a format
+        return Trait("multiple_operand_encodings", None,
+                     evidence=f"no capability map resolved ({type(exc).__name__}: {exc})",
+                     missing=("a capability manifest declaring the contraction family's dtypes",),
+                     ), TIER_NONE
+    if cap is None:
+        return Trait("multiple_operand_encodings", None,
+                     evidence="the capability map declares no contraction family, so there is no "
+                              "operand encoding to choose between",
+                     missing=("a declared contraction family",)), TIER_NONE
+    dtypes = tuple(getattr(cap, "dtypes", ()) or ())
+    if len(dtypes) >= 2:
+        return Trait("multiple_operand_encodings", True,
+                     evidence=f"the contraction family declares {len(dtypes)} operand encoding(s) "
+                              f"{sorted(dtypes)}, so an encoding choice exists"), TIER_CONTRACT
+    return Trait("multiple_operand_encodings", False,
+                 evidence=f"the contraction family declares {sorted(dtypes) or 'no'} operand "
+                          f"encoding(s); with fewer than two there is no encoding to choose, so an "
+                          f"encoding lever cannot be exercised here"), TIER_CONTRACT
+
+
 _DERIVERS = {
+    "multiple_operand_encodings": _t_multiple_operand_encodings,
     "self_hosted_program": _t_self_hosted_program,
     "host_dispatched_queue": _t_host_dispatched_queue,
     "explicit_dma": _t_explicit_dma,
