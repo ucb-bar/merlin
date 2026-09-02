@@ -73,3 +73,30 @@ def test_a_bad_board_name_is_reported_not_raised(tmp_path, monkeypatch):
     system, why = D.system_for_experiment("gemmini")
     assert system.host is None
     assert "did not resolve" in why
+
+
+def test_the_descriptor_override_decides_the_board(tmp_path, monkeypatch):
+    """``MERLIN_TARGET_EXPERIMENT`` must select the board, not be silently ignored.
+
+    The first version of this resolver built the convention path by hand
+    (``merlin_dir() / "experiments/capsule_bench/targets" / target / ...``), which reads the IN-TREE
+    descriptor no matter what the override says. That is the failure mode the whole indirection in
+    ``targetgen.corpora.descriptor_path`` exists to prevent: a caller pointed at an out-of-tree
+    descriptor got some of its fields from there and the board from somewhere else, with nothing
+    printed. Asserting a board DIFFERENT from the in-tree one is what makes this test discriminating --
+    a resolver that ignores the override returns the tracked board and still looks like a pass.
+    """
+    from merlin.runtime.boards import BOARDS
+    from merlin.system.derive import host_board_for_experiment
+
+    tracked, _ = host_board_for_experiment("gemmini")
+    other = next(b for b in sorted(BOARDS) if b != tracked)
+    desc = tmp_path / "target_experiment.yaml"
+    desc.write_text(f"target: gemmini\nhost:\n  board: {other}\n", encoding="utf-8")
+    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(desc))
+
+    got, why = host_board_for_experiment("gemmini")
+    assert got == other, (
+        f"the override named {other} but the resolver returned {got!r}; it is reading the in-tree "
+        f"descriptor ({tracked!r}) and ignoring MERLIN_TARGET_EXPERIMENT")
+    assert "declared by" in why

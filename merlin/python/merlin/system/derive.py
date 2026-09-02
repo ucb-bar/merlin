@@ -161,18 +161,22 @@ def host_board_for_experiment(target: str) -> tuple[str | None, str]:
     reported, never defaulted.
     """
     try:
-        from merlin.common.paths import merlin_dir
+        # Through `corpora`, not by building the path here: it is the one module allowed to know the
+        # `experiments/` layout, and -- load-bearing -- it honors MERLIN_TARGET_EXPERIMENT. The
+        # convention path built by hand ignored that override, so a caller pointed at an out-of-tree
+        # descriptor got the board from the in-tree one instead, silently.
+        from merlin.targetgen.corpora import descriptor_path
         from merlin.targetgen.target_experiment import load_target_experiment
-        desc = merlin_dir() / "experiments/capsule_bench/targets" / target / "target_experiment.yaml"
+        desc = descriptor_path(target)
         if not desc.is_file():
             return None, f"no experiment descriptor for {target!r} at {desc}"
         board = load_target_experiment(desc).host_board
     except Exception as exc:                       # noqa: BLE001 -- an unreadable descriptor is not a board
-        return None, f"could not read {target!r}'s experiment descriptor: {type(exc).__name__}: {exc}"
+        return None, f"could not read {target}'s experiment descriptor: {type(exc).__name__}: {exc}"
     if not board:
-        return None, (f"{target!r}'s descriptor declares no `host: {{board: ...}}`, so the host this "
+        return None, (f"{target}'s descriptor declares no `host: {{board: ...}}`, so the host this "
                       f"target's lane compiles for is unknown")
-    return board, f"declared by {target!r}'s experiment descriptor"
+    return board, f"declared by {target}'s experiment descriptor"
 
 
 def system_for_experiment(target: str, **board_overrides) -> tuple[System, str]:
