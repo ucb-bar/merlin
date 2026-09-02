@@ -28,6 +28,7 @@ from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
+from perf_prompt import PerfCell, PerfPromptContractError
 
 
 class CampaignGateError(RuntimeError):
@@ -451,37 +452,63 @@ def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
         oot_runner.build_package = original_build
 
 
-def completion_report(results: Sequence[Mapping], expected: Mapping[str, Sequence[str]]) -> dict:
-    """Count every expected Arm-4 cell without letting an incomplete run look like an empty pass."""
-    expected_cells = {(str(kernel), str(sim)) for kernel, sims in expected.items() for sim in sims}
+def completion_report(results: Sequence[Mapping], expected: Sequence[PerfCell]) -> dict:
+    """Validate exact Phase-P cells without treating functional-simulator cycles as performance."""
+    expected_rows = tuple(expected)
+    for identity in expected_rows:
+        if not isinstance(identity, PerfCell):
+            raise CampaignGateError("performance expected identity must be a PerfCell")
+        try:
+            identity.validate()
+        except PerfPromptContractError as exc:
+            raise CampaignGateError(f"invalid expected performance identity: {exc}") from exc
+    expected_cells = set(expected_rows)
     if not expected_cells:
         raise CampaignGateError("performance campaign has zero expected Arm-4 cells")
-    if any(not sims for sims in expected.values()):
-        raise CampaignGateError("performance campaign contains a kernel with zero expected simulators")
-    by_kernel: dict[str, Mapping] = {}
+    if len(expected_cells) != len(expected_rows):
+        raise CampaignGateError("performance expected cell identities contain duplicates")
+    by_identity: dict[PerfCell, Mapping] = {}
     for row in results:
-        kernel = str(row.get("kernel") or "")
-        if not kernel or kernel in by_kernel:
-            raise CampaignGateError(f"performance results repeat or omit a kernel identity: {kernel!r}")
-        by_kernel[kernel] = row
+        if not isinstance(row, Mapping):
+            raise CampaignGateError("performance result must be a mapping with an exact identity")
+        identity = PerfCell(
+            row.get("family"), row.get("capsule"), row.get("simulator"), row.get("replicate"))
+        try:
+            identity.validate()
+        except PerfPromptContractError as exc:
+            raise CampaignGateError(f"invalid reported performance identity: {exc}") from exc
+        if identity in by_identity:
+            raise CampaignGateError(f"performance results repeat cell identity {identity.label!r}")
+        by_identity[identity] = row
+
+    extras = sorted(set(by_identity) - expected_cells)
+    if extras:
+        raise CampaignGateError(
+            f"performance results contain unexpected cell identities: {[cell.label for cell in extras]}")
 
     reported = correct = cycles_measured = 0
     failed = 0
-    for kernel, sim in sorted(expected_cells):
-        row = by_kernel.get(kernel) or {}
-        arm = ((row.get("approaches") or {}).get("arm4") or {})
-        per_sim = arm.get("per_sim") or {}
-        cell = per_sim.get(sim)
-        if not isinstance(cell, Mapping):
+    for identity in sorted(expected_cells):
+        cell = by_identity.get(identity)
+        if cell is None:
             continue
         reported += 1
         is_correct = cell.get("correct") is True
         cycles = cell.get("cycles")
-        has_cycles = (isinstance(cycles, (int, float)) and not isinstance(cycles, bool)
-                      and cycles > 0)
+        has_cycles = (identity.simulator == "verilator"
+                      and isinstance(cycles, int) and not isinstance(cycles, bool) and cycles > 0)
+        if identity.simulator == "spike":
+            valid = is_correct and cycles is None
+        else:
+            provenance = cell.get("provenance") or {}
+            valid = (is_correct and has_cycles and isinstance(provenance, Mapping)
+                     and provenance.get("tier") == "L3"
+                     and provenance.get("simulator") == "verilator"
+                     and provenance.get("derived_from_rtl") is True
+                     and provenance.get("cycle_accurate") is True)
         correct += int(is_correct)
         cycles_measured += int(has_cycles)
-        failed += int(not (is_correct and has_cycles))
+        failed += int(not valid)
     missing = len(expected_cells) - reported
     counts = {"expected": len(expected_cells), "reported": reported, "correct": correct,
               "cycles_measured": cycles_measured, "failed": failed, "missing": missing,
@@ -489,11 +516,11 @@ def completion_report(results: Sequence[Mapping], expected: Mapping[str, Sequenc
     return counts
 
 
-def completion_counts(results: Sequence[Mapping], expected: Mapping[str, Sequence[str]]) -> dict:
-    """Require a correct, positive-cycle result for every expected Arm-4 kernel/simulator cell."""
+def completion_counts(results: Sequence[Mapping], expected: Sequence[PerfCell]) -> dict:
+    """Require every exact Arm-4 Phase-P identity to carry valid simulator-specific evidence."""
     counts = completion_report(results, expected)
     if not counts["complete"]:
         raise CampaignGateError(
             f"Arm-4 performance reported {counts['reported']} of {counts['expected']} expected cells; "
-            f"{counts['failed']} reported cell(s) failed correctness or positive-cycle measurement")
+            f"{counts['failed']} reported cell(s) failed simulator-specific completion evidence")
     return counts
