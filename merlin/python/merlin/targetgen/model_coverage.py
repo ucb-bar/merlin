@@ -260,6 +260,16 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
     return tuple(out)
 
 
+def region_ops(module) -> tuple:
+    """The linalg ops :func:`regions_from_module` describes, in the SAME order.
+
+    Exists so a caller that needs the op itself -- to price a region's work, say -- can join to the
+    descriptors positionally instead of re-deriving the "is this a region" filter. Two copies of that
+    predicate drift, and a join that silently misaligns weights every region by another region's cost.
+    """
+    return tuple(op for op in module.walk() if _is_region_op(op))
+
+
 def coverage_for(regions: tuple[RegionDescriptor, ...], target: str, *,
                  model: str = "") -> CoverageReport:
     """Ask ``target``'s capability contract about each region. Pure accounting — no lowering is attempted,

@@ -128,14 +128,25 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
     """
     from merlin.targetgen import model_coverage as MC
 
+    from merlin.kernels import work as WK
+
     cen = census(captures, opset=opset)
     routed = fallback = unclassified = 0
     dtype_ok = dtype_blocked = 0
+    # WORK, the third number the claim needs. A region count answers "how many ops" and says nothing
+    # about how much of the model those ops ARE: a hundred elementwise regions and one attention matmul
+    # are 101 regions and nowhere near 101 units of work. Weighted by iteration space x body arithmetic,
+    # using the SAME proxy `build_tools/scripts/model_op_census.py` uses, so two copies of a cost model
+    # cannot produce two rankings of one model.
+    routed_work = fallback_work = unclassified_work = 0
+    work_complete = True
     per_model: dict[str, Any] = {}
     for name, path in sorted(captures.items()):
         try:
-            regions = MC.regions_from_module(MC.load_module(Path(path)))
+            _module = MC.load_module(Path(path))
+            regions = MC.regions_from_module(_module)
             cov = MC.coverage_for(regions, target, model=name)
+            _ops = MC.region_ops(_module)
         except Exception as exc:                   # noqa: BLE001 -- an unreadable model is not zero coverage
             per_model[name] = {"status": "unreadable", "detail": f"{type(exc).__name__}: {exc}"}
             continue
@@ -154,7 +165,26 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
         # merging them would report one as the other.
         dtype_ok += int(d.get("dtype_ok") or 0)
         dtype_blocked += int(d.get("dtype_blocked") or 0)
+        # Price each region and charge it to the SAME bucket its family put it in. The join is
+        # positional against `region_ops`, which is the one filter that produced these descriptors.
+        # A capture whose op list does not line up is priced as unknown rather than mis-attributed.
+        if len(_ops) == len(regions):
+            cap_map = MC.capability_map_for_target(target)
+            for _region, _op in zip(regions, _ops):
+                extents, exact = WK.iteration_space(_op)
+                w = int(extents) * int(WK.body_arith_ops(_op))
+                work_complete = work_complete and bool(exact)
+                fam = _region.resolved_family()
+                if fam is None:
+                    unclassified_work += w
+                elif fam in cap_map:
+                    routed_work += w
+                else:
+                    fallback_work += w
+        else:
+            work_complete = False
     denominator = routed + fallback
+    work_denominator = routed_work + fallback_work
     return {
         "target": target,
         "opset": {"n_core": cen["n_core"], "torch": (opset or {}).get("torch")},
@@ -172,6 +202,14 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
                     "why_unclassified_is_separate": (
                         "a region whose family could not be determined is evidence neither of coverage "
                         "nor of a gap; folding it into either is how a coverage number becomes a lie")},
+        "work": {"routed": routed_work, "fallback": fallback_work,
+                 "unclassified": unclassified_work, "denominator": work_denominator,
+                 "routed_fraction": (routed_work / work_denominator) if work_denominator else None,
+                 # A LOWER BOUND is not a measurement. `iteration_space` returns `complete=False` when a
+                 # nest was only partially recovered, and a partially recovered nest that reads as exact
+                 # is how a heavy op gets ranked light.
+                 "exact": work_complete,
+                 "unit": "iteration-space extents x body arithmetic ops (merlin.kernels.work)"},
         "per_model": per_model,
         "census": cen,
     }
@@ -191,4 +229,20 @@ def claim_sentence(report: dict) -> str:
         + f"; on {report['target']}, {rt['routed']} of {rt['denominator']} classifiable regions route "
           f"to the accelerator"
         + (f" ({rfrac:.1%})" if rfrac is not None else "")
-        + f", with {rt['unclassified']} region(s) unclassified and reported separately.")
+        + f", with {rt['unclassified']} region(s) unclassified and reported separately"
+        + (_work_clause(report.get("work") or {}))
+        + ".")
+
+
+def _work_clause(wk: dict) -> str:
+    """The work half of the claim, or nothing at all.
+
+    Silence when no work could be priced: a claim that omits the weighting is weaker than one that
+    carries it, and both are honest. A claim that STATES a weighting nobody computed is neither.
+    """
+    frac = wk.get("routed_fraction")
+    if frac is None:
+        return ""
+    qualifier = "" if wk.get("exact") else " (a lower bound; at least one iteration nest was only "\
+                                          "partially recovered)"
+    return (f"; those account for {frac:.1%} of the roster's total loop-nest work{qualifier}")

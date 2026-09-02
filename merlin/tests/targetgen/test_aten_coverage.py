@@ -105,3 +105,45 @@ def test_an_unreadable_capture_is_reported_not_counted_as_zero(opset, tmp_path):
     assert rep["per_model"]["ghost"]["status"] == "unreadable"
     assert rep["routing"]["denominator"] == 0, (
         "a model we could not read contributes no regions, rather than contributing zeros")
+
+
+# --- the work column ---------------------------------------------------------------------------------
+# A region COUNT answers "how many ops" and says nothing about how much of the model those ops are: a
+# hundred elementwise regions and one attention matmul are 101 regions and nowhere near 101 units of
+# work. The claim was documented with this third number and shipped without it.
+
+def test_the_claim_states_the_work_weighting_when_it_could_price_it():
+    sent = AC.claim_sentence({
+        "n_models": 2, "opset": {"n_core": 188},
+        "observed": {"n_core_observed": 40, "core_fraction": 40 / 188},
+        "target": "t",
+        "routing": {"routed": 30, "denominator": 40, "routed_fraction": 0.75, "unclassified": 1},
+        "work": {"routed_fraction": 0.93, "exact": True},
+    })
+    assert "93.0% of the roster's total loop-nest work" in sent
+    assert "lower bound" not in sent
+
+
+def test_a_partially_recovered_nest_is_stated_as_a_lower_bound():
+    """`iteration_space` reports `complete=False` when a nest was only partially recovered. A lower
+    bound that reads as a measurement is how a heavy op gets ranked light."""
+    sent = AC.claim_sentence({
+        "n_models": 1, "opset": {"n_core": 188},
+        "observed": {"n_core_observed": 10, "core_fraction": 10 / 188},
+        "target": "t",
+        "routing": {"routed": 5, "denominator": 10, "routed_fraction": 0.5, "unclassified": 0},
+        "work": {"routed_fraction": 0.5, "exact": False},
+    })
+    assert "lower bound" in sent
+
+
+def test_a_claim_that_could_not_price_the_work_says_nothing_about_it():
+    """Silence is honest; a stated weighting nobody computed is not."""
+    sent = AC.claim_sentence({
+        "n_models": 1, "opset": {"n_core": 188},
+        "observed": {"n_core_observed": 10, "core_fraction": 10 / 188},
+        "target": "t",
+        "routing": {"routed": 5, "denominator": 10, "routed_fraction": 0.5, "unclassified": 0},
+        "work": {"routed_fraction": None, "exact": False},
+    })
+    assert "loop-nest work" not in sent and sent.endswith(".")
