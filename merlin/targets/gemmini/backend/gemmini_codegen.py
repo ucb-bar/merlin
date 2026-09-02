@@ -88,6 +88,39 @@ def _parse(cb: dict[str, Any]):
     return weight, jobs, k, n
 
 
+def _counter_bracket() -> tuple[list[str], list[str], list[str]]:
+    """``(prologue, epilogue, include)`` C lines for this target's combination counters — or empty.
+
+    The sibling MLIR emitter has carried this bracket for a while; the command-buffer driver did not,
+    so an A/B run through :func:`generate_driver` produced cycles with no activity decomposition beside
+    them and every occupancy consumer refused for want of a source. Same opt-in switch and same
+    derivation as the sibling: the counter set and its event codes come from the target's own shipped
+    header, and a missing code or an over-full slot set refuses the whole bracket rather than emitting a
+    partial one, because a missing combination silently turns realised overlap into a lower bound.
+
+    Off by default. A change that altered every run would make a round's verdicts incomparable with the
+    rounds before it, so measuring occupancy is something a caller asks for.
+    """
+    from .gemmini_codegen_mlir import _COUNTER_SLOTS, _counters_requested
+    if not _counters_requested():
+        return [], [], []
+    try:
+        from pathlib import Path as _P
+
+        from merlin.perf import hw_counters as _hc
+        found = _hc.counters_for_target("gemmini")
+        if found.get("status") != "derived":
+            return [], [], []
+        text = _P(found["header"]).read_text(encoding="utf-8")
+        bracket = _hc.counter_bracket_c(_hc.derive_occupancy_counters(text),
+                                        _hc.event_codes(text), slots=_COUNTER_SLOTS)
+    except Exception as exc:                      # noqa: BLE001 — never break a graded driver
+        return [f"  /* merlin: counters unavailable: {type(exc).__name__} */"], [], []
+    return (bracket["prologue"].rstrip("\n").splitlines(),
+            bracket["epilogue"].rstrip("\n").splitlines(),
+            ['#include "include/gemmini_counter.h"'])
+
+
 def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
     """Return the C source of the bare-metal Gemmini driver for ``cb``."""
     if mode != "explicit":
@@ -96,6 +129,9 @@ def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
     leaves = materialize_inputs(cb)
     kp, np_ = _ceil_dim(k), _ceil_dim(n)
     Kt, Nt = kp // DIM, np_ // DIM
+    # Derived ONCE: two calls could read a header that changed between them and emit a prologue
+    # configuring one slot set with an epilogue reading another.
+    _cpro, _cepi, _cinc = _counter_bracket()
 
     # Embed padded leaf tensors (zero-pad edges -> exact tiled matmul; crop output on print).
     lines = [
@@ -103,6 +139,7 @@ def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
         "#include <stdint.h>",
         "#include <stdio.h>",
         '#include "include/gemmini_testutils.h"',
+        *_cinc,
         "",
         _c_array(f"T_{weight}", "elem_t", _pad_rowmajor(list(leaves[weight].data), k, n, kp, np_)),
     ]
@@ -135,6 +172,7 @@ def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
             off = (kt * DIM) * np_ + nj * DIM
             lines.append(f"  gemmini_mvin((void*)&T_{weight}[{off}], {w_row});")
     lines.append("")
+    lines += _cpro
     lines.append("  c0 = read_cycles();")
 
     for lhs, out, epi, m, mp, shift in job_meta:
@@ -157,8 +195,16 @@ def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
                     ]
                 c_off = (mi * DIM) * np_ + nj * DIM
                 lines.append(f"  gemmini_mvout((void*)&T_{out}[{c_off}], acc_ovw);")
-        lines.append("  gemmini_fence();")
-    lines += ["  c1 = read_cycles();", ""]
+    # ONE retire for the whole kernel, not one per job. Every job stages its activation through the
+    # same scratchpad rows, so a second job's mvin is a write-after-read on rows the previous job's
+    # compute consumed -- which is why this used to fence after each. MEASURED on both elaborated-RTL
+    # engines: the reservation station tracks that hazard, and the barrier only cost time. On the one
+    # capsule in the corpus with two jobs, 434 -> 334 cycles on the citable engine (1.299x) and
+    # 427 -> 331 on the fast one, with every output byte-identical and both arms gating correct.
+    # The remaining fence is not optional: it retires the last job before `read_cycles` bounds the
+    # measured window and before the readback reads the output rows.
+    lines.append("  gemmini_fence();")
+    lines += ["  c1 = read_cycles();"] + _cepi + [""]
 
     # Print outputs cropped to the logical m x n (skip padded rows/cols).
     for lhs, out, epi, m, mp, shift in job_meta:
