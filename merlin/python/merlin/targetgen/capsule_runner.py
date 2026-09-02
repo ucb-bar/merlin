@@ -153,6 +153,47 @@ def _clip(msg: str, budget: int) -> str:
     return f"{msg[:head]} […] {msg[-tail:]}" if tail > 0 else msg[:budget]
 
 
+_CONSOLE_MAX_BYTES = 4 << 20      # 4 MiB of head+tail; override with MERLIN_CONSOLE_MAX_BYTES
+
+
+def _write_console(path: "Path", console: str) -> None:
+    """Write a simulator console, keeping BOTH ENDS when it is too large to keep whole.
+
+    Same reasoning as :func:`_clip`, applied to a file, because the console is the one artifact whose
+    size is unbounded by construction: a cycle-accurate sim emits a line per cycle, so its console grows
+    with the cycle cap, not with anything about the capsule. Measured on GSIM at an 8M-cycle cap: one
+    capsule's console was 646 MB / 5.19M lines of per-cycle fetch trace, ~7 GB per graded run, and
+    17k orphaned scratch copies of the same shape had accumulated to 207 GB. None of it is read: the
+    adapters look at the head (boot + config echo) and the tail (the fault, the halt marker, the
+    verdict), and a human debugging reads the same two ends.
+
+    The elision is STATED in the file, with the byte and line counts dropped. A console that was
+    truncated silently is a console you cannot reason about -- you cannot tell a sim that stopped early
+    from one whose middle was thrown away, and that distinction is the whole diagnostic value of the
+    artifact (see ``htif-needs-a-host-not-silicon``, where the question was exactly "did it stop or was
+    it cut off?"). Never gzip here instead: the reader is often `grep`/`tail` from a shell.
+    """
+    import os                                    # function-local, as elsewhere in this module
+    try:
+        budget = int(os.environ.get("MERLIN_CONSOLE_MAX_BYTES") or _CONSOLE_MAX_BYTES)
+    except ValueError:
+        budget = _CONSOLE_MAX_BYTES
+    text = console if isinstance(console, str) else str(console)
+    if budget <= 0 or len(text) <= budget:
+        path.write_text(text, encoding="utf-8")
+        return
+    head = budget // 2
+    tail = budget - head
+    dropped = len(text) - head - tail
+    dropped_lines = text.count("\n", head, len(text) - tail)
+    marker = (f"\n\n[... {dropped} bytes / {dropped_lines} lines elided by MERLIN_CONSOLE_MAX_BYTES="
+              f"{budget}: a cycle-accurate console grows with the CYCLE CAP, not with the capsule, and "
+              f"only the head (boot/config) and tail (fault/halt/verdict) are ever read. The full "
+              f"console was NOT retained -- re-run this capsule with a larger cap to obtain it. This is "
+              f"an elision, not a sim that stopped early ...]\n\n")
+    path.write_text(text[:head] + marker + text[-tail:], encoding="utf-8")
+
+
 def _did_not_halt_reason(msg: str) -> str:
     """The tier ``reason`` for a program that ran to the cap without halting."""
     return f"did not halt (ran to the cycle cap): {msg[-240:]}"
@@ -1962,8 +2003,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 executability[tier] = ex
                 _sim_name = cfg.tier_sim.get(tier) or tier
                 if res.get("console") is not None:
-                    (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
-                        res["console"], encoding="utf-8")
+                    _write_console(paths.artifacts_dir / f"{_sim_name}_console.log", res["console"])
                 tiers[tier] = TierResult(
                     tier, "pass" if ex.get("legal") else "fail", mandatory=False,
                     reason=ex.get("reason"), cycles=ex.get("cycles"), derived_from_rtl=True,
@@ -2010,8 +2050,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     _cperf = perf_extractor(cb, res) or {}
                     _cg, _cp = _cperf.get("gflops"), _cperf.get("pct_fp_peak")
                 if res.get("console") is not None:
-                    (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
-                        res["console"], encoding="utf-8")
+                    _write_console(paths.artifacts_dir / f"{_sim_name}_console.log", res["console"])
                 tiers[tier] = TierResult(
                     tier, "pass", mand,
                     reason="RTL completion + cycle-accurate perf cert (correctness gated by the "
@@ -2094,8 +2133,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{sim_name}_console.log",
                 timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, fidelity=_fidelity)
             if res.get("console") is not None:
-                (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
-                    res["console"], encoding="utf-8")
+                _write_console(paths.artifacts_dir / f"{sim_name}_console.log", res["console"])
             # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
             # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation
             # gaps) records its fail in the tiers dict but must NOT abort: aborting here would pre-empt the
