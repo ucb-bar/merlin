@@ -33,7 +33,7 @@ def test_an_out_of_range_value_is_a_violation_naming_its_evidence():
     r = CD.check("gemmini", {"scratchpad.row": hi + 1})
     assert len(r["violations"]) == 1
     v = r["violations"][0]
-    assert v["domain"] == [0, hi] and "depth" in v["evidence"]
+    assert v["domain"] == f"[0, {hi}]" and "depth" in v["evidence"]
 
 
 def test_an_in_range_value_passes():
