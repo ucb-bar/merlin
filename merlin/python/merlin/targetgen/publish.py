@@ -1189,7 +1189,10 @@ def _sync_tree(clone_dir: Path, repo_dir: Path) -> None:
         if entry.is_dir():
             shutil.copytree(entry, target)
         else:
-            shutil.copyfile(entry, target)
+            # copy2 preserves mode. `copyfile` here is why the published entrypoint arrived at
+            # 100644: the assembled tree had it executable and this last hop into the clone stripped
+            # it, so git recorded a script a fresh clone could not run.
+            shutil.copy2(entry, target)
 
 
 def _checkout_branch(clone_dir: Path, branch: str) -> bool:
