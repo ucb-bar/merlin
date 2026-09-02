@@ -315,3 +315,86 @@ def test_the_capsule_validates_against_the_capsule_schema():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.loads((merlin_dir() / "contract/schemas/capsule.schema.json").read_text("utf-8"))
     jsonschema.validate(_capsule(), schema)
+
+
+# --- emitting the model, not just specifying it ------------------------------------------------------
+# `spec` derived what a minimal whole-model capsule must contain and stopped there, so the one capsule
+# small enough for the cycle-accurate tier was hand-authored and merely CHECKED against the derivation.
+
+def _spec(layers, extent=32, tile=16):
+    from merlin.targetgen import micro_model as MM
+
+    return MM.MicroModelSpec(target="t", layers=list(layers), extent=extent, tile_edge=tile)
+
+
+def _layer(family, side, op="generic"):
+    from merlin.targetgen import micro_model as MM
+
+    return MM.LayerRequirement(family=family, dtype="i8", side=side, op=op)
+
+
+def test_the_emitted_source_parses_and_exposes_the_loader_contract():
+    import ast
+
+    from merlin.targetgen import micro_model as MM
+
+    src = MM.emit_pytorch(_spec([_layer("contraction", MM.ACCELERATOR, "matmul"),
+                                 _layer("normalization", MM.HOST),
+                                 _layer("elementwise_map", MM.ACCELERATOR)]))
+    tree = ast.parse(src)
+    fns = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    assert "get_model_and_inputs" in fns, "the loader contract every capture path calls"
+    assert "forward" in fns
+
+
+def test_every_layer_in_the_inventory_reaches_the_forward():
+    """A layer quietly dropped changes the composition the capsule was written to exercise, so the
+    capsule would then test a different shape than its name claims."""
+    from merlin.targetgen import micro_model as MM
+
+    layers = [_layer("contraction", MM.ACCELERATOR, "matmul"),
+              _layer("normalization", MM.HOST),
+              _layer("reduction", MM.ACCELERATOR),
+              _layer("movement", MM.ACCELERATOR)]
+    src = MM.emit_pytorch(_spec(layers))
+    for layer in layers:
+        assert f"{layer.side}: {layer.family}" in src, f"{layer.family} never reached the forward"
+
+
+def test_the_host_layer_lands_in_the_interior():
+    """The composition a whole-model compiler actually gets wrong is the round trip, not a host prefix:
+    it is where keeping an intermediate resident and paying to move it out differ."""
+    from merlin.targetgen import micro_model as MM
+
+    layers = [_layer("contraction", MM.ACCELERATOR, "matmul"),
+              _layer("normalization", MM.HOST),
+              _layer("elementwise_map", MM.ACCELERATOR)]
+    src = MM.emit_pytorch(_spec(layers))
+    body = src[src.index("def forward"):]
+    sides = [ln.split(":")[0].split("# ")[-1] for ln in body.splitlines() if ln.strip().startswith("# ")]
+    assert sides[0] == MM.ACCELERATOR and sides[-1] == MM.ACCELERATOR
+    assert MM.HOST in sides[1:-1]
+
+
+def test_the_extent_comes_from_the_spec_so_geometry_is_never_assumed():
+    from merlin.targetgen import micro_model as MM
+
+    src = MM.emit_pytorch(_spec([_layer("contraction", MM.ACCELERATOR, "matmul")], extent=128))
+    assert "E = 128" in src
+
+
+def test_a_spec_with_no_derived_extent_raises_rather_than_defaulting():
+    """A default width here would be a geometry this repo does not have."""
+    from merlin.targetgen import micro_model as MM
+
+    with pytest.raises(MM.UnwritableLayer):
+        MM.emit_pytorch(_spec([_layer("contraction", MM.ACCELERATOR, "matmul")], extent=0))
+    with pytest.raises(MM.UnwritableLayer):
+        MM.emit_pytorch(_spec([]))
+
+
+def test_a_family_no_statement_expresses_raises_naming_it():
+    from merlin.targetgen import micro_model as MM
+
+    with pytest.raises(MM.UnwritableLayer):
+        MM.emit_pytorch(_spec([_layer("no_such_family", MM.ACCELERATOR)]))

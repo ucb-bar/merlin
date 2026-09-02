@@ -258,3 +258,113 @@ def spec(target: str, captures: dict, *, extent_tiles: int = _DEFAULT_EXTENT_TIL
             "this target admits every family the captures contain, so the model has no host island and "
             "no seam to prove; that is a fact about the target, not a gap in the model")
     return out
+
+
+class UnwritableLayer(ValueError):
+    """A required layer no emitted statement expresses, named so the inventory can be fixed."""
+
+
+#: The torch statement each op contributes to a composed model: an optional __init__ line and the
+#: forward line. Keyed on the op names :func:`merlin.targetgen.corpus_synth.op_for_family` already
+#: chooses from, so a composed model is built out of the SAME vocabulary the op capsules use rather
+#: than a second one invented here.
+#:
+#: Every statement is SHAPE-PRESERVING. A layer that changed the extent would make the inventory's
+#: order unwritable -- the composition axis is about what follows what, and a reduction that collapsed
+#: a dimension would decide the rest of the model instead of exercising it.
+_STATEMENT: dict[str, tuple[str | None, str]] = {
+    "matmul": ("self.w{i} = nn.Parameter(torch.randn(E, E) * 0.05)", "x = x @ self.w{i}"),
+    "linear": ("self.fc{i} = nn.Linear(E, E, bias=False)", "x = self.fc{i}(x)"),
+    "rmsnorm": (None, "x = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + 1e-6)"),
+    "layernorm": ("self.ln{i} = nn.LayerNorm(E)", "x = self.ln{i}(x)"),
+    "softmax": (None, "x = torch.softmax(x, dim=-1)"),
+    "silu": (None, "x = torch.nn.functional.silu(x)"),
+    "gelu": (None, "x = torch.nn.functional.gelu(x)"),
+    "add": (None, "x = x + 1.0"),
+    "bias_add": ("self.b{i} = nn.Parameter(torch.zeros(E))", "x = x + self.b{i}"),
+    "reduce_sum": (None, "x = x - x.sum(-1, keepdim=True) / E"),
+    "movement": (None, "x = x.transpose(-1, -2).contiguous().transpose(-1, -2)"),
+}
+
+
+def statement_for(family: str) -> tuple[str, tuple[str | None, str]]:
+    """``(op, (init_line, forward_line))`` for ``family``, or raise naming the family.
+
+    The op is chosen by :func:`corpus_synth.op_for_family`, the same derivation the op capsules use.
+    Raising rather than skipping is the point: a layer quietly dropped from a composed model changes
+    the composition it was written to exercise, and the capsule would then test a different shape than
+    the one its name claims.
+    """
+    from merlin.targetgen.corpus_synth import available_ops, op_for_family
+
+    op = op_for_family(family, admitted_ops=available_ops() & set(_STATEMENT))
+    if op is None or op not in _STATEMENT:
+        raise UnwritableLayer(
+            f"no emittable statement for family {family!r}; add one to micro_model._STATEMENT or "
+            f"establish that the inventory should not contain it -- do not drop the layer")
+    return op, _STATEMENT[op]
+
+
+def emit_pytorch(spec) -> str:
+    """A ``capsule.pytorch.py`` source for ``spec``: one composed model over its derived inventory.
+
+    The layer ORDER is the spec's, which :func:`interleave` already arranged so host layers sit in the
+    interior -- the composition a whole-model compiler actually gets wrong is the one where keeping an
+    intermediate resident and paying for a round trip differ, and a host prefix or suffix does not
+    exercise it.
+
+    Everything dimensioned comes from the spec: the extent is the target's own tile edge times the
+    declared multiple, so the same inventory emits a 32-wide model for a 16-wide array and a 128-wide
+    one for a 64-wide array without being edited.
+    """
+    extent = int(getattr(spec, "extent", 0) or 0)
+    if extent <= 0:
+        raise UnwritableLayer(
+            "the spec carries no extent, so there is no derived width to emit; a default here would be "
+            "a geometry this repo does not have")
+    layers = list(getattr(spec, "layers", ()) or ())
+    if not layers:
+        raise UnwritableLayer("the spec carries no layers; there is no model to write")
+
+    inits, fwd, notes = [], [], []
+    for i, layer in enumerate(layers):
+        op, (init_line, forward_line) = statement_for(layer.family)
+        if init_line:
+            inits.append("        " + init_line.format(i=i))
+        fwd.append(f"        # {layer.side}: {layer.family} (observed spelling {layer.op!r})")
+        fwd.append("        " + forward_line.format(i=i))
+        notes.append(f"#   {i}. {layer.side:11} {layer.family:16} -> {op}")
+
+    body_init = "\n".join(inits) or "        pass"
+    return (
+        '"""DERIVED micro model -- regenerate with merlin.targetgen.micro_model.emit_pytorch.\n'
+        "\n"
+        f"Composition: {spec.composition()}\n"
+        "Layer inventory, in composition order:\n"
+        + "\n".join(notes) + "\n"
+        "\n"
+        "Every layer is here because the target's capability manifest admits its family (accelerator) or\n"
+        "because a real capture contains a family the manifest does not admit (host). The order is the\n"
+        "interleave that puts host layers in the INTERIOR, so the model exercises a round trip rather\n"
+        "than a prefix.\n"
+        '"""\n'
+        "import torch\n"
+        "import torch.nn as nn\n"
+        "\n"
+        f"E = {extent}\n"
+        "\n"
+        "\n"
+        "class MicroModel(nn.Module):\n"
+        "    def __init__(self):\n"
+        "        super().__init__()\n"
+        f"{body_init}\n"
+        "\n"
+        "    def forward(self, x):\n"
+        + "\n".join(fwd) + "\n"
+        "        return x\n"
+        "\n"
+        "\n"
+        "def get_model_and_inputs():\n"
+        "    torch.manual_seed(0)\n"
+        "    return MicroModel().eval(), (torch.randn(E, E),)\n"
+    )
