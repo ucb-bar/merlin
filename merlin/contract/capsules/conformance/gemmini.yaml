@@ -249,13 +249,48 @@ memory_mapping:
   capacity_rows: 16384
   captures_unreadable: {}
   why: ''
+  regime_extents:
+    fits_double:
+      M: tile
+      K: tile
+      N: tile
+      rows: 32
+      capacity_rows: 16384
+      fraction_of_capacity: 0.001953
+    fits_single:
+      M: 512*tile
+      K: tile
+      N: tile
+      rows: 8208
+      capacity_rows: 16384
+      fraction_of_capacity: 0.500977
+    spills:
+      M: 512*tile
+      K: 2*tile
+      N: 2*tile
+      rows: 16448
+      capacity_rows: 16384
+      fraction_of_capacity: 1.003906
+  regime_dtype: i8
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
     on a hardware-interlocked target nothing else will report it either -- the schedule is correct whatever
     it chooses
+host_only:
+  families:
+  - normalization
+  dtypes:
+    normalization: f32
+  observed_in:
+    normalization: 1146
+  basis: 'families a real capture contains and this target''s capability manifest does not admit. The
+    compiler must route them to the host lane; accelerating one is as much a defect as failing to accelerate
+    an admitted family. EMPTY means no negative lane is derivable for this target -- every family its
+    captures contain is admitted -- and never that none is needed: a target with an empty complement simply
+    cannot be asked this question, which is a different fact from passing it'
 diagnostics:
-  n_cells: 6
+  n_cells: 8
   captures_read:
   - gemma2_2b_int8
   - gemma2_2b_int8_full
@@ -287,15 +322,14 @@ diagnostics:
   families_observed_via_primitives: {}
   families_needed_but_not_admitted:
   - normalization
-  - reduction
   families_admitted_but_no_model_uses: []
   alignment_axis:
   - aligned
   - partial
   notes:
-  - 2 family/families appear in a real capture but the hardware declares no capability for them (normalization,
-    reduction); those are compiler work for the scalar/vector lane, not accelerator cells, and are excluded
-    from the requirement rather than silently counted as covered
+  - 1 family/families appear in a real capture but the hardware declares no capability for them (normalization);
+    those are compiler work for the scalar/vector lane, not accelerator cells, and are excluded from the
+    requirement rather than silently counted as covered
   axis_basis:
     semantic_family: observed in a real capture (or all of its primitives were)
     dtype: "ADMITTED ONLY \u2014 the captures are single-precision, so dtype demand is not observable\
@@ -478,3 +512,61 @@ cells:
   admitted_by:
   - systolic_mesh
   n_regions: 6330
+- cell: reduction/i8/aligned
+  family: reduction
+  dtype: i8
+  alignment: aligned
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - systolic_mesh
+  n_regions: 2356
+- cell: reduction/i8/partial
+  family: reduction
+  dtype: i8
+  alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - lstmnetvit_fp8
+  - lstmnetvit_int8
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  - tiny_llama_fp32_full
+  admitted_by:
+  - systolic_mesh
+  n_regions: 2356

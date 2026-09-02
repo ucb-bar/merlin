@@ -31,15 +31,37 @@ def _specs() -> list[str]:
 
 @pytest.mark.parametrize("target", _specs())
 def test_every_required_cell_becomes_an_entry(target):
-    """One entry per required cell, and the cell it came from is written on it. A synthesizer that
-    silently skipped a cell would leave the requirement uncovered while looking like it had run."""
+    """Every required cell produces an entry that NAMES it, and every other entry is attributable to a
+    declared axis. A synthesizer that silently skipped a cell would leave the requirement uncovered
+    while looking like it had run; one that emitted an entry no axis asked for would inflate the corpus
+    with capsules nothing demands.
+
+    Counting entries against cells was the original form of this check, and it stopped being right once
+    the requirement grew axes beyond family/dtype/alignment -- memory regime and the host-only lane each
+    produce entries of their own. Attribution is the stronger property anyway: it survives a new axis,
+    where a count does not."""
     doc = _spec(target)
     res = CS.synthesize(doc)
-    cells = [c["cell"] for c in (doc.get("cells") or ())]
-    assert len(res["capsules"]) == len(cells), (
-        f"{len(cells)} required cell(s) but {len(res['capsules'])} entry/entries")
-    for entry, cell in zip(res["capsules"], sorted(cells)):
-        assert cell in entry["source_reference"], "an entry must name the cell it was synthesized for"
+    cells = sorted(c["cell"] for c in (doc.get("cells") or ()))
+
+    by_cell = {}
+    other = []
+    for entry in res["capsules"]:
+        ref = entry.get("source_reference") or ""
+        hit = next((c for c in cells if c in ref), None)
+        if hit:
+            by_cell.setdefault(hit, []).append(entry)
+        else:
+            other.append(entry)
+    missing = [c for c in cells if c not in by_cell]
+    assert not missing, f"required cell(s) with no synthesized entry: {missing}"
+
+    #: Every non-cell entry must say which axis asked for it. These are the axis markers the
+    #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
+    axes = ("memory regime", "host-only family")
+    unattributed = [e["name"] for e in other
+                    if not any(a in (e.get("source_reference") or "") for a in axes)]
+    assert not unattributed, f"entries no declared axis asked for: {unattributed}"
 
 
 def test_a_family_no_op_expresses_raises_rather_than_dropping_the_cell():
@@ -113,8 +135,14 @@ def test_a_preference_cannot_widen_what_the_target_admits():
     assert prov["precision_preference_kept"] == ["i8"], (
         "the preference must be compared in the CAPSULE dtype spelling the cells use")
     assert set(prov["precision_preference_dropped"]) == {"fp8_e4m3", "bf16"}
-    dtypes = {e["operand_dtype"] for e in res["capsules"]}
-    assert dtypes <= {"i8"}, "no entry may use a dtype the requirement does not admit"
+    # ACCELERATOR entries only. A host-only entry is exempt BY CONSTRUCTION: its family is one the
+    # manifest admits no capability for, so it has no admitted dtype to draw on and takes the dtype the
+    # captures actually carry instead. Holding it to the admitted set would forbid the very capsule that
+    # proves the compiler leaves unadmitted work on the host.
+    accel = [e for e in res["capsules"]
+             if "on_mesh" not in ((e.get("lanes") or {}).get("forbid") or ())]
+    assert {e["operand_dtype"] for e in accel} <= {"i8"}, (
+        "no accelerator entry may use a dtype the requirement does not admit")
 
 
 def test_synthesis_is_deterministic():

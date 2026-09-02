@@ -6,8 +6,8 @@
 provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: gemmini
-  n_required_cells: 6
-  n_entries: 6
+  n_required_cells: 8
+  n_entries: 12
   budget: 160
   precision_preference_kept:
   - i8
@@ -17,10 +17,14 @@ provenance:
   - fp16
   - bf16
   - f32
-  memory_regimes_status: not_resolved
+  host_only_unsynthesizable: []
+  host_only_note: 'a host-only family with no materializable op or no dtype observed in any capture. Reported
+    rather than dropped: a negative lane nobody demanded reads downstream exactly like one nothing violates'
+  memory_regimes_status: resolved
   memory_regimes_unreachable: []
-  memory_regime_note: the spec carries no `regime_extents`; it predates the axis and must be regenerated
-    before a regime can be synthesized or declared unreachable
+  memory_regime_note: 'a regime with no capsule shape that reaches it on this target. `fits_on_reuse`
+    is always here: a capsule''s declared inputs are all live at once, so peak-live and total coincide
+    and the regime that separates them cannot arise from inputs alone'
   precision_note: a preference RANKS the dtypes the target already admits and can never widen them; a
     dropped token is reported rather than silently ignored
 capsules:
@@ -144,5 +148,139 @@ capsules:
   K: 2*tile
   N: tile-1
   pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_i8_aligned
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/i8/aligned (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes; reduction is admitted only in composition with ['contraction',
+    'movement'], so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be
+    refused by the eligibility oracle as a false fallback
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  epilogue:
+  - acc_scale
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_i8_partial
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/i8/partial (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes; reduction is admitted only in composition with ['contraction',
+    'movement'], so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be
+    refused by the eligibility oracle as a false fallback
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  epilogue:
+  - acc_scale
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_regime_fits_double
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for memory regime ''fits_double'': the declared inputs occupy 32 of 16384
+    operand-store rows (0.001953 of capacity), which is what puts this capsule in that regime. Extents
+    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with'
+  label: public
+  modes: {}
+  M: tile
+  K: tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_regime_fits_single
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for memory regime ''fits_single'': the declared inputs occupy 8208 of
+    16384 operand-store rows (0.500977 of capacity), which is what puts this capsule in that regime. Extents
+    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with'
+  label: public
+  modes: {}
+  M: 512*tile
+  K: tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_regime_spills
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for memory regime ''spills'': the declared inputs occupy 16448 of 16384
+    operand-store rows (1.003906 of capacity), which is what puts this capsule in that regime. Extents
+    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with'
+  label: public
+  modes: {}
+  M: 512*tile
+  K: 2*tile
+  N: 2*tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_only_normalization
+  op: rmsnorm
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source: pytorch
+  source_role: derived_sweep
+  source_reference: 'synthesized for host-only family ''normalization'': real captures contain it and
+    this target''s capability manifest admits no capability for it, so the compiler must leave it on the
+    host lane. dtype f32 is the one the captures carry for this family'
+  label: public
+  modes: {}
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    not_asserted_reason: the target declares no capability for this family; the capsule exists to prove
+      the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - host-seam
   - target-isa-lowering
   - tile-schedule
