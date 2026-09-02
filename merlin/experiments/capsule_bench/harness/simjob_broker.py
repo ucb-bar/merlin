@@ -53,7 +53,31 @@ try:
     CE = str(_CY / ".conda-env") if _CY else "/path/to/chipyard/.conda-env"
 except Exception:  # noqa: BLE001 — keep the broker importable even if merlin isn't on the path
     CE = "/path/to/chipyard/.conda-env"
-GLOBAL_VERIL_SLOTS = Path("/tmp/merlin_veril_slots")   # cross-arm verilator semaphore
+def _veril_slots_dir() -> Path:
+    """The cross-arm verilator semaphore directory, PER USER.
+
+    This was a fixed ``/tmp/merlin_veril_slots``. ``/tmp`` is world-writable with the sticky bit, so the
+    FIRST user on the host to run a bench owns that directory at mode 0775 -- and every other user's
+    broker is then locked out of creating a slot inside it. ``mkdir(exist_ok=True)`` hides the problem
+    completely: the mkdir succeeds because the directory already exists, and the PermissionError only
+    surfaces later, on the slot file, where it read as "the L3 infrastructure crashed".
+
+    Measured on the live round merlincirct_arm4_func_20260901_v4: the directory belonged to a different
+    user, so this host's agent could not acquire a verilator slot and therefore could not run L3 AT ALL
+    for two entire rounds. Zero of ~600 agent commands mentioned verilator; GM0/GM1 sat failing at L3
+    with no way for the agent to reproduce them; and the agent's own round report said "L3
+    infrastructure crashed on permission to /tmp/merlin_veril_slots/slot_0".
+
+    The semaphore only ever needed to keep THIS user's arms from oversubscribing verilator against each
+    other, never to coordinate across users. So honour ``TMPDIR`` -- which this project sets per user and
+    on the large filesystem, where working files are supposed to live -- and qualify by uid so the path
+    is still unsquattable if TMPDIR is unset or shared.
+    """
+    base = os.environ.get("TMPDIR") or "/tmp"
+    return Path(base) / f"merlin_veril_slots_{os.getuid()}"
+
+
+GLOBAL_VERIL_SLOTS = _veril_slots_dir()                # cross-arm (same-user) verilator semaphore
 _CAP_RE = re.compile(r"^[A-Za-z0-9_]+$")
 # debug-flag whitelist: symbolic name -> (currently a no-op passthrough; real sim args wired later).
 DEBUG_WHITELIST = {"trace", "cycles", "verbose"}
@@ -81,6 +105,7 @@ def _sim_env() -> dict:
     return e
 
 
+import tier_promote as _TP
 from tier_promote import promote as _promote, resolve_tiers as _resolve_tiers  # noqa: E402
 
 
@@ -94,8 +119,33 @@ def _strip_golden(obj):
     return obj
 
 
+class VerilSlotsUnusable(RuntimeError):
+    """The slot directory cannot be used at all -- distinct from every slot being busy."""
+
+
 def _veril_acquire(n_slots: int) -> Path | None:
-    GLOBAL_VERIL_SLOTS.mkdir(parents=True, exist_ok=True)
+    """A free slot, or None when they are all BUSY.
+
+    "All busy" and "the directory is not usable" must not look alike. Only FileExistsError used to be
+    caught, so a PermissionError propagated out of the broker and killed the job with a bare traceback --
+    the agent read that as the oracle being broken, which is exactly what it looked like. A directory we
+    cannot write is a configuration fault: name it, and name the remedy.
+    """
+    try:
+        GLOBAL_VERIL_SLOTS.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise VerilSlotsUnusable(
+            f"cannot create the verilator slot directory {GLOBAL_VERIL_SLOTS}: {e}") from e
+    if not os.access(GLOBAL_VERIL_SLOTS, os.W_OK):
+        import pwd
+        try:
+            owner = pwd.getpwuid(GLOBAL_VERIL_SLOTS.stat().st_uid).pw_name
+        except Exception:  # noqa: BLE001
+            owner = "another user"
+        raise VerilSlotsUnusable(
+            f"the verilator slot directory {GLOBAL_VERIL_SLOTS} exists but is not writable by "
+            f"{os.getuid()} (owner: {owner}). No verilator slot can be acquired, so no L3 job can run. "
+            f"Set TMPDIR to a directory you own (this project uses a per-user one under /scratch).")
     for i in range(n_slots):
         slot = GLOBAL_VERIL_SLOTS / f"slot_{i}"
         try:
@@ -103,7 +153,10 @@ def _veril_acquire(n_slots: int) -> Path | None:
             os.write(fd, str(os.getpid()).encode()); os.close(fd)
             return slot
         except FileExistsError:
-            continue
+            continue                                   # busy: try the next one
+        except PermissionError as e:
+            raise VerilSlotsUnusable(
+                f"cannot create {slot}: {e}. No L3 job can run until the slot directory is writable.") from e
     return None
 
 
@@ -202,7 +255,8 @@ def main(argv=None):
             tmp = j["resp_tmp"]
             try:
                 out = _strip_golden(json.loads(Path(tmp).read_text())) if Path(tmp).exists() else \
-                    {"error": "no verdict produced", "all_pass": False}
+                    {"error": f"no verdict produced (rc={rc}); child output in "
+                              f"simlog_{jid}.txt", "all_pass": False}
             except Exception as e:
                 out = {"error": f"verdict parse: {e}", "all_pass": False}
             if rc == 124:                                  # timeout exit
@@ -218,6 +272,20 @@ def main(argv=None):
                     _promote(ws, ch, out, _LOOP_TIER, _CERT_TIER, _COVER, sys.stderr)
                 except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
                     print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
+            elif j.get("promoted") and not out.get("error"):
+                # A promotion's own verdict: record it, so the cert this just PAID FOR on real RTL is
+                # kept instead of discarded. Without this the capsule stays `pending` forever and the
+                # same bytes are re-certified on the next loop verdict.
+                try:
+                    _TP.record_cert(ws, out, _CERT_TIER, sys.stderr)
+                except Exception as _re:  # noqa: BLE001 -- recording must never gate a run either
+                    print(f"[promote] record skipped: {type(_re).__name__}: {_re}",
+                          file=sys.stderr, flush=True)
+            if j.get("log"):
+                try:
+                    j["log"].close()
+                except Exception:  # noqa: BLE001 -- closing a log must never break the reap
+                    pass
             if j["slot"]:
                 j["slot"].unlink(missing_ok=True)
             running.pop(jid)
@@ -275,10 +343,17 @@ def main(argv=None):
                 if _tiers:                   # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
                 (ch / f"simrun_{jid}").write_text("running")
+                # KEEP THE CHILD'S OUTPUT. This was stdout/stderr=DEVNULL, so when a job exited without
+                # writing its verdict file the only trace was the broker's own "no verdict produced" --
+                # a job that failed and a job that produced nothing were indistinguishable, and the
+                # REASON was gone. Measured on merlincirct_arm4_func_20260901_v4: 19 promotion jobs
+                # answered "no verdict produced" with no diagnostic anywhere on disk. The log is
+                # per-job, beside the response, so a failure can be read after the fact.
+                job_log = (ch / f"simlog_{jid}.txt").open("wb")
                 proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
-                                        env=_sim_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                        env=_sim_env(), stdout=job_log, stderr=subprocess.STDOUT)
                 running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim,
-                                "promoted": bool(r.get("promoted"))}
+                                "promoted": bool(r.get("promoted")), "log": job_log}
                 claimed.add(jid)
         time.sleep(a.poll)
     # drain on STOP

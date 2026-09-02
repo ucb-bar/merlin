@@ -35,7 +35,17 @@ capsule_corpus: merlin/contract/capsules/isa
 # is absent from every declared Gemmini capability.  Everything admitted after this boundary must reach
 # the formal L3 tier; the post-freeze grader rejects even one unmeasured admitted capsule.
 grading:
-  exclude_capsules:
+  # Cardinalities are frozen without making the hidden names public. Any source-pool deletion/addition,
+  # or any cohort filter that moves a row outside this declared boundary, makes readiness fail closed.
+  expected_cohort:
+    source_capsules: 48
+    admitted_capsules: 34
+  hidden_capability_admission:
+    source_capsules: 11
+    admitted_capsules: 10
+  # Exactly the source-pool rows the frozen Gemmini operand capabilities prove ineligible. Readiness
+  # recomputes this set from the hardware contract and requires exact equality.
+  capability_exclude_capsules:
     - GC1_depthwise_bf16_pt
     - GC2_maxpool_bf16_pt
     - GC3_avgpool_bf16_pt
@@ -47,6 +57,18 @@ grading:
     - GF3_geglu_bf16_pt
     - GF4_add_bf16_pt
     - GF5_gelu_bf16_pt
+  resource_bound:
+    # Legacy full-size capstones are retained in the source pool but excluded by an explicit resource
+    # policy, not by the hardware predicate. M2 is the L3-affordable full-model representative and M3
+    # is the focused accelerator->host->accelerator seam; both run without a model time ceiling.
+    policy: representative_l3_capstones_v1
+    exclude_capsules:
+      - GX0_interop_rvv_lane
+      - M0_small_llama_gemmini
+      - M1_lstmnetvit_gemmini
+    required_admitted_models:
+      - M2_microvit_gemmini
+      - M3_host_island_seam_gemmini
 
 # Prior backends / reference exemplars the agent must NOT read or copy (denied answer surfaces). This is
 # an experiment CHOICE (which finished backends to hide), so it is declared here rather than derived.

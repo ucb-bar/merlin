@@ -4,8 +4,8 @@ Promotes the per-experiment gemmini sandbox to target-agnostic infra: a new targ
 continuously-guarded sandbox from its ``target_experiment.yaml`` (+ capability manifest) with ZERO copied
 scripts. Routing is by compute-unit KIND / sim FAMILY (never a target name):
 
-  * :mod:`.answer_surfaces` — the DERIVED answer-surface mask set (goldens/hidden/prior/oracle/grader/
-    memory) + the single declared oracle/grader registry + the coverage guard's audit tokens.
+  * :mod:`.answer_surfaces` — the DERIVED answer-surface mask set (goldens/model weights/hidden/prior/
+    oracle/grader/memory) + the single declared oracle/grader registry + the coverage guard's audit tokens.
   * :mod:`.toolchain`       — the legit tools bound back, universal + the descriptor's ``sim_via`` family,
     cross-checked by ``kind`` via :mod:`merlin.targetgen.families`.
   * :mod:`.bwrap`           — deny-by-default argv assembly + the hermetic mount-replay coverage proof.
@@ -21,12 +21,12 @@ import yaml
 
 from merlin.targetgen.sandbox import bwrap, toolchain
 from merlin.targetgen.sandbox.answer_surfaces import (AnswerSurface, answer_surfaces, audit_tokens,
-                                                      golden_files)
+                                                      golden_files, weight_files)
 from merlin.targetgen.sandbox.toolchain import ToolProbe, required_tool_probes
 from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
 
 __all__ = ["Sandbox", "build_sandbox", "resolve_kind", "AnswerSurface", "ToolProbe",
-           "answer_surfaces", "audit_tokens", "golden_files", "required_tool_probes"]
+           "answer_surfaces", "audit_tokens", "golden_files", "weight_files", "required_tool_probes"]
 
 
 def resolve_kind(te: TargetExperiment) -> str | None:

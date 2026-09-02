@@ -156,6 +156,38 @@ related, code_refs`). **Point-in-time reports** (results/findings/status/present
   `check_docs_freshness.py --json` and fixed by the **`docs-doctor`** skill (reconcile, then bump the date).
 - Enable the pre-commit gate per clone: `python build_tools/scripts/install_git_hooks.py`.
 
+# Experiment-run convention — one continuous session, per-capsule tiering
+
+A capsule-bench run uses **`--schedule continuous` with a long `--round-timeout`** (e.g. 43200). In that
+mode the round COUNT is not a terminator: the run stops on EVIDENCE (converged, plateaued) or a declared
+budget, `--max-rounds` is ignored, and the post-freeze public+hidden L3 grade still runs — so a formal
+success is reachable. Use a long round timeout so agent sessions are long and barriers are rare.
+
+**Do NOT use `--continuous`.** It is a legacy single-session path: it keeps one session and re-grades
+underneath it, but it does not run the post-freeze public+hidden grade, returns 1, and hardcodes
+`formal_complete=False`. Measured 2026-09-01: launched that way, both gemmini sessions closed after
+~1.5 h at 18/33 with `grades=2` when the AGENT stopped — well inside a 12 h `--round-timeout` — and no
+formal verdict was reachable.
+
+Three properties are **gated, not documented-and-hoped-for**
+(`merlin/tests/infra/test_continuous_is_the_default.py`, `test_promotion_wiring.py`):
+
+1. **No round barrier** — a background grader re-grades a *snapshot copy* every `--grade-interval`
+   seconds and refreshes `qa/verdict.json`, so feedback reaches the agent while it works.
+2. **Per-capsule tiering, never a batch** — `capsule_runner` walks each capsule cheapest-first, so a
+   capsule clearing the loop tier (L2) continues to the cert tier (L3) *in the same grade*; and
+   `tier_promote.promote` enqueues a cert job the moment a loop verdict lands, so **capsule 2's L3
+   starts while the agent is still on capsule 1's L2**.
+3. **The certificate is kept** — `tier_promote.record_cert` resolves the `pending` entry against the
+   digest of the bytes that earned it (never re-hashed, so a cert is not re-attributed to bytes edited
+   since). An unattributable result is *not recorded* rather than guessed.
+
+Promotion is deliberately wrapped in a `try/except` so it can never gate a run — which is exactly why
+a broken promotion is indistinguishable from an idle one. Five separate defects hid in that one path
+(a rejected sim name, a `/tmp` slot dir owned by another user, an unrecognised child flag, discarded
+child output, an unrecorded cert), and every one presented as "nothing needed promoting". If you touch
+this path, add a test; a comment cannot detect silence. See `.claude/skills/capsule-run-shape/SKILL.md`.
+
 # Commit message convention
 
 Commit messages describe the **change to the code/files** and read as if a human developer wrote them.

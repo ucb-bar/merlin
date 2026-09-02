@@ -714,7 +714,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         # mesh_unavailable seeded to 0 alongside the rest: absent it reads as UNKNOWN downstream,
         # which is the right answer for "nobody could tell" but the wrong one for "none occurred".
         mesh_counts.update(mesh_ran=0, mesh_fell_back=0, mesh_unrouted_matmuls=_unrouted,
-                           mesh_routed=len(mesh_routes), mesh_unavailable=0)
+                           mesh_routed=len(mesh_routes), mesh_unavailable=0,
+                           mesh_route_symbols=sorted(mesh_routes), dispatch_ledger=[])
         execute.last_mesh_routed = len(mesh_routes)
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
@@ -750,6 +751,19 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         # Ride this run's own counters, not a module-global attribute a concurrent grade would clobber.
         # Same list object, so the appends below land in both.
         mesh_counts["mesh_capacity_fit_delegated"] = execute.mesh_capacity_fit_delegated
+
+    def _record_dispatch(symbol: str, lane: str, **evidence) -> None:
+        """Append one unbounded, ordered entry for one *completed* dynamic kernel call.
+
+        Aggregate counters and a routing plan cannot prove ordering or host/accelerator seams.  This
+        ledger is owned by the runtime, populated only after the selected lane completes, and returned
+        with this invocation's counters (never a module-global shared across concurrent grades).
+        """
+        if kernel_backend != "mesh":
+            return
+        ledger = mesh_counts.setdefault("dispatch_ledger", [])
+        ledger.append({"ordinal": len(ledger), "symbol": symbol, "lane": lane,
+                       "status": "pass", **evidence})
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -839,6 +853,8 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
 
     def run_call(op):
         symbol, outs = _kernel_io(op)
+        host_lane = "scalar_rvv_lane"
+        host_evidence: dict = {}
         route = xnn_routes.get(symbol)
         if route is not None:
             from .backends import xnnpack_host
@@ -847,6 +863,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             b = np.ascontiguousarray(env[id(op.operands[route["b"]])], np.float32)
             out = xnnpack_host.gemm_f32(a, b).reshape(outs[0][0]).astype(outs[0][1])
             env[id(op.results[0])] = out
+            _record_dispatch(symbol, "scalar_rvv_lane", executor="xnnpack_host")
             if tap is not None:
                 tap(op, [out])
             return
@@ -857,6 +874,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             a = np.ascontiguousarray(env[id(op.operands[mroute["a"]])])
             b = np.ascontiguousarray(env[id(op.operands[mroute["b"]])])
             mesh_out = None
+            _obs: dict = {}
             binding = mesh_dp or mesh_datapath(mesh_target)
             op_dt, acc_dt, integer = binding.operand_dtype, binding.accum_dtype, bool(binding.integer)
             mesh_et = binding.mlir_dtype(op_dt)
@@ -894,7 +912,6 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 # extent, why it declined, whether the runtime had to discharge a capacity_fit obligation
                 # the backend owes. Read from the call rather than a module global, so a concurrent grade
                 # cannot attribute one model's decline to another model's layer.
-                _obs: dict = {}
                 # THE BACKEND UNDER TEST MUST REACH THE MESH. Without it this resolved to the
                 # target's DEFAULT package -- which for a target that ships none is no oracle at all, so
                 # every layer returned None with no verdict and was recorded as a host fallback. That is
@@ -927,6 +944,13 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
                     mesh_counts["mesh_ran"] = mesh_counts.get("mesh_ran", 0) + 1
                     execute.mesh_ran = getattr(execute, "mesh_ran", 0) + 1
+                    _record_dispatch(
+                        symbol, "on_mesh", lhs_shape=list(a.shape), rhs_shape=list(b.shape),
+                        oracle_evidence=_obs.get("oracle_evidence"),
+                        trace_check=_obs.get("trace_check"),
+                        artifact_identity=_obs.get("artifact_identity"),
+                        cert_run_id=_obs.get("cert_run_id"),
+                        capacity_fit=_obs.get("capacity_fit"))
                     if tap is not None:
                         tap(op, [env[id(op.results[0])]])
                     return
@@ -973,8 +997,12 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                     _ud.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
                                 "reason": _why})
                 _unavailable = True
+                host_lane = "mesh_unavailable"
             else:
                 _unavailable = False
+                host_lane = "host_fallback"
+            host_evidence = {"lhs_shape": list(a.shape), "rhs_shape": list(b.shape),
+                             "mesh_decline": _why}
             if not _unavailable:
                 # Name the layer, not just the count. "4 layers fell back" gives a reader nothing to act on;
                 # the SHAPES say whether the cause is one extent the backend cannot take or four different
@@ -1032,6 +1060,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         model(args)
         for r, o in zip(op.results, out_arrays):
             env[id(r)] = o
+        _record_dispatch(symbol, host_lane, **host_evidence)
         if tap is not None:
             tap(op, out_arrays)
 

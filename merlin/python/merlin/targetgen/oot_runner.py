@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import datetime as _dt
+import hashlib
 import json
 import subprocess
 import sys
@@ -465,10 +466,41 @@ def _package_target(package_dir: str | Path, default: str = DEFAULT_TARGET) -> s
     return default
 
 
+def _cert_artifact_identity(paths: RunPaths, run_id: str) -> dict[str, Any]:
+    """Content-address the exact compiler/oracle artifacts produced by one certification.
+
+    Model grading reuses shape-keyed run directories, so a pathname is not an immutable identity.  The
+    ordered digest below binds the dispatch evidence to the command buffer, lowered LLVM, object, ELF and
+    decoded trace bytes that actually existed when the cert returned.  Missing artifacts are explicit;
+    callers decide which set is mandatory for their endpoint.
+    """
+    candidates = {
+        "input_interface": paths.generated / "input.interface.mlir",
+        "command_buffer": paths.generated / "command_buffer.json",
+        "lowered_llvm": paths.generated / "lowered.llvm.mlir",
+        "kernel_object": paths.generated / "kernel.o",
+        "package_kernel_elf": paths.generated / "package_kernel.elf",
+        "instruction_trace": paths.generated / "instruction_trace.json",
+    }
+    artifacts: dict[str, dict[str, Any]] = {}
+    missing: list[str] = []
+    for name, path in candidates.items():
+        if not path.is_file():
+            missing.append(name)
+            continue
+        data = path.read_bytes()
+        artifacts[name] = {"sha256": hashlib.sha256(data).hexdigest(),
+                           "size_bytes": len(data)}
+    canonical = json.dumps(artifacts, sort_keys=True, separators=(",", ":")).encode()
+    return {"version": 1, "run_id": run_id, "content_sha256": hashlib.sha256(canonical).hexdigest(),
+            "artifacts": artifacts, "missing": missing}
+
+
 def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: str | Path,
             run_id: str, simulator: str = "spike", contract: str | Path | None = None,
             seed: int = 0, timeout: int = 600, target: str | None = None,
-            inputs: dict | None = None) -> dict[str, Any]:
+            inputs: dict | None = None,
+            require_accelerator_trace: bool = False) -> dict[str, Any]:
     """Run the K-ladder for one (package, interface input) and record an aet run dir.
 
     Returns the results dict (also written as results.yaml). Never raises for a package/gate
@@ -501,6 +533,9 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     oracle = {"kind": "none", "derived_from_rtl": False, "cycle_accurate": False,
               "result": "skipped", "cycles": None}
     oracle_outputs: dict | None = None      # the mesh's actual output values (for in-process callers)
+    trace_check = {"required": bool(require_accelerator_trace), "status": "not_required",
+                   "drives_accelerator": None, "n_instructions": 0}
+    artifact_identity: dict[str, Any] = {}
     artifacts_recorded: dict[str, bool] = {}
     failure: dict[str, Any] | None = None
     status = "pass"
@@ -579,6 +614,36 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         llvm_path.write_text(p.stdout, encoding="utf-8")
         entry["lower_target_to_llvm"] = "pass"
 
+        # A whole-model mesh certificate is stronger than the generic OOT K-ladder: the exact LLVM it
+        # is about must contain an instruction claimed by the target accelerator decoder.  Verilator
+        # executing an RV64 program is not sufficient by itself -- a CPU-only kernel can compute the
+        # injected operands correctly and never touch the accelerator.  Decode runner-side, persist the
+        # full trace, and fail before the oracle if the artifact does not drive the accelerator.
+        if require_accelerator_trace:
+            from .rocc import decode as _rd
+            from . import trace_check as _tck
+            try:
+                trace = _rd.decode_text(p.stdout, source=str(llvm_path), target=target)
+                trace_path = paths.generated / "instruction_trace.json"
+                trace_path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
+                schemas.validate(trace, "instruction_trace", contract=contract)
+            except Exception as exc:  # noqa: BLE001 -- decode/schema failure is absence of proof
+                # Decoder and schema failures are harness-visible absence of proof, never an internal
+                # crash/pass.
+                raise CertFailure("trace_check", FailureCategory.PROTOCOL_VIOLATION,
+                                  f"exact lowered LLVM could not be decoded as an accelerator trace: "
+                                  f"{type(exc).__name__}: {str(exc)[-500:]}") from exc
+            drives = bool(_tck.drives_accelerator(trace))
+            ins = trace.get("instructions", []) if isinstance(trace, dict) else []
+            trace_check = {"required": True, "status": "pass" if drives else "fail",
+                           "drives_accelerator": drives, "n_instructions": len(ins),
+                           "classes": sorted({str(i.get("class")) for i in ins
+                                              if isinstance(i, dict) and i.get("class")})}
+            if not drives:
+                raise CertFailure("trace_check", FailureCategory.PROTOCOL_VIOLATION,
+                                  "exact lowered LLVM emitted no decoded accelerator instruction; "
+                                  "a CPU-only program cannot certify a model mesh dispatch")
+
         from merlin.llvmlower import toolchain as llvm_tc
         if llvm_tc.available():
             try:
@@ -620,6 +685,18 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
             oracle["result"] = "skipped"
             oracle["kind"] = f"{simulator}_unavailable"
 
+        artifact_identity = _cert_artifact_identity(paths, run_id)
+        if require_accelerator_trace and oracle.get("result") == "pass":
+            required_identity = {"input_interface", "command_buffer", "lowered_llvm",
+                                 "kernel_object", "package_kernel_elf", "instruction_trace"}
+            missing_identity = sorted(required_identity - set(artifact_identity.get("artifacts", {})))
+            if missing_identity:
+                raise CertFailure("artifact_identity", FailureCategory.PROTOCOL_VIOLATION,
+                                  "successful model mesh cert is missing exact artifact identity for "
+                                  + ", ".join(missing_identity))
+            trace_check["artifact_sha256"] = artifact_identity["artifacts"][
+                "instruction_trace"]["sha256"]
+
     except CertFailure as cf:
         status = "fail"
         failure = {"plane": cf.plane, "category": cf.category.value, "detail": cf.detail}
@@ -627,6 +704,9 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         status = "error"
         failure = {"plane": "runner_internal", "category": FailureCategory.RUNNER_CRASH.value,
                    "detail": f"{type(e).__name__}: {e}"}
+
+    if not artifact_identity:
+        artifact_identity = _cert_artifact_identity(paths, run_id)
 
     _record(paths, run_id, rung, simulator, status, cb, shas, oracle, entry, semantic,
             artifacts_recorded, failure, seed, target)
@@ -637,6 +717,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         "contract": {"version": CONTRACT_VERSION, "package_valid": failure is None or
                      (failure.get("plane") not in ("contract",))},
         "entrypoints": entry, "semantic_checks": semantic, "oracle": oracle,
+        "trace_check": trace_check, "artifact_identity": artifact_identity,
         "artifacts_recorded": artifacts_recorded, "failure": failure,
     }
     (paths.run_path / "results.yaml").write_text(yaml.safe_dump(results, sort_keys=False),
@@ -693,6 +774,9 @@ def _record(paths: RunPaths, run_id: str, rung: str, simulator: str, status: str
         (paths.generated / "command_buffer.json", ArtifactOrigin.COMPILER_GENERATED, "command_buffer"),
         (paths.generated / "lowered.llvm.mlir", ArtifactOrigin.COMPILER_GENERATED, "llvm_ir"),
         (paths.generated / "kernel.o", ArtifactOrigin.COMPILER_GENERATED, "object"),
+        (paths.generated / "package_kernel.elf", ArtifactOrigin.COMPILER_GENERATED, "executable"),
+        (paths.generated / "instruction_trace.json", ArtifactOrigin.COMPILER_GENERATED,
+         "instruction_trace"),
         (paths.artifacts_dir / "console.log", ArtifactOrigin.ORACLE_OUTPUT, "log"),
     ]
     for p, origin, kind in origin_map:

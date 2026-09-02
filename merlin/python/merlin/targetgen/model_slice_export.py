@@ -28,12 +28,54 @@ def _dt(odt: str) -> str:
     return odt
 
 
+_POOL_ATTR_ARITY = {
+    "pool_in_dims": 2,
+    "pool_size": 2,
+    "pool_stride": 2,
+    "pool_padding": 4,
+}
+
+
+def _pool_commit_attrs(pool_attrs: dict[str, Any]) -> str:
+    """Validate and render the fused-pool attributes carried by ``merlin_iface.commit``.
+
+    The corpus builder has already derived this geometry, but the emitter is also a public seam used by
+    model-slice exporters.  Validate it again here so neither a missing window nor an attribute the
+    interface grammar will ignore can produce a plausible-looking unpooled module.
+    """
+    if not isinstance(pool_attrs, dict):
+        raise ValueError("pool_attrs must be a mapping of fused maxpool geometry")
+    allowed = set(_POOL_ATTR_ARITY) | {"pool_pad_value"}
+    unknown = sorted(set(pool_attrs) - allowed)
+    if unknown:
+        raise ValueError(f"unsupported fused maxpool attribute(s): {unknown}")
+    missing = sorted(set(_POOL_ATTR_ARITY) - set(pool_attrs))
+    if missing:
+        raise ValueError(f"pool_attrs missing required fused maxpool attribute(s): {missing}")
+
+    rendered = ""
+    for name, arity in _POOL_ATTR_ARITY.items():
+        value = pool_attrs[name]
+        if (not isinstance(value, (list, tuple)) or len(value) != arity
+                or any(not isinstance(x, int) or isinstance(x, bool) for x in value)):
+            raise ValueError(f"{name} must contain exactly {arity} integers, got {value!r}")
+        rendered += f", {name} = [{', '.join(str(x) for x in value)}]"
+    if "pool_pad_value" in pool_attrs:
+        value = pool_attrs["pool_pad_value"]
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"pool_pad_value must be an integer, got {value!r}")
+        rendered += f", pool_pad_value = {value} : i64"
+    return rendered
+
+
 def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: int,
                         epilogue: list[str], output_dtype: str,
                         acc_scale: float | None = None, comment: str = "",
                         target: str = "gemmini", operand_dtype: str = "i8",
                         acc_dtype: str = "i32", scale_block: int | None = None,
-                        scale_dtype: str = "i8") -> str:
+                        scale_dtype: str = "i8",
+                        pool_attrs: dict[str, Any] | None = None,
+                        commit_rows: int | None = None) -> str:
     """Emit a single-matmul merlin_iface module (weight-stationary). ``target``/``operand_dtype``/
     ``acc_dtype`` default to the gemmini integer path (so existing callers are byte-identical); pass the
     target's derived MLIR dtype spellings (e.g. ``f8E4M3FN``/``bf16`` for a float MXU) to emit its ISA.
@@ -42,11 +84,34 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
     elements. A microscaling operand is (elements, per-block scales) -- declaring only the elements, as
     this interface used to, hands a backend half a number and asks it for the product, which no compiler
     can supply. When set, the two scale streams are declared as first-class input tensors alongside the
-    operands they scale. Omitted (None) leaves the module byte-identical for an unscaled target."""
+    operands they scale. Omitted (None) leaves the module byte-identical for an unscaled target.
+
+    A ``maxpool`` commit must carry both ``pool_attrs`` and the derived ``commit_rows``. Pooling changes
+    the result extent, so rendering the geometry while retaining ``M`` in the result type would encode
+    two contradictory programs. Conversely, pool geometry without the stage is rejected as unread
+    metadata rather than silently emitted."""
+    has_maxpool = "maxpool" in epilogue
+    if has_maxpool and pool_attrs is None:
+        raise ValueError("a maxpool epilogue requires pool_attrs and its derived commit_rows")
+    if not has_maxpool and pool_attrs is not None:
+        raise ValueError("pool_attrs require a maxpool epilogue stage")
+    if has_maxpool:
+        if not isinstance(commit_rows, int) or isinstance(commit_rows, bool) or commit_rows < 1:
+            raise ValueError(
+                f"a maxpool epilogue requires a positive integer commit_rows, got {commit_rows!r}")
+        pool_text = _pool_commit_attrs(pool_attrs)
+    else:
+        if commit_rows is not None and commit_rows != M:
+            raise ValueError(
+                f"commit_rows={commit_rows} changes the matmul result extent without a maxpool epilogue")
+        commit_rows = M
+        pool_text = ""
+
     epi = ", ".join(f'"{e}"' for e in epilogue)
     commit_attrs = f'name = "{out}", epilogue = [{epi}], output_dtype = "{output_dtype}"'
     if acc_scale is not None:
         commit_attrs += f", acc_scale = {acc_scale} : f32"
+    commit_attrs += pool_text
     lines = []
     if comment:
         lines.append(f"// {comment}")
@@ -74,7 +139,7 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
         f'  %acc0 = merlin_iface.matmul %{lhs}, %{weight}_res '
         f': (tensor<{M}x{K}x{operand_dtype}>, !merlin_iface.resident) -> !merlin_iface.acc<{acc_dtype}>',
         f'  %{out} = merlin_iface.commit %acc0 {{{commit_attrs}}} '
-        f': (!merlin_iface.acc<{acc_dtype}>) -> tensor<{M}x{N}x{_dt(output_dtype)}>',
+        f': (!merlin_iface.acc<{acc_dtype}>) -> tensor<{commit_rows}x{N}x{_dt(output_dtype)}>',
         f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()',
         "}",
     ]

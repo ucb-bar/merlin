@@ -18,6 +18,7 @@ and grades the package against all of them. Omit the flag and the target's own g
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -30,6 +31,287 @@ from .capsule_common import tier_status as _tier_status
 from . import coverage_report as CV
 from .corpora import source_experiment_env
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
+
+
+def _name_set_sha256(names) -> str:
+    return hashlib.sha256(
+        json.dumps(sorted(str(x) for x in names), separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _materialized_cohort_admission(capsules_root, discovered: list[dict], *,
+                                   expected_descriptor_sha256: str | None = None) -> dict | None:
+    """Load and validate a materializer-sealed public cohort boundary, when present."""
+    roots = capsules_root if isinstance(capsules_root, (list, tuple)) else [capsules_root]
+    records = [Path(root) / ".cohort_admission.json" for root in roots
+               if (Path(root) / ".cohort_admission.json").is_file()]
+    if not records:
+        return None
+    if len(records) != 1:
+        raise ValueError(f"expected one materialized cohort admission record, found {records}")
+    record = json.loads(records[0].read_text(encoding="utf-8"))
+    if not isinstance(record, dict) or record.get("version") != 1:
+        raise ValueError(f"malformed materialized cohort admission record at {records[0]}")
+    ints = ("n_source_capsules", "n_admitted_capsules", "n_capability_excluded",
+            "n_resource_excluded")
+    if any(not isinstance(record.get(k), int) or isinstance(record.get(k), bool)
+           or record[k] < 0 for k in ints):
+        raise ValueError("materialized cohort admission has malformed counts")
+    if record["n_source_capsules"] != (record["n_admitted_capsules"]
+                                        + record["n_capability_excluded"]
+                                        + record["n_resource_excluded"]):
+        raise ValueError("materialized cohort admission arithmetic is inconsistent")
+    names = [str(cap.get("name")) for cap in discovered]
+    if record["n_admitted_capsules"] != len(names):
+        raise ValueError("materialized cohort admitted count does not match discovered capsules")
+    if record.get("admitted_name_set_sha256") != _name_set_sha256(names):
+        raise ValueError("materialized cohort admitted-name digest does not match its contents")
+    for field in ("excluded_name_set_sha256", "admitted_name_set_sha256", "descriptor_sha256"):
+        digest = record.get(field)
+        if (not isinstance(digest, str) or len(digest) != 64
+                or any(ch not in "0123456789abcdef" for ch in digest)):
+            raise ValueError(f"materialized cohort {field} is malformed")
+    if (expected_descriptor_sha256 is not None
+            and record.get("descriptor_sha256") != expected_descriptor_sha256):
+        raise ValueError(
+            "materialized cohort descriptor digest does not match the target descriptor used for grade")
+    if record.get("policy") == "descriptor_capability_and_resource_v1":
+        if record.get("resource_policy") != "representative_l3_capstones_v1":
+            raise ValueError("materialized cohort has an unapproved resource-exclusion policy")
+        required = record.get("required_admitted_models")
+        if not isinstance(required, list) or not required:
+            raise ValueError("materialized cohort does not name its required admitted model capstones")
+        if not set(str(x) for x in required).issubset(names):
+            raise ValueError("materialized cohort is missing a required admitted model capstone")
+    return record
+
+
+def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
+    """Return the model capsule's honest structural/effect evidence.
+
+    Operator capsules have one emitted kernel, so their decoded instruction trace is the appropriate
+    structural check. A model capsule is a composition of many accelerator kernels and host islands,
+    so its equivalent proof is an ordered dynamic dispatch ledger. Every accelerator entry must bind
+    the exact decoded trace, RTL fidelity and content-addressed compiler artifacts; aggregate counters,
+    independently synthesized tiles and the declared host/accelerator seam must all agree with it.
+    Missing/malformed evidence fails closed.
+    """
+    violations: list[str] = []
+    execution = result.get("mesh_execution")
+    tiles = result.get("mesh_tile_verification")
+
+    def _count(record, field: str, *, minimum: int = 0) -> int | None:
+        value = record.get(field) if isinstance(record, dict) else None
+        if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+            violations.append(f"{field}_missing_or_malformed")
+            return None
+        return value
+
+    def _valid_digest(value) -> bool:
+        return (isinstance(value, str) and len(value) == 64 and value == value.lower()
+                and all(ch in "0123456789abcdef" for ch in value))
+
+    required_artifacts = {"input_interface", "command_buffer", "lowered_llvm", "kernel_object",
+                          "package_kernel_elf", "instruction_trace"}
+
+    def _check_exact_cert(record: dict, prefix: str) -> None:
+        trace = record.get("trace_check") if isinstance(record, dict) else None
+        if (not isinstance(trace, dict) or trace.get("status") != "pass"
+                or trace.get("drives_accelerator") is not True
+                or not isinstance(trace.get("n_instructions"), int)
+                or isinstance(trace.get("n_instructions"), bool)
+                or trace.get("n_instructions", 0) < 1):
+            violations.append(f"{prefix}_accelerator_trace_missing_or_invalid")
+        oracle = record.get("oracle_evidence") if prefix == "model_call" else {
+            "result": record.get("oracle_result"),
+            "derived_from_rtl": record.get("derived_from_rtl"),
+            "cycle_accurate": record.get("cycle_accurate"),
+        }
+        if (not isinstance(oracle, dict) or oracle.get("result") != "pass"
+                or oracle.get("derived_from_rtl") is not True
+                or oracle.get("cycle_accurate") is not True):
+            violations.append(f"{prefix}_oracle_fidelity_missing_or_invalid")
+        identity = record.get("artifact_identity") if isinstance(record, dict) else None
+        artifacts = identity.get("artifacts") if isinstance(identity, dict) else None
+        if (not isinstance(identity, dict) or identity.get("version") != 1
+                or not isinstance(identity.get("run_id"), str) or not identity.get("run_id")
+                or not isinstance(artifacts, dict)
+                or set(artifacts) < required_artifacts):
+            violations.append(f"{prefix}_artifact_identity_missing_or_invalid")
+            return
+        for name in required_artifacts:
+            item = artifacts.get(name)
+            if (not isinstance(item, dict) or not _valid_digest(item.get("sha256"))
+                    or not isinstance(item.get("size_bytes"), int)
+                    or isinstance(item.get("size_bytes"), bool) or item["size_bytes"] < 1):
+                violations.append(f"{prefix}_artifact_digest_missing_or_invalid")
+                return
+        canonical = json.dumps(artifacts, sort_keys=True, separators=(",", ":")).encode()
+        if identity.get("content_sha256") != hashlib.sha256(canonical).hexdigest():
+            violations.append(f"{prefix}_artifact_identity_digest_mismatch")
+        if isinstance(trace, dict) and trace.get("artifact_sha256") != artifacts[
+                "instruction_trace"]["sha256"]:
+            violations.append(f"{prefix}_trace_artifact_digest_mismatch")
+        if prefix == "model_call" and record.get("cert_run_id") != identity.get("run_id"):
+            violations.append("model_call_cert_run_identity_mismatch")
+
+    routed = _count(execution, "matmul_layers_routed", minimum=1)
+    on_mesh = _count(execution, "matmul_layers_on_mesh", minimum=1)
+    fallback = _count(execution, "matmul_layers_host_fallback")
+    unavailable = _count(execution, "matmul_layers_oracle_unavailable")
+    unrouted = _count(execution, "matmul_layers_unrouted")
+    # ``routed`` counts static kernel symbols while ``on_mesh`` counts dynamic calls, so equality is
+    # not a valid invariant for loops/reuse.  Nonzero on both sides plus zero fallback/unavailable/
+    # unrouted is the unit-correct obligation for the captured model execution.
+    if fallback not in (None, 0):
+        violations.append("eligible_model_layer_fell_back_to_host")
+    if unavailable not in (None, 0):
+        violations.append("model_layer_oracle_unavailable")
+    if unrouted not in (None, 0):
+        violations.append("model_contraction_layer_unrouted")
+
+    ledger = execution.get("dispatch_ledger") if isinstance(execution, dict) else None
+    mesh_entries: list[dict] = []
+    fallback_entries: list[dict] = []
+    unavailable_entries: list[dict] = []
+    scalar_entries: list[dict] = []
+    if not isinstance(ledger, list) or not ledger:
+        violations.append("dynamic_dispatch_ledger_missing_or_malformed")
+        ledger = []
+    else:
+        allowed = {"on_mesh", "scalar_rvv_lane", "host_fallback", "mesh_unavailable"}
+        cert_run_contents: dict[str, str] = {}
+        for ordinal, entry in enumerate(ledger):
+            if (not isinstance(entry, dict) or entry.get("ordinal") != ordinal
+                    or not isinstance(entry.get("symbol"), str) or not entry.get("symbol")
+                    or entry.get("lane") not in allowed or entry.get("status") != "pass"):
+                violations.append("dynamic_dispatch_ledger_entry_missing_or_malformed")
+                continue
+            lane = entry["lane"]
+            if lane == "on_mesh":
+                mesh_entries.append(entry)
+                _check_exact_cert(entry, "model_call")
+                # A run id names the durable artifact directory.  Reusing it is safe only for the same
+                # exact content; a repeated shape with different operands otherwise overwrites call A
+                # with call B while both stale identities remain in the ledger.
+                run_id = entry.get("cert_run_id")
+                identity = entry.get("artifact_identity")
+                content = identity.get("content_sha256") if isinstance(identity, dict) else None
+                if isinstance(run_id, str) and isinstance(content, str):
+                    previous = cert_run_contents.setdefault(run_id, content)
+                    if previous != content:
+                        violations.append("model_call_run_id_content_collision")
+            elif lane == "host_fallback":
+                fallback_entries.append(entry)
+            elif lane == "mesh_unavailable":
+                unavailable_entries.append(entry)
+            else:
+                scalar_entries.append(entry)
+    if on_mesh is not None and len(mesh_entries) != on_mesh:
+        violations.append("model_mesh_counter_ledger_mismatch")
+    if fallback is not None and len(fallback_entries) != fallback:
+        violations.append("model_fallback_counter_ledger_mismatch")
+    if unavailable is not None and len(unavailable_entries) != unavailable:
+        violations.append("model_unavailable_counter_ledger_mismatch")
+    route_symbols = execution.get("mesh_route_symbols") if isinstance(execution, dict) else None
+    if (not isinstance(route_symbols, list) or not route_symbols
+            or any(not isinstance(x, str) or not x for x in route_symbols)
+            or len(set(route_symbols)) != len(route_symbols)
+            or (routed is not None and len(route_symbols) != routed)):
+        violations.append("mesh_route_symbol_evidence_missing_or_malformed")
+    else:
+        attempted = {e["symbol"] for e in mesh_entries + fallback_entries + unavailable_entries}
+        if attempted != set(route_symbols):
+            violations.append("static_dynamic_mesh_route_mismatch")
+
+    n_tiles = _count(tiles, "n_tiles", minimum=1)
+    n_passed = _count(tiles, "n_passed")
+    n_failed = _count(tiles, "n_failed")
+    n_unavailable = _count(tiles, "n_unavailable")
+    n_unsynth = _count(tiles, "n_unsynthesizable")
+    if n_tiles is not None and n_passed is not None and n_passed != n_tiles:
+        violations.append("not_all_model_tiles_certified")
+    if n_failed not in (None, 0):
+        violations.append("model_tile_failed")
+    if n_unavailable not in (None, 0):
+        violations.append("model_tile_oracle_unavailable")
+    if n_unsynth not in (None, 0):
+        violations.append("model_tile_unsynthesizable")
+    per_tile = tiles.get("per_tile") if isinstance(tiles, dict) else None
+    if (not isinstance(per_tile, list) or n_tiles is None or len(per_tile) != n_tiles):
+        violations.append("model_tile_evidence_missing_or_malformed")
+    else:
+        for tile in per_tile:
+            if not isinstance(tile, dict) or tile.get("status") != "pass":
+                violations.append("model_tile_record_not_pass")
+                break
+            if tile.get("derived_from_rtl") is not True:
+                violations.append("model_tile_not_rtl_derived")
+                break
+            if tile.get("cycle_accurate") is not True:
+                violations.append("model_tile_not_cycle_accurate")
+                break
+            _check_exact_cert(tile, "model_tile")
+
+    lane = result.get("lane_report")
+    required_lanes = [str(x) for x in (((capsule or {}).get("lanes") or {}).get("require") or [])]
+    observed_lanes = ({"on_mesh"} if mesh_entries else set()) | (
+        {"scalar_rvv_lane"} if scalar_entries else set())
+    missing_required = sorted(set(required_lanes) - observed_lanes)
+    if missing_required:
+        violations.append("required_model_lane_unexercised")
+    if required_lanes and lane is None:
+        violations.append("required_lane_report_missing")
+    elif lane is not None:
+        if (not isinstance(lane, dict) or not isinstance(lane.get("unexercised"), list)
+                or lane.get("evidence") != "dynamic_dispatch_ledger"):
+            violations.append("lane_report_missing_or_malformed")
+        elif (set(lane.get("observed") or []) != observed_lanes
+              or sorted(lane["unexercised"]) != missing_required):
+            violations.append("lane_report_disagrees_with_dispatch_ledger")
+
+    expected_boundary = result.get("boundary_expectation")
+    actual_boundary = result.get("boundary_execution")
+    if (not isinstance(expected_boundary, dict)
+            or expected_boundary.get("boundary") in (None, "UNKNOWN")
+            or expected_boundary.get("n_unresolved") != 0):
+        violations.append("model_boundary_expectation_missing_or_unresolved")
+    if (not isinstance(actual_boundary, dict) or actual_boundary.get("status") != "pass"
+            or actual_boundary.get("boundary") in (None, "UNKNOWN")
+            or actual_boundary.get("n_unresolved") != 0):
+        violations.append("model_dynamic_boundary_missing_or_unresolved")
+    elif isinstance(expected_boundary, dict):
+        required_boundary = expected_boundary.get("boundary")
+        actual_patterns = set(actual_boundary.get("contains") or [])
+        if required_boundary != actual_boundary.get("boundary") and required_boundary not in actual_patterns:
+            violations.append("model_dynamic_boundary_does_not_cover_declaration")
+        # Explicitly preserve the important island seam even when the expectation's strongest label is
+        # ``routing``; that label necessarily contains A->H->A and must not erase the concrete obligation.
+        if "A->H->A" in set(expected_boundary.get("contains") or []) | {required_boundary} \
+                and "A->H->A" not in actual_patterns:
+            violations.append("model_a_h_a_seam_not_exercised")
+
+    ledger_digest = (hashlib.sha256(json.dumps(ledger, sort_keys=True, separators=(",", ":"),
+                                                  default=str).encode()).hexdigest()
+                     if ledger else None)
+
+    return {
+        "status": "pass" if not violations else "fail",
+        "kind": "model_accelerator_execution",
+        "matmul_layers_routed": routed,
+        "matmul_layers_on_mesh": on_mesh,
+        "matmul_layers_unrouted": unrouted,
+        "n_tiles": n_tiles,
+        "n_tiles_certified": n_passed,
+        "dispatch_ledger_sha256": ledger_digest,
+        "observed_lanes": sorted(observed_lanes),
+        "dynamic_boundary": (actual_boundary or {}).get("boundary") if isinstance(
+            actual_boundary, dict) else None,
+        "violations": list(dict.fromkeys(violations)),
+        "note": ("model-level counterpart to an operator instruction trace: evidence that this model's "
+                 "accelerator regions executed through the submitted package and its required lanes "
+                 "were exercised; it is not represented as a decoded single-kernel trace"),
+    }
 
 
 def cycles_by_tier(tiers: dict | None, *, ladder: list[str] | tuple[str, ...] = ()) -> dict[str, int]:
@@ -74,7 +356,8 @@ def default_grade_workers(n_capsules: int | None = None) -> int:
 def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str | Path,
           labels: set[str] | None = None, contract: str | Path | None = None,
           oracle_adapters: dict | None = None, timeout: int = 900,
-          max_workers: int = 0, target: str, no_oracle: bool = False) -> dict:
+          max_workers: int = 0, target: str, no_oracle: bool = False,
+          capability_admission: bool = False, target_experiment=None) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
     ``max_workers`` fans the per-capsule oracle runs out in parallel (verilator/VCS/cyclotron instances);
@@ -114,6 +397,8 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         "public_passed": None, "hidden_passed": None, "headline": None,
         "per_capsule": [], "tier_reached": {}, "first_failure_planes": {},
         "numeric_all_exact": None, "trace_all_pass": None,
+        "model_execution_all_pass": None, "structural_evidence_all_pass": None,
+        "structural_evidence_scope": None,
         "cycles_diagnostic": {}, "cycles_provenance": {}, "highest_tier": None,
         "timing_diagnostic": {}, "timing_rollup": {},
     }
@@ -131,7 +416,59 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         score["failure"] = {"plane": cf.plane, "category": str(cf.category), "detail": cf.detail}
         return score
 
-    caps = CR.discover_capsules(capsules_root, labels=labels, contract=contract)
+    source_caps = CR.discover_capsules(capsules_root, labels=labels, contract=contract)
+    caps = source_caps
+    admission_policy = "all_discovered"
+    capability_excluded: list[dict] = []
+    if capability_admission:
+        # The hidden source pool is sealed, so its target-ineligible members cannot be named in the
+        # public descriptor as the public exclusions are.  Derive its formal cohort here, outside the
+        # agent sandbox and after freeze, using the same fail-open hardware predicate run_suite uses:
+        # only an operand dtype absent from EVERY frozen target capability may be excluded.  Models stay
+        # admitted because their host/accelerator partition can transform the device-facing dtype.
+        op_caps = [c for c in source_caps if c.get("kind") != "model"]
+        _admitted_ops, capability_excluded = CR._split_ineligible(op_caps, target)
+        excluded_names = {str(r.get("capsule")) for r in capability_excluded}
+        caps = [c for c in source_caps if str(c.get("name")) not in excluded_names]
+        admission_policy = "frozen_target_capability_operand_dtype"
+    materialized_admission = (None if capability_admission else
+                              _materialized_cohort_admission(capsules_root, source_caps))
+    if materialized_admission is not None:
+        # Public cohort admission is a decision made under exact descriptor bytes.  Resolve through the
+        # active MERLIN_TARGET_EXPERIMENT-aware path unless the caller already holds the frozen parsed
+        # experiment, then require the materializer record to name those same bytes.  Hidden grading has
+        # no public admission record and keeps its name-secrecy-preserving capability boundary below.
+        experiment = target_experiment
+        if experiment is None:
+            from .corpora import descriptor_path
+            from .target_experiment import load_target_experiment
+
+            descriptor = descriptor_path(target)
+            if not descriptor.is_file():
+                raise ValueError(
+                    f"target {target!r} has no experiment descriptor at {descriptor}")
+            experiment = load_target_experiment(descriptor)
+        if experiment.target != target:
+            raise ValueError(
+                f"experiment descriptor names {experiment.target!r}, not grade target {target!r}")
+        if materialized_admission.get("descriptor_sha256") != experiment.descriptor_sha256:
+            raise ValueError(
+                "materialized cohort descriptor digest does not match the target descriptor used for grade")
+    if materialized_admission is not None:
+        score["cohort_admission"] = materialized_admission
+    else:
+        excluded_names_sorted = sorted(str(r.get("capsule")) for r in capability_excluded)
+        score["cohort_admission"] = {
+            "version": 1,
+            "policy": admission_policy,
+            "n_source_capsules": len(source_caps),
+            "n_admitted_capsules": len(caps),
+            "n_capability_excluded": len(capability_excluded),
+            "n_resource_excluded": 0,
+            # Seal the exact boundary without publishing held-out capsule names into a reusable report.
+            "excluded_name_set_sha256": _name_set_sha256(excluded_names_sorted),
+            "admitted_name_set_sha256": _name_set_sha256(c.get("name") for c in caps),
+        }
     workers = max_workers if max_workers and max_workers > 0 else default_grade_workers(len(caps))
     import time as _time
     _suite_t0 = _time.perf_counter()
@@ -139,6 +476,14 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                            oracle_adapters=oracle_adapters, timeout=timeout,
                            max_workers=workers, target=target, no_oracle=no_oracle)
     _suite_wall = _time.perf_counter() - _suite_t0
+
+    # A whole model has no single model-level instruction stream.  Attach its distinct execution
+    # obligation before roll-up; never synthesize a trace_check=pass for an artifact that did not exist.
+    _caps_by_name = {str(cap.get("name")): cap for cap in caps}
+    for result in results:
+        if result.get("kind") == "model":
+            result["model_execution_check"] = model_execution_check(
+                result, _caps_by_name.get(str(result.get("capsule"))))
 
     # collect decoded traces for coverage — read from the TARGET's own suite dir (run_capsule writes
     # under cfg.suite, e.g. atlas-capsule-bench), not the gemmini SUITE literal (which left the atlas
@@ -279,8 +624,20 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     score["structural_pass"] = bool(not _empty and (n_pass + n_not_gradeable) == len(graded))
     score["numeric_all_exact"] = None if _empty else all(
         r.get("numeric", {}).get("status") == "pass" for r in graded)
-    score["trace_all_pass"] = None if _empty else all(
-        r.get("trace_check", {}).get("status") == "pass" for r in graded)
+    _trace_rows = [r for r in graded if r.get("kind") != "model"]
+    _model_rows = [r for r in graded if r.get("kind") == "model"]
+    score["trace_all_pass"] = (None if not _trace_rows else all(
+        r.get("trace_check", {}).get("status") == "pass" for r in _trace_rows))
+    score["model_execution_all_pass"] = (None if not _model_rows else all(
+        r.get("model_execution_check", {}).get("status") == "pass" for r in _model_rows))
+    score["structural_evidence_scope"] = {
+        "n_instruction_trace_capsules": len(_trace_rows),
+        "n_model_execution_capsules": len(_model_rows),
+    }
+    score["structural_evidence_all_pass"] = bool(
+        not _empty
+        and (not _trace_rows or score["trace_all_pass"] is True)
+        and (not _model_rows or score["model_execution_all_pass"] is True))
     if _empty:
         score["note"] = ("no capsules matched the requested labels at this root — nothing graded; "
                          "flags are null (not a pass). Check the capsules root / labels.")
@@ -422,6 +779,7 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
             entry["gate_reason"] = (r.get("failure") or {}).get("detail")
         if r.get("kind") == "model":
             entry["kind"] = "model"
+            entry["model_execution_check"] = r.get("model_execution_check")
             me = r.get("mesh_execution") or {}
             if me:
                 entry["mesh_execution"] = {k: me.get(k) for k in (

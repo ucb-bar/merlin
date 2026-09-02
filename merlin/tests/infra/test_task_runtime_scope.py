@@ -64,21 +64,13 @@ def test_unsandboxed_task_is_explicitly_untrusted():
     assert "cannot support a trusted isolation claim" in block
 
 
-def test_launch_agent_threads_its_actual_sandbox_into_task(monkeypatch, tmp_path):
+def test_launch_agent_refuses_to_build_task_after_environment_setup(monkeypatch, tmp_path):
     loop = _loop()
-    seen = {}
-
-    class StopAfterTask(Exception):
-        pass
-
-    def capture(_arm, _ws, _run_dir, *, sandbox):
-        seen["sandbox"] = sandbox
-        raise StopAfterTask
-
-    monkeypatch.setattr(loop, "_build_task", capture)
-    with pytest.raises(StopAfterTask):
+    monkeypatch.setattr(
+        loop, "_build_task",
+        lambda *_args, **_kwargs: pytest.fail("launch must not regenerate the sealed task"))
+    with pytest.raises(RuntimeError, match="sealed task is missing"):
         loop.launch_agent(tmp_path / "ws", tmp_path / "run", "dummy", "low", "none", {}, 0, 1)
-    assert seen == {"sandbox": "none"}
 
 
 def test_served_rtlchecks_task_and_tool_doc_have_no_stale_launch_claims(tmp_path, monkeypatch):

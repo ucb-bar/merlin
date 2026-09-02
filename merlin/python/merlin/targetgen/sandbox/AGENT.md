@@ -6,7 +6,7 @@ Shared, descriptor+manifest-driven agentic bwrap sandbox — a new target gets a
 
 ## Modules
 
-- `answer_surfaces.py` — The DERIVED answer-surface mask set (goldens/hidden/prior/oracle/grader/memory), the single declared oracle+grader registry, and the transcript-audit tokens derived from it.
+- `answer_surfaces.py` — The DERIVED answer-surface mask set (goldens/model weights/hidden/prior/oracle/grader/memory), the single declared oracle+grader registry, and the transcript-audit tokens derived from it.
 - `toolchain.py` — The legit tools bound back over the deny-by-default masks: universal + the descriptor's `sim_via` family, cross-checked by `kind` via `merlin.targetgen.families`.
 - `bwrap.py` — Deny-by-default argv assembly + the hermetic mount-table replay that PROVES no answer surface is reachable (coverage guard), without launching bwrap.
 - `__init__.py` — `build_sandbox(descriptor, ws, bundle)` → a `Sandbox` facade (argv / env / wrap / coverage_gap); `resolve_kind` for family routing.

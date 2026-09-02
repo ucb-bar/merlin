@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -30,7 +31,7 @@ import pytest
 from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen.sandbox import build_sandbox
 from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
+from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_tokens, weight_files
 from merlin.targetgen.sandbox.toolchain import UNIVERSAL_PROBES
 from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -54,6 +55,91 @@ def _ids(paths):
 
 
 ROSTER = _roster()
+
+_MODEL_WEIGHT_RELS = (
+    "merlin/contract/capsules/model/M2_microvit_gemmini/capsule.weights.safetensors",
+    "merlin/contract/capsules/model/M3_host_island_seam_gemmini/capsule.weights.safetensors",
+)
+
+
+def _model_weights_or_skip() -> list[Path]:
+    paths = [repo_root() / rel for rel in _MODEL_WEIGHT_RELS]
+    if not all(path.is_file() for path in paths):
+        pytest.skip("private model-weight assets are not provisioned in this checkout")
+    return paths
+
+
+def test_model_weights_are_derived_answer_surfaces_and_audit_tokens():
+    """The two affordable model capstones' private instances are denied without a name allowlist."""
+    paths = _model_weights_or_skip()
+    descriptor = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
+    te = load_target_experiment(descriptor)
+    derived = set(weight_files(te))
+    surfaces = {surface.path: surface for surface in answer_surfaces(te)}
+    for path in paths:
+        assert path in derived
+        assert surfaces[path].origin == "weight" and surfaces[path].kind == "file"
+        assert any(token in str(path) for token in audit_tokens(te)["answer"])
+
+
+def test_expected_instruction_coverage_is_an_answer_surface_and_audit_token():
+    """The structural grading expectation must be as private as the numerical golden."""
+    descriptor = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
+    te = load_target_experiment(descriptor)
+    expected = next((repo_root() / "merlin/contract/capsules").rglob(
+        "expected_instruction_coverage.yaml"))
+    surfaces = {surface.path: surface for surface in answer_surfaces(te)}
+
+    assert surfaces[expected].origin == "golden" and surfaces[expected].kind == "file"
+    assert "expected_instruction_coverage.yaml" in audit_tokens(te)["answer"]
+
+
+def test_model_weights_remain_in_private_snapshot_but_agent_mounts_are_masked(tmp_path):
+    """Snapshotting preserves exact operator bytes; its only agent-facing mount is /dev/null-overlaid."""
+    paths = _model_weights_or_skip()
+    descriptor = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
+    te = load_target_experiment(descriptor)
+    ws = tmp_path / "run" / "workspace"
+    bundle = {"allowed": [{"path": rel} for rel in _MODEL_WEIGHT_RELS]}
+    manifest = BW.materialize_bundle_inputs(ws, bundle)
+    ws.mkdir(parents=True)
+    try:
+        grants = {record["path"]: record for record in manifest["grants"]}
+        for rel, source in zip(_MODEL_WEIGHT_RELS, paths, strict=True):
+            frozen = BW.bundle_snapshot_root(ws) / grants[rel]["snapshot"]
+            assert frozen.read_bytes() == source.read_bytes()
+
+        argv = BW.apply_answer_masks(BW.base_argv(ws, bundle), answer_surfaces(te))
+        mount_args = [argv[index:index + 3] for index, token in enumerate(argv) if token == "--ro-bind"]
+        for path in paths:
+            assert not BW.is_exposed(argv, path)
+            assert ["--ro-bind", "/dev/null", str(path)] in mount_args
+
+        if shutil.which("bwrap"):
+            probe = " && ".join(f'test ! -s "{path}"' for path in paths)
+            out = subprocess.run([*argv, "bash", "-c", probe], capture_output=True, text=True, timeout=30)
+            assert out.returncode == 0, out.stderr
+    finally:
+        BW.remove_bundle_snapshot(ws)
+
+
+def test_copy_workspace_omits_m2_m3_weights_and_goldens(tmp_path):
+    """The non-bwrap defense-in-depth view must not symlink either private model surface."""
+    _model_weights_or_skip()
+    harness = merlin_dir() / "experiments/capsule_bench/harness"
+    if str(harness) not in sys.path:
+        sys.path.insert(0, str(harness))
+    import run_agent_experiment as experiment  # noqa: PLC0415
+
+    for name in ("M2_microvit_gemmini", "M3_host_island_seam_gemmini"):
+        source = merlin_dir() / "contract/capsules/model" / name
+        dest = tmp_path / name
+        experiment._link_filtered(source, dest)
+        assert not (dest / "capsule.weights.safetensors").exists()
+        assert not (dest / "golden.yaml").exists()
+        assert not (dest / "expected_instruction_coverage.yaml").exists()
+        assert (dest / "capsule.pytorch.py").is_file()
+        assert (dest / "capsule.interface.mlir").is_file()
 
 
 def test_missing_declared_grant_refuses_snapshot(tmp_path):

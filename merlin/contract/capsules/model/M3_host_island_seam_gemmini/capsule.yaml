@@ -11,7 +11,7 @@ inputs:
   shape:
   - 16
   - 32
-  dtype: i64
+  dtype: i8
 operation:
   op: model
   attributes:

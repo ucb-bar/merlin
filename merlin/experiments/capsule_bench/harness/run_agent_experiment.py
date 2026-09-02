@@ -49,13 +49,18 @@ def _load_bundle(arm: str) -> dict:
 
 
 def _is_answer_file(p: Path) -> bool:
-    """Is this file an ANSWER surface (a precomputed output the bring-up agent must not have)? Keyed on the
-    corpus's derived naming convention — the golden output payload + the expected command-buffer — never a
-    per-capsule literal. Kept in lockstep with the canonical ``answer_surfaces`` masking the bwrap sandbox
-    applies; this is the defense-in-depth for the non-sandbox (``--sandbox none``) assemble path."""
+    """Is this an ANSWER surface the bring-up agent must not have?
+
+    Keyed on the corpus's derived naming convention: golden outputs, expected command buffers, and the
+    expected instruction coverage, and the private external model instance from which a model golden
+    derives. Never a per-capsule literal. Kept in lockstep with the canonical ``answer_surfaces`` bwrap
+    mask; this is defense in depth for the non-sandbox (``--sandbox none``) assembly path.
+    """
     n = p.name
     return (n in ("golden.yaml", "golden.npy") or ".golden." in n
-            or n.startswith("expected_command_buffer"))
+            or n.startswith("expected_command_buffer") or n == "expected_instruction_coverage.yaml"
+            or n.endswith(".safetensors")
+            or n.endswith(".safetensors.manifest.json"))
 
 
 def _link_filtered(src: Path, dst: Path) -> None:

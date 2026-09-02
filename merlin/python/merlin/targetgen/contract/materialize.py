@@ -19,6 +19,8 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import shutil
 import sys
@@ -30,11 +32,94 @@ import yaml
 
 from .schemas import contract_dir
 
-# The 5 files that make up a capsule (see generate_corpus.py / AGENT.md).
-_CAPSULE_FILES = ("capsule.yaml", "capsule.interface.mlir", "golden.yaml",
-                  "expected_instruction_coverage.yaml", "README.md")
+# The complete capsule bundle (see generate_corpus.py / AGENT.md).  The PyTorch/linalg sources are
+# agent-visible grounding. A whole-model capsule's externalized weights are an operator-only compile/
+# runtime input named by the interface: materialization must preserve them exactly, while the sandbox's
+# answer-surface policy masks them from the agent. They are optional because op capsules do not carry them;
+# when present, omitting them creates a valid-looking grading corpus that cannot reproduce the model.
+_CAPSULE_FILES = (
+    "capsule.yaml", "capsule.interface.mlir", "capsule.pytorch.py", "capsule.linalg.mlir",
+    "capsule.weights.safetensors", "golden.yaml", "expected_instruction_coverage.yaml", "README.md",
+)
 _TIER_ORDER = ["L0", "L1", "L2", "L3", "L4", "L5"]
 _DEFAULT_CEILING = "L2"  # bwrap sandbox: numerics + spike, no VCS/FireSim (L3+).
+
+
+def _name_set_sha256(names) -> str:
+    return hashlib.sha256(
+        json.dumps(sorted(str(x) for x in names), separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _loaded_descriptor_sha256(te) -> str:
+    """Return the descriptor identity parsed into ``te`` and reject post-load byte drift."""
+    path = Path(te.path)
+    current = hashlib.sha256(path.read_bytes()).hexdigest()
+    loaded = getattr(te, "descriptor_sha256", None)
+    if loaded is not None and loaded != current:
+        raise ValueError(
+            f"target experiment descriptor changed after it was loaded: {path}; refusing to bind "
+            "a cohort derived from stale parsed fields to different descriptor bytes")
+    return str(loaded or current)
+
+
+def validate_materialized_cohort(root: str | Path, te) -> dict:
+    """Validate an immutable public cohort against its exact, currently loaded descriptor.
+
+    The cohort record is not a self-attestation: this recomputes every value available from the
+    descriptor and materialized directory.  In particular it compares the record's descriptor digest
+    to the bytes parsed into ``te`` and to the descriptor bytes still on disk, so changing the descriptor
+    after materialization fails closed instead of leaving a plausible 64-character but stale digest.
+    """
+    cohort_root = Path(root).resolve(strict=True)
+    record_path = cohort_root / ".cohort_admission.json"
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"missing or malformed cohort admission record: {record_path}") from exc
+    if not isinstance(record, dict) or record.get("version") != 1:
+        raise ValueError(f"unsupported cohort admission record: {record_path}")
+
+    descriptor_sha = _loaded_descriptor_sha256(te)
+    if record.get("descriptor_sha256") != descriptor_sha:
+        raise ValueError("materialized cohort descriptor digest does not match the current descriptor")
+
+    admitted = sorted(p.name for p in cohort_root.iterdir() if p.is_dir())
+    capability = sorted(getattr(te, "graded_capability_exclude", ()) or ())
+    resource = sorted(getattr(te, "graded_resource_exclude", ()) or ())
+    excluded = sorted(getattr(te, "graded_exclude", ()) or ())
+    explicit = bool(capability or resource)
+    expected_policy = ("descriptor_capability_and_resource_v1" if explicit else
+                       "descriptor_exclusions_legacy" if excluded else "all_discovered")
+    expected_capability_n = len(capability)
+    expected_resource_n = len(resource) if explicit else len(excluded)
+    expected = {
+        "policy": expected_policy,
+        "n_admitted_capsules": len(admitted),
+        "n_capability_excluded": expected_capability_n,
+        "n_resource_excluded": expected_resource_n,
+        "excluded_name_set_sha256": _name_set_sha256(excluded),
+        "admitted_name_set_sha256": _name_set_sha256(admitted),
+        "resource_policy": getattr(te, "graded_resource_policy", None),
+        "required_admitted_models": sorted(getattr(te, "graded_required_models", ()) or ()),
+    }
+    for field, value in expected.items():
+        if record.get(field) != value:
+            raise ValueError(
+                f"materialized cohort {field} does not match its descriptor/content: "
+                f"record={record.get(field)!r}, expected={value!r}")
+    if record.get("n_source_capsules") != len(admitted) + len(excluded):
+        raise ValueError("materialized cohort source count does not match admitted plus excluded")
+
+    expected_source = getattr(te, "graded_expected_source_capsules", None)
+    expected_admitted = getattr(te, "graded_expected_admitted_capsules", None)
+    if expected_source is not None and record.get("n_source_capsules") != expected_source:
+        raise ValueError("materialized cohort source count drifted from the descriptor expectation")
+    if expected_admitted is not None and len(admitted) != expected_admitted:
+        raise ValueError("materialized cohort admitted count drifted from the descriptor expectation")
+    if not set(expected["required_admitted_models"]).issubset(admitted):
+        raise ValueError("materialized cohort is missing a descriptor-required model capstone")
+    return record
 
 
 def _public_capsule_dirs(contract: str | Path | None = None) -> list[Path]:
@@ -138,8 +223,9 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
                                 exclude: tuple[str, ...] | set[str] | None = None) -> list[str]:
     """Derive the sandbox public-capsule view into ``dest``. Returns the capsule names written.
 
-    Copies the 5 capsule files verbatim, then rewrites ``capsule.yaml``'s ``required_oracle_tiers``
-    to the subset reachable at/below ``tier_ceiling`` (preserving every other field exactly).
+    Copies the capsule bundle verbatim (including optional PyTorch/linalg sources and whole-model
+    weights), then rewrites ``capsule.yaml``'s ``required_oracle_tiers`` to the subset reachable
+    at/below ``tier_ceiling`` (preserving every other field exactly).
 
     ``corpus_roots`` (target-AGNOSTIC): materialize the public capsules found directly under these roots
     (the descriptor's ``capsule_corpus`` + sibling corpora). When omitted, falls back to the legacy
@@ -157,6 +243,10 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
     written: list[str] = []
     sources = (_public_capsule_dirs_in(corpus_roots) if corpus_roots is not None
                else _public_capsule_dirs(contract))
+    source_names = [source.name for source in sources]
+    if len(source_names) != len(set(source_names)):
+        duplicates = sorted(name for name in set(source_names) if source_names.count(name) > 1)
+        raise ValueError(f"public corpus roots contain duplicate capsule names: {duplicates}")
     drop = set(exclude or ())
     if drop:
         present = {s.name for s in sources}
@@ -200,9 +290,9 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
 def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     """The public-capsule set to grade / self-check against for a target — DERIVED from its descriptor's
     ``capsule_corpus`` (+ sibling corpora), materialized into a per-target cache and returned. This is the
-    target-agnostic replacement for the committed gemmini ``scripts/full_public_capsules`` set: gemmini
-    reproduces its 20-capsule L2 set exactly, atlas gets its fp8/bf16 set at L3, any target its own — with
-    NO per-target hardcode and no gemmini leak.
+    target-agnostic replacement for the legacy committed ``scripts/full_public_capsules`` smoke fixture:
+    gemmini gets its descriptor-declared cohort, atlas gets its own fp8/bf16 set, any target its own —
+    with no per-target hardcode and no gemmini leak.
 
     ``tier_ceiling`` caps ``required_oracle_tiers`` to what the caller can reach. The default is the
     per-round loop tier the corpus itself DECLARES — ``qa_loop_adapters`` is asked for the fastest
@@ -261,8 +351,55 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     link = base / te.target
     ver = base / f".{te.target}.build.{os.getpid()}.{uuid.uuid4().hex[:8]}"
     shutil.rmtree(ver, ignore_errors=True)
-    materialize_public_capsules(ver, tier_ceiling=tier_ceiling, corpus_roots=roots,
-                                exclude=getattr(te, "graded_exclude", ()))
+    written = materialize_public_capsules(
+        ver, tier_ceiling=tier_ceiling, corpus_roots=roots,
+        exclude=getattr(te, "graded_exclude", ()))
+    # Seal the descriptor's source->formal-cohort transform beside the immutable materialized root.
+    # The official grader imports and validates this record instead of pretending the already-filtered
+    # cache was the source pool (which reported 34/34 and erased 14 declared exclusions).
+    source_names = sorted(p.name for p in _public_capsule_dirs_in(roots))
+    admitted_names = sorted(written)
+    capability_excluded = sorted(getattr(te, "graded_capability_exclude", ()) or ())
+    resource_excluded = sorted(getattr(te, "graded_resource_exclude", ()) or ())
+    declared_excluded = sorted(getattr(te, "graded_exclude", ()) or ())
+    if capability_excluded or resource_excluded:
+        policy = "descriptor_capability_and_resource_v1"
+        if sorted(set(capability_excluded) | set(resource_excluded)) != declared_excluded:
+            raise ValueError("explicit capability/resource exclusions do not equal graded_exclude")
+    elif declared_excluded:
+        # A claim-bearing formal run must migrate this ambiguous legacy form; keeping a named policy in
+        # the record makes the phase gate reject it rather than silently guessing why rows disappeared.
+        policy = "descriptor_exclusions_legacy"
+        resource_excluded = declared_excluded
+    else:
+        policy = "all_discovered"
+    if set(source_names) - set(admitted_names) != set(declared_excluded):
+        raise ValueError("materialized cohort does not match the descriptor's declared exclusions")
+    expected_source = getattr(te, "graded_expected_source_capsules", None)
+    expected_admitted = getattr(te, "graded_expected_admitted_capsules", None)
+    if expected_source is not None and len(source_names) != expected_source:
+        raise ValueError(
+            f"source cohort drift: descriptor expects {expected_source}, discovered {len(source_names)}")
+    if expected_admitted is not None and len(admitted_names) != expected_admitted:
+        raise ValueError(
+            f"admitted cohort drift: descriptor expects {expected_admitted}, wrote {len(admitted_names)}")
+    descriptor_sha = _loaded_descriptor_sha256(te)
+    cohort_record = {
+        "version": 1,
+        "policy": policy,
+        "n_source_capsules": len(source_names),
+        "n_admitted_capsules": len(admitted_names),
+        "n_capability_excluded": len(capability_excluded),
+        "n_resource_excluded": len(resource_excluded),
+        "excluded_name_set_sha256": _name_set_sha256(declared_excluded),
+        "admitted_name_set_sha256": _name_set_sha256(admitted_names),
+        "resource_policy": getattr(te, "graded_resource_policy", None),
+        "required_admitted_models": sorted(getattr(te, "graded_required_models", ()) or ()),
+        "descriptor_sha256": descriptor_sha,
+    }
+    (ver / ".cohort_admission.json").write_text(
+        json.dumps(cohort_record, indent=2) + "\n", encoding="utf-8")
+    validate_materialized_cohort(ver, te)
     tmp_link = base / f".{te.target}.lnk.{os.getpid()}.{uuid.uuid4().hex[:8]}"
     if tmp_link.is_symlink() or tmp_link.exists():
         tmp_link.unlink()

@@ -378,6 +378,7 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                 fallback_policy: str = "allow",
                 mesh_target: str | None = None, mesh_package: str | None = None,
                 bundle_path: str | Path | None = None,
+                capture_bundle: str | Path | None = None,
                 deadline_ns: int | None = None) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
 
@@ -396,10 +397,34 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     if timeout < 1:
         raise ValueError("timeout must be a positive whole-session budget in seconds")
 
-    # A frozen paper study passes the exact content-addressed capture it validated. Resolving the
-    # workload name again here could compile a different mutable registry entry with the same name.
-    bundle = (Path(bundle_path).resolve() if bundle_path is not None
-              else _ensure_bundle(workload, dtype, auto_capture=auto_capture))
+    # TWO ways a caller pins the capture rather than letting the mutable registry resolve the workload
+    # name again -- with DIFFERENT completeness contracts, which is why they stay separate parameters
+    # instead of one that quietly means two things:
+    #   `capture_bundle` -- a capsule grade's short-lived, read-only bundle whose content identity the
+    #       grader already bound. It must be COMPLETE; a partial or symlinked directory is rejected
+    #       before any compiler can interpret it.
+    #   `bundle_path`    -- a frozen paper study's content-addressed capture, which may legitimately be
+    #       a version-2 multi-program session carrying no top-level `model.mlir`.
+    if bundle_path is not None and capture_bundle is not None:
+        raise ValueError("pass either bundle_path or capture_bundle, never both: they pin the same "
+                         "bundle under different completeness contracts")
+    if capture_bundle is not None:
+        lexical = Path(capture_bundle)
+        if lexical.is_symlink() or not lexical.is_dir():
+            raise SystemExit("[merlin-compile] explicit capture bundle is missing or a symlink")
+        bundle = lexical.resolve(strict=True)
+        required = ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json",
+                    "inputs.npz", "input_order.json", "golden.npy")
+        unsafe = [name for name in required
+                  if not (bundle / name).is_file() or (bundle / name).is_symlink()]
+        if unsafe:
+            raise SystemExit(
+                f"[merlin-compile] explicit capture bundle is incomplete/unsafe: {unsafe}")
+    else:
+        bundle = (Path(bundle_path).resolve() if bundle_path is not None
+                  else _ensure_bundle(workload, dtype, auto_capture=auto_capture))
+    # The session contract is read for EVERY bundle, however it was resolved: whether a capture is a
+    # version-2 multi-program session is a property of the bundle, not of which caller named it.
     multi_program = False
     session_contract_version = 0
     session_path = bundle / "session_contract.yaml"
@@ -495,6 +520,10 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                 # well run these.
                 "matmul_layers_oracle_unavailable": res.get("mesh_unavailable", _UNKNOWN),
                 "oracle_unavailable_detail": res.get("mesh_unavailable_detail"),
+                # Ordered, runner-owned proof of which lane EACH dynamic call actually used.  Static
+                # routing is deliberately separate: it cannot prove that a host island or mesh call ran.
+                "mesh_route_symbols": res.get("mesh_route_symbols"),
+                "dispatch_ledger": res.get("dispatch_ledger"),
                 # Layers whose capacity_fit obligation the RUNTIME discharged for the backend; non-empty
                 # means this result is evidence about runtime+backend together, not about the backend
                 # alone. Each entry names the tiler that chose its extent (`tile_source`).
@@ -1318,7 +1347,8 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
                 iface = Path(td) / f"{entry['name']}.interface.mlir"
                 iface.write_text(mlir, encoding="utf-8")
                 res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=entry["name"],
-                                         simulator=sim, target=target, timeout=timeout)
+                                         simulator=sim, target=target, timeout=timeout,
+                                         require_accelerator_trace=True)
         else:
             res = _certify_tile_via_executor(target, mlir, m=M, k=K, n=N, binding=binding,
                                              timeout=timeout)
@@ -1326,7 +1356,14 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         oracle = res.get("oracle") or {}
         out["n_tiles"] += 1
         rec.update(oracle_kind=oracle.get("kind"), oracle_result=oracle.get("result"),
-                   cycles=oracle.get("cycles"))
+                   # Preserve the oracle's own fidelity assertion.  A functional Spike pass and a
+                   # cycle-accurate RTL pass are both useful, but they cannot carry the same formal
+                   # whole-model claim merely because this record later lands under a tier named L3.
+                   derived_from_rtl=oracle.get("derived_from_rtl"),
+                   cycle_accurate=oracle.get("cycle_accurate"),
+                   cycles=oracle.get("cycles"),
+                   trace_check=res.get("trace_check"),
+                   artifact_identity=res.get("artifact_identity"))
         if oracle.get("result") == "skipped":
             out["n_unavailable"] += 1
             rec["status"] = "oracle_unavailable"
@@ -1388,6 +1425,22 @@ def _mesh_layer_id(m: int, k: int, n: int, binding, epilogue: list | None,
     if acc_scale is not None:
         parts.append(f"s{float(acc_scale):.6g}")
     return "mesh_layer_" + "_".join(parts).replace(".", "p").replace("-", "_")
+
+
+def _mesh_invocation_id(layer_id: str, A: list, W: list) -> str:
+    """A stable run directory for one exact real-operand mesh invocation.
+
+    ``layer_id`` identifies emitted code shape, not an execution.  Repeated layers of the same shape
+    can carry different activations/weights and therefore produce different injected interfaces, ELFs
+    and traces.  Sharing the shape directory overwrote the first call while its now-unrecoverable digest
+    remained in the model ledger.  Bind the exact operands into the id; identical calls may safely reuse
+    one directory because their complete compiler/oracle inputs are identical.
+    """
+    import hashlib
+
+    payload = json.dumps({"A": A, "W": W}, sort_keys=True, separators=(",", ":"),
+                         allow_nan=False).encode("utf-8")
+    return f"{layer_id}_input_{hashlib.sha256(payload).hexdigest()}"
 
 
 def run_matmul_on_mesh(target: str, A: list, W: list, *, operand_dtype: str | None = None,
@@ -1800,18 +1853,24 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
     pkg = package or _default_oot_package(target)
     if pkg is None:
         return None
-    _lid = layer_id
+    _lid = _mesh_invocation_id(layer_id, A, W)
     with tempfile.TemporaryDirectory(prefix=_lid + "_") as td:
         iface = Path(td) / f"{_lid}.interface.mlir"
         iface.write_text(mlir, encoding="utf-8")
         res = oot_runner.certify(pkg, iface, runs_root=str(runs_root(target, "mesh_run")),
                                  run_id=_lid, simulator=sim, target=target, timeout=timeout,
-                                 inputs={"A0": A, "W": W})
+                                 inputs={"A0": A, "W": W}, require_accelerator_trace=True)
     if observed is not None:
         # the cert reports its oracle as a record ({kind, derived_from_rtl, ...}); the simulator that ran
         # it is the other half of the identity, so label with both when the record is present.
         _kind = CC.oracle_kind(res.get("oracle"))
         observed["oracle"] = f"{target}-{_kind}-{sim}" if _kind else f"{target}-{sim}"
+        # Structured fidelity and content identity travel with THIS dynamic call.  The string above is
+        # retained for existing diagnostics; formal grading consumes these runner-produced records.
+        observed["oracle_evidence"] = res.get("oracle")
+        observed["trace_check"] = res.get("trace_check")
+        observed["artifact_identity"] = res.get("artifact_identity")
+        observed["cert_run_id"] = res.get("run_id")
     if res.get("status") != "pass":
         # KEEP THE REASON. Returning a bare None here is why a whole-model fallback could only be
         # described as "unsynthesizable at this shape, or the oracle was unreachable" -- a guess covering
@@ -2170,7 +2229,8 @@ def _summarize_route_plan(plan: dict) -> dict:
 def compile_model(workload: str, dtype: str, *, target: str | None, run: str, verify: bool,
                   package: str | None, auto_capture: bool, timeout: int,
                   linalg_mlir: str | None = None, mesh_verify: bool = False,
-                  mesh_package: str | None = None, routing_dtype: str | None = None) -> dict:
+                  mesh_package: str | None = None, routing_dtype: str | None = None,
+                  capture_bundle: str | Path | None = None) -> dict:
     """Target-aware whole-model compile. Routes each op across the target's compute units (matmul/systolic
     tiles -> the mesh, norms/activations/elementwise -> the vector/scalar lane) via
     ``routing.route_plan``, then compiles the functional whole model (the scalar/RVV reference, numerically
@@ -2204,10 +2264,12 @@ def compile_model(workload: str, dtype: str, *, target: str | None, run: str, ve
     if run == "mesh":
         out = compile_rvv(workload, dtype, run="host", verify=verify, package=package,
                           auto_capture=auto_capture, timeout=timeout,
-                          kernel_backend="mesh", mesh_target=target, mesh_package=mesh_package)
+                          kernel_backend="mesh", mesh_target=target, mesh_package=mesh_package,
+                          capture_bundle=capture_bundle)
     else:
         out = compile_rvv(workload, dtype, run=run, verify=verify, package=package,
-                          auto_capture=auto_capture, timeout=timeout)
+                          auto_capture=auto_capture, timeout=timeout,
+                          capture_bundle=capture_bundle)
     out["requested_target"] = target
     if target and linalg_mlir:
         try:

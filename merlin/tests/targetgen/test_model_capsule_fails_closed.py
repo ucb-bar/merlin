@@ -25,11 +25,34 @@ def _descriptor_pinned_host_lane(monkeypatch):
         }))
 
 
+#: The frozen model capsule these tests grade, and the assets materialization needs from it.
+#:
+#: A whole-model grade materializes the capsule from its frozen source directory BEFORE any tier
+#: accounting happens. A synthetic dict has no `__dir__`, so production correctly refused with
+#: "model capsule has no frozen source directory" and every assertion below then fell over on that
+#: error instead of on the tier ladder it is testing. Production is right to fail closed -- a grade
+#: with no frozen source cannot be attributed -- so these tests take a REAL capsule and override the
+#: one field they vary. Same fix as test_model_host_lane_pin.py.
+_FROZEN_MODEL_DIR = "merlin/contract/capsules/model/M3_host_island_seam_gemmini"
+
+#: `golden.yaml` is untracked by design (answer surfaces never enter the public repo), so a fresh
+#: worktree has the capsule but not its golden. Skip and name the absent asset rather than failing
+#: for a reason that has nothing to do with tier accounting.
+_REQUIRED_ASSETS = ("capsule.yaml", "capsule.interface.mlir", "capsule.pytorch.py",
+                    "capsule.weights.safetensors", "golden.yaml")
+
+
 def _capsule(tiers):
-    return {"name": "M0_x", "kind": "model", "label": "public",
-            "required_oracle_tiers": list(tiers),
-            "operation": {"op": "model", "attributes": {"model": "m", "compile_dtype": "int8",
-                                                        "dtype": "int8"}}}
+    from merlin.common.paths import repo_root
+
+    root = repo_root() / _FROZEN_MODEL_DIR
+    missing = [n for n in _REQUIRED_ASSETS if not (root / n).is_file()]
+    if missing:
+        pytest.skip(f"frozen model capsule at {_FROZEN_MODEL_DIR} is missing {missing} "
+                    f"(answer surfaces are untracked by design, so a fresh worktree has none)")
+    cap = dict(CR.load_capsule(root))          # copy: these tests mutate the tier list per case
+    cap["required_oracle_tiers"] = list(tiers)
+    return cap
 
 
 def _grade(monkeypatch, capsule, out):

@@ -35,7 +35,7 @@ contains into the transcript's init record, so an asymmetry is visible in the
 artifact rather than discovered later.
 
 Sandboxing: at ``--sandbox bwrap`` the whole ``codex`` process runs inside the
-harness's existing bwrap wrapper (the boundary that masks goldens and hidden
+harness's existing bwrap wrapper (the boundary that masks goldens, private model weights, and hidden
 capsules), and Codex's own approval prompts are bypassed *because* that outer
 boundary is what the isolation claim rests on. At ``--sandbox none`` there is no
 outer boundary, so Codex's own ``workspace-write`` sandbox is used instead of

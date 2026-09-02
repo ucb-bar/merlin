@@ -35,6 +35,12 @@ def _score(*, n_capsules: int = 2, n_passed: int = 2, l3: int = 2,
         "gradeable": gradeable,
         "numeric_all_exact": functional_pass == 1,
         "trace_all_pass": functional_pass == 1,
+        "model_execution_all_pass": None,
+        "structural_evidence_all_pass": functional_pass == 1,
+        "structural_evidence_scope": {
+            "n_instruction_trace_capsules": n_capsules,
+            "n_model_execution_capsules": 0,
+        },
         "tier_reached": {"L3": l3},
         "highest_tier": "L3" if l3 == n_capsules and n_capsules else None,
         "pass_evidence": {"rtl_backed": rtl_backed},
@@ -46,6 +52,15 @@ def _score(*, n_capsules: int = 2, n_passed: int = 2, l3: int = 2,
         "n_budget_exhausted": 0,
         "n_incomplete": 0,
         "n_not_gradeable_no_oracle": 0,
+        "cohort_admission": {
+            "policy": "all_discovered",
+            "n_source_capsules": n_capsules,
+            "n_admitted_capsules": n_capsules,
+            "n_capability_excluded": 0,
+            "n_resource_excluded": 0,
+            "excluded_name_set_sha256": "0" * 64,
+            "admitted_name_set_sha256": "1" * 64,
+        },
     }
 
 
@@ -90,6 +105,33 @@ def test_no_unmeasured_capsule_can_disappear_from_formal_completion(field):
     assert f"{field}_nonzero" in failures
 
 
+@pytest.mark.parametrize("mutation", [
+    lambda c: c.update({"n_source_capsules": 4}),
+    lambda c: c.update({"n_admitted_capsules": 1}),
+    lambda c: c.update({"n_capability_excluded": -1}),
+    lambda c: c.update({"excluded_name_set_sha256": "not-a-digest"}),
+    lambda c: c.update({"policy": "operator_cherry_pick"}),
+])
+def test_formal_completion_requires_a_coherent_sealed_cohort(mutation):
+    grader = _mod("grade_agent_run")
+    score = _score()
+    mutation(score["cohort_admission"])
+    complete, failures = grader.phase_completion(score)
+    assert complete is False
+    assert any(reason.startswith("cohort_admission_") for reason in failures)
+
+
+def test_only_hidden_scoring_requests_capability_admission(monkeypatch):
+    grader = _mod("grade_agent_run")
+    calls = []
+    monkeypatch.setattr(grader.CR, "oracle_adapters", lambda _target: {})
+    monkeypatch.setattr(grader.CG, "grade", lambda *args, **kwargs: calls.append(kwargs) or {})
+    grader._score("pkg", "public", "runs", {"public", "dev"}, False)
+    grader._score("pkg", "hidden", "runs", {"hidden"}, False)
+    assert calls[0]["capability_admission"] is False
+    assert calls[1]["capability_admission"] is True
+
+
 @pytest.mark.parametrize("field", ["integrity_status", "numeric_all_exact", "trace_all_pass"])
 def test_formal_completion_requires_clean_exact_structural_evidence(field):
     grader = _mod("grade_agent_run")
@@ -98,6 +140,48 @@ def test_formal_completion_requires_clean_exact_structural_evidence(field):
     complete, failures = grader.phase_completion(score)
     assert complete is False
     assert failures
+
+
+def test_formal_completion_accepts_distinct_operator_trace_and_model_execution_scopes():
+    grader = _mod("grade_agent_run")
+    score = _score(n_capsules=4, n_passed=4, l3=4, rtl_backed=4)
+    score.update({
+        "trace_all_pass": True,
+        "model_execution_all_pass": True,
+        "structural_evidence_all_pass": True,
+        "structural_evidence_scope": {
+            "n_instruction_trace_capsules": 2,
+            "n_model_execution_capsules": 2,
+        },
+    })
+    complete, failures = grader.phase_completion(score)
+    assert complete is True, failures
+
+
+@pytest.mark.parametrize("mutation,reason", [
+    (lambda s: s.update({"model_execution_all_pass": False}),
+     "model_execution_evidence_not_complete"),
+    (lambda s: s["structural_evidence_scope"].update({"n_model_execution_capsules": 1}),
+     "structural_evidence_scope_denominator_mismatch"),
+    (lambda s: s.update({"structural_evidence_all_pass": False}),
+     "structural_evidence_not_complete"),
+])
+def test_formal_completion_fails_closed_on_model_execution_evidence(mutation, reason):
+    grader = _mod("grade_agent_run")
+    score = _score(n_capsules=4, n_passed=4, l3=4, rtl_backed=4)
+    score.update({
+        "trace_all_pass": True,
+        "model_execution_all_pass": True,
+        "structural_evidence_all_pass": True,
+        "structural_evidence_scope": {
+            "n_instruction_trace_capsules": 2,
+            "n_model_execution_capsules": 2,
+        },
+    })
+    mutation(score)
+    complete, failures = grader.phase_completion(score)
+    assert complete is False
+    assert reason in failures
 
 
 def test_grader_main_returns_nonzero_and_records_failed_hidden_zero_of_zero(tmp_path, monkeypatch):

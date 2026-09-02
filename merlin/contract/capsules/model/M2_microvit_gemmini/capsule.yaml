@@ -14,13 +14,13 @@ inputs:
   - 1
   - 16
   - 16
-  dtype: i8
+  dtype: f32
 - name: I1
   role: input
   shape:
   - 1
   - 16
-  dtype: i8
+  dtype: f32
 operation:
   op: model
   attributes:

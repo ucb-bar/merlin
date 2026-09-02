@@ -4,7 +4,7 @@ Assembles a fresh workspace for one arm, builds the real bwrap command (bwrap_ar
 + toolchain_binds + env), and runs a battery INSIDE the sandbox. Exit 0 only if all green. No agent, no
 network, no claude invocation — just the agent's tool environment.
 
-  MASKING (must be invisible):  public goldens, hidden capsules, the oracle reference/simulator, the full
+  MASKING (must be invisible):  public goldens, private model weights, hidden capsules, the oracle, the full
                                 kernel suite, ~/.claude memory, other repos under /scratch & /scratch2
   TOOLS (must work):            python3 + import merlin.targetgen.oot_starterkit (+ xdsl dep), mlir-opt,
                                 clang, cmake>=3.20, ninja, make, spike, riscv64-unknown-elf-gcc, verilator L3

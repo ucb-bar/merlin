@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -57,8 +58,68 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
         reasons.append("submission_integrity_not_clean")
     if score.get("numeric_all_exact") is not True:
         reasons.append("numeric_exactness_not_complete")
-    if score.get("trace_all_pass") is not True:
-        reasons.append("trace_conformance_not_complete")
+    # Operator capsules emit one kernel and must pass decoded instruction-trace conformance.  Whole
+    # models are multi-kernel host/accelerator compositions and have no honest single model-level trace;
+    # they instead carry a distinct, fail-closed accelerator-execution check.  Require both applicable
+    # scopes, and require their counts to cover the entire admitted denominator -- never stamp a model
+    # trace pass for an artifact that does not exist.
+    scope = score.get("structural_evidence_scope")
+    if not isinstance(scope, Mapping):
+        reasons.append("structural_evidence_scope_missing_or_malformed")
+    else:
+        n_trace = scope.get("n_instruction_trace_capsules")
+        n_model = scope.get("n_model_execution_capsules")
+        if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in (n_trace, n_model)):
+            reasons.append("structural_evidence_scope_counts_malformed")
+        else:
+            if isinstance(n_capsules, int) and not isinstance(n_capsules, bool) \
+                    and n_trace + n_model != n_capsules:
+                reasons.append("structural_evidence_scope_denominator_mismatch")
+            if n_trace > 0 and score.get("trace_all_pass") is not True:
+                reasons.append("trace_conformance_not_complete")
+            if n_model > 0 and score.get("model_execution_all_pass") is not True:
+                reasons.append("model_execution_evidence_not_complete")
+    if score.get("structural_evidence_all_pass") is not True:
+        reasons.append("structural_evidence_not_complete")
+
+    # Cohort selection happens before the scored denominator.  Require its arithmetic and policy in the
+    # formal record so a hidden source-pool capsule cannot disappear through an undocumented filter.
+    # `frozen_target_capability_operand_dtype` is code-derived after freeze and excludes only a dtype
+    # absent from every frozen target capability; it does not expose held-out names to the agent.
+    admission = score.get("cohort_admission")
+    if not isinstance(admission, Mapping):
+        reasons.append("cohort_admission_missing_or_malformed")
+    else:
+        policy = admission.get("policy")
+        if policy not in {"all_discovered", "frozen_target_capability_operand_dtype",
+                          "descriptor_capability_and_resource_v1"}:
+            reasons.append("cohort_admission_policy_invalid")
+        source_n = admission.get("n_source_capsules")
+        admitted_n = admission.get("n_admitted_capsules")
+        capability_excluded_n = admission.get("n_capability_excluded")
+        resource_excluded_n = admission.get("n_resource_excluded")
+        if any(not isinstance(v, int) or isinstance(v, bool) or v < 0
+               for v in (source_n, admitted_n, capability_excluded_n, resource_excluded_n)):
+            reasons.append("cohort_admission_counts_malformed")
+        else:
+            if source_n <= 0 or admitted_n <= 0:
+                reasons.append("cohort_admission_vacuous")
+            if source_n != admitted_n + capability_excluded_n + resource_excluded_n:
+                reasons.append("cohort_admission_arithmetic_invalid")
+            if isinstance(n_capsules, int) and not isinstance(n_capsules, bool) \
+                    and admitted_n != n_capsules:
+                reasons.append("cohort_admission_denominator_mismatch")
+        for field in ("excluded_name_set_sha256", "admitted_name_set_sha256"):
+            digest = admission.get(field)
+            if (not isinstance(digest, str) or len(digest) != 64
+                    or any(ch not in "0123456789abcdef" for ch in digest)):
+                reasons.append(f"cohort_admission_{field}_invalid")
+        if policy == "descriptor_capability_and_resource_v1":
+            if admission.get("resource_policy") != "representative_l3_capstones_v1":
+                reasons.append("cohort_admission_resource_policy_invalid")
+            required_models = admission.get("required_admitted_models")
+            if not isinstance(required_models, list) or not required_models:
+                reasons.append("cohort_admission_required_models_missing")
 
     # The diagnostic score denominator deliberately excludes work that was never measured. Formal
     # completion must not inherit that smaller denominator: otherwise a screen budget, model timeout,
@@ -103,6 +164,9 @@ def _phase_manifest(score: Mapping, *, required_tier: str) -> dict:
         "integrity_status": score.get("integrity_status"),
         "numeric_all_exact": score.get("numeric_all_exact"),
         "trace_all_pass": score.get("trace_all_pass"),
+        "model_execution_all_pass": score.get("model_execution_all_pass"),
+        "structural_evidence_all_pass": score.get("structural_evidence_all_pass"),
+        "structural_evidence_scope": score.get("structural_evidence_scope"),
         "unmeasured_counts": {
             field: score.get(field) for field in (
                 "n_not_graded_ineligible", "n_gated_deferred", "n_screened_only",
@@ -112,6 +176,7 @@ def _phase_manifest(score: Mapping, *, required_tier: str) -> dict:
         "highest_tier": score.get("highest_tier"),
         "tier_reached": score.get("tier_reached"),
         "pass_evidence": score.get("pass_evidence"),
+        "cohort_admission": score.get("cohort_admission"),
         "formal_complete": complete,
         "completion_failures": failures,
     }
@@ -131,7 +196,11 @@ def _score(pkg, capsules, runs_root, labels, no_oracle):
     adapters = {} if no_oracle else CR.oracle_adapters(C.TARGET)
     return CG.grade(pkg, capsules_root=_roots(capsules), runs_root=runs_root, labels=labels,
                     contract=str(C.REPO / "merlin/contract"),
-                    oracle_adapters=adapters, timeout=900, target=C.TARGET, no_oracle=no_oracle)
+                    oracle_adapters=adapters, timeout=900, target=C.TARGET, no_oracle=no_oracle,
+                    # The public set was materialized from the descriptor before the run.  The hidden
+                    # pool cannot reveal names there, so derive its hardware-capable cohort only here,
+                    # after freeze, outside the sandbox.  The score seals the source/admitted counts.
+                    capability_admission=labels == {"hidden"})
 
 
 
@@ -164,6 +233,18 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     run_dir = Path(a.run_dir)
     pkg = run_dir / "submission"
+
+    # Pin whole-model tile certification to the simulator assigned to the formal RTL tier by the
+    # target's own manifest.  An inherited MERLIN_MESH_SIM=spike must not silently turn an L3 claim into
+    # a functional-model result; each tile also records and is checked for derived_from_rtl and
+    # cycle_accurate evidence by capsule_grade.model_execution_check.
+    _runner_cfg = CR._config_for_target(C.TARGET, None, "i8xi8_i32")
+    _formal_mesh_sim = _runner_cfg.tier_sim.get(FORMAL_REQUIRED_TIER)
+    if FORMAL_REQUIRED_TIER not in _runner_cfg.rtl_tiers or not _formal_mesh_sim:
+        raise SystemExit(f"formal tier {FORMAL_REQUIRED_TIER} is not bound to an RTL simulator for "
+                         f"target {C.TARGET}")
+    _inherited_mesh_sim = os.environ.get("MERLIN_MESH_SIM")
+    os.environ["MERLIN_MESH_SIM"] = _formal_mesh_sim
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
@@ -204,6 +285,9 @@ def main(argv: list[str] | None = None) -> int:
     public_phase.update({
         "numeric_all_exact": pub.get("numeric_all_exact"),
         "trace_all_pass": pub.get("trace_all_pass"),
+        "model_execution_all_pass": pub.get("model_execution_all_pass"),
+        "structural_evidence_all_pass": pub.get("structural_evidence_all_pass"),
+        "structural_evidence_scope": pub.get("structural_evidence_scope"),
         "first_failure_planes": pub.get("first_failure_planes"),
     })
     if a.skip_hidden:
@@ -258,6 +342,11 @@ def main(argv: list[str] | None = None) -> int:
         "gradeable": bool(pub.get("gradeable", not a.no_oracle)),
         "gradeable_reason": (None if not a.no_oracle else
                              "numeric oracle unavailable — structural (L0/L1/trace) tiers only"),
+        "model_mesh_sim": {
+            "required_tier": FORMAL_REQUIRED_TIER,
+            "simulator": _formal_mesh_sim,
+            "inherited_value_overridden": _inherited_mesh_sim,
+        },
     }
     (run_dir / "run_manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
 

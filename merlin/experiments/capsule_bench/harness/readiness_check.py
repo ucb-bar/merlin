@@ -324,6 +324,9 @@ def test_graded_path_is_the_declared_one():
 
     from merlin.targetgen import capsule_grade as CG
     from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen.contract.materialize import (
+        public_capsules_for, validate_materialized_cohort,
+    )
 
     pub_roots, hid_roots = _TE.graded_roots(), _TE.hidden_roots()
     contract = str(REPO / "merlin/contract")
@@ -340,28 +343,97 @@ def test_graded_path_is_the_declared_one():
         op_source = [c for c in source_caps if c.get("kind") != "model"]
         _eligible, hardware_ineligible = CR._split_ineligible(op_source, TARGET)
         proven_excluded = {str(r.get("capsule")) for r in hardware_ineligible}
-        exclusion_mismatch = sorted(excluded ^ proven_excluded)
+        declared_capability = set(getattr(_TE, "graded_capability_exclude", ()) or ())
+        declared_resource = set(getattr(_TE, "graded_resource_exclude", ()) or ())
+        explicit_split = bool(declared_capability or declared_resource)
+        missing_capability_exclusions = sorted(proven_excluded - (
+            declared_capability if explicit_split else excluded))
+        extra_capability_exclusions = sorted((declared_capability - proven_excluded)
+                                             if explicit_split else set())
+        resource_excluded = declared_resource if explicit_split else (excluded - proven_excluded)
+        invalid_resource_exclusions = sorted(
+            name for name in resource_excluded
+            if (source_by_name.get(name) or {}).get("kind") != "model")
+        admitted_models = sorted(
+            name for name, cap in source_by_name.items()
+            if cap.get("kind") == "model" and name not in excluded)
+        required_models = set(getattr(_TE, "graded_required_models", ()) or ())
+        resource_policy = getattr(_TE, "graded_resource_policy", None)
+        resource_policy_ok = (not explicit_split or (
+            resource_policy == "representative_l3_capstones_v1"
+            and set(admitted_models) == required_models
+            and bool(required_models)))
 
         caps = [c for c in source_caps if str(c.get("name")) not in excluded]
         n_pub = len(caps)
-        n_hid = len(CR.discover_capsules(hid_roots, labels={"hidden"}, contract=contract)) if hid_roots else 0
+        hidden_source = (CR.discover_capsules(
+            hid_roots, labels={"hidden"}, contract=contract) if hid_roots else [])
+        hidden_ops = [c for c in hidden_source if c.get("kind") != "model"]
+        _hidden_eligible, hidden_ineligible = CR._split_ineligible(hidden_ops, TARGET)
+        hidden_excluded_names = {str(row.get("capsule")) for row in hidden_ineligible}
+        n_hid = len(hidden_source)
+        n_hid_admitted = sum(
+            str(cap.get("name")) not in hidden_excluded_names for cap in hidden_source)
+
+        # Generate the exact formal-compatible public root and validate its admission record against
+        # the descriptor parsed at readiness start. This is the executable descriptor-SHA binding;
+        # checking that the record merely contains 64 hex characters would not detect stale bytes.
+        materialized_root = public_capsules_for(_TE)
+        cohort_record = validate_materialized_cohort(materialized_root, _TE)
     except Exception as exc:  # noqa: BLE001
         _ok("the resolved capsule roots load", False,
             f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]} "
             f"(roots={[str(r) for r in pub_roots]})")
         return
-    _ok("formal exclusions are known and exactly hardware-proven ineligible",
-        not unknown_exclusions and not exclusion_mismatch,
+    _ok("formal exclusions are known, exactly hardware-proven, or policy-bound model resources",
+        (not unknown_exclusions and not missing_capability_exclusions
+         and not extra_capability_exclusions and not invalid_resource_exclusions
+         and bool(admitted_models) and resource_policy_ok),
         f"source_pool={len(source_caps)}, admitted={n_pub}, declared_excluded={len(excluded)}, "
-        f"hardware_proven_ineligible={len(proven_excluded)}"
-        + (f", unknown={unknown_exclusions}, mismatch={exclusion_mismatch}" if
-           unknown_exclusions or exclusion_mismatch else ""))
+        f"hardware_proven_ineligible={len(proven_excluded)}, "
+        f"resource_bounded_models={len(resource_excluded)}, admitted_models={admitted_models}, "
+        f"resource_policy={resource_policy}, required_models={sorted(required_models)}"
+        + (f", unknown={unknown_exclusions}, missing_hardware={missing_capability_exclusions}, "
+             f"extra_hardware={extra_capability_exclusions}, "
+             f"invalid_resource={invalid_resource_exclusions}" if
+           unknown_exclusions or missing_capability_exclusions or extra_capability_exclusions
+           or invalid_resource_exclusions or not resource_policy_ok else ""))
     _ok("the public grade resolves to a non-empty suite", n_pub > 0,
         f"{n_pub} admitted capsule(s) from {len(source_caps)} source-pool capsule(s) over "
         f"{len(pub_roots)} root(s): " + ", ".join(r.name for r in pub_roots))
+    expected_source = getattr(_TE, "graded_expected_source_capsules", None)
+    expected_admitted = getattr(_TE, "graded_expected_admitted_capsules", None)
+    public_counts_declared = not explicit_split or (
+        expected_source is not None and expected_admitted is not None)
+    public_counts_match = (public_counts_declared
+                           and (expected_source is None or len(source_caps) == expected_source)
+                           and (expected_admitted is None or n_pub == expected_admitted))
+    _ok("the public cohort matches its descriptor-frozen cardinalities", public_counts_match,
+        f"source={len(source_caps)}, admitted={n_pub}, capability_excluded={len(proven_excluded)}, "
+        f"resource_excluded={len(resource_excluded)}, expected_source={expected_source}, "
+        f"expected_admitted={expected_admitted}")
+    _ok("the materialized cohort is bound to the current descriptor and exact admitted contents",
+        (cohort_record.get("n_source_capsules") == len(source_caps)
+         and cohort_record.get("n_admitted_capsules") == n_pub),
+        f"source={cohort_record.get('n_source_capsules')}, "
+        f"admitted={cohort_record.get('n_admitted_capsules')}, "
+        f"policy={cohort_record.get('policy')}")
     _ok("the hidden grade resolves to its OWN capsules", n_hid > 0,
         f"{n_hid} capsule(s) at {hid_roots[0].name if hid_roots else '(none declared)'}"
         if hid_roots else "no hidden/ beside this corpus — the hidden phase would score 0/0")
+    expected_hidden_source = getattr(_TE, "hidden_expected_source_capsules", None)
+    expected_hidden_admitted = getattr(_TE, "hidden_expected_admitted_capsules", None)
+    hidden_counts_declared = not explicit_split or (
+        expected_hidden_source is not None and expected_hidden_admitted is not None)
+    hidden_counts_match = (hidden_counts_declared
+                           and (expected_hidden_source is None or n_hid == expected_hidden_source)
+                           and (expected_hidden_admitted is None
+                                or n_hid_admitted == expected_hidden_admitted))
+    _ok("the sealed hidden cohort matches capability-admission cardinalities",
+        hidden_counts_match,
+        f"source={n_hid}, admitted={n_hid_admitted}, "
+        f"capability_excluded={len(hidden_excluded_names)}, "
+        f"expected_source={expected_hidden_source}, expected_admitted={expected_hidden_admitted}")
 
     if not n_pub:
         return
@@ -755,7 +827,14 @@ def main() -> int:
     n = n_pass + n_fail
     print(f"\n{'='*60}\nREADINESS: {n_pass}/{n} checks passed"
           + (f" ({n_na} N/A for this endpoint)" if n_na else ""))
-    go = n_fail == 0
+    # A GATE THAT ASSERTED NOTHING IS NOT A GO. `n_fail == 0` is vacuously true when no check recorded
+    # a verdict at all -- every section returning early on a missing precondition would print
+    # "0/0 checks passed" and then GO, which is the one outcome this script exists to make impossible.
+    # N/A rows do not count: they are a deliberate, derived statement about this endpoint, not evidence
+    # that the tooling works.
+    go = n_fail == 0 and n_pass > 0
+    if n_fail == 0 and n_pass == 0:
+        print("  [FAIL] readiness recorded no pass/fail verdict — nothing was actually checked")
     print("🟢 GO — all tooling verified; ready for an A/B run pending your approval."
           if go else "🔴 NO-GO — resolve the FAILs above before launching.")
     return 0 if go else 1
