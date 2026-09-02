@@ -48,20 +48,39 @@ from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
 from merlin.targetgen import conformance as CF  # noqa: E402
 
 
-def _captures(model_root: Path | None = None) -> dict[str, Path]:
-    """Every captured model bundle available as derivation evidence.
+def _captures(model_root: Path | None = None, *, include_claim_models: bool = False) -> dict[str, Path]:
+    """The captured model bundles that may DERIVE the requirement.
 
     The bundle store is the one place a capture is guaranteed to be the SAME IR the grader compiles
     (``_ensure_bundle`` writes it), so deriving from it cannot drift from what is actually graded.
+
+    ⚠️ THE CLAIM MODELS ARE HELD OUT. Both callers feed this to ``conformance.spec``, i.e. to
+    requirement derivation, and the requirement decides what the synthesized corpus contains. Coverage
+    is then reported over captured models -- so a capture doing both jobs means the corpus was built
+    from the model it is said to generalize to. This used to return EVERY bundle, the four claim models
+    included, and lstmnetvit was already in both roles. The split is declared in
+    ``merlin/contract/claim_models.yaml`` and applied by ``merlin.targetgen.claim_models``.
+
+    Matching runs on the bundle's RAW directory name, before the label is prettified: the matcher works
+    on token boundaries and the prettified label erases the tokens it needs.
+
+    ``include_claim_models=True`` returns the unfiltered set. It exists for the disjointness gate, which
+    has to derive the requirement BOTH ways to check that holding the claim models out costs no cell --
+    never for producing a requirement.
     """
+    from merlin.targetgen import claim_models as CM
+
     root = model_root or (artifacts_dir() / "recaptures")
     if not root.is_dir():
         return {}
     out = {}
     for d in sorted(root.iterdir()):
         m = d / "model.mlir"
-        if m.is_file():
-            out[d.name.replace("_fp32_consistent", "").replace("_consistent", "")] = m
+        if not m.is_file():
+            continue
+        if not include_claim_models and CM.is_claim_bundle(d.name):
+            continue
+        out[d.name.replace("_fp32_consistent", "").replace("_consistent", "")] = m
     return out
 
 
