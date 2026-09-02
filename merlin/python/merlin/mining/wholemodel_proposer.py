@@ -380,6 +380,8 @@ def cca_asm_dir() -> Path:
 _DTYPE_UKERNEL_SRC: dict[str, str] = {
     "xnnpack_qd8_gemm_rvv.objdump": "qd8-f32-qc8w-gemm/gen/qd8-f32-qc8w-gemm-1x4v-minmax-rvv.c",
     "xnnpack_f32_gemm_rvv.objdump": "f32-gemm/gen/f32-gemm-1x4v-minmax-rvv.c",
+    # f16 needs the Zvfh arith variant; the plain `rvv` spelling does not exist for this family.
+    "xnnpack_f16_gemm_rvv.objdump": "f16-gemm/gen/f16-gemm-1x4v-minmax-rvvfp16arith.c",
 }
 
 _DTYPE_FIXTURES: dict[str, dict[str, str]] = {
@@ -393,6 +395,37 @@ _DTYPE_FIXTURES: dict[str, dict[str, str]] = {
                "fp16": "xnnpack_f16_gemm_rvv.objdump",
                "fp32": "xnnpack_f32_gemm_rvv.objdump"},
 }
+
+
+#: Spelling aliases -> the registry's dtype keys. The repo spells the same dtype several ways at
+#: different layers (a CLI flag `--dtype f32`, a ContractionShape `('i8','i8','i32')`, a bundle name
+#: `*_int8`), and the fixture registry can only be keyed on one. Normalising is a SPELLING concern, so
+#: the alias set is explicit and the valid TARGETS are derived from the registry itself -- an alias
+#: pointing at a key no fixture table has is a bug this raises on, not a silent None.
+_DTYPE_ALIASES: dict[str, str] = {
+    "f32": "fp32", "fp32": "fp32", "float32": "fp32", "float": "fp32",
+    "f16": "fp16", "fp16": "fp16", "float16": "fp16", "half": "fp16",
+    "i8": "int8", "int8": "int8", "qint8": "int8", "qd8": "int8", "s8": "int8",
+}
+
+
+def canonical_dtype(spelling: str | None) -> str | None:
+    """The registry dtype key for a dtype ``spelling``, or None if nothing claims it.
+
+    Fails CLOSED on an unrecognised spelling: None means "no dtype-matched expert", which
+    :func:`expert_fixture_for` turns into no expert at all rather than another dtype's fixture. That is
+    the right failure -- a cross-dtype expert diff reports differences that are only the dtype, and
+    those route to real levers that then measure inert.
+    """
+    if not spelling:
+        return None
+    key = _DTYPE_ALIASES.get(str(spelling).strip().lower())
+    if key is None:
+        return None
+    known = {k for table in _DTYPE_FIXTURES.values() for k in table}
+    if key not in known:                    # an alias that outlived its fixture table
+        raise KeyError(f"dtype alias {spelling!r} -> {key!r} names no key in _DTYPE_FIXTURES {sorted(known)}")
+    return key
 
 
 def expert_fixture_for(family: str, dtype: str | None = None) -> str | None:
@@ -483,7 +516,12 @@ def divergences_across_teachers(ours, *, dtype: str | None = None,
         # this from the divergence list instead would mark every AGREEING axis as unanswered, which
         # over-reports blindness and buries the axes genuinely nobody can teach.
         answered |= _populated(expert) & ours_axes
-        for d in cca_compare.compare(expert, ours):
+        # Stamp the TEACHER into the divergence's own evidence, so attribution travels with the
+        # divergence instead of in a parallel dict the consumer has to remember to thread. A consumer
+        # (the beam) receives only the list; without this it cannot say which expert justified an
+        # axis, and "the expert says LMUL=4" is unauditable when there are nine experts.
+        ev = [f"teacher:{fam}", str(expert.provenance.get("source", "expert"))]
+        for d in cca_compare.compare(expert, ours, evidence=ev):
             if d.axis in IDENTITY_AXES or d.axis in seen:
                 continue
             seen[d.axis] = d
@@ -492,6 +530,38 @@ def divergences_across_teachers(ours, *, dtype: str | None = None,
     # set, reported rather than dropped, because the loop can only discover what it is shown.
     unanswered = sorted(a for a in ours_axes - answered if a not in IDENTITY_AXES)
     return list(seen.values()), taught_by, unanswered
+
+
+def teacher_compare_fn(*, dtype: str | None = None,
+                       families: "tuple[str, ...] | None" = None,
+                       fixture_dir: "Path | None" = None,
+                       record: list | None = None):
+    """A ``compare_fn(ours) -> [Divergence]`` for :func:`mining.beam.run_beam`, backed by EVERY teacher.
+
+    The beam's default expert side is ONE lifted fixture, which silently bounds what the search can
+    discover: an axis the single expert cannot answer is uncomparable, raises no divergence, routes to
+    no action, and is therefore never forked -- regardless of how much of the model's wall it owns.
+    MEASURED on small_llama fp32: the matmul-teacher-only diff found 5 divergences and 4 mintable forks
+    and reported ``compute.activation_vectorization`` as uncomparable, while the dynamic profile puts
+    scalar `exp` at 16.48% of real model work. Consulting all teachers: 9 divergences, 6 mintable forks,
+    including that axis (taught by gelu) and ``compute.reduction_form`` (taught by softmax).
+
+    ``dtype`` is normalised by :func:`canonical_dtype`, so a caller may pass whatever its layer spells.
+    Appends one audit record per invocation to ``record`` when given -- the teacher that justified each
+    axis, and the axes NO teacher could answer, which is the coverage gap of the teacher SET and the
+    only honest way to read "no divergence found".
+    """
+    dt = canonical_dtype(dtype)
+
+    def _compare(ours):
+        divs, taught_by, unanswered = divergences_across_teachers(
+            ours, dtype=dt, families=families, fixture_dir=fixture_dir)
+        if record is not None:
+            record.append({"dtype": dt, "n_divergences": len(divs),
+                           "taught_by": dict(taught_by), "unanswered_axes": list(unanswered)})
+        return divs
+
+    return _compare
 
 
 def family_region_ids(model_dir: str | Path, family: str) -> list[str]:

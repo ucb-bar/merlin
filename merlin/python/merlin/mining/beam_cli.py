@@ -60,14 +60,21 @@ def run_instrumented_beam(
     max_workers: int | None = None, curated_text: str | None = None,
     certify_fn=None, sweep_fn=None, expert_wall_ns: float | None = None,
     validate_model_dir: str | Path | None = None, validate_fn=None,
-    noise_margin: float | None = None, proposer=None,
+    noise_margin: float | None = None, proposer=None, teachers: str | None = None,
 ) -> dict[str, Any]:
     """Open an aet parent run, run the CCA beam, emit a child aet run per fork, return the outcome.
 
     Two-phase objective: ``model_dir`` is the cheap EXPLORE bundle; when ``validate_model_dir`` is
     given, survivors are re-certified on that full/slow bundle (a ``validate_fn`` reusing the same
     ``certify_fn`` with the validate bundle is synthesized) before promotion. An explicit
-    ``validate_fn`` wins if supplied (tests inject a mock)."""
+    ``validate_fn`` wins if supplied (tests inject a mock).
+
+    ``teachers`` widens the EXPERT side from the single ``--expert-objdump`` fixture to the family
+    teacher set (``"all"``, or a comma-separated family list). The default single expert bounds what
+    the search can find: an axis one expert cannot answer yields no divergence, routes to no action and
+    is never forked, however much of the wall it owns. MEASURED on small_llama fp32 -- matmul teacher
+    alone: 5 divergences / 4 mintable forks, with ``compute.activation_vectorization`` uncomparable
+    while scalar `exp` is 16.48% of real model work. All teachers: 9 divergences / 6 mintable forks."""
     from ..common.artifacts import finish_run, start_run
     from .beam import run_beam
     from .runner import certify_rvv
@@ -81,6 +88,20 @@ def run_instrumented_beam(
 
     op_key = {"op": op, "dtype": dtype, "shape_regime": shape_regime}
     expert_cca = lift_expert_cca(expert_objdump, op)
+    # The teacher-set expert side, when asked for. `teacher_audit` collects, per generation, which
+    # teacher justified each axis and which axes NO teacher could answer -- the second is the honest
+    # reading of "the search found nothing here" and lands in the parent run.
+    compare_fn, teacher_audit = None, []
+    if teachers:
+        from .wholemodel_proposer import canonical_dtype, teacher_compare_fn
+        fams = (None if teachers.strip().lower() == "all"
+                else tuple(f.strip() for f in teachers.split(",") if f.strip()))
+        if canonical_dtype(dtype) is None:
+            raise SystemExit(
+                f"--teachers needs a dtype with harvested fixtures; {dtype!r} normalises to nothing. "
+                f"Run build_tools/scripts/harvest_xnnpack_fixtures.py, or drop --teachers to use the "
+                f"single --expert-objdump expert.")
+        compare_fn = teacher_compare_fn(dtype=dtype, families=fams, record=teacher_audit)
     curated = curated_text if curated_text is not None else Path(expert_objdump).read_text()
     # a K1 target defaults to serial (max_workers=1) — the board can't run concurrent forks.
     if max_workers is None and "k1" in targets:
@@ -90,7 +111,8 @@ def run_instrumented_beam(
     parent = start_run(suite=suite, method="cca_beam", target="rvv",
                        extra={"op_key": op_key, "width": width, "depth": depth, "top_k": top_k,
                               "targets": list(targets), "workload": Path(model_dir).name,
-                              "expert_objdump": str(expert_objdump), "role": "beam_parent"})
+                              "expert_objdump": str(expert_objdump), "role": "beam_parent",
+                              "teachers": (teachers or "single-expert")})
     status = "error"
     parent_summary: dict | None = None
     try:
@@ -98,6 +120,7 @@ def run_instrumented_beam(
                        runs_root=parent.run_dir / "forks", out_root=str(parent.run_dir / "targets"),
                        width=width, depth=depth, top_k=top_k, target="rvv",
                        timestamp="beam", targets=targets, expert_cca=expert_cca,
+                       compare_fn=compare_fn,
                        max_workers=max_workers, certify_fn=certify_fn, sweep_fn=sweep_fn,
                        expert_wall_ns=expert_wall_ns, validate_fn=validate_fn,
                        noise_margin=noise_margin, proposer=proposer)
@@ -105,6 +128,9 @@ def run_instrumented_beam(
         tree_src = Path(res["tree_path"])
         if tree_src.is_file():
             (parent.run_dir / "beam_tree.yaml").write_text(tree_src.read_text(), encoding="utf-8")
+        if teacher_audit:
+            write_yaml(parent.run_dir / "teacher_audit.yaml",
+                       {"teachers": teachers, "generations": teacher_audit})
         # one CHILD aet run per fork, carrying summary_metrics.json (aet compare reads these).
         for node in res.get("nodes", []):
             summ = _node_summary(node)
@@ -119,7 +145,10 @@ def run_instrumented_beam(
                           "best_attainment_vs_expert": (best or {}).get("attainment_vs_expert"),
                           "best_lever": (best or {}).get("lever"),
                           "n_forks": len(res.get("nodes", [])) - 1,
-                          "n_deferred": len(res.get("deferred", []))}
+                          "n_deferred": len(res.get("deferred", [])),
+                          "teachers": (teachers or "single-expert"),
+                          "teacher_unanswered_axes": sorted(
+                              {a for g in teacher_audit for a in g.get("unanswered_axes", ())})}
         status = "ok"
         res["parent_run_dir"] = str(parent.run_dir)
         res["parent_run_id"] = parent.run_id
@@ -154,6 +183,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="wholemodel: propose byte-traffic-ranked whole-model levers (transpose "
                          "fusion, per-matmul MR, reduction, ...) -- the right choice for a "
                          "whole-model objective. cca: legacy kernel-vs-expert divergence router.")
+    ap.add_argument("--teachers", default=None,
+                    help="widen the EXPERT side from --expert-objdump to the family teacher set: "
+                         "'all', or a comma-separated family list (e.g. 'matmul,gelu,softmax'). One "
+                         "expert cannot answer every axis, and an unanswerable axis raises no "
+                         "divergence and is never forked -- measured on small_llama fp32, the matmul "
+                         "teacher alone found 5 divergences to all-teachers' 9, missing the scalar "
+                         "exp that is 16.48%% of that model's real work. Records teacher_audit.yaml.")
     ap.add_argument("--op", default="matmul")
     ap.add_argument("--dtype", default="f32")
     ap.add_argument("--shape-regime", default="square")
@@ -179,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         op=args.op, dtype=args.dtype, shape_regime=args.shape_regime, targets=targets,
         width=args.width, depth=args.depth, top_k=args.top_k, max_workers=args.max_workers,
         expert_wall_ns=args.expert_wall_ns, validate_model_dir=args.validate_model_dir,
-        noise_margin=args.noise_margin, proposer=proposer)
+        noise_margin=args.noise_margin, proposer=proposer, teachers=args.teachers)
     best = res.get("best") or {}
     print(f"parent_run={res.get('parent_run_dir')}")
     print(f"best: run_id={best.get('run_id')} lever={best.get('lever')} "

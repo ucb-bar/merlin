@@ -73,9 +73,18 @@ def _escalations(action, achieved_cca, knobs: dict) -> list:
     return props
 
 
-def _cca_divergences(run_dir: Path, expert_cca, op_key: dict) -> list:
+def _cca_divergences(run_dir: Path, expert_cca, op_key: dict, compare_fn: "Callable | None" = None) -> list:
     """Lift OUR emitted CCA from a run's objdump.txt (no toolchain re-run) and diff it against the
-    expert CCA -> the CCA Divergences that drive the CCA-native proposer. [] if no objdump."""
+    expert -> the CCA Divergences that drive the CCA-native proposer. [] if no objdump.
+
+    ``compare_fn(ours) -> [Divergence]`` replaces the single-expert diff. It exists because a whole
+    model is not one kernel and one expert cannot answer every axis: an expert GEMM has no activation,
+    so ``compute.activation_vectorization`` is UNCOMPARABLE against it and raises nothing however
+    large the model's activation cost is. MEASURED on small_llama fp32: scalar `exp` is 16.48% of real
+    model work (``__ieee754_expf`` 11.91% + ``expf`` 4.57%), and the matmul-teacher-only beam reported
+    that axis as uncomparable -- the single largest fp32-specific cost was invisible to the search.
+    Consulting every family teacher took the same model from 5 divergences to 9.
+    """
     objd = Path(run_dir) / "generated" / "objdump.txt"
     if not objd.is_file():
         return []
@@ -83,6 +92,8 @@ def _cca_divergences(run_dir: Path, expert_cca, op_key: dict) -> list:
     from ..kernels.decode import rvv
     ours = cca.lift_asm(rvv.decode_text(objd.read_text()), op=str(op_key.get("op", "matmul")),
                         source="ours", undefined_symbols=_undef_syms(run_dir))
+    if compare_fn is not None:
+        return list(compare_fn(ours))
     return cca_compare.compare(expert_cca, ours)
 
 
@@ -227,7 +238,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
              timestamp: str = "run", targets: tuple[str, ...] = ("spike",),
              baseline_run_dir: str | Path | None = None,
              certify_fn: Callable = certify_rvv, proposer: Callable | None = None,
-             expert_cca=None, loader: Callable = load_rvv_package, minter: Callable = mint_fork,
+             expert_cca=None, compare_fn: Callable | None = None,
+             loader: Callable = load_rvv_package, minter: Callable = mint_fork,
              max_workers: int | None = None, sweep_fn: Callable = run_sweep,
              expert_wall_ns: float | None = None, validate_fn: Callable | None = None,
              noise_margin: float | None = None,
@@ -261,7 +273,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     # CCA mode: when an expert CCA is supplied, drive the search from OUR-vs-EXPERT CCA divergences
     # via the CCA-native proposer (whose proposals carry their CompilerAction, so the per-fork audit
     # fires). Otherwise the legacy motif-string fingerprint router (backward compatible).
-    cca_mode = expert_cca is not None
+    cca_mode = expert_cca is not None or compare_fn is not None
     if proposer is None:
         proposer = propose_forks_from_cca if cca_mode else propose_forks
 
@@ -373,7 +385,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
         for parent_pkg, parent_node in parents:
             # feed the proposer the matching divergences: OUR-vs-EXPERT CCA divergences in CCA mode
             # (lifted from the parent's emitted asm), else the fingerprint divergences.
-            divs = (_cca_divergences(runs_root / parent_node["run_id"], expert_cca, op_key)
+            divs = (_cca_divergences(runs_root / parent_node["run_id"], expert_cca, op_key,
+                                     compare_fn=compare_fn)
                     if cca_mode else parent_node["divergences"])
             props = proposer(divs, parent_pkg.knobs)
             # SELECTION: spend this generation's width on EVIDENCE, not on the order the divergence
