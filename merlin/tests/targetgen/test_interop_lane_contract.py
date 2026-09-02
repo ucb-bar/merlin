@@ -162,7 +162,10 @@ def test_execution_accounting_overrides_the_plan():
                  "matmul_layers_host_fallback": 15}
     rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}, plan, exec_none)
     assert rep["unexercised"] == ["on_mesh"]
-    assert rep["evidence"] == "execution"
+    # PER LANE, not one word for the report. The two lanes genuinely have different evidence here --
+    # the mesh was measured, the host lane was not -- and a single label had to misdescribe one of them.
+    assert rep["evidence"]["on_mesh"] == "execution"
+    assert rep["evidence"]["scalar_rvv_lane"] == "routing_plan"
 
 
 def test_execution_accounting_can_also_confirm_a_lane():
@@ -176,8 +179,38 @@ def test_execution_accounting_can_also_confirm_a_lane():
 def test_a_plan_only_verdict_says_so():
     """Without execution accounting the report is about intent, and must admit it."""
     rep = lane_report({"lanes": {"require": ["on_mesh"]}}, {"on_mesh": {"matmul": 1}})
-    assert rep["evidence"] == "routing_plan"
+    assert rep["evidence"]["on_mesh"] == "routing_plan"
+    assert rep["plan_only_lanes"] == ["on_mesh"]
     assert "PLANNED" in rep["caveat"] or "planned" in rep["caveat"].lower()
+
+
+def test_the_host_lane_is_held_to_the_same_bar_as_the_mesh():
+    """The hole this closes. `on_mesh` was corrected against per-layer accounting; `scalar_rvv_lane`
+    was not, so a required host lane was satisfied by a router assignment that may never have run --
+    the same "a routing plan is not an execution" defect, left open on the other side."""
+    plan = {"on_mesh": {"matmul": 15}, "scalar_rvv_lane": {"add": 3}}
+    mesh = {"matmul_layers_on_mesh": 15, "matmul_layers_host_fallback": 0}
+    ran = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}, plan, mesh,
+                      {"kernels_ran": 7, "contractions_ran": 2})
+    assert ran["unexercised"] == []
+    assert ran["evidence"]["scalar_rvv_lane"] == "execution"
+    assert ran["host_contractions_ran"] == 2
+    assert "caveat" not in ran, "both lanes were measured, so nothing is plan-only"
+
+    never = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}, plan, mesh,
+                        {"kernels_ran": 0})
+    assert never["unexercised"] == ["scalar_rvv_lane"], (
+        "the router filled the host lane but nothing executed there")
+
+
+def test_an_unknown_count_is_not_read_as_zero():
+    """`UNKNOWN` is a sentinel string, not a number. Reading it as 0 would turn "nobody could tell"
+    into "the lane carried nothing" -- a measurement claim from an absence of measurement."""
+    plan = {"on_mesh": {"matmul": 1}, "scalar_rvv_lane": {"add": 1}}
+    rep = lane_report({"lanes": {"require": ["scalar_rvv_lane"]}}, plan, {},
+                      {"kernels_ran": "UNKNOWN"})
+    assert rep["unexercised"] == [], "an unmeasured lane must fall back to the plan, not to zero"
+    assert rep["evidence"]["scalar_rvv_lane"] == "routing_plan"
 
 
 def test_an_interop_capsule_runs_on_the_mesh_lane():

@@ -1125,7 +1125,8 @@ def _oracle_kind(oracle_meta) -> str | None:
     return safe or None
 
 def lane_report(capsule: dict, routing_plan: dict | None,
-                mesh_execution: dict | None = None) -> dict | None:
+                mesh_execution: dict | None = None,
+                host_execution: dict | None = None) -> dict | None:
     """Verify an INTEROP capsule's declared lanes against what the compiler actually DID.
 
     Returns ``None`` when the capsule declares no ``lanes.require`` (the ordinary case).
@@ -1140,6 +1141,15 @@ def lane_report(capsule: dict, routing_plan: dict | None,
     * **Not every key of the plan is a lane.** The plan also carries ``n_mesh_ops``, ``n_scalar_ops``,
       ``mesh_matmul_extents`` and ``note``; scanning it for truthy keys reported those as lanes that
       "carried work". A lane entry is a MAPPING of op -> count, so only dict-valued keys are lanes.
+
+    The first rule was applied to ``on_mesh`` alone, which left the SAME hole open on the other side:
+    ``scalar_rvv_lane`` was satisfied by a plan that may never have run. ``host_execution`` closes it
+    symmetrically. ``evidence`` is therefore PER LANE rather than one word -- the two lanes genuinely
+    have different evidence, and a single label had to lie about one of them.
+
+    ``in_contract_vector_scalar`` has no execution evidence available at all: the dispatch runtime has
+    one device branch and no notion of an in-contract vector unit. It stays plan-evidenced, with the
+    caveat, rather than being quietly promoted alongside the two lanes that can be measured.
     """
     req = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
     if not req:
@@ -1148,21 +1158,43 @@ def lane_report(capsule: dict, routing_plan: dict | None,
     lanes = {k: v for k, v in plan.items() if isinstance(v, dict)}
     carried = {k for k, v in lanes.items() if v}
     me = mesh_execution or {}
-    # The mesh lane is the one we have real per-layer accounting for; when it exists, believe it.
-    if me:
-        on = me.get("matmul_layers_on_mesh")
-        if on is not None:
-            if int(on) > 0:
-                carried.add("on_mesh")
-            else:
-                carried.discard("on_mesh")
+    he = host_execution or {}
+
+    def _measured(value) -> int | None:
+        """A real count, or None for 'nobody could tell'. ``UNKNOWN`` is a sentinel, not a number."""
+        if value is None or isinstance(value, str):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    evidence = {ln: "routing_plan" for ln in req}
+    # Each lane believes its own accounting when it exists. The mesh has had this since the plan-vs-
+    # execution divergence was measured (15 assigned, 15 fell back); the host lane gets it here.
+    for lane, count in (("on_mesh", _measured(me.get("matmul_layers_on_mesh"))),
+                        ("scalar_rvv_lane", _measured(he.get("kernels_ran")))):
+        if count is None:
+            continue
+        if lane in evidence:                       # `evidence` is keyed on the REQUIRED lanes only
+            evidence[lane] = "execution"
+        if count > 0:
+            carried.add(lane)
+        else:
+            carried.discard(lane)
     unexercised = [ln for ln in req if ln not in carried]
     out = {"required": req, "observed": sorted(carried), "unexercised": unexercised,
-           "evidence": ("execution" if me.get("matmul_layers_on_mesh") is not None else "routing_plan")}
-    if out["evidence"] == "routing_plan":
-        out["caveat"] = ("no per-layer execution accounting was recorded, so this reports what the "
-                         "router PLANNED, not what ran; a lane can appear here and still have executed "
-                         "nothing")
+           "evidence": {ln: evidence[ln] for ln in req},
+           # Contractions apart from kernels: the host lane is mostly norms and activations, so a bare
+           # kernel count is satisfied by any model at all. Reported rather than gated -- a capsule may
+           # legitimately put only elementwise work on the host.
+           "host_contractions_ran": _measured(he.get("contractions_ran"))}
+    plan_only = [ln for ln in req if evidence[ln] == "routing_plan"]
+    if plan_only:
+        out["caveat"] = (f"no execution accounting was recorded for {plan_only}, so those lanes report "
+                         f"what the router PLANNED, not what ran; a lane can appear here and still have "
+                         f"executed nothing")
+        out["plan_only_lanes"] = plan_only
     return out
 
 def _absent_outputs(nrep: dict) -> list[str]:
@@ -1974,6 +2006,35 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
     _model_tiers = _model_tier_map(declared, target, model_exec)
     result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
     exercised: dict[str, str] = {}
+    # THE LANE CONTRACT IS EVALUATED UNCONDITIONALLY. It used to sit inside `if n_tiles:` below, so a
+    # capsule whose tile verification produced nothing -- no mesh_verify, no default OOT package, an
+    # unavailable oracle -- had its declared lanes never checked at all, and `result["lane_report"]`
+    # was simply absent. A capsule that names lanes is asserting composition; not looking is not the
+    # same as looking and finding it satisfied.
+    #
+    # An interop capsule states the lanes it requires -- the routing plan's OWN keys (`on_mesh`,
+    # `in_contract_vector_scalar`, `scalar_rvv_lane`) -- and passes only when EVERY named lane actually
+    # carried work. Such a capsule withholds `must_accelerate` on purpose: host-lane work is the
+    # behaviour under test, so "no host fallback" would be the wrong bar and would fail the exact thing
+    # the capsule exists to prove.
+    _lane_rep = lane_report(capsule, result.get("routing_plan"), model_exec,
+                            out.get("host_execution"))
+    _lane_ok = True
+    if _lane_rep is not None:
+        result["lane_report"] = _lane_rep
+        _lane_ok = not _lane_rep["unexercised"]
+        # A LANE EVIDENCED ONLY BY THE PLAN IS NOT EVIDENCE. Passing on it would repeat, on the host
+        # side, precisely the defect already fixed on the mesh side: 15 matmuls assigned to the mesh and
+        # 15 host fallbacks at run time. `incomplete` rather than `fail` -- nothing about the submission
+        # was disproved, we simply did not measure it.
+        if _lane_ok and _lane_rep.get("plan_only_lanes"):
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"capsule requires lane(s) "
+                                             f"{_lane_rep['plan_only_lanes']} but only the ROUTING PLAN "
+                                             f"reports them; no execution accounting was recorded, so "
+                                             f"whether work reached those lanes is unmeasured"})
+            return result
     if n_tiles:
         # The verdict comes from the per-tile COUNTS. Reading a boolean `ok` key -- which this dict does
         # not carry -- made every on-mesh execution record "fail", including one where all 15 layers
@@ -2008,10 +2069,6 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
         # `scalar_rvv_lane`), so this asserts against what the compiler reported rather than a vocabulary
         # invented here; a capsule naming a lane the plan does not report fails closed with that lane
         # named, which is the actionable direction.
-        _lane_rep = lane_report(capsule, result.get("routing_plan"), model_exec)
-        if _lane_rep is not None:
-            result["lane_report"] = _lane_rep
-            _model_ok = not _lane_rep["unexercised"]
 
         # WHICH tier the mesh oracle corresponds to, DERIVED from the target's own declared RTL tiers.
         # This was `[x for x in declared if x not in ("L0", "L1")]` with an `"L3"` fallback -- three tier
@@ -2020,7 +2077,7 @@ def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, tim
         _rtl = [t for t in declared if t in _rtl_tiers_of(target)]
         _tier = _rtl[-1] if _rtl else (declared[-1] if declared else None)
         if _tier:
-            exercised[_tier] = "pass" if (_tile_ok and _model_ok) else "fail"
+            exercised[_tier] = "pass" if (_tile_ok and _model_ok and _lane_ok) else "fail"
     # WHOSE COMPILER PASSED. When the runtime had to discharge a contract obligation the target backend
     # owes -- residency tiling for `capacity_fit` -- the verdict is about runtime+backend together, and
     # saying so is the difference between "this compiler handles a 512x512 layer" and "this layer ran".

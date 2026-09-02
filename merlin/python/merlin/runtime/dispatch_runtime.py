@@ -677,6 +677,18 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     # whole-model tolerance), cast for a float one. Which of those applies is DERIVED from the target.
     mesh_routes: dict[str, dict] = {}
     mesh_dp = None                                   # the target's CorpusBinding, whole (see mesh_datapath)
+    # Kernel bodies by symbol, for the host-lane contraction count below. Built LAZILY and cached: the
+    # two existing `kfns` maps are each bound inside a branch (the xnnpack route, and
+    # `kernel_backend == "mesh"`), so neither exists on a plain host run -- reaching for one there is a
+    # NameError, not a missing count. One walk, and only if a host kernel actually executes.
+    _host_kfn_cache: dict = {}
+
+    def _host_kernel_fn(sym: str):
+        if not _host_kfn_cache:
+            _host_kfn_cache.update({o.sym_name.data: o for o in module.walk()
+                                    if o.name == "func.func" and "$kernel_" in o.sym_name.data})
+        return _host_kfn_cache.get(sym)
+
     mesh_counts: dict = counters if counters is not None else {}   # per-CALL, not
     # a module-global function attribute: run_suite grades capsules on a thread pool.
     if kernel_backend == "mesh":
@@ -1001,6 +1013,22 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 args.append(ScalarArg(env[id(o)], str(o.type)))   # by-value scalar arg
         out_arrays = [np.zeros(sh, dt) for sh, dt in outs]
         args += [(o.ctypes.data, o.shape) for o in out_arrays]
+        # THE HOST LANE ACTUALLY EXECUTING, which is the one thing nothing counted. `lane_report`
+        # corrected `on_mesh` against per-layer mesh accounting but had no equivalent for
+        # `scalar_rvv_lane`, so a capsule could satisfy a required host lane on the strength of a
+        # ROUTING PLAN that never ran -- the same defect ("a routing plan is not an execution") that
+        # was fixed on the mesh side and left open on this one.
+        #
+        # Contractions are counted SEPARATELY on purpose: the host lane is populated overwhelmingly by
+        # norms and activations, so a bare kernel count is satisfied by any model at all and would be
+        # as hollow as the plan-only evidence it replaces.
+        #
+        # Into the per-call `counters` dict, never onto a module-global: run_suite grades on a thread
+        # pool and concurrent grades clobber module attributes -- and this count now feeds a verdict.
+        mesh_counts["host_kernels_ran"] = mesh_counts.get("host_kernels_ran", 0) + 1
+        _hostfn = _host_kernel_fn(symbol)
+        if _hostfn is not None and _has_contraction(_hostfn):
+            mesh_counts["host_contractions_ran"] = mesh_counts.get("host_contractions_ran", 0) + 1
         model(args)
         for r, o in zip(op.results, out_arrays):
             env[id(r)] = o

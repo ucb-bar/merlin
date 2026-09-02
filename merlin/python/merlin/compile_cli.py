@@ -503,6 +503,19 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
                 # power-of-two scaling this should read zero flushed and zero saturating; a nonzero count
                 # is the run telling you the numbers below it are worth less than they look.
                 "operand_representability": res.get("mesh_operand_repr")}
+        # THE HOST LANE'S OWN EXECUTION RECORD, emitted whatever the kernel backend, because a
+        # host-only capsule never enters the mesh branch above and would otherwise have no evidence at
+        # all. Same `_UNKNOWN` discipline: absent means "nobody could tell", not "nothing ran".
+        #
+        # `contractions_ran` is reported apart from `kernels_ran` because the host lane is populated
+        # overwhelmingly by norms and activations -- a bare kernel count is satisfied by any model and
+        # says nothing about whether real work crossed to the host.
+        from .common.provenance import UNKNOWN as _UNKNOWN_HOST
+        out["host_execution"] = {
+            "kernels_ran": res.get("host_kernels_ran", _UNKNOWN_HOST),
+            "contractions_ran": res.get("host_contractions_ran", _UNKNOWN_HOST),
+            "host_lane": out.get("host_lane"),
+        }
         out["status"] = "ran"
         out["n_kernels"] = res.get("n_kernels")
         if refs:
