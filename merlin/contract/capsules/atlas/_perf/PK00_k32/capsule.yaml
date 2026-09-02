@@ -74,6 +74,49 @@ performance:
     observation: residual_cycles_by_K
     fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
     negative_control: fixed_M_and_N_across_all_K_points
+  acceptance:
+    schema_version: 1
+    analyzer: perf_pk_claim.analyze_pk_claim/v1
+    fit:
+      form: affine
+      method: ordinary_least_squares_all_L3_replicates
+      independent_variable: K
+      dependent_metric: verilator_L3_cycles
+    cohort:
+      operation: matmul
+      fixed_shape_axes:
+      - M
+      - N
+      fixed_fields:
+      - operation
+      - operand_dtype
+      - accum_dtype
+      - epilogue
+      exact_points: 4
+      K_multipliers_of_tile:
+      - 1
+      - 2
+      - 4
+      - 8
+    replicates:
+      exact_count: 3
+      identities:
+      - r000
+      - r001
+      - r002
+    evidence:
+      correctness_simulator: spike
+      correctness_tier: L2
+      timing_simulator: verilator
+      timing_tier: L3
+      spike_cycles_citable: false
+    thresholds:
+      slope_cycles_per_K_element_min_exclusive: 0.0
+      r_squared_min_inclusive: 0.995
+      residual_bound:
+        predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+        absolute_floor_cycles: 8
+        observed_cycle_fraction: 0.03
   gate:
     traits:
     - structural_pipeline_depth
@@ -100,9 +143,3 @@ performance:
     runs: 4
     projected_cycles: derived_at_preflight
     basis: four_members_before_repetition
-numeric_falsifiability:
-  status: ok
-  declared_atol: 0.25
-  ceiling_atol: 342.24
-  basis: the largest atol under which the best constant answer still fails this golden
-  falsifiable: true

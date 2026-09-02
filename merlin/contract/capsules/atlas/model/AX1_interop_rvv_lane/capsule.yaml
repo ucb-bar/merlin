@@ -31,10 +31,10 @@ numeric_policy:
 expected:
   instruction_classes:
   - TensorBaseOffset
-  - TensorComputeBinary
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPopE1
+  - TensorComputeBinary
 required_oracle_tiers:
 - L0
 - L1

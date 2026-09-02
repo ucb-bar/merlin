@@ -905,7 +905,29 @@ def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, lis
         for c in got or ():
             if c not in classes:
                 classes.append(c)
-    return family, classes
+    return family, _in_issue_order(classes, binding, in_fmt)
+
+
+def _in_issue_order(classes: list[str], binding, in_fmt: str) -> list[str]:
+    """Put a UNION of per-op class lists back into the target's own issue order.
+
+    The union above is built in first-encounter order, which was harmless only while every op returned
+    the identical full sequence. Now that a movement op correctly owes no contraction classes, the op
+    the model happens to mention first decides the order -- and a model whose first eligible op is a
+    copy reported its store class BEFORE its multiply, i.e. a sequence the target cannot issue.
+
+    The reference order is asked of the binding, not written here: a contraction is the op whose class
+    list IS this target's full sequence, so its order is the canonical one, and using it keeps this
+    agnostic to how the target spells or orders its classes. A class the reference does not contain is
+    kept, at the end -- an unplaceable class is not evidence it is unnecessary, and dropping it would be
+    the silent drop the parsing rule forbids.
+    """
+    try:
+        reference = list(binding.classes_for(op="matmul", output_dtype=in_fmt) or ())
+    except Exception:                       # noqa: BLE001 -- no reference: keep the order we have
+        return classes
+    rank = {c: i for i, c in enumerate(reference)}
+    return sorted(classes, key=lambda c: (rank.get(c, len(rank)), classes.index(c)))
 
 
 

@@ -107,6 +107,114 @@ def test_an_unreadable_capture_is_reported_not_counted_as_zero(opset, tmp_path):
         "a model we could not read contributes no regions, rather than contributing zeros")
 
 
+def test_each_half_of_the_claim_names_its_own_model_set(opset, tmp_path):
+    """Counting operators and measuring routing can run over DIFFERENT models, and the sentence says so.
+
+    The census reads ``prov.aten`` tags out of the module text; routing has to PARSE the module. So a
+    capture that yields its op tags and fails to parse contributes to one half and not the other.
+    Measured on the real corpus: smolvla's capture gives 46 ops and raises ParseError in
+    ``model_coverage.load_module``, so the operator count came from four models and the routing
+    fraction from three -- and one sentence carrying both read as though it were four throughout.
+    """
+    good = tmp_path / "good.mlir"
+    good.write_text(
+        'builtin.module {\n  func.func @forward(%a: tensor<4x4xf32>) -> tensor<4x4xf32> {\n'
+        '    func.return %a : tensor<4x4xf32>\n  }\n}\n', encoding="utf-8")
+    # Tagged like a capture, but not parseable IR: the census can read it, the parser cannot.
+    tagless = tmp_path / "unparseable.mlir"
+    tagless.write_text('this is not MLIR { prov.aten = "aten.mm.default" }\n', encoding="utf-8")
+
+    rep = AC.coverage({"parses": good, "does_not": tagless}, "gemmini", opset=opset)
+    ms = rep["models"]
+    assert "does_not" in ms["counted_for_operators"], (
+        "a module whose op tags are readable must count toward the operator half")
+    assert "does_not" in ms["unparsed_for_routing"]
+    assert "does_not" not in ms["measured_for_routing"]
+    assert ms["agree"] is False
+
+    sentence = AC.claim_sentence(rep)
+    assert f"{len(ms['counted_for_operators'])} captured model(s)" in sentence
+    assert f"the {len(ms['measured_for_routing'])} of those" in sentence, (
+        "the routing half must state its own denominator, not reuse the operator half's")
+    assert "does_not did not parse" in sentence
+
+
+def test_when_both_halves_share_a_model_set_the_sentence_does_not_caveat(opset, tmp_path):
+    """The over-correction mirror: a report whose sets agree must not carry a did-not-parse clause."""
+    good = tmp_path / "good.mlir"
+    good.write_text(
+        'builtin.module {\n  func.func @forward(%a: tensor<4x4xf32>) -> tensor<4x4xf32> {\n'
+        '    func.return %a : tensor<4x4xf32>\n  }\n}\n', encoding="utf-8")
+    rep = AC.coverage({"parses": good}, "gemmini", opset=opset)
+    assert rep["models"]["agree"] is True
+    assert "did not parse" not in AC.claim_sentence(rep)
+
+
+def test_a_pre_decomposition_capture_contributes_no_core_operators(opset, tmp_path):
+    """A composite op is reported as non-core, never folded into the core numerator.
+
+    This is not hypothetical: the resnet50 capture in the corpus is at the TORCH level rather than the
+    Core ATen level, and every one of its eight ops (``aten.conv2d.default``, ``aten.linear.default``,
+    ``aten.batch_norm.default``, ``aten.relu_.default``, ...) is a composite whose core counterpart
+    (``aten.convolution.default``, ``aten.addmm.default``, ...) exists. Counting those as core would
+    inflate the numerator against a denominator that never contained them -- and, worse, would hide
+    that one of the four claim models is captured at a different IR level from the other three.
+    """
+    core = set(opset["ops"])
+    composites = ["aten.conv2d.default", "aten.linear.default", "aten.batch_norm.default",
+                  "aten.relu_.default", "aten.add_.Tensor", "aten.max_pool2d.default",
+                  "aten.flatten.using_ints"]
+    for op in composites:
+        assert op not in core, f"{op} is a composite; the core opset must not contain it"
+
+    mod = tmp_path / "torch_level.mlir"
+    mod.write_text("".join(f'  %x = "op"() {{prov.aten = "{op}"}} : () -> ()\n'
+                           for op in composites), encoding="utf-8")
+    cen = AC.census({"torch_level": mod}, opset=opset)
+    assert cen["n_observed_core"] == 0, "a pre-decomposition capture owns no core operators"
+    assert sorted(cen["non_core_observed"]) == sorted(composites), (
+        "its ops must be reported as non-core rather than dropped -- they are real work the compiler "
+        "must handle, and their absence from the core count is the signal that the capture is at the "
+        "wrong IR level")
+
+
+def test_a_parse_failure_names_the_construct_not_just_the_exception(opset, tmp_path):
+    """`ParseError: <path>:17083:5` and "the capture is corrupt" license opposite actions.
+
+    One says re-capture the model; the other says teach the parser a form it does not read. Measured on
+    `smolvla_fp32_consistent`: valid MLIR that xDSL 0.68.0 refuses, because its `linalg.generic`
+    assembly accepts only the single-result `-> tensor<...>` form while a fused argmin yields two
+    results. One construct in a 4.3 MB module cost that model's entire routing evidence, and the report
+    said only "ParseError".
+
+    The reported line is the failure POINT and the line before it, because a parser that rejects an op
+    reports where it gave up -- which is the start of the next statement, not the offending one.
+    """
+    bad = tmp_path / "unreadable.mlir"
+    bad.write_text(
+        'builtin.module {\n'
+        '  func.func @forward(%a: tensor<4xi64>) -> tensor<i64> {\n'
+        '    %e = tensor.empty() : tensor<i64>\n'
+        '    %f = tensor.empty() : tensor<i64>\n'
+        '    %0, %1 = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, '
+        'affine_map<(d0) -> ()>, affine_map<(d0) -> ()>], iterator_types = ["reduction"]} '
+        'ins(%a : tensor<4xi64>) outs(%e, %f : tensor<i64>, tensor<i64>) {\n'
+        '    ^bb0(%x: i64, %y: i64, %z: i64):\n'
+        '      linalg.yield %x, %y : i64, i64\n'
+        '    } -> (tensor<i64>, tensor<i64>)\n'
+        '    func.return %0 : tensor<i64>\n'
+        '  }\n'
+        '}\n', encoding="utf-8")
+
+    rep = AC.coverage({"multi_result": bad}, "gemmini", opset=opset)
+    d = rep["per_model"]["multi_result"]
+    assert d["status"] == "unreadable"
+    assert isinstance(d.get("line"), int) and d["line"] > 0, "the location must be structural"
+    # The construct the parser refused ends on the line BEFORE where it gave up.
+    assert "linalg.generic" in d.get("after", "") or "-> (tensor" in d.get("after", ""), (
+        f"the report must show the construct, got after={d.get('after')!r}")
+    assert rep["routing"]["denominator"] == 0, "an unreadable model contributes no regions"
+
 # --- the work column ---------------------------------------------------------------------------------
 # A region COUNT answers "how many ops" and says nothing about how much of the model those ops are: a
 # hundred elementwise regions and one attention matmul are 101 regions and nowhere near 101 units of

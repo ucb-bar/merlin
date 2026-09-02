@@ -26,6 +26,7 @@ reads into a capsule's command stream is a separate, invasive step in the runner
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
@@ -318,3 +319,89 @@ def parse_counter_output(console: str) -> dict:
 def event_codes(text: str) -> dict:
     """``NAME -> code`` for every integer ``#define`` in a counter header, for :func:`counter_bracket_c`."""
     return _defines(text)
+
+
+def observations_from_counters(values: Mapping[str, int], counters: "OccupancyCounters", *,
+                               total_cycles: int | None = None, source: str | None = None,
+                               kind_of: Mapping[str, str] | None = None) -> dict:
+    """A :mod:`merlin.perf.observations` timing block from one bracketed run's counter readings.
+
+    This is the hop that was missing. The bracket emitter, the console parser, the wire contract and
+    every consumer of a per-unit activity vector all existed; nothing turned a console full of
+    ``<PREFIX>_<engines>_CYCLES`` readings into the block the tier record carries, so a target that
+    counts overlap in hardware still reported ``missing: ['at least one activity source']`` and no
+    composition operator, headroom or η could resolve from it.
+
+    Three rules, each of which changes the numbers:
+
+    **A per-engine busy total is the single counter PLUS every combination containing it.** An engine
+    is busy during the cycles it shares with another engine, so reading the singles as whole-engine
+    totals understates the busiest engine — which is η's denominator, so it inflates η. The sum is
+    exact rather than approximate because the increment conditions are mutually exclusive by
+    construction: every cycle is charged to exactly one subset.
+
+    **The emitted totals therefore do NOT partition the timeline**, and the block says so. That is
+    what licenses the overlap reading: ``partitioned=True`` exists to reject an overlap inferred from
+    buckets that charge each cycle once and so report zero overlap whether or not the hardware
+    overlaps. Here the overlap is not inferred at all — the multi-engine combinations measure it
+    directly, which is the independent observation :func:`~merlin.perf.headroom.composition_operator`
+    requires.
+
+    **A counter the bracket configured but whose reading did not come back is UNMEASURED, never
+    zero.** Its engines lose their busy entry and are named in ``unmeasured_units``, because a total
+    computed from a partial combination set is a lower bound that would be read as the total.
+    ``alias_collisions`` is deliberately omitted rather than reported as 0: it is a property of the
+    address span a program touched, and this instrument does not establish it.
+
+    ``kind_of`` maps each engine to its resource KIND and unlocks the second overlap quantity. A unit's
+    kind cannot be derived from a counter name, so it is declared or it is absent -- and the distinction
+    is load-bearing rather than cosmetic. ``overlap_cycles.observed`` counts any two engines busy
+    together; the eta a kind-axis consumer needs counts only cycles spanning two DIFFERENT kinds,
+    because two movement engines running together is not movement/compute overlap. On a machine whose
+    engines are not all distinct kinds the two numbers differ, and reporting the first where the second
+    is meant overstates the overlap that a compute/movement pairing achieved.
+    """
+    from .observations import (BUSY_PREFIX, IDLE_QUANTITY, IN_PROGRAM_SUFFIX, OVERLAP_ACROSS_KINDS,
+                              OVERLAP_OBSERVED, PARTITIONED_KEY, TIMING_OBSERVATIONS_KEY,
+                              UNMEASURED_UNITS_KEY)
+
+    by_combo = dict(counters.by_combination)
+    missing = sorted(name for name in by_combo.values() if name not in values)
+    # An engine is unreadable if ANY combination naming it is missing: its total would be a lower bound.
+    unmeasured: set[str] = set()
+    for combo, name in by_combo.items():
+        if name in missing:
+            unmeasured.update(combo)
+
+    prov = source or "hardware combination counters"
+    entries: list[dict] = []
+    for engine in counters.engines:
+        if engine in unmeasured:
+            continue
+        busy = sum(int(values[name]) for combo, name in by_combo.items() if engine in combo)
+        entries.append({"quantity": f"{BUSY_PREFIX}{engine}{IN_PROGRAM_SUFFIX}", "value": busy,
+                        "unit": "cycles", "source": prov})
+
+    # Overlap: the cycles two or more engines were busy at once, read off the combination counters
+    # themselves. Refused outright if any combination is missing -- a partial sum is a lower bound.
+    if not missing:
+        realised = sum(int(values[name]) for combo, name in by_combo.items() if len(combo) >= 2)
+        entries.append({"quantity": OVERLAP_OBSERVED, "value": realised, "unit": "cycles",
+                        "source": prov})
+        if kind_of:
+            missing_kinds = sorted(e for e in counters.engines if e not in kind_of)
+            if not missing_kinds:        # a partial kind map cannot classify every combination
+                across = sum(int(values[name]) for combo, name in by_combo.items()
+                             if len({kind_of[e] for e in combo}) >= 2)
+                entries.append({"quantity": OVERLAP_ACROSS_KINDS, "value": across,
+                                "unit": "cycles", "source": prov})
+        if total_cycles is not None:
+            charged = sum(int(values[name]) for name in by_combo.values())
+            idle = int(total_cycles) - charged
+            if idle >= 0:            # a negative idle means the window and the counters disagree: drop it
+                entries.append({"quantity": IDLE_QUANTITY, "value": idle, "unit": "cycles",
+                                "source": prov})
+
+    return {TIMING_OBSERVATIONS_KEY: entries,
+            UNMEASURED_UNITS_KEY: sorted(unmeasured),
+            PARTITIONED_KEY: False}

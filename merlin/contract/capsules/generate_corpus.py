@@ -49,6 +49,21 @@ _PERFORMANCE_FIELDS = frozenset({
     "level", "family", "lever", "comparand", "falsifier", "gate", "regime", "emitter", "cost",
 })
 _PERFORMANCE_CLAIMS = frozenset({"RECOVERS", "PREDICTS", "DIFFERENTIAL"})
+#: The optimization LEVELS a performance family may declare. DOCUMENTED rather than enforced: several
+#: test fixtures declare synthetic levels to prove the validator is generic, so closing this set is a
+#: change to make deliberately alongside those fixtures rather than as a side effect. What it is for:
+#:
+#: The ladder is tile -> layer -> inter-layer -> global, and two rungs were missing from it. `L4_boundary`
+#: is the host/accelerator seam -- the H->A break-even and the cost of an A->H->A island -- which is
+#: where a placement decision is actually made and paid for. `L6_global` is the whole-program decision:
+#: quantization, packing, encoding, layout propagation. Declaring them here does not create the
+#: families; it makes them nameable, so a family that needs one is not forced to file under a level
+#: that means something else. `merlin.perf.profile` now carries the canonical trait an L6 family needs
+#: (`multiple_operand_encodings`), which was the part that could not be added in YAML at all.
+_PERFORMANCE_LEVELS = frozenset({
+    "L1_tile", "L1_separation_floor", "L2_intra_layer", "L3_inter_layer",
+    "L4_boundary", "L5_fusion", "L6_global",
+})
 _PERFORMANCE_NESTED_FIELDS = {
     "comparand": frozenset({"kind", "against", "cancels", "demand_equal"}),
     "falsifier": frozenset({"observation", "fires_when", "negative_control"}),
@@ -470,6 +485,39 @@ def _float_golden(entry, binding):
         prov[name] = {"shape": list(shape), "fp8_raw_hex": [f"0x{r:02x}" for r in raw], "decoded": vals}
         return raw
 
+    def reg_acc(name, shape):
+        """An operand that lives in the ACCUMULATOR's format, not the input format.
+
+        A bias is added to the accumulator, so it is declared and generated there. Its VALUES still come
+        from the operand format's palette, and that is the load-bearing part: the accumulator format's
+        own palette spans its entire exponent range, which for bf16 reaches ~1e-31, and a bias that
+        small added to a matmul output of order one rounds away to nothing. The golden would then be
+        byte-identical to the unfused matmul's, so a backend that DROPPED the bias entirely would pass
+        the fused capsule -- the failure mode where a gate is satisfied by arithmetic nobody performed.
+        Drawing from the operand palette keeps the addend on the same scale as the sum it lands on.
+
+        Returns the decoded values (not raw codes): everything downstream of an accumulator-format
+        operand is float arithmetic, and the byte-level palette-preload path is for input operands.
+        """
+        from merlin.targetgen import corpus_operands as CO
+        if len(shape) == 2:
+            _, vals = _det_fp8(D, name, shape, salt, fmt_token, BF16)
+        else:
+            # A bias is a VECTOR, and `operand_values` shapes a matrix. Ask it for one row and flatten.
+            # The per-row/per-column rigor `_det_fp8` enforces is not the right check for a vector --
+            # it has one row -- but the part that still matters is: a constant bias is satisfied by a
+            # kernel that adds any single number, and would not detect a broadcast along the wrong
+            # axis. So distinctness ALONG the vector is asserted here instead of skipped.
+            (n,) = shape
+            salt_int = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
+            vals = list(CO.operand_values((1, n), fmt_token, salt_int))
+            if n > 1 and len(set(vals)) < 2:
+                raise AssertionError(
+                    f"non-rigorous bias {name}({n},): every element is {vals[0]!r}, so a kernel that "
+                    f"broadcast one value along the wrong axis would still match the golden")
+        prov[name] = {"shape": list(shape), "decoded": vals}
+        return vals
+
     def rnd(x):
         return D.round_to_format(x, BF16, "rne")
 
@@ -501,6 +549,32 @@ def _float_golden(entry, binding):
         if "relu" in epi:
             y = [[v if D.decode_float(v, BF16) > 0 else 0 for v in row] for row in y]
         outputs[entry.get("out", "Y0")] = floats(y)
+    elif op == "fused_matmul_bias":
+        # The matmul branch above with the bias stage, which is where the op name says it happens. The
+        # addend is in the accumulator format (see `reg_acc`) because that is where it lands.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        a = reg(entry.get("lhs", "A0"), (M, K))
+        w = reg(entry.get("weight", "W"), (K, N))
+        y = mm(a, (M, K), w, (K, N))
+        # EXACT rationals, like the acc_scale stage above: `round_to_format` needs a Fraction, and a
+        # bf16 palette value is a dyadic rational, so Fraction(v) is exact -- no limit_denominator,
+        # which would perturb the very addend whose effect the golden has to record.
+        b = [Fraction(v) for v in reg_acc(entry.get("bias", "B"), (N,))]
+        y = [[rnd(D.decode_float_exact(v, BF16) + b[j]) for j, v in enumerate(row)] for row in y]
+        if "relu" in entry.get("epilogue", []):
+            y = [[v if D.decode_float(v, BF16) > 0 else 0 for v in row] for row in y]
+        outputs[entry.get("out", "Y0")] = floats(y)
+    elif op == "bias_add":
+        # The same addition standing alone. Both operands are in the accumulator format, because this op
+        # IS the fused capsule's bias stage lifted out of it -- so the two members add the same numbers.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        x = [Fraction(v) for v in reg_acc(entry.get("src", "X"), (M, N))]
+        b = [Fraction(v) for v in reg_acc(entry.get("bias", "B"), (N,))]
+        outputs[entry.get("out", "Y0")] = floats([[rnd(x[i * N + j] + b[j]) for j in range(N)]
+                                                  for i in range(M)])
     elif op == "movement":
         M = entry.get("M", entry.get("M_tiles", 1) * dim)
         N = entry.get("N", entry.get("N_tiles", 1) * dim)

@@ -596,6 +596,27 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         src = env[attrs.get("src", _pick("input"))]
         return {out_name: src.to_list()}
 
+    if op == "fused_matmul_bias":
+        # The matmul whose epilogue is the bias, so it is the matmul branch with the bias stage forced
+        # on. Forced rather than read: the op NAME is the declaration that the bias happens, and a
+        # capsule that named this op but omitted the stage from `epilogue` would otherwise ship a golden
+        # with no bias in it -- agreeing with a backend that dropped the bias, and both wrong.
+        lhs = env[attrs.get("lhs", _pick("input"))]
+        w = env[attrs.get("weight", _pick("weight"))]
+        stages = list(attrs.get("epilogue") or [])
+        if not any(s in ("bias_add", "bias") for s in stages):
+            stages.insert(0, "bias_add")
+        t = _apply_epilogue(lhs.matmul(w), {**attrs, "epilogue": stages}, env)
+        return {out_name: t.to_list()}
+
+    if op == "bias_add":
+        # The same stage standing alone -- the unfused half of the pair above. It reads the SAME
+        # `_apply_epilogue` implementation, so the fused capsule and the part it is compared against
+        # cannot disagree about what adding a bias means, which is the whole basis of the comparison.
+        src = env[attrs.get("src", _pick("input"))]
+        stages = list(attrs.get("epilogue") or []) or ["bias_add"]
+        return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages}, env).to_list()}
+
     if op == "conv2d":
         ifm = env[attrs["ifm"]]
         w = env[attrs["weight"]]              # packed [Kh*Kw*Ci, Co]

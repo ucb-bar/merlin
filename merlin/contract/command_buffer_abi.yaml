@@ -72,6 +72,22 @@ opcodes:
     semantics: >-
       dst = p @ v, the second matmul of attention: p is [m, s] over s keys, v is [s, d].
       NO transpose (unlike ATTENTION_QK, which contracts the trailing head dim of both operands).
+  BIAS_ADD:
+    operands: {src: tensor, bias: tensor, dst: output_tensor}
+    attributes:
+      output_dtype: "the ACCUMULATOR's dtype -- see semantics; the stage runs before any requant"
+      epilogue: "ordered subset of [bias_add]; the stage this op IS, listed for symmetry with COMMIT"
+    semantics: >-
+      dst[i, j] = src[i, j] + bias[j] -- one length-N vector added to every row. This is the
+      `bias_add` COMMIT stage standing on its own, over an already-committed tensor rather than over
+      an accumulator, so that a fused matmul+bias has an unfused half to be measured against.
+      BOTH OPERANDS ARE IN THE ACCUMULATOR'S DTYPE, not the operand dtype: the bias lands on the
+      accumulator before any requant, so on an i8 x i8 -> i32 datapath the vector is i32. Declared in
+      the operand dtype it would be a different computation from the one the fused capsule performs,
+      and the two members' cycles would not be summable -- which is the whole basis of the comparison.
+      A target with no separate vector-add class is expected to fold this into its accumulator
+      read-out; its capsule then requires no vector instruction, which the derived
+      `expected_instruction_coverage` already reflects rather than demanding one.
   CONV2D:
     operands: {ifm: tensor, weight: resident_handle_or_tensor, dst: output_tensor}
     attributes:

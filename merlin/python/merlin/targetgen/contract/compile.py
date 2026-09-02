@@ -17,6 +17,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 
@@ -98,7 +99,61 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     console = backend.run_elf(elf, simulator=simulator, timeout=timeout)
     _t2 = time.perf_counter()
     outputs, raw = backend.parse_output(console)
-    return {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles", 0),
-            "oracle": backend.ORACLE[simulator], "elf": str(elf), "console": console,
-            "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
-                       "oracle_wait_s": 0.0}}
+    out = {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles", 0),
+           "oracle": backend.ORACLE[simulator], "elf": str(elf), "console": console,
+           "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
+                      "oracle_wait_s": 0.0}}
+    _obs, _cap = _counter_observations(console, target=target, simulator=simulator,
+                                       cycles=raw.get("cycles"),
+                                       oracle=backend.ORACLE[simulator])
+    if _obs:
+        out["timing_observations"] = _obs
+    if _cap:
+        out["timing_capability"] = _cap
+    return out
+
+
+def _counter_observations(console: str, *, target: str, simulator: str, cycles: Any,
+                          oracle: Any = None) -> "tuple[list[dict] | None, dict | None]":
+    """The per-unit activity block a bracketed run's hardware counters carry — or ``(None, None)``.
+
+    A target whose RTL counts the cycles each COMBINATION of engines was busy already measures joint
+    occupancy; the harness has been able to bracket a kernel with those counters for some time, and the
+    readings then reached the console and stopped there. Every consumer of an activity vector
+    (``headroom.composition_operator``, ``falsifier``'s eta, the envelope's operator) was refusing with
+    "at least one activity source" while the source was being printed and discarded.
+
+    Silent and byte-identical for a target with no counter header, and for a run that was not bracketed
+    (the bracket is opt-in precisely so a graded round's verdicts stay comparable to the rounds before
+    it). Derivation failures are swallowed rather than propagated: this is additive evidence beside a
+    correctness verdict, and it may never be the reason a capsule fails to grade.
+
+    **Refused unless the oracle is RTL-derived**, on exactly the basis its CYCLE count is. A functional
+    model executes the program correctly without modelling the engines, so its counter CSRs are not an
+    occupancy reading of anything: measured on one, a 52-cycle window came back with per-engine busy
+    totals in the thousands. Those numbers are not imprecise, they are about a different machine, and
+    a composition operator derived from them would be a fabrication wearing a measurement's provenance.
+    """
+    from merlin.perf import hw_counters as _HC
+    from merlin.perf import observations as _OBS
+    if not (isinstance(oracle, Mapping) and oracle.get("derived_from_rtl") is True):
+        return None, None                          # functional model: not an occupancy instrument
+    try:
+        values = _HC.parse_counter_output(console or "")
+        if not values:
+            return None, None                      # not bracketed: no capability claimed, no zeros
+        found = _HC.counters_for_target(target)
+        if found.get("status") != "derived":
+            return None, None
+        counters = _HC.derive_occupancy_counters(Path(found["header"]).read_text(encoding="utf-8"))
+        total = int(cycles) if isinstance(cycles, int) or (isinstance(cycles, str)
+                                                           and str(cycles).isdigit()) else None
+        block = _HC.observations_from_counters(
+            values, counters, total_cycles=total,
+            source=f"{target} {counters.prefix}_* combination counters ({simulator})")
+        validated = _OBS.validate_block(block)
+        if validated is None:
+            return None, None
+        return ([dict(o) for o in validated.observations] or None), validated.to_dict()
+    except Exception:                              # noqa: BLE001 — never fail a graded run for evidence
+        return None, None

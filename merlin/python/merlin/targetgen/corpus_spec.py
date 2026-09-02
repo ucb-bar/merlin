@@ -289,6 +289,26 @@ def _classes_source(te, contract: dict) -> Callable[..., list[str]]:
     classes = [c for c in order if c in pool]
 
     def _from_encoding(*, op="matmul", output_dtype=None, epilogue=(), movement=False):
+        # ⚠️ NOT `list(classes)` unconditionally. This deriver was written for the matmul family and is
+        # reached for EVERY op on a RoCC target, so it used to answer the weight-stationary systolic
+        # sequence for a pure data copy: measured, six tracked capsules (two of them HIDDEN) required
+        # PRELOAD + COMPUTE_PRELOADED of a `movement` capsule that performs no arithmetic at all. That is
+        # the fabricated requirement `isa_taxonomy.required_role_slots` fails closed to avoid, in the
+        # direction running the capsule cannot catch: a backend that correctly moves the tile and issues
+        # no multiply is marked non-conformant. `build_movement` even passes `movement=True` for exactly
+        # this reason -- the argument was accepted and discarded.
+        #
+        # Which classes belong to the contraction is READ from the shared class vocabulary
+        # (`semantic_families._ISA_CLASS_FAMILY`, whose whole job is this mapping) rather than named
+        # here. A class that table does not recognise -- CONFIG*/FLUSH plumbing, or a spelling it has
+        # not learned -- is KEPT: dropping what we cannot classify is the silent-drop this repo's
+        # parsing rule forbids, and over-requiring plumbing is harmless where over-requiring a multiply
+        # is not.
+        from merlin.targetgen import semantic_families as _sf
+
+        prims = _sf.primitives_of(_sf.from_op(op) or "")
+        if movement or (prims and "contraction" not in prims):
+            return [c for c in classes if _sf.from_isa_class(c) != "contraction"]
         return list(classes)
     return _from_encoding
 
@@ -550,21 +570,57 @@ def _matmul_inputs(lhs: str, weight: str, M: int, K: int, N: int, idt: str,
     return inputs
 
 
+#: Epilogue stage spellings that consume a per-column bias VECTOR. Both are accepted because
+#: :func:`merlin.targetgen.capsule_golden._apply_epilogue` accepts both, and a builder that declared the
+#: operand for only one spelling would leave the other's golden reaching for a tensor nobody declared.
+_BIAS_STAGES = ("bias_add", "bias")
+
+
+def _bias_operand(entry: dict, epilogue: list[str], N: int, binding: CorpusBinding,
+                  op: str) -> tuple[str | None, str]:
+    """``(bias tensor name, its capsule dtype)`` for a capsule whose epilogue adds a bias, else
+    ``(None, "")``.
+
+    The dtype is the ACCUMULATOR's, not the operand's, because that is the domain the addition happens
+    in: the bias lands on the accumulator before any requant, which is exactly what
+    ``Tensor.add_bias`` does (it returns ``self.dtype``). Declaring it in the operand dtype would
+    describe a different computation from the one the golden performs -- on an int8/i32 datapath, a
+    visibly different one.
+
+    ``fused_matmul_bias`` implies the stage: the op name IS the declaration that a bias is added, so a
+    capsule need not repeat it in ``epilogue`` to get its operand.
+    """
+    fused_by_name = op == "fused_matmul_bias"
+    if not fused_by_name and not any(s in _BIAS_STAGES for s in epilogue):
+        return None, ""
+    return entry.get("bias", "B"), binding.cap_dtype(binding.accum_dtype)
+
+
 def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """A single weight-stationary matmul/linear capsule (op ∈ {matmul, linear})."""
+    """A single weight-stationary matmul/linear capsule (op ∈ {matmul, linear, fused_matmul_bias}).
+
+    ``fused_matmul_bias`` is the same weight-stationary contraction with its bias epilogue forced on --
+    a distinct op name rather than a flag because the L5 fusion claim compares it against the two
+    capsules it replaces, and a group whose members differ only by an attribute cannot be named."""
     D = binding.tile_dim
     M = entry.get("M_tiles", 1) * D if "M" not in entry else entry["M"]
     K = entry.get("K_tiles", 1) * D if "K" not in entry else entry["K"]
     N = entry.get("N_tiles", 1) * D if "N" not in entry else entry["N"]
     lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
     epilogue = list(entry.get("epilogue", []))
+    op = entry.get("op", "matmul")
+    if op == "fused_matmul_bias" and not any(s in _BIAS_STAGES for s in epilogue):
+        # Ahead of _resolve_output_dtype, which reads the epilogue to decide the committed dtype.
+        epilogue.insert(0, "bias_add")
     acc_scale = entry.get("acc_scale")
     output_dtype = _resolve_output_dtype(binding, epilogue)
-    op = entry.get("op", "matmul")
     odt = binding.cap_dtype(output_dtype)
     idt = binding.cap_dtype(binding.operand_dtype)
+    bias, bias_dt = _bias_operand(entry, epilogue, N, binding, op)
     attrs: dict[str, Any] = {"lhs": lhs, "weight": weight, "out": out,
                              "epilogue": epilogue, "output_dtype": odt}
+    if bias:
+        attrs["bias"] = bias
     # A pooling epilogue rides on the SAME attributes the store path configures, and it changes the
     # committed extent -- the commit result type below is the POOLED row count, not M. A contraction
     # carries no spatial extent of its own, so the entry declares pool_in_dims (see _pool_epilogue).
@@ -584,7 +640,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "name": entry["name"], "kind": entry["kind"],
         "source_role": entry["source_role"], "source_reference": entry["source_reference"],
         "label": entry.get("label", "public"), "interface_mlir": "capsule.interface.mlir",
-        "inputs": _matmul_inputs(lhs, weight, M, K, N, idt, binding),
+        "inputs": (_matmul_inputs(lhs, weight, M, K, N, idt, binding)
+                   + ([{"name": bias, "role": "bias", "shape": [N], "dtype": bias_dt}] if bias else [])),
         "operation": {"op": op, "attributes": attrs},
         "numeric_policy": _numeric_policy(binding, output_dtype, acc_scale),
         "expected": expected, "required_oracle_tiers": list(binding.tiers),
@@ -595,6 +652,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         lhs=lhs, weight=weight, out=out, M=M, K=K, N=N, epilogue=epilogue, output_dtype=odt,
         acc_scale=acc_scale, comment=entry.get("comment", ""),
         pool_attrs=pool_attrs or None, commit_rows=commit_rows,
+        bias=bias, bias_dtype=(binding.mlir_dtype(binding.accum_dtype) if bias else None),
         target=binding.target, operand_dtype=binding.mlir_dtype(binding.operand_dtype),
         acc_dtype=binding.mlir_dtype(binding.accum_dtype),
         scale_block=(binding.scale_block if is_block_scaled(binding.operand_dtype) else None))
@@ -743,6 +801,55 @@ def build_rmsnorm(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
          f'  %{out} = merlin_iface.rmsnorm %{x}, %{gamma} {{name = "{out}", eps = {eps:.9e} : f64, '
          f'output_dtype = "{odt}"}} : (tensor<{M}x{K}x{midt}>, tensor<1x{K}x{midt}>) -> tensor<{M}x{K}x{modt}>',
          "}"]
+    return cap, "\n".join(L) + "\n"
+
+
+def build_bias_add(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """A standalone per-column bias add (op == bias_add): X[M,N] + B[N] -> [M,N].
+
+    The unfused half of the L5 fusion pair. It exists so ``fused_matmul_bias`` has something to be
+    compared against: the claim is that the fused capsule costs less than the two capsules it replaces,
+    and a comparison group with only a fused member is a declaration with no content.
+
+    ⚠️ ITS OPERANDS ARE IN THE ACCUMULATOR DOMAIN, not the operand one. This op IS the bias stage of the
+    fused capsule standing on its own, and that stage runs on the accumulator before any requant --
+    ``Tensor.add_bias`` returns ``self.dtype`` for exactly that reason. Declaring X in the operand dtype
+    would price a different computation from the one the fused member performs, visibly so on an
+    int8/i32 datapath, and the two members' cycles would then not be summable.
+    """
+    D = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    N = entry.get("N", entry.get("N_tiles", 1) * D)
+    src, bias, out = entry.get("src", "X"), entry.get("bias", "B"), entry.get("out", "Y0")
+    adt, madt = binding.cap_dtype(binding.accum_dtype), binding.mlir_dtype(binding.accum_dtype)
+    epilogue = list(entry.get("epilogue", [])) or ["bias_add"]
+    attrs: dict[str, Any] = {"src": src, "bias": bias, "out": out,
+                             "epilogue": epilogue, "output_dtype": adt}
+    if entry.get("semantic"):
+        attrs["semantic"] = entry["semantic"]
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
+        "interface_mlir": "capsule.interface.mlir",
+        "inputs": [{"name": src, "role": "input", "shape": [M, N], "dtype": adt},
+                   {"name": bias, "role": "bias", "shape": [N], "dtype": adt}],
+        "operation": {"op": "bias_add", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
+        # Derived like every other op's: on a target with a binary tensor-compute role this resolves to
+        # that class, and on one that has no such role it resolves to the data motion alone rather than
+        # to the systolic sequence this op does not use.
+        "expected": {"instruction_classes": binding.classes_for(op="bias_add", output_dtype=adt),
+                     "modes": dict(entry["modes"]) if "modes" in entry else {}},
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+    L = _iface_prelude(binding.target, entry.get("comment", ""))
+    L += [
+        f'  %{src} = merlin_iface.tensor {{name = "{src}", role = "input"}} : tensor<{M}x{N}x{madt}>',
+        f'  %{bias} = merlin_iface.tensor {{name = "{bias}", role = "bias"}} : tensor<{N}x{madt}>',
+        f'  %{out} = merlin_iface.bias_add %{src}, %{bias} {{name = "{out}", '
+        f'output_dtype = "{adt}"}} : (tensor<{M}x{N}x{madt}>, tensor<{N}x{madt}>) '
+        f'-> tensor<{M}x{N}x{madt}>',
+        "}"]
     return cap, "\n".join(L) + "\n"
 
 
@@ -1056,7 +1163,8 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 # op -> builder, for the driver to dispatch on the entry's declared op.
 BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
-    "matmul": build_matmul, "linear": build_matmul,
+    "matmul": build_matmul, "linear": build_matmul, "fused_matmul_bias": build_matmul,
+    "bias_add": build_bias_add,
     "resident_reuse": build_resident_reuse, "movement": build_movement,
     "attention_qk": build_attention_qk, "rmsnorm": build_rmsnorm, "conv2d": build_conv2d,
     "attention_mx": build_attention_mx, "rmsnorm_qkv": build_rmsnorm_qkv, "rope_qkv": build_rope_qkv,

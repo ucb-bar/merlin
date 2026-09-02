@@ -30,10 +30,10 @@ numeric_policy:
 expected:
   instruction_classes:
   - TensorBaseOffset
-  - TensorComputeBinary
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPopE1
+  - TensorComputeBinary
 required_oracle_tiers:
 - L0
 - L1
@@ -53,9 +53,3 @@ semantic:
   generalization_axis: model
   must_accelerate: true
   eligible: auto
-numeric_falsifiability:
-  status: ok
-  declared_atol: 0.25
-  ceiling_atol: 2.0195904779434204
-  basis: the largest atol under which the best constant answer still fails this golden
-  falsifiable: true

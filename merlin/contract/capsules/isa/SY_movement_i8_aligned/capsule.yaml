@@ -29,8 +29,6 @@ expected:
   - CONFIG_LD
   - MVIN
   - CONFIG_ST
-  - PRELOAD
-  - COMPUTE_PRELOADED
   - MVOUT
   modes:
     movement: true

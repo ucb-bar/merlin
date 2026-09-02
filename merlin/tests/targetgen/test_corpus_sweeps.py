@@ -558,8 +558,12 @@ def test_shipped_targets_all_consume_the_same_claim_separated_perf_template():
     assert claims == {"PREDICTS", "DIFFERENTIAL"}
     assert all(s["base"]["cat"] == "_perf" and s["base"]["label"] == "dev"
                for s in shared["sweeps"])
-    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC"]
-    assert {row["family"] for row in shared["blocked_unimplemented"]} == {"PL", "PF"}
+    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC", "PF"]
+    # PF left `blocked_unimplemented` when its emitter arrived: the fused member can now name the bias
+    # operand its stage consumes, and the unfused half has an op to be expressed as, so the comparison
+    # group has more than one member. PL is still blocked -- its lever is layer-scale promotion, which
+    # is not capsule-runnable.
+    assert {row["family"] for row in shared["blocked_unimplemented"]} == {"PL"}
     assert all("source" not in s["base"] and "operand_dtype" not in s["base"]
                for s in shared["sweeps"])
 
@@ -579,9 +583,13 @@ def test_every_required_performance_contract_field_is_fail_closed(missing):
         GC._validate_performance_block(block, owner="fixture")
 
 
-def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
+def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
     profile = GC.load_profile("gemmini", include_holdouts=False)
-    shared_sweeps = profile["sweeps"][-3:]
+    # Selected by WHAT THEY ARE, not by counting from the end. A `[-3:]` slice silently changed which
+    # sweeps this test exercised the moment a fourth shared family was declared -- it dropped PK and
+    # tested PS/PC/PF instead, while still reading like a test of PK.
+    shared_sweeps = [s for s in profile["sweeps"]
+                     if (s.get("base") or {}).get("cat") == "_perf"]
     skips, blocked, errors = [], [], []
     experiment = GC.load_target_experiment(GC._descriptor_for("gemmini"))
     binding = GC.CS.derive_binding(experiment, profile.get("datapath") or {})
@@ -590,7 +598,19 @@ def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
         trait_facts=GC._performance_facts("gemmini"), skipped=skips,
         blocked_unimplemented=blocked, errors=errors)
 
-    assert [entry["performance"]["family"] for entry in entries] == ["PK"] * 4
+    # PK's four reduction depths, then PF's two shape groups of three members each. Order is the
+    # declaration order in the shared template, which is what makes this readable as a whole.
+    assert [entry["performance"]["family"] for entry in entries] == ["PK"] * 4 + ["PF"] * 6
+    # PF's members are a fused capsule and the two capsules it replaces, twice, and every group is
+    # complete -- a group of one cannot be compared to anything.
+    groups: dict[str, list[str]] = {}
+    for entry in entries:
+        g = entry.get("comparison_group")
+        if g:
+            groups.setdefault(g["name"], []).append(g["role"])
+    assert len(groups) == 2, f"expected two fusion groups, got {sorted(groups)}"
+    for name, roles in sorted(groups.items()):
+        assert sorted(roles) == ["fused", "part", "part"], f"group {name} is {sorted(roles)}"
     assert {entry["operand_dtype"] for entry in entries} == {"int8"}
     assert {entry["performance"]["emitter"]["resolved"]["accum_dtype"]
             for entry in entries} == {"i32"}
@@ -621,10 +641,22 @@ def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
         "PC must reach the emitter gate, not be turned away at the trait gate")
     assert errors == []
     assert {row["family"] for row in profile["_performance_template"]["blocked_unimplemented"]} == {
-        "PL", "PF"}
+        "PL"}
     capsule, mlir = GC.CS.build(entries[0], binding)
     assert capsule["numeric_policy"] == {"compare": "exact_int", "dtype": "i32"}
     assert capsule["label"] == "dev" and "merlin_iface.matmul" in mlir
+
+    # The fusion group builds at THIS target's own datapath dtype, and its bias in the accumulator's:
+    # the addition lands on the accumulator, so an i8 bias would price a different computation from the
+    # one the golden performs and the two members' cycles would not be summable.
+    by_op = {e["op"]: e for e in entries if e["performance"]["family"] == "PF"}
+    assert set(by_op) == {"fused_matmul_bias", "matmul", "bias_add"}
+    fused, _ = GC.CS.build(by_op["fused_matmul_bias"], binding)
+    bias = next(i for i in fused["inputs"] if i["role"] == "bias")
+    assert bias["dtype"] == "i32" and bias["name"] == fused["operation"]["attributes"]["bias"]
+    part, part_mlir = GC.CS.build(by_op["bias_add"], binding)
+    assert "merlin_iface.bias_add" in part_mlir
+    assert {i["dtype"] for i in part["inputs"]} == {"i32"}
 
 
 def test_underscore_perf_phase_is_excluded_from_functional_graded_roots(tmp_path, monkeypatch):

@@ -102,6 +102,10 @@ TRAITS: tuple[str, ...] = (
     "explicit_completion",
     "structural_pipeline_depth",
     "feedback_sequenced_units",
+    # The gate an `L6_global` (encoding / packing / layout) family needs: a lever over operand
+    # encoding only exists where the target admits more than one. `evaluate_gate` refuses any trait
+    # outside this tuple, so declaring such a family without adding it here is not a YAML edit away --
+    # it is unrepresentable.
     "multiple_operand_encodings",
 )
 
@@ -839,40 +843,42 @@ def _t_feedback_sequenced_units(sources: Sources) -> tuple[Trait, str]:
 
 
 def _t_multiple_operand_encodings(sources: Sources) -> tuple[Trait, str]:
-    """Does this target admit the SAME arithmetic in more than one operand encoding?
+    """Can this target compute the SAME contraction in more than one operand encoding?
 
-    The L6_global rung is about a whole-program choice -- quantization, packing, encoding, layout
-    propagation -- and the comparison it makes is one layer against the same layer in another encoding.
-    A target with a single operand format has no such pair, and the right answer there is False rather
-    than an unestablished instrument: the machine genuinely cannot be asked the question.
+    The gate an ``L6_global`` family needs. A packing/encoding/layout lever only exists where there is
+    a choice to make: on a single-format machine the question is not hard, it is absent, and the honest
+    answer is a REFUTATION rather than an unestablished trait -- a refuted gate leaves an
+    evidence-bearing skip that says "this target has one format", which is informative, where an
+    unestablished one says only "we could not tell".
 
-    Derived from the compute units' declared dtypes, which is where an encoding IS declared. Two units
-    each admitting one format count as two encodings for this purpose, because the comparison is over
-    the target, not over one datapath.
+    Derived from the contraction family's declared dtypes, which is where the choice actually lives.
     """
-    units = sources.units()
-    encodings: set[str] = set()
-    for u in units:
-        for d in (u.get("dtypes") or ()):
-            if d:
-                encodings.add(str(d))
-    if len(encodings) >= 2:
+    try:
+        from merlin.targetgen.eligibility import capability_map_for_target
+        cap = (capability_map_for_target(sources.target) or {}).get("contraction")
+    except Exception as exc:                       # noqa: BLE001 -- an unresolvable map is not a format
+        return Trait("multiple_operand_encodings", None,
+                     evidence=f"no capability map resolved ({type(exc).__name__}: {exc})",
+                     missing=("a capability manifest declaring the contraction family's dtypes",),
+                     ), TIER_NONE
+    if cap is None:
+        return Trait("multiple_operand_encodings", None,
+                     evidence="the capability map declares no contraction family, so there is no "
+                              "operand encoding to choose between",
+                     missing=("a declared contraction family",)), TIER_NONE
+    dtypes = tuple(getattr(cap, "dtypes", ()) or ())
+    if len(dtypes) >= 2:
         return Trait("multiple_operand_encodings", True,
-                     evidence=f"the {sources.units_source()} declares {len(encodings)} operand "
-                              f"encoding(s) {sorted(encodings)} across {len(units)} compute unit(s)"), \
-            sources.units_tier()
-    if units:
-        return Trait("multiple_operand_encodings", False,
-                     evidence=f"the {sources.units_source()} declares a single operand encoding "
-                              f"{sorted(encodings)}; there is no second encoding to compare against, so "
-                              f"this target cannot be asked the question"), sources.units_tier()
-    return Trait("multiple_operand_encodings", None,
-                 evidence="no compute unit could be read, so the operand encodings are unknown",
-                 missing=("a compute_units block in the contract or the residual",)), TIER_NONE
-
+                     evidence=f"the contraction family declares {len(dtypes)} operand encoding(s) "
+                              f"{sorted(dtypes)}, so an encoding choice exists"), TIER_CONTRACT
+    return Trait("multiple_operand_encodings", False,
+                 evidence=f"the contraction family declares {sorted(dtypes) or 'no'} operand "
+                          f"encoding(s); with fewer than two there is no encoding to choose, so an "
+                          f"encoding lever cannot be exercised here"), TIER_CONTRACT
 
 
 _DERIVERS = {
+    "multiple_operand_encodings": _t_multiple_operand_encodings,
     "self_hosted_program": _t_self_hosted_program,
     "host_dispatched_queue": _t_host_dispatched_queue,
     "explicit_dma": _t_explicit_dma,
@@ -883,7 +889,6 @@ _DERIVERS = {
     "independent_engine_ports": _t_independent_engine_ports,
     "explicit_completion": _t_explicit_completion,
     "structural_pipeline_depth": _t_structural_pipeline_depth,
-    "multiple_operand_encodings": _t_multiple_operand_encodings,
     "feedback_sequenced_units": _t_feedback_sequenced_units,
 }
 

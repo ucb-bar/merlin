@@ -1,0 +1,58 @@
+# Which captured models MEASURE the generalization claim, and are therefore forbidden from DERIVING it.
+#
+# WHY THIS FILE EXISTS. `conformance.required_cells(target, captures)` derives the requirement -- which
+# (family, dtype, alignment) cells a target owes -- from what real captures CONTAIN. The synthesized
+# corpus then covers those cells, and coverage is reported over captured models. If the same capture
+# does both jobs, the claim is circular: the corpus was built from the model it is then said to
+# generalize to. Measured before this file: `check_conformance_coverage` fed EVERY bundle under
+# `out/artifacts/recaptures/` into the derivation, the four claim models included, and lstmnetvit was
+# already in both roles.
+#
+# The split is the same one `merlin/experiments/cpu_host_compiler_v0/experiment.yaml` already applies to
+# the host side (`paper_holdouts` + a selection-exclusion rule). Adopting it here rather than inventing
+# a second mechanism keeps one answer to "may this artifact influence selection?".
+#
+# ⚠️ A NAME IS NOT ENOUGH TO EXCLUDE A MODEL. A claim model influences derivation through anything
+# derived from it -- its layer census, its measured shape frequency, its dtype mix -- not only through
+# a capture file named after it. `rule` below is the standard a reviewer applies; `forbidden_sources`
+# names the artifact classes that carry those facts.
+schema_version: 1
+
+# Held out from derivation; used ONLY to measure coverage. These are the four models the experiment
+# claims to support end to end.
+claim_models:
+  - resnet50_v1_5
+  - lstmnetvit
+  - smolvla
+  - tiny_llama
+
+# Everything else under `out/artifacts/recaptures/` derives the requirement. Named as a policy rather
+# than a list so a newly captured model joins derivation by default -- the safe direction, since the
+# unsafe one is a claim model quietly entering it.
+derivation_policy: every_captured_bundle_not_matching_a_claim_model
+
+exclusion:
+  rule: >-
+    No claim-model artifact, layer census, name, or measured shape frequency may enter requirement
+    derivation, corpus synthesis, or capsule selection. A claim model may be COMPILED and GRADED (that
+    is what measuring coverage means); it may not be READ to decide what the corpus should contain.
+  forbidden_sources:
+    - claim_captures        # the bundle's model.mlir / inputs / goldens
+    - claim_layer_census    # per-layer op or shape tallies taken from a claim capture
+    - claim_profiles        # measured op-mix or shape-frequency profiles
+    - claim_results         # grades, cycle counts, or coverage reports over a claim model
+
+# ⚠️ EXCLUDING A CLAIM MODEL REMOVES ITS EVIDENCE FROM THE REQUIREMENT, AND THAT IS THE POINT -- but it
+# leaves real gaps that must be filled by a DIFFERENT model rather than papered over. Known:
+#
+#   convolution: resnet50_v1_5 is the only convolution-dominated capture, so with it held out the
+#   conv/pool/depthwise branch of the requirement is underived. That is exactly why
+#   `layers/B3_conv2d_im2col_i8` and `layers/B4_conv2d_relu_i8` are hand-authored: someone had to type
+#   what no capture demanded. The fix is a conv-dominated derivation model, not re-admitting resnet50.
+known_derivation_gaps:
+  - family: contraction
+    shape_class: convolution
+    reason: >-
+      the only convolution-dominated capture is a claim model, so no derivation capture demands the
+      conv branch; two gemmini conv capsules are hand-authored to stand in for it
+    stood_in_by: [layers/B3_conv2d_im2col_i8, layers/B4_conv2d_relu_i8]

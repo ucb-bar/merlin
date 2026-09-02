@@ -167,6 +167,71 @@ sweeps:
 # These families are contract-complete but are not sweeps: putting them under
 # `sweeps` would falsely claim their lever can be emitted. Generation persists
 # them as blocked_unimplemented with their fit axes and comparison roles.
+# The fusion pair, three members from ONE shape statement. Declared as a sweep
+# rather than blocked because the members ARE buildable: the fused capsule can
+# now name the bias operand its `bias_add` stage consumes, and the unfused half
+# has an op to be expressed as, so the comparison group has more than one
+# member. Both halves run at the target's OWN datapath dtype -- a bf16 stand-in
+# would have measured the host on an integer target, not the accelerator.
+- id: PF
+  fit_axes: [K]
+  comparison_roles: [fused, part]
+  base:
+    cat: _perf
+    kind: model_slice
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L5_fusion
+      family: PF
+      lever: epilogue_fusion
+      claim: DIFFERENTIAL
+      comparand:
+        kind: group_arithmetic
+        against: sum_of_unfused_parts
+        cancels: [operation_shape, operands, numeric_policy]
+        demand_equal: [M, N, operand_dtype, accum_dtype]
+      falsifier:
+        observation: fused_cycles_minus_sum_of_parts
+        fires_when: fused_cycles_are_not_lower_than_the_sum_of_parts
+        negative_control: unfused_matmul_plus_bias_add
+      gate:
+        traits: [structural_pipeline_depth]
+        instrument: cycle_count
+        capacity: complete_fused_and_part_comparison_group
+        on_missing: skip_with_evidence
+      regime:
+        separation: one_identical_shape_per_group
+        layout: fused_member_and_all_parts_share_inputs
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs: {members: [fused_matmul_bias, matmul, bias_add]}
+      cost:
+        tier: 1
+        runs: three_per_shape
+        projected_cycles: derived_at_preflight
+        basis: one_fused_member_and_two_parts
+  # The group name carries the shape, so no member writes it down: `_render_variant`
+  # resolves `{M}`/`{K}`/`{N}` against the point the variant is paired with, and the
+  # generator refuses a group with fewer than two members.
+  variants:
+  - op: fused_matmul_bias
+    comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: fused}
+  - op: matmul
+    comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: part}
+  - op: bias_add
+    comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: part}
+  axes:
+    M: [tile]
+    N: [tile]
+    K: [tile, 2*tile]
+  name: '{id}{i:02d}_{op}_m{M}k{K}n{N}'
+  source_reference: >-
+    shared epilogue-fusion group: one fused matmul+bias against the matmul and
+    the bias add it replaces, at one identical shape per group
+
 blocked_unimplemented:
 
 - family: PL
@@ -211,49 +276,6 @@ blocked_unimplemented:
       runs: derived_after_tier_one_promotion
       projected_cycles: derived_at_preflight
       basis: only_passing_tier_one_members_are_promoted
-
-- family: PF
-  reason: >-
-    LOCATED, not merely absent. The capsule schema already admits `bias_add` and `fused_matmul_bias`
-    as ops, a `bias` input role exists, and capsule_golden already computes a bias stage -- so the
-    grading half is in place. What is missing is upstream of the builders: `merlin_iface` declares no
-    elementwise/bias op at all, and `corpus_spec` mentions bias nowhere, so there is no interface
-    spelling for a builder to emit. Adding one is a DIALECT change that every target backend must then
-    lower; emitting the capsules before that lands would produce a comparison group no shipped backend
-    can execute.
-  fit_axes: [K]
-  comparison_roles: [fused, part]
-  performance:
-    level: L5_fusion
-    family: PF
-    lever: epilogue_fusion
-    claim: DIFFERENTIAL
-    comparand:
-      kind: group_arithmetic
-      against: sum_of_unfused_parts
-      cancels: [operation_shape, operands, numeric_policy]
-      demand_equal: [M, N, K, operand_dtype, accum_dtype]
-    falsifier:
-      observation: fused_cycles_minus_sum_of_parts
-      fires_when: fused_cycles_are_not_lower_than_the_sum_of_parts
-      negative_control: unfused_matmul_plus_bias_add
-    gate:
-      traits: [structural_pipeline_depth]
-      instrument: cycle_count
-      capacity: complete_fused_and_part_comparison_group
-      on_missing: skip_with_evidence
-    regime:
-      separation: one_identical_shape_per_group
-      layout: fused_member_and_all_parts_share_inputs
-    emitter:
-      status: new:fused_epilogue_and_bias_add_builders
-      entry: merlin.targetgen.corpus_spec.build
-      knobs: {members: [fused_matmul_bias, matmul, bias_add]}
-    cost:
-      tier: 1
-      runs: three_per_shape
-      projected_cycles: derived_at_preflight
-      basis: one_fused_member_and_two_parts
 
 # L4_boundary -- the rung the ladder NAMES and nothing occupied. It is where a placement decision is
 # actually made and paid for: what a host round trip costs against keeping the intermediate resident.

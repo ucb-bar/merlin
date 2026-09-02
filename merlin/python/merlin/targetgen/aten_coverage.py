@@ -119,6 +119,42 @@ def census(captures: dict[str, str | Path], *, opset: dict | None = None) -> dic
     }
 
 
+def _parse_failure(path: Path, exc: Exception) -> dict:
+    """A parse failure that names the construct, not just the exception.
+
+    A bare ``ParseError: <path>:17083:5`` is indistinguishable from a corrupt capture, and the two
+    license opposite actions: re-capture the model, or teach the parser a form it does not read.
+    Measured on ``smolvla_fp32_consistent``: valid MLIR that xDSL 0.68.0 refuses, because its
+    ``linalg.generic`` assembly accepts only the single-result ``-> tensor<...>`` form and a fused
+    argmin yields two results (``-> (tensor<1xi64>, tensor<1xi64>)``). One construct in a 4.3 MB module
+    cost the whole model's routing evidence.
+
+    The location comes from the exception's own span rather than from its message text, and the
+    reported line is the one BEFORE the failure point as well as the failure point itself: a parser
+    that rejects an op reports the position where it gave up, which is the start of the NEXT statement.
+    """
+    detail = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+    span = getattr(exc, "span", None)
+    loc = None
+    try:
+        loc = span.get_location() if span is not None else None
+    except Exception:                              # noqa: BLE001 -- a span without a location is not fatal
+        loc = None
+    line_no = getattr(loc, "line", None)
+    if not isinstance(line_no, int) or line_no < 1:
+        return detail
+    detail["line"] = line_no
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return detail
+    # 1-indexed. The construct the parser could not read usually ENDS on the previous line.
+    detail["at"] = lines[line_no - 1].strip()[:200] if line_no <= len(lines) else ""
+    if line_no >= 2:
+        detail["after"] = lines[line_no - 2].strip()[:200]
+    return detail
+
+
 def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None = None) -> dict:
     """The full claim for one target: observed, routed, and work-weighted.
 
@@ -148,7 +184,7 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
             cov = MC.coverage_for(regions, target, model=name)
             _ops = MC.region_ops(_module)
         except Exception as exc:                   # noqa: BLE001 -- an unreadable model is not zero coverage
-            per_model[name] = {"status": "unreadable", "detail": f"{type(exc).__name__}: {exc}"}
+            per_model[name] = {"status": "unreadable", **_parse_failure(Path(path), exc)}
             continue
         d = cov.to_dict() if hasattr(cov, "to_dict") else dict(cov)
         per_model[name] = d
@@ -185,9 +221,21 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
             work_complete = False
     denominator = routed + fallback
     work_denominator = routed_work + fallback_work
+    # ⚠️ THE TWO HALVES CAN BE COMPUTED OVER DIFFERENT MODEL SETS, and saying so is the point. The census
+    # reads `prov.aten` tags out of the module text; routing PARSES the module. Measured: smolvla's
+    # capture yields its op tags fine and fails `model_coverage.load_module` with a ParseError, so the
+    # operator count came from four models and the routing fraction from three -- and one sentence
+    # carrying both numbers read as though it were four. Both sets are recorded, and `claim_sentence`
+    # names each half's own denominator rather than picking one and hoping they agree.
+    counted = sorted(n for n, d in (cen.get("per_model") or {}).items() if d.get("status") == "ok")
+    routed_models = sorted(n for n, d in per_model.items() if d.get("status") != "unreadable")
+    unparsed = sorted(n for n, d in per_model.items() if d.get("status") == "unreadable")
     return {
         "target": target,
         "opset": {"n_core": cen["n_core"], "torch": (opset or {}).get("torch")},
+        "models": {"counted_for_operators": counted, "measured_for_routing": routed_models,
+                   "unparsed_for_routing": unparsed,
+                   "agree": counted == routed_models},
         "observed": {"n_core_observed": cen["n_observed_core"],
                      "core_fraction": (cen["n_observed_core"] / cen["n_core"]) if cen["n_core"] else None,
                      "non_core_observed": cen["non_core_observed"]},
@@ -237,20 +285,31 @@ def _pct(frac: float) -> str:
 
 
 def claim_sentence(report: dict) -> str:
-    """The one sentence the report supports, with nothing in it that the numbers do not carry."""
+    """The one sentence the report supports, with nothing in it that the numbers do not carry.
+
+    Each half names its OWN model set. They are usually the same set and are not guaranteed to be:
+    counting operators only needs the module's op tags, while routing has to parse it, so a capture
+    that parses in one and not the other puts the two numbers over different denominators. Stating one
+    count for both is how a coverage sentence stops being true without anyone editing it.
+    """
     obs = report["observed"]
     rt = report["routing"]
+    ms = report.get("models") or {}
+    counted = ms.get("counted_for_operators") or []
+    measured = ms.get("measured_for_routing") or []
     frac = obs.get("core_fraction")
     rfrac = rt.get("routed_fraction")
-    models = [n for n, d in (report.get("per_model") or {}).items() if d.get("status") != "unreadable"]
+    unparsed = ms.get("unparsed_for_routing") or []
     return (
-        f"Across {len(models)} captured model(s), {obs['n_core_observed']} of "
+        f"Across {len(counted)} captured model(s) ({', '.join(counted)}), {obs['n_core_observed']} of "
         f"{report['opset']['n_core']} PyTorch Core ATen operators appear"
         + (f" ({_pct(frac)})" if frac is not None else "")
-        + f"; on {report['target']}, {rt['routed']} of {rt['denominator']} classifiable regions route "
-          f"to the accelerator"
+        + f"; on {report['target']}, over the {len(measured)} of those whose capture could be parsed, "
+          f"{rt['routed']} of {rt['denominator']} classifiable regions route to the accelerator"
         + (f" ({_pct(rfrac)})" if rfrac is not None else "")
         + f", with {rt['unclassified']} region(s) unclassified and reported separately"
+        + (f"; {', '.join(unparsed)} did not parse and contributed no routing evidence" if unparsed
+           else "")
         + (_work_clause(report.get("work") or {}))
         + ".")
 
