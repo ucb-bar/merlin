@@ -259,12 +259,17 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # on this target -- recorded in provenance rather than dropped, because a silently absent regime
     # reads downstream as a covered one.
     mem_block = spec_doc.get("memory_mapping") or {}
-    regime_extents = mem_block.get("regime_extents") or {}
+    # A spec written before this axis existed carries no `regime_extents` AT ALL. That is a stale spec,
+    # not an unreachable regime, and reporting it as "no capsule shape reaches this" would state a
+    # measurement nobody made -- the precise failure this module exists to avoid.
+    regime_extents = mem_block.get("regime_extents")
+    regimes_resolved = regime_extents is not None
+    regime_extents = regime_extents or {}
     regime_dtype = str(mem_block.get("regime_dtype") or "") or (
         sorted(admitted_dtypes)[0] if admitted_dtypes else "")
     unreachable_regimes: list[str] = []
     regime_op = op_for_family("contraction", admitted_ops=pool)
-    for regime in sorted(mem_block.get("required") or {}):
+    for regime in sorted((mem_block.get("required") or {}) if regimes_resolved else {}):
         ext = regime_extents.get(regime)
         if not ext:
             unreachable_regimes.append(str(regime))
@@ -312,8 +317,12 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "budget": cap,
             "precision_preference_kept": kept,
             "precision_preference_dropped": dropped,
+            "memory_regimes_status": "resolved" if regimes_resolved else "not_resolved",
             "memory_regimes_unreachable": unreachable_regimes,
             "memory_regime_note": (
+                "the spec carries no `regime_extents`; it predates the axis and must be regenerated "
+                "before a regime can be synthesized or declared unreachable"
+                if not regimes_resolved else 
                 "a regime with no capsule shape that reaches it on this target. `fits_on_reuse` is "
                 "always here: a capsule's declared inputs are all live at once, so peak-live and total "
                 "coincide and the regime that separates them cannot arise from inputs alone"),

@@ -17,6 +17,10 @@ provenance:
   - fp16
   - bf16
   - f32
+  memory_regimes_status: not_resolved
+  memory_regimes_unreachable: []
+  memory_regime_note: the spec carries no `regime_extents`; it predates the axis and must be regenerated
+    before a regime can be synthesized or declared unreachable
   precision_note: a preference RANKS the dtypes the target already admits and can never widen them; a
     dropped token is reported rather than silently ignored
 capsules:
