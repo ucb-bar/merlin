@@ -42,6 +42,46 @@
 version: 1
 
 pins:
+  gsim_compiler:
+    description: >-
+      The FIRRTL-to-C++ simulator compiler that emits the RTL-derived GSIM models. It is pinned because
+      it is part of the derivation: the same RTL through a different compiler is a different simulator,
+      and the emitted model carries no revision of its own. Measured on gemmini against the identical
+      ELF, GSIM answers in 3.31 s where Verilator takes 86.83 s (26.25x) with both reporting pass, so
+      this is the difference between a cert tier that runs per capsule and one affordable once per run.
+      The upstream commit alone does NOT describe the bytes that were read -- nine files carry 225 lines
+      of uncommitted local work WITHOUT WHICH THIS DESIGN DOES NOT COMPILE AT ALL, so each is declared
+      under local_edits and the diff itself is tracked at merlin/contract/external/gsim/. The load-bearing
+      hunks: parser/syntax.y accepts SMem/CMem/Flip as identifiers and `parameter PERIOD = 2.0`;
+      src/AST2Graph.cpp severs input->ext scheduling edges for clocked extmodules, which is what breaks
+      the false zero-delay loops GSIM manufactures through AXI/TL ready-valid paths.
+    repo_canonical: https://github.com/OpenXiangShan/gsim.git
+    commit: 50b371c60910ebe7aaabb248f8c2b8a56c3a96e6
+    branch: master
+    root_env: MERLIN_EXT_GSIM
+    requires_paths:
+      - src/AST2Graph.cpp
+      - src/splitArray.cpp
+      - src/clockOptimize.cpp
+      - parser/syntax.y
+      - build/gsim/gsim
+    local_edits:
+      include/Node.h: 04de20f71880560a2f2566607352794969b89063b05058973d422f867765f549
+      parser/syntax.y: 73aca9db9a0fe8236b3a9a8df2a6f922d55628de4d705b1072dd803153254806
+      src/AST2Graph.cpp: 98661dea5b480602c20937d9ec4eda11db82a24f2d1ca75d7f3bcaa8035263a6
+      src/Node.cpp: 49fc4e55fe7ec23145f9b621d10491932b9fe439e0fb9271b43bd8b29654d6d6
+      src/clockOptimize.cpp: d1f57f4977ed54191283c559b880c9eab8272b4310d5fb743a221c84980ca4ff
+      src/cppEmitter.cpp: 3df277f416adf6ffa5d92e8516723ebf63119d071eb9b153f5d315f46d6c046a
+      src/graphPartition.cpp: 74c5fdec53753ff0ef0ac1193139d48d5e604287c5ded3d99bd49adac852eafb
+      src/splitArray.cpp: dfccdbb9a91ba15800c8e015123aad5fb1c22508ba8ed8f4e8279e8f0711afd0
+      src/splitNodes.cpp: 4026fb78d304b104f9d1a4391ba54918b1dea0e7549e49bfd2c1f828b7dbff9d
+    notes: >-
+      The patch set is reproduced at merlin/contract/external/gsim/gsim-merlin-patches.diff so it does not
+      live only in one developer's dirty working tree, which is how it was found. Build with clang >= 19
+      via merlin/contract/external/gsim/cxxwrap.sh (system clang is 18).
+
+
+# Consumed by `merlin.common.provenance.load_artifacts` / `verify_artifact`.
 
   saturn_opu_int8:
     description: >-
@@ -345,8 +385,26 @@ pins:
     # straight from the RTL (operand int8, accumulate int32 — the discovery surface prints the agreement).
     # That corroboration is why the claims are BELIEVED; it is not why they are pinned, and the two were
     # being conflated. Nothing in the pin recorded which bytes the dtypes came from until now.
+    # `include/gemmini.h` is likewise OFF the pinned revision (these bytes are e6df8b9f's, this
+    # checkout's HEAD). Measured 2026-09-01, pinned 7c540b3a vs read bytes: 36 changed lines, and the
+    # delta is ADDITIVE MX surface plus one cast:
+    #   + `#define CONFIG_SCALE_MEM 26` and `gemmini_mxquant_config_mvout` (a funct-26 instruction)
+    #   + `gemmini_extended3_config_ex` grows 9 -> 13 args (act/wgt/out mx_fmt into RS1[15:10], uselut
+    #     into RS1[5]); all four in-header call sites pass 0 for the new fields, so RS1 is bit-identical
+    #   ~ RS2 shift becomes `(uint64_t)(uint32_t)(sys_shift)` where the pinned macro had `(sys_shift)`.
+    #     This differs ONLY for a NEGATIVE shift, where the pinned form sign-extends and corrupts
+    #     C_stride in RS2[63:48] -- i.e. the read bytes fix a latent bug. Every call site passes 0.
+    # So for everything this corpus emits, the encodings are identical to the pinned revision's.
+    #
+    # RESIDUAL RISK, recorded rather than resolved: the header EXPOSES funct 26 and the MX format fields,
+    # and the pinned RTL cannot execute them. Verified unused by run merlincirct_arm4_func_20260901_codex1
+    # (no CONFIG_SCALE_MEM / mxquant / mx_fmt / uselut anywhere in the submission or generated harness;
+    # zero funct-26 instructions across 28 emitted traces). A future round that reaches for that surface
+    # would be undefined on this RTL, and this declaration does not prevent it -- it only means the drift
+    # is described. Re-check the emitted traces before citing a result that used it.
     local_edits:
       include/gemmini_params.h: "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924"
+      include/gemmini.h: "007826db4fdaf35783e5d91ad3f21c2df9a310c1c51d53499f7745fc379974de"
     used_by:
       - every dtype / activation-mode / feature claim in the discovered capability surface
         (targetgen/capability_discovery.py, via hardware_spec.isa_headers)
@@ -492,6 +550,74 @@ pins:
 #
 # Consumed by `merlin.common.provenance.load_artifacts` / `verify_artifact`.
 artifacts:
+  gemmini_gsim_model_testharness:
+    description: >-
+      The GSIM-emitted C++ model actually used to run gemmini capsules, rooted at TestHarness. This is a
+      SEPARATE artifact from `gemmini_gsim_model`, which is rooted at ChipTop -- do not substitute one for
+      the other in a cert. It also CORRECTS that entry's standing claim that the TestHarness elaboration
+      "cannot be compiled at all": that was true only of the stock harness clocking. Chipyard config
+      GemminiGsimMonitorsConfig (= WithGsimHarnessClockInstantiator ++ GemminiRocketConfig) drives every
+      harness clock from the top-level TestHarness clock input instead of a ClockSourceAtFreqMHz blackbox,
+      and the elaboration then compiles. The accelerator and SoC are the SAME design as the Verilator
+      config: the only config delta is harness-level clock generation, which is outside the chip.
+      Measured on the identical ELF, this model reproduces the Verilator console exactly (CHK 10901, DONE,
+      exit 0) in 39.4 s of wall for 403432 cycles.
+    path: out/build/gsim/gemmini/gemmini_gsim_mon_serialclk.fir
+    repo_relative: true
+    digest: "477e16d0615508b434d373f9e4dcce1ebff6ec25041e534079f3d068044aedb7"
+    built_from:
+      - gemmini_rtl
+      - gsim_compiler
+    config: GemminiGsimMonitorsConfig
+    local_edits:
+      - path: out/build/gsim/gemmini/gemmini_gsim_mon_serialclk.fir
+        line: 643234
+        edit: >-
+          connect system.serial_tl_0.clock_in, serial_tl_0.clock_in
+        replaces: >-
+          connect system.serial_tl_0.clock_in, _system_serial_tl_0_clock_in_T
+        why: >-
+          The chip-side serial-TL clock reaches the SoC through a GenericDigitalInIOCell extmodule. GSIM
+          treats a clock driven by an extmodule OUTPUT as a constant, which froze the entire serial-TL
+          domain: the serdesser never ticked, the MSIP write to the CLINT never landed, and the core sat
+          in the bootrom wfi forever (measured: beat=0 head=0 tail=0 at 200k cycles). Bypassing the pad
+          cell on the CLOCK PATH ONLY removes that cell from GSIM's constant-clock list and the design
+          boots. COUNT CORRECTED 2026-09-01: an earlier revision of this entry said "8 to 5"; a direct
+          A/B measurement (stock GemminiGsimMonitorsConfig vs the bypass, same gsim revision 50b371c6 and
+          same flags) measured 6 -> 5, the single removed node being
+          chiptop0$iocell_serial_tl_0_clock_in$GenericDigitalInIOCell_6. The measured number stands; the
+          8 was carried over from a note and is not reproduced here.
+          It is the same class of transformation as WithGsimHarnessClockInstantiator (remove a blackbox
+          from a clock path) and touches no datapath.
+    gaps:
+      - >-
+        A CONFIG NOW EXISTS, BUT THESE BYTES ARE STILL THE HAND-EDITED ONES. `GemminiGsimSerialClkConfig`
+        (= WithGsimSerialTLClockPunchthrough ++ GemminiGsimMonitorsConfig, an OverrideIOBinder that
+        connects a Clock leaf straight through and hands every other leaf to the same IOCell factory with
+        the same instance names) elaborates the bypass with NO hand editing -- verified 2026-09-01: it
+        compiles, emits `connect system.serial_tl_0.clock_in, serial_tl_0.clock_in` with zero occurrences
+        of `_system_serial_tl_0_clock_in_T`, and its GSIM constant-clock set is IDENTICAL to this
+        hand-edited model's. The whole-file diff against these bytes is 300 lines and contains only the
+        removed clock cell, the GenericDigitalInIOCell renumbering that follows, and two import-induced
+        source-locator shifts.
+        The gap is NOT retired, because `path`/`digest` above still identify the HAND-EDITED bytes and
+        the config-derived elaboration is NOT byte-identical to them (it digests to
+        089d053b62523b5047e71ccca31dfbbe27d4e5daeab24050227a923e7b4628c8 in the verifying run). Retiring
+        it requires: re-point `config:` at GemminiGsimSerialClkConfig, replace `digest` with the
+        config-derived elaboration's, DELETE the `local_edits` block, rebuild the emulator from the new
+        .fir and re-record the binary digest WITH ITS TU/subStep COUNT CHECKED, and re-run the ELF
+        equivalence -- the existing "CHK 10901, DONE, exit 0 in 39.4 s" measurement does NOT transfer to
+        a different .fir.
+    notes: >-
+      The compiled emulator built from this FIRRTL digests to
+      e02c20ddfce90d0458b0a4e376136bdd51bacf12f844b7dc3a49e12538c6ab5c
+      (out/build/gsim/gemmini/emu_gemmini_gsim3, the binary MERLIN_GEMMINI_GSIM_EMU points at). As with
+      `gemmini_gsim_model`, the FIRRTL digest is what identifies the HARDWARE and the binary moves
+      whenever `gsim_compiler` does, so a cert must record BOTH pins. A build of this model that links
+      fewer than all 16 emitted translation units still links and runs while silently simulating an
+      incomplete design -- an OOM-killed compile leaves an EMPTY .err -- so verify the subStep count,
+      not just the exit status.
+
 
   firesim_opu_v256d128:
     description: >-

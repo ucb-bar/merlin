@@ -26,9 +26,12 @@ reads into a capsule's command stream is a separate, invasive step in the runner
 """
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass, field
+import hashlib
 from itertools import combinations
 from pathlib import Path
+from collections.abc import Mapping
 
 #: A counter whose name ends in this token counts CYCLES, which is the only kind this module reads: a
 #: joint-occupancy figure is a duration, and an event count is not one.
@@ -68,22 +71,272 @@ class OccupancyCounters:
                 "complete": self.complete()}
 
 
-def _defines(text: str) -> dict:
-    """``NAME -> int`` for every object-like ``#define NAME <integer>``, parsed structurally."""
-    out: dict = {}
-    for raw in text.splitlines():
+def _module_lines(hw_text: str, module: str) -> tuple[list[str] | None, str | None]:
+    """Return one balanced CIRCT ``hw.module`` body without regex or target assumptions."""
+    marker = "@" + module + "("
+    lines = (hw_text or "").splitlines()
+    for at, raw in enumerate(lines):
         line = raw.strip()
+        if not line.startswith("hw.module") or marker not in line:
+            continue
+        depth = raw.count("{") - raw.count("}")
+        body = [raw]
+        cursor = at + 1
+        while cursor < len(lines) and depth > 0:
+            body.append(lines[cursor])
+            depth += lines[cursor].count("{") - lines[cursor].count("}")
+            cursor += 1
+        if depth:
+            return None, f"hw.module @{module} has unbalanced braces"
+        return body, None
+    return None, f"hw.module @{module} is absent"
+
+
+def _counter_fingerprint(counters: OccupancyCounters, codes: Mapping[str, int]) -> str:
+    rows = []
+    for combo, name in sorted(counters.by_combination.items(), key=lambda item: sorted(item[0])):
+        rows.append("+".join(sorted(combo)) + "=" + name + "=" + str(codes.get(name)))
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
+
+
+def _operand_refs(rhs: str, opcode: str) -> tuple[str, ...] | None:
+    prefix = opcode + " "
+    if not rhs.startswith(prefix):
+        return None
+    operands = rhs[len(prefix):]
+    for marker in (" {", " :"):
+        operands = operands.split(marker, 1)[0]
+    if operands.startswith("bin "):
+        operands = operands[4:]
+    refs = tuple(part.strip() for part in operands.split(",") if part.strip())
+    return refs or None
+
+
+def prove_occupancy_partition_from_circt(
+        hw_text: str, counters: OccupancyCounters, codes: Mapping[str, int], *,
+        module: str, counter_module: str, source: str | None = None) -> dict:
+    """Prove that counter events are the exhaustive one-hot partition of engine-busy states.
+
+    Header names only suggest combination semantics.  This verifier follows the corresponding numeric
+    event ports into elaborated CIRCT, symbolically evaluates their ``comb.and/or/xor`` cones, and
+    requires every combination counter to be true on exactly its named busy-bit valuation.  Engine and
+    signal names are inferred; callers provide only target-owned module identities and artifacts.
+    """
+    digest = hashlib.sha256((hw_text or "").encode("utf-8")).hexdigest()
+    base = {"status": "unknown", "method": "circt_boolean_partition_v1",
+            "source": source, "sha256": digest, "module": module,
+            "counter_module": counter_module,
+            "counter_fingerprint": _counter_fingerprint(counters, codes)}
+    if not counters.complete():
+        return {**base, "why": "the header does not expose every non-empty engine combination"}
+    if any(name not in codes for name in counters.by_combination.values()):
+        return {**base, "why": "one or more occupancy counters has no derived event code"}
+    selected_codes = [codes[name] for name in counters.by_combination.values()]
+    if any(isinstance(code, bool) or not isinstance(code, int) or code < 0
+           for code in selected_codes):
+        return {**base, "why": "one or more occupancy event codes is not a non-negative integer"}
+    if len(set(selected_codes)) != len(selected_codes):
+        return {**base, "why": "occupancy counters do not have unique event codes"}
+    body, error = _module_lines(hw_text, module)
+    if body is None:
+        return {**base, "why": error}
+
+    definitions: dict[str, str] = {}
+    instance_line = None
+    instance_marker = "@" + counter_module + "("
+    for raw in body:
+        stripped = raw.strip()
+        lhs, sep, rhs = stripped.partition(" = ")
+        if sep and lhs.startswith("%"):
+            definitions[lhs] = rhs
+        if "hw.instance" in stripped and instance_marker in stripped:
+            if instance_line is not None:
+                return {**base, "why": f"multiple @{counter_module} instances are ambiguous"}
+            instance_line = stripped
+    if instance_line is None:
+        return {**base, "why": f"no @{counter_module} instance exists in @{module}"}
+
+    event_refs: dict[frozenset, str] = {}
+    for combo, name in counters.by_combination.items():
+        port = "io_event_io_event_signal_" + str(codes[name]) + ": "
+        if instance_line.count(port) != 1:
+            return {**base, "why": f"event port for {name!r} is absent or ambiguous"}
+        tail = instance_line.split(port, 1)[1]
+        ref = tail.split(":", 1)[0].strip()
+        if not ref.startswith("%"):
+            return {**base, "why": f"event port for {name!r} is not driven by an SSA value"}
+        event_refs[combo] = ref
+
+    leaves: set[str] = set()
+    visiting: set[str] = set()
+
+    def discover(ref: str) -> bool:
+        if ref in ("%true", "%false"):
+            return True
+        if ref in visiting:
+            return False
+        rhs = definitions.get(ref)
+        if rhs is None:
+            leaves.add(ref)
+            return True
+        visiting.add(ref)
+        refs = (_operand_refs(rhs, "comb.and") or _operand_refs(rhs, "comb.or")
+                or _operand_refs(rhs, "comb.xor"))
+        if refs is None:
+            visiting.remove(ref)
+            return False
+        ok = all(discover(operand) for operand in refs)
+        visiting.remove(ref)
+        return ok
+
+    if not all(discover(ref) for ref in event_refs.values()):
+        return {**base, "why": "an occupancy event cone uses unsupported or cyclic CIRCT logic"}
+    if len(leaves) != len(counters.engines):
+        return {**base, "why": (f"event cones have {len(leaves)} independent boolean leaves for "
+                                  f"{len(counters.engines)} header-derived engines")}
+    ordered_leaves = tuple(sorted(leaves))
+
+    def evaluate(ref: str, values: Mapping[str, bool], active: set[str]) -> bool:
+        if ref == "%true":
+            return True
+        if ref == "%false":
+            return False
+        if ref in values:
+            return values[ref]
+        if ref in active:
+            raise ValueError("cyclic boolean cone")
+        rhs = definitions[ref]
+        active.add(ref)
+        refs = _operand_refs(rhs, "comb.and")
+        if refs is not None:
+            result = all(evaluate(item, values, active) for item in refs)
+        else:
+            refs = _operand_refs(rhs, "comb.or")
+            if refs is not None:
+                result = any(evaluate(item, values, active) for item in refs)
+            else:
+                refs = _operand_refs(rhs, "comb.xor")
+                if refs is None:
+                    raise ValueError("unsupported boolean operation")
+                result = False
+                for item in refs:
+                    result ^= evaluate(item, values, active)
+        active.remove(ref)
+        return result
+
+    satisfying: dict[frozenset, list[frozenset[str]]] = {combo: [] for combo in event_refs}
+    for mask in range(1 << len(ordered_leaves)):
+        values = {leaf: bool(mask & (1 << index)) for index, leaf in enumerate(ordered_leaves)}
+        enabled = frozenset(leaf for leaf, value in values.items() if value)
+        for combo, ref in event_refs.items():
+            try:
+                if evaluate(ref, values, set()):
+                    satisfying[combo].append(enabled)
+            except (KeyError, ValueError) as exc:
+                return {**base, "why": f"could not evaluate event cone: {exc}"}
+
+    engine_to_leaf: dict[str, str] = {}
+    for combo, states in satisfying.items():
+        if len(combo) != 1:
+            continue
+        if len(states) != 1 or len(states[0]) != 1:
+            return {**base, "why": "a singleton counter is not one exact busy-bit valuation"}
+        engine_to_leaf[next(iter(combo))] = next(iter(states[0]))
+    if len(engine_to_leaf) != len(counters.engines) or len(set(engine_to_leaf.values())) != len(leaves):
+        return {**base, "why": "singleton counters do not bijectively identify engine busy bits"}
+    for combo, states in satisfying.items():
+        expected = frozenset(engine_to_leaf[engine] for engine in combo)
+        if states != [expected]:
+            return {**base, "why": (f"counter for {sorted(combo)} is not exactly its named "
+                                      "busy-bit valuation")}
+    return {**base, "status": "proved", "engine_leaves": engine_to_leaf,
+            "events": {"+".join(sorted(combo)): event_refs[combo]
+                       for combo in sorted(event_refs, key=lambda item: sorted(item))}}
+
+
+def _define_int_expr(node: ast.AST, values: dict[str, int]) -> int:
+    """Evaluate the integer-only subset used by shipped counter headers."""
+    if isinstance(node, ast.Expression):
+        return _define_int_expr(node.body, values)
+    if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+        return int(node.value)
+    if isinstance(node, ast.Name) and node.id in values:
+        return values[node.id]
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub, ast.Invert)):
+        value = _define_int_expr(node.operand, values)
+        if isinstance(node.op, ast.UAdd):
+            return value
+        if isinstance(node.op, ast.USub):
+            return -value
+        return ~value
+    if isinstance(node, ast.BinOp) and isinstance(
+            node.op, (ast.Add, ast.Sub, ast.Mult, ast.FloorDiv, ast.LShift, ast.RShift,
+                      ast.BitOr, ast.BitAnd, ast.BitXor)):
+        lhs, rhs = _define_int_expr(node.left, values), _define_int_expr(node.right, values)
+        if isinstance(node.op, ast.Add):
+            return lhs + rhs
+        if isinstance(node.op, ast.Sub):
+            return lhs - rhs
+        if isinstance(node.op, ast.Mult):
+            return lhs * rhs
+        if isinstance(node.op, ast.FloorDiv):
+            return lhs // rhs
+        if isinstance(node.op, ast.LShift):
+            return lhs << rhs
+        if isinstance(node.op, ast.RShift):
+            return lhs >> rhs
+        if isinstance(node.op, ast.BitOr):
+            return lhs | rhs
+        if isinstance(node.op, ast.BitAnd):
+            return lhs & rhs
+        return lhs ^ rhs
+    raise ValueError("unsupported counter-header integer expression")
+
+
+def _defines(text: str) -> dict:
+    """``NAME -> int`` for object-like integer defines, including derived expressions.
+
+    Counter headers commonly allocate an incremental event range as ``BASE + offset``.  Reading only
+    decimal literals silently drops precisely those later counters (including byte-volume events on
+    the current RTL).  Expressions are resolved iteratively through a deliberately tiny AST evaluator;
+    no C preprocessor, Python ``eval``, target spelling, or numeric fallback is involved.
+    """
+    pending: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.split("//", 1)[0].strip()
         if not line.startswith("#define"):
             continue
         parts = line.split()
         if len(parts) < 3 or "(" in parts[1]:
             continue
-        name, value = parts[1], parts[2]
-        neg = value.startswith("-")
-        digits = value[1:] if neg else value
-        if digits.isdigit():
-            out[name] = -int(digits) if neg else int(digits)
+        pending[parts[1]] = " ".join(parts[2:])
+    out: dict[str, int] = {}
+    progressed = True
+    while pending and progressed:
+        progressed = False
+        for name, expression in list(pending.items()):
+            try:
+                value = _define_int_expr(ast.parse(expression, mode="eval"), out)
+            except (SyntaxError, ValueError, ZeroDivisionError, OverflowError):
+                continue
+            out[name] = int(value)
+            del pending[name]
+            progressed = True
     return out
+
+
+def counters_with_unit(text: str, unit: str) -> dict[str, int]:
+    """Return counters whose underscore-delimited name declares ``unit``.
+
+    This is a unit query, not a target-specific name table: callers may ask for ``BYTES``, ``CYCLES``,
+    or another unit the target itself puts in its counter API.  Direction/engine spellings remain in
+    the returned names and are not interpreted here.
+    """
+    wanted = str(unit or "").strip().upper()
+    if not wanted:
+        raise ValueError("a non-empty counter unit is required")
+    return {name: code for name, code in _defines(text).items()
+            if wanted in name.upper().split("_")}
 
 
 def derive_occupancy_counters(text: str) -> OccupancyCounters:
@@ -146,7 +399,7 @@ def counters_for_target(target: str, *, sources=None) -> dict:
         return {"status": "unavailable",
                 "why": "no shipped header could be located for this target; whether it exposes "
                        "combination counters is UNKNOWN, not absent"}
-    best, where = OccupancyCounters(), None
+    best, where, where_digest, where_codes = OccupancyCounters(), None, None, None
     read, unread = [], {}
     for p in uniq:
         try:
@@ -158,6 +411,9 @@ def counters_for_target(target: str, *, sources=None) -> dict:
         got = derive_occupancy_counters(text)
         if len(got.by_combination) > len(best.by_combination):
             best, where = got, p
+            where_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            definitions = _defines(text)
+            where_codes = {name: definitions[name] for name in got.by_combination.values()}
     if not best.by_combination:
         # ABSENT REQUIRES HAVING READ SOMETHING. Falling through to "this target does not count
         # overlap in hardware" when every candidate header failed to open is precisely the collapse
@@ -170,10 +426,79 @@ def counters_for_target(target: str, *, sources=None) -> dict:
         return {"status": "absent", "read": read, "unreadable": unread,
                 "why": "the shipped headers expose no counter block with per-engine singles and a "
                        "combination over them, so this target does not count overlap in hardware"}
-    return {"status": "derived", "header": str(where), "counters": best.to_dict()}
+    return {"status": "derived", "header": str(where), "header_sha256": where_digest,
+            "event_codes": where_codes, "counters": best.to_dict()}
 
 
-def eta_from_counters(values: dict, counters: OccupancyCounters) -> dict:
+def counter_slots_from_circt(
+    hw_text: str,
+    *,
+    module: str,
+    state_families: tuple[str, ...],
+    source: str | None = None,
+) -> dict:
+    """Derive a counter-file's physical slot count from elaborated CIRCT HW.
+
+    ``module`` and ``state_families`` identify target-owned structures; the caller obtains those
+    identities at the target boundary.  This generic reader supplies no target name, register name,
+    width, or count.  It finds ``seq.firreg`` SSA results named ``%<family>_<index>`` inside the named
+    ``hw.module`` and accepts the result only when every requested family has the same dense index
+    set starting at zero.  Requiring multiple independently elaborated state arrays prevents an
+    address width (which can encode unused values) or one coincidental register name from being
+    mistaken for capacity.
+
+    The result deliberately has three states.  ``derived`` carries the exact count and evidence;
+    ``unknown`` carries the refusal reason.  There is no numeric fallback.
+    """
+    digest = hashlib.sha256((hw_text or "").encode("utf-8")).hexdigest()
+    provenance = {"source": source, "sha256": digest, "module": module,
+                  "state_families": list(state_families), "method": "dense_seq_firreg_families"}
+    if not module or not state_families:
+        return {"status": "unknown", "slots": None, "provenance": provenance,
+                "why": "a CIRCT module and at least one target-owned state family are required"}
+
+    body, error = _module_lines(hw_text, module)
+    if body is None:
+        return {"status": "unknown", "slots": None, "provenance": provenance,
+                "why": error}
+
+    indices = {family: set() for family in state_families}
+    for raw in body:
+        line = raw.strip()
+        lhs, sep, rhs = line.partition(" = ")
+        if not sep or not rhs.startswith("seq.firreg "):
+            continue
+        for family in state_families:
+            prefix = "%" + family + "_"
+            if not lhs.startswith(prefix):
+                continue
+            suffix = lhs[len(prefix):]
+            if suffix.isdigit():
+                indices[family].add(int(suffix))
+
+    missing = [family for family, got in indices.items() if not got]
+    if missing:
+        return {"status": "unknown", "slots": None, "provenance": provenance,
+                "why": f"no indexed seq.firreg state was found for family/families {missing}"}
+    sets = list(indices.values())
+    if any(got != sets[0] for got in sets[1:]):
+        return {"status": "unknown", "slots": None, "provenance": provenance,
+                "why": "the independently elaborated counter state families disagree on their indices",
+                "indices": {name: sorted(got) for name, got in indices.items()}}
+    expected = set(range(len(sets[0])))
+    if sets[0] != expected:
+        return {"status": "unknown", "slots": None, "provenance": provenance,
+                "why": "counter state indices are not a dense zero-based slot set",
+                "indices": {name: sorted(got) for name, got in indices.items()}}
+    return {"status": "derived", "slots": len(expected), "provenance": provenance,
+            "evidence": {"indices": sorted(expected),
+                         "families": {name: len(got) for name, got in indices.items()}}}
+
+
+def eta_from_counters(values: dict, counters: OccupancyCounters, *, hw_text: str,
+                      codes: Mapping[str, int], module: str, counter_module: str,
+                      measurement_cycles: int | None = None,
+                      source: str | None = None) -> dict:
     """η from a set of counter READINGS, with every refusal carrying its reason.
 
     ``realised`` is the total cycles in which two or more engines were busy at once. ``available`` is
@@ -197,16 +522,47 @@ def eta_from_counters(values: dict, counters: OccupancyCounters) -> dict:
     that from the header alone -- the exclusivity is a property of the RTL, not of the ``#define`` list
     -- so a new target's counter block should be read once before its η is cited.
     """
-    missing = sorted(n for n in counters.by_combination.values() if n not in (values or {}))
+    proof = prove_occupancy_partition_from_circt(
+        hw_text, counters, codes, module=module, counter_module=counter_module, source=source)
+    if proof.get("status") != "proved":
+        return {"state": "unknown", "eta": None, "complete": counters.complete(),
+                "partition_proof": proof,
+                "why": "counter exclusivity/exhaustiveness was not proved from CIRCT: "
+                       + str(proof.get("why", "unknown proof failure"))}
+    required = set(counters.by_combination.values())
+    supplied = set(values or {})
+    missing = sorted(required - supplied)
     if missing:
-        return {"state": "unknown", "eta": None,
+        return {"state": "unknown", "eta": None, "partition_proof": proof,
                 "why": f"{len(missing)} counter reading(s) absent ({missing[:4]}); a missing counter "
                        f"is UNKNOWN, and treating it as zero would report overlap that was never "
                        f"measured as overlap that did not happen"}
+    extra = sorted(supplied - required)
+    if extra:
+        return {"state": "unknown", "eta": None, "partition_proof": proof,
+                "why": f"unexpected counter reading(s) {extra[:4]}; the occupancy pass must contain "
+                       "exactly its proved partition so readings from another window cannot be mixed"}
+    invalid = sorted(name for name in required
+                     if (isinstance(values[name], bool) or not isinstance(values[name], int)
+                         or values[name] < 0))
+    if invalid:
+        return {"state": "unknown", "eta": None, "partition_proof": proof,
+                "why": f"counter reading(s) {invalid[:4]} are not non-negative integers"}
+    if (isinstance(measurement_cycles, bool) or not isinstance(measurement_cycles, int)
+            or measurement_cycles <= 0):
+        return {"state": "unknown", "eta": None, "partition_proof": proof,
+                "why": "a positive integer cycle measurement for the identical counter window is "
+                       "required to exclude impossible or wrapped occupancy readings"}
+    partition_cycles = sum(values[name] for name in required)
+    if partition_cycles > measurement_cycles:
+        return {"state": "unknown", "eta": None, "partition_proof": proof,
+                "why": f"the exclusive occupancy partition totals {partition_cycles} cycles, more "
+                       f"than its measured {measurement_cycles}-cycle window; the readings are "
+                       "mixed, corrupt, or wrapped"}
     busy: dict = {e: 0 for e in counters.engines}
     realised = 0
     for combo, name in counters.by_combination.items():
-        v = int((values or {})[name])
+        v = values[name]
         for e in combo:
             busy[e] = busy.get(e, 0) + v
         if len(combo) >= 2:
@@ -232,11 +588,15 @@ def eta_from_counters(values: dict, counters: OccupancyCounters) -> dict:
     available = min(total - ordered[0], total // 2) if len(ordered) >= 2 else 0
     if available <= 0:
         return {"state": "unknown", "eta": None, "busy_cycles": busy, "realised_cycles": realised,
+                "partition_proof": proof,
                 "why": "the second-busiest engine has no busy cycles, so no overlap was AVAILABLE; "
                        "0/0 is undefined, not 0.0"}
     return {"state": "measured", "eta": realised / float(available),
             "busy_cycles": busy, "realised_cycles": realised, "available_cycles": available,
+            "measurement_cycles": measurement_cycles,
+            "partition_cycles": partition_cycles,
             "complete": counters.complete(),
+            "partition_proof": proof,
             "note": ("realised counts every cycle with two or more engines busy; available is the "
                      "most overlap the per-engine totals admit -- min(total - busiest, total // 2) -- "
                      "which equals the second-largest total when there are two engines, the case the "
@@ -252,9 +612,64 @@ def eta_from_counters(values: dict, counters: OccupancyCounters) -> dict:
 #: position, because a simulator console interleaves writers and a positional reader silently
 #: mis-attributes when something else prints mid-run.
 COUNTER_MARKER = "MERLIN_HWCOUNTER"
+COUNTER_SCHEMA_MARKER = "MERLIN_COUNTER_SCHEMA"
 
 
-def counter_bracket_c(counters: OccupancyCounters, codes: dict, *, slots: int) -> dict:
+def counter_bracket_for_names(names: list[str] | tuple[str, ...], codes: dict, *, slots: int,
+                              padding_code: int | None = None) -> dict:
+    """C for configuring and reading an explicit derived counter set around a kernel.
+
+    The names are supplied by another structural selector (for example
+    :func:`derive_occupancy_counters` or :func:`counters_with_unit`).  This function assigns physical
+    slots and refuses a partial set; it does not know any target event name or code.
+    """
+    ordered = list(dict.fromkeys(str(name) for name in names))
+    missing = [name for name in ordered if name not in (codes or {})]
+    if missing:
+        raise ValueError(
+            f"no event code for {missing}; a counter read at an unconfigured slot returns whatever "
+            f"that slot last held, which would be reported as this run's measurement")
+    selected_codes = [codes[name] for name in ordered]
+    if any(isinstance(code, bool) or not isinstance(code, int) or code < 0
+           for code in selected_codes):
+        raise ValueError("counter event codes must be non-negative integers derived from the header")
+    if len(set(selected_codes)) != len(selected_codes):
+        raise ValueError(
+            "selected counter names share an event code; assigning both to slots would label one "
+            "hardware event as two different measurements")
+    if len(ordered) > int(slots):
+        raise ValueError(
+            f"{len(ordered)} counter(s) need slots but the target exposes {slots}; refusing to emit a "
+            f"partial bracket, because omitted events would turn an exact measurement into an "
+            f"unlabelled lower bound")
+    if padding_code is not None and (
+            isinstance(padding_code, bool) or not isinstance(padding_code, int) or padding_code < 0):
+        raise ValueError("counter padding code must be a non-negative integer derived from the header")
+    slot_of = {name: index for index, name in enumerate(ordered)}
+    pro = ["  // merlin: counters configured from this target's own event codes.",
+           "  counter_reset();"]
+    for name in ordered:
+        pro.append(f"  counter_configure({slot_of[name]}, {int(codes[name])});  // {name}")
+    # Multi-pass measurements must execute the same number of pre-window counter commands.  Otherwise
+    # selecting two events in one pass and seven in another perturbs instruction/cache state before
+    # the timer starts, even though both brackets surround the same kernel.  A target may provide its
+    # own header-derived disabled-event code to fill the remaining physical slots; absence means no
+    # padding rather than an assumed zero code.
+    if padding_code is not None:
+        for slot in range(len(ordered), int(slots)):
+            pro.append(f"  counter_configure({slot}, {padding_code});  // padding: disabled event")
+    epi = ["  // merlin: read the counters back. Marker-prefixed so a reader attributes by NAME, not",
+           "  // by position -- a simulator console interleaves writers.",
+           "  counter_snapshot_take();"]
+    for name in ordered:
+        epi.append(f'  printf("{COUNTER_MARKER} {name} %u\\n", counter_read({slot_of[name]}));')
+    return {"prologue": "\n".join(pro) + "\n", "epilogue": "\n".join(epi) + "\n",
+            "slot_of": slot_of,
+            "configured_slots": int(slots) if padding_code is not None else len(ordered)}
+
+
+def counter_bracket_c(counters: OccupancyCounters, codes: dict, *, slots: int,
+                      padding_code: int | None = None) -> dict:
     """C for configuring, then reading, this target's combination counters around a kernel.
 
     Returns ``{"prologue": str, "epilogue": str, "slot_of": {...}}`` — text a harness generator can
@@ -269,28 +684,16 @@ def counter_bracket_c(counters: OccupancyCounters, codes: dict, *, slots: int) -
     supplied rather than assumed: a target with fewer slots than counters must be told so it can
     FAIL rather than silently read whichever ones happened to fit.
     """
-    names = [counters.by_combination[k] for k in sorted(counters.by_combination, key=lambda s: sorted(s))]
-    missing = [n for n in names if n not in (codes or {})]
-    if missing:
-        raise ValueError(
-            f"no event code for {missing}; a counter read at an unconfigured slot returns whatever "
-            f"that slot last held, which would be reported as this run's overlap")
-    if len(names) > int(slots):
-        raise ValueError(
-            f"{len(names)} counter(s) need slots but the target exposes {slots}; refusing to emit a "
-            f"partial bracket, because a missing combination makes the realised-overlap total a lower "
-            f"bound that would be reported as the total")
-    slot_of = {n: i for i, n in enumerate(names)}
-    pro = ["  // merlin: joint-occupancy counters, configured from this target's own event codes.",
-           "  counter_reset();"]
-    for n in names:
-        pro.append(f"  counter_configure({slot_of[n]}, {int(codes[n])});  // {n}")
-    epi = ["  // merlin: read the counters back. Marker-prefixed so a reader attributes by NAME, not",
-           "  // by position -- a simulator console interleaves writers.",
-           "  counter_snapshot_take();"]
-    for n in names:
-        epi.append(f'  printf("{COUNTER_MARKER} {n} %u\\n", counter_read({slot_of[n]}));')
-    return {"prologue": "\n".join(pro) + "\n", "epilogue": "\n".join(epi) + "\n", "slot_of": slot_of}
+    names = [counters.by_combination[key]
+             for key in sorted(counters.by_combination, key=lambda combo: sorted(combo))]
+    try:
+        return counter_bracket_for_names(
+            names, codes, slots=slots, padding_code=padding_code)
+    except ValueError as exc:
+        if len(names) > int(slots):
+            raise ValueError(str(exc) + "; a missing combination makes realised overlap a lower "
+                             "bound that could be reported as the total") from exc
+        raise
 
 
 def parse_counter_output(console: str) -> dict:
@@ -301,6 +704,7 @@ def parse_counter_output(console: str) -> dict:
     console is a missing reading, which η already refuses on, and never a zero.
     """
     out: dict = {}
+    ambiguous: set[str] = set()
     for raw in (console or "").splitlines():
         line = raw.strip()
         at = line.find(COUNTER_MARKER)
@@ -311,8 +715,26 @@ def parse_counter_output(console: str) -> dict:
             continue
         name, value = parts[0], parts[1]
         if value.isdigit():
-            out[name] = int(value)
+            if name in out:
+                ambiguous.add(name)
+            else:
+                out[name] = int(value)
+    for name in ambiguous:
+        out.pop(name, None)
     return out
+
+
+def parse_counter_schema(console: str) -> str | None:
+    """Return the unique header digest embedded in the measured ELF, or UNKNOWN."""
+    values: list[str] = []
+    for raw in (console or "").splitlines():
+        parts = raw.strip().split()
+        if len(parts) != 2 or parts[0] != COUNTER_SCHEMA_MARKER:
+            continue
+        digest = parts[1]
+        if len(digest) == 64 and all(char in "0123456789abcdefABCDEF" for char in digest):
+            values.append(digest.lower())
+    return values[0] if values and len(set(values)) == 1 else None
 
 
 def event_codes(text: str) -> dict:

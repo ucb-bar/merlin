@@ -26,6 +26,8 @@ def _render(capsule="isa/A2_single_tile_matmul"):
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     monkeypatch.delenv("MERLIN_HW_COUNTERS", raising=False)
+    monkeypatch.delenv("MERLIN_HW_COUNTER_UNIT", raising=False)
+    monkeypatch.delenv("MERLIN_CACHE_STATE", raising=False)
 
 
 def test_the_default_harness_carries_no_counter_code(monkeypatch):
@@ -40,6 +42,7 @@ def test_asking_for_counters_adds_the_bracket_around_the_same_window(monkeypatch
     monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
     got = _render()
     assert "counter_reset();" in got and "gemmini_counter.h" in got
+    assert "MERLIN_COUNTER_SCHEMA" in got
     # Configured BEFORE the cycle window opens and read AFTER it closes, so realised overlap and the
     # cycle count describe one run rather than two.
     assert got.index("counter_configure") < got.index("read_cycles()")
@@ -50,9 +53,10 @@ def test_asking_for_counters_adds_the_bracket_around_the_same_window(monkeypatch
 def test_every_derived_counter_is_configured_and_read_back(monkeypatch):
     monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
     got = _render()
-    assert got.count("counter_configure(") == got.count("counter_read(")
-    assert got.count("counter_configure(") >= 3, "a target with fewer than three combinations cannot "\
-                                                 "show three-way overlap"
+    selected = got.count("counter_read(")
+    assert selected >= 3, "a target with fewer than three combinations cannot show three-way overlap"
+    assert got.count("counter_configure(") >= selected
+    assert "padding: disabled event" in got
 
 
 @pytest.mark.parametrize("value,on", [("1", True), ("true", True), ("on", True), ("yes", True),
@@ -62,9 +66,9 @@ def test_the_switch_reads_only_affirmative_values(monkeypatch, value, on):
     assert ("counter_configure" in _render()) is on
 
 
-def test_a_counter_failure_never_breaks_the_graded_harness(monkeypatch):
-    # The bracket is a diagnostic EXTRA. If deriving it fails, the harness must still render and still
-    # grade -- a capsule must not fail on the absence of an optional measurement.
+def test_requested_counter_failure_refuses_the_instrumented_run(monkeypatch):
+    # Once explicitly requested, the bracket is campaign evidence. Silently rendering an uninstrumented
+    # harness would let the campaign report GO for a measurement it never took.
     monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
     import merlin.perf.hw_counters as hc
 
@@ -72,6 +76,56 @@ def test_a_counter_failure_never_breaks_the_graded_harness(monkeypatch):
         raise RuntimeError("counter header unavailable")
 
     monkeypatch.setattr(hc, "counters_for_target", _boom)
+    with pytest.raises(Exception, match="requested counter instrumentation unavailable"):
+        _render()
+
+
+def test_a_counter_unit_is_selected_from_the_shipped_header(monkeypatch):
+    monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
+    monkeypatch.setenv("MERLIN_HW_COUNTER_UNIT", "BYTES")
     got = _render()
-    assert "int main()" in got and "METRIC cycles" in got
-    assert "counter_configure" not in got
+    configured = [line for line in got.splitlines() if "counter_configure(" in line]
+    assert configured
+    selected = [line for line in configured if "padding: disabled event" not in line]
+    assert all("BYTES" in line for line in selected)
+    assert len(selected) == got.count("counter_read(")
+    assert len(configured) > len(selected)
+
+
+def test_warm_condition_executes_one_unmeasured_warmup(monkeypatch):
+    monkeypatch.setenv("MERLIN_CACHE_STATE", "warm")
+    got = _render()
+    assert got.count("gemmini_kernel(") == 3  # declaration + warmup + measured call
+    warmup = got.index("warmup completed outside the measured/counter window")
+    assert warmup < got.index("uint64_t c0 = read_cycles()")
+
+
+def test_unknown_cache_condition_is_refused(monkeypatch):
+    monkeypatch.setenv("MERLIN_CACHE_STATE", "wishful")
+    with pytest.raises(Exception, match="unsupported cache-state"):
+        _render()
+
+
+@pytest.mark.parametrize("kind", ["movement", "whole_op"])
+def test_instrumentation_covers_movement_and_whole_op_harnesses(monkeypatch, kind):
+    from merlin.runtime.backends import base as bk
+
+    monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
+    monkeypatch.setenv("MERLIN_HW_COUNTER_UNIT", "BYTES")
+    tensors = {"X": {"shape": [3, 5], "dtype": "i8", "role": "input"},
+               "Y": {"shape": [3, 5], "dtype": "i32", "role": "output"}}
+    if kind == "movement":
+        commands = [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"},
+                     "attributes": {"output_dtype": "i32"}}]
+    else:
+        tensors["K"] = {"shape": [7, 5], "dtype": "i8", "role": "input"}
+        tensors["Y"]["shape"] = [3, 7]
+        commands = [{"opcode": "ATTENTION_QK",
+                     "operands": {"q": "X", "k": "K", "dst": "Y"},
+                     "attributes": {"output_dtype": "i32", "epilogue": []}}]
+    cb = {"abi_version": "0.1", "target": "gemmini",
+          "tensors": tensors, "commands": commands}
+    got = bk.get_backend("gemmini").render_harness(cb, target="gemmini")
+    assert "counter_configure" in got and "counter_read" in got
+    assert got.index("counter_configure") < got.index("uint64_t c0")
+    assert got.index("counter_read") > got.index("uint64_t c1")
