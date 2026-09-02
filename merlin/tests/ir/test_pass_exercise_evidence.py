@@ -84,6 +84,58 @@ def test_the_production_passes_are_exercised_by_a_real_model(tmp_path, monkeypat
         f"catalogued pass(es) {sorted(missing)} were not invoked by lowering a real model; either the "
         f"pass is furniture or this driver no longer reaches it")
 
+    # ⚠️ INVOKED IS NOT EXERCISED. Every invocation must be MEASURED to have done something, or this
+    # test certifies a formal touch. Measured on this capture: 183 dispatches outlined, 1541 program
+    # elements built, 9 partition stats, 1 func marked -- and note the outliner's subject signature is
+    # IDENTICAL before and after, because it builds a new module rather than mutating the one it was
+    # handed. A subject-only probe would call that a no-op, which is why the product is measured too.
+    for r in (r for r in records if r.get("kind") == "invoke"):
+        assert r.get("effect") == PS.EFFECT_CHANGED, (
+            f"{r['pass']} ran to effect {r.get('effect')!r}: {r.get('evidence')}")
+        assert (r.get("evidence") or {}).get("produced", 0) > 0, (
+            f"{r['pass']} produced nothing measurable: {r.get('evidence')}")
+
+
+def test_a_pass_that_runs_and_transforms_nothing_is_not_reported_exercised(tmp_path, monkeypatch):
+    """The distinction the gate exists to keep, proven on the SAME pass in both directions.
+
+    "A capsule reaches this pass" and "a capsule reaches this pass's work" are different claims, and
+    the log recorded only the first: a driver over a one-func module invoked the outliner, outlined
+    ZERO kernels, and the gate called it `exercised`. So a pass certified by such a run would be
+    furniture the audit had blessed. The verdict must be `exercised_noop` -- neither `dead` (something
+    calls it) nor `exercised` (nothing it does was reached).
+    """
+    pytest.importorskip("xdsl")
+    from xdsl.context import Context
+    from xdsl.dialects.builtin import Builtin
+    from xdsl.dialects.func import Func
+    from xdsl.parser import Parser
+
+    from merlin.xdsl_dialects.lowering import outline as OL
+
+    log = tmp_path / "noop.jsonl"
+    monkeypatch.setenv(PS.PASS_LOG_ENV, str(log))
+    PS.install_pass_recorder()
+
+    ctx = Context()
+    ctx.load_dialect(Builtin)
+    ctx.load_dialect(Func)
+    module = Parser(ctx, "func.func @forward(%a: f32) -> f32 { func.return %a : f32 }").parse_module()
+    with PS.pass_run_context("TINY_no_dispatch", ("model-boundary-capstone",)):
+        result = OL.outline_dispatches(module)
+    assert not result.dispatches, "the fixture must give the pass nothing to do, or it proves nothing"
+
+    rep = PS.exercise_report(logs=[log])
+    assert rep["per_pass"]["merlin-outline-dispatches"]["status"] == "exercised_noop"
+
+    gate = _gate()
+    assert gate.main(["--log", str(log), "--fail-on-noop"]) == 1, (
+        "a pass that reached none of its work must fail the noop gate")
+    # And the same evidence must NOT be spendable as liveness: dead and noop are distinct verdicts.
+    f = gate.findings(gate.audit([log]), set())
+    assert [it["pass"] for it in f["noop"]] == ["merlin-outline-dispatches"]
+    assert "merlin-outline-dispatches" not in [it["pass"] for it in f["dead"]]
+
 
 @pytest.mark.skipif(not _CAPTURE.is_file(), reason="no captured model to lower")
 def test_the_gate_reports_no_dead_pass_when_given_that_evidence(tmp_path, monkeypatch):
@@ -101,5 +153,10 @@ def test_the_gate_reports_no_dead_pass_when_given_that_evidence(tmp_path, monkey
 
     _drive(log, monkeypatch)
     assert gate.main(["--log", str(log), "--fail-on-dead", "--fail-on-undischarged",
-                      "--fail-on-unrequired"]) == 0, (
-        "with real evidence every catalogued pass must be discharged, required and exercised")
+                      "--fail-on-unrequired", "--fail-on-noop"]) == 0, (
+        "with real evidence every catalogued pass must be discharged, required and exercised -- and "
+        "--fail-on-noop is part of that bar, or 'exercised' still means 'called'")
+
+    monkeypatch.delenv(PS.PASS_LOG_ENV, raising=False)
+    assert gate.main(["--fail-on-noop"]) == 2, (
+        "with no log the noop half must report CANNOT DECIDE, never clean")

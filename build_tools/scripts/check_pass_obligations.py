@@ -29,6 +29,10 @@ Modes, mirroring the sibling gates in this directory:
   --fail-on-undischarged     exit non-zero when a production pass has no allowed obligation
   --fail-on-unrequired       exit non-zero when no concrete capsule requires a production pass
   --fail-on-dead             exit non-zero when a non-ratcheted pass is measured dead
+  --fail-on-noop             exit non-zero when a pass RAN but every invocation transformed nothing
+                             ("invoked" and "did its work" are different facts: measured here, the
+                             boundary capstone invoked the outliner once and outlined ZERO kernels,
+                             and this gate reported it exercised)
   --fail-on-unknown-dialect  exit non-zero when a non-ratcheted pass declares UNKNOWN dialects
 
 Reporting-only by default: the catalog predates the obligation field, and turning day-one debt into
@@ -99,6 +103,8 @@ def audit(logs: list[Path]) -> dict:
             "capsules": st["capsules"],
             "required_hits": st["required_hits"],
             "install": st["install"],
+            "effects": st.get("effects", {}),
+            "effect_evidence": st.get("effect_evidence", []),
         })
     return {
         "n_passes": len(rows),
@@ -115,7 +121,7 @@ def findings(rep: dict, ratchet: set[str]) -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {"undischarged": [], "unrequired": [],
                                  "unknown_dialect": [], "dead": [],
                                  "not_instrumented": [], "unattributed": [],
-                                 "wrong_capsule": []}
+                                 "wrong_capsule": [], "noop": []}
     for r in rep["passes"]:
         if not r["discharges"]:
             key = _debt(r["name"], "undeclared", "obligation")
@@ -140,6 +146,11 @@ def findings(rep: dict, ratchet: set[str]) -> dict[str, list[dict]]:
         elif r["exercise"] == "exercised_wrong_capsule":
             out["wrong_capsule"].append({"pass": r["name"], "capsules": r["capsules"],
                                           "required_by": r["required_by"]})
+        elif r["exercise"] == "exercised_noop":
+            key = _debt(r["name"], "no-capsule-reaches-its-work", "exercise")
+            out["noop"].append({"pass": r["name"], "capsules": r["capsules"],
+                                "effects": r["effects"], "evidence": r["effect_evidence"],
+                                "debt": key, "ratcheted": key in ratchet})
     return out
 
 
@@ -153,6 +164,8 @@ def main(argv=None) -> int:
     ap.add_argument("--fail-on-undischarged", action="store_true")
     ap.add_argument("--fail-on-unrequired", action="store_true")
     ap.add_argument("--fail-on-dead", action="store_true")
+    ap.add_argument("--fail-on-noop", action="store_true",
+                    help="exit non-zero when a pass ran but every invocation transformed nothing")
     ap.add_argument("--fail-on-unknown-dialect", action="store_true")
     a = ap.parse_args(argv)
 
@@ -191,8 +204,18 @@ def main(argv=None) -> int:
                   f"{PS.PASS_LOG_ENV}=<path> during a capsule run, then re-run with --log <path>.")
         else:
             print(f"\n  logs read: {rep['logs_read']}")
-            live = [r for r in rep["passes"] if r["exercise"].startswith("exercised")]
-            print(f"  exercised by a capsule run: {len(live)} / {rep['n_passes']}")
+            live = [r for r in rep["passes"] if r["exercise"] == "exercised"]
+            print(f"  exercised by a capsule run AND measured to do work: "
+                  f"{len(live)} / {rep['n_passes']}")
+            if f["noop"]:
+                # The distinction this gate exists to keep: ran, and reached none of its work.
+                print(f"  RAN TO NO EFFECT ({len(f['noop'])}): invoked, but every invocation left "
+                      "the IR unchanged and produced nothing")
+                for it in f["noop"]:
+                    ev = it["evidence"][0] if it["evidence"] else {}
+                    print(f"    {' ' if it['ratcheted'] else '*'} {it['pass']:34s} "
+                          f"under {it['capsules']} effects={it['effects']} "
+                          f"produced={ev.get('produced')} ({ev.get('product_read')})")
             print(f"  declared but DEAD (instrumented, never invoked): {len(f['dead'])}")
             for it in f["dead"]:
                 print(f"    {' ' if it['ratcheted'] else '*'} {it['pass']}")
@@ -232,6 +255,16 @@ def main(argv=None) -> int:
         new = [it for it in f["unknown_dialect"] if not it["ratcheted"]]
         if new:
             print(f"\nFAIL: {len(new)} pass(es) declare an UNKNOWN dialect", file=sys.stderr)
+            rc = 1
+    if a.fail_on_noop:
+        if not rep["measured"]:
+            print("\nCANNOT DECIDE: --fail-on-noop needs an invocation log and none was read.",
+                  file=sys.stderr)
+            return 2
+        new = [it for it in f["noop"] if not it["ratcheted"]]
+        if new:
+            print(f"\nFAIL: {len(new)} pass(es) ran but reached none of their work; a capsule that "
+                  "invokes a pass to no effect does not certify it", file=sys.stderr)
             rc = 1
     if a.fail_on_dead:
         if not rep["measured"]:

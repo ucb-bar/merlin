@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import dataclasses
 import functools
 import importlib
 import json
@@ -326,6 +327,105 @@ def pass_run_context(capsule: str, requirements: Iterable[str] = ()):
         _CAPSULE.reset(tok)
 
 
+# --- did the pass DO anything? -------------------------------------------------------------------
+# `invoked` and `did work` are different facts, and collapsing them is how a capsule that never
+# reaches a pass's work certifies that pass as live. Both signals are read STRUCTURALLY (no pass names
+# here — the cardinal derive-don't-hardcode rule applies to this table as much as to a target fact):
+#
+#   * the SUBJECT's op count before and after — catches a pass that rewrites the IR it was handed;
+#   * the PRODUCT's size — catches a pass whose whole output is a returned table (an outline result
+#     with zero dispatches, a program with zero nodes, a count of zero marked funcs), which leaves
+#     the subject untouched and would otherwise read as a no-op.
+#
+# Neither readable is `unmeasured`, WITH THE REASON RECORDED. An unreadable probe must not masquerade
+# as either verdict, and it must not be silent: a swallowed probe error is how the previous version of
+# this measurement looked like it worked.
+EFFECT_CHANGED = "changed"
+EFFECT_NO_CHANGE = "no_change"
+EFFECT_UNMEASURED = "unmeasured"
+
+
+def _op_count(obj) -> int | None:
+    """Ops in an xDSL op tree, or None when ``obj`` is not one."""
+    walk = getattr(obj, "walk", None)
+    if walk is None or not callable(walk):
+        return None
+    try:
+        return sum(1 for _ in walk())
+    except Exception:                       # noqa: BLE001 -- a probe must never break the pass
+        return None
+
+
+def _ir_signature(obj) -> tuple[int, int, int] | None:
+    """``(ops, attributes, operands)`` over an op tree — the SUBJECT probe.
+
+    An op count alone cannot see an attribute-only rewrite (marking every public func changes no ops),
+    and a pass doing exactly that while returning ``None`` would read as a no-op. Counting attributes
+    and operand edges too keeps the common in-place rewrites visible. It is still a proxy: a rewrite
+    that preserves all three counts reads as `no_change`, which is why the PRODUCT is measured beside
+    it rather than instead of it.
+    """
+    walk = getattr(obj, "walk", None)
+    if walk is None or not callable(walk):
+        return None
+    try:
+        ops = attrs = operands = 0
+        for op in walk():
+            ops += 1
+            attrs += len(getattr(op, "attributes", ()) or ())
+            operands += len(getattr(op, "operands", ()) or ())
+        return (ops, attrs, operands)
+    except Exception:                       # noqa: BLE001 -- a probe must never break the pass
+        return None
+
+
+def _product_size(result) -> tuple[int | None, str]:
+    """How much the pass PRODUCED, from the shape of its return value alone.
+
+    An int return is a count (that is what a marking pass returns). A walk()-able return is a module.
+    A dataclass return is measured over its DECLARED fields — declared, so this reads a structure the
+    pass author wrote down rather than guessing attribute names.
+    """
+    if isinstance(result, bool) or result is None:
+        return (None, "return carries no size")
+    if isinstance(result, int):
+        return (int(result), "int return read as a count")
+    n = _op_count(result)
+    if n is not None:
+        return (n, "walkable return read as an op tree")
+    if isinstance(result, (list, tuple, set, dict)):
+        return (len(result), "sized return")
+    if dataclasses.is_dataclass(result) and not isinstance(result, type):
+        total, seen = 0, []
+        for f in dataclasses.fields(result):
+            try:
+                v = getattr(result, f.name)
+            except Exception:               # noqa: BLE001 -- a probe must never break the pass
+                continue
+            if isinstance(v, (list, tuple, set, dict)):
+                total += len(v)
+                seen.append(f.name)
+        if seen:
+            return (total, f"dataclass fields {sorted(seen)}")
+        return (None, "dataclass declares no sized field")
+    return (None, f"unreadable return type {type(result).__name__}")
+
+
+def _effect_of(subject, before: tuple[int, int, int] | None, result) -> tuple[str, dict]:
+    after = _ir_signature(subject)
+    produced, why = _product_size(result)
+    ev: dict = {"subject_before": list(before) if before else None,
+                "subject_after": list(after) if after else None,
+                "produced": produced, "product_read": why}
+    rewrote = before is not None and after is not None and before != after
+    if rewrote or (produced is not None and produced > 0):
+        return (EFFECT_CHANGED, ev)
+    if before is None and produced is None:
+        ev["reason"] = "neither the subject nor the product could be measured"
+        return (EFFECT_UNMEASURED, ev)
+    return (EFFECT_NO_CHANGE, ev)
+
+
 def _append(record: dict) -> None:
     p = pass_log_path()
     if p is None:
@@ -340,12 +440,22 @@ def _append(record: dict) -> None:
         pass
 
 
-def record_invocation(name: str, *, capsule: str | None = None) -> None:
-    """Record that pass ``name`` ran. No-op when recording is off."""
+def record_invocation(name: str, *, capsule: str | None = None,
+                     effect: str = EFFECT_UNMEASURED, evidence: dict | None = None) -> None:
+    """Record that pass ``name`` ran, and WHETHER IT DID ANYTHING.
+
+    ``effect`` is the distinction this repo keeps paying for: measured on the capstone that certifies
+    the boundary plane, ``merlin-outline-dispatches`` was invoked once and outlined ZERO kernels, and
+    the gate called it `exercised`. A pass that runs and transforms nothing is not evidence that the
+    pass is part of the compiler — it is evidence that the capsule does not reach its work. So the
+    invocation record carries the measurement (see :func:`_effect_of`) and the gate reports
+    `exercised_noop` separately from `exercised`.
+    """
     if pass_log_path() is None:
         return
     _append({"kind": _LOG_INVOKE, "pass": name, "capsule": capsule or current_capsule(),
-             "requirements": list(current_requirements()),
+             "requirements": list(current_requirements()), "effect": effect,
+             "evidence": dict(evidence or {}),
              "pid": os.getpid(), "t": round(time.time(), 3)})
 
 
@@ -405,8 +515,15 @@ def _rebind_aliases(original: Callable, wrapped: Callable) -> int:
 def _wrap(fn: Callable, name: str) -> Callable:
     @functools.wraps(fn)
     def recorded(*a, **kw):
-        record_invocation(name)
-        return fn(*a, **kw)
+        if pass_log_path() is None:          # recording off: no probe, no overhead
+            return fn(*a, **kw)
+        subject = next((x for x in list(a) + list(kw.values()) if _ir_signature(x) is not None),
+                       None)
+        before = _ir_signature(subject)
+        result = fn(*a, **kw)
+        effect, evidence = _effect_of(subject, before, result)
+        record_invocation(name, effect=effect, evidence=evidence)
+        return result
 
     setattr(recorded, _RECORDER_MARK, True)
     return recorded
@@ -419,10 +536,15 @@ def read_pass_log(paths: Iterable[Path]) -> dict[str, Any]:
     install record is absent — the gate calls that `not_instrumented`, which is NOT `dead`).
     ``invocations`` maps a pass to the capsules it ran under (``None`` becomes ``"unattributed"``),
     while ``requirements`` records the requirement classes those concrete capsules declared.
+    ``effects`` counts the measured outcome of each invocation, which is what separates a pass a
+    capsule RUNS from one a capsule runs to no effect. A record written before the effect was measured
+    carries no ``effect`` field; it counts as ``unmeasured`` rather than as either verdict.
     """
     instrumented: dict[str, set[str]] = {}
     invocations: dict[str, set[str]] = {}
     requirements: dict[str, set[str]] = {}
+    effects: dict[str, dict[str, int]] = {}
+    evidence: dict[str, list[dict]] = {}
     read: list[str] = []
     unreadable: dict[str, str] = {}
     for path in paths:
@@ -451,30 +573,47 @@ def read_pass_log(paths: Iterable[Path]) -> dict[str, Any]:
                 if isinstance(values, list):
                     requirements.setdefault(rec["pass"], set()).update(
                         str(value) for value in values if str(value).strip())
+                eff = str(rec.get("effect") or EFFECT_UNMEASURED)
+                counts = effects.setdefault(rec["pass"], {})
+                counts[eff] = counts.get(eff, 0) + 1
+                if eff != EFFECT_CHANGED and isinstance(rec.get("evidence"), dict):
+                    # Keep the evidence for the verdicts a reader will challenge; a `changed` needs
+                    # no defence and the log would grow without bound.
+                    evidence.setdefault(rec["pass"], []).append(dict(rec["evidence"]))
     return {"logs_read": read, "unreadable": unreadable,
             "instrumented": {k: sorted(v) for k, v in instrumented.items()},
             "invocations": {k: sorted(v) for k, v in invocations.items()},
-            "requirements": {k: sorted(v) for k, v in requirements.items()}}
+            "requirements": {k: sorted(v) for k, v in requirements.items()},
+            "effects": {k: dict(v) for k, v in effects.items()},
+            "effect_evidence": {k: v[:8] for k, v in evidence.items()}}
 
 
 def exercise_report(cat: Iterable[PassInfo] | None = None,
                     logs: Iterable[Path] | None = None) -> dict[str, Any]:
     """Per-pass exercise status measured from the logs.
 
-    Status is one of ``exercised`` (a capsule ran it), ``exercised_unattributed`` (it ran, but no
-    capsule context was set), ``dead`` (instrumented and never invoked), ``not_instrumented``
+    Status is one of ``exercised`` (a capsule ran it AND it did something), ``exercised_noop`` (a
+    capsule ran it and every invocation transformed nothing), ``exercised_unattributed`` (it ran, but
+    no capsule context was set), ``dead`` (instrumented and never invoked), ``not_instrumented``
     (wrapping failed or was never installed — we did not look), ``unmeasured`` (no log at all).
+
+    ``exercised_noop`` exists because the collapse it prevents was measured here: the boundary-plane
+    capstone invoked ``merlin-outline-dispatches`` once, outlined ZERO kernels, and this function
+    called it `exercised`. "A capsule reaches this pass" and "a capsule reaches this pass's work" are
+    different claims, and only the second one certifies the pass as part of the compiler.
     """
     passes = list(cat if cat is not None else CATALOG)
     paths = list(logs) if logs is not None else ([pass_log_path()] if pass_log_path() else [])
     parsed = read_pass_log(paths) if paths else {"logs_read": [], "unreadable": {},
                                                  "instrumented": {}, "invocations": {},
-                                                 "requirements": {}}
+                                                 "requirements": {}, "effects": {},
+                                                 "effect_evidence": {}}
     out: dict[str, Any] = {}
     for p in passes:
         caps = parsed["invocations"].get(p.name)
         requirements = parsed["requirements"].get(p.name, [])
         inst = parsed["instrumented"].get(p.name)
+        eff = dict(parsed.get("effects", {}).get(p.name, {}))
         if not parsed["logs_read"]:
             status = "unmeasured"
         elif caps:
@@ -484,6 +623,10 @@ def exercise_report(cat: Iterable[PassInfo] | None = None,
                 status = "exercised_unattributed"
             elif p.required_by and not required_hits:
                 status = "exercised_wrong_capsule"
+            elif eff and not eff.get(EFFECT_CHANGED) and eff.get(EFFECT_NO_CHANGE):
+                # Ran, and every measured invocation left the IR and produced nothing. Not `dead`
+                # (something calls it) and not `exercised` (nothing it does was reached).
+                status = "exercised_noop"
             else:
                 status = "exercised"
         elif inst and all(s == "instrumented" for s in inst):
@@ -491,7 +634,9 @@ def exercise_report(cat: Iterable[PassInfo] | None = None,
         else:
             status = "not_instrumented"
         out[p.name] = {"status": status, "capsules": caps or [], "install": inst or [],
-                       "requirements": requirements, "required_hits": required_hits if caps else []}
+                       "requirements": requirements, "required_hits": required_hits if caps else [],
+                       "effects": eff,
+                       "effect_evidence": parsed.get("effect_evidence", {}).get(p.name, [])}
     return {"per_pass": out, "logs_read": parsed["logs_read"],
             "unreadable": parsed["unreadable"]}
 
