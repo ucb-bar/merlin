@@ -504,3 +504,19 @@ def test_every_framework_runner_records_which_bundle_it_measured():
     assert not missing, (
         f"framework runner(s) that never record bundle_id: {missing} — every comparison against them "
         f"is permanently UNKNOWN to compare.executorch_column.bundle_mismatch_reason")
+
+
+def test_the_executorch_wall_is_per_execution_not_a_multi_run_total():
+    """executor_runner logs "Model executed successfully N time(s) in X ms" with X the TOTAL across N.
+    Recording that raw against a per-inference ours-side number is a factor-of-N error, and it was
+    made: an ours per-iteration wall over an ET 3-execution total read as ours being 2.11x FASTER when
+    ours is 1.42x slower. The field must mean one thing everywhere."""
+    import inspect
+
+    from merlin.baselines import executorch as et
+
+    src = inspect.getsource(et._do_board)
+    assert "res.e2e_wall_ns = int(br.wall_ns / max(1, num_executions))" in src
+    assert "PER-EXECUTION" in src
+    # and a >1 run must SAY so in the record, so a reader can reconstruct the raw value
+    assert "e2e_wall_ns is PER-EXECUTION" in src

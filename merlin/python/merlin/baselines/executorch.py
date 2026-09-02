@@ -798,7 +798,17 @@ def _do_board(res: BaselineResult, runner: Path, exp: "ExportResult",
     br = _run_on_board(res, runner, exp, mmap_model=mmap_model, num_executions=num_executions)
     res.ran = br.ran
     if br.wall_ns is not None:
-        res.e2e_wall_ns = br.wall_ns
+        # PER-EXECUTION, always. executor_runner logs "Model executed successfully N time(s) in X ms"
+        # where X is the TOTAL across N, so with num_executions>1 the raw value is N inferences and
+        # comparing it to a per-inference number is a factor-of-N error. That error was made in this
+        # repo before this line existed: an ours-side per-iteration wall was divided by an ET total and
+        # came out looking like ours was 2.11x FASTER when it is 1.42x slower. Normalising here rather
+        # than at each consumer means the field means one thing everywhere; num_executions=1 (every
+        # historical cell) is unchanged.
+        res.e2e_wall_ns = int(br.wall_ns / max(1, num_executions))
+        if num_executions > 1:
+            res.notes += (f" e2e_wall_ns is PER-EXECUTION: {br.wall_ns} ns reported for "
+                          f"{num_executions} executions.")
         # This foreign runner does not expose the K1 rdtime CSR; the reported wall time is the
         # honest E2E truth. We record ONE whole-model region on wall time (no fabricated
         # tick/cycle count). A per-region split would need etdump per-op events.
