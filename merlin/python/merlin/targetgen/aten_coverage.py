@@ -119,6 +119,42 @@ def census(captures: dict[str, str | Path], *, opset: dict | None = None) -> dic
     }
 
 
+def _parse_failure(path: Path, exc: Exception) -> dict:
+    """A parse failure that names the construct, not just the exception.
+
+    A bare ``ParseError: <path>:17083:5`` is indistinguishable from a corrupt capture, and the two
+    license opposite actions: re-capture the model, or teach the parser a form it does not read.
+    Measured on ``smolvla_fp32_consistent``: valid MLIR that xDSL 0.68.0 refuses, because its
+    ``linalg.generic`` assembly accepts only the single-result ``-> tensor<...>`` form and a fused
+    argmin yields two results (``-> (tensor<1xi64>, tensor<1xi64>)``). One construct in a 4.3 MB module
+    cost the whole model's routing evidence.
+
+    The location comes from the exception's own span rather than from its message text, and the
+    reported line is the one BEFORE the failure point as well as the failure point itself: a parser
+    that rejects an op reports the position where it gave up, which is the start of the NEXT statement.
+    """
+    detail = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+    span = getattr(exc, "span", None)
+    loc = None
+    try:
+        loc = span.get_location() if span is not None else None
+    except Exception:                              # noqa: BLE001 -- a span without a location is not fatal
+        loc = None
+    line_no = getattr(loc, "line", None)
+    if not isinstance(line_no, int) or line_no < 1:
+        return detail
+    detail["line"] = line_no
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return detail
+    # 1-indexed. The construct the parser could not read usually ENDS on the previous line.
+    detail["at"] = lines[line_no - 1].strip()[:200] if line_no <= len(lines) else ""
+    if line_no >= 2:
+        detail["after"] = lines[line_no - 2].strip()[:200]
+    return detail
+
+
 def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None = None) -> dict:
     """The full claim for one target: observed, routed, and work-weighted.
 
@@ -137,7 +173,7 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
             regions = MC.regions_from_module(MC.load_module(Path(path)))
             cov = MC.coverage_for(regions, target, model=name)
         except Exception as exc:                   # noqa: BLE001 -- an unreadable model is not zero coverage
-            per_model[name] = {"status": "unreadable", "detail": f"{type(exc).__name__}: {exc}"}
+            per_model[name] = {"status": "unreadable", **_parse_failure(Path(path), exc)}
             continue
         d = cov.to_dict() if hasattr(cov, "to_dict") else dict(cov)
         per_model[name] = d

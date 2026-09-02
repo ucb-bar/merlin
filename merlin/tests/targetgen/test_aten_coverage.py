@@ -176,3 +176,41 @@ def test_a_pre_decomposition_capture_contributes_no_core_operators(opset, tmp_pa
         "its ops must be reported as non-core rather than dropped -- they are real work the compiler "
         "must handle, and their absence from the core count is the signal that the capture is at the "
         "wrong IR level")
+
+
+def test_a_parse_failure_names_the_construct_not_just_the_exception(opset, tmp_path):
+    """`ParseError: <path>:17083:5` and "the capture is corrupt" license opposite actions.
+
+    One says re-capture the model; the other says teach the parser a form it does not read. Measured on
+    `smolvla_fp32_consistent`: valid MLIR that xDSL 0.68.0 refuses, because its `linalg.generic`
+    assembly accepts only the single-result `-> tensor<...>` form while a fused argmin yields two
+    results. One construct in a 4.3 MB module cost that model's entire routing evidence, and the report
+    said only "ParseError".
+
+    The reported line is the failure POINT and the line before it, because a parser that rejects an op
+    reports where it gave up -- which is the start of the next statement, not the offending one.
+    """
+    bad = tmp_path / "unreadable.mlir"
+    bad.write_text(
+        'builtin.module {\n'
+        '  func.func @forward(%a: tensor<4xi64>) -> tensor<i64> {\n'
+        '    %e = tensor.empty() : tensor<i64>\n'
+        '    %f = tensor.empty() : tensor<i64>\n'
+        '    %0, %1 = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, '
+        'affine_map<(d0) -> ()>, affine_map<(d0) -> ()>], iterator_types = ["reduction"]} '
+        'ins(%a : tensor<4xi64>) outs(%e, %f : tensor<i64>, tensor<i64>) {\n'
+        '    ^bb0(%x: i64, %y: i64, %z: i64):\n'
+        '      linalg.yield %x, %y : i64, i64\n'
+        '    } -> (tensor<i64>, tensor<i64>)\n'
+        '    func.return %0 : tensor<i64>\n'
+        '  }\n'
+        '}\n', encoding="utf-8")
+
+    rep = AC.coverage({"multi_result": bad}, "gemmini", opset=opset)
+    d = rep["per_model"]["multi_result"]
+    assert d["status"] == "unreadable"
+    assert isinstance(d.get("line"), int) and d["line"] > 0, "the location must be structural"
+    # The construct the parser refused ends on the line BEFORE where it gave up.
+    assert "linalg.generic" in d.get("after", "") or "-> (tensor" in d.get("after", ""), (
+        f"the report must show the construct, got after={d.get('after')!r}")
+    assert rep["routing"]["denominator"] == 0, "an unreadable model contributes no regions"
