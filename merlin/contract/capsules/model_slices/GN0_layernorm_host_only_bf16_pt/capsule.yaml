@@ -68,3 +68,9 @@ lanes:
   - scalar_rvv_lane
   forbid:
   - on_mesh
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 2.9571875
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

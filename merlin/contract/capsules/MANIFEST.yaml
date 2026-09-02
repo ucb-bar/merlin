@@ -13,6 +13,10 @@
 # This file is rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.
 generated_by: merlin/contract/capsules/generate_corpus.py
 generated:
+- _perf/PK00_k16
+- _perf/PK01_k32
+- _perf/PK02_k64
+- _perf/PK03_k128
 - isa/A0_config_smoke
 - isa/A2_single_tile_matmul
 - isa/A3_k_accumulation
@@ -25,6 +29,17 @@ generated:
 - isa/FT00_movement_tail_15x15
 - isa/FT01_movement_tail_17x15
 - isa/GS0_matmul_spec
+- isa/SY_contraction_i8_aligned
+- isa/SY_contraction_i8_partial
+- isa/SY_elementwise_map_i8_aligned
+- isa/SY_elementwise_map_i8_partial
+- isa/SY_movement_i8_aligned
+- isa/SY_movement_i8_partial
+- isa/SY_reduction_i8_aligned
+- isa/SY_reduction_i8_partial
+- isa/SY_regime_fits_double
+- isa/SY_regime_fits_single
+- isa/SY_regime_spills
 - layers/B0_quantized_linear_i8
 - layers/B1_linear_relu_i8
 - layers/B2_linear_acc_scale_relu_i8
@@ -58,10 +73,159 @@ generated:
 - model_slices/GF3_geglu_bf16_pt
 - model_slices/GF4_add_bf16_pt
 - model_slices/GF5_gelu_bf16_pt
+- model_slices/GN0_layernorm_host_only_bf16_pt
+- model_slices/SY_host_only_normalization
 hand_authored:
 - isa/A1_mvin_mvout
 - layers/B3_conv2d_im2col_i8
 - layers/B4_conv2d_relu_i8
 held_out:
   n_generated: 0
-  n_hand_authored: 0
+  n_hand_authored: 15
+performance_generation:
+  gemmini:
+    shared_template:
+      path: contract/capsules/profiles/_perf.yaml
+      sha256: 3e62a5962a3fd6292bc8d979904fdb9882ac4b1500f244f22a210d8f5ed609b0
+    facts:
+      target: gemmini
+      sha256: 0d11cfc18497a15f5848d851fcb596eecd6d63a2047c9fef198224f740950a9d
+    phase:
+      category: _perf
+      label: dev
+      included_in_functional_grade: false
+      exclusion: TargetExperiment.corpus_siblings excludes underscore-prefixed categories
+    families:
+    - family: PK
+      claim: PREDICTS
+      fit_axes:
+      - K
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PS
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    - family: PC
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    - family: PL
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - tile_regime
+      - layer_regime
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    counts:
+      declared_families: 5
+      generated_families: 1
+      generated_members: 4
+      by_family:
+        PK:
+          admitted_members: 4
+          written_members: 4
+        PS:
+          admitted_members: 0
+          written_members: 0
+        PC:
+          admitted_members: 0
+          written_members: 0
+        PL:
+          admitted_members: 0
+          written_members: 0
+        PF:
+          admitted_members: 0
+          written_members: 0
+    skipped_inapplicable:
+    - family: PS
+      sweep: PS
+      status: skipped_inapplicable
+      gate:
+        outcome: refuted
+        required_traits:
+        - self_hosted_program
+        - explicit_completion
+        satisfied:
+        - explicit_completion
+        refuted:
+        - self_hosted_program
+        unestablished: []
+        facts:
+          self_hosted_program:
+            satisfied: false
+            tier: rtl_facts
+            evidence: 'facts.interfaces: 26 legal opcodes, widest 0x7e -> endpoint
+              inline_asm_insn'
+            missing: []
+          explicit_completion:
+            satisfied: true
+            tier: rtl_facts
+            evidence: 2 module(s) in this target's own elaborated FIRRTL expose a
+              DECOUPLED completion channel (LoadController, StoreController); read
+              from the .fir the facts name, so it describes what this configuration
+              emitted rather than what the generator can emit
+            missing: []
+      fit_axes:
+      - K
+      comparison_roles:
+      - contract_settle
+      - reduced_settle
+    blocked_unimplemented:
+    - family: PL
+      status: blocked_unimplemented
+      reason: layer-scale lever and preflight promotion are not capsule-runnable
+      emitter:
+        status: new:layer_promotion_materializer
+        entry: merlin.perf.workload_gen.plan_matmul
+        knobs:
+          promotion: passing_tile_member_to_layer_sibling
+      fit_axes:
+      - K
+      comparison_roles:
+      - tile_regime
+      - layer_regime
+    - family: PF
+      status: blocked_unimplemented
+      reason: bias-add and fused-epilogue corpus builders are not runnable
+      emitter:
+        status: new:fused_epilogue_and_bias_add_builders
+        entry: merlin.targetgen.corpus_spec.build
+        knobs:
+          members:
+          - fused_matmul_bias
+          - matmul
+          - bias_add
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
+    - family: PC
+      status: blocked_unimplemented
+      reason: declared emitter 'new:instruction_reorder' is not implemented
+      emitter:
+        status: new:instruction_reorder
+        entry: merlin.perf.workload_gen.plan_matmul
+        knobs:
+          transformation: issue_stage_two_transfer_before_stage_one_wait
+      fit_axes:
+      - K
+      comparison_roles:
+      - hoisted
+      - not_hoisted
+    errors: []

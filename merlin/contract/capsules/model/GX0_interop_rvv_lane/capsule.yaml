@@ -65,3 +65,9 @@ semantic:
     is expressed as lanes.require [on_mesh, scalar_rvv_lane], which fails unless both
     lanes carried work.'
   eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 1.8140590238571166
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

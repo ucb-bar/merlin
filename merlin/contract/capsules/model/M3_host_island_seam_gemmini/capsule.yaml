@@ -63,3 +63,9 @@ semantic:
   eligible: auto
 pass_requirements:
 - model-boundary-capstone
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 19.62
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

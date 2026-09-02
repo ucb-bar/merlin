@@ -1,0 +1,58 @@
+name: SY_regime_fits_single
+kind: isa
+source_role: derived_sweep
+source_reference: 'synthesized for memory regime ''fits_single'': the declared inputs
+  occupy 8208 of 16384 operand-store rows (0.500977 of capacity), which is what puts
+  this capsule in that regime. Extents resolved by memory_regime.extents_for_regime
+  with the same sizing the coverage gate measures with'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 8192
+  - 16
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
