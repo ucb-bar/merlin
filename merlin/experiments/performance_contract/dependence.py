@@ -102,7 +102,20 @@ def probe_budget(preambles: dict) -> int:
 
 
 def direction_path(target: str, tier: str) -> Path:
-    return A.cache_dir(f"perf_depgraph/{target}") / f"operand_direction_{tier}.json"
+    """Where the derived operand-direction model caches.
+
+    Named for the oracle that PRODUCED it, not the tier requested. ``derive_direction`` probes through
+    ``run_program_debug``, which is the target's FUNCTIONAL core; ``tier`` only selects whose settle
+    contract the preamble uses, never the runner. Naming the cache after the tier produced
+    ``operand_direction_vsim.json`` -- a file whose name claims the RTL tier while its content is
+    model-derived. That is not cosmetic: the model implements the shipped architectural spec, so its
+    answer for an instruction whose spec and RTL DISAGREE is the spec's, and one such entry
+    (a zero-fill immediate recorded as writing only its named register, where the elaborated design
+    clears the whole file) was cited as an RTL fact. A name that cannot be misread is the cheap half of
+    the fix; deriving against an RTL engine is the other half and is not what this function does.
+    """
+    return (A.cache_dir(f"perf_depgraph/{target}")
+            / f"operand_direction_functional__settle-{tier}.json")
 
 
 # ---------------------------------------------------------------------------------------------------
