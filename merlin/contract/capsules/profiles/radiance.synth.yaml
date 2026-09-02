@@ -1,0 +1,1110 @@
+# DERIVED — regenerate with:
+#   build_tools/scripts/synth_capsule_corpus.py --target radiance --write
+# Do not hand-edit. These entries exist because the target's own conformance requirement asks for
+# them: each carries the cell it was synthesized for in `source_reference`. Editing one here is a
+# claim the requirement does not make, and the next regeneration discards it.
+provenance:
+  generated_by: merlin.targetgen.corpus_synth.synthesize
+  target: radiance
+  n_required_cells: 56
+  n_entries: 56
+  budget: 160
+  precision_preference_kept:
+  - i8
+  - mxfp8
+  - fp16
+  - bf16
+  - f32
+  precision_preference_dropped:
+  - fp8_e4m3
+  precision_note: a preference RANKS the dtypes the target already admits and can never widen them; a
+    dropped token is reported rather than silently ignored
+capsules:
+- cat: isa
+  kind: isa
+  name: SY_attention_bf16_aligned
+  op: attention_full
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/bf16/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_bf16_partial
+  op: attention_full
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/bf16/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_f32_aligned
+  op: attention_full
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/f32/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_f32_partial
+  op: attention_full
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/f32/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_fp16_aligned
+  op: attention_full
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/fp16/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_fp16_partial
+  op: attention_full
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/fp16/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_mxfp4_aligned
+  op: attention_mx
+  operand_dtype: mxfp4
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/mxfp4/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_mxfp4_partial
+  op: attention_mx
+  operand_dtype: mxfp4
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/mxfp4/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_mxfp6_aligned
+  op: attention_mx
+  operand_dtype: mxfp6
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/mxfp6/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_mxfp6_partial
+  op: attention_mx
+  operand_dtype: mxfp6
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/mxfp6/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_mxfp8_aligned
+  op: attention_mx
+  operand_dtype: mxfp8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/mxfp8/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_attention_mxfp8_partial
+  op: attention_mx
+  operand_dtype: mxfp8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell attention/mxfp8/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_bf16_aligned
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/bf16/aligned (basis=observed, admitted_by=['mx_pe',
+    'simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_bf16_partial
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/bf16/partial (basis=observed, admitted_by=['mx_pe',
+    'simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_f32_aligned
+  op: matmul
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_f32_partial
+  op: matmul
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/f32/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_fp16_aligned
+  op: matmul
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_fp16_partial
+  op: matmul
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_i8_aligned
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/i8/aligned (basis=observed, admitted_by=['mx_pe']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_i8_partial
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/i8/partial (basis=observed, admitted_by=['mx_pe']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_mxfp4_aligned
+  op: matmul
+  operand_dtype: mxfp4
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/mxfp4/aligned (basis=observed, admitted_by=['mx_pe']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_mxfp4_partial
+  op: matmul
+  operand_dtype: mxfp4
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/mxfp4/partial (basis=observed, admitted_by=['mx_pe']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_mxfp6_aligned
+  op: matmul
+  operand_dtype: mxfp6
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/mxfp6/aligned (basis=observed, admitted_by=['mx_pe']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_mxfp6_partial
+  op: matmul
+  operand_dtype: mxfp6
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/mxfp6/partial (basis=observed, admitted_by=['mx_pe']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_mxfp8_aligned
+  op: matmul
+  operand_dtype: mxfp8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/mxfp8/aligned (basis=observed, admitted_by=['mx_pe']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_mxfp8_partial
+  op: matmul
+  operand_dtype: mxfp8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/mxfp8/partial (basis=observed, admitted_by=['mx_pe']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_bf16_aligned
+  op: gelu
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/bf16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_bf16_partial
+  op: gelu
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/bf16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_f32_aligned
+  op: gelu
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_f32_partial
+  op: gelu
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/f32/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_fp16_aligned
+  op: gelu
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_fp16_partial
+  op: gelu
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_bf16_aligned
+  op: movement
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/bf16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_bf16_partial
+  op: movement
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/bf16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_f32_aligned
+  op: movement
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_f32_partial
+  op: movement
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/f32/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_fp16_aligned
+  op: movement
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_fp16_partial
+  op: movement
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_normalization_bf16_aligned
+  op: rmsnorm
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell normalization/bf16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_normalization_bf16_partial
+  op: rmsnorm
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell normalization/bf16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_normalization_f32_aligned
+  op: rmsnorm
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell normalization/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_normalization_f32_partial
+  op: rmsnorm
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell normalization/f32/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_normalization_fp16_aligned
+  op: rmsnorm
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell normalization/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_normalization_fp16_partial
+  op: rmsnorm
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell normalization/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_bf16_aligned
+  op: reduce_sum
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/bf16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_bf16_partial
+  op: reduce_sum
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/bf16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_f32_aligned
+  op: reduce_sum
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_f32_partial
+  op: reduce_sum
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/f32/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_fp16_aligned
+  op: reduce_sum
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_fp16_partial
+  op: reduce_sum
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_softmax_bf16_aligned
+  op: softmax
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell softmax/bf16/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_softmax_bf16_partial
+  op: softmax
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell softmax/bf16/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_softmax_f32_aligned
+  op: softmax
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell softmax/f32/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_softmax_f32_partial
+  op: softmax
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell softmax/f32/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_softmax_fp16_aligned
+  op: softmax
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell softmax/fp16/aligned (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_softmax_fp16_partial
+  op: softmax
+  operand_dtype: fp16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell softmax/fp16/partial (basis=observed_via_primitives,
+    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule

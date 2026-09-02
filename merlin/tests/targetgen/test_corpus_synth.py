@@ -10,10 +10,13 @@ a requirement that is met.
 
 from __future__ import annotations
 
+import pathlib
+import sys
+
 import pytest
 import yaml
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen import corpus_synth as CS
 
 
@@ -189,3 +192,103 @@ class TestQuantizedCapture:
         assert spec["quant_scheme"] == "int8_dyn_act_int8_weight"
         assert "quant_scheme" not in _capture_spec(
             {"name": "y", "op": "linear", "M": 16, "K": 32, "N": 16}, _B())
+
+
+def _binding(target: str):
+    import generate_corpus as GC
+    from merlin.targetgen import corpus_spec as CSPEC
+    from merlin.targetgen.corpora import descriptor_path
+    from merlin.targetgen.target_experiment import load_target_experiment
+    prof = GC.load_profile(target)
+    te = load_target_experiment(descriptor_path(target))
+    return GC, CSPEC.derive_binding(te, prof.get("datapath") or {})
+
+
+def _gradeable_entries(target: str) -> list[dict]:
+    """The synthesized entries the real pipeline would WRITE.
+
+    `synthesize` chooses the cheapest op that can be BUILT, which is not the same as one that can be
+    GRADED: the golden engine is selected by the entry's dtype and each engine covers a different op
+    set. The synthesis script drops the mismatches and reports them, so a test that materialized the
+    raw list would be exercising entries the pipeline never writes -- and would fail on a hole that is
+    already reported honestly elsewhere.
+    """
+    import importlib.util
+    from merlin.common.paths import repo_root
+    path = repo_root() / "build_tools" / "scripts" / "synth_capsule_corpus.py"
+    spec = importlib.util.spec_from_file_location("_synth_script", path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["_synth_script"] = mod
+    spec.loader.exec_module(mod)
+    res = mod.synth_for(target)
+    if res.get("status") != "ok":
+        pytest.skip(f"{target}: {res.get('status')} — {res.get('detail', '')[:120]}")
+    return list(res.get("capsules") or ())
+
+
+def _materialize(target: str, out_root, limit: int = 4) -> dict[str, bytes]:
+    """Write the first few synthesized capsules and return ``{relative path: bytes}``."""
+    sys.path.insert(0, str(merlin_dir() / "contract" / "capsules"))
+    GC, binding = _binding(target)
+    entries = _gradeable_entries(target)[:limit]
+    for entry in entries:
+        # Through the SAME two steps the corpus generator applies around the writer. Synthesized
+        # entries spell their shapes as `tile` / `tile-1` on purpose, so that one entry means the same
+        # thing on a target with a different edge; and `_scrub_capsule_dir` is what makes the result
+        # byte-stable at all -- a pytorch capture stamps `prov.weights_file` with the absolute path of
+        # a fresh temp dir, so two runs of the writer alone differ by that path on every captured
+        # capsule. Measured: 8 files across radiance's `attention_full` capsules. Calling the scrubber
+        # here is not a workaround; it is the step that makes the claim true, so this test covers it.
+        written = GC._write_capsule(GC._resolve_flat_extents(dict(entry), binding), binding, out_root)
+        GC._scrub_capsule_dir(written)
+    return {str(p.relative_to(out_root)): p.read_bytes()
+            for p in sorted(pathlib.Path(out_root).rglob("*")) if p.is_file()}
+
+
+@pytest.mark.parametrize("target", _specs())
+def test_re_synthesis_is_byte_stable(target, tmp_path):
+    """Synthesizing and materializing twice must produce identical BYTES, not merely equal entries.
+
+    `test_synthesis_is_deterministic` compares the entry dicts, which is the cheap half: it would still
+    pass if a writer stamped a timestamp, an absolute path, or a dict whose iteration order moved. Those
+    are the things that actually make a regenerated corpus diff, and a corpus that diffs on every
+    regeneration cannot be reviewed -- every real change hides in the noise, which is why the generator
+    redacts paths in the first place.
+
+    Materialization goes through the SAME `_write_capsule` the corpus generator uses, so this covers the
+    goldens and the coverage sidecars too, not just `capsule.yaml`.
+    """
+    # NARROW, and deliberately so. A blanket `except Exception -> skip` turned this test's own
+    # AttributeError (it reached for `derive_binding` on the wrong module) into four green skips --
+    # the "a check that could not run reported success" failure, committed by the test written to
+    # prevent one. Only environment-dependent absences skip; a bug raises.
+    try:
+        first = _materialize(target, tmp_path / "a")
+    except (FileNotFoundError, ModuleNotFoundError) as exc:
+        pytest.skip(f"{target} lacks something the writer needs here: {type(exc).__name__}: {exc}")
+    if not first:
+        pytest.skip(f"{target} synthesized no capsule to materialize")
+    second = _materialize(target, tmp_path / "b")
+
+    assert sorted(first) == sorted(second), (
+        f"the two runs wrote different FILES: "
+        f"{sorted(set(first) ^ set(second))}")
+    differing = [k for k in first if first[k] != second[k]]
+    assert not differing, (
+        f"{len(differing)} file(s) differ between two identical synthesis runs: {differing[:5]}. "
+        f"A regenerated corpus that diffs on every run cannot be reviewed — look for a timestamp, an "
+        f"absolute path, or an unordered mapping in the writer")
+
+    # The other half of what the scrubber is for, and the one that matters outside review: this corpus
+    # is tracked in a PUBLIC repository, so a capture's temp-dir path must not survive into it. Checked
+    # against the checkout's own root rather than a hardcoded prefix, so it holds on any machine.
+    root = str(repo_root())
+    home = str(pathlib.Path.home())
+    for name, blob in first.items():
+        if not name.endswith((".mlir", ".py")):
+            continue
+        text = blob.decode("utf-8", "replace")
+        for leaked in (root, home):
+            assert leaked not in text, (
+                f"{name} carries the local absolute path {leaked!r}; the scrubber must strip it before "
+                f"a tracked capsule ships it")

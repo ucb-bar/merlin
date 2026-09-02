@@ -76,6 +76,84 @@ def _cost(op: str) -> tuple:
     return (operands.get(op, 3), 0 if op in BUILDERS else 1, op)
 
 
+#: Ops whose GOLDEN exists only in the block-scaled engine. An op being buildable at a dtype says
+#: nothing about being gradeable at it: the golden engine is selected by the entry's dtype, and these
+#: two are implemented in the block-scaled one alone. Measured: radiance's `attention` cells resolve to
+#: `attention_mx` -- the cheapest attention-family op -- while the cells are fp16/bf16/f32, so
+#: generation died with "no SIMT golden for op 'attention_mx'" for six cells. Forcing MX geometry onto
+#: those cells would be the wrong repair twice over: their dtype is not block-scaled, and the block
+#: group (32) is not the tile edge (16), so the shapes would not fit either.
+_BLOCK_SCALED_GOLDEN_ONLY = frozenset({"attention_mx", "gemv_batched"})
+
+
+def _is_ieee_float(dtype: str) -> bool:
+    """Whether this dtype routes to the IEEE-float (``simt``) golden engine.
+
+    Same routing the generator applies (``_entry_regime``): block-scaled -> the MX engine, fp8 -> the
+    specir refmodel, IEEE fp16/bf16/f32 -> simt, anything else -> the integer engine. Asked of the
+    format registry rather than listed here, so a target declaring a new float width routes without an
+    edit.
+    """
+    from merlin.runtime.fp8_formats import canonical_float
+    from merlin.targetgen.corpus_spec import is_block_scaled
+
+    if is_block_scaled(dtype):
+        return False
+    try:
+        return canonical_float(dtype) in ("fp16", "bf16", "f32")
+    except KeyError:
+        return False
+
+
+def ops_gradeable_at(dtype: str, pool: set[str]) -> set[str]:
+    """``pool`` narrowed to the ops whose golden engine can grade this cell's dtype.
+
+    Two exclusions, both measured, both silent before:
+
+    * a BLOCK-SCALED-ONLY op at a dtype that is not block-scaled. The reverse is fine -- a plain
+      contraction grades in the block-scaled engine like any other.
+    * a PYTORCH-BODY-ONLY op at a dtype that is not IEEE float. Such an op has no direct-MLIR builder,
+      so it can only be captured through torch, and the generator refuses a pytorch capsule outside the
+      float regime unless the entry names a quantization scheme -- correctly, because the default
+      weight-only capture emits a float matmul over dequantized weights and cannot grade an integer or
+      fp8 datapath. Choosing one anyway produced an entry the generator then rejected.
+
+    An op excluded here is not a defect; it is a reason the cell may have no expressible capsule, which
+    ``synthesize`` reports as an unexpressable cell naming the dtype.
+    """
+    from merlin.targetgen.corpus_spec import is_block_scaled
+
+    keep = set(pool)
+    if not is_block_scaled(dtype):
+        keep -= _BLOCK_SCALED_GOLDEN_ONLY
+    if not _is_ieee_float(dtype):
+        keep = {op for op in keep if source_for_op(op) != "pytorch"}
+    return keep
+
+
+def source_for_op(op: str) -> str | None:
+    """``"pytorch"`` when ``op`` exists ONLY as a PyTorch body, else ``None`` (the direct-MLIR path).
+
+    ``available_ops`` is the UNION of the two registries, so an op chosen from it may live in either --
+    and the entry must say which, because the two paths are different writers. Measured: 18 radiance
+    entries named a body-only op (`gelu`, `reduce_sum`, `softmax`, `attention_full`, ...) with no
+    `source`, which routed them to the direct-MLIR builder that has no builder for them at all. They
+    could never be written, and `test_every_chosen_op_can_actually_be_materialized` passed anyway
+    because it checked membership in the union rather than agreement between op and source.
+
+    Derived from registry membership, not a list here: adding a builder for a body-only op flips its
+    source automatically, in the direction that prefers the direct path.
+    """
+    from merlin.targetgen.corpus_spec import BUILDERS
+    if op in BUILDERS:
+        return None
+    try:
+        from merlin.targetgen.capsule_source import _OP_BODIES
+    except Exception:                              # noqa: BLE001 -- no bodies available
+        return None
+    return "pytorch" if op in _OP_BODIES else None
+
+
 def op_for_family(family: str, *, admitted_ops: set[str] | None = None) -> str | None:
     """The cheapest materializable op that exercises ``family``, or None when none does."""
     pool = admitted_ops if admitted_ops is not None else available_ops()
@@ -217,14 +295,21 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         cap = cap_map.get(family)
         composed = tuple(getattr(cap, "composed_with", ()) or ()) if cap is not None else ()
 
+        # Narrowed by the CELL's dtype before anything is chosen. `op_for_family` picks the cheapest
+        # op that can be BUILT, and buildable is not gradeable: the golden engine is selected by the
+        # dtype, so a block-scaled-only op chosen for an fp16 cell produces an entry no engine can
+        # grade -- which surfaced as a crash inside the writer rather than a choice made here.
+        cell_pool = ops_gradeable_at(dtype, pool)
         epilogue: list[str] = []
-        fused = _fused_carrier(family, composed, pool) if composed else None
+        fused = _fused_carrier(family, composed, cell_pool) if composed else None
         if fused is not None:
             op, epilogue = fused
         else:
-            op = op_for_family(family, admitted_ops=pool)
+            op = op_for_family(family, admitted_ops=cell_pool)
         if op is None:
-            unexpressable.append(f"{cell.get('cell')} (family {family!r})")
+            unexpressable.append(
+                f"{cell.get('cell')} (family {family!r}; no op that exercises it has a golden at "
+                f"dtype {dtype!r})")
             continue
 
         name = f"{SYNTH_PREFIX}_{family}_{dtype}_{alignment}".replace("-", "_")
@@ -243,6 +328,9 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "modes": {},
             **extents_for(alignment, probes),
         }
+        source = source_for_op(op)
+        if source:
+            entry["source"] = source
         if epilogue:
             entry["epilogue"] = epilogue
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)

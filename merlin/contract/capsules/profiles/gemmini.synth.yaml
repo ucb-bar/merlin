@@ -6,8 +6,8 @@
 provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: gemmini
-  n_required_cells: 6
-  n_entries: 6
+  n_required_cells: 8
+  n_entries: 8
   budget: 160
   precision_preference_kept:
   - i8
@@ -139,6 +139,52 @@ capsules:
   M: tile
   K: 2*tile
   N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_i8_aligned
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/i8/aligned (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes; reduction is admitted only in composition with ['contraction',
+    'movement'], so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be
+    refused by the eligibility oracle as a false fallback
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  epilogue:
+  - acc_scale
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_reduction_i8_partial
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/i8/partial (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes; reduction is admitted only in composition with ['contraction',
+    'movement'], so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be
+    refused by the eligibility oracle as a false fallback
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  epilogue:
+  - acc_scale
   pass_requirements:
   - target-isa-lowering
   - tile-schedule

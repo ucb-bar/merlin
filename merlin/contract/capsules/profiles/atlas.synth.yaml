@@ -1,0 +1,246 @@
+# DERIVED — regenerate with:
+#   build_tools/scripts/synth_capsule_corpus.py --target atlas --write
+# Do not hand-edit. These entries exist because the target's own conformance requirement asks for
+# them: each carries the cell it was synthesized for in `source_reference`. Editing one here is a
+# claim the requirement does not make, and the next regeneration discards it.
+provenance:
+  generated_by: merlin.targetgen.corpus_synth.synthesize
+  target: atlas
+  n_required_cells: 12
+  n_entries: 12
+  budget: 160
+  precision_preference_kept: []
+  precision_preference_dropped: []
+  precision_note: a preference RANKS the dtypes the target already admits and can never widen them; a
+    dropped token is reported rather than silently ignored
+capsules:
+- cat: isa
+  kind: isa
+  name: SY_contraction_bf16_aligned
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/bf16/aligned (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_bf16_partial
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/bf16/partial (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_fp8_e4m3_aligned
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/fp8_e4m3/aligned (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_contraction_fp8_e4m3_partial
+  op: matmul
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/fp8_e4m3/partial (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_bf16_aligned
+  op: gelu
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/bf16/aligned (basis=observed, admitted_by=['mxu',
+    'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_bf16_partial
+  op: gelu
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/bf16/partial (basis=observed, admitted_by=['mxu',
+    'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  source: pytorch
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_fp8_e4m3_aligned
+  op: bias_add
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/aligned (basis=observed,
+    admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_elementwise_map_fp8_e4m3_partial
+  op: bias_add
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/partial (basis=observed,
+    admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_bf16_aligned
+  op: movement
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/bf16/aligned (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_bf16_partial
+  op: movement
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/bf16/partial (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_fp8_e4m3_aligned
+  op: movement
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/fp8_e4m3/aligned (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_fp8_e4m3_partial
+  op: movement
+  operand_dtype: fp8_e4m3
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/fp8_e4m3/partial (basis=observed, admitted_by=['mxu']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile
+  K: 2*tile
+  N: tile-1
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
