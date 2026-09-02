@@ -122,7 +122,7 @@ sweeps:
   base:
     cat: _perf
     kind: model_slice
-    op: matmul
+    op: resident_reuse
     out: Y0
     label: dev
     source_role: derived_sweep
@@ -148,42 +148,49 @@ sweeps:
       regime:
         separation: fixed_within_each_pair_and_repeated_at_two_levels
         layout: real_producer_consumer_dependence
-      # THE REORDER ITSELF NOW EXISTS: `plan_matmul(hoist_transfers=True)` issues the
-      # activation transfer before the weight wait, with the instruction multiset
-      # preserved so a cycle delta isolates the ordering (see
-      # merlin/tests/targetgen/test_transfer_hoist.py, which pins both halves).
-      # It is sound only where completion is explicit -- the second issue reuses the
-      # DMA argument registers, which is correct because the controller latches its
-      # descriptor on accept, and gemmini's `explicit_completion` is satisfied from
-      # its own elaborated FIRRTL.
+      # EMITTER CORRECTED, not newly written. `perf.workload_gen.plan_matmul` was the wrong
+      # ARCHETYPE for this family: it allocates a scalar register file, encodes backward
+      # branches and emits assembly, and a command-driven target declares no self-hosted
+      # program at all -- gemmini ships no ISA definition, so no kernel can be encoded for
+      # it. Measured consequence: this family's traits are satisfied on gemmini ALONE, and
+      # gemmini was the one target that emitter could not reach, so the claim was
+      # unsatisfiable while reading as "not yet wired".
       #
-      # What is still missing is a CAPSULE pair. A capsule states WHAT to compute; an
-      # instruction ordering is HOW, and the interface grammar deliberately does not
-      # dictate one. `_materialize_performance_entry` resolves every sweep member
-      # through a corpus BUILDER and forces `source: direct`, so declaring this family
-      # `existing` here would materialize two plain matmul capsules differing only in
-      # their `comparison_group.role` -- byte-identical programs, and a differential
-      # whose delta is noise. That is the vacuous pair this double gate exists to
-      # prevent, so the status stays honest and the family keeps skipping.
+      # `command_stream_gen` is the sibling for this archetype. It consumes the ORDERED
+      # command list the frozen interface grammar already carries and returns a PERMUTATION
+      # of it, so the two members are the same work by construction rather than by
+      # assertion, plus a negative control whose `identical_work` is false. Verified on
+      # isa/A6_resident_reuse: RES_PACK, MATMUL_RESIDENT, COMMIT, MATMUL_RESIDENT, COMMIT,
+      # EVICT -- with the second matmul hoisted from index 3 to 1 across two commits.
       #
-      # The lever is measurable TODAY through the workload path (`plan_matmul` ->
-      # perf harness), which is what `entry` names. Turning it into a corpus family
-      # needs the capsule schema to be able to carry an emission ORDER.
+      # The A/B is DERIVED FROM ONE CAPSULE at measurement time, so this sweep emits one
+      # member per shape and carries no `comparison_group`: the pair is two runs of one
+      # program, not two programs. `resident_reuse` is the op because a movable command
+      # needs a command list with something to move past.
       emitter:
-        status: new:capsule_pair_for_instruction_reorder
-        entry: merlin.perf.workload_gen.plan_matmul
-        knobs: {transformation: issue_stage_two_transfer_before_stage_one_wait}
+        status: existing
+        entry: merlin.perf.command_stream_gen.pair_from_interface
+        knobs: {transformation: hoist_a_command_above_ones_it_does_not_depend_on}
       cost:
         tier: 1
         runs: derived_from_two_pairs_plus_negative_control
         projected_cycles: derived_at_preflight
         basis: paired_differential_at_two_separation_regimes
+  # TWO matmuls against the one resident weight, because a command list needs something to
+  # move past: this parses to RES_PACK, MATMUL_RESIDENT, COMMIT, MATMUL_RESIDENT, COMMIT,
+  # EVICT, and the second matmul is the movable command. One matmul would leave a list with
+  # no legal permutation and the pair would be the baseline twice.
+  variants:
+  - matmuls:
+    - {lhs: A0, out: Y0, M_tiles: 1}
+    - {lhs: A1, out: Y1, M_tiles: 1}
   axes:
-    M: [4*tile]
     N: [4*tile]
     K: [4*tile, 8*tile]
-  name: '{id}{i:02d}_m{M}k{K}n{N}'
-  source_reference: shared inter-layer declaration; reorder emitter not yet admitted
+  name: '{id}{i:02d}_k{K}'
+  source_reference: >-
+    shared inter-layer declaration: one resident weight, two matmuls, and the A/B is the
+    command list of THIS capsule permuted by command_stream_gen at measurement time
 
 # These families are contract-complete but are not sweeps: putting them under
 # `sweeps` would falsely claim their lever can be emitted. Generation persists

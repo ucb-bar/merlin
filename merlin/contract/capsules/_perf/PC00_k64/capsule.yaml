@@ -1,0 +1,118 @@
+name: PC00_k64
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared inter-layer declaration: one resident weight, two matmuls,
+  and the A/B is the command list of THIS capsule permuted by command_stream_gen at
+  measurement time (tile=16; K=64, N=64; matmuls=[{''lhs'': ''A0'', ''out'': ''Y0'',
+  ''M_tiles'': 1}, {''lhs'': ''A1'', ''out'': ''Y1'', ''M_tiles'': 1}])'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: A1
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: resident_reuse
+  attributes:
+    weight: W
+    matmuls:
+    - lhs: A0
+      out: Y0
+      epilogue: []
+      output_dtype: i32
+    - lhs: A1
+      out: Y1
+      epilogue: []
+      output_dtype: i32
+    semantic: resident_reuse
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    resident_reuse: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L3_inter_layer
+  family: PC
+  lever: dma_issue_before_wait
+  claim: DIFFERENTIAL
+  comparand:
+    kind: paired_run
+    against: identical_dependence_chain_without_hoist
+    cancels:
+    - operation
+    - shape
+    - operands
+    - instruction_multiset
+    demand_equal:
+    - operation
+    - M
+    - N
+    - K
+    - separation_regime
+  falsifier:
+    observation: paired_cycle_delta
+    fires_when: hoisting_does_not_improve_any_declared_separation_regime
+    negative_control: single_K_step_hoist
+  gate:
+    traits:
+    - independent_engine_ports
+    - explicit_completion
+    instrument: per_engine_completion_and_cycle_count
+    capacity: at_least_two_separation_regimes
+    on_missing: skip_with_evidence
+  regime:
+    separation: fixed_within_each_pair_and_repeated_at_two_levels
+    layout: real_producer_consumer_dependence
+  emitter:
+    status: existing
+    entry: merlin.perf.command_stream_gen.pair_from_interface
+    knobs:
+      transformation: hoist_a_command_above_ones_it_does_not_depend_on
+    resolved:
+      source: direct
+      operand_dtype: int8
+      accum_dtype: i32
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: derived_from_two_pairs_plus_negative_control
+    projected_cycles: derived_at_preflight
+    basis: paired_differential_at_two_separation_regimes

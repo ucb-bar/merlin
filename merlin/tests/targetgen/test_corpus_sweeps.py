@@ -605,8 +605,10 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
 
     # PK's four reduction depths, then PF's two shape groups of three members each. Order is the
     # declaration order in the shared template, which is what makes this readable as a whole.
+    # PC joined once its emitter was repointed at the archetype it belongs to: its traits were
+    # satisfied on gemmini alone and its old emitter needed a self-hosted ISA gemmini does not have.
     assert [entry["performance"]["family"] for entry in entries] == (
-        ["PK"] * 4 + ["PF"] * 6 + ["PL"] * 4)
+        ["PK"] * 4 + ["PC"] * 2 + ["PF"] * 6 + ["PL"] * 4)
     # PF's members are a fused capsule and the two capsules it replaces, twice, and every group is
     # complete -- a group of one cannot be compared to anything.
     groups: dict[str, list[str]] = {}
@@ -650,8 +652,9 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
     assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [("PS", "refuted")]
     assert skips[0]["gate"]["facts"]["self_hosted_program"]["satisfied"] is False
     assert skips[0]["gate"]["facts"]["explicit_completion"]["satisfied"] is True
-    assert [row["family"] for row in blocked] == ["PC"], (
-        "PC must reach the emitter gate, not be turned away at the trait gate")
+    assert blocked == [], (
+        f"no family should be blocked at the emitter gate now; got "
+        f"{[row['family'] for row in blocked]}")
     assert errors == []
     assert not (profile["_performance_template"].get("blocked_unimplemented") or [])
     capsule, mlir = GC.CS.build(entries[0], binding)

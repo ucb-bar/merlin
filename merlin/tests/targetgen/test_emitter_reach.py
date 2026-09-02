@@ -73,20 +73,39 @@ def test_the_program_generator_needs_a_self_hosted_isa():
         "changed with it")
 
 
-def test_pc_is_unsatisfiable_as_declared_and_that_is_recorded():
-    """⚠️ WHEN THIS FAILS, PC BECAME SATISFIABLE — re-read the family rather than deleting the test.
+def test_no_family_is_admitted_where_its_emitter_cannot_reach():
+    """The invariant, now that PC satisfies it too.
 
-    Either gemmini gained an ISA definition, or another target's `explicit_completion` and
-    `independent_engine_ports` became established. Both are good news and both change what PC needs.
+    It did not. PC's traits are satisfied on gemmini alone, and its emitter was declared as
+    `perf.workload_gen.plan_matmul` -- a program generator that needs a self-hosted ISA, which gemmini
+    (a RoCC command-buffer machine) does not have. So the claim was unsatisfiable while reading as "the
+    emitter is not wired yet". Repointing it at `perf.command_stream_gen`, the sibling written for this
+    archetype, resolved it: that emitter consumes the ordered command list the interface grammar
+    already carries and needs no ISA.
+
+    This assertion is what makes the repair stick. A family declared against the wrong archetype again
+    fails here rather than looking merely unfinished.
     """
     families = _families()
-    if "PC" not in families:
-        pytest.skip("PC is not declared in the shared template")
     blocked = ER.unreachable_where_admitted(_satisfying_targets(), families)
-    assert "PC" in blocked, (
-        "PC is no longer emitter-unreachable on every target its traits admit — the family may now be "
-        "runnable; re-read its gate and emitter rather than assuming this test is stale")
-    assert blocked["PC"] == ("gemmini",), f"expected gemmini alone, got {blocked['PC']}"
+    assert not blocked, (
+        f"family/families {sorted(blocked)} are admitted by their traits only on targets their "
+        f"emitter cannot reach: {blocked}. Either the emitter is declared against the wrong archetype "
+        f"or the gate admits a machine this emitter was never for.")
+
+
+def test_pc_reaches_the_one_target_its_traits_admit():
+    """The specific case, kept explicit because it is the one that was wrong."""
+    families = _families()
+    if "PC" not in families:
+        pytest.skip("PC is not declared")
+    sat = _satisfying_targets().get("PC", ())
+    assert "gemmini" in sat, f"PC's traits are no longer satisfied on gemmini (satisfied on {sat})"
+    r = ER.can_emit(families["PC"], "gemmini")
+    assert r.can_emit, f"PC's emitter cannot reach gemmini: {r.reason}"
+    assert not r.needs_isa, (
+        "PC's emitter needs a self-hosted ISA again; gemmini has none, so the family would be "
+        "unsatisfiable exactly as it was before")
 
 
 def test_no_other_family_is_silently_unreachable():
