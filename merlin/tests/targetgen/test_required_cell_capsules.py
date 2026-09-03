@@ -220,23 +220,57 @@ def test_the_seam_capsule_demands_its_accelerator_regions_actually_accelerate():
     assert cap.get("required_oracle_tiers"), "a capsule with no required tier is graded by nothing"
 
 
-def test_the_seam_capsule_is_small_enough_to_be_worth_running_at_the_cycle_accurate_tier():
-    """The reason the whole models cannot prove the seam is size; a replacement that grew to their size
-    would inherit the same problem, so the budget is asserted rather than assumed.
+def test_the_seam_capsule_is_affordable_at_the_cycle_accurate_tier():
+    """The reason the whole models cannot prove the seam is COST, so cost is what gets asserted.
 
-    Measured against the corpus's own existing whole-model capsules: this one must stay well under the
-    smallest of them, not under an absolute number invented here.
+    ⚠️ THIS USED TO COMPARE INTERFACE BYTES, and the proxy was not merely weak, it was INVERTED.
+    Measured: the seam capsule's interface is 15,035 bytes and it writes 512 elements (~171 s to
+    certify), while `SY_micro_model` is 9,222 bytes and writes 1,024 (~361 s). Bytes track how much
+    interface TEXT a capsule carries -- roughly its op count -- while a cycle-accurate oracle's time
+    tracks what the capsule WRITES. So the old assertion failed while claiming the opposite of the
+    truth: the seam capsule is less than half the cost of the capsule it was said to exceed.
+
+    The relative form cannot be repaired either. Some whole-model capsules are deliberately tiny
+    (`M2_microvit_gemmini` writes 16 elements, ~4 s), so "cheaper than the smallest other whole model"
+    is a bar the seam capsule should not have to clear, and nothing declarative separates a
+    purpose-built minimal probe from a captured model.
+
+    So the criterion is ABSOLUTE and measured: does certifying it fit the declared budget. Plus the
+    premise -- at least one whole-model capsule must be over that budget, or the seam capsule has no
+    cost reason to exist and this test asserts a property nobody needs.
     """
+    from merlin.targetgen import cert_cost as CC
+    from merlin.targetgen.conformance import _DEFAULT_CERT_BUDGET_S
+
     d = _capsule_dir(_SEAM_CAPSULE)
     if not (d / "capsule.interface.mlir").is_file():
         pytest.skip(f"{_SEAM_CAPSULE} is not generated in this checkout")
-    mine = (d / "capsule.interface.mlir").stat().st_size
-    others = [p.stat().st_size
-              for p in (repo_root() / "merlin" / "contract" / "capsules" / "model").glob(
-                  "*/capsule.interface.mlir")
-              if p.parent.name != d.name]
+
+    def _cost(iface):
+        out = CC.capsule_output_elements(iface.read_text(encoding="utf-8"))
+        secs, _extrapolated = CC.predict_seconds_from_output(out)
+        return out, (secs or 0.0)
+
+    mine_out, mine_s = _cost(d / "capsule.interface.mlir")
+    assert mine_out > 0, "a capsule that writes nothing cannot prove a seam"
+    assert mine_s <= _DEFAULT_CERT_BUDGET_S, (
+        f"{_SEAM_CAPSULE} writes {mine_out:,} elements, predicted {mine_s:.0f}s to certify, over the "
+        f"{_DEFAULT_CERT_BUDGET_S:.0f}s budget; it exists to be the affordable one")
+
+    others = {}
+    for iface in sorted((repo_root() / "merlin" / "contract" / "capsules" / "model").glob(
+            "*/capsule.interface.mlir")):
+        if iface.parent.name == d.name:
+            continue
+        out, secs = _cost(iface)
+        if out:
+            others[iface.parent.name] = secs
     if not others:
         pytest.skip("no other whole-model capsule to compare against")
-    assert mine < min(others), (
-        f"the seam capsule's interface is {mine} bytes against the smallest other whole model's "
-        f"{min(others)}; it was written to be affordable where they are not")
+    unaffordable = {k: round(v) for k, v in others.items() if v > _DEFAULT_CERT_BUDGET_S}
+    assert unaffordable, (
+        f"no whole-model capsule exceeds the {_DEFAULT_CERT_BUDGET_S:.0f}s budget, so the seam capsule "
+        f"has no cost reason to exist: { {k: round(v) for k, v in others.items()} }")
+    assert all(mine_s < v for v in unaffordable.values()), (
+        f"{_SEAM_CAPSULE} at {mine_s:.0f}s is not cheaper than the whole models it substitutes for: "
+        f"{unaffordable}")

@@ -102,7 +102,12 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
         secs, basis = _price(None, out)
         perf = doc.get("performance") or {}
         instrument = str(((perf.get("gate") or {}).get("instrument")) or "")
-        rows.append({"capsule": cy.parent.name, "output_elements": out,
+        parts = cy.parts
+        _i = parts.index("capsules") if "capsules" in parts else -1
+        _rest = parts[_i + 1:] if _i >= 0 else ()
+        rows.append({"capsule": cy.parent.name,
+                     "target": (_rest[0] if len(_rest) > 2 else "(default)"),
+                     "output_elements": out,
                      "extrapolated": out > CC.MEASURED_MAX_OUTPUT_ELEMENTS,
                      "predicted_s": round(secs, 1), "basis": basis,
                      "max_oracle_tier": doc.get("max_oracle_tier"),
@@ -135,6 +140,17 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
             "s_per_output_element": CC.MEASURED_S_PER_OUTPUT_ELEMENT}
 
 
+def _debt_key(row: dict) -> str:
+    """``<target>/<capsule>`` -- the ratchet key, SCOPED TO THE TARGET.
+
+    A bare capsule name is not unique: `SY_micro_model` exists under both atlas and
+    saturn_opu_rvv, and each is a different capsule with its own cost. Keying the ratchet on the name
+    alone meant accepting one target's debt silently excused the other's -- the same flaw
+    check_pass_obligations scopes away by keying on both the pass and the axis.
+    """
+    return f"{row.get('target') or '?'}/{row['capsule']}"
+
+
 def _load_ratchet(p: Path | None) -> set[str]:
     if not p or not p.is_file():
         return set()
@@ -159,7 +175,7 @@ def main(argv=None) -> int:
 
     rep = audit(budget_s=a.budget_s, targets=tuple(a.target or ()))
     ratchet = _load_ratchet(a.ratchet)
-    new = [r for r in rep["over_budget"] if r["capsule"] not in ratchet]
+    new = [r for r in rep["over_budget"] if _debt_key(r) not in ratchet]
 
     if a.json:
         print(json.dumps({"report": rep, "new_over_budget": new}, indent=2))
@@ -173,9 +189,9 @@ def main(argv=None) -> int:
               f"({rep['extrapolated_hours']}h of the total — an unstated guess if not said out loud)")
         print(f"   over budget with no L2 cap and no extends: {len(rep['over_budget'])}")
         for r in rep["over_budget"][:20]:
-            mark = " " if r["capsule"] in ratchet else "*"
+            mark = " " if _debt_key(r) in ratchet else "*"
             print(f"   {mark} {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
-                  f"{r['capsule']}")
+                  f"{_debt_key(r)}")
         if len(rep["over_budget"]) > 20:
             print(f"     ... and {len(rep['over_budget']) - 20} more")
         if rep["over_budget_needs_cycle_accurate"]:

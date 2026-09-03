@@ -1,39 +1,39 @@
 # Capsules that demand L3 at a size over the affordability budget while declaring neither
 # `max_oracle_tier: L2` nor `extends`. THIS FILE MAY ONLY SHRINK.
 #
-# Measured 2026-09-02: build_tools/scripts/check_cert_affordability.py --budget-s 900.
-# Cost law from four cycle-accurate calibration runs at 512/1024/2048/4096 written elements
-# (177.2 / 351.6 / 723.1 / 1682.6 s): seconds = 0.20509 * output^1.0782, log-log r2 0.9976,
-# every point within 5.4%. SUPERLINEAR -- s/element runs 0.346, 0.343, 0.353, 0.411 -- so a flat
-# rate under-predicts by 16% at the top rung and 57% at the largest capsule listed here.
+# Keyed `<target>/<capsule>`: a bare name is NOT unique -- SY_micro_model exists under two
+# targets with different costs, and a bare key let one target's accepted debt excuse the other's.
 #
-# 295 capsules demand L3 for a predicted 181.3h.
-# 9 are beyond the calibrated 4,096 elements and carry 163.21h
-# of that, so most of the total rests on extrapolation -- stated, not implied.
+# Measured 2026-09-03: build_tools/scripts/check_cert_affordability.py --budget-s 900.
+# Cost law from four cycle-accurate calibration runs (177.2/351.6/723.1/1682.6 s at
+# 512/1024/2048/4096 written elements): seconds = 0.20509 * output^1.0782, log-log r2 0.9976.
+# SUPERLINEAR, so a flat rate under-predicts by 16% at the top rung and 57% at the largest here.
 #
-# TWO KINDS OF DEBT, because they have different remedies.
+# 304 capsules demand L3 for a predicted 123.8h,
+# down from 181.3h once the two SY_regime_* capsules were capped at L2 on this law.
+# 7 are beyond the calibrated 4,096 elements and carry 104.82h.
+#
+# TWO KINDS OF DEBT, because the remedies differ.
 
-# (1) CAPPABLE AT L2 (10 capsules, 163.7h). Purely
-# functional: pair each with an affordable certified sibling and cap this one at L2 via `extends`.
-# The large shape is usually the representative one, so the remedy is a DECLARATION, not a smaller
-# shape. conformance.py already derives that split; only three capsules use it.
-# Predicted total once these are capped: 17.6h, keeping 285 of 295 certifications.
+# (1) CAPPABLE AT L2 (9, 105.7h): purely functional.
+# Pair each with an affordable certified sibling and cap this one via `extends` -- the split
+# conformance.py derives. The large shape is usually the representative one, so the remedy is a
+# DECLARATION, not a smaller shape.
+# Predicted total once capped: 18.1h, keeping 295 of 304.
 
-SY_regime_spills    # 142,631s, 262,144 written EXTRAPOLATED
-SY_model_tiny_llama    # 139,030s, 256,000 written EXTRAPOLATED
-OPM0_ffn_up    # 106,945s, 200,704 written EXTRAPOLATED
-OPM2_attn_proj    # 78,424s, 150,528 written EXTRAPOLATED
-SY_regime_fits_single    # 67,553s, 131,072 written EXTRAPOLATED
-OPM1_ffn_down    # 23,989s, 50,176 written EXTRAPOLATED
-OPM3_patch_embed    # 23,989s, 50,176 written EXTRAPOLATED
-AHD00_deep_epilogue_hidden_96x64x64    # 2,493s, 6,144 written EXTRAPOLATED
-AHD01_deep_epilogue_hidden_96x160x64    # 2,493s, 6,144 written EXTRAPOLATED
-SY_micro_model    # 1,610s, 4,096 written
+model/SY_model_tiny_llama    # 139,030s, 256,000 written EXTRAPOLATED
+saturn_opu/OPM0_ffn_up    # 106,945s, 200,704 written EXTRAPOLATED
+saturn_opu/OPM2_attn_proj    # 78,424s, 150,528 written EXTRAPOLATED
+saturn_opu/OPM1_ffn_down    # 23,989s, 50,176 written EXTRAPOLATED
+saturn_opu/OPM3_patch_embed    # 23,989s, 50,176 written EXTRAPOLATED
+atlas/AHD00_deep_epilogue_hidden_96x64x64    # 2,493s, 6,144 written EXTRAPOLATED
+atlas/AHD01_deep_epilogue_hidden_96x160x64    # 2,493s, 6,144 written EXTRAPOLATED
+atlas/SY_micro_model    # 1,610s, 4,096 written
+saturn_opu_rvv/SY_micro_model    # 1,610s, 4,096 written
 
-# (2) CANNOT BE CAPPED (2 capsules, 0.9h). A
-# performance capsule whose gate instrument is a cycle count NEEDS a cycle-accurate tier; capping
-# it at L2 would delete the measurement it exists to take. Its remedy is a smaller shape or an
-# accepted cost. Listed so nobody 'fixes' them the other way.
+# (2) CANNOT BE CAPPED (2, 0.9h): a perf capsule
+# whose gate instrument is a cycle count NEEDS a cycle-accurate tier; capping it would delete the
+# measurement it exists to take. Remedy is a smaller shape or an accepted cost.
 
-PL01_k32    # 1,610s, 4,096 written, PL: cycle_count_and_preflight
-PL03_k64    # 1,610s, 4,096 written, PL: cycle_count_and_preflight
+atlas/PL01_k32    # 1,610s, PL: cycle_count_and_preflight
+atlas/PL03_k64    # 1,610s, PL: cycle_count_and_preflight

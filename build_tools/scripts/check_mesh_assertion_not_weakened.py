@@ -27,7 +27,8 @@ Modes, mirroring the sibling gates here:
 
   --target NAME        restrict to one target (repeatable)
   --json               machine-readable
-  --ratchet PATH       pre-existing debt that MAY ONLY SHRINK
+  --ratchet PATH       pre-existing debt that MAY ONLY SHRINK, keyed `<target>/<capsule>` because a
+                       bare name is not unique across targets
   --fail-on-weakened   exit non-zero when an admitted capsule declines the demand with no reason
   --fail-on-unresolved
                        exit non-zero when a target's contract cannot be read, since then nothing about
@@ -172,7 +173,7 @@ def main(argv=None) -> int:
 
     rep = audit(tuple(a.target or ()))
     ratchet = _load_ratchet(a.ratchet)
-    new = [r for r in rep["weakened"] if r["capsule"] not in ratchet]
+    new = [r for r in rep["weakened"] if f"{r['target']}/{r['capsule']}" not in ratchet]
     hand = [r for r in new if r["hand_authored"]]
 
     if a.json:
@@ -183,7 +184,7 @@ def main(argv=None) -> int:
         print(f"   declining the demand with no reason     : {len(rep['weakened'])}"
               f"  ({len(hand)} of them HAND-AUTHORED)")
         for r in rep["weakened"][:25]:
-            mark = " " if r["capsule"] in ratchet else "*"
+            mark = " " if f"{r['target']}/{r['capsule']}" in ratchet else "*"
             tag = "HAND" if r["hand_authored"] else "    "
             print(f"   {mark} {tag} {r['capsule']:36s} {r['target']:12s} "
                   f"{r['family']}/{r['dtype']} must_accelerate={r['must_accelerate']}")
