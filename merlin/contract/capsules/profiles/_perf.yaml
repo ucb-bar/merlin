@@ -742,6 +742,18 @@ blocked_unimplemented:
         decided_by: merlin.perf.fill_transient.settling_depth
         cohort_self_check: overlap_is_not_rising_across_the_cohorts_own_measured_points
         on_probe_absent: skip_with_evidence
+        # The region has TWO edges, and a cohort placed only from below straddles the far one.
+        # MEASURED on this target over a ten-point doubling ladder at fixed single-tile extents: the
+        # cost per extra reduction element holds inside the 3% band from K=64 to K=2048 -- four
+        # consecutive comparisons, 1.55%, 1.69%, 1.65%, 1.15% -- and then LEAVES it again, by 5.6% at
+        # K=4096 and 14.0% at K=8192, as the streamed operand outgrows the memory path. That is a
+        # second regime change, not more fill, and an affine law fitted across it is refuted by the
+        # same arithmetic that refuted PK. The ladder is therefore bounded above by where the marginal
+        # re-opens, not only below by where the overlap settles.
+        marginal_constancy_band: 0.03
+        marginal_constancy_decided_by: merlin.perf.fill_transient.marginal_settling_depth
+        window_upper_edge: the_depth_at_which_the_marginal_cost_leaves_its_band_again
+        cohort_must_fit_inside: one_contiguous_within_band_marginal_window
     gate:
       traits: [structural_pipeline_depth, independent_engine_ports]
       instrument: cycle_count_and_combination_counters
