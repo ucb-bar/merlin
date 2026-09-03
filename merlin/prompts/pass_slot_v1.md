@@ -19,6 +19,9 @@ the promised value.
 
 {evidence}
 
+## A previous attempt was refused
+{feedback}
+
 ## The module
 
 The current source is in `current_pass.py` in your working directory. It is the file you are rewriting.

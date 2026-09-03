@@ -288,6 +288,84 @@ def gate(proposal: PassProposal, action, *,
                                          + (", held out" if heldout_ok is not None else ""))
 
 
+def verdict_feedback(verdict: PassVerdict) -> str:
+    """The refusal, rendered for the next turn. FACTS ONLY -- never a suggested fix.
+
+    What separates a loop from a human doing the work through an agent is who supplies the insight. If
+    this said "your op matcher probably misses linalg.generic", the resulting pass would be the
+    author's idea typed by a model, and it would carry the author's blind spots into every future run.
+    So it reports exactly what the gate MEASURED: the stage that refused, its reason, the axes still
+    outstanding, and whatever diagnostic values the check recorded (digests, counts). The agent draws
+    its own conclusion.
+
+    That is also why the reasons are worth their length: "byte-identical to the unpatched build
+    (digest X); the pass was imported but its matching never fired" is a measurement, and it is enough
+    to redirect a turn without telling it where to go.
+    """
+    lines = [f"- **Stage that refused**: `{verdict.stage}`",
+             f"- **What the gate measured**: {verdict.reason}"]
+    if verdict.residual:
+        lines.append(f"- **Axes still not achieved**: {list(verdict.residual)}")
+    for k, v in sorted((verdict.detail or {}).items()):
+        lines.append(f"- **{k}**: {v}")
+    return "\n".join(lines)
+
+
+def _no_progress(a: PassVerdict, b: PassVerdict) -> bool:
+    """True when two consecutive refusals are the same verdict, so another turn is spend without
+    signal. Compared on stage + reason: a turn that moved the failure to a LATER stage made progress
+    even though it also failed, and a turn that failed the same way twice did not."""
+    return (a.stage, a.reason) == (b.stage, b.reason)
+
+
+def iterate_pass_slot(action, *, propose: Callable[..., PassProposal | None] | None = None,
+                      max_turns: int = 3, on_turn: Callable[[int, Any, PassVerdict], None] | None = None,
+                      **gate_kwargs) -> list[tuple[PassProposal | None, PassVerdict]]:
+    """Run the slot up to ``max_turns`` times, feeding each refusal back into the next proposal.
+
+    One turn is not a loop. The gate already produces a precise, machine-checked refusal -- "inert:
+    byte-identical to the unpatched build, the pass was imported but its matching never fired" -- and
+    stopping there throws away the one piece of information the next attempt needs. MEASURED on the
+    first real turn: an 18-minute, 611-line proposal was refused for a reason its author could have
+    acted on immediately, and nothing carried it forward.
+
+    ``propose(action, feedback=...)`` receives :func:`verdict_feedback` of the previous refusal, or
+    None on the first turn. Every (proposal, verdict) pair is returned, refusals included -- a refused
+    proposal is evidence about the seam.
+
+    Stops early on acceptance, and on two consecutive IDENTICAL verdicts: the feedback is not landing,
+    so further turns are spend without signal. Never stops on a verdict that merely moved to a later
+    stage, which is progress even though it is still a refusal.
+    """
+    out: list[tuple[PassProposal | None, PassVerdict]] = []
+    feedback: str | None = None
+    for turn in range(1, max(1, max_turns) + 1):
+        if propose is None:
+            v = PassVerdict(False, "no_proposal",
+                            "no proposer supplied; the gate is a no-op without one")
+            out.append((None, v))
+            return out
+        try:
+            proposal = propose(action, feedback=feedback)
+        except TypeError:
+            # a proposer that predates the feedback argument still works, it just cannot learn
+            proposal = propose(action)
+        if proposal is None:
+            v = PassVerdict(False, "no_proposal", "the proposer returned nothing")
+            out.append((None, v))
+            return out
+        verdict = gate(proposal, action, **gate_kwargs)
+        out.append((proposal, verdict))
+        if on_turn is not None:
+            on_turn(turn, proposal, verdict)
+        if verdict.accepted:
+            return out
+        if len(out) >= 2 and out[-2][1] is not None and _no_progress(out[-2][1], verdict):
+            return out
+        feedback = verdict_feedback(verdict)
+    return out
+
+
 def run_pass_slot(action, *, propose: Callable[[Any], PassProposal | None] | None = None,
                   **gate_kwargs) -> tuple[PassProposal | None, PassVerdict]:
     """Ask for a proposal and gate it. ``propose=None`` -> no proposal, and an honest refusal.

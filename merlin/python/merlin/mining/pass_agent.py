@@ -71,7 +71,21 @@ def _fmt_evidence(evidence: "list[str] | tuple[str, ...] | None") -> str:
     return "\n".join(f"- {e}" for e in evidence)
 
 
-def build_prompt(action, *, evidence=None, ours=None, divergence=None,
+def _fmt_feedback(feedback: str | None) -> str:
+    """The previous refusal, or a line saying this is the first attempt.
+
+    Rendered rather than omitted so the card's shape is identical on every turn: a section that
+    appears and disappears between turns is a change the agent has to interpret, on top of the change
+    that matters.
+    """
+    if not feedback:
+        return ("This is the first attempt on this seam. Nothing has been refused yet.")
+    return (feedback + "\n\nThat verdict is machine-checked: it comes from running your predecessor's "
+            "pass and reading the emitted assembly, not from anyone's opinion of the code. Nothing "
+            "above suggests a fix -- work out for yourself what it implies.")
+
+
+def build_prompt(action, *, evidence=None, ours=None, divergence=None, feedback: str | None = None,
                  version: int = PROMPT_VERSION) -> str:
     """Render the task card for one escalated action.
 
@@ -93,6 +107,7 @@ def build_prompt(action, *, evidence=None, ours=None, divergence=None,
                 .replace("{ours}", "(not recorded)" if ours is None else str(ours))
                 .replace("{expert}", str(facet.get(axis, "(see intended_facet)")))
                 .replace("{change}", str(getattr(action, "change", "?")))
+                .replace("{feedback}", _fmt_feedback(feedback))
                 .replace("{evidence}", _fmt_evidence(evidence)))
 
 
@@ -143,6 +158,7 @@ def _extract_module_source(text: str, workspace: "Path | None" = None) -> str:
 def propose_pass(action, *, module: str, current_source: str, workspace: Path,
                  model: str = "opus", timeout: int = 1800, version: int = PROMPT_VERSION,
                  require_sandbox: bool = True, ours=None, divergence=None,
+                 feedback: str | None = None,
                  runner: Callable[..., dict] | None = None) -> ProposalAttempt:
     """Run ONE proposer turn for ``action`` and return the attempt record.
 
@@ -153,9 +169,15 @@ def propose_pass(action, *, module: str, current_source: str, workspace: Path,
     """
     ws = Path(workspace)
     ws.mkdir(parents=True, exist_ok=True)
+    # A retry must not inherit the previous turn's output: a turn that writes nothing would otherwise
+    # be credited with its predecessor's proposal, and the gate would re-refuse the same source while
+    # the record showed two independent attempts.
+    stale = ws / PROPOSAL_FILENAME
+    if stale.is_file():
+        stale.unlink()
     (ws / "current_pass.py").write_text(current_source, encoding="utf-8")
     prompt = build_prompt(action, evidence=getattr(action, "evidence", None), ours=ours,
-                          divergence=divergence, version=version)
+                          divergence=divergence, feedback=feedback, version=version)
     (ws / "TASK.md").write_text(prompt, encoding="utf-8")
 
     sandbox = sandbox_argv(ws)
@@ -237,9 +259,9 @@ def proposer_for(action, *, current_source: str, workspace: Path, **kw
     module = ac.seam_module(getattr(action, "target_seam", "") or "")
     attempts: list[ProposalAttempt] = []
 
-    def _propose(a):
+    def _propose(a, *, feedback: str | None = None):
         att = propose_pass(a, module=module or "?", current_source=current_source,
-                           workspace=Path(workspace), **kw)
+                           workspace=Path(workspace), feedback=feedback, **kw)
         attempts.append(att)
         return att.proposal
 
