@@ -180,3 +180,37 @@ def test_no_capsule_is_priced_at_zero():
     assert rep["unpriceable"] == []
     # Every priced capsule must have a positive prediction.
     assert rep["total_predicted_s"] > 0
+
+
+def test_a_cycle_bound_perf_capsule_is_never_told_to_cap_itself_at_l2():
+    """An L2 cap is not a remedy every capsule can take, and advising it would be advising a lie.
+
+    A performance capsule whose `gate.instrument` is a cycle count NEEDS a cycle-accurate tier:
+    capping it at L2 would not make it cheap, it would delete the measurement the capsule exists to
+    take. Measured here: PL01/PL03 declare `cycle_count_and_preflight`, so the remedy available to
+    them is a smaller shape or an accepted cost -- never the L2 cap the other over-budget capsules
+    should take. The first version of this gate lumped them together and would have advised the
+    impossible fix.
+    """
+    gate = _gate()
+    rep = gate.audit(budget_s=900.0)
+    cycle_bound = rep["over_budget_needs_cycle_accurate"]
+    if not cycle_bound:
+        pytest.skip("no cycle-bound capsule is currently over budget")
+    for row in cycle_bound:
+        assert row["needs_cycle_accurate"] is True
+        assert "cycle" in (row["instrument"] or ""), row
+    # And they must NOT appear in the cappable list, or the advice is contradictory.
+    cappable = {r["capsule"] for r in rep["over_budget"]}
+    assert not (cappable & {r["capsule"] for r in cycle_bound}), (
+        "a capsule cannot be both cappable at L2 and dependent on a cycle-accurate tier")
+
+
+def test_a_capsule_with_no_perf_instrument_is_cappable():
+    """The other side of the split: a purely functional capsule can rest on a certified sibling."""
+    gate = _gate()
+    rep = gate.audit(budget_s=900.0)
+    if not rep["over_budget"]:
+        pytest.skip("nothing over budget")
+    for row in rep["over_budget"]:
+        assert row["needs_cycle_accurate"] is False, row

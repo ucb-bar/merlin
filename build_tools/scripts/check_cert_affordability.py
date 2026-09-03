@@ -100,15 +100,26 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
             unpriceable.append({"capsule": cy.parent.name, "why": "commits nothing measurable"})
             continue
         secs, basis = _price(None, out)
+        perf = doc.get("performance") or {}
+        instrument = str(((perf.get("gate") or {}).get("instrument")) or "")
         rows.append({"capsule": cy.parent.name, "output_elements": out,
                      "extrapolated": out > CC.MEASURED_MAX_OUTPUT_ELEMENTS,
                      "predicted_s": round(secs, 1), "basis": basis,
                      "max_oracle_tier": doc.get("max_oracle_tier"),
                      "extends": doc.get("extends"),
+                     "perf_family": perf.get("family"), "instrument": instrument or None,
+                     # ⚠️ AN L2 CAP IS NOT AVAILABLE TO EVERY CAPSULE. A performance capsule whose
+                     # gate instrument is a cycle count NEEDS a cycle-accurate tier -- capping it at
+                     # L2 would not make it cheap, it would destroy the measurement the capsule
+                     # exists to take. Advising that remedy would be advising an impossible fix, so
+                     # these are reported apart with the remedy that IS available to them.
+                     "needs_cycle_accurate": "cycle" in instrument,
                      "path": str(cy.parent.relative_to(_REPO))})
-    over = [r for r in rows
-            if r["predicted_s"] > budget_s and not r["extends"]
-            and str(r["max_oracle_tier"] or "").upper() != "L2"]
+    unremedied = [r for r in rows
+                  if r["predicted_s"] > budget_s and not r["extends"]
+                  and str(r["max_oracle_tier"] or "").upper() != "L2"]
+    over = [r for r in unremedied if not r["needs_cycle_accurate"]]
+    needs_cycles = [r for r in unremedied if r["needs_cycle_accurate"]]
     total = sum(r["predicted_s"] for r in rows)
     return {"budget_s": budget_s, "n_demanding_l3": len(rows),
             "n_extrapolated": sum(1 for r in rows if r["extrapolated"]),
@@ -117,6 +128,9 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
             "total_predicted_s": round(total, 1),
             "total_predicted_hours": round(total / 3600.0, 2),
             "over_budget": sorted(over, key=lambda r: -r["predicted_s"]),
+            # Over budget, but an L2 cap is not a remedy they can take.
+            "over_budget_needs_cycle_accurate": sorted(needs_cycles,
+                                                       key=lambda r: -r["predicted_s"]),
             "unpriceable": unpriceable,
             "s_per_output_element": CC.MEASURED_S_PER_OUTPUT_ELEMENT}
 
@@ -164,6 +178,14 @@ def main(argv=None) -> int:
                   f"{r['capsule']}")
         if len(rep["over_budget"]) > 20:
             print(f"     ... and {len(rep['over_budget']) - 20} more")
+        if rep["over_budget_needs_cycle_accurate"]:
+            print(f"   over budget but CANNOT be capped at L2 "
+                  f"({len(rep['over_budget_needs_cycle_accurate'])}): a performance capsule whose "
+                  f"instrument is a cycle count needs a cycle-accurate tier, so its remedy is a "
+                  f"smaller shape or an accepted cost, never an L2 cap")
+            for r in rep["over_budget_needs_cycle_accurate"][:10]:
+                print(f"     ! {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
+                      f"{r['capsule']}  [{r['perf_family']}: {r['instrument']}]")
         if rep["unpriceable"]:
             # NOT counted as affordable. An unknown price is not a small one.
             print(f"   UNPRICEABLE ({len(rep['unpriceable'])}) — these establish nothing either way:")
