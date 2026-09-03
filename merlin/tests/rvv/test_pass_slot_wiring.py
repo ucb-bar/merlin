@@ -5,6 +5,7 @@ These tests cover the wiring that supplies the real ones, and the two properties
 the plumbing: the proposal is applied in an isolated OVERLAY that never touches the shared working
 tree, and every verdict rests on a control measured in the same call.
 """
+import json
 import os
 import subprocess
 import sys
@@ -319,3 +320,38 @@ def test_module_for_action_says_it_is_a_catalog_bug_when_no_reason_is_declared()
         target_seam = "pass:something-nobody-declared"
     with pytest.raises(w.SeamNotActionable, match="catalog bug"):
         w.module_for_action(_A())
+
+
+def test_the_checkout_under_test_is_pinned_for_child_builds():
+    """This venv installs merlin editable via a .pth naming whichever checkout last ran the install,
+    and several checkouts share it -- one repointed it mid-session. pytest is unaffected (it inserts
+    the rootdir), which is why the shadowing is easy to miss: the suites keep passing while a plain
+    `python script.py` imports a different tree.
+
+    For the gate that is not cosmetic: the control arm runs with no overlay, so without pinning it
+    would build with whatever tree the .pth names while the overlay arm builds from a mirror of THIS
+    one, and "the frozen baseline still lowers byte-identically" would compare two different
+    compilers."""
+    from merlin.common.paths import merlin_dir
+    base = w.checkout_pythonpath()
+    assert base.split(os.pathsep)[0] == str(merlin_dir() / "python")
+    chained = w.checkout_pythonpath("/somewhere/else")
+    assert chained.split(os.pathsep) == [str(merlin_dir() / "python"), "/somewhere/else"]
+
+
+def test_the_control_arm_gets_the_checkout_even_with_no_overlay_env(tmp_path, monkeypatch):
+    """The control arm is invoked with env=None. It must still receive a PYTHONPATH pinning this
+    checkout, or the frozen-baseline digests come from two different compilers."""
+    from merlin.common.paths import merlin_dir
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = "__MERLIN_RESULT__" + json.dumps({"status": "pass", "correctness": {}})
+        stderr = ""
+
+    monkeypatch.setattr(w.subprocess, "run", lambda argv, **kw: (seen.update(kw), _Proc())[1])
+    w._certify(None, package_dir=tmp_path, model_dir=tmp_path, runs_root=tmp_path,
+               run_id="r", targets=("spike",), timeout=10)
+    pp = (seen.get("env") or {}).get("PYTHONPATH", "")
+    assert str(merlin_dir() / "python") in pp, f"control arm not pinned to this checkout: {pp!r}"

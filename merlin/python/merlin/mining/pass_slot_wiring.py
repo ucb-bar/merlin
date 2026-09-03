@@ -34,6 +34,27 @@ from typing import Any, Callable
 from .pass_slot import PassProposal
 
 
+def checkout_pythonpath(existing: str | None = None) -> str:
+    """``PYTHONPATH`` that makes a child process import THIS checkout's ``merlin``.
+
+    Necessary, not defensive. This venv installs ``merlin`` editable via a ``.pth`` file, and that file
+    names whichever checkout last ran the install -- several checkouts of this repo share the venv, and
+    one of them repointed it mid-session. pytest is unaffected (it inserts the rootdir), which is
+    exactly why the shadowing is easy to miss: the suites keep passing while a plain
+    ``python script.py`` imports a different tree.
+
+    For the gate that is not cosmetic. The control arm runs with no overlay, so without this it would
+    build with whatever tree the ``.pth`` names while the overlay arm builds from a mirror of THIS one
+    -- and "the frozen baseline still lowers byte-identically" would be comparing two different
+    compilers. Both arms must start from the checkout under test.
+    """
+    from ..common.paths import merlin_dir
+    parts = [str(merlin_dir() / "python")]
+    if existing:
+        parts.append(existing)
+    return os.pathsep.join(parts)
+
+
 def module_to_relpath(module: str) -> Path:
     """``merlin.llvmlower.act_poly`` -> ``merlin/llvmlower/act_poly.py``."""
     parts = module.split(".")
@@ -108,7 +129,11 @@ def overlay_for(proposal: PassProposal, *, package_root: Path | None = None):
     try:
         _mirror_except(root, tmp, list(rel.parts), proposal.source)
         env = dict(os.environ)
-        env["PYTHONPATH"] = os.pathsep.join([str(tmp), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+        # overlay first, then THIS checkout, then whatever the caller had. The overlay mirrors the
+        # checkout, so the second entry is belt-and-braces -- but the base must never be the venv's
+        # `.pth`, which may name a different tree entirely.
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(tmp), checkout_pythonpath(os.environ.get("PYTHONPATH"))])
         env["MERLIN_PASS_SLOT_OVERLAY"] = str(tmp)
         yield env
     finally:
@@ -167,6 +192,12 @@ def _certify(env: dict[str, str] | None, *, package_dir: Path, model_dir: Path, 
     arg = json.dumps({"package_dir": str(package_dir), "model_dir": str(model_dir),
                       "runs_root": str(runs_root), "run_id": run_id,
                       "targets": list(targets), "timeout": timeout})
+    # env=None means "the control arm, no overlay" -- but it must still import THIS checkout, or the
+    # frozen-baseline comparison is between two different compilers. See checkout_pythonpath.
+    env = dict(env) if env is not None else dict(os.environ)
+    env.setdefault("PYTHONPATH", "")
+    if not env["PYTHONPATH"].startswith(str(Path(__file__).resolve().parents[3])):
+        env["PYTHONPATH"] = checkout_pythonpath(env["PYTHONPATH"] or None)
     # -X importtime so we can tell whether the module under test was ACTUALLY imported. Without that
     # the numeric checks can pass vacuously: a package with empty features never imports a
     # feature-gated pass, so a module whose body is `raise` builds clean and the gate credits it.
