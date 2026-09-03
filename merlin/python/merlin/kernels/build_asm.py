@@ -166,11 +166,34 @@ def _run(cmd: list[str], timeout: int) -> bool:
 
 # ------------------------------------------------------------------------ saturn corpus
 def saturn_root() -> Path:
-    """saturn-vectors checkout root (``MERLIN_SATURN_REPO`` or ``<repo>/tmp/kernels/saturn-vectors``)."""
+    """saturn-vectors checkout root, in precedence order.
+
+    ``MERLIN_SATURN_REPO`` wins; then a local ``<repo>/tmp/kernels/saturn-vectors`` clone if one is
+    actually there; then ``ext_path('chipyard')/generators/saturn``, because saturn ships INSIDE the
+    chipyard checkout this repo already configures. Falling back to the chipyard copy is what makes
+    the ceiling harness work without a second, hand-set env var: without it every expert column of
+    the cross-framework matrix builds against a path that does not exist and reports NOT_RUN with
+    ``fatal error: util.h``. Measured: all 30 cells of the matrix (openblas, xnnpack, ours x8, at
+    32/64/128) failed that way, which reads as "the comparison cannot be made" rather than as a
+    missing include dir.
+
+    The unresolvable case still returns the tmp path, so a fresh checkout's error message names the
+    location a clone is expected at rather than someone else's machine.
+    """
     env = os.environ.get("MERLIN_SATURN_REPO")
     if env:
         return Path(env)
-    return repo_root() / "tmp/kernels/saturn-vectors"
+    local = repo_root() / "tmp/kernels/saturn-vectors"
+    if local.is_dir():
+        return local
+    try:
+        from ..common.paths import ext_path
+        cand = ext_path("chipyard") / "generators" / "saturn"
+        if cand.is_dir():
+            return cand
+    except (KeyError, ImportError):
+        pass
+    return local
 
 
 def _saturn_kernel_tu(bench_dir: Path) -> Path | None:

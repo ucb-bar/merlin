@@ -58,6 +58,14 @@ OURS_FORKS = (
     # pack cost — a microbench; the resident-weight/prepack-hoisted = pack-excluded number is in
     # output/kernels/ceiling/packing_result.md). Bit-exact at 32^3; faults at M>=48 (see notrun).
     ("ours_vfmacc_packed", ["vfmacc_packed"]),
+    # The levers the whole-model beam actually SELECTED on the K1, added so this matrix reports the
+    # codegen we ship rather than only the ones that existed when it was written. Measured on
+    # small_llama fp32 (width 10, depth 3, 47 forks, cos-gated): mrpad 16.76x and perop_register_block
+    # 16.58x over the frozen seed, against 10.10x for the best lever a narrower search could reach.
+    # Both are per-CONTRACTION blocking, which is what the expert columns do by construction, so this
+    # is the first like-for-like row against XNNPACK.
+    ("ours_mrpad", ["accumulator_resident_wholemodel_vf_mrpad"]),
+    ("ours_perop_block", ["perop_register_block"]),
     # GENUINE transform-dialect accumulator-resident micro-kernel: the K-loop carries the C
     # accumulator as a `vector` scf.for iter_arg (register-resident across K, NO per-K-tile
     # memref.transfer/copy roundtrip) — the compiler-emitted answer to the gap the hand-written
@@ -499,7 +507,20 @@ def rebuild_matrix_from_jsonl() -> Path:
 
 def main() -> int:
     import sys
-    if "--rebuild-matrix" in (sys.argv or []):
+    argv = sys.argv or []
+    # --ours <feature[,feature]> appends a column, so a newly mined lever can be weighed against the
+    # expert columns without editing this file. Repeatable. Validated against the registry first: an
+    # unregistered name would otherwise fail deep inside a build and be read as "the lever is slow".
+    for i, tok in enumerate(argv):
+        if tok == "--ours" and i + 1 < len(argv):
+            feats = [f for f in argv[i + 1].split(",") if f]
+            from ...llvmlower import impr_features as _F
+            unknown = [f for f in feats if f not in _F._REGISTRY]
+            if unknown:
+                print(f"multishape_compare: unregistered impr feature(s) {unknown}")
+                return 2
+            globals()["OURS_FORKS"] = tuple(OURS_FORKS) + (("ours_" + "_".join(feats), feats),)
+    if "--rebuild-matrix" in argv:
         p = rebuild_matrix_from_jsonl()
         print(f"matrix (from jsonl) -> {p}")
         return 0
