@@ -67,7 +67,7 @@ class CostFit:
     n_samples: int
     elements_min: int
     elements_max: int
-    metric: str = "max_operand_elements"
+    metric: str = "written_output_elements"
     sources: tuple[str, ...] = ()
 
     @property
@@ -283,9 +283,16 @@ def _cycle_accurate_seconds(timing: dict) -> tuple[float | None, str]:
         if best:
             return best
         return None, "no cycle-accurate tier ran for this capsule"
-    secs = timing.get("sim_active_s")
-    if isinstance(secs, (int, float)) and secs > 0:
-        return float(secs), _SUMMED_LEGACY
+    # ⚠️ A SUMMED SAMPLE IS REFUSED, not used as a fallback. Without a per-tier block there is no way
+    # to know a cycle-accurate tier ran at all, and on a target whose graded history is functional-only
+    # the summed figure is milliseconds. Measured while this fallback was live: atlas fitted 13 samples
+    # of ~0.01s from legacy score files and priced a 1000-element capsule at 0.008 SECONDS -- the
+    # "zero reads as free" error this module exists to prevent, reintroduced by its own compatibility
+    # path. An old score file is not evidence about certification cost; it is evidence that somebody
+    # graded something.
+    if timing.get("sim_active_s"):
+        return None, ("summed over tiers with no per-tier block, so no cycle-accurate time can be "
+                      "attributed; re-grade to contribute a sample")
     return None, "no positive sim_active_s"
 
 
@@ -327,8 +334,12 @@ def _timing_records(target: str, root: Path | None = None,
     """
     from merlin.common.paths import artifacts_dir, runs_dir
 
+    # ⚠️ BOTH BASES MUST BE TARGET-SCOPED. `runs_dir()` alone globs every target's runs, so every
+    # target -- including one that does not exist -- got the same fit, and atlas capsules were priced
+    # from gemmini measurements. That silently broke this module's own stated refusal, that a target
+    # with no certification history has no basis for sizing. The layout is out/runs/<target>/<suite>/.
     bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target),
-                                       runs_dir()]
+                                       runs_dir() / str(target)]
     bases += [Path(r) for r in extra_roots]
     out: dict[str, tuple[float, str]] = {}
     for base in bases:
@@ -360,7 +371,22 @@ def _timing_records(target: str, root: Path | None = None,
 
 
 def _capsule_sizes(corpus_roots) -> dict[str, int]:
-    """``capsule -> size metric`` for every capsule under the given roots."""
+    """``capsule -> written output elements`` for every capsule under the given roots.
+
+    WRITTEN OUTPUT, not the largest operand. The operand metric this module shipped with does not
+    predict: over 72 real certifications it fits at r2 0.199, and sizing against it left a held-out
+    median error of 47%. Output fits at 0.92 on the same corpus and 0.9976 on a deliberate ladder,
+    and an independent refit on another target's history agreed (output 0.924, max operand 0.226,
+    work M*K*N 0.655).
+
+    The mechanism is why: reduction DEPTH is nearly free while parallel EXTENT is what costs. Measured
+    on the corpus, the same shape at K=16 and K=128 -- writing the same 256 elements either way --
+    took 121.1s and 161.5s, so eight times the reduction bought a third more time. A metric keyed on
+    the largest operand reads that as an eightfold size increase and misprices it accordingly.
+
+    Falls back to the operand metric when a capsule's interface cannot be read, so an unparseable
+    capsule contributes a worse sample rather than none, and the fit records which metric it used.
+    """
     import yaml
 
     sizes: dict[str, int] = {}
@@ -374,7 +400,15 @@ def _capsule_sizes(corpus_roots) -> dict[str, int]:
             except yaml.YAMLError:
                 continue
             name = str(doc.get("name") or cy.parent.name)
-            size = capsule_elements(doc)
+            size = 0
+            ifc = cy.parent / str(doc.get("interface_mlir") or "capsule.interface.mlir")
+            if ifc.is_file():
+                try:
+                    size = capsule_output_elements(ifc.read_text(encoding="utf-8"))
+                except Exception:                  # noqa: BLE001 -- fall back, do not drop
+                    size = 0
+            if size <= 0:
+                size = capsule_elements(doc)
             if size > 0:
                 sizes[name] = size
     return sizes
@@ -506,7 +540,10 @@ def _cycle_records(target: str, root: Path | None = None, extra_roots=()) -> dic
     """
     from merlin.common.paths import artifacts_dir, runs_dir
 
-    bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target), runs_dir()]
+    # Target-scoped for the reason spelled out in `_timing_records`: an unscoped runs root hands
+    # every target the same measurements.
+    bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target),
+                                       runs_dir() / str(target)]
     bases += [Path(r) for r in extra_roots]
     out: dict[str, dict] = {}
     for base in bases:

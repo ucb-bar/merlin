@@ -64,15 +64,33 @@ def test_derived_from_rtl_is_accepted_as_the_older_spelling():
     assert secs == 7.5
 
 
-def test_a_legacy_score_file_still_fits_but_says_so():
-    """Existing score files predate the per-tier block; they must remain usable AND be labelled.
+def test_a_legacy_score_file_is_refused_not_used_as_a_fallback():
+    """A summed sample cannot be attributed to a cycle-accurate tier, so it must not be a fallback.
 
-    Silently mixing a summed sample into a per-substrate fit is the provenance error this whole change
-    exists to remove, so the basis travels with the number.
+    This test previously asserted the opposite -- that an old score file still fits, merely labelled --
+    and that was wrong in the dangerous direction. Measured with the fallback live: atlas fitted 13
+    samples of ~0.01s drawn from legacy score files whose graded history is functional-only, and the
+    resulting model priced a 1000-element capsule at 0.008 SECONDS. A near-zero certification cost is
+    the "priced at zero reads as free" error this module exists to prevent, reintroduced by its own
+    compatibility path.
+
+    An old score file is not evidence about certification cost; it is evidence that somebody graded
+    something. The remedy is to re-grade, which now records the per-tier block.
     """
     secs, basis = CC._cycle_accurate_seconds(_entry(None, summed=100.5))
-    assert secs == 100.5
-    assert "legacy" in basis, f"a summed sample must be labelled, got {basis!r}"
+    assert secs is None, f"a summed sample must be refused, got {secs}"
+    assert "no per-tier block" in basis and "re-grade" in basis, basis
+
+
+def test_a_target_whose_history_is_functional_only_gets_no_fit():
+    """The concrete regression: a target must not be priced from another oracle's milliseconds."""
+    fit = CC.fit_for("atlas")
+    if fit is None:
+        return                                     # the correct answer for such a target
+    assert fit.per_element_s > 0.001, (
+        f"atlas fitted {fit.per_element_s} s/element from {fit.n_samples} samples, which would price "
+        f"a 1000-element certification at {CC.predict_seconds(fit, 1000):.3f}s -- that is a "
+        f"functional oracle's time wearing a certification's provenance")
 
 
 def test_the_grader_records_the_per_tier_block_it_used_to_discard():
