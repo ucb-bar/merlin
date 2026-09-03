@@ -37,6 +37,44 @@ sweeps:
         observation: residual_cycles_by_K
         fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
         negative_control: fixed_M_and_N_across_all_K_points
+      # This is the claim decision, not a post-run tuning knob.  Three repeats
+      # are the smallest useful deterministic-simulator control: one repeat
+      # cannot expose instability and a fourth adds cost without changing the
+      # four-level affine fit.  The residual predicate gives integer-cycle
+      # phase effects an 8-cycle floor, then uses a 3% proportional allowance
+      # once that is larger.  R^2 >= 0.995 independently rejects a globally
+      # poor affine explanation even if one large point makes its local bound
+      # permissive.  Changing any value is a new experiment contract.
+      acceptance:
+        schema_version: 1
+        analyzer: perf_pk_claim.analyze_pk_claim/v1
+        fit:
+          form: affine
+          method: ordinary_least_squares_all_L3_replicates
+          independent_variable: K
+          dependent_metric: verilator_L3_cycles
+        cohort:
+          operation: matmul
+          fixed_shape_axes: [M, N]
+          fixed_fields: [operation, operand_dtype, accum_dtype, epilogue]
+          exact_points: 4
+          K_multipliers_of_tile: [1, 2, 4, 8]
+        replicates:
+          exact_count: 3
+          identities: [r000, r001, r002]
+        evidence:
+          correctness_simulator: spike
+          correctness_tier: L2
+          timing_simulator: verilator
+          timing_tier: L3
+          spike_cycles_citable: false
+        thresholds:
+          slope_cycles_per_K_element_min_exclusive: 0.0
+          r_squared_min_inclusive: 0.995
+          residual_bound:
+            predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+            absolute_floor_cycles: 8
+            observed_cycle_fraction: 0.03
       gate:
         traits: [structural_pipeline_depth]
         instrument: cycle_count
@@ -329,5 +367,131 @@ sweeps:
     shared cross-regime amortization pair: one pushed weight reused by one tile
     versus by four, at identical per-tile work
 
+# ---------------------------------------------------------------------------------------------------
+# L6_global -- the ENCODING lever. The rung the ladder declared and nothing occupied.
+#
+# The global optimizations a whole-model compiler makes -- quantization, packing, operand encoding,
+# layout propagation -- all reduce to the same question at capsule scale: given a target that can
+# compute this contraction in more than one operand encoding, does the choice cost anything? That
+# question only EXISTS where there is a choice, which is why the gate is `multiple_operand_encodings`
+# and why a single-format machine is REFUTED rather than unestablished: "this target has one encoding"
+# is an answer, and a more useful one than "we could not tell".
+#
+# The members name their encodings POSITIONALLY (`encoding0`, `encoding1`), resolved against the
+# target's own declared contraction dtypes, so this shared template contains no dtype -- the same
+# discipline that keeps `tile` out of the extents. Each member's accumulator is derived for ITS OWN
+# operand, because an accumulator belongs to the datapath its operand feeds.
+- id: PG
+  fit_axes: [K]
+  comparison_roles: [encoding_a, encoding_b]
+  base:
+    cat: _perf
+    kind: model_slice
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L6_global
+      family: PG
+      lever: operand_encoding
+      claim: DIFFERENTIAL
+      comparand:
+        kind: group_arithmetic
+        against: the_same_layer_in_the_other_encoding
+        cancels: [operation_shape, operands]
+        demand_equal: [M, N, K]
+      falsifier:
+        observation: encoding_a_cycles_minus_encoding_b_cycles
+        fires_when: the_two_encodings_cost_the_same_within_the_noise_band
+        negative_control: the_same_encoding_compared_against_itself
+      gate:
+        traits: [multiple_operand_encodings]
+        instrument: cycle_count
+        capacity: two_encodings_of_one_identical_shape
+        on_missing: skip_with_evidence
+      regime:
+        separation: one_identical_shape_per_group
+        layout: both_members_share_every_extent
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs: {encodings: [encoding0, encoding1]}
+      cost:
+        tier: 1
+        runs: two_per_shape
+        projected_cycles: derived_at_preflight
+        basis: one_matmul_per_encoding
+  variants:
+  - op: matmul
+    operand_dtype: encoding0
+    comparison_group: {name: 'enc_m{M}k{K}n{N}', role: encoding_a}
+  - op: matmul
+    operand_dtype: encoding1
+    comparison_group: {name: 'enc_m{M}k{K}n{N}', role: encoding_b}
+  axes:
+    M: [tile]
+    N: [tile]
+    K: [tile, 2*tile]
+  name: '{id}{i:02d}_{operand_dtype}_k{K}'
+  source_reference: >-
+    shared operand-encoding pair: one identical contraction computed in two of the
+    target's own declared encodings, so the cost of the encoding choice is isolated
+
 blocked_unimplemented:
+# L4_boundary -- the host/accelerator SEAM, priced. Declared rather than omitted, because an absent
+# rung and an unaffordable one read the same in a ladder and only one of them is true.
+#
+# `M3_host_island_seam_gemmini` already proves the seam is CORRECT: an accelerator region, a host
+# island the hardware cannot admit, another accelerator region. What nothing measures is what that
+# island COSTS -- the H->A break-even, and whether an A->H->A round trip is worth avoiding.
+#
+# The blocker is measurement, not an emitter. A differential over the seam needs cycles attributed
+# PER LANE, and the capsule path has no per-lane accounting: it runs the accelerator on the target's
+# own oracle and the host lane in this process on the development machine, so a host-lane cycle count
+# would be this workstation's, not the SoC's. A number produced that way would be quoted as a
+# hardware result. Unblocking it needs the fused single-ELF path (merlin.system.place ->
+# llvmlower.device_build.routing_for_placement), where both lanes execute on one image under one
+# cycle counter.
+- family: PB
+  status: blocked_unimplemented
+  reason: >-
+    per-lane cycle accounting does not exist: the capsule path runs the accelerator on the target's
+    oracle and the host lane in-process on the development machine, so a seam differential would
+    price this workstation rather than the SoC
+  fit_axes: [K]
+  comparison_roles: [island, no_island]
+  # The full claim contract, declared even though the family cannot run. A blocked rung that carried
+  # no contract would be indistinguishable from one nobody had thought about, and the contract is what
+  # makes the blocker checkable: the gate below names the trait, and the emitter names what is missing.
+  performance:
+    level: L4_boundary
+    family: PB
+    lever: host_island_placement
+    claim: DIFFERENTIAL
+    comparand:
+      kind: group_arithmetic
+      against: the_same_layers_without_a_host_island_between_them
+      cancels: [operation_shape, operands, numeric_policy]
+      demand_equal: [M, N, K, operand_dtype, accum_dtype]
+    falsifier:
+      observation: island_cycles_minus_no_island_cycles
+      fires_when: an_a_h_a_round_trip_costs_no_more_than_staying_on_the_accelerator
+      negative_control: two_adjacent_accelerator_regions_with_no_host_work_between_them
+    gate:
+      traits: [structural_pipeline_depth]
+      instrument: per_lane_cycle_count
+      capacity: both_lanes_executing_under_one_cycle_counter
+      on_missing: skip_with_evidence
+    regime:
+      separation: one_identical_shape_per_group
+      layout: both_members_share_every_extent_and_differ_only_in_the_island
+    emitter:
+      status: blocked
+      entry: 'new:host_seam_differential'
+      knobs: {needs: per_lane_cycle_accounting, unblocked_by: fused_single_elf}
+    cost:
+      tier: 2
+      runs: two_per_shape
+      projected_cycles: derived_at_preflight
+      basis: one_island_member_and_one_without
 

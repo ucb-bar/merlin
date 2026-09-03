@@ -31,10 +31,13 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "merlin" / "python"))
+# Bootstrap only: this module lives at ``<repo>/merlin/contract/capsules/`` and must put the
+# in-tree package on ``sys.path`` before it can import ``merlin.common.paths``. Everything after
+# the import derives its roots from that module rather than from ``__file__``.
+_MERLIN_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_MERLIN_DIR / "python"))
 
-from merlin.common.paths import _dotenv                   # noqa: E402
+from merlin.common.paths import _dotenv, repo_root        # noqa: E402
 from merlin.perf import workload_gen as WG                   # noqa: E402
 from merlin.perf.profile import TRAITS, derive_profile       # noqa: E402
 from merlin.targetgen import capsule_golden as CG            # noqa: E402
@@ -42,6 +45,7 @@ from merlin.targetgen import corpus_spec as CS               # noqa: E402
 from merlin.targetgen import numeric_falsifiability as NF    # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
+REPO = repo_root()
 HERE = Path(__file__).resolve().parent
 PROFILES = HERE / "profiles"
 
@@ -267,10 +271,16 @@ def _merge_shared_perf(profile: dict, *, source: Path) -> None:
             "comparison_roles": list(item.get("comparison_roles") or []),
         })
     profile["sweeps"] = list(profile.get("sweeps") or []) + sweeps
+    # Recorded repo-root-relative so a consumer can resolve it against `repo_root()` alone.
+    # It is derived from the same `shared_path` this function read, never re-spelled by hand: a
+    # hand-typed (or mis-rooted) prefix is exactly how this record went stale after the tree moved
+    # under `merlin/` and the campaign gate started refusing its own corpus.
     try:
-        template_path = str(shared_path.relative_to(REPO))
-    except ValueError:
-        template_path = str(shared_path)
+        template_path = shared_path.relative_to(REPO).as_posix()
+    except ValueError as exc:
+        raise ValueError(
+            f"shared performance template {shared_path} lies outside the repository root {REPO}; "
+            "its provenance cannot be recorded repo-root-relative") from exc
     profile["_performance_template"] = {
         "path": template_path,
         "sha256": _document_digest(shared),
@@ -1631,6 +1641,61 @@ def _resolve_flat_extents(entry: dict, binding) -> dict:
     return out if out is not None else entry
 
 
+def target_encodings(target: str) -> list[str]:
+    """The operand encodings this target can compute a contraction in, in capsule spelling.
+
+    The axis an ``L6_global`` (encoding / packing / layout) family sweeps. Derived from the same place
+    the gate trait ``multiple_operand_encodings`` reads -- the contraction family's declared dtypes --
+    so the family's members and the gate that admits it cannot disagree about how many encodings exist.
+
+    Sorted, because the corpus must regenerate byte-identically and a capability map is a mapping.
+    Empty when the map cannot be resolved: a family that needs a choice then has none to make, and the
+    gate refuses it with evidence rather than this inventing one.
+    """
+    try:
+        from merlin.targetgen.conformance import capsule_dtype
+        from merlin.targetgen.eligibility import capability_map_for_target
+        cap = (capability_map_for_target(target) or {}).get("contraction")
+    except Exception:                              # noqa: BLE001 -- an unresolvable map is no choice
+        return []
+    out = []
+    for d in sorted(getattr(cap, "dtypes", ()) or ()):
+        try:
+            out.append(capsule_dtype(str(d)))
+        except Exception:                          # noqa: BLE001 -- keep an unmappable token visible
+            out.append(str(d))
+    return list(dict.fromkeys(out))
+
+
+def resolve_encoding(token, encodings: "list[str]") -> str:
+    """Resolve a sweep ENCODING token against the target's own encodings.
+
+    ``encoding<N>`` selects the Nth encoding the target declares for a contraction, exactly as
+    ``resolve_extent`` selects a geometry relative to the tile edge -- and for the same reason: a
+    profile must never write down a dtype. `_perf.yaml` is shared by every target, so a family that
+    named ``int8`` and ``bf16`` would be describing one machine and silently mis-describing the rest.
+
+    An index past the end RAISES. That case means the family was admitted on a target with fewer
+    encodings than it compares, which the gate is supposed to have refused; resolving it to the last
+    one instead would emit a comparison group whose two members are the same encoding, and a
+    differential over identical work always reads as "no effect".
+    """
+    if not isinstance(token, str):
+        raise ValueError(f"sweep encoding {token!r} is not an encoding token")
+    head, digits = token.strip(), ""
+    prefix = "encoding"
+    if not head.startswith(prefix) or not head[len(prefix):].isdigit():
+        raise ValueError(f"sweep encoding {token!r} is not of the form 'encoding<N>'")
+    digits = head[len(prefix):]
+    idx = int(digits)
+    if idx >= len(encodings):
+        raise ValueError(
+            f"sweep encoding {token!r} asks for encoding {idx} of a target declaring "
+            f"{len(encodings)} ({encodings}); the family's gate should have refused it here rather "
+            f"than letting two members resolve to the same encoding")
+    return encodings[idx]
+
+
 def resolve_extent(token, tile: int) -> int:
     """Resolve a sweep extent token against *tile* (the binding's tile edge).
 
@@ -1748,6 +1813,41 @@ def evaluate_gate(gate: dict, trait_facts: "dict | None") -> tuple[bool, dict]:
     return outcome == "satisfied", decision
 
 
+def _accum_for_encoding(target: str, operand: str, fallback: "str | None") -> str:
+    """The accumulate format ``target`` declares for a contraction whose operands are ``operand``.
+
+    ASKED OF THE ROUTER, not re-derived. `routing._legal_on` is the one predicate that answers "what
+    does this unit accumulate this contraction in", and it answers by taking the FIRST declared
+    accumulate rule that matches -- which is what every other path in the repo computes for the same
+    contraction. A second derivation here would be a second answer to one question, and on a target
+    declaring several rules for one operand (atlas declares both bf16 and f32 for fp8_e4m3, which is a
+    real capability rather than an ambiguity) the two would disagree.
+
+    Falls back to the corpus binding's accumulator only when no unit accepts the operand at all, and
+    raises when there is no fallback either: a member whose accumulator is unknown cannot be built,
+    and guessing one emits a capsule that measures arithmetic the target does not perform.
+    """
+    from merlin.targetgen import compute_units as _cu
+    from merlin.targetgen.routing import OpDemand, _legal_on        # noqa: PLC2701 -- one predicate
+    from merlin.targetgen.target_registry import load_contract
+
+    demand = OpDemand(op="matmul", in_fmt=operand, weight_fmt=operand, site="encoding_probe")
+    try:
+        units = list(_cu.compute_units(load_contract(target)))
+    except Exception:                              # noqa: BLE001 -- an unreadable contract is no answer
+        units = []
+    for unit in (_cu.effective(u, units) for u in units):
+        legal, acc = _legal_on(unit, demand)
+        if legal and acc:
+            return str(acc)
+    if fallback:
+        return str(fallback)
+    raise ValueError(
+        f"no unit of {target!r} declares an accumulate rule for operand {operand!r}, and no corpus "
+        f"binding accumulator is available; an encoding member cannot be built without knowing which "
+        f"datapath it accumulates in")
+
+
 def _materialize_performance_entry(entry: dict, binding) -> dict:
     """Resolve a performance member onto a runnable direct corpus path.
 
@@ -1760,7 +1860,21 @@ def _materialize_performance_entry(entry: dict, binding) -> dict:
         raise ValueError("performance materialization needs binding.target")
     binding_operand = getattr(binding, "operand_dtype", None)
     binding_accum = getattr(binding, "accum_dtype", None)
-    if binding_operand and binding_accum:
+    declared = entry.pop("_encoding_variant", None)
+    if declared:
+        # AN ENCODING FAMILY'S WHOLE CONTENT IS THAT ITS MEMBERS DIFFER HERE. This function otherwise
+        # overwrites `operand_dtype` with the target's single corpus binding, which is right for every
+        # other family -- they compare geometry or fusion at ONE datapath and must not drift off it --
+        # and fatal for an L6_global comparison: both members would collapse onto the same encoding and
+        # the differential would read "no effect" for a lever that was never exercised.
+        #
+        # The accumulate format is DERIVED for that operand rather than carried over from the binding:
+        # an accumulator belongs to the datapath the operand feeds, and pairing one encoding's operand
+        # with another's accumulator describes a machine that does not exist.
+        operand_dtype = str(declared)
+        accum_dtype = _accum_for_encoding(target, operand_dtype, binding_accum)
+        datatype_basis = "declared_encoding_variant"
+    elif binding_operand and binding_accum:
         # This is the binding _write_capsule will actually consume, derived by
         # corpus_spec from the target experiment + numeric profile. Prefer it
         # over re-deriving through a second capability-manifest representation.
@@ -1893,6 +2007,7 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
         axes = sweep.get("axes") or {}
         if not isinstance(axes, dict) or not axes:
             raise ValueError(f"sweep {sweep_id!r} declares no axes")
+        encodings = target_encodings(str(getattr(binding, "target", "") or ""))
 
         # Resolve each axis to concrete extents, preserving declaration order so
         # the generated corpus is reproducible.
@@ -1959,7 +2074,16 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
             for variant in variants:
                 entry = copy.deepcopy(base)
                 entry.update(combo)
-                entry.update(_render_variant(variant, combo))
+                rendered = _render_variant(variant, combo)
+                # An `operand_dtype: encoding<N>` variant names an encoding POSITIONALLY, so the shared
+                # template never writes a dtype down. Resolved here, where the target is known, and
+                # stashed under a private key so `_materialize_performance_entry` can tell "this member
+                # chose its encoding" from "this member inherited the corpus binding".
+                enc_token = rendered.get("operand_dtype")
+                if isinstance(enc_token, str) and enc_token.startswith("encoding"):
+                    rendered["operand_dtype"] = resolve_encoding(enc_token, encodings)
+                    rendered["_encoding_variant"] = rendered["operand_dtype"]
+                entry.update(rendered)
                 entry["name"] = template.format(id=sweep_id, i=index, **{**combo, **variant})
                 index += 1
                 entry.setdefault("source_role", "derived_sweep")
@@ -1989,6 +2113,40 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                         })
                         continue
                 generated.append(entry)
+
+    # A GROUP REDUCED TO ONE MEMBER IS NOT A COMPARISON. The declaration-time check above refuses a
+    # group AUTHORED with a single member, but a member can also disappear afterwards: materialization
+    # is allowed to fail per member and record an error, and the survivors were shipped anyway. A lone
+    # member then carries a `comparison_group` and a DIFFERENTIAL claim with nothing to difference
+    # against -- which is the same silent vacuity the single-member check exists to prevent, arriving by
+    # a different route. Measured while opening the encoding family: one target's second encoding could
+    # not resolve its accumulator, and the first shipped alone.
+    if generated:
+        members: dict[str, int] = {}
+        for e in generated:
+            g = e.get("comparison_group")
+            name = g.get("name") if isinstance(g, dict) else g
+            if name:
+                members[str(name)] = members.get(str(name), 0) + 1
+        lonely = {g for g, n in members.items() if n < 2}
+        if lonely:
+            kept = []
+            for e in generated:
+                g = e.get("comparison_group")
+                name = str(g.get("name") if isinstance(g, dict) else g or "")
+                if name in lonely:
+                    fam = (e.get("performance") or {}).get("family")
+                    if errors is not None:
+                        errors.append({
+                            "family": fam, "member": e.get("name", "?"), "status": "error",
+                            "error_type": "IncompleteComparisonGroup",
+                            "detail": (f"comparison group {name!r} kept only this member; a "
+                                       f"differential needs both, so it is dropped rather than "
+                                       f"shipped as a comparison against nothing"),
+                        })
+                    continue
+                kept.append(e)
+            generated = kept
 
     return entries + generated
 

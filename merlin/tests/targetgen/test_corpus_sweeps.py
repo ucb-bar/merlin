@@ -558,17 +558,25 @@ def test_shipped_targets_all_consume_the_same_claim_separated_perf_template():
     assert claims == {"PREDICTS", "DIFFERENTIAL"}
     assert all(s["base"]["cat"] == "_perf" and s["base"]["label"] == "dev"
                for s in shared["sweeps"])
-    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC", "PF", "PL"]
-    # `blocked_unimplemented` is now EMPTY, and that is the point of the block rather than a reason to
-    # delete it: it exists so a family whose lever cannot be emitted is declared and skipped with
-    # evidence instead of quietly missing. Both former entries turned out to be stale reasons, not
+    # PG last: the encoding family occupies `L6_global`, the rung that had a level name and no family.
+    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC", "PF", "PL", "PG"]
+    # `blocked_unimplemented` exists so a family whose lever cannot be emitted is declared and skipped
+    # with evidence instead of quietly missing. The two entries it originally held turned out to be
+    # stale reasons, not
     # missing capabilities -- PF needed the fused member to be able to name its bias operand, and PL
     # needed nothing at all beyond noticing that `resident_reuse` already varies how many tiles
     # amortize one weight push. PC and PS remain declared as SWEEPS and skip at their own gates (PS's
     # traits are refuted, PC's emitter does not exist), which is a different and honest state.
-    assert shared.get("blocked_unimplemented") in ([], None, {}), (
-        f"expected no blocked family, got "
-        f"{[r.get('family') for r in (shared.get('blocked_unimplemented') or [])]}")
+    # PB is the ONE family that stays blocked, and deliberately: `L4_boundary` needs cycles attributed
+    # per lane, which the capsule path cannot do (it runs the host lane in this process). It is declared
+    # with its full claim contract so the rung is not simply absent -- an absent rung and an
+    # unaffordable one read the same in a ladder, and only one of them is true here. Any OTHER family
+    # appearing in this list is still a regression, which is what the name check below holds.
+    assert [b["family"] for b in (shared.get("blocked_unimplemented") or [])] == ["PB"], (
+        f"only the boundary family may be blocked; got "
+        f"{[b.get('family') for b in (shared.get('blocked_unimplemented') or [])]}")
+    assert (shared["blocked_unimplemented"][0]["performance"]["emitter"]["knobs"]["needs"]
+            == "per_lane_cycle_accounting")
     assert all("source" not in s["base"] and "operand_dtype" not in s["base"]
                for s in shared["sweeps"])
 
@@ -649,14 +657,24 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
     # channel tagged with the reservation-station id. So the trait is now derived True and PC's gate
     # PASSES. It is blocked instead on its emitter (`new:instruction_reorder`), which is honest: the
     # measurement is admissible and the thing that would generate the pair does not exist yet.
-    assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [("PS", "refuted")]
+    #
+    # PG is the encoding lever, and it is refuted here for the third distinct reason: this target's
+    # contraction family declares ONE operand encoding, so there is no choice to price. That is an
+    # answer about the hardware rather than a gap in the tooling -- which is exactly why the trait
+    # refutes rather than reporting itself unestablished.
+    assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [("PS", "refuted"),
+                                                                         ("PG", "refuted")]
     assert skips[0]["gate"]["facts"]["self_hosted_program"]["satisfied"] is False
     assert skips[0]["gate"]["facts"]["explicit_completion"]["satisfied"] is True
+    assert skips[1]["gate"]["facts"]["multiple_operand_encodings"]["satisfied"] is False
     assert blocked == [], (
         f"no family should be blocked at the emitter gate now; got "
         f"{[row['family'] for row in blocked]}")
     assert errors == []
-    assert not (profile["_performance_template"].get("blocked_unimplemented") or [])
+    # Only the boundary family, and only because per-lane cycle accounting does not exist -- see the
+    # shared-template test above. A second entry here would mean a family lost its emitter.
+    assert [b["family"] for b in
+            (profile["_performance_template"].get("blocked_unimplemented") or [])] == ["PB"]
     capsule, mlir = GC.CS.build(entries[0], binding)
     assert capsule["numeric_policy"] == {"compare": "exact_int", "dtype": "i32"}
     assert capsule["label"] == "dev" and "merlin_iface.matmul" in mlir
