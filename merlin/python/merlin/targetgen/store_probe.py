@@ -44,10 +44,21 @@ class ProbePoint:
     ran: bool
     detail: str = ""
     seconds: float | None = None
+    #: What KIND of not-ran this was. ``pass`` / ``wrong`` / ``declined``.
+    #:
+    #: THE DISTINCTION IS THE WHOLE POINT AND CONFLATING IT INVENTS A CAPACITY. A point that RAN and
+    #: produced wrong values says the backend miscomputes that shape; it does NOT say the device could
+    #: not hold it. Only a point that could not run at all -- an error, a timeout, no output -- is
+    #: evidence about capacity. Measured: the first non-passing point on the device this was written
+    #: for came back "does not compute the declared operation within tolerance", i.e. the device ran it
+    #: and answered wrongly, and reading that as a store boundary would have refuted two candidate
+    #: capacities on evidence that is not about capacity at all.
+    verdict: str = "declined"
 
     def to_dict(self) -> dict[str, Any]:
         return {"m": self.m, "k": self.k, "n": self.n, "elements": self.elements,
-                "ran": self.ran, "detail": self.detail[:300], "seconds": self.seconds}
+                "ran": self.ran, "verdict": self.verdict, "detail": self.detail[:300],
+                "seconds": self.seconds}
 
 
 @dataclass
@@ -57,7 +68,8 @@ class DeclineBracket:
     target: str
     dtype: str
     largest_ran: int | None = None      # elements
-    smallest_declined: int | None = None
+    smallest_declined: int | None = None      # could not run AT ALL -- the only capacity evidence
+    smallest_wrong: int | None = None         # ran and miscomputed -- a correctness boundary, not this
     points: list[ProbePoint] = field(default_factory=list)
     unavailable: str = ""
 
@@ -201,22 +213,31 @@ def probe(target: str, *, dtype: str, edge: int, package_dir, model_ext: str = "
             # and L1 are the INTEGER reference and are skipped by design -- so the probe reported the
             # device refusing 6,144 elements when nothing had asked it anything. A skipped or
             # unavailable tier is not evidence about the hardware; only a tier that ran is.
-            ok, detail = False, "no tier produced a verdict"
+            ok, detail, verdict = False, "no tier produced a verdict", "declined"
             for _t in sorted(adapters, key=lambda t: _TIER_ORDER.index(str(t))
                              if str(t) in _TIER_ORDER else len(_TIER_ORDER)):
                 status = str(((tiers.get(_t) or {})).get("status") or "")
                 if status in ("", "skipped", "unavailable", "not_run", "inapplicable"):
                     continue
                 ok = status == "pass"
-                detail = "" if ok else f"tier {_t}: {status}"
+                # A GRADED FAIL MEANS IT RAN. The device accepted the layer, executed it and answered
+                # wrongly, which is a fact about the backend's arithmetic at this shape and not about
+                # what the store can hold.
+                verdict = "pass" if ok else ("wrong" if status == "fail" else "declined")
+                detail = "" if ok else f"tier {_t}: {status}: " + str(
+                    ((tiers.get(_t) or {})).get("reason") or "")[:160]
                 break
         except Exception as exc:                # noqa: BLE001 — a decline is an answer; record it
             ok, detail = False, f"{type(exc).__name__}: {str(exc)[:200]}"
         pt = ProbePoint(m=m, k=k, n=n, elements=elems, ran=ok, detail=detail,
-                        seconds=round(time.time() - started, 2))
+                        seconds=round(time.time() - started, 2), verdict=verdict)
         out.points.append(pt)
         if ok:
             out.largest_ran = elems if out.largest_ran is None else max(out.largest_ran, elems)
+        elif verdict == "wrong":
+            out.smallest_wrong = (elems if out.smallest_wrong is None
+                                  else min(out.smallest_wrong, elems))
+            break        # a miscomputed point ends the sweep -- every larger one inherits the defect
         else:
             out.smallest_declined = (elems if out.smallest_declined is None
                                      else min(out.smallest_declined, elems))
@@ -255,13 +276,21 @@ def elements_for_bytes(nbytes: int, dtype: str) -> int | None:
 def summarize(bracket: DeclineBracket, candidates: dict | None = None) -> str:
     """A human-readable verdict, including what it does NOT establish."""
     lines = [f"decline probe — {bracket.target} @ {bracket.dtype}"]
+    _mark = {"pass": "ran ", "wrong": "WRONG", "declined": "DECL"}
     for p in bracket.points:
-        lines.append(f"  {'ran ' if p.ran else 'DECL'} m{p.m} k{p.k} n{p.n}  "
-                     f"{p.elements:>10,} elements  {p.seconds}s  {p.detail[:90]}")
+        lines.append(f"  {_mark.get(p.verdict, 'DECL'):5s} m{p.m} k{p.k} n{p.n}  "
+                     f"{p.elements:>10,} elements  {p.seconds}s  {p.detail[:110]}")
     if bracket.unavailable:
         lines.append(f"  UNDECIDED: {bracket.unavailable}")
     elif bracket.decided:
         lines.append(f"  boundary in ({bracket.largest_ran:,}, {bracket.smallest_declined:,}] elements")
+    elif bracket.smallest_wrong is not None and bracket.smallest_declined is None:
+        lines.append(f"  UNDECIDED about CAPACITY: the sweep stopped at {bracket.smallest_wrong:,} "
+                     f"elements because the backend MISCOMPUTED that shape, not because the device "
+                     f"could not hold it. That is a correctness boundary and it refutes no capacity: "
+                     f"what it establishes is that the store holds at least "
+                     f"{(bracket.largest_ran or 0):,} elements, and that this backend needs fixing at "
+                     f"the shape above before the capacity question can be asked at all")
     elif bracket.smallest_declined is not None:
         lines.append(f"  UNDECIDED: the FIRST point tried already declined "
                      f"({bracket.smallest_declined:,} elements), so nothing brackets the boundary from "
