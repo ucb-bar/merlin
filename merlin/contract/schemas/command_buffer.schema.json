@@ -98,7 +98,11 @@
               "ATTENTION_FULL",
               "ROPE",
               "CONV",
-              "MATMUL_BATCHED"
+              "MATMUL_BATCHED",
+              "BIAS_ADD",
+              "CONV2D",
+              "MOVEMENT",
+              "ATTENTION_PV"
             ]
           },
           "operands": {

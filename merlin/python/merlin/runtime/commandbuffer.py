@@ -68,6 +68,42 @@ def apply_pool_stage(t: Tensor, stage: str, attrs: dict[str, Any], *, op: str) -
                             pad_value=p["pad_value"])
 
 
+BIAS_STAGES = ("bias_add", "bias")
+
+
+def bias_tensor_name(operands: dict[str, Any], attrs: dict[str, Any], *, op: str) -> str:
+    """Name of the bias tensor a ``bias_add``/``bias`` stage consumes. One definition, all engines.
+
+    The name is carried in TWO places in this tree, and both are legitimate:
+
+    * ``attributes["bias"]`` -- what a buffer that came through the interface grammar carries.
+      ``merlin_iface.commit`` declares ``bias`` as a property, so the ingest lands it beside
+      ``epilogue`` in the attributes (see ``interface_emit``/``ir_ingest``).
+    * ``operands["bias"]`` -- what a buffer an emitter built directly carries, because there the
+      bias is a named operand slot like any other (``linalg_lower``, ``runtime_lowering``, and the
+      whole-op ``BIAS_ADD`` whose operand keys the grammar table itself spells ``["src", "bias"]``).
+
+    Reading only one of them is how a bias gets DROPPED IN SILENCE. The reference/simulate engines
+    read only the operands while the golden engine read only the attributes, so on a fused
+    matmul+bias capsule the golden added the bias and the reference did not -- and the capsule
+    failed L0 with every element off by exactly its column's bias, which reads like a rounding or
+    ordering defect rather than a stage that never ran.
+
+    FAIL CLOSED when neither carries a name: a declared stage with no operand is not a no-op, it is
+    an unanswerable command. Skipping it would make two engines that both skip it AGREE on a value
+    neither computed -- the same silent-pass hazard the unknown-stage branches guard against.
+    """
+    for source in (attrs, operands):
+        name = (source or {}).get("bias")
+        if name:
+            return str(name)
+    raise ValueError(
+        f"{op} declares a bias epilogue stage but names no bias tensor in either its operands or "
+        f"its attributes. The stage cannot be executed and is NOT skipped: a dropped bias makes "
+        f"every output element differ from the golden by its own column's bias, which is "
+        f"indistinguishable from an arithmetic defect")
+
+
 def load_command_buffer(path: str | Path) -> dict[str, Any]:
     """Load a command-buffer JSON file."""
     return json.loads(Path(path).read_text(encoding="utf-8"))

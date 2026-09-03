@@ -40,7 +40,7 @@ def materialize_capsule_leaves(capsule: dict) -> dict[str, Tensor]:
 # im2col (shared by golden + runner harness for conv2d)
 # --------------------------------------------------------------------------------------------
 from merlin.runtime.commandbuffer import (  # noqa: E402  (single source of truth)
-    apply_pool_stage, conv_im2col, conv_out_dims)
+    BIAS_STAGES, apply_pool_stage, bias_tensor_name, conv_im2col, conv_out_dims)
 
 
 def im2col(ifm: Tensor, ci: int, kh: int, kw: int, *, stride, padding, dilation,
@@ -102,12 +102,11 @@ def _narrow_to_dtype(t: Tensor, dtype: str) -> Tensor:
     return Tensor(t.shape, out, dtype)
 
 
-def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor]) -> Tensor:
+def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor],
+                    operands: dict | None = None) -> Tensor:
     for stage in attrs.get("epilogue", []):
-        if stage in ("bias_add", "bias"):
-            bname = attrs.get("bias")
-            if bname:
-                t = t.add_bias(env[bname])
+        if stage in BIAS_STAGES:
+            t = t.add_bias(env[bias_tensor_name(operands or {}, attrs, op="epilogue")])
         elif stage == "requant":
             t = t.requant(int(attrs.get("requant_shift", _DEFAULT_REQUANT_SHIFT)))
         elif stage == "acc_scale":
@@ -585,6 +584,29 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
                 return s["name"]
         raise KeyError(f"no input with role {role!r}")
 
+    def _bias_name() -> str:
+        """The bias tensor of a bias-carrying op, DERIVED from the capsule's own declaration.
+
+        Three spellings are in the corpus and all of them are the capsule stating the same fact:
+        an explicit ``attributes.bias``; a ``bias`` ROLE on one of the declared inputs; or, for the
+        torch-exported slices, the trailing entry of ``attributes.arg_order`` (those declare every
+        operand ``role: input`` and carry the order positionally instead). Resolve in that order and
+        raise otherwise -- the caller only asks when the op it is evaluating is one whose NAME
+        declares that a bias happens, so "no bias here" is not an answer.
+        """
+        named = attrs.get("bias")
+        if named:
+            return str(named)
+        for s in capsule["inputs"]:
+            if s.get("role") == "bias":
+                return s["name"]
+        order = [str(a) for a in (attrs.get("arg_order") or [])]
+        if order:
+            return order[-1]
+        raise KeyError(
+            f"capsule declares op {op!r}, whose name states that a bias is added, but names no bias "
+            f"tensor: no `attributes.bias`, no input with role 'bias', and no `arg_order`")
+
     if op in ("matmul", "linear"):
         lhs = env[attrs.get("lhs", _pick("input"))]
         w = env[attrs.get("weight", _pick("weight"))]
@@ -606,7 +628,7 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         stages = list(attrs.get("epilogue") or [])
         if not any(s in ("bias_add", "bias") for s in stages):
             stages.insert(0, "bias_add")
-        t = _apply_epilogue(lhs.matmul(w), {**attrs, "epilogue": stages}, env)
+        t = _apply_epilogue(lhs.matmul(w), {**attrs, "epilogue": stages, "bias": _bias_name()}, env)
         return {out_name: t.to_list()}
 
     if op == "bias_add":
@@ -615,7 +637,8 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         # cannot disagree about what adding a bias means, which is the whole basis of the comparison.
         src = env[attrs.get("src", _pick("input"))]
         stages = list(attrs.get("epilogue") or []) or ["bias_add"]
-        return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages}, env).to_list()}
+        return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages,
+                                                 "bias": _bias_name()}, env).to_list()}
 
     if op == "conv2d":
         ifm = env[attrs["ifm"]]

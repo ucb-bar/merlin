@@ -17,8 +17,9 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .commandbuffer import (apply_pool_stage, conv_im2col, conv_out_dims,
-                            materialize_inputs, pool_params, validate_command_buffer)
+from .commandbuffer import (BIAS_STAGES, apply_pool_stage, bias_tensor_name, conv_im2col,
+                            conv_out_dims, materialize_inputs, pool_params,
+                            validate_command_buffer)
 from .metrics import Metrics
 from .tensor import Tensor
 
@@ -155,10 +156,8 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             shift = int(attrs.get("requant_shift", default_shift))
             t = env[src]
             for stage in attrs.get("epilogue", []):
-                if stage == "bias_add" or stage == "bias":
-                    bias_name = ops.get("bias")
-                    if bias_name is not None:
-                        t = t.add_bias(env[bias_name])
+                if stage in BIAS_STAGES:
+                    t = t.add_bias(env[bias_tensor_name(ops, attrs, op=f"COMMIT {dst!r}")])
                 elif stage == "requant":
                     t = t.requant(shift)
                 elif stage == "acc_scale":
@@ -215,6 +214,26 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             metrics.bytes_moved += a.nbytes + b.nbytes + t.nbytes
             metrics.cycles += len(t.data)
             trace.append({"name": "vector_map", "object": dst, "count": len(t.data)})
+
+        elif op == "BIAS_ADD":
+            # The UNFUSED half of an epilogue-fusion pair: the per-column add a COMMIT otherwise runs
+            # as a `bias_add` stage, standing alone so the fused member has an unfused comparand. Shares
+            # `Tensor.add_bias` with the fused path so the two sides of a fusion comparison cannot drift
+            # into being two different arithmetics. Costed like the elementwise family it belongs to
+            # (one cycle per output element, both operands read, the result written).
+            src, dst = ops["src"], ops["dst"]
+            a = env[src]
+            b = env[bias_tensor_name(ops, attrs, op=f"BIAS_ADD {dst!r}")]
+            t = a.add_bias(b)
+            if attrs.get("output_dtype", "i32") == "i8":
+                t = t.to_i8()
+            env[dst] = t
+            outputs[dst] = t.to_list()
+            metrics.bytes_read += a.nbytes + b.nbytes
+            metrics.bytes_written += t.nbytes
+            metrics.bytes_moved += a.nbytes + b.nbytes + t.nbytes
+            metrics.cycles += len(t.data)
+            trace.append({"name": "bias_add", "object": dst, "count": len(t.data)})
 
         elif op == "BATCHED_MATMUL":
             # O[b] = A[b] @ W[b] for a batch of independent 2-D matmuls (weight differs per batch, so no

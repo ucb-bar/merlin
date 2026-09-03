@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..commandbuffer import materialize_inputs
+from ..commandbuffer import BIAS_STAGES, bias_tensor_name, materialize_inputs
 from ..simulator import base_matmul_cycles  # noqa: F401  (cycle model stays Python-side)
 
 
@@ -154,10 +154,8 @@ def generate_driver(cb: dict[str, Any], nharts: int = 4) -> str:
             stages = list(attrs.get("epilogue", []))
             stmts = []
             for stage in stages:
-                if stage in ("bias_add", "bias"):
-                    bias = ops.get("bias")
-                    if bias is not None:
-                        stmts.append(f"x += T_{bias}[j];")
+                if stage in BIAS_STAGES:
+                    stmts.append(f"x += T_{bias_tensor_name(ops, attrs, op=f'COMMIT {dst!r}')}[j];")
                 elif stage == "requant":
                     if shift > 0:
                         stmts.append(f"x = (x + (1 << ({shift} - 1))) >> {shift};")

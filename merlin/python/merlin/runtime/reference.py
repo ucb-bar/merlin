@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .commandbuffer import apply_pool_stage, materialize_inputs
+from .commandbuffer import (BIAS_STAGES, apply_pool_stage, bias_tensor_name,
+                            materialize_inputs)
 from .tensor import Tensor
 
 
@@ -19,7 +20,7 @@ from .tensor import Tensor
 #: wrote its output" — indistinguishable from a real dropped store, and unfixable by any submission.
 #: Fail closed instead (see :class:`UnmodeledOp`).
 MODELED_OPCODES = frozenset({
-    "RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "VECTOR_MAP", "VREDUCE",
+    "RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "VECTOR_MAP", "VREDUCE", "BIAS_ADD",
 })
 
 #: Opcodes with NO effect on committed values, correctly ignored here rather than "unmodeled". ``EVICT``
@@ -92,10 +93,8 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
         t = lhs.matmul(rhs)
         shift = int(attrs.get("requant_shift", default_shift))
         for stage in attrs.get("epilogue", []):
-            if stage in ("bias_add", "bias"):
-                bias_name = ops.get("bias")
-                if bias_name is not None:
-                    t = t.add_bias(env[bias_name])
+            if stage in BIAS_STAGES:
+                t = t.add_bias(env[bias_tensor_name(ops, attrs, op=f"COMMIT {ops.get('dst')!r}")])
             elif stage == "requant":
                 t = t.requant(shift)
             elif stage == "acc_scale":
@@ -151,6 +150,18 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             env[ops["dst"]] = t
         elif op == "VREDUCE":
             env[ops["dst"]] = env[ops["src"]].reduce_sum()
+        elif op == "BIAS_ADD":
+            # The UNFUSED half of an epilogue-fusion pair: the same per-column add that a COMMIT
+            # runs as a `bias_add` stage, standing alone as its own op so the fused member has
+            # something to be compared against. It shares `Tensor.add_bias` with the fused path on
+            # purpose -- a separate implementation here could differ from the stage it is supposed
+            # to be the unfused equivalent of, and the fusion comparison would then be measuring
+            # two different arithmetics rather than one lever.
+            t = env[ops["src"]].add_bias(env[bias_tensor_name(ops, attrs, op=f"BIAS_ADD {ops.get('dst')!r}")])
+            if attrs.get("output_dtype", "i32") == "i8":
+                t = t.to_i8()
+            env[ops["dst"]] = t
+            outputs[ops["dst"]] = t.to_list()
     for name, spec in cb.get("tensors", {}).items():
         if spec.get("role") == "output" and name in env and name not in outputs:
             outputs[name] = env[name].to_list()
