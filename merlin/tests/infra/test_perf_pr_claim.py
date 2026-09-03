@@ -175,8 +175,11 @@ def test_the_real_corpus_preflights_ready_with_three_derived_bands():
     assert list(result["cohort"]["bands"]) == ["fits_double", "fits_single", "spills"]
     assert result["cohort"]["bands"]["spills"]["K_values"] == [8208, 12288, 16384]
     assert len(result["expected_identities"]) == 9 * len(REPLICATES) * 2
-    # The gap this analyzer exists to close: the profile does not yet freeze it.
-    assert result["contract_frozen"] is False
+    # The gap this analyzer existed to close is now closed: the profile freezes the contract, so a
+    # decision reached through it is contractually bound rather than merely reproducible. Asserted
+    # True rather than "whatever the profile says" -- reading the declaration to build the
+    # expectation would pass in both directions and catch nothing.
+    assert result["contract_frozen"] is True
 
 
 def test_a_declared_acceptance_block_must_be_the_one_this_analyzer_implements(descriptors):
