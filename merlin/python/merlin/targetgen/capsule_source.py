@@ -56,6 +56,24 @@ def _m2m_python() -> Path:
     return _m2m_dir() / ".venv" / "bin" / "python"
 
 
+def _stderr_cause(stderr: str, *, limit: int = 1800) -> str:
+    """The part of ``stderr`` that explains a failure, rather than whatever came last.
+
+    A python subprocess interleaves warnings with tracebacks, so the tail of stderr is often a
+    warning emitted after the real error -- which is exactly how a capture failure came to be
+    attributed to a benign LSTM contiguity UserWarning. So: prefer the LAST traceback, and fall back
+    to the tail only when there is none, saying which was used either way.
+    """
+    text = str(stderr or "")
+    if not text.strip():
+        return "(the worker wrote nothing to stderr)"
+    marker = "Traceback (most recent call last)"
+    idx = text.rfind(marker)
+    if idx >= 0:
+        return "--- last traceback ---\n" + text[idx:idx + limit]
+    return "--- stderr tail (no traceback found) ---\n" + text[-limit:]
+
+
 class M2MUnavailable(RuntimeError):
     """The m2m venv (torch) or the model2MLIR repo could not be located/run — fail closed, never fake."""
 
@@ -461,8 +479,18 @@ class PytorchRefSource:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout, env=env)
         meta_p = workdir / "meta.json"
         if proc.returncode != 0 or not meta_p.exists():
-            raise M2MUnavailable(f"m2m capture failed (rc={proc.returncode}) for op {op!r}/{dtype}:\n"
-                                 f"{proc.stderr[-1500:]}")
+            # ⚠️ REPORT THE CAUSE, NOT THE TAIL. This used to print `stderr[-1500:]`, and a capture
+            # that emits warnings AFTER its traceback therefore reported the warnings. Measured on
+            # the lstmnetvit roster model: the failure was attributed to a benign
+            # "tensor attributes self.net.lstm._flat_weights[...] are not part of a single contiguous
+            # chunk of memory" UserWarning, which is not an error at all and sent a reader looking at
+            # the wrong thing. The two conditions are also different failures and were reported as
+            # one: a non-zero rc means the worker died, a missing meta.json after rc=0 means it
+            # exited cleanly without producing a capture.
+            why = ("worker exited non-zero" if proc.returncode != 0
+                   else "worker exited 0 but wrote no meta.json")
+            raise M2MUnavailable(f"m2m capture failed for op {op!r}/{dtype}: {why} "
+                                 f"(rc={proc.returncode})\n{_stderr_cause(proc.stderr)}")
         meta = json.loads(meta_p.read_text())
         if not meta.get("ok") or meta.get("opaque", -1) != 0:
             raise M2MUnavailable(
