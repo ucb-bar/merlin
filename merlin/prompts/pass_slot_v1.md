@@ -25,8 +25,10 @@ The current source is in `current_pass.py` in your working directory. It is the 
 
 ## Hard rules
 
-1. **Return the COMPLETE new module** in a single fenced ```python block. It replaces the file whole.
-   Nothing outside the block is read.
+1. **Write the COMPLETE new module to `new_pass.py`** in your working directory. It replaces the
+   module whole, so it must be the entire file, not a patch. (A single fenced ```python block in your
+   reply is also accepted, but the file is preferred — the module is ~15 KB and a reply that long is
+   liable to be truncated.)
 2. **Change only this module.** It will be placed in an overlay where every other module resolves to
    the real checkout. A change that needs a second file edited cannot be applied and will be refused.
 3. **Numerics must not move.** The build is run against a golden and must stay bit-exact. A pass that

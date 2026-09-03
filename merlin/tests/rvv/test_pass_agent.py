@@ -179,3 +179,73 @@ def test_run_pass_slot_turns_a_refused_turn_into_an_honest_verdict(tmp_path):
                                  runner=lambda **kw: {"text": "no.", "usage": {}})
     proposal, verdict = run_pass_slot(_Action(), propose=propose)
     assert proposal is None and not verdict.accepted and verdict.stage == "no_proposal"
+
+
+def test_the_agent_is_launched_with_stdin_closed(tmp_path, monkeypatch):
+    """Headless `claude -p` waits on stdin for piped input, then exits 1 with "no stdin data received
+    in 3s". Inherited stdin cost a full 561 s turn and presented as an agent failure rather than a
+    launch bug, so the launch must close stdin explicitly."""
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = json.dumps({"result": "ok\n```python\nX = 1\n```\n", "usage": {}})
+        stderr = ""
+
+    def _fake_run(argv, **kw):
+        seen.update(kw)
+        return _Proc()
+
+    monkeypatch.setattr(pa.subprocess, "run", _fake_run)
+    monkeypatch.setattr(pa, "sandbox_argv", lambda ws: ["bwrap", "--bind", str(ws), str(ws)])
+    att = pa.propose_pass(_Action(), module="m", current_source="x=1\n",
+                          workspace=tmp_path / "ws")
+    assert att.proposal is not None, att.error
+    assert seen.get("stdin") is pa.subprocess.DEVNULL, "stdin must be closed, not inherited"
+
+
+def test_the_workspace_file_is_the_primary_proposal_channel(tmp_path):
+    """The module is ~15 KB and a real rewrite came back at ~33 KB, so a fenced block in the reply is
+    liable to be truncated -- and an agent with a writable workspace naturally writes a file anyway
+    (the first real turn wrote exactly this name unprompted). Refusing it would throw away a completed
+    turn over a formatting preference."""
+    ws = tmp_path / "ws"
+
+    def _runner(**kw):
+        (kw["workspace"] / pa.PROPOSAL_FILENAME).write_text("FROM_FILE = 1\n")
+        return {"text": "I wrote the new module to new_pass.py.", "usage": {}}
+
+    att = pa.propose_pass(_Action(), module="m", current_source="old\n", workspace=ws,
+                          require_sandbox=False, runner=_runner)
+    assert att.proposal is not None and att.proposal.source == "FROM_FILE = 1\n"
+
+
+def test_the_file_wins_over_a_fenced_block(tmp_path):
+    """It cannot be truncated by a reply limit, so it is the more trustworthy of the two."""
+    def _runner(**kw):
+        (kw["workspace"] / pa.PROPOSAL_FILENAME).write_text("FROM_FILE = 1\n")
+        return {"text": "```python\nFROM_BLOCK = 1\n```", "usage": {}}
+
+    att = pa.propose_pass(_Action(), module="m", current_source="old\n",
+                          workspace=tmp_path / "ws", require_sandbox=False, runner=_runner)
+    assert att.proposal.source == "FROM_FILE = 1\n"
+
+
+def test_a_turn_that_wrote_only_the_file_and_said_nothing_still_counts(tmp_path):
+    def _runner(**kw):
+        (kw["workspace"] / pa.PROPOSAL_FILENAME).write_text("FROM_FILE = 1\n")
+        return {"text": "", "usage": {}}
+
+    att = pa.propose_pass(_Action(), module="m", current_source="old\n",
+                          workspace=tmp_path / "ws", require_sandbox=False, runner=_runner)
+    assert att.proposal is not None and att.error is None
+
+
+def test_an_empty_workspace_file_falls_back_to_the_block(tmp_path):
+    def _runner(**kw):
+        (kw["workspace"] / pa.PROPOSAL_FILENAME).write_text("   \n")
+        return {"text": "```python\nFROM_BLOCK = 1\n```", "usage": {}}
+
+    att = pa.propose_pass(_Action(), module="m", current_source="old\n",
+                          workspace=tmp_path / "ws", require_sandbox=False, runner=_runner)
+    assert att.proposal.source == "FROM_BLOCK = 1\n"

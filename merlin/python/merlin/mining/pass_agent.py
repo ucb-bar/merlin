@@ -116,7 +116,26 @@ def sandbox_argv(ws: Path) -> list[str] | None:
             + ["--bind", str(ws), str(ws)])
 
 
-def _extract_module_source(text: str) -> str:
+#: Where the agent is asked to write the new module. A FILE, not a fenced block in the reply, is the
+#: primary channel: the module here is ~15 KB and a rewrite came back at ~33 KB, which is large enough
+#: that a reply is liable to be truncated -- and an agent with a writable workspace naturally writes a
+#: file anyway (observed on the first real turn, which wrote exactly this name unprompted).
+PROPOSAL_FILENAME = "new_pass.py"
+
+
+def _extract_module_source(text: str, workspace: "Path | None" = None) -> str:
+    """The proposed source: the workspace file if the agent wrote one, else a fenced block.
+
+    Both are accepted because both are things the agent actually does, and refusing the file would
+    throw away a completed turn over a formatting preference. The file wins when present: it cannot be
+    truncated by a reply limit.
+    """
+    if workspace is not None:
+        f = Path(workspace) / PROPOSAL_FILENAME
+        if f.is_file():
+            body = f.read_text(encoding="utf-8")
+            if body.strip():
+                return body
     from ..common import agent_output
     return agent_output.extract_code_block(text, "python")
 
@@ -154,8 +173,12 @@ def propose_pass(action, *, module: str, current_source: str, workspace: Path,
             "--model", model, "--output-format", "json"]
         env = dict(os.environ)
         try:
+            # stdin=DEVNULL, not inherited. Headless `claude -p` waits on stdin for piped input and
+            # then exits 1 with "no stdin data received in 3s" -- which cost a full 561 s turn and
+            # looked like an agent failure rather than a launch bug. A detached/nohup parent has no
+            # usable stdin, so the prompt must arrive by argv alone and stdin must be closed.
             proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
-                                  cwd=str(ws), env=env)
+                                  cwd=str(ws), env=env, stdin=subprocess.DEVNULL)
         except subprocess.TimeoutExpired:
             return ProposalAttempt(None, module, version, model, sandbox is not None,
                                    error=f"proposer timed out after {timeout}s")
@@ -183,12 +206,13 @@ def propose_pass(action, *, module: str, current_source: str, workspace: Path,
     text = out.get("text") or ""
     usage = out.get("usage") or {}
     tp = out.get("transcript_path")
-    if not text.strip():
+    if not text.strip() and not (ws / PROPOSAL_FILENAME).is_file():
         return ProposalAttempt(None, module, version, model, sandbox is not None,
-                               usage=usage, error="proposer returned no text",
+                               usage=usage, error="proposer returned no text and wrote no "
+                                                  f"{PROPOSAL_FILENAME}",
                                transcript_path=tp)
     try:
-        source = _extract_module_source(text)
+        source = _extract_module_source(text, ws)
     except Exception as e:  # noqa: BLE001 - any extraction failure is an honest refusal, not a crash
         return ProposalAttempt(None, module, version, model, sandbox is not None, usage=usage,
                                error=f"no usable python block in the reply: {e}",
