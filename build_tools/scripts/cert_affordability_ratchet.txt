@@ -1,0 +1,26 @@
+# Capsules that demand L3 at a size over the affordability budget while declaring neither
+# `max_oracle_tier: L2` nor `extends`. THIS FILE MAY ONLY SHRINK.
+#
+# Measured 2026-09-02 with build_tools/scripts/check_cert_affordability.py --budget-s 900.
+# The cost law is 0.347 s per written element on a cycle-accurate oracle, from a calibration
+# ladder (r2 0.9998) and confirmed off-ladder to within 2%.
+#
+# These twelve are 108.5 of the corpus's predicted 125.1 L3 hours -- 87% of the bill -- while the
+# median capsule costs 89s. The remedy is a DECLARATION, not a smaller shape: pair each with an
+# affordable certified sibling and cap this one at L2 via `extends`, which is the split
+# conformance.py already derives and only three capsules currently use.
+#
+# predicted total if these twelve are capped at L2: 16.6h
+
+SY_regime_spills    # 90,964s, 262,144 written elements
+SY_model_tiny_llama    # 88,832s, 256,000 written elements
+OPM0_ffn_up    # 69,644s, 200,704 written elements
+OPM2_attn_proj    # 52,233s, 150,528 written elements
+SY_regime_fits_single    # 45,482s, 131,072 written elements
+OPM1_ffn_down    # 17,411s, 50,176 written elements
+OPM3_patch_embed    # 17,411s, 50,176 written elements
+AHD00_deep_epilogue_hidden_96x64x64    # 2,132s, 6,144 written elements
+AHD01_deep_epilogue_hidden_96x160x64    # 2,132s, 6,144 written elements
+PL01_k32    # 1,421s, 4,096 written elements
+PL03_k64    # 1,421s, 4,096 written elements
+SY_micro_model    # 1,421s, 4,096 written elements
