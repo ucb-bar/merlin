@@ -18,6 +18,14 @@ addressed all kt*nt tiles as simultaneously resident, asked for 16384 rows again
 simulator aborted three layers away in a range check — a failure indistinguishable from an unreachable
 oracle.
 
+Re-derived later against the capture store as it then stood, the imbalance had not moved: 1600
+contraction regions across the 17 requirement-deriving captures put **97.2% in spills**, 1.5% in
+``fits_double`` and 1.3% in ``fits_single`` (2106 regions and 96.1% with the held-out claim models
+folded back in). The FUNCTIONAL corpus had by then acquired two capsules outside ``fits_double``, but
+the generated PERFORMANCE corpus was still 16 of 16 ``fits_double`` with its largest member at 1.6% of
+capacity — so every performance coefficient was fitted where essentially none of the work lands. That
+is what :func:`reduction_depth_regimes` exists to fix.
+
 The regimes are not adjectives. Each one changes what the compiler is even allowed to do:
 
 ``fits_double``
@@ -325,4 +333,181 @@ def required_regime_extents(target: str, regimes, *, tile_dim: int, dtype: str |
     for regime in regimes:
         out[str(regime)] = extents_for_regime(target, str(regime), tile_dim=tile_dim, dtype=dtype,
                                               store=store, capacity=capacity)
+    return out
+
+
+#: The regimes a set of ALL-LIVE operands can occupy, ordered by the residency that produces them.
+#: ``fits_on_reuse`` is deliberately absent: it is defined by peak-live being smaller than the sum of
+#: all tensors, and a capsule's declared inputs are every one of them live at once, so the two numbers
+#: coincide and the band cannot exist. Said here once, so the search below can rely on the sequence
+#: being monotone in rows and the caller gets a REASON rather than an empty list.
+_ROWS_MONOTONE_ORDER = (FITS_DOUBLE, FITS_SINGLE, SPILLS)
+
+#: Why ``fits_on_reuse`` is never a point. Returned verbatim so a corpus gate can print the reason it
+#: found no capsule rather than reporting a silent absence.
+UNREACHABLE_ON_ALL_LIVE_INPUTS = (
+    "unreachable from a capsule's declared inputs: the harness materialises every declared input before "
+    "the program runs, so peak-live equals the sum of all tensors and the band that separates them "
+    "(rows_total > capacity >= rows_live) is empty by construction. Reaching it needs a program with a "
+    "DEAD tensor -- an allocator obligation, not an operand-size one -- which the capsule input "
+    "declaration cannot express"
+)
+
+
+def deep_k_rows(store, k: int, *, m_extent: int, n_extent: int, dtype: str | None = None) -> int | None:
+    """Operand rows a ``[m_extent, k] x [k, n_extent]`` contraction occupies, or ``None``.
+
+    The DEEP-K shape, and the reason the regime sweep uses it rather than growing the parallel extents:
+    the output is ``m_extent x n_extent`` whatever ``k`` is, so every point in the sweep drains the same
+    number of result bytes. That keeps the L3 timing cert affordable (its cost tracks output size) and,
+    more importantly, keeps the fill/drain intercept the fit is trying to separate from the rate ACTUALLY
+    fixed across the points instead of growing with them.
+    """
+    a_rows = _rows(store, [int(m_extent), int(k)], dtype)
+    w_rows = _rows(store, [int(k), int(n_extent)], dtype)
+    if a_rows is None or w_rows is None:
+        return None
+    return int(a_rows) + int(w_rows)
+
+
+def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: str | None = None,
+                            m_tiles: int = 1, n_tiles: int = 1, points_per_regime: int = 2,
+                            spills_max_fraction: float = 2.0, store=None, capacity=None) -> dict:
+    """Reduction depths that put a deep-K contraction in each requested regime — several per band.
+
+    :func:`extents_for_regime` answers "give me ONE capsule in this regime", which is what a conformance
+    cell needs: the cell is covered or it is not. A performance fit needs something strictly stronger.
+    A rate and a fixed fill/drain intercept are two parameters, so separating them needs at least two
+    points inside the SAME regime, and two points that sit next to each other at the band edge separate
+    nothing -- the whole spread has to be inside the band. Measured on the interlocked target here, the
+    corpus reached ``spills`` with exactly one capsule at 1.002 of capacity, so any rate fitted there was
+    a one-point extrapolation dressed as a fit.
+
+    ``K`` is the only varied axis: see :func:`deep_k_rows` for why. Points are spread evenly across each
+    band's reachable tile multiples rather than taken from its edge.
+
+    Returns ``{"by_regime": {regime: {"points": [...], "unreachable": reason-or-None}}, ...}``. A regime
+    with no reachable shape returns its REASON, never an empty list with no explanation: an unreachable
+    regime is an answer, a silently missing one is not.
+    """
+    if store is None and capacity is None:
+        store, capacity = operand_store(target)
+    wanted = [str(r) for r in (regimes if regimes is not None else ORDER)]
+    tile = int(tile_dim or 0)
+    out: dict = {"capacity_rows": int(capacity) if capacity else None, "tile_dim": tile or None,
+                 "m_tiles": int(m_tiles), "n_tiles": int(n_tiles), "by_regime": {}}
+    if store is None or not capacity or tile < 1:
+        why = (f"{target!r} declares no operand-store capacity we can derive"
+               if store is None or not capacity else "no tile edge was supplied")
+        out["by_regime"] = {r: {"points": [], "unreachable": why} for r in wanted}
+        return out
+
+    m_extent, n_extent = tile * int(m_tiles), tile * int(n_tiles)
+    out["m_extent"], out["n_extent"] = m_extent, n_extent
+
+    def rows_at(mult: int):
+        return deep_k_rows(store, tile * int(mult), m_extent=m_extent, n_extent=n_extent, dtype=dtype)
+
+    def rank_at(mult: int):
+        rows = rows_at(mult)
+        if rows is None:
+            return None
+        reg = classify(rows, rows, capacity)
+        return _ROWS_MONOTONE_ORDER.index(reg) if reg in _ROWS_MONOTONE_ORDER else None
+
+    # The top of the search. `spills` has no upper edge, so the ceiling is a declared COST decision --
+    # every point in that band is paid for on every grade -- and it is expressed as a multiple of the
+    # target's own capacity so the same declaration means the same thing on a different store.
+    ceiling_rows = float(spills_max_fraction) * float(capacity)
+    mult_max, guard = 1, 0
+    while True:
+        rows = rows_at(mult_max)
+        if rows is None:
+            out["by_regime"] = {r: {"points": [], "unreachable":
+                                    "the operand store cannot size this contraction's operands"}
+                                for r in wanted}
+            return out
+        if rows >= ceiling_rows:
+            break
+        guard += 1
+        if guard > 64:                                  # 2**64 tiles is not a shape; fail closed
+            out["by_regime"] = {r: {"points": [], "unreachable":
+                                    f"no tile multiple within the search reached "
+                                    f"{spills_max_fraction}x capacity"} for r in wanted}
+            return out
+        mult_max *= 2
+
+    # Rows must not DECREASE with K for the band search to mean anything. Checked rather than assumed:
+    # a store whose row packing made residency non-monotone would silently hand back points from the
+    # wrong band, and a wrong band is exactly the failure this module exists to make visible.
+    lo_rows, hi_rows = rows_at(1), rows_at(mult_max)
+    if lo_rows is None or hi_rows is None or hi_rows < lo_rows:
+        out["by_regime"] = {r: {"points": [], "unreachable":
+                                "operand residency is not monotone in the reduction depth on this "
+                                "store, so a band cannot be bracketed"} for r in wanted}
+        return out
+
+    def first_mult_at_least(rank: int) -> "int | None":
+        """Smallest tile multiple in ``[1, mult_max]`` whose regime is ``rank`` or harder."""
+        top = rank_at(mult_max)
+        if top is None or top < rank:
+            return None
+        lo, hi = 1, mult_max
+        if (bottom := rank_at(1)) is not None and bottom >= rank:
+            return 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            got = rank_at(mid)
+            if got is not None and got >= rank:
+                hi = mid
+            else:
+                lo = mid + 1
+        return lo
+
+    for regime in wanted:
+        if regime not in _ROWS_MONOTONE_ORDER:
+            reason = (UNREACHABLE_ON_ALL_LIVE_INPUTS if regime == FITS_ON_REUSE
+                      else f"{regime!r} is not a residency band a deep-K contraction can occupy")
+            out["by_regime"][regime] = {"points": [], "unreachable": reason}
+            continue
+        rank = _ROWS_MONOTONE_ORDER.index(regime)
+        band_lo = first_mult_at_least(rank)
+        nxt = first_mult_at_least(rank + 1) if rank + 1 < len(_ROWS_MONOTONE_ORDER) else None
+        band_hi = mult_max if nxt is None else nxt - 1
+        if band_lo is None or band_hi < band_lo or (rank_at(band_lo) != rank):
+            out["by_regime"][regime] = {"points": [], "unreachable":
+                                        f"no tile multiple in [1, {mult_max}] (up to "
+                                        f"{spills_max_fraction}x capacity) lands in {regime!r}"}
+            continue
+        span = band_hi - band_lo
+        want = max(1, int(points_per_regime))
+        if span == 0:
+            mults = [band_lo]
+        else:
+            # Evenly spread across the band, endpoints included: clustering at an edge is the defect
+            # this function exists to fix, and the widest separation is what a two-parameter fit wants.
+            mults = sorted({band_lo + (span * i) // max(1, want - 1) for i in range(want)}) \
+                if want > 1 else [band_lo + span // 2]
+        points, dropped = [], []
+        for mult in mults:
+            rows = rows_at(mult)
+            got = classify(rows, rows, capacity) if rows is not None else UNKNOWN
+            if got != regime:                            # verified, not trusted
+                dropped.append({"K": tile * mult, "classified_as": got})
+                continue
+            points.append({"K": tile * mult, "K_tiles": mult, "M": m_extent, "N": n_extent,
+                           "rows": int(rows), "capacity_rows": int(capacity),
+                           "fraction_of_capacity": round(rows / float(capacity), 6)})
+        record = {"points": points, "unreachable": None,
+                  "band_tile_multiples": [band_lo, band_hi]}
+        if dropped:
+            record["rejected_points"] = dropped
+        if not points:
+            record["unreachable"] = (f"every candidate in the {regime!r} band re-classified elsewhere "
+                                     f"when checked: {dropped}")
+        elif len(points) < want:
+            record["short_of_requested"] = (
+                f"{len(points)} of {want} requested points: the band spans tile multiples "
+                f"[{band_lo}, {band_hi}], which offers no more distinct depths")
+        out["by_regime"][regime] = record
     return out

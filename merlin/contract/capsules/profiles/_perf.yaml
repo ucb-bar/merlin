@@ -437,6 +437,98 @@ sweeps:
     shared operand-encoding pair: one identical contraction computed in two of the
     target's own declared encodings, so the cost of the encoding choice is isolated
 
+# ---------------------------------------------------------------------------------------------------
+# L2_intra_layer -- the RESIDENCY lever. The regime a fitted coefficient is allowed to be quoted in.
+#
+# Every other family here varies a shape or a compiler lever while the operands stay comfortably inside
+# the target's on-chip operand store, and a rate fitted there is a rate for a machine that never has to
+# re-load anything. Measured on the interlocked target: the whole `_perf` corpus classified
+# `fits_double` -- 16 of 16 members, the largest at 1.6% of the store -- while 96-97% of the CONTRACTION
+# regions in the real captures land in `spills`. So the model was fitted in the regime that carries
+# almost none of the work and asked to score the regime that carries nearly all of it.
+#
+# The claim is DIFFERENTIAL and not PREDICTS on purpose. The interesting quantity is not "cycles are
+# affine in K" -- PK already establishes that where everything fits -- but whether the per-K RATE
+# SURVIVES crossing a residency boundary. If it does, one global fit was always legitimate and the
+# regime axis costs nothing; if it does not, then quoting a `fits_double` coefficient against a
+# `spills` region is extrapolation, and the size of the break is how wrong it is.
+#
+# The depths are DERIVED, never written down. `axes.K` names a derivation rather than a list of tokens:
+# `memory_regime_reduction_depth` asks the target's own operand store which reduction depths land in
+# which residency band and returns several spread ACROSS each band, so the same declaration produces a
+# different (and correct) ladder on a store of a different size. A regime with no reachable depth comes
+# back with its REASON attached and is recorded on every member -- `fits_on_reuse` is always that case,
+# because a capsule's declared inputs are all live at once, so peak-live equals the total and the band
+# that separates them is empty by construction.
+#
+# Why K and not M or N: the drained output is M x N whatever K is, so every point in the ladder writes
+# back the same number of result bytes. That keeps the fixed fill/drain intercept the differential is
+# trying to see PAST genuinely fixed across the points, and it keeps the L3 timing cert affordable,
+# since its cost tracks output size rather than operand size.
+- id: PR
+  fit_axes: [K]
+  comparison_roles: [resident, spilling]
+  base:
+    cat: _perf
+    kind: model_slice
+    op: matmul
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L2_intra_layer
+      family: PR
+      lever: operand_residency
+      claim: DIFFERENTIAL
+      comparand:
+        kind: group_arithmetic
+        against: the_same_affine_fit_in_a_different_residency_regime
+        cancels: [operation, M, N, operand_dtype, accum_dtype, epilogue, drained_output_bytes]
+        demand_equal: [operation, M, N, operand_dtype, accum_dtype]
+      falsifier:
+        observation: per_regime_fitted_rate_and_intercept
+        fires_when: the_rates_fitted_in_different_residency_regimes_agree_within_the_noise_band
+        negative_control: two_disjoint_depth_ranges_inside_one_regime
+      gate:
+        traits: [managed_scratchpad, structural_pipeline_depth]
+        instrument: cycle_count
+        capacity: at_least_two_reduction_depths_inside_each_reachable_residency_band
+        on_missing: skip_with_evidence
+      regime:
+        separation: K_is_the_only_varied_shape_axis_and_the_bands_come_from_the_derived_operand_store
+        layout: deep_k_contraction_at_fixed_parallel_extents_so_every_point_drains_one_output_tile
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs:
+          operation: matmul
+          varied_axis: K
+          axis_derivation: memory_regime_reduction_depth
+      cost:
+        tier: 2
+        runs: three_depths_per_reachable_residency_band
+        projected_cycles: derived_at_preflight
+        basis: >-
+          the spilling members are the most expensive capsules in this corpus and are paid on every
+          grade, so the top of the search is a declared multiple of the target's OWN capacity rather
+          than an unbounded sweep
+  axes:
+    M: [tile]
+    N: [tile]
+    # Not a list of extents: a DERIVATION. `points_per_regime` is the claim decision -- two points
+    # separate a rate from an intercept, the third is what makes the separation checkable rather than
+    # exact-by-construction. `spills_max_fraction_of_capacity` is the COST decision: `spills` has no
+    # upper edge, so the ladder needs a declared ceiling, expressed against the target's own capacity.
+    K:
+      derive: memory_regime_reduction_depth
+      regimes: [fits_double, fits_single, fits_on_reuse, spills]
+      points_per_regime: 3
+      spills_max_fraction_of_capacity: 2.0
+  name: '{id}{i:02d}_{K_label}_k{K}'
+  source_reference: >-
+    shared operand-residency ladder: one deep-K contraction per derived residency band of the target's
+    own operand store, three depths spread across each band, at fixed single-tile parallel extents
+
 blocked_unimplemented:
 # L4_boundary -- the host/accelerator SEAM, priced. Declared rather than omitted, because an absent
 # rung and an unaffordable one read the same in a ladder and only one of them is true.

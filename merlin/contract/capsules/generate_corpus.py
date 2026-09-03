@@ -168,6 +168,21 @@ def _validate_declared_fit_axes(sweep: dict, *, owner: str) -> None:
         raise ValueError(f"{owner}: fitted axes {unknown} are not declared in axes")
     for axis in fit_axes:
         points = axes[axis]
+        if isinstance(points, dict):
+            # A DERIVED axis cannot be checked here -- its points are a function of the target's own
+            # facts and no target is bound at profile load. What IS checkable at load is the promise:
+            # the declaration must ask for at least two points per band, and `expand_sweeps` re-checks
+            # the resolved values. A derivation that silently returned one point would otherwise ship a
+            # one-point fit under a contract that says it is fitted.
+            if str(points.get("derive") or "") not in _DERIVED_AXES:
+                raise ValueError(
+                    f"{owner}: fitted axis {axis} declares an unknown derivation "
+                    f"{points.get('derive')!r}; known derivations are {list(_DERIVED_AXES)}")
+            if int(points.get("points_per_regime", 0)) < 2:
+                raise ValueError(
+                    f"{owner}: fitted axis {axis} derives fewer than two points per regime; a rate "
+                    "and a fixed intercept are two parameters and one point cannot separate them")
+            continue
         if not isinstance(points, list) or len({repr(point) for point in points}) < 2:
             raise ValueError(
                 f"{owner}: fitted axis {axis} must declare at least two distinct points")
@@ -277,10 +292,11 @@ def _merge_shared_perf(profile: dict, *, source: Path) -> None:
     # under `merlin/` and the campaign gate started refusing its own corpus.
     try:
         template_path = shared_path.relative_to(REPO).as_posix()
-    except ValueError as exc:
-        raise ValueError(
-            f"shared performance template {shared_path} lies outside the repository root {REPO}; "
-            "its provenance cannot be recorded repo-root-relative") from exc
+    except ValueError:
+        # A template outside the checkout (test fixtures point PROFILES at a tmp dir) can only be
+        # named absolutely. Consumers resolve an absolute record as-is and refuse it when it does
+        # not exist, so this stays fail-closed rather than becoming a second relative spelling.
+        template_path = str(shared_path)
     profile["_performance_template"] = {
         "path": template_path,
         "sha256": _document_digest(shared),
@@ -1752,6 +1768,101 @@ def resolve_extent(token, tile: int) -> int:
     return value
 
 
+#: Axis DERIVATIONS a sweep may name in place of writing extents down. A derived axis exists for the
+#: same reason ``encoding<N>`` does: the points the family needs are a function of the target's own
+#: derived facts, and any literal the one shared template wrote down would describe a single machine.
+#:
+#: ``memory_regime_reduction_depth`` is the residency axis. A performance model is only valid in the
+#: regimes it was fitted in, and a rate cannot be separated from a fixed fill/drain intercept from one
+#: point -- so this axis asks the target's OWN operand store for several reduction depths inside each
+#: residency band, spread across the band rather than piled against its edge. Measured on the
+#: interlocked target here before it existed: the whole `_perf` corpus sat in ``fits_double`` while the
+#: overwhelming majority of contraction regions in the real captures land in ``spills``, so every
+#: coefficient was fitted where almost no real work lands.
+_DERIVED_AXES = ("memory_regime_reduction_depth",)
+
+
+class AxisDerivationUnavailable(ValueError):
+    """The declaration is well formed but THIS target cannot host the axis it derives.
+
+    Kept distinct from a plain ``ValueError`` on purpose. A malformed declaration is an authoring
+    error and must stop generation; a target that declares no operand store simply cannot be given a
+    residency ladder, and that is the same kind of answer a refuted trait gate gives -- a skip with
+    evidence. Conflating them meant one such target aborted `expand_sweeps` outright and took every
+    OTHER family's members down with it, which reads downstream as "the corpus has no perf families"
+    rather than "this family does not apply here".
+    """
+
+
+def _memory_regime_axis(spec: dict, *, owner: str, target: str, tile: int, dtype: "str | None",
+                        fixed: "dict[str, list[int]]") -> tuple[list[int], dict, dict]:
+    """``(K extents, {extent: regime}, derivation record)`` for a residency-banded reduction sweep.
+
+    The parallel extents are read from the sweep's OWN ``M``/``N`` axes so the two cannot disagree
+    about the shape whose residency is being banded; each must be single-valued, because a band is a
+    property of one shape family and crossing it with a second parallel extent would put two different
+    residency ladders under one name.
+    """
+    from merlin.targetgen import memory_regime as MR
+
+    regimes = [str(r) for r in (spec.get("regimes") or MR.ORDER)]
+    points_per_regime = int(spec.get("points_per_regime", 2))
+    if points_per_regime < 2:
+        raise ValueError(
+            f"{owner}: points_per_regime={points_per_regime} -- a rate and a fixed intercept are two "
+            "parameters and cannot be separated by fewer than two points in the same regime")
+    ceiling = float(spec.get("spills_max_fraction_of_capacity", 2.0))
+    tiles = {}
+    for axis in ("M", "N"):
+        points = fixed.get(axis) or []
+        if len(set(points)) != 1:
+            raise ValueError(
+                f"{owner}: a memory-regime reduction axis needs a single-valued {axis} axis "
+                f"(got {points}); the band is a property of one parallel shape")
+        extent = int(points[0])
+        if extent % tile:
+            raise ValueError(f"{owner}: {axis}={extent} is not a whole number of {tile}-wide tiles")
+        tiles[axis] = extent // tile
+    record = MR.reduction_depth_regimes(
+        target, regimes, tile_dim=tile, dtype=dtype, m_tiles=tiles["M"], n_tiles=tiles["N"],
+        points_per_regime=points_per_regime, spills_max_fraction=ceiling)
+    values: list[int] = []
+    labels: dict[int, str] = {}
+    for regime in regimes:
+        got = (record["by_regime"] or {}).get(regime) or {}
+        for point in got.get("points") or []:
+            k = int(point["K"])
+            if k in labels:                                  # bands cannot overlap; check, do not trust
+                raise ValueError(
+                    f"{owner}: reduction depth {k} was assigned to both {labels[k]!r} and {regime!r}")
+            labels[k] = regime
+            values.append(k)
+    if not values:
+        raise AxisDerivationUnavailable(
+            f"{owner}: no regime in {regimes} is reachable on {target!r}: "
+            + "; ".join(f"{r}: {(record['by_regime'].get(r) or {}).get('unreachable')}"
+                        for r in regimes))
+    return values, labels, record
+
+
+def _resolve_derived_axis(spec: dict, *, owner: str, axis: str, target: str, tile: int,
+                          dtype: "str | None", fixed: "dict[str, list[int]]"):
+    """Dispatch one ``axes: {<name>: {derive: ...}}`` declaration to its derivation."""
+    kind = str(spec.get("derive") or "")
+    if kind not in _DERIVED_AXES:
+        raise ValueError(
+            f"{owner}: axis {axis!r} declares derive={kind!r}; known derivations are "
+            f"{list(_DERIVED_AXES)}")
+    if kind == "memory_regime_reduction_depth":
+        if axis != "K":
+            raise ValueError(
+                f"{owner}: {kind!r} derives the REDUCTION depth, so it must be declared on K, not "
+                f"{axis!r}")
+        return _memory_regime_axis(spec, owner=owner, target=target, tile=tile, dtype=dtype,
+                                   fixed=fixed)
+    raise ValueError(f"{owner}: axis derivation {kind!r} has no resolver")  # unreachable; fail closed
+
+
 def _performance_facts(target: str) -> dict:
     """Canonical tri-state performance facts, derived once for this target."""
     document = derive_profile(target).to_dict()
@@ -1861,6 +1972,7 @@ def _materialize_performance_entry(entry: dict, binding) -> dict:
     binding_operand = getattr(binding, "operand_dtype", None)
     binding_accum = getattr(binding, "accum_dtype", None)
     declared = entry.pop("_encoding_variant", None)
+    derived_axes = entry.pop("_derived_axes", None)
     if declared:
         # AN ENCODING FAMILY'S WHOLE CONTENT IS THAT ITS MEMBERS DIFFER HERE. This function otherwise
         # overwrites `operand_dtype` with the target's single corpus binding, which is right for every
@@ -1899,6 +2011,13 @@ def _materialize_performance_entry(entry: dict, binding) -> dict:
         "datatype_basis": datatype_basis,
         "builder": "merlin.targetgen.corpus_spec.build",
     }
+    if derived_axes:
+        # THE UNREACHABLE REGIMES TRAVEL WITH THE CAPSULE. The derivation knows which bands it could
+        # not reach and why, and that answer is worth exactly as much as the points it did reach: a
+        # regime nothing covers because nothing CAN is a result, while one that is merely absent from
+        # the corpus is a hole. Recorded on every member so a corpus-side gate can read it out of the
+        # tracked capsule rather than out of a generation report that may not have been rewritten.
+        performance["emitter"]["derived_axes"] = copy.deepcopy(derived_axes)
     entry["performance"] = performance
     return entry
 
@@ -1963,6 +2082,7 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                 f"{variant_performance}; every member of a family shares one claim contract")
         performance = base.get("performance")
         is_performance = base.get("cat") in {"perf", "_perf"} or performance is not None
+        gate_decision = None
         if is_performance:
             if legacy_traits_supplied:
                 raise ValueError(
@@ -1981,6 +2101,7 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                         f"performance sweep {sweep_id}: no trait facts supplied and binding.target is absent")
                 facts = _performance_facts(target)
             ok, decision = evaluate_gate(performance["gate"], facts)
+            gate_decision = decision
             if not ok:
                 if skipped is not None:
                     skipped.append({
@@ -2012,10 +2133,45 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
         # Resolve each axis to concrete extents, preserving declaration order so
         # the generated corpus is reproducible.
         resolved: dict[str, list[int]] = {}
+        derived_axes = {a: t for a, t in axes.items() if isinstance(t, dict)}
         for axis, tokens in axes.items():
+            if axis in derived_axes:
+                continue
             if not isinstance(tokens, list) or not tokens:
                 raise ValueError(f"sweep {sweep_id!r} axis {axis!r} must be a non-empty list")
             resolved[axis] = [resolve_extent(t, tile) for t in tokens]
+        # DERIVED axes come second, because a derivation reads the literal axes it is banded against
+        # (a residency band is a property of one parallel shape). The order is a dependency, not a
+        # convenience: resolving them together would make the M/N a derivation sees depend on dict
+        # iteration order.
+        axis_labels: dict[str, dict] = {}
+        axis_records: dict[str, dict] = {}
+        unhostable = None
+        for axis, spec in derived_axes.items():
+            try:
+                values, labels, record = _resolve_derived_axis(
+                    spec, owner=f"sweep {sweep_id!r}", axis=axis,
+                    target=str(getattr(binding, "target", "") or ""), tile=tile,
+                    dtype=getattr(binding, "operand_dtype", None), fixed=resolved)
+            except AxisDerivationUnavailable as exc:
+                unhostable = {"axis": axis, "derive": str(spec.get("derive")), "detail": str(exc)}
+                break
+            resolved[axis] = values
+            axis_labels[axis] = labels
+            axis_records[axis] = record
+        if unhostable is not None:
+            if skipped is not None:
+                skipped.append({
+                    "family": sweep_id,
+                    "sweep": sweep_id,
+                    "status": "skipped_inapplicable",
+                    "reason": unhostable["detail"],
+                    "axis_derivation": unhostable,
+                    "gate": gate_decision,
+                    "fit_axes": list(sweep.get("fit_axes") or []),
+                    "comparison_roles": _comparison_roles(sweep),
+                })
+            continue
 
         declared_fit_axes = sweep.get("fit_axes") or []
         if not isinstance(declared_fit_axes, list) or any(
@@ -2084,7 +2240,13 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                     rendered["operand_dtype"] = resolve_encoding(enc_token, encodings)
                     rendered["_encoding_variant"] = rendered["operand_dtype"]
                 entry.update(rendered)
-                entry["name"] = template.format(id=sweep_id, i=index, **{**combo, **variant})
+                # A derived axis contributes a LABEL as well as a value, so a member can be named by
+                # the band it was derived for (`{K_label}` -> "spills") rather than only by an extent
+                # whose meaning a reader would have to recompute against the store.
+                name_ns = {**combo, **variant}
+                for _axis, _labels in axis_labels.items():
+                    name_ns[f"{_axis}_label"] = _labels.get(combo.get(_axis), "unknown")
+                entry["name"] = template.format(id=sweep_id, i=index, **name_ns)
                 index += 1
                 entry.setdefault("source_role", "derived_sweep")
                 # Provenance survives generation: say which sweep and which point.
@@ -2093,6 +2255,14 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                 if variant:
                     axis_note += "; " + ", ".join(f"{k}={v}" for k, v in sorted(variant.items())
                                                   if not isinstance(v, dict))
+                if axis_records:
+                    entry["_derived_axes"] = {
+                        a: {"derive": str(axes[a].get("derive")), "value": combo.get(a),
+                            "label": axis_labels[a].get(combo.get(a)), "derivation": r}
+                        for a, r in axis_records.items()}
+                    axis_note += "; " + ", ".join(
+                        f"{a}={combo.get(a)} is {axis_labels[a].get(combo.get(a))}"
+                        for a in sorted(axis_records))
                 entry["source_reference"] = f"{reference} (tile={tile}; {axis_note})"
                 if entry["name"] in seen:
                     raise ValueError(
@@ -2216,7 +2386,8 @@ def generate_target(target: str) -> list[Path]:
         blocked_unimplemented=_runtime_blocked, errors=_performance_errors)
     entries = [_resolve_flat_extents(e, binding) for e in entries]
     for _s in _sweep_skips:
-        print(f"  [skip] performance family {_s['family']}: gate {_s['gate']['outcome']}")
+        _why = _s.get("reason") or f"gate {(_s.get('gate') or {}).get('outcome')}"
+        print(f"  [skip] performance family {_s['family']}: {_why}")
     template = copy.deepcopy(profile.get("_performance_template") or {})
     declared_families = [dict(row) for row in (template.get("families") or [])]
     family_counts = {
