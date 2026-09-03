@@ -119,7 +119,13 @@ def main(argv: list[str] | None = None) -> int:
         M, K, N = SHAPES[a.workload]
     else:
         raise SystemExit("one of --workload or --workload-mlir is required")
-    run_id = f"{utc_stamp()}_{a.method}_seed000_{git_sha7()}"
+    # ⚠️ THE RUN ID MUST NAME THE WORKLOAD. Shapes are launched concurrently, so a stamp built from
+    # time+method+seed+sha alone COLLIDES: three shapes launched in the same second resolved to one
+    # directory, and they were writing each other's generated ELF and results. Measured here, and it
+    # is the second time this experiment has hit a run-id collision -- the first collapsed 20 recipe
+    # points onto 10 directories while still reporting them as measured.
+    wl_tag = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in a.workload)[-48:]
+    run_id = f"{utc_stamp()}_{a.method}_{wl_tag}_seed000_{git_sha7()}"
     run_dir = T.RUNS / run_id
     for sub in ("logs", "metrics", "artifacts_dir", "generated", "candidates"):
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
