@@ -12,7 +12,11 @@ provenance:
   precision_preference_kept: []
   precision_preference_dropped: []
   cells_no_writer_can_express: []
-  shape_regions_no_writer_can_express: []
+  shape_regions_no_writer_can_express:
+  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''int8''): no builder materializes
+    a transposed-layout region for this family at this dtype'
+  - 'contraction.batched (rank axis, family ''contraction'', dtype ''int8''): no builder materializes
+    a rank-3 region for this family at this dtype'
   cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
     writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
     nothing can write; adding a builder for that op closes it

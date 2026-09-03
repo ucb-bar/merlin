@@ -113,7 +113,7 @@ memory_mapping:
   why: '''mx_gemmini'' declares no operand-store capacity we can derive, so no regime is required of the
     corpus -- that is ''we do not know'', never ''nothing is required'''
   regime_extents: {}
-  regime_dtype: bf16
+  regime_dtype: mxfp6
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -126,10 +126,10 @@ host_only:
   - normalization
   - reduction
   dtypes:
-    movement: f32
-    normalization: f32
-    elementwise_map: f32
     reduction: f32
+    normalization: f32
+    movement: f32
+    elementwise_map: f32
   observed_in:
     elementwise_map: 8739
     movement: 5504

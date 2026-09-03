@@ -105,6 +105,23 @@ def _is_ieee_float(dtype: str) -> bool:
         return False
 
 
+#: Ops whose golden grades exactly ONE operand format, as that format's canonical float name.
+#:
+#: Mirrors the golden engine's own guard rather than restating a rule: the batched MX golden raises
+#: unless the operand canonicalizes to ``fp8_e4m3``, and a test asserts that this map and that guard
+#: agree, so the two cannot drift into two different claims about what is gradeable.
+_SINGLE_FORMAT_GOLDEN = {"gemv_batched": "fp8_e4m3"}
+
+
+def _canonical(dtype: str) -> str | None:
+    """``dtype``'s canonical float name, or ``None`` when it has none (an integer format, say)."""
+    try:
+        from merlin.runtime.fp8_formats import canonical_float
+        return canonical_float(str(dtype))
+    except Exception:                              # noqa: BLE001 -- not a float format is a real answer
+        return None
+
+
 def ops_gradeable_at(dtype: str, pool: set[str]) -> set[str]:
     """``pool`` narrowed to the ops whose golden engine can grade this cell's dtype.
 
@@ -126,6 +143,14 @@ def ops_gradeable_at(dtype: str, pool: set[str]) -> set[str]:
     keep = set(pool)
     if not is_block_scaled(dtype):
         keep -= _BLOCK_SCALED_GOLDEN_ONLY
+    # A THIRD exclusion, and the narrowest: an op whose golden grades exactly ONE operand format. Being
+    # block-scaled is not enough for these -- the batched MX golden reconstructs its reference on the
+    # mx_ref datapath and refuses any format but mxfp8, so choosing it for an mxfp4 cell produced an
+    # entry that built its interface and then failed at the golden, leaving a capsule directory with no
+    # golden in it.
+    for op, want in _SINGLE_FORMAT_GOLDEN.items():
+        if op in keep and _canonical(dtype) != want:
+            keep.discard(op)
     if not _is_ieee_float(dtype):
         keep = {op for op in keep if source_for_op(op) != "pytorch"}
     return keep
@@ -581,8 +606,23 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         family = str(req.get("family") or "")
         dtype = str(req.get("dtype") or "")
         probe = str(req.get("probe") or f"{family}.{axis}")
-        op = op_for_shape(family, admitted_ops=pool, dtype=dtype,
-                          rank=int(req.get("rank") or 2), layout=req.get("layout"))
+        # THE PROBE'S DTYPE FIRST, THEN THE TARGET'S OTHER ADMITTED ONES. This axis is about the SHAPE
+        # capability -- can the unit be asked for a batched region at all -- so settling for a different
+        # admitted format is a fair way to exercise it, where giving up would report a hole the target
+        # does not have. `capability_probes` names the family's LEAD dtype, and on a multi-format target
+        # that is not always the one a writer covers: mx-gemmini leads with mxfp4 while the batched
+        # golden grades mxfp8 only, so the region is reachable and the lead dtype alone said it was not.
+        _family_dtypes = [dtype] + sorted(
+            {str(c.get("dtype")) for c in cells
+             if c.get("dtype") and str(c.get("family")) == family and str(c.get("dtype")) != dtype})
+        op, chosen_dtype = None, dtype
+        for _dt in _family_dtypes:
+            op = op_for_shape(family, admitted_ops=pool, dtype=_dt,
+                              rank=int(req.get("rank") or 2), layout=req.get("layout"))
+            if op is not None:
+                chosen_dtype = _dt
+                break
+        dtype = chosen_dtype
         if op is None:
             shape_unwritable.append(
                 f"{probe} ({axis} axis, family {family!r}, dtype {dtype!r}): no builder materializes a "
@@ -601,9 +641,13 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "label": "public", "modes": {},
             "semantic": {"generalization_axis": axis},
         }
-        for key, val in (("M", req.get("m")), ("K", req.get("k")), ("N", req.get("n"))):
-            if val:
-                entry[key] = int(val)
+        # EXTENTS COME FROM THE BUILDER, NOT THE PROBE. This axis asks whether the unit can be asked for
+        # a batched or transposed region at all; WHICH extent is the alignment axis's question, and the
+        # cells already carry it. The probe's tile-relative shape is a reasonable default for a plain
+        # 2-D region and not necessarily a legal one for the op that expresses this region: the batched
+        # MX golden needs its contraction dim a multiple of 32 where the probe offers one tile, so
+        # passing the probe's extents through produced an entry that built its interface and then failed
+        # in the golden. The builder derives a legal shape from the same tile edge the probe used.
         if int(req.get("batch") or 1) > 1:
             # `B` is the key the batched builder reads. Spelling it `batch` produced an entry that built
             # at the builder's DEFAULT batch instead of the probe's, so the capsule would have carried a

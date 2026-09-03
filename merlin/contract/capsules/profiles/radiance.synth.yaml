@@ -7,7 +7,7 @@ provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: radiance
   n_required_cells: 56
-  n_entries: 61
+  n_entries: 63
   budget: 160
   precision_preference_kept:
   - i8
@@ -23,10 +23,6 @@ provenance:
     a transposed-layout region for this family at this dtype'
   - 'contraction.transpose (layout axis, family ''contraction'', dtype ''fp32''): no builder materializes
     a transposed-layout region for this family at this dtype'
-  - 'attention.batched (rank axis, family ''attention'', dtype ''fp16''): no builder materializes a rank-3
-    region for this family at this dtype'
-  - 'contraction.batched (rank axis, family ''contraction'', dtype ''fp32''): no builder materializes
-    a rank-3 region for this family at this dtype'
   - 'elementwise_map.batched (rank axis, family ''elementwise_map'', dtype ''fp32''): no builder materializes
     a rank-3 region for this family at this dtype'
   - 'movement.batched (rank axis, family ''movement'', dtype ''fp32''): no builder materializes a rank-3
@@ -1168,6 +1164,44 @@ capsules:
     generalization_axis: composition
   pass_requirements:
   - region-partition
+  - target-isa-lowering
+- cat: model_slices
+  kind: model_slice
+  name: SY_rank_attention_batched
+  op: gemv_batched
+  operand_dtype: mxfp8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the rank axis: this target''s capability manifest declares ''attention''
+    handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
+    come from capability_probes'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: rank
+  B: 2
+  pass_requirements:
+  - target-isa-lowering
+- cat: model_slices
+  kind: model_slice
+  name: SY_rank_contraction_batched
+  op: gemv_batched
+  operand_dtype: mxfp8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the rank axis: this target''s capability manifest declares ''contraction''
+    handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
+    come from capability_probes'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: rank
+  B: 2
+  pass_requirements:
   - target-isa-lowering
 - cat: model
   kind: model

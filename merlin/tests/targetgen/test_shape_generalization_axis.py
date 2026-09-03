@@ -69,14 +69,51 @@ def test_every_declared_region_is_either_a_capsule_or_a_named_hole(target):
 
 
 def test_a_batched_region_is_refused_where_its_golden_cannot_grade_the_dtype():
-    """The one batched builder emits a BLOCK-SCALED contraction: it can be built anywhere and graded only
-    where the dtype is block scaled. Picking it regardless produced a rank-3 entry on every target that
-    declares batching, which the generator would then reject downstream -- turning a reportable gap into
-    a capsule that silently disappears."""
+    """The one batched builder emits a BLOCK-SCALED contraction, and its golden grades exactly ONE
+    format. Both narrowings are needed and each was measured: without the first, a rank-3 entry was
+    chosen on every target that declares batching and rejected downstream; without the second, an mxfp4
+    cell built its interface and then failed in the golden, leaving a capsule directory with no golden
+    in it."""
     pool = CS.available_ops()
-    assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="mxfp4", rank=3) == "gemv_batched"
+    assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="mxfp8", rank=3) == "gemv_batched"
+    assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="mxfp4", rank=3) is None
     assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="i8", rank=3) is None
     assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="bf16", rank=3) is None
+
+
+def test_the_single_format_golden_map_agrees_with_the_golden_itself():
+    """`_SINGLE_FORMAT_GOLDEN` is a claim about an engine, so it is checked against it. A golden that
+    widened or narrowed its accepted format without this map following would put the axis back to
+    choosing an op that cannot grade the cell."""
+    import inspect
+    import sys
+
+    from merlin.common.paths import repo_root
+    sys.path.insert(0, str(repo_root() / "merlin" / "contract" / "capsules"))
+    import generate_corpus as GC
+
+    for op, want in CS._SINGLE_FORMAT_GOLDEN.items():
+        src = "".join(inspect.getsource(fn) for name, fn in vars(GC).items()
+                      if callable(fn) and op in name and name.startswith("_golden"))
+        src = src or inspect.getsource(GC)
+        assert want in src, f"{op}'s golden no longer mentions {want!r}; the map has drifted"
+
+
+def test_a_shape_region_takes_its_extents_from_the_builder_not_the_probe():
+    """The axis asks whether the unit can be asked for a batched region at all; WHICH extent is the
+    alignment axis's question. The probe's tile-relative shape is not necessarily legal for the op that
+    expresses the region -- the batched golden needs its contraction dim a multiple of 32 where the probe
+    offers one tile -- so passing it through built an interface that then failed in the golden."""
+    doc = _spec("mx_gemmini")
+    entries = [e for e in CS.synthesize(doc)["capsules"]
+               if (e.get("semantic") or {}).get("generalization_axis") == "rank"]
+    if not entries:
+        pytest.skip("mx_gemmini synthesizes no batched capsule in this checkout")
+    for e in entries:
+        assert not ({"M", "K", "N"} & set(e)), (
+            f"{e['name']} pins extents the axis has no business choosing: "
+            f"{ {k: e[k] for k in ('M', 'K', 'N') if k in e} }")
+        assert e.get("B", 1) > 1, "a batched region must say how many batches it wants"
 
 
 def test_a_transposed_layout_has_no_writer_and_says_so():

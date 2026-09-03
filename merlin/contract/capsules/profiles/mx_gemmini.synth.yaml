@@ -367,7 +367,7 @@ capsules:
   kind: model_slice
   name: SY_rank_contraction_batched
   op: gemv_batched
-  operand_dtype: mxfp4
+  operand_dtype: mxfp8
   out: Y0
   lhs: A0
   weight: W
@@ -379,9 +379,6 @@ capsules:
   modes: {}
   semantic:
     generalization_axis: rank
-  M: 16
-  K: 16
-  N: 16
   B: 2
   pass_requirements:
   - target-isa-lowering

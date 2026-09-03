@@ -255,7 +255,7 @@ memory_mapping:
   why: '''radiance'' declares no operand-store capacity we can derive, so no regime is required of the
     corpus -- that is ''we do not know'', never ''nothing is required'''
   regime_extents: {}
-  regime_dtype: fp16
+  regime_dtype: bf16
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
