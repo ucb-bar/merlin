@@ -48,6 +48,47 @@ from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
 from merlin.targetgen import conformance as CF  # noqa: E402
 
 
+def _applications(te) -> dict:
+    """The target's DECLARED applications, as ``{label: model.mlir}``.
+
+    A target says which exported models it is for via ``workload_spec.applications`` -- a directory
+    of ingested bundles. Unlike ``_captures`` below, which globs the whole recapture store and is
+    therefore the same evidence for every target, this is per-target BY CONSTRUCTION: it is the set
+    the target's own descriptor names.
+
+    Empty for every target that declares none, which is every target today, so the application axis
+    stays inert until somebody points it at something.
+    """
+    from merlin.common.paths import repo_root
+
+    spec = dict(getattr(te, "workload_spec", None) or {})
+    declared = spec.get("applications")
+    if not declared:
+        return {}
+    root = Path(declared)
+    if not root.is_absolute():
+        root = repo_root() / root
+    if not root.is_dir():
+        return {}
+    return {d.name: d / "model.mlir" for d in sorted(root.iterdir())
+            if (d / "model.mlir").is_file()}
+
+
+def _cert_budget_s(te) -> "float | None":
+    """The declared seconds a single cycle-accurate certification may take, or ``None``.
+
+    A POLICY number rather than a hardware fact -- how much simulator time this experiment will
+    spend -- so it is the target's to declare and the axis records whether it was declared or
+    inherited.
+    """
+    spec = dict(getattr(te, "workload_spec", None) or {})
+    value = spec.get("cert_budget_s")
+    try:
+        return float(value) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _captures(model_root: Path | None = None, *, include_claim_models: bool = False) -> dict[str, Path]:
     """The captured model bundles that may DERIVE the requirement.
 
@@ -152,7 +193,8 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
         origin = f"tracked spec {spec_path}"
     else:
-        doc = CF.spec(contract_target, caps)
+        doc = CF.spec(contract_target, caps, applications=_applications(te),
+                      cert_budget_s=_cert_budget_s(te))
         origin = ("derived now" if contract_target == target
                   else f"derived now against contract target {contract_target!r}")
     if not doc.get("cells"):
@@ -239,7 +281,14 @@ def main(argv=None) -> int:
         # always the directory the descriptor sits in. Two call sites resolved this independently and
         # only one of them was right, so a target whose names differ produced a requirement from
         # `audit` and a crash from `--write` -- the path that actually creates the file.
-        doc = CF.spec(_contract_target(targets[0]), _captures())
+        # Imported here rather than at module scope, matching `_contract_target`'s own local import:
+        # this script runs before merlin is necessarily importable in every environment it is used in.
+        from merlin.targetgen.corpora import descriptor_path
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        _te = load_target_experiment(descriptor_path(targets[0]))
+        doc = CF.spec(_contract_target(targets[0]), _captures(),
+                      applications=_applications(_te), cert_budget_s=_cert_budget_s(_te))
         a.write.parent.mkdir(parents=True, exist_ok=True)
         a.write.write_text(
             "# DERIVED — regenerate with:\n"
