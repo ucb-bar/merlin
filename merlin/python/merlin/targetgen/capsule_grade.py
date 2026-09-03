@@ -754,9 +754,29 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                     cap_tm[k] += v
                     _agg[k] += v
         if cap_tm["by_tier"]:
-            score["timing_diagnostic"][r["capsule"]] = {k: round(cap_tm[k], 3)
-                                                         for k in ("build_s", "sim_active_s",
-                                                                   "oracle_wait_s")}
+            # ⚠️ THE SUM ACROSS TIERS IS NOT A SIMULATION COST, and only the sum was ever recorded.
+            # `sim_active_s` here adds a functional oracle and a cycle-accurate one together, and they
+            # differ by orders of magnitude on the same capsule: measured on PC00_k64, L2 (spike) took
+            # 0.009s while L3 (verilator) took 698.2s. Anything fitting a cost model over the sum is
+            # fitting whichever tiers happened to run, so a budget derived from it cannot say what a
+            # CERTIFICATION costs -- which is the one question a capsule's size has to be sized against.
+            # The per-tier breakdown was already computed here and discarded; keep it, and carry the
+            # two flags that say what KIND of oracle produced each number so a consumer can select the
+            # cycle-accurate one rather than assuming.
+            entry_tm = {k: round(cap_tm[k], 3)
+                        for k in ("build_s", "sim_active_s", "oracle_wait_s")}
+            per_tier = {}
+            for _t, _tm in cap_tm["by_tier"].items():
+                _rec = (r.get("tiers") or {}).get(_t) or {}
+                per_tier[_t] = {
+                    **{k: round(_tm.get(k) or 0.0, 3)
+                       for k in ("build_s", "sim_active_s", "oracle_wait_s")},
+                    "derived_from_rtl": _tier_field(_rec, "derived_from_rtl"),
+                    "cycle_accurate": _tier_field(_rec, "cycle_accurate"),
+                    "evidence": _tier_field(_rec, "evidence"),
+                }
+            entry_tm["by_tier"] = per_tier
+            score["timing_diagnostic"][r["capsule"]] = entry_tm
         if r.get("failure"):
             p = r["failure"]["plane"]
             score["first_failure_planes"][p] = score["first_failure_planes"].get(p, 0) + 1

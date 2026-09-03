@@ -112,11 +112,53 @@ def capsule_elements(capsule_yaml: dict) -> int:
     return biggest
 
 
+#: What a CERTIFICATION costs is the cycle-accurate tier's own time, never the sum over tiers. The two
+#: differ by orders of magnitude on the same capsule -- measured on PC00_k64, spike at L2 took 0.009s
+#: while verilator at L3 took 698.2s -- so a model fitted on the sum is fitted on whichever tiers
+#: happened to run and cannot answer "how big may this capsule be and still be certifiable".
+_CYCLE_ACCURATE_ONLY = "cycle_accurate_tier"
+_SUMMED_LEGACY = "summed_over_tiers(legacy score file, no per-tier block)"
+
+
+def _cycle_accurate_seconds(timing: dict) -> tuple[float | None, str]:
+    """``(seconds, basis)`` for the cycle-accurate tier of one capsule's timing entry.
+
+    Prefers the per-tier block and selects the tier that DECLARES itself cycle-accurate, rather than
+    assuming a tier name means an oracle kind (a target may certify on any rung its contract
+    declares). Falls back to the summed scalar only for score files written before the per-tier block
+    existed, and says so in the basis so a fit over mixed provenance is visible rather than implied.
+    """
+    by_tier = timing.get("by_tier")
+    if isinstance(by_tier, dict) and by_tier:
+        best = None
+        for name, rec in by_tier.items():
+            if not isinstance(rec, dict):
+                continue
+            # `cycle_accurate` is the property the cost question is about; `derived_from_rtl` is
+            # accepted as the older spelling of the same claim.
+            if not (rec.get("cycle_accurate") is True or rec.get("derived_from_rtl") is True):
+                continue
+            secs = rec.get("sim_active_s")
+            if isinstance(secs, (int, float)) and secs > 0:
+                # Deepest reported wins if several qualify; a longer one is the binding cost.
+                if best is None or secs > best[0]:
+                    best = (float(secs), f"{_CYCLE_ACCURATE_ONLY}:{name}")
+        if best:
+            return best
+        return None, "no cycle-accurate tier ran for this capsule"
+    secs = timing.get("sim_active_s")
+    if isinstance(secs, (int, float)) and secs > 0:
+        return float(secs), _SUMMED_LEGACY
+    return None, "no positive sim_active_s"
+
+
 def _timing_records(target: str, root: Path | None = None) -> dict[str, tuple[float, str]]:
-    """``capsule -> (sim_active_s, source)`` from every graded run this target has on disk.
+    """``capsule -> (cycle_accurate_seconds, source)`` from every graded run this target has on disk.
 
     Later files win on a repeat, which is what "the most recent measurement" means when a capsule
-    has been certified more than once.
+    has been certified more than once. A capsule whose graded run never reached a cycle-accurate tier
+    contributes NOTHING rather than its functional time -- a fit that absorbed those would read a
+    near-zero cost for a capsule nobody certified.
     """
     from merlin.common.paths import artifacts_dir
 
@@ -133,9 +175,11 @@ def _timing_records(target: str, root: Path | None = None) -> dict[str, tuple[fl
         if not isinstance(block, dict):
             continue
         for name, timing in block.items():
-            seconds = (timing or {}).get("sim_active_s") if isinstance(timing, dict) else None
-            if isinstance(seconds, (int, float)) and seconds > 0:
-                out[str(name)] = (float(seconds), str(path))
+            if not isinstance(timing, dict):
+                continue
+            seconds, basis = _cycle_accurate_seconds(timing)
+            if seconds is not None:
+                out[str(name)] = (seconds, f"{path}#{basis}")
     return out
 
 
