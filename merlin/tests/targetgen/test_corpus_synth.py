@@ -167,16 +167,22 @@ def test_an_l2_only_application_capsule_names_the_sibling_it_extends():
     """A large capsule resting on nothing is the failure this axis exists to avoid. The cap and the
     sibling travel together on the entry so the generator can enforce both."""
     doc = _spec("gemmini")
+    cls = "contraction/i8/aligned/spills/rank2/wide_skinny"
     doc["application_shapes"] = {
-        "required": [{"class": "contraction/i8/aligned/spills/rank2/wide_skinny",
-                      "M": 256, "K": 64, "N": 784, "batch": 1, "tier": "L2",
-                      "extends": "contraction/i8/aligned/spills/rank2/wide_skinny",
-                      "basis": {"sized_by": "application_shape", "representative_of": 12,
-                                "source": "an_app"}}],
+        "required": [
+            # The sibling has to be here: an L2 capsule with no certified sibling is dropped, which is
+            # the property the next test pins.
+            {"class": cls, "M": 32, "K": 64, "N": 32, "batch": 1, "tier": "L3", "extends": None,
+             "basis": {"sized_by": "measured_cost_model", "representative_of": 12,
+                       "source": "an_app"}},
+            {"class": cls, "M": 256, "K": 64, "N": 784, "batch": 1, "tier": "L2", "extends": cls,
+             "basis": {"sized_by": "application_shape", "representative_of": 12,
+                       "source": "an_app"}},
+        ],
         "cert_budget_s": 300.0,
     }
     entry = [e for e in CS.synthesize(doc)["capsules"]
-             if (e.get("semantic") or {}).get("generalization_axis") == "application"][0]
+             if (e.get("semantic") or {}).get("generalization_axis") == "application"][-1]
     assert entry["max_oracle_tier"] == "L2"
     assert entry["extends"], "an L2-only capsule must say what carries its cycle-accurate guarantee"
     assert "extends" in entry["source_reference"]
@@ -426,3 +432,43 @@ def test_a_roster_whose_preference_names_nothing_admitted_reports_it_rather_than
     with pytest.raises(CS.SynthesisError, match="roster axis"):
         CS.synthesize(doc, workload_spec={"models": ["tiny_llama"],
                                           "precision_preference": ["mxfp4"]})
+
+
+def test_an_l2_application_capsule_with_no_certified_sibling_is_dropped():
+    """The `extends` relation is only worth anything if it is enforced. A large capsule whose
+    cycle-accurate sibling was never emitted rests on nothing — and an L2 pass on a shape nothing
+    ever certified is exactly the "read tier_reached, never a bare score" failure this corpus has
+    scar tissue for."""
+    doc = _spec("gemmini")
+    cls = "contraction/i8/aligned/spills/rank2/wide_skinny"
+    doc["application_shapes"] = {
+        "required": [{"class": cls, "M": 256, "K": 64, "N": 784, "batch": 1, "tier": "L2",
+                      "extends": cls,
+                      "basis": {"sized_by": "application_shape", "representative_of": 5,
+                                "source": "app"}}],
+        "cert_budget_s": 300.0,
+    }
+    res = CS.synthesize(doc)
+    made = [e for e in res["capsules"]
+            if (e.get("semantic") or {}).get("generalization_axis") == "application"]
+    assert made == [], "an L2 capsule with no certified sibling may not ship"
+    holes = " ".join(res["provenance"].get("cells_no_writer_can_express") or ())
+    assert "rest on nothing" in holes, "the dropped capsule must say why, not vanish"
+
+
+def test_an_l2_application_capsule_ships_when_its_sibling_does():
+    """The other half: the relation must not become a blanket refusal."""
+    doc = _spec("gemmini")
+    cls = "contraction/i8/aligned/spills/rank2/wide_skinny"
+    doc["application_shapes"] = {
+        "required": [
+            {"class": cls, "M": 32, "K": 64, "N": 32, "batch": 1, "tier": "L3", "extends": None,
+             "basis": {"sized_by": "measured_cost_model", "representative_of": 5, "source": "app"}},
+            {"class": cls, "M": 256, "K": 64, "N": 784, "batch": 1, "tier": "L2", "extends": cls,
+             "basis": {"sized_by": "application_shape", "representative_of": 5, "source": "app"}},
+        ],
+        "cert_budget_s": 300.0,
+    }
+    made = [e for e in CS.synthesize(doc)["capsules"]
+            if (e.get("semantic") or {}).get("generalization_axis") == "application"]
+    assert [e.get("max_oracle_tier") for e in made] == [None, "L2"]

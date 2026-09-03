@@ -799,6 +799,12 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # at all -- it is in the axis's `refused` list with its reason, which is reported rather than
     # raised because an unaffordable behaviour is a fact about the budget, not a broken corpus.
     _app = spec_doc.get("application_shapes") or {}
+    #: Classes that actually got a cycle-accurate entry. An L2-only capsule is admissible ONLY as an
+    #: extension of one, and the sizing side hands them over in pairs -- but a pair is not a
+    #: guarantee here: if the deeper entry's op cannot be materialized we skip it, and iterating the
+    #: list flat would then still emit its L2 partner, resting on nothing. That is precisely the
+    #: failure the `extends` relation exists to prevent, arriving through the back door.
+    _certified_classes: set = set()
     for _cap in (_app.get("required") or ()):
         _cls = str(_cap.get("class") or "")
         _tier = str(_cap.get("tier") or "L3")
@@ -808,6 +814,12 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         _op = op_for_family("contraction", admitted_ops=pool, dtype=_dtype)
         if _op is None:
             unwritable.append(f"application class {_cls}: no op materializes a contraction at {_dtype!r}")
+            continue
+        if _tier != "L3" and _cls not in _certified_classes:
+            unwritable.append(
+                f"application class {_cls}: its L2 capsule extends a cycle-accurate sibling that was "
+                f"not emitted, so it would rest on nothing; dropped rather than shipped as a large "
+                f"capsule nothing certifies")
             continue
         _slug = _cls.replace("/", "_").replace("-", "_")
         entry = {
@@ -840,6 +852,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         _mark_source(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
+        if _tier == "L3":
+            _certified_classes.add(_cls)
 
     # ---- the ROSTER axis ----------------------------------------------------------------------------
     # The declared roster is the one thing the workload spec says that nothing consumed. Every capsule
