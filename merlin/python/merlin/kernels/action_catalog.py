@@ -751,7 +751,12 @@ SEAMS_NEEDING_A_NEW_MODULE: dict[str, str] = {
         "eliminate the rank-generic per-tile copy by storing C once. The residual copies are NOT "
         "self-copies (source and destination differ), so erase_self_copy cannot touch them; measured "
         "at 38.59% of real work on small_llama int8 and 33.11% on the same model in fp32, over 24 "
-        "memrefCopy call sites at ~43,000 instructions each.",
+        "memrefCopy call sites at ~43,000 instructions each. VERIFIED to need a new module rather "
+        "than an extension of an existing one: `memref.copy` appears ZERO times in every IR we emit "
+        "(model.mlir, model.prepared.mlir, model.upstream.mlir, the transform schedule) -- it is "
+        "introduced by upstream one-shot-bufferize and lowered to the MLIR runtime's memrefCopy by "
+        "finalize-memref-to-llvm. So no pass of ours creates it, and removing it means either tiling "
+        "so bufferization needs no temp, or a post-bufferization rewrite we do not have.",
     "rvv-microkernel-emitter":
         "a register-blocked, accumulator-resident, VL-agnostic RVV micro-kernel emitter. "
         "intrinsic_microkernel already demonstrates it bit-exact and spill-free from a hand-written "
