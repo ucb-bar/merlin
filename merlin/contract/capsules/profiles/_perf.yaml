@@ -512,6 +512,57 @@ sweeps:
           the spilling members are the most expensive capsules in this corpus and are paid on every
           grade, so the top of the search is a declared multiple of the target's OWN capacity rather
           than an unbounded sweep
+      acceptance:
+        schema_version: 1
+        analyzer: perf_pr_claim.analyze_pr_claim/v1
+        fit:
+          form: affine_per_residency_band
+          method: ordinary_least_squares_over_the_replicate_agreed_cycles_of_one_band
+          independent_variable: K
+          dependent_metric: verilator_L3_cycles
+          comparands: the_fitted_rate_of_one_band_against_the_fitted_rate_of_another
+        cohort:
+          operation: matmul
+          fixed_shape_axes:
+          - M
+          - N
+          fixed_fields:
+          - operation
+          - operand_dtype
+          - accum_dtype
+          - epilogue
+          axis_derivation: memory_regime_reduction_depth
+          minimum_reachable_bands: 2
+          points_per_regime: 3
+        replicates:
+          minimum_count: 2
+          identities_authored_by: run
+          why: two replicates are the smallest set that MEASURES the dispersion this family's noise band is
+            read from; one replicate leaves it UNDETERMINABLE, and assuming it zero on a deterministic simulator
+            is the assumption this contract refuses
+        evidence:
+          correctness_simulator: spike
+          correctness_tier: L2
+          timing_simulator: verilator
+          timing_tier: L3
+          spike_cycles_citable: false
+          overlap_instrument: target_derived_combination_counters
+          overlap_required_per_member: true
+        noise_band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: fitted_rates_agree_iff_exactly_equal_when_the_measured_dispersion_is_zero
+          why: 'a constant written here would be a knob somebody can turn until the answer changes. The band
+            is read off the evidence instead: replicates that are observed IDENTICAL make the dispersion zero
+            by measurement, so agreement means exact rational equality. A member with one replicate has an UNDETERMINABLE
+            dispersion and its band is refused rather than assumed noiseless'
+        transient_guard:
+          module: merlin.perf.fill_transient.transient_verdict
+          applied: per_residency_band
+          on_in_fill_transient: refuse_the_band_and_quote_no_rate
+          why: the sibling reduction-depth family was refuted because every one of its depths lay inside the
+            machine's overlap fill transient. This family's cheapest band starts at the same depth, so a band
+            is put through the guard before any rate is quoted
   axes:
     M: [tile]
     N: [tile]
@@ -587,3 +638,132 @@ blocked_unimplemented:
       projected_cycles: derived_at_preflight
       basis: one_island_member_and_one_without
 
+
+# ---------------------------------------------------------------------------------------------------
+# L1_tile -- the reduction-depth PREDICTS claim, RE-DECLARED IN THE SETTLED REGIME. PK's successor.
+#
+# PK is refuted, and not by a tolerance. All four of its declared depths (1, 2, 4 and 8 tiles) lie
+# inside the machine's overlap FILL TRANSIENT: measured on the interlocked target, realised overlap
+# rises 0.269 -> 0.372 -> 0.604 -> 0.770 across the cohort and is STILL RISING at its deepest point,
+# so the marginal cost per tile falls 72 -> 49 -> 33.25 and an affine law -- which asserts ONE constant
+# marginal cost -- is contradicted in FORM. No threshold repairs that, and PK's acceptance block says
+# in its own comment that changing any of its values is a new experiment contract. So this is a NEW
+# family with its own contract, and it inherits PK's two bounds UNCHANGED: r^2 >= 0.995 and residuals
+# within max(8 cycles, 3% of observed). Weakening either would accept the model the marginals
+# contradict. The repair is WHERE the cohort sits, not how much it is forgiven.
+#
+# What changes is one thing: the ladder does not START at one tile. It starts at the depth where THAT
+# TARGET's overlap has stopped rising, and that depth is DERIVED from a measurement of the target
+# rather than written down here. A number written here would repeat PK's own defect one rung up -- a
+# cohort placed by assumption rather than by evidence -- and it would overfit whichever machine
+# happened to be measured first.
+#
+# The blocker is the derivation, not the claim. `overlap_settled_reduction_depth` must consume a
+# recorded overlap probe for the target -- `merlin.perf.fill_transient.settling_depth` over a ladder
+# of RTL-derived combination-counter readings taken through THIS family's own emitter -- and return
+# points spread across the settled range that still share one residency band. The probe and its
+# analysis now exist; what does not exist is a materializer seam that lets an `axes` derivation read a
+# recorded measurement, and no capsule may be minted from a depth nobody measured.
+- family: PT
+  status: blocked_unimplemented
+  reason: >-
+    the cohort's starting depth is a MEASURED property of the target -- the depth at which its
+    realised compute/movement overlap stops rising -- and no materializer can derive it without
+    consuming a recorded overlap probe. Minting the depths from a written-down number would repeat
+    PK's own defect, a cohort placed by assumption rather than by evidence, and would overfit the
+    first machine measured
+  fit_axes: [K]
+  comparison_roles: [prediction, measurement]
+  # The full claim contract, declared even though the family cannot yet be materialized. A blocked
+  # rung carrying no contract is indistinguishable from one nobody thought about, and the contract is
+  # what makes the blocker checkable: the gate names the capacity, and the emitter names what is
+  # missing. Deliberately NO `acceptance.analyzer`: none is written, and declaring one would make the
+  # family read as decidable today when nothing computes its verdict.
+  performance:
+    level: L1_tile
+    family: PT
+    lever: reduction_depth_past_the_overlap_fill_transient
+    claim: PREDICTS
+    comparand:
+      kind: fitted_prediction
+      against: measured_cycles_same_member
+      cancels: [identical_M, identical_N, identical_datapath, identical_residency_band]
+      demand_equal: [operation, M, N, operand_dtype, accum_dtype]
+    falsifier:
+      observation: residual_cycles_by_K
+      fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+      negative_control: fixed_M_and_N_across_all_K_points
+    acceptance:
+      schema_version: 1
+      fit:
+        form: affine
+        method: ordinary_least_squares_all_L3_replicates
+        independent_variable: K
+        dependent_metric: verilator_L3_cycles
+      cohort:
+        operation: matmul
+        fixed_shape_axes: [M, N]
+        fixed_fields: [operation, operand_dtype, accum_dtype, epilogue, residency_regime]
+        exact_points: 4
+        # Not a list. PK could write [1, 2, 4, 8] because it assumed where to look; this family may
+        # not, because where to look is the thing that was wrong. The depths are spread LINEARLY
+        # across the settled range rather than geometrically: geometric spacing puts almost all of an
+        # affine fit's leverage on its deepest point, which is how a cohort passes r^2 while saying
+        # nothing about the shallow end it also claims to cover.
+        K_multipliers_of_tile: derived_at_materialization
+      replicates:
+        exact_count: 3
+        identities: [r000, r001, r002]
+      evidence:
+        correctness_simulator: spike
+        correctness_tier: L2
+        timing_simulator: verilator
+        timing_tier: L3
+        spike_cycles_citable: false
+      # UNCHANGED from PK, deliberately and in full. The refutation was a statement about the cohort's
+      # PLACEMENT, so nothing about what counts as a good fit may move with it.
+      thresholds:
+        slope_cycles_per_K_element_min_exclusive: 0.0
+        r_squared_min_inclusive: 0.995
+        residual_bound:
+          predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+          absolute_floor_cycles: 8
+          observed_cycle_fraction: 0.03
+      # The precondition PK did not have, and the whole reason this is a separate family. Both bounds
+      # are claim decisions, not post-run knobs. `cohort_self_check` is the second negative control:
+      # a cohort admitted past a settling depth measured on some OTHER emitter, or some other RTL
+      # revision, is a cohort placed by citation, so its own runs must re-show the overlap flat
+      # across it before its fit may be quoted.
+      settled_regime_precondition:
+        instrument: rtl_derived_combination_counters
+        quantity: realised_over_available_overlap
+        eta_band_per_axis_doubling: 0.01
+        confirming_steps: 2
+        decided_by: merlin.perf.fill_transient.settling_depth
+        cohort_self_check: overlap_is_not_rising_across_the_cohorts_own_measured_points
+        on_probe_absent: skip_with_evidence
+    gate:
+      traits: [structural_pipeline_depth, independent_engine_ports]
+      instrument: cycle_count_and_combination_counters
+      capacity: four_reduction_depths_past_the_measured_settling_depth_inside_one_residency_band
+      on_missing: skip_with_evidence
+    regime:
+      separation: K_is_the_only_varied_shape_axis
+      layout: target_native_direct_corpus_builder
+    emitter:
+      status: blocked
+      entry: 'new:overlap_settled_depth_materializer'
+      knobs:
+        operation: matmul
+        varied_axis: K
+        axis_derivation: overlap_settled_reduction_depth
+        needs: a_recorded_overlap_probe_for_this_target_through_this_familys_own_emitter
+        unblocked_by: an_axes_derivation_seam_that_may_read_a_recorded_measurement
+    cost:
+      tier: 1
+      runs: 4
+      projected_cycles: derived_at_preflight
+      # The measured reason this stays affordable at depths an order of magnitude past PK's: cost on
+      # the citable timing engine tracks the OUTPUT drained, and M and N are pinned at the tile edge,
+      # so every point writes back the same result tile however deep the reduction runs.
+      basis: four_members_before_repetition_at_fixed_drained_output_bytes
