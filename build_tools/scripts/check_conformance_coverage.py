@@ -85,9 +85,29 @@ def _captures(model_root: Path | None = None, *, include_claim_models: bool = Fa
 
 
 def _target_experiment(target: str) -> Path | None:
-    cand = (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
-            / "target_experiment.yaml")
-    return cand if cand.is_file() else None
+    """The descriptor for ``target``, found by DIRECTORY NAME or by the name it DECLARES.
+
+    The directory-only lookup is why `saturn_opu_mxv256d128` and `saturn_opu_mxv256d128_rvv` reported
+    `no_target_experiment` and this gate then exited 0 for both: their descriptors live in directories
+    named `saturn_opu`/`saturn_opu_rvv` and declare the configuration-qualified name in their own
+    ``target:``. Asked about the name everything else resolves by, the gate found nothing and called it
+    clean. Directory first (cheap, and the common case), then the declared name.
+    """
+    root = repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
+    cand = root / target / "target_experiment.yaml"
+    if cand.is_file():
+        return cand
+    if not root.is_dir():
+        return None
+    import yaml
+    for desc in sorted(root.glob("*/target_experiment.yaml")):
+        try:
+            doc = yaml.safe_load(desc.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        if str(doc.get("target") or "") == target:
+            return desc
+    return None
 
 
 def _contract_target(target: str) -> str:
@@ -195,6 +215,8 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ratchet", type=Path, default=None)
     ap.add_argument("--fail-on-uncovered", action="store_true")
+    ap.add_argument("--fail-on-unverifiable", action="store_true",
+                    help="exit 2 when a target could not be audited at all")
     a = ap.parse_args(argv)
 
     # DEFAULT TARGET SET IS DISCOVERED, not named: every target that already has a tracked conformance
@@ -335,9 +357,26 @@ def main(argv=None) -> int:
     bad += [_debt(r["target"], k, "host_only") for r in reports if r["status"] == "ok"
             for k in ((r.get("host_only") or {}).get("uncovered") or [])
             if _debt(r["target"], k, "host_only") not in ratchet]
+    # ⚠️ A TARGET THAT COULD NOT BE AUDITED HAS ESTABLISHED NOTHING. Every `bad` list above filters on
+    # `status == "ok"`, so a target whose descriptor, contract or corpus could not be resolved
+    # contributes no debt and the gate returns 0 -- reporting success for a question it never asked.
+    # Measured: `saturn_opu_mxv256d128` and `..._rvv` reported `no_target_experiment` and this gate
+    # exited 0 for BOTH; with the descriptor found by its declared name they owe 5 uncovered items.
+    # This repo has now paid for that shape five times, so it is spelled 2 ("cannot decide"), never 0.
+    unrunnable = [r for r in reports if r["status"] != "ok"]
+    if unrunnable:
+        print(f"\n  COULD NOT AUDIT ({len(unrunnable)}) — these establish NOTHING, they are not clean:",
+              file=sys.stderr)
+        for r in unrunnable:
+            print(f"    ? {r['target']:28s} {r['status']}: {r.get('detail', '')}", file=sys.stderr)
+
     if bad and a.fail_on_uncovered:
         print(f"\nFAIL: {len(bad)} required cell(s) uncovered and not ratcheted", file=sys.stderr)
         return 1
+    if unrunnable and (a.fail_on_uncovered or a.fail_on_unverifiable):
+        print(f"\nCANNOT DECIDE: {len(unrunnable)} target(s) could not be audited at all.",
+              file=sys.stderr)
+        return 2
     return 0
 
 
