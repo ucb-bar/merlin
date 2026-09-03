@@ -1231,8 +1231,30 @@ def _semantic_block(entry: dict, binding: CorpusBinding) -> dict:
     # A whole-model capsule spans families by construction, is never held out (see
     # generalization_splits), and is expected to contain regions the target cannot run -- so it must
     # never carry must_accelerate, whatever the corpus default says.
-    must_default = False if kind == "model" else bool(defaults.get("must_accelerate", False))
-    block["must_accelerate"] = bool(authored.get("must_accelerate", must_default))
+    #
+    # ⚠️ NEITHER MAY A CAPSULE THAT FORBIDS THE MESH. `lanes.forbid: [on_mesh]` is the negative lane:
+    # the capsule exists to prove the compiler does NOT put this work on the accelerator, and
+    # `must_accelerate: true` demands the opposite. Emitting both produces a capsule that cannot pass
+    # under any behaviour, and it is produced by exactly the combination that looks safest -- a
+    # corpus-wide `semantic_defaults: {must_accelerate: true}` meeting a host-only capsule. Measured:
+    # declaring that default on one profile gave `SY_host_only_elementwise_map` and
+    # `SY_host_only_reduction` `forbid: [on_mesh]` alongside `must_accelerate: true`. The lane
+    # declaration is the more specific statement and wins, structurally rather than by an exception
+    # list -- the same treatment `kind == "model"` already gets above.
+    lanes = entry.get("lanes") or {}
+    forbids_mesh = "on_mesh" in {str(x) for x in (lanes.get("forbid") or ())}
+    must_default = (False if (kind == "model" or forbids_mesh)
+                    else bool(defaults.get("must_accelerate", False)))
+    # An AUTHORED `true` cannot override the negative lane either: the contradiction is the same
+    # whichever half asserted it, and a capsule declaring both is an authoring error to report rather
+    # than a preference to honour.
+    authored_must = authored.get("must_accelerate", must_default)
+    if forbids_mesh and bool(authored_must):
+        raise ValueError(
+            f"{entry.get('name', '<unnamed>')}: lanes.forbid names 'on_mesh' while must_accelerate is "
+            f"true. The negative lane exists to prove this work does NOT reach the accelerator, so the "
+            f"two demands cannot both hold and the capsule could not pass under any behaviour")
+    block["must_accelerate"] = bool(authored_must)
     # WHY the strongest assertion was withheld. The schema has a field for it, and for the interop and
     # host-island capsules it is the whole contract: they withhold ``must_accelerate`` on purpose,
     # because host-lane work is the behaviour under test rather than a fallback failure, and the demand

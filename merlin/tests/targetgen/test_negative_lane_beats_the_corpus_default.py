@@ -1,0 +1,133 @@
+"""A capsule cannot both forbid the mesh and demand the mesh.
+
+`lanes.forbid: [on_mesh]` is the negative lane: the capsule exists to prove the compiler does NOT put
+this work on the accelerator. `semantic.must_accelerate: true` demands the opposite. A capsule
+carrying both could not pass under any behaviour, and the combination arises from the change that
+looks safest -- a corpus-wide `datapath.semantic_defaults: {must_accelerate: true}`, which is the
+right posture for a corpus whose capsules all target the accelerator, meeting the handful that
+deliberately do not.
+
+Measured while declaring that default on one profile: `SY_host_only_elementwise_map` and
+`SY_host_only_reduction` came out with `forbid: [on_mesh]` and `must_accelerate: true` together.
+Neither could ever pass. This is the mirror of a defect the corpus already fixed once in the other
+direction, where declaring `lanes.require` silently FORCED `must_accelerate: false` and weakened the
+mesh assertion of a capsule that meant to make it.
+
+The lane declaration is the more specific statement and wins structurally -- the same treatment
+`kind == "model"` already gets -- rather than by an exception list, so a new host-only capsule on any
+target is covered without an edit.
+"""
+from __future__ import annotations
+
+import glob
+
+import pytest
+import yaml
+
+from merlin.common.paths import merlin_dir
+from merlin.targetgen import corpus_spec as CS
+
+
+def _binding(directory: str):
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.target_experiment import load_target_experiment
+    desc = (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
+            / directory / "target_experiment.yaml")
+    if not desc.is_file():
+        pytest.skip(f"no descriptor for {directory}")
+    prof = merlin_dir() / "contract" / "capsules" / "profiles" / f"{directory}.yaml"
+    if not prof.is_file():
+        pytest.skip(f"no profile for {directory}")
+    doc = yaml.safe_load(prof.read_text(encoding="utf-8")) or {}
+    return CS.derive_binding(load_target_experiment(desc), doc.get("datapath", {}))
+
+
+def _profile_with_positive_default() -> str | None:
+    """A profile that declares the corpus-wide demand, since that is what makes the clash possible."""
+    root = merlin_dir() / "contract" / "capsules" / "profiles"
+    for p in sorted(root.glob("*.yaml")):
+        if p.stem.endswith((".hidden", ".synth")) or p.stem.startswith("_"):
+            continue
+        doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        dflt = ((doc.get("datapath") or {}).get("semantic_defaults") or {})
+        if dflt.get("must_accelerate") is True:
+            return p.stem
+    return None
+
+
+def test_a_host_only_capsule_does_not_inherit_the_corpus_wide_demand():
+    stem = _profile_with_positive_default()
+    if not stem:
+        pytest.skip("no profile declares must_accelerate true corpus-wide")
+    b = _binding(stem)
+    plain = CS._semantic_block({"op": "matmul", "kind": "isa"}, b)
+    host = CS._semantic_block({"op": "movement", "kind": "isa",
+                               "lanes": {"forbid": ["on_mesh"]}}, b)
+    assert plain["must_accelerate"] is True, "the corpus default must still reach an ordinary capsule"
+    assert host["must_accelerate"] is False, (
+        "a capsule forbidding the mesh must not be handed a demand to reach it")
+
+
+def test_an_authored_demand_cannot_override_the_negative_lane_either():
+    """The contradiction is the same whichever half asserted it, so it is reported, not honoured."""
+    stem = _profile_with_positive_default()
+    if not stem:
+        pytest.skip("no profile declares must_accelerate true corpus-wide")
+    b = _binding(stem)
+    with pytest.raises(ValueError, match="on_mesh"):
+        CS._semantic_block({"op": "movement", "kind": "isa", "name": "X",
+                            "lanes": {"forbid": ["on_mesh"]},
+                            "generalization": {"must_accelerate": True}}, b)
+
+
+def test_a_whole_model_capsule_still_gets_its_own_exemption():
+    """The pre-existing structural exemption must not have been displaced by the new one."""
+    stem = _profile_with_positive_default()
+    if not stem:
+        pytest.skip("no profile declares must_accelerate true corpus-wide")
+    b = _binding(stem)
+    model = CS._semantic_block({"op": "matmul", "kind": "model"}, b)
+    assert model["must_accelerate"] is False
+
+
+#: Capsules materialized BEFORE the builder learned that the negative lane wins. Each forbids the mesh
+#: and demands it at once, so it cannot pass under any behaviour -- this is a broken capsule, not
+#: accepted debt, and the list MAY ONLY SHRINK. They are not fixed here because regenerating their
+#: targets would overwrite another session's uncommitted work in those directories; the builder fix
+#: corrects each one the next time its target is regenerated.
+_PREDATES_THE_FIX = {
+    "SY_host_lane_elementwise_map_f32",   # default-target corpus
+    "SY_host_lane_reduction_f32",         # default-target corpus
+    "SY_host_only_reduction",             # atlas copy; the saturn and mx copies are already correct
+}
+
+
+def test_no_materialized_capsule_carries_both_demands():
+    """The corpus-level invariant: this must hold on disk, not only in the builder.
+
+    Scoped to capsules the fixed builder could have written. The named set predates it and is listed
+    rather than tolerated -- each is a capsule that cannot pass, and the count may only fall.
+    """
+    offenders, known = [], []
+    for path in glob.glob(str(merlin_dir() / "contract" / "capsules" / "**" / "capsule.yaml"),
+                          recursive=True):
+        try:
+            doc = yaml.safe_load(open(path, encoding="utf-8").read()) or {}
+        except yaml.YAMLError:
+            continue
+        lanes = doc.get("lanes") or {}
+        if "on_mesh" not in {str(x) for x in (lanes.get("forbid") or ())}:
+            continue
+        if (doc.get("semantic") or {}).get("must_accelerate") is not True:
+            continue
+        name = str(doc.get("name") or Path(path).parent.name)
+        (known if name in _PREDATES_THE_FIX else offenders).append(name)
+    assert not offenders, (
+        f"capsule(s) forbid the mesh and demand it at once, so they cannot pass: {offenders}")
+    assert set(known) <= _PREDATES_THE_FIX
+    # The ratchet may only shrink: a name that has been fixed must be removed from the set, or the
+    # set stops describing the corpus and starts excusing it.
+    stale = _PREDATES_THE_FIX - set(known)
+    assert not stale, (
+        f"{sorted(stale)} no longer carry the contradiction; drop them from _PREDATES_THE_FIX so the "
+        f"set keeps meaning what it says")

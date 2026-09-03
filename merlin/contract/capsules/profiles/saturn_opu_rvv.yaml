@@ -24,6 +24,19 @@
 # DATA does not port: goldens are recomputed here for this surface's dtypes.
 
 datapath:
+  # Corpus-wide generalization posture, for the reason profiles/gemmini.yaml states: must_accelerate is
+  # the strongest claim a capsule can make -- an ELIGIBLE region that falls back is a hard failure -- and
+  # while it is absent every coverage certificate passes VACUOUSLY on that axis, because no capsule
+  # asserts it and no violation can be raised. Measured before this was declared: all 33 capsules on this
+  # surface carried NO semantic block at all, so the CPU-fallback escape hatch was wide open.
+  #
+  # The claim is evidence-backed rather than inherited. Every capsule here derives its expected classes
+  # from the unit's own encodings and every one of them issues OPMACC -- the outer-product accumulate --
+  # alongside the operand move-ins and the accumulator readout, so each is asking the accelerator for the
+  # arithmetic. The target's capability contract admits contraction at int8, which is what they all are.
+  # Contrast profiles/saturn_opu.yaml: the command-buffer surface has no instruction decode, its classes
+  # derive to an empty list, and its capsules correctly carry must_accelerate false.
+  semantic_defaults: {must_accelerate: true}
   compare: exact_int          # int8 x int8 -> i32 is exact; a tolerance would hide a real error
   # The RTL tier for this surface assembles the emitted kernel, runs it, and audits the decoded object to
   # prove the datapath actually fired. L0/L1 are the numeric floor; L3 is that audit.
