@@ -28,10 +28,17 @@ def test_admitted_comes_from_the_manifest_not_a_literal():
     if not adm:
         pytest.skip("no capability manifest resolvable in this environment")
     assert set(adm) <= sf.FAMILIES, f"admitted contains non-families: {set(adm) - sf.FAMILIES}"
-    src = inspect.getsource(CF.admitted)
-    assert "capability_map_for_target" in src, "admitted() no longer reads the capability manifest"
+    # Read the DELEGATION CHAIN, not just the entry point. `admitted` became a one-line delegate to
+    # `admitted_with_reason` when callers needed to tell "this manifest admits nothing a capture
+    # contains" apart from "this target has no contract to read" -- the two license opposite actions.
+    # The manifest read moved down with it, and inspecting only `admitted` then reported that it "no
+    # longer reads the capability manifest" while it still did, one frame away. Both are checked, so
+    # the property survives the next refactor of either.
+    src = inspect.getsource(CF.admitted) + inspect.getsource(CF.admitted_with_reason)
+    assert "capability_map_for_target" in src, (
+        "neither admitted() nor admitted_with_reason() reads the capability manifest")
     for fam in sf.FAMILIES:
-        assert f'"{fam}"' not in src, f"admitted() hardcodes the family {fam!r}"
+        assert f'"{fam}"' not in src, f"the admitted path hardcodes the family {fam!r}"
 
 
 def test_no_target_name_in_executable_code():
