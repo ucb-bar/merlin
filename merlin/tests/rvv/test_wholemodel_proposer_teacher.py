@@ -488,3 +488,30 @@ def test_an_axis_no_teacher_can_answer_is_still_reported():
     assert "compute.mr_adapts_to_m" in unanswered, (
         "an axis ours populates that no teacher can answer must be REPORTED, or the loop silently "
         "treats a teacher-coverage gap as 'no gap found'")
+
+
+def test_every_ranked_lever_names_a_registered_feature():
+    """A lever the proposer offers must exist, or the fork dies with 'unknown impr feature' -- and
+    `_composes` catches that KeyError and returns False, so the lever is silently NEVER PROPOSED
+    rather than failing loudly. Exactly one seam was dead that way before a test caught it."""
+    from merlin.llvmlower import impr_features as F
+    from merlin.mining.wholemodel_proposer import RANKED_LEVERS
+    missing = [n for n, _sr in RANKED_LEVERS if n not in F._REGISTRY]
+    assert not missing, f"RANKED_LEVERS names unregistered feature(s): {missing}"
+
+
+def test_ranked_levers_have_no_duplicates():
+    """A duplicate would spend a generation's width twice on the same idea."""
+    from merlin.mining.wholemodel_proposer import RANKED_LEVERS
+    names = [n for n, _ in RANKED_LEVERS]
+    assert len(names) == len(set(names)), f"duplicate levers: {sorted(set(n for n in names if names.count(n) > 1))}"
+
+
+def test_the_locality_lever_is_searched_not_defaulted():
+    """promote_buffers_to_stack is 1.34x on small_llama int8, 1.04x on the same model in fp32, and
+    ~1.01x SLOWER on spectformer int8. A blanket default would have shipped a regression; it belongs
+    to the search, which measures per model."""
+    from merlin.llvmlower import impr_features as F
+    from merlin.mining.wholemodel_proposer import RANKED_LEVERS
+    assert "promote_buffers_to_stack" in [n for n, _ in RANKED_LEVERS]
+    assert F._REGISTRY["promote_buffers_to_stack"].edit_pipeline is not None

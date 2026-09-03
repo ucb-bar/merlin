@@ -64,6 +64,14 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # SLOWER on small_llama int8, both far outside the 2.6% band. The i32 accumulator is what sets
     # LMUL, so a wider N tile can push it from m4 to m8 and spill (decoded: 0 -> 6 accumulator spill
     # ops at 128^3). A per-model question, which is what the beam is for.
+    # Promote small bufferization allocs to the stack. Second only to per-op blocking on the model it
+    # was found on, and it is a LOCALITY lever rather than an arithmetic one: bufferization gives each
+    # intermediate its own scattered heap buffer (209 of them on small_llama int8), so every one is
+    # written and re-read through cache misses. MEASURED sustained on the K1, cos identical: 4,878,645
+    # -> 3,649,518 ns, 1.34x, at a 256 KB per-buffer cap. ⚠️ MODEL-DEPENDENT, which is exactly why it
+    # belongs to the SEARCH and not to a default: the same lever is 1.04x on small_llama fp32 and
+    # ~1.01x SLOWER on spectformer int8. A blanket default would have shipped a regression.
+    ("promote_buffers_to_stack", False),
     ("perop_nr_fill_register", False),
     ("fuse_transpose_b", False),                          # transpose: 38% byte-traffic, measured -6.5% openvla
     ("accumulator_resident_wholemodel_vf_mrpad", True),   # matmul MR register block: 1.49x rdt2 matmul bucket
