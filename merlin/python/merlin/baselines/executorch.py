@@ -59,6 +59,35 @@ _ET_EXPORT_HELPER = Path(__file__).with_name("_et_export.py")
 _ET_INSPECT_HELPER = Path(__file__).with_name("_et_inspect.py")
 
 
+def et_regions_from_etdump(etdump: str | Path, *, etrecord: str | Path | None = None,
+                           out: str | Path | None = None, timeout: int = 900) -> Path:
+    """Run ``_et_inspect`` (in the ET venv) over a pulled etdump -> ``et_regions.json``.
+
+    Shelled out rather than imported because the devtools ``Inspector`` lives in the ExecuTorch venv,
+    not merlin's; the helper is argv-in/JSON-out precisely so this boundary stays a process boundary.
+
+    ``etrecord`` is what lets the Inspector name a layer: without it the events carry operator names
+    but not the ``nn.Module`` fqn, so the result cannot be JOINED to our own per-op profile (whose
+    ``join_key`` is that same fqn). Absent etrecord is therefore reported, not silently accepted --
+    a table keyed on operator name alone would look like a comparison and align nothing.
+    """
+    etdump = Path(etdump)
+    if not etdump.is_file():
+        raise ExecuTorchError(f"no etdump at {etdump}; the runner must be the "
+                              f"EXECUTORCH_BUILD_RISCV_ETDUMP build and the run must pass "
+                              f"--etdump_path")
+    out = Path(out) if out is not None else etdump.with_name("et_regions.json")
+    argv = [str(et_venv_python()), str(_ET_INSPECT_HELPER), "--etdump", str(etdump),
+            "--out", str(out)]
+    if etrecord is not None and Path(etrecord).is_file():
+        argv += ["--etrecord", str(etrecord)]
+    proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0 or not out.is_file():
+        raise ExecuTorchError(
+            f"_et_inspect failed (rc={proc.returncode}): {(proc.stderr or proc.stdout)[-700:]}")
+    return out
+
+
 def region_profiles_from_et_json(et_regions_json: str | Path) -> list[RegionProfile]:
     """Turn ``_et_inspect``'s ``et_regions.json`` (per-op etdump timing aggregated by nn.Module fqn)
     into per-region :class:`RegionProfile`s the region×framework compare consumes. The fqn is the
@@ -493,6 +522,10 @@ class BoardRun:
     # Kept distinct from "the line never appeared" so a console-format change is reported, not
     # silently turned into a missing (or worse, zero) timing.
     parse_warnings: list[str] = field(default_factory=list)
+    #: Local path of the etdump pulled back from the board, when the run asked for one. None when
+    #: not requested, and None (with a parse warning) when requested but the runner emitted nothing --
+    #: the plain runner silently ignores --etdump_path, so "absent" must not read as "zero events".
+    etdump: Path | None = None
 
 
 def _board_free_bytes() -> int | None:
@@ -510,7 +543,7 @@ def _board_free_bytes() -> int | None:
 
 def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
                   *, num_executions: int = 1, timeout: int = 1200,
-                  mmap_model: bool = False) -> BoardRun:
+                  mmap_model: bool = False, etdump: bool = False) -> BoardRun:
     """Push runner + .pte + .ptd + input(s) to the K1, run under the board lock, dump the output.
 
     Uses the stock executor_runner's ``--model_path`` / ``--data_path`` (external weights) /
@@ -560,6 +593,12 @@ def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
             argv.append(f"--data_path={remote_ptds[0]}")
         if remote_inputs:
             argv.append("--inputs=" + ",".join(remote_inputs))
+        remote_etdump = f"{k1_exec.K1_REMOTE_DIR}/model.etdump" if etdump else None
+        local_etdump = (exp.pte.parent / "model.etdump") if etdump else None
+        if remote_etdump:
+            # Only the EXECUTORCH_BUILD_RISCV_ETDUMP runner honours this; the plain one ignores the
+            # flag without error, which is why the pull below is checked rather than assumed.
+            argv.append(f"--etdump_path={remote_etdump}")
         try:
             k1_exec.run(["chmod", "+x", remote_runner])
             proc = k1_exec.run(argv, timeout=timeout)
@@ -568,10 +607,21 @@ def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
                 _scp_from_board(f"{remote_out}-0.bin", local_out)
             except Exception:  # noqa: BLE001
                 local_out = None  # type: ignore[assignment]
+            if remote_etdump and local_etdump is not None:
+                try:
+                    _scp_from_board(remote_etdump, local_etdump)
+                    out.etdump = local_etdump if local_etdump.is_file() else None
+                except Exception as e:  # noqa: BLE001
+                    # Requested and not produced is a REPORTED gap, never a silent zero: it means the
+                    # runner was built without devtools, and every per-op number would be missing.
+                    out.parse_warnings.append(
+                        f"--etdump_path was requested but no etdump came back ({type(e).__name__}); "
+                        f"the runner is probably built without EXECUTORCH_BUILD_RISCV_ETDUMP")
         finally:
             try:
                 k1_exec.run(["rm", "-f", remote_runner, remote_pte, *remote_ptds,
-                             *remote_inputs, f"{remote_out}-0.bin"])
+                             *remote_inputs, f"{remote_out}-0.bin",
+                             *( [remote_etdump] if remote_etdump else [] )])
             except Exception:  # noqa: BLE001
                 pass
 
@@ -640,7 +690,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
               int8_subgraph: bool = False, int8_whole_model: bool | None = None,
               full_fidelity: bool = True,
               export_env: dict[str, str] | None = None,
-              num_executions: int = 1,
+              num_executions: int = 1, etdump: bool = False,
               runner_override: Path | None = None) -> BaselineResult:
     """Run one (model, variant) through the ExecuTorch+XNNPACK arm end-to-end -> BaselineResult.
 
@@ -776,7 +826,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     do_board = k1_exec.board_available() if run_board is None else run_board
     if do_board:
         try:
-            _do_board(res, runner, exp, mmap_model=mmap_model, num_executions=num_executions)
+            _do_board(res, runner, exp, etdump=etdump, mmap_model=mmap_model, num_executions=num_executions)
         except k1_exec.BoardUnavailable as e:
             res.gap_reason = res.gap_reason or f"K1 board run failed: {str(e)[:250]}"
         except Exception as e:  # noqa: BLE001
@@ -789,13 +839,19 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
 
 
 def _do_board(res: BaselineResult, runner: Path, exp: "ExportResult",
-              *, mmap_model: bool = False, num_executions: int = 1) -> None:
+              *, mmap_model: bool = False, num_executions: int = 1,
+              etdump: bool = False) -> None:
     """Run on the board and fill correctness + E2E/region profile from the executor_runner run."""
     # num_executions is threaded so a COMPARISON can match protocols. It defaults to 1, which is
     # what every historical cell used -- but a single execution against an ours-side min-of-n is not
     # apples-to-apples, and min-of-n favours whichever side gets it. Matching them is the only way the
     # ratio means anything at the few-percent level this comparison now sits at.
-    br = _run_on_board(res, runner, exp, mmap_model=mmap_model, num_executions=num_executions)
+    br = _run_on_board(res, runner, exp, mmap_model=mmap_model, num_executions=num_executions,
+                       etdump=etdump)
+    res.etdump = br.etdump
+    # Load time is kept, not discarded: XNNPACK prepacks weights into its blocked layout at delegate
+    # init, so a framework's AOT work lands here while the ratio we quote is taken against execute.
+    res.load_ns = br.load_ns
     res.ran = br.ran
     if br.wall_ns is not None:
         # PER-EXECUTION, always. executor_runner logs "Model executed successfully N time(s) in X ms"

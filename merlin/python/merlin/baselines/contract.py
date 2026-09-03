@@ -96,6 +96,20 @@ class BaselineResult:
     e2e_cycles: int | None = None
     e2e_wall_ns: int | None = None
 
+    #: Model-LOAD time, kept separately from execute and never folded into it.
+    #:
+    #: This is where a framework's ahead-of-time work shows up, and dropping it makes a comparison
+    #: read better than it is. ExecuTorch's XNNPACK delegate PREPACKS weights into its microkernel's
+    #: blocked layout at delegate init -- i.e. during load -- while every ratio in this repo is taken
+    #: against its EXECUTE line. So their prepacking is outside the number we compare, and any
+    #: equivalent work we do per inference is inside ours. The runner prints both ("Model loaded in
+    #: X ms" / "Model executed successfully N time(s) in Y ms") and we parsed both, but only execute
+    #: was ever propagated; this field stops the load number being thrown away.
+    load_ns: int | None = None
+
+    #: Local path of a pulled ExecuTorch etdump (per-op event trace), when the run asked for one.
+    etdump: "Path | None" = None
+
     # --- per-region "kernel-style" profile ---
     regions: list[RegionProfile] = field(default_factory=list)
 

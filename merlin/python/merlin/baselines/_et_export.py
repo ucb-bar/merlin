@@ -502,7 +502,65 @@ def main() -> int:
         input_files.append({"path": str(p), "key": k, "dtype": str(arr.dtype),
                             "shape": list(arr.shape), "nbytes": arr.nbytes})
 
+    # --- AOT PROFILE: what ExecuTorch's ahead-of-time pipeline actually DID to this graph ---------
+    # Counts alone ("42 of 60 nodes delegated") say a partition happened, not what it bought. These
+    # four say what to copy: which ops XNNPACK swallowed (and therefore prepacks + fuses), which it
+    # REFUSED (those run portable and are where a compiler can beat a kernel library), how the
+    # weights are encoded, and how much arena ExecuTorch plans statically. The last is directly
+    # comparable to our own allocation behaviour -- we emit 209 `tensor.empty` on this model.
+    def _aot_profile() -> dict:
+        import collections
+        prof: dict = {}
+        try:
+            portable = collections.Counter()
+            delegated_backends = collections.Counter()
+            for n in nodes:
+                if n.op != "call_function":
+                    continue
+                t = str(n.target)
+                if "call_delegate" in t:
+                    # the lowered module carries its backend id
+                    try:
+                        lm = n.args[0]
+                        delegated_backends[str(getattr(lm, "backend_id", "") or
+                                                getattr(lm, "_backend_id", "") or "unknown")] += 1
+                    except Exception:  # noqa: BLE001
+                        delegated_backends["unknown"] += 1
+                else:
+                    portable[t.split(".")[-2] if "." in t else t] += 1
+            prof["portable_ops"] = dict(portable.most_common(40))
+            prof["n_portable_ops"] = sum(portable.values())
+            prof["delegate_backends"] = dict(delegated_backends)
+        except Exception as e:  # noqa: BLE001
+            prof["partition_error"] = f"{type(e).__name__}: {e}"
+        # ExecuTorch's STATIC memory plan: the per-arena byte sizes its planning pass chose. A
+        # framework that plans its intermediates has no per-op allocator traffic at run time.
+        try:
+            plans = et_program.executorch_program.execution_plan
+            prof["memory_plan_arenas"] = [list(pl.non_const_buffer_sizes) for pl in plans]
+            prof["memory_plan_total_bytes"] = sum(
+                sum(x for x in pl.non_const_buffer_sizes if isinstance(x, int) and x > 0)
+                for pl in plans)
+        except Exception as e:  # noqa: BLE001
+            prof["memory_plan_error"] = f"{type(e).__name__}: {e}"
+        # Weight ENCODING: how the constants are actually stored (dtype x count x bytes).
+        try:
+            enc = collections.Counter(); byts = collections.Counter()
+            gm = exported.graph_module
+            for name, t in list(getattr(exported, "state_dict", {}).items()):
+                try:
+                    enc[str(t.dtype)] += 1; byts[str(t.dtype)] += t.numel() * t.element_size()
+                except Exception:  # noqa: BLE001
+                    pass
+            prof["weight_dtypes"] = dict(enc)
+            prof["weight_bytes_by_dtype"] = dict(byts)
+            del gm
+        except Exception as e:  # noqa: BLE001
+            prof["weight_encoding_error"] = f"{type(e).__name__}: {e}"
+        return prof
+
     summary = {
+        "aot_profile": _aot_profile(),
         "model": args.model_name,
         "pte": str(out),
         "pte_bytes": out.stat().st_size,

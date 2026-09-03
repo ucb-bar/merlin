@@ -12,7 +12,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+
+# THIS SCRIPT SHADOWS THE PACKAGE IT NEEDS. It lives in ``merlin/baselines/``, which also contains
+# ``executorch.py`` (merlin's OWN ExecuTorch arm), and Python puts a script's own directory first on
+# sys.path. So ``from executorch.devtools import Inspector`` below resolved to that sibling module,
+# which then failed importing merlin (absent from the ET venv) -- i.e. this helper could never run,
+# and the whole per-op ExecuTorch timing path was unreachable. Drop our own directory before any
+# executorch import; being argv-in/JSON-out, we need nothing from it.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path[:] = [p for p in sys.path
+               if p and os.path.abspath(p) != _HERE] or [p for p in sys.path if p]
 
 
 def _clean_module_path(raw: str) -> str | None:
