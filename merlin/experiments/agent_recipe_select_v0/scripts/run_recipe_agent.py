@@ -275,6 +275,11 @@ def main(argv: list[str] | None = None) -> int:
                 rec["n_instructions"] = built.get("n_instructions")
                 rec["artifact_digest"] = built.get("artifact_digest")
                 rec["vs_default_code"] = built.get("vs_default")
+                # The cut the compiler actually emitted, which is NOT the same as the cut the agent
+                # asked for: most requests are "auto", and every auto row would otherwise look
+                # identical while the schedules differed. The cycles belong to this cut.
+                rec["blocks"] = built.get("blocks")
+                rec["fits_without_cutting"] = built.get("fits_without_cutting")
                 t0 = time.time()
                 ev = AC.v_evaluate(built["candidate_id"], args.engine, args.eval_timeout)
                 rec.update({"legal": True, "cycles": ev.get("cycles"),

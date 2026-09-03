@@ -34,7 +34,16 @@ COLUMNS = [
     # identity
     "arm", "cited", "void_reason", "run_id", "workload", "M", "N", "K", "Mt", "Nt", "Kt", "macs",
     "candidate_index", "recipe_activation_residency", "recipe_config_policy", "recipe_drain",
+    "recipe_block_m", "recipe_block_n", "recipe_block_k",
     "is_default", "candidate_id", "artifact_digest",
+    # which model this workload came from, and what it is at TRUE size. A census row is a SIZED
+    # shape: K is the model's own, M and N are clamped to what the oracle can afford, and a reader
+    # who cannot see both cannot tell a model result from a synthetic one.
+    "model_id", "layer_fqn", "invocation_count", "mac_share", "sizing",
+    "true_M", "true_N", "true_K",
+    # the cut the compiler actually used, without which cycles cannot be joined to a schedule
+    "block_m", "block_n", "block_k", "n_blocks", "blocks_derived", "blocks_source",
+    "fits_without_cutting",
     # emitted code
     "n_instructions", "n_config", "n_mvin", "n_preload", "n_compute", "n_mvout", "n_fence",
     "code_differs_from_default", "counts_differ_from_default",
@@ -53,6 +62,12 @@ COLUMNS = [
     "engine", "engine_config", "oracle_kind", "derived_from_rtl", "concurrency_declared",
     "sims_running_observed", "loadavg_1m", "driver", "model", "codex_version",
     "gsim_sha256", "product",
+    # WHICH MODEL AND EFFORT ANSWERED. AutoComp tiers plan and implement across two models, so a
+    # token number that does not name its tier cannot be attributed, and the tiering cannot be
+    # evaluated at all. The recipe arm runs one tier by construction and says so.
+    "tier", "tier_model", "tier_effort", "plan_model", "code_model",
+    # the exact compiler that produced this row: forks are content-addressed and minted per run
+    "package_id", "package_source_digest",
 ]
 
 GSIM_CFG = T.GSIM_CONFIG
@@ -74,8 +89,107 @@ def _hist(row: dict, h: dict | None) -> None:
 
 
 def _recipe(row: dict, rec: dict | None) -> None:
-    for k in ("activation_residency", "config_policy", "drain"):
+    for k in ("activation_residency", "config_policy", "drain", "block_m", "block_n", "block_k"):
         row[f"recipe_{k}"] = (rec or {}).get(k, "")
+
+
+_RECIPE_MOD = None
+
+
+def _recipe_module():
+    """The compiler's own recipe module, imported from the fork it is measured against."""
+    global _RECIPE_MOD
+    if _RECIPE_MOD is None:
+        import sys as _sys                                                # noqa: PLC0415
+        _sys.path.insert(0, str(T.WORK / "mlir_oot"))
+        from lowering import recipe as _r                                 # noqa: PLC0415
+        _RECIPE_MOD = _r
+    return _RECIPE_MOD
+
+
+def _blocks_from_compiler(row: dict) -> None:
+    """Recover the emitted cut for a row recorded before the runner started storing it.
+
+    DERIVED, not guessed: the block plan is a pure function of (recipe, shape, machine geometry), so
+    asking the compiler reproduces exactly what it emitted. Rows written before that field existed
+    would otherwise report an empty cut while their cycles plainly belong to one.
+    """
+    try:
+        R = _recipe_module()
+        rec = {k: row.get(f"recipe_{k}") or "auto" for k in
+               ("activation_residency", "config_policy", "drain", "block_m", "block_n", "block_k")}
+        rec = {k: v for k, v in rec.items() if v}
+        m, n, k = int(row["M"]), int(row["N"]), int(row["K"])
+        import sys as _sys                                                # noqa: PLC0415
+        _sys.path.insert(0, str(T.WORK / "mlir_oot"))
+        from lowering.isa import ACC_ROWS, DIM, SPAD_ROWS                 # noqa: PLC0415
+        pl = R.blocks(R.Recipe(**rec), m=m, n=n, k=k, dim=DIM,
+                      spad_rows=SPAD_ROWS, acc_rows=ACC_ROWS)
+        if pl.ok:
+            row["block_m"], row["block_n"], row["block_k"] = pl.bm, pl.bn, pl.bk
+            row["n_blocks"], row["blocks_derived"] = pl.n_blocks, pl.derived
+            row["blocks_source"] = "derived_from_compiler"
+    except Exception:
+        pass          # a row we cannot reconstruct stays EMPTY rather than carrying a guess
+
+
+def _blocks(row: dict, b: dict | None) -> None:
+    """The cut the compiler chose, as distinct from the cut the agent asked for.
+
+    `recipe_block_*` is the REQUEST (often "auto"); these are what was emitted. Recording only the
+    request would make every derived-default row look identical while the schedules differed.
+    """
+    if not b:
+        return
+    row["block_m"] = b.get("block_m", "")
+    row["block_n"] = b.get("block_n", "")
+    row["block_k"] = b.get("block_k", "")
+    row["n_blocks"] = b.get("n_blocks", "")
+    row["blocks_derived"] = b.get("derived", "")
+    row["blocks_source"] = "recorded_at_build"
+
+
+def _census_shape(row: dict, workload: str) -> None:
+    """Join a row back to the model layer it came from, via the census CSV.
+
+    The workload FILENAME carries model and layer, but the true extents and the MAC share live in
+    the census; without them a reader cannot weight a per-shape result by how much of the model it
+    represents, which is the only way a per-layer number becomes a statement about ResNet-50.
+    """
+    import csv as _csv                                                    # noqa: PLC0415
+
+    global _CENSUS
+    if _CENSUS is None:
+        _CENSUS = {}
+        for prod in sorted((T.REPO / "out/artifacts/recipe-select/gemmini/v2").glob(
+                "*/kernel_census.csv")):
+            for r in _csv.DictReader(prod.open(encoding="utf-8")):
+                if not r.get("M"):
+                    continue
+                key = (r["eval_M"], r["eval_N"], r["eval_K"])
+                _CENSUS[key] = r
+    stem = Path(workload).stem
+    if "__" not in stem:
+        return
+    tail = stem.rsplit("__", 1)[-1]
+    parts = tail.split("x")
+    if len(parts) != 3:
+        return
+    r = _CENSUS.get(tuple(parts))
+    if not r:
+        return
+    row["model_id"] = r.get("model_id", "")
+    row["layer_fqn"] = r.get("layer_fqn", "")
+    row["invocation_count"] = r.get("invocation_count", "")
+    row["mac_share"] = r.get("mac_share", "")
+    row["sizing"] = r.get("sizing", "")
+    row["true_M"] = r.get("true_M", "")
+    row["true_N"] = r.get("true_N", "")
+    row["true_K"] = r.get("true_K", "")
+    row["fits_without_cutting"] = r.get("fits_without_cutting", "")
+
+
+_CENSUS: "dict | None" = None
 
 
 def from_sweeps() -> list[dict]:
@@ -185,10 +299,19 @@ def from_autocomp() -> list[dict]:
                 "engine": r.get("engine", d.get("engine", "")),
                 "engine_config": r.get("engine_config", GSIM_CFG),
                 "driver": "codex", "model": d.get("plan_model", ""),
+                # AutoComp spends across TWO tiers. Naming both on every row is what lets the
+                # per-tier ledger (codex_calls.jsonl) be joined to per-candidate quality; without it
+                # the arm can report what it spent but not which model spent it.
+                "plan_model": d.get("plan_model", ""), "code_model": d.get("code_model", ""),
+                "tier": "plan+code",
+                "tier_model": ((d.get("tiers") or {}).get("plan") or {}).get("model", ""),
+                "tier_effort": ((d.get("tiers") or {}).get("plan") or {}).get("effort", ""),
+                "package_id": d.get("package_id", ""),
                 "product": str(f.parent),
                 # AutoComp's per-call usage is aggregated by the codex provider and not attributed to
                 # individual candidates, so per-row token columns stay EMPTY rather than 0.
             })
+            _census_shape(row, d.get("workload_mlir") or d.get("workload", ""))
             out.append(row)
     return out
 
@@ -254,6 +377,13 @@ def from_agent() -> list[dict]:
             })
             _recipe(row, r.get("recipe"))
             _hist(row, r.get("instr_counts"))
+            _blocks(row, r.get("blocks"))
+            if not row.get("block_k"):
+                _blocks_from_compiler(row)
+            _census_shape(row, d["workload"])
+            row["tier"] = "select"
+            row["tier_model"] = d.get("model", "")
+            row["tier_effort"] = d.get("effort", "")
             out.append(row)
         # The baseline is the agent arm's candidate -1: measured by the harness on the same engine in
         # the same run, so a speedup is never against a number from somewhere else.
