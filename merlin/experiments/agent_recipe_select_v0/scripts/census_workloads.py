@@ -229,6 +229,21 @@ def _capability_report(rows: list[dict], census: Path, pkg: Path, digest: str,
          "## Expressibility, per model", "",
          "| model | distinct shapes | fit whole (pre-blocking) | emittable (with blocking) | "
          "MACs covered |", "|---|---|---|---|---|"]
+    if a.emit_workloads:
+        wdir = Path(a.emit_workloads)
+        wdir.mkdir(parents=True, exist_ok=True)
+        written = []
+        for r in rows:
+            if r["M"] == "":
+                continue
+            short = r["model_id"].split("_int8")[0]
+            leaf = str(r["layer_fqn"]).replace(".", "_")[-40:]
+            name = f"{short}__{leaf}__{r['eval_M']}x{r['eval_N']}x{r['eval_K']}.mlir"
+            (wdir / name).write_text(
+                IFACE.format(M=r["eval_M"], N=r["eval_N"], K=r["eval_K"]), encoding="utf-8")
+            written.append(name)
+        print(f"wrote {len(written)} workloads to {wdir}")
+
     for model in sorted({r["model_id"] for r in rows}):
         mr = [r for r in rows if r["model_id"] == model and r["M"] != ""]
         whole = [r for r in mr if r["fits_without_cutting"] == "yes"]
@@ -277,6 +292,24 @@ def _capability_report(rows: list[dict], census: Path, pkg: Path, digest: str,
           ""]
     return "\n".join(L)
 
+#: The compact interface form the gemmini OOT backend consumes. One resident weight, one activation,
+#: one commit -- the same shape every capsule in this corpus uses, so a census workload is the same
+#: KIND of object as a certified one and differs only in its extents.
+IFACE = """module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "gemmini", \
+merlin_iface.abi_version = "0.1"}} {{
+  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : tensor<{K}x{N}xi8>
+  %A0 = merlin_iface.tensor {{name = "A0", role = "input"}} : tensor<{M}x{K}xi8>
+  %W_res = merlin_iface.resident_pack %W {{layout = "packed_rhs"}} : (tensor<{K}x{N}xi8>) \
+-> !merlin_iface.resident
+  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<{M}x{K}xi8>, !merlin_iface.resident) \
+-> !merlin_iface.acc<i32>
+  %Y0 = merlin_iface.commit %acc0 {{name = "Y0", epilogue = [], output_dtype = "i32"}} : \
+(!merlin_iface.acc<i32>) -> tensor<{M}x{N}xi32>
+  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()
+}}
+"""
+
+
 FIELDS = ["model_id", "layer_fqn", "shape_rank", "M", "N", "K", "dtype_in", "invocation_count",
           "macs", "mac_share", "fits_without_cutting", "why_cutting_needed",
           "expressible", "inexpressible_reason", "census_verdict",
@@ -294,6 +327,9 @@ def main(argv=None) -> int:
     ap.add_argument("--budget-s", type=float, default=300.0,
                     help="per-candidate GSIM wall budget that sizing must respect")
     ap.add_argument("--out", default="", help="where to write kernel_census.csv (default: stdout summary only)")
+    ap.add_argument("--emit-workloads", default="",
+                    help="write one merlin_iface .mlir per sized census shape into this directory, "
+                         "named <model>__<layer>__<M>x<N>x<K>.mlir, and print the list")
     ap.add_argument("--product", action="store_true",
                     help="write a versioned product under out/artifacts/recipe-select/gemmini/v2/ "
                          "with the census, the capability result and the freeze record")
@@ -345,6 +381,21 @@ def main(argv=None) -> int:
             "engine_note": T.ENGINE_NOTE,
         }, indent=1) + "\n", encoding="utf-8")
         print(f"wrote {dest} ({len(rows)} rows)")
+
+    if a.emit_workloads:
+        wdir = Path(a.emit_workloads)
+        wdir.mkdir(parents=True, exist_ok=True)
+        written = []
+        for r in rows:
+            if r["M"] == "":
+                continue
+            short = r["model_id"].split("_int8")[0]
+            leaf = str(r["layer_fqn"]).replace(".", "_")[-40:]
+            name = f"{short}__{leaf}__{r['eval_M']}x{r['eval_N']}x{r['eval_K']}.mlir"
+            (wdir / name).write_text(
+                IFACE.format(M=r["eval_M"], N=r["eval_N"], K=r["eval_K"]), encoding="utf-8")
+            written.append(name)
+        print(f"wrote {len(written)} workloads to {wdir}")
 
     for model in sorted({r["model_id"] for r in rows}):
         mr = [r for r in rows if r["model_id"] == model]

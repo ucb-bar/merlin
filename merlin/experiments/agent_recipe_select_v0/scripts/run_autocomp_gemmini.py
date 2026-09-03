@@ -51,13 +51,41 @@ from autocomp_gemmini_backend import GsimGemminiEvalBackend           # noqa: E4
 # so the aet run is still real, just opened from the side of the seam that owns aet.
 from merlin.common.artifacts import utc_stamp, git_sha7                # noqa: E402
 
-#: Shapes shared with the recipe arm, so the arms are compared on identical work.
+#: Shapes shared with the recipe arm, so the arms are compared on identical work. The v0 three are
+#: kept as named controls; the model census supplies the rest through `--shape`, because the arms
+#: must see the SAME extents and the recipe arm now takes its shapes from ResNet-50 and TinyLlama.
 SHAPES = {"w1_small": (32, 32, 32), "w2_medium": (64, 64, 64), "w3_n_heavy": (16, 512, 256)}
+
+
+def _shape_from_workload_mlir(path) -> "tuple[str, tuple[int, int, int]]":
+    """Read (M, K, N) out of a merlin_iface workload, so one file feeds BOTH arms.
+
+    The recipe arm consumes the .mlir directly; AutoComp writes C and needs the extents. Deriving
+    them from the same file is what makes "identical work" checkable rather than a convention two
+    scripts are each trusted to honour.
+    """
+    from pathlib import Path as _P                                     # noqa: PLC0415
+    text = _P(path).read_text(encoding="utf-8")
+    m = k = n = None
+    for line in text.splitlines():
+        if 'role = "input"' in line:
+            core = line[line.rindex("<") + 1:line.rindex(">")].split("x")
+            m, k = int(core[0]), int(core[1])
+        elif 'role = "weight"' in line:
+            core = line[line.rindex("<") + 1:line.rindex(">")].split("x")
+            n = int(core[1])
+    if None in (m, k, n):
+        raise SystemExit(f"could not read M/K/N from {path}")
+    return _P(path).stem, (m, k, n)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--workload", required=True, choices=sorted(SHAPES))
+    ap.add_argument("--workload", default="", choices=sorted(SHAPES) + [""],
+                    help="a named control shape shared with v0")
+    ap.add_argument("--workload-mlir", default="",
+                    help="a census workload; its extents are read from the same file the recipe arm "
+                         "compiles, so both arms provably see one shape")
     ap.add_argument("--plan-model", default="codex/gpt-5.6-sol",
                     help="the EXPENSIVE tier: planning. Same seat model the recipe arm uses.")
     ap.add_argument("--code-model", default="codex/gpt-5.6-sol",
@@ -84,7 +112,13 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault("WANDB_MODE", "disabled")
     os.environ.setdefault("WANDB_SILENT", "true")
 
-    M, K, N = SHAPES[a.workload]
+    if a.workload_mlir:
+        wl_name, (M, K, N) = _shape_from_workload_mlir(a.workload_mlir)
+        a.workload = wl_name
+    elif a.workload:
+        M, K, N = SHAPES[a.workload]
+    else:
+        raise SystemExit("one of --workload or --workload-mlir is required")
     run_id = f"{utc_stamp()}_{a.method}_seed000_{git_sha7()}"
     run_dir = T.RUNS / run_id
     for sub in ("logs", "metrics", "artifacts_dir", "generated", "candidates"):

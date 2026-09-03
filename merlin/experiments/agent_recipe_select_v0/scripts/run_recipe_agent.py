@@ -84,6 +84,8 @@ MACHINE (derived from this target's own RTL)
 {machine}
 
 LEGAL CHOICES — you may only use these values. Each is annotated with what it does.
+`legal_with_others_default` is that value's verdict holding every OTHER dimension at its default; the
+dimensions interact, so a combination is only certainly legal once the compiler accepts it.
 {choices}
 
 BASELINE
@@ -94,7 +96,12 @@ WHAT YOU HAVE TRIED SO FAR ({n_tried} of {budget} evaluations used)
 {history}
 
 Reply with ONLY a JSON object naming your next recipe, e.g.
-{{"activation_residency": "panel", "config_policy": "on_change", "drain": "inline"}}
+{{"activation_residency": "panel", "config_policy": "on_change", "drain": "inline",
+  "block_m": "auto", "block_n": "256", "block_k": "128"}}
+Every dimension listed above may be set; omitted ones take their default. The block extents are
+whole-tile element counts (or "auto" for the compiler's derived cut) and they INTERACT -- the
+accumulator bounds the PRODUCT of the M and N blocks -- so a pair that is individually legal can be
+jointly illegal, and the build will tell you why.
 No prose, no markdown fence, no explanation. Just the JSON object."""
 
 
@@ -221,7 +228,13 @@ def main(argv: list[str] | None = None) -> int:
         prompt = TASK.format(
             workload=json.dumps({k: insp[k] for k in ("M", "N", "K", "tiles", "macs")}, indent=1),
             machine=json.dumps(insp["machine"], indent=1),
-            choices=json.dumps({d: [{"value": e["value"], "means": e["means"], "legal": e["legal"]}
+            # `legal_with_others_default` is named in full rather than shortened to `legal`, because
+            # the block extents INTERACT: the accumulator bounds the PRODUCT of the M and N blocks, so
+            # a value flagged here can still be refused in combination. Calling it `legal` would tell
+            # the model something the compiler does not promise.
+            choices=json.dumps({d: [{"value": e["value"], "means": e["means"],
+                                     "legal_with_others_default": e["legal_with_others_default"],
+                                     "n_blocks": e.get("n_blocks")}
                                     for e in v] for d, v in choices["dimensions"].items()}, indent=1),
             default=json.dumps(default), baseline=baseline,
             n_tried=len(history), budget=args.budget, history=render_history())
