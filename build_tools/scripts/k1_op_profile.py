@@ -96,7 +96,7 @@ def _median(xs: list[int]) -> float | None:
 
 def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Path,
                  kernel_backend: str | None = None, cos_th: float = 0.9999,
-                 rel_th: float = 1e-2) -> dict:
+                 rel_th: float = 1e-2, iters: int = 1, warmup: int = 0) -> dict:
     """Build+run the instrumented binary n times; gate cos; accumulate per-op ticks.
 
     The per-op ticks are SUMMED across the gated runs then averaged, so a single op faster than
@@ -115,7 +115,7 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
         work = work_root / f"on_{i}"
         try:
             res = k1.run_on_k1(model_dir, work, pkg, timeout=1800, op_profile=True,
-                               kernel_backend=kernel_backend)
+                               kernel_backend=kernel_backend, iters=iters, warmup=warmup)
             g = zm._gate(res["prefix"], {"fp32": golden})
             cos = g["fp32_cos"]
             rel = g.get("fp32_rel")
@@ -131,7 +131,8 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
             m = res["metrics"]
             walls.append(m["wall_ns"])
             time_ticks.append(m.get("time_ticks", 0))
-            prof_totals.append(m.get("prof_total_ticks", 0))
+            # per-iteration, to match the harness's per-iteration wall (see ticks_avg above)
+            prof_totals.append(m.get("prof_total_ticks", 0) / max(1, iters))
             tbl = res.get("op_profile") or []
             if table is None:
                 table = tbl
@@ -149,7 +150,13 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
     if table is None or gated == 0:
         return {"ok": False, "blocker": blocker or "no gated run", "n_gated": 0}
     for rec in table:
-        rec["ticks_avg"] = per_op_ticks[rec["id"]] / gated
+        # Divide by the TIMED ITERATIONS too, not just the gated launches. The prof shim accumulates
+        # ticks across every timed inference in a launch, while the harness reports a PER-ITERATION
+        # wall -- so with --iters>1 the per-op ms was inflated by exactly `iters` while the wall was
+        # not, and the two stopped being comparable. Measured when the flag was added: profiler_cov
+        # came back 13.28 (a coverage above 1.0 is impossible and is what exposed it) with a
+        # contraction bucket of 18.92 ms against a 4.95 ms wall.
+        rec["ticks_avg"] = per_op_ticks[rec["id"]] / gated / max(1, iters)
         rec["ms_avg"] = _ticks_to_ms(rec["ticks_avg"])
         rec["hits"] = per_op_hits[rec["id"]]
         rec["join_key"] = join_key(rec)
@@ -164,7 +171,7 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
 
 def run_unprofiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Path,
                    kernel_backend: str | None = None, cos_th: float = 0.9999,
-                   rel_th: float = 1e-2) -> dict:
+                   rel_th: float = 1e-2, iters: int = 1, warmup: int = 0) -> dict:
     """Build+run the byte-identical UN-instrumented binary n times (the perturbation control)."""
     walls: list[int] = []
     gated = 0
@@ -173,7 +180,7 @@ def run_unprofiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: 
         work = work_root / f"off_{i}"
         try:
             res = k1.run_on_k1(model_dir, work, pkg, timeout=1800, op_profile=False,
-                               kernel_backend=kernel_backend)
+                               kernel_backend=kernel_backend, iters=iters, warmup=warmup)
             g = zm._gate(res["prefix"], {"fp32": golden})
             cos = g["fp32_cos"]
             rel = g.get("fp32_rel")
@@ -266,7 +273,17 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="out/artifacts/recaptures/bitvla_fp32_consistent")
     ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
-    ap.add_argument("-n", type=int, default=3)
+    ap.add_argument("-n", type=int, default=3,
+                    help="separate build+deploy launches; the min across them is reported")
+    ap.add_argument("--iters", type=int, default=1,
+                    help="TIMED inferences inside one launch; the harness reports the PER-ITERATION "
+                         "cost. Default 1 = a single COLD inference, which is what every number this "
+                         "script produced before this flag existed.")
+    ap.add_argument("--warmup", type=int, default=0,
+                    help="UNTIMED inferences before the timed ones. Required for a sustained "
+                         "comparison: ExecuTorch's runner has no warmup and averages its cold first "
+                         "execution into --num_executions, so measuring ours cold against that is "
+                         "comparing a cold number to a mostly-warm one -- and it penalises US.")
     ap.add_argument("--cos", type=float, default=0.9999)
     ap.add_argument("--rel", type=float, default=1e-2,
                     help="fail-closed per-ELEMENT gate: max |pred-ref| / max|ref| must be below this "
@@ -326,9 +343,11 @@ def main() -> None:
     kb = a.kernel_backend
     print(f"=== {md.name}: profiled (instrumented, kernel_backend={kb}) x{a.n} ===")
     prof = run_profiled(md, pkg_on, golden, a.n, work_root, kernel_backend=kb,
+                        iters=a.iters, warmup=a.warmup,
                         cos_th=a.cos, rel_th=a.rel)
     print(f"=== {md.name}: unprofiled control x{a.n} ===")
     unprof = run_unprofiled(md, pkg_off, golden, a.n, work_root, kernel_backend=kb,
+                            iters=a.iters, warmup=a.warmup,
                             cos_th=a.cos, rel_th=a.rel)
 
     summary: dict = {
