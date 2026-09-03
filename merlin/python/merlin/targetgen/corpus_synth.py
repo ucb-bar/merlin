@@ -342,6 +342,39 @@ def cap_to_affordable(entry: dict, spec_doc: dict, *, extends: str = "") -> "str
             f"certification budget affords on this target, so it is graded at the loop tier")
 
 
+def narrowest_admitted(admitted: "set[str] | frozenset[str]") -> str:
+    """The narrowest admitted dtype -- the fallback when no ``precision_preference`` is declared.
+
+    ⚠️ THIS USED TO BE ``sorted(admitted)[0]``, i.e. ALPHABETICAL. On the microscaling target, whose
+    whole purpose is mxfp4/mxfp6/mxfp8, the admitted set is {bf16, i8, mxfp4, mxfp6, mxfp8} and the
+    alphabetical answer is `bf16` -- the WIDEST of the five, picked by spelling. The stated goal is to
+    exercise the best quantization format the hardware supports rather than a wide one, so the
+    alphabet was choosing the opposite of the intent, silently, on the three targets that declare no
+    preference.
+
+    A declared preference is still authorial and still wins: which formats a target's owner wants
+    ranked, and in what order, is an intent nobody can derive. But "narrowest first" is not an
+    invention -- storage width is a derived fact, from `quant_formats` via `capsule_dram.dtype_bits`,
+    which already knows the sub-byte packed widths (mxfp4 -> 4 bits, mxfp6 -> 6). Ties break
+    alphabetically so the choice stays deterministic and byte-stable regeneration is preserved.
+
+    An unmeasurable token sorts LAST rather than raising: it should not be picked over a format whose
+    width is known, and it should not stop a corpus from generating either.
+    """
+    from merlin.targetgen.capsule_dram import dtype_bits
+
+    if not admitted:
+        return ""
+
+    def _rank(token: str) -> tuple:
+        try:
+            return (0, int(dtype_bits(str(token))), str(token))
+        except Exception:                          # noqa: BLE001 -- unknown width sorts last, not raises
+            return (1, 0, str(token))
+
+    return sorted((str(d) for d in admitted), key=_rank)[0]
+
+
 def extents_for(alignment: str, probes: list[dict]) -> dict[str, str]:
     """Tile-relative extents for an alignment, spelled so the entry stays geometry-free.
 
@@ -840,7 +873,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         stage = str(_st.get("stage") or "")
         if not stage:
             continue
-        dtype = kept[0] if kept else (sorted(admitted_dtypes)[0] if admitted_dtypes else "")
+        dtype = kept[0] if kept else narrowest_admitted(admitted_dtypes)
         if not dtype:
             unexpressable.append(f"epilogue axis: no admitted dtype to build a {stage!r} stage at")
             continue
