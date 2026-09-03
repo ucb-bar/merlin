@@ -70,7 +70,63 @@ def resolve_grant(rel: str, repo: Path | None = None) -> Path:
     if path_kind(p) != "missing":
         return p
     q = repo / "merlin" / rel
-    return q if path_kind(q) != "missing" else p
+    if path_kind(q) != "missing":
+        return q
+    derived = _resolve_target_package_grant(rel)
+    return derived if derived is not None else p
+
+
+#: The tail of a per-target grant whose home the TARGET REGISTRY owns, not the manifest.
+_REGISTRY_OWNED_GRANT_TAILS = ("contracts/rtl_facts", "contracts")
+
+
+def _resolve_target_package_grant(rel: str) -> "Path | None":
+    """A ``merlin/targets/<t>/contracts/...`` grant resolved through the target registry, or ``None``.
+
+    A TARGET'S PACKAGE DOES NOT ALWAYS LIVE UNDER ``merlin/targets/``. One target's contracts and RTL
+    facts are curated in-tree; another's are GENERATED, and the registry is what knows which -- it
+    resolves each target to its own ``contract_path``/``facts_path``, which for a generated package sit
+    under the build root. A manifest that spells the in-tree location for such a target names a
+    directory that does not exist, and the grant then fails closed: measured, five atlas bundles
+    granted ``merlin/targets/atlas/contracts/rtl_facts/`` and the sandbox could not be assembled at
+    all, so the arm that is SUPPOSED to read RTL facts could not have read them.
+
+    Resolving through the registry keeps the manifest saying WHAT it wants (this target's RTL facts)
+    and lets the registry say WHERE, which is the same split the rest of the repo uses. Returns None
+    when the shape does not match or the registry cannot resolve it -- the caller then reports the path
+    exactly as the manifest declared it, which is what makes the failure legible.
+    """
+    parts = Path(rel).as_posix().strip("/").split("/")
+    if len(parts) < 4 or parts[0] != "merlin" or parts[1] != "targets":
+        return None
+    target, tail = parts[2], "/".join(parts[3:])
+    if tail not in _REGISTRY_OWNED_GRANT_TAILS:
+        return None
+    try:
+        from merlin.targetgen import target_registry as _tr
+        info = _tr.resolve(target)
+    except Exception:                         # noqa: BLE001 — unknown target: not our shape
+        return None
+    if not tail.endswith("rtl_facts"):
+        base = Path(info.contract_path).parent
+        return base if path_kind(base) != "missing" else None
+    # Two homes for the facts, in the order the repo itself prefers: the target package's own
+    # `contracts/rtl_facts/` where one has been written, else the PURGEABLE introspect cache that
+    # `rtl.facts` calls "the single place that maps a target name -> its facts artifact". The cache is
+    # where a regenerated target's facts actually land, and granting a snapshot FROM it is sound
+    # because the snapshot copies the bytes rather than binding the directory.
+    for base in (Path(info.facts_path).parent, _rtl_facts_dir(target)):
+        if base is not None and path_kind(base) != "missing":
+            return base
+    return None
+
+
+def _rtl_facts_dir(target: str) -> "Path | None":
+    try:
+        from merlin.targetgen.rtl.facts import rtl_facts_path
+        return Path(rtl_facts_path(target)).parent
+    except Exception:                         # noqa: BLE001 — no facts location for this target
+        return None
 
 
 def bundle_snapshot_root(ws: Path) -> Path:
@@ -162,9 +218,15 @@ def _snapshot_grants(ws: Path, bundle: dict, repo: Path) -> tuple[dict, list[tup
         destination = Path(str(record.get("destination", "")))
         snapshot_rel = Path(str(record.get("snapshot", "")))
         declared = Path(expected)
+        # THE SAME RESOLVER THE MATERIALIZER USED. Listing the two shorthand candidates here restated
+        # `resolve_grant`'s rule in a second place, and the two then disagreed the moment the rule grew
+        # a third case: a grant whose home the target registry owns resolved fine at copy time and was
+        # rejected at verify time, which reads as a corrupted snapshot rather than as two functions
+        # that stopped agreeing.
         valid_destinations = {
             (repo / declared).absolute(),
             (repo / "merlin" / declared).absolute(),
+            resolve_grant(str(expected), repo).absolute(),
         }
         if not destination.is_absolute() or destination not in valid_destinations:
             raise RuntimeError(f"bundle input snapshot destination is invalid for {expected!r}")
@@ -436,25 +498,27 @@ def claude_runtime_binds() -> list[str]:
 
 
 # --------------------------------------------------------------------------- mount-table replay
-def _mounts(argv: list[str]) -> list[tuple[str, str]]:
-    """Parse the argv into ordered (state, dest) mount ops, where state is 'expose' or 'hide'. Only the
-    ops that affect path visibility are kept; everything else (flags, --chdir, --unsetenv…) is ignored."""
-    ops: list[tuple[str, str]] = []
+def _mounts(argv: list[str]) -> list[tuple[str, str, str]]:
+    """Parse the argv into ordered (state, source, dest) mount ops, where state is 'expose' or 'hide'.
+    Only the ops that affect path visibility are kept; everything else (flags, --chdir, --unsetenv…) is
+    ignored. The SOURCE is carried because a bind's dest is not always its own host path (see
+    :func:`is_exposed`); a hide op has no meaningful source and reports ``""``."""
+    ops: list[tuple[str, str, str]] = []
     i = 0
     n = len(argv)
     while i < n:
         a = argv[i]
         if a in _EXPOSE_OPS and i + 2 < n:
             src, dest = argv[i + 1], argv[i + 2]
-            ops.append(("hide" if src == _DEVNULL else "expose", dest))
+            ops.append(("hide", "", dest) if src == _DEVNULL else ("expose", src, dest))
             i += 3
             continue
         if a in _HIDE_DEST_OPS and i + 1 < n:
-            ops.append(("hide", argv[i + 1]))
+            ops.append(("hide", "", argv[i + 1]))
             i += 2
             continue
         if a in ("--dev", "--proc") and i + 1 < n:
-            ops.append(("hide", argv[i + 1]))    # devtmpfs/procfs — hides host content under dest
+            ops.append(("hide", "", argv[i + 1]))   # devtmpfs/procfs — hides host content under dest
             i += 2
             continue
         i += 1
@@ -472,21 +536,27 @@ def is_exposed(argv: list[str], path: Path) -> bool:
     ancestor of it, most-specific (longest dest) wins, ties broken by LATEST op (bwrap applies in order).
     Exposed iff that controlling mount is an 'expose' AND the mapped host source still contains the path."""
     ops = _mounts(argv)
-    best = None  # (dest_len, index, state, dest)
-    for idx, (state, dest) in enumerate(ops):
+    best = None  # (dest_len, index, state, src, dest)
+    for idx, (state, src, dest) in enumerate(ops):
         if _is_under(path, dest):
             key = (len(dest), idx)
             if best is None or key >= (best[0], best[1]):
-                best = (len(dest), idx, state, dest)
+                best = (len(dest), idx, state, src, dest)
     if best is None:
         return False              # no mount covers it -> not present
-    _, _, state, dest = best
+    _, _, state, src, dest = best
     if state == "hide":
         return False
-    # expose: dest is bound to the identical host path in this harness (src==dest), so the sub-path maps
-    # back to itself; it is exposed iff it still exists on the host.
+    # expose: the controlling bind serves host ``src`` AT ``dest``, and src is NOT always dest. The
+    # frozen-input harnesses bind an immutable SNAPSHOT of a tree over that tree's own live path, so a
+    # file created in the live tree after the freeze has no counterpart inside the sandbox at all.
+    # Ask the question about the bytes actually served: map the sub-path through the bind and test THAT.
+    # Answering it about the live path instead both over-reports the gap and (via apply_answer_masks)
+    # emits a mask for a destination whose parent does not exist in the bound tree, which bwrap refuses
+    # with "Can't mkdir parents for <path>: Read-only file system" — killing every launch.
+    mapped = Path(src) / path.relative_to(dest) if str(path) != dest else Path(src)
     try:
-        return path.exists()
+        return mapped.exists()
     except PermissionError:
         return True               # a locked-but-present surface is still exposed content-wise
     except OSError:

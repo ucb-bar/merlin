@@ -156,8 +156,22 @@ def test_generators():
             r = subprocess.run([PY, "-m", f"merlin.targetgen.rtl.{mod}",
                                 "--target", TARGET, "--out", str(td / out)],
                                cwd=str(REPO), capture_output=True, text=True)
-            _ok(f"{mod} generates", r.returncode == 0 and (td / out).exists(),
-                (r.stderr.strip().splitlines() or [""])[-1][:80])
+            # EITHER STREAM. One generator writes its refusal to stderr and one to stdout (with rc=0),
+            # and reading only stderr saw an empty string for the second -- so an honest decline was
+            # indistinguishable from "produced nothing", which is the very confusion this check exists
+            # to resolve.
+            _lines = [ln for ln in (r.stderr.strip().splitlines()
+                                    + r.stdout.strip().splitlines()) if ln.strip()]
+            tail = next((ln for ln in _lines if ln.startswith("n/a")), (_lines or [""])[-1])
+            # A DECLINE IS NOT A CRASH, and this check could not tell them apart. These generators are
+            # written to fail CLOSED: `gen_isa_module` refuses to emit an encoder for a device with no
+            # RISC-V custom slot rather than guess an opcode ("n/a: ... refusing to emit an ISA module
+            # with a guessed opcode"), which is the behaviour the repo demands everywhere else. Counting
+            # that refusal as a FAIL made a self-hosted-ISA target un-launchable for doing the right
+            # thing, and it would have hidden a real crash behind the same red mark.
+            declined = tail.startswith("n/a")
+            _ok(f"{mod} generates", (r.returncode == 0 and (td / out).exists()) or declined,
+                (f"n/a (fail-closed decline, not a crash): {tail[4:120]}" if declined else tail[:80]))
         # the generated numeric checker flags a narrow accumulator
         try:
             sys.path.insert(0, str(td))

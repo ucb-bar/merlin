@@ -260,7 +260,18 @@ def _authoring_probe(target: str) -> str:
         assert body, "reviewed RTL facts are empty"
         assert gen_numeric_facts.generate(doc).strip()
         if any(item.get("name") == "funct_decode_table" for item in body.get("interfaces", [])):
-            assert gen_isa_module.generate(doc).strip()
+            # A DECODE TABLE IS NOT A ROCC SLOT. A self-hosted-ISA device fetches and decodes its own
+            # stream: it has a funct decode table and NO RISC-V custom opcode, and `gen_isa_module`
+            # refuses to emit an encoder rather than guess one -- which is the behaviour the repo
+            # demands. Asserting on the call turned that refusal into an uncaught exception inside the
+            # sandbox, so the probe reported the target's authoring tools BROKEN for doing the right
+            # thing. What must hold is that the tool RUNS and either emits or declines for a stated
+            # reason; both are recorded so a real crash still fails here.
+            try:
+                assert gen_isa_module.generate(doc).strip()
+                print("ISA_MODULE=emitted")
+            except gen_isa_module.NotARoccTarget as exc:
+                print("ISA_MODULE=declined:", str(exc)[:120])
             assert gen_rtl_digest.generate(doc).strip()
 
         report = cca_contract.check_bijection(target).unexpected()

@@ -124,7 +124,13 @@ def _ungradeable(entries: list[dict], target: str) -> list[dict]:
 #: Ops whose golden exists ONLY in the block-scaled engine. Read from the engine's own dispatch rather
 #: than guessed: `generate_corpus._simt_golden` and `_float_golden` raise by name for these, and the
 #: block-scaled path is the only one that implements them.
-_MX_ONLY_GOLDEN = frozenset({"attention_mx", "gemv_batched"})
+#:
+#: `gemv_batched` LEFT this set when the integer, specir and SIMT engines each grew a batched branch --
+#: a batched contraction is B independent ones and every engine already knew how to do one. While it
+#: was here, the seven batched regions radiance's own requirement asks for were dropped by this filter
+#: and, because the drop was recorded into a key the profile writer never emitted, they vanished from
+#: the tracked artifact entirely: required, counted in `n_entries`, and present nowhere.
+_MX_ONLY_GOLDEN = frozenset({"attention_mx"})
 
 
 def _binding(target: str):
@@ -160,6 +166,20 @@ def synth_for(target: str) -> dict:
         keep = {b["name"] for b in bad}
         out["capsules"] = [e for e in out["capsules"] if e["name"] not in keep]
         out["ungradeable"] = bad
+        # INTO THE PROVENANCE, which is the block `_render` actually writes. Recording the drop only on
+        # the returned dict put it somewhere no tracked file carries: seven radiance entries were
+        # required by the spec, counted by `n_entries`, removed here, and then absent from the profile
+        # with nothing anywhere saying so. A hole this corpus reports by name everywhere else was the
+        # one thing this path made invisible.
+        prov = dict(out.get("provenance") or {})
+        prov["ungradeable_entries"] = bad
+        prov["ungradeable_note"] = (
+            "entries the requirement asked for whose (op, dtype) no golden engine can grade. They are "
+            "NOT in `capsules` below; adding a golden branch for the op in that dtype's engine is what "
+            "closes them. `n_entries` counts what synthesis produced, `n_written` what survived this "
+            "filter -- a difference between the two with an empty list here would be a silent drop")
+        prov["n_written"] = len(out["capsules"])
+        out["provenance"] = prov
     return {"target": target, "status": "ok", **out}
 
 

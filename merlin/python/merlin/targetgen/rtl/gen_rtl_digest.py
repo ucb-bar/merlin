@@ -72,8 +72,23 @@ def generate(facts: dict) -> str:
         L.append(f"- **Accumulator**: {acc.get('banks')} banks × depth {acc.get('depth')} × {acc.get('lanes')} "
                  f"lanes × {acc.get('lane_bits')}b = {acc.get('bytes')} B. Partial sums live here.")
     L.append("")
-    L.append(f"## ISA — custom opcode `{hex(fd['custom_opcode'])}`, funct3 `{fd['funct3']}` "
-             f"({len(names)} legal funct codes)")
+    # A SELF-HOSTED ISA HAS NO RISC-V CUSTOM SLOT, and that is a fact about the device rather than a
+    # missing fact about it. `hex(None)` raised here for every such target, which took a digest that
+    # was otherwise entirely derivable and turned it into a crash -- and a crash is indistinguishable
+    # from "the RTL could not be read". Say which it is: the sibling generator `gen_isa_module` already
+    # refuses with exactly this reasoning, and the two must agree.
+    _slot = fd.get("custom_opcode")
+    if _slot is None:
+        L.append(f"## ISA — no RISC-V custom opcode ({len(names)} legal funct codes)")
+        L.append("")
+        L.append("> This device does NOT hang off the RoCC custom slot: its facts carry a funct decode "
+                 "table but no `custom_opcode`, which is what a SELF-HOSTED ISA looks like — the device "
+                 "fetches and decodes its own instruction stream. Encode against the target's own ISA "
+                 "definition, not a `custom-3` encoding. Nothing is guessed here: an opcode this digest "
+                 "does not have is reported absent rather than invented.")
+    else:
+        L.append(f"## ISA — custom opcode `{hex(_slot)}`, funct3 `{fd['funct3']}` "
+                 f"({len(names)} legal funct codes)")
     L.append("| funct | name | role |")
     L.append("|---|---|---|")
     for c in sorted(names):

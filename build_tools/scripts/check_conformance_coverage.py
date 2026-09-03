@@ -222,6 +222,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         "corpus_cells_not_required": gap["extra_cells"],
         "composition": gap.get("composition") or {"status": "not_measured"},
         "memory_mapping": gap.get("memory_mapping") or {"status": "not_measured"},
+        "shape_geometry": gap.get("shape_geometry") or {"status": "not_measured"},
         "host_only": gap.get("host_only") or {"status": "not_measured"},
         "diagnostics": doc.get("diagnostics") or {},
     }
@@ -353,6 +354,18 @@ def main(argv=None) -> int:
                             print(f"     ? {name:32s} {why}")
             elif comp:
                 print(f"   composition   : {comp.get('status')} — {comp.get('detail', '')}")
+            geo = r.get("shape_geometry") or {}
+            if geo.get("status") == "ok":
+                print(f"   shape geometry: {geo['n_covered']} / {geo['n_required']} aspect-ratio "
+                      f"class(es) real models present")
+                for kind in geo["uncovered"]:
+                    mark = " " if _debt(r["target"], kind, "geometry") in ratchet else "*"
+                    print(f"     {mark} {kind:34s} no capsule reproduces this aspect ratio")
+                if geo.get("mac_fraction_uncovered"):
+                    print(f"       {100.0 * float(geo['mac_fraction_uncovered']):.1f}% of real "
+                          f"contraction MAC work sits in an untested aspect ratio")
+            elif geo:
+                print(f"   shape geometry: {geo.get('status')} — {geo.get('detail', '')}")
             mem = r.get("memory_mapping") or {}
             if mem.get("status") == "ok":
                 print(f"   memory regime : {mem['n_covered']} / {mem['n_required']} required regime(s)"
