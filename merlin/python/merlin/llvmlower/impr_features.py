@@ -18,6 +18,7 @@ from __future__ import annotations
 from .selfcopy import FEATURE as _SELF_COPY_FEATURE
 from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 import hashlib
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -1764,6 +1765,79 @@ def ensure_vec_noncontraction(lanes: int) -> str:
 #: of one block per op CLASS. The class-wide decision is one too coarse -- whisper_tiny's single N=1
 #: decode step forces its whole batch_matmul class (34% of the model's MACs) off the vector path. See
 #: llvmlower/perop_blocks.py for why the tag has to be applied after specialization.
+#: Promote small heap buffers to the STACK, after bufferization has created them and hoisting has
+#: pulled them out of loops.
+#:
+#: WHY IT SHOULD MATTER HERE, and it is not the malloc cost. Bufferization gives every intermediate
+#: its own `memref.alloc`; measured on small_llama int8 there are 209 of them, but they only price at
+#: ~3% of wall, so removing the allocator calls is not the prize. The prize is LOCALITY: separate heap
+#: buffers are scattered, so every intermediate is written and re-read through cache misses, while a
+#: stack frame is one contiguous, hot region. That is structurally what ExecuTorch buys with its
+#: memory-planning pass, which places EVERY activation of this model into a single 32,512-byte arena
+#: (measured from its own AOT profile) -- small enough to stay in L1. We have no such planner wired
+#: (`arena_plan.plan_arena` is only reachable from the self-contained C harness, and the lean runtime
+#: that would consume it whole-model does not exist), and this upstream pass gets a large part of the
+#: same effect for free.
+#:
+#: The size cap is the safety property, not a tuning knob: a promoted buffer lives on the stack for
+#: the whole frame, so an uncapped promotion of a big intermediate overruns it. Zephyr's master stack
+#: here is 8 MB and these intermediates are small (the largest activation on this model is 8x344 f32
+#: = 11 KB), so the cap is what keeps a promotion from turning into a stack overflow on a model with
+#: larger tensors.
+PROMOTE_STACK_NAME = "promote_buffers_to_stack"
+PROMOTE_STACK_BYTES_ENV = "MERLIN_PROMOTE_STACK_BYTES"
+_PROMOTE_STACK_DEFAULT_BYTES = 16384
+
+
+def _promote_stack_bytes() -> int:
+    """Per-buffer promotion cap in bytes (env-overridable so the search can size it per model)."""
+    raw = os.environ.get(PROMOTE_STACK_BYTES_ENV)
+    if raw:
+        try:
+            v = int(raw)
+        except ValueError:
+            v = 0
+        if v > 0:
+            return v
+    return _PROMOTE_STACK_DEFAULT_BYTES
+
+
+def _promote_buffers_to_stack(passes: list[str]) -> list[str]:
+    """Insert ``promote-buffers-to-stack`` right after the buffer hoisting.
+
+    After hoisting (so a buffer already lifted out of a loop is promoted once, not per iteration) and
+    before the loop lowering. Deallocation runs earlier in this pipeline (``__DEALLOC__``), and a
+    stack buffer needs none -- promoting after it is what keeps the two consistent.
+    """
+    out = list(passes)
+    anchor = "func.func(buffer-hoisting,buffer-loop-hoisting)"
+    try:
+        i = out.index(anchor)
+    except ValueError:  # pipeline shape changed -> fail closed rather than insert somewhere wrong
+        raise ValueError(
+            f"{PROMOTE_STACK_NAME}: anchor {anchor!r} not in the pipeline; refusing to guess where "
+            f"promote-buffers-to-stack belongs") from None
+    out.insert(i + 1,
+               f"func.func(promote-buffers-to-stack{{max-alloc-size-in-bytes={_promote_stack_bytes()}}})")
+    return out
+
+
+register(ImprFeature(
+    name=PROMOTE_STACK_NAME,
+    action_class="PASS",
+    description="promote small bufferization allocs to the stack after hoisting. Targets LOCALITY, "
+                "not allocator cost: bufferization gives each intermediate its own memref.alloc (209 "
+                "of them on small_llama int8, ~3% of wall), and scattered heap buffers mean every "
+                "intermediate is written and re-read through cache misses. ExecuTorch's memory "
+                "planner places EVERY activation of the same model into ONE 32,512-byte arena, small "
+                "enough to stay in L1; we have no whole-model planner wired, and this upstream pass "
+                "buys much of the same effect. Per-buffer cap (MERLIN_PROMOTE_STACK_BYTES, default "
+                "16384) is a stack-overflow guard, not a tuning knob. Default-off; baseline "
+                "byte-identical.",
+    edit_pipeline=_promote_buffers_to_stack,
+))
+
+
 PEROP_BLOCK_NAME = "perop_register_block"
 
 

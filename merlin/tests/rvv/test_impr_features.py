@@ -505,3 +505,46 @@ def test_the_statically_registered_mr_gt_1_features_imply_it_too():
         assert SELF_COPY in F.get(name).implies, name
     # ...and the MR_mm=1 control still does not
     assert SELF_COPY not in F.get("accumulator_resident_wholemodel_vf").implies
+
+
+def test_stack_promotion_lands_after_hoisting_and_leaves_the_baseline_alone():
+    """Order matters: promoting AFTER hoisting means a buffer already lifted out of a loop is
+    promoted once rather than per iteration, and deallocation runs earlier in this pipeline (a stack
+    buffer needs none), so inserting after it is what keeps the two consistent."""
+    from merlin.llvmlower import impr_features as F, pipeline as P
+    base = list(P._UPSTREAM_PASSES)
+    out = F._REGISTRY[F.PROMOTE_STACK_NAME].edit_pipeline(base)
+    i = out.index("func.func(buffer-hoisting,buffer-loop-hoisting)")
+    assert out[i + 1].startswith("func.func(promote-buffers-to-stack{")
+    assert base == list(P._UPSTREAM_PASSES), "the baseline pipeline was mutated in place"
+    assert len(out) == len(base) + 1
+
+
+def test_stack_promotion_refuses_to_guess_when_its_anchor_is_gone():
+    """Fail closed. If the pipeline is reshaped, inserting this pass at the wrong point silently
+    changes which buffers are promoted -- and a promotion before deallocation would leave a stack
+    buffer with a dealloc against it."""
+    import pytest
+    from merlin.llvmlower import impr_features as F
+    with pytest.raises(ValueError, match="anchor"):
+        F._REGISTRY[F.PROMOTE_STACK_NAME].edit_pipeline(["canonicalize", "cse"])
+
+
+def test_the_promotion_cap_is_env_overridable_and_fails_closed():
+    """The cap is a stack-overflow guard: a promoted buffer lives for the whole frame, so an
+    uncapped promotion of a large intermediate overruns it. A bad env value must not silently
+    disable or unbound the guard."""
+    import os
+    from merlin.llvmlower import impr_features as F
+    old = os.environ.get(F.PROMOTE_STACK_BYTES_ENV)
+    try:
+        for bad in ("0", "-1", "nonsense", ""):
+            os.environ[F.PROMOTE_STACK_BYTES_ENV] = bad
+            assert F._promote_stack_bytes() == F._PROMOTE_STACK_DEFAULT_BYTES, bad
+        os.environ[F.PROMOTE_STACK_BYTES_ENV] = "262144"
+        assert F._promote_stack_bytes() == 262144
+    finally:
+        if old is None:
+            os.environ.pop(F.PROMOTE_STACK_BYTES_ENV, None)
+        else:
+            os.environ[F.PROMOTE_STACK_BYTES_ENV] = old
