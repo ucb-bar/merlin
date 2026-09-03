@@ -181,3 +181,44 @@ def test_teachers_on_a_dtype_with_no_fixtures_refuses_instead_of_silently_single
             seed_pkg="unused", model_dir=tmp_path / "wl",
             expert_objdump=_FIXTURES / "xnnpack_f32_gemm_rvv.objdump",
             op="matmul", dtype="bf16", teachers="all")
+
+
+# --------------------------------------------------------------------------- the CLI wiring itself
+
+def test_every_flag_main_passes_is_a_parameter_run_instrumented_beam_accepts():
+    """A structural guard on the CLI seam, not a behaviour test.
+
+    `main()` forwards its parsed flags as keyword arguments. When a flag is added to one side and not
+    the other the break is a TypeError at RUNTIME, on a real board run, with nothing in the suite
+    touching it -- measured: `--pass-slot-turns` shipped with the call site wired and the parameter
+    missing, and the failure surfaced only after a whole-model beam launch. Parsing the call
+    structurally costs nothing and catches the whole class.
+    """
+    import ast
+    import inspect
+
+    from merlin.mining import beam_cli
+
+    src = inspect.getsource(beam_cli.main)
+    tree = ast.parse(src.lstrip())
+    call = next(n for n in ast.walk(tree)
+                if isinstance(n, ast.Call)
+                and getattr(n.func, "id", None) == "run_instrumented_beam")
+    passed = {kw.arg for kw in call.keywords if kw.arg}
+    accepted = set(inspect.signature(beam_cli.run_instrumented_beam).parameters)
+    missing = sorted(passed - accepted)
+    assert not missing, (
+        f"main() passes {missing} which run_instrumented_beam() does not accept -- this is a "
+        f"TypeError on the next real run")
+
+
+def test_the_pass_slot_flag_defaults_to_off():
+    """A slot turn costs an agent and a build, so the ladder must never enter it implicitly."""
+    from merlin.mining.beam_cli import main
+    import argparse
+    import inspect
+
+    src = inspect.getsource(main)
+    assert '"--pass-slot-turns"' in src or "'--pass-slot-turns'" in src
+    import merlin.mining.beam_cli as bc
+    assert inspect.signature(bc.run_instrumented_beam).parameters["pass_slot_turns"].default == 0

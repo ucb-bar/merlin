@@ -61,6 +61,7 @@ def run_instrumented_beam(
     certify_fn=None, sweep_fn=None, expert_wall_ns: float | None = None,
     validate_model_dir: str | Path | None = None, validate_fn=None,
     noise_margin: float | None = None, proposer=None, teachers: str | None = None,
+    pass_slot_turns: int = 0, pass_slot_fn=None,
 ) -> dict[str, Any]:
     """Open an aet parent run, run the CCA beam, emit a child aet run per fork, return the outcome.
 
@@ -113,11 +114,6 @@ def run_instrumented_beam(
                               "targets": list(targets), "workload": Path(model_dir).name,
                               "expert_objdump": str(expert_objdump), "role": "beam_parent",
                               "teachers": (teachers or "single-expert"),
-                          "pass_slot_runs": sum(len(n.get("pass_slot") or ())
-                                                for n in res.get("nodes", [])),
-                          "pass_slot_accepted": sum(
-                              1 for n in res.get("nodes", []) for r in (n.get("pass_slot") or ())
-                              if r.get("accepted")),
                               "pass_slot_turns": pass_slot_turns})
     # The CODEGEN leaf. OFF unless asked for: a slot turn costs an agent and a build, so the ladder
     # never enters it implicitly. When on, every escalation the beam cannot fork is handed to the slot
@@ -164,6 +160,11 @@ def run_instrumented_beam(
                           "best_lever": (best or {}).get("lever"),
                           "n_forks": len(res.get("nodes", [])) - 1,
                           "n_deferred": len(res.get("deferred", [])),
+                          "pass_slot_runs": sum(len(n.get("pass_slot") or ())
+                                                for n in res.get("nodes", [])),
+                          "pass_slot_accepted": sum(
+                              1 for n in res.get("nodes", []) for r in (n.get("pass_slot") or ())
+                              if r.get("accepted")),
                           "teachers": (teachers or "single-expert"),
                           "teacher_unanswered_axes": sorted(
                               {a for g in teacher_audit for a in g.get("unanswered_axes", ())})}
