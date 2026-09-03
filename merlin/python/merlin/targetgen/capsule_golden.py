@@ -614,6 +614,36 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
 
+    if op in ("gemv_batched", "batch_matmul"):
+        # A BATCHED CONTRACTION IS B INDEPENDENT ONES. The device's shim loops over B calling the same
+        # (M,N,K) kernel per slice, so the reference does the same and stacks the results row-major into
+        # [B*M, N] -- the layout the batched interface already declares as its result type.
+        #
+        # It exists because the ONLY batched golden in this repo was block-scaled, so `ops_gradeable_at`
+        # refused this op at every non-MX dtype and the `contraction.batched` requirement came out as
+        # "no builder materializes a rank-3 region for this family at this dtype" on the integer and
+        # fp8 targets -- while the rewrite, the device kernel and the shim's B loop all already existed.
+        # A contract that then omits rank 3 makes every batched region score INELIGIBLE, which removes
+        # it from the ARR denominator and raises recall; measured on one capture, 16 of 106 contractions
+        # and 8.5% of all contraction MAC work are exactly those regions.
+        lhs = env[attrs.get("lhs", _pick("input"))]
+        w = env[attrs.get("weight", _pick("weight"))]
+        if len(lhs.shape) != 3 or len(w.shape) != 3:
+            raise ValueError(
+                f"capsule declares op {op!r}, whose name states that the contraction is batched, but "
+                f"its operands are rank {len(lhs.shape)} and {len(w.shape)}: a batched golden needs "
+                f"[B,M,K] and [B,K,N]")
+        b, m, k = lhs.shape
+        b2, k2, n = w.shape
+        if b != b2 or k != k2:
+            raise ValueError(f"batched matmul shape mismatch: {lhs.shape} x {w.shape}")
+        rows: list = []
+        for i in range(b):
+            a_i = Tensor((m, k), lhs.data[i * m * k:(i + 1) * m * k], lhs.dtype)
+            w_i = Tensor((k, n), w.data[i * k * n:(i + 1) * k * n], w.dtype)
+            rows.extend(_apply_epilogue(a_i.matmul(w_i), attrs, env).to_list())
+        return {out_name: rows}
+
     if op == "movement":
         src = env[attrs.get("src", _pick("input"))]
         return {out_name: src.to_list()}

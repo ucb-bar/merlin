@@ -602,6 +602,28 @@ def _float_golden(entry, binding):
         b = [Fraction(v) for v in reg_acc(entry.get("bias", "B"), (N,))]
         outputs[entry.get("out", "Y0")] = floats([[rnd(x[i * N + j] + b[j]) for j in range(N)]
                                                   for i in range(M)])
+    elif op in ("gemv_batched", "batch_matmul"):
+        # A BATCHED CONTRACTION IS B INDEPENDENT ONES, and that is the whole of it: the device's shim
+        # loops over B calling the same (M,N,K) kernel per slice, so the golden is the same `mm` per
+        # slice with the results stacked row-major into [B*M, N]. It exists because the corpus could not
+        # express a rank-3 region on this datapath at all -- the only batched golden was block-scaled,
+        # so a target whose contract admits batching had its `contraction.batched` requirement reported
+        # as "no builder materializes a rank-3 region" while the rewrite, the device kernel and the
+        # shim's B loop were all already there.
+        B = int(entry.get("B", 2))
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("H", entry.get("K_tiles", 2) * dim))
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        lhs, weight = entry.get("lhs", "A0"), entry.get("weight", "W")
+        rows: list = []
+        for b in range(B):
+            # One operand PER SLICE, salted by the slice index. Reusing one operand across B would make
+            # every slice's output identical, and a kernel that computed one slice and broadcast it
+            # would match the golden exactly -- the degeneracy this corpus already refuses elsewhere.
+            a = reg(f"{lhs}_b{b}", (M, K))
+            w = reg(f"{weight}_b{b}", (K, N))
+            rows.extend(mm(a, (M, K), w, (K, N)))
+        outputs[entry.get("out", "Y0")] = floats(rows)
     elif op == "movement":
         M = entry.get("M", entry.get("M_tiles", 1) * dim)
         N = entry.get("N", entry.get("N_tiles", 1) * dim)
@@ -932,13 +954,22 @@ def _mx_attention_golden(entry, binding):
     if tok not in ("fp8_e4m3", "fp6_e3m2", "fp4_e2m1"):
         raise ValueError(f"MX attention operand dtype {binding.operand_dtype!r} -> {tok!r} unsupported")
     sub = (tok != "fp8_e4m3")
-    row_tile = 32 if sub else mx.DIM                           # mx_matmul TILE for this format
     max_alpha = 16 if tok == "fp6_e3m2" else None              # fp6 draws from a 16-value LUT pool
     dim = binding.tile_dim
+    # ONE definition of this datapath's shape granularity, shared with the requirement and the
+    # synthesizer (corpus_spec.shape_quantum). The local `32 if sub else DIM` said the same thing for
+    # this format and said it in a second place, so the DEFAULTS below -- which are what an attention
+    # entry actually gets, since a cell carries only M/K/N -- kept spelling `dim` and `2*dim` and landed
+    # under the row tile for every sub-byte format.
+    _q = CS.shape_quantum(binding.operand_dtype, tile_dim=dim,
+                          scale_block=(binding.scale_block or mx.GROUP))
+    row_tile, red_q = int(_q["row"]), int(_q["reduction"])
+    def _up(n: int, q: int) -> int:
+        return -(-int(n) // int(q)) * int(q)
     M = entry.get("M", entry.get("M_tiles", 1) * dim)
-    H = entry.get("H", entry.get("head_dim", 2 * dim))         # QK contraction (head dim), must be %GROUP
-    Skv = entry.get("Skv", entry.get("keys", 2 * dim))         # key positions
-    Dv = entry.get("Dv", dim)                                  # value dim
+    H = entry.get("H", entry.get("head_dim", _up(2 * dim, red_q)))   # QK contraction (head dim), %GROUP
+    Skv = entry.get("Skv", entry.get("keys", _up(2 * dim, red_q)))   # key positions
+    Dv = entry.get("Dv", _up(dim, row_tile))                         # value dim
     if H % mx.GROUP or Skv % mx.GROUP or M % row_tile or Dv % row_tile:
         raise ValueError(f"MX attention dims must satisfy H%{mx.GROUP}=Skv%{mx.GROUP}=0 and "
                          f"M%{row_tile}=Dv%{row_tile}=0 for {tok} (got M={M} H={H} Skv={Skv} Dv={Dv})")
@@ -1151,6 +1182,23 @@ def _simt_golden(entry, binding):
             y = np.maximum(y, 0.0)
         prov[entry.get("lhs", "A0")] = {"shape": [M, K], "decoded": A.reshape(-1).tolist()}
         prov[entry.get("weight", "W")] = {"shape": [K, N], "decoded": W.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op in ("gemv_batched", "batch_matmul"):
+        # B independent GEMMs stacked row-major into [B*M, N] -- the same decomposition the integer and
+        # specir engines make, because it is the one the device's shim performs: a loop over B calling
+        # the (M,N,K) kernel once per slice. One operand PER SLICE, salted by index, so a kernel that
+        # computed one slice and broadcast it does not match.
+        B = int(entry.get("B", 2))
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("H", entry.get("K_tiles", 2) * dim))
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        lhs, weight = entry.get("lhs", "A0"), entry.get("weight", "W")
+        A = np.stack([synth(f"{lhs}_b{b}", (M, K)) for b in range(B)])
+        W = np.stack([synth(f"{weight}_b{b}", (K, N)) for b in range(B)])
+        y = np.concatenate([(A[b].astype(np.float32) @ W[b].astype(np.float32)).astype(np.float64)
+                            for b in range(B)], axis=0)
+        prov[lhs] = {"shape": [B, M, K], "decoded": A.reshape(-1).tolist()}
+        prov[weight] = {"shape": [B, K, N], "decoded": W.reshape(-1).tolist()}
         outputs[entry.get("out", "Y0")] = rnd_out(y)
     elif op == "movement":
         # A load->store movement (mvin/mvout) moves data and computes nothing, so the reference is the
@@ -2612,13 +2660,52 @@ def generate_target(target: str) -> list[Path]:
     if unprovable_forbids:
         print(f"  [lane] {len(unprovable_forbids)} synthesized host-lane capsule(s) were dropped: their "
               f"program contains regions this target admits, so the forbid they assert is not provable")
+    superseded = _prune_superseded_synth(entries, written, target=target)
+    if superseded:
+        print(f"  [prune] {len(superseded)} synthesized capsule(s) whose requirement cell no longer "
+              f"exists were removed: {', '.join(superseded)}")
     update_provenance_manifest(written, target=target, performance_record=performance_record,
-                               unbuilt_roster=unbuilt_roster, unprovable_forbids=unprovable_forbids)
+                               unbuilt_roster=unbuilt_roster, unprovable_forbids=unprovable_forbids,
+                               superseded=superseded)
     if failures:
         raise RuntimeError(
             f"{len(failures)} capsule(s) failed to generate: {', '.join(n for n, _ in failures)}; the "
             f"rest of the corpus was written, so re-running after fixing them is cheap")
     return written
+
+
+def _prune_superseded_synth(entries, written, *, target: str) -> list:
+    """Remove synthesized capsule directories the profile no longer asks for, and name them.
+
+    THE PROFILE IS THE WHOLE AUTHORITY for `derived_sweep` capsules -- it is regenerated from the
+    requirement, so a directory of that role which is not in it is evidence for a cell that is no
+    longer required. Nothing removed one, and they do not merely sit there: a superseded
+    `SY_kdepth_certified` inflated a sealed cohort count by one and broke the MANIFEST, and twelve
+    superseded MX capsules survived the alignment classes their own datapath cannot express, each one
+    still offering itself to the cover as evidence for a cell the requirement had dropped.
+
+    Deliberately narrow: only directories whose capsule declares this generator's synthesized role, and
+    only under the roots this target just wrote to. A hand-authored capsule is never touched, and a
+    target whose profile carries no synthesized entries at all prunes nothing (a profile that failed to
+    synthesize must not be read as "every cell was dropped").
+    """
+    keep = {str(e.get("name")) for e in entries if str(e.get("source_role") or "") == SYNTH_ROLE}
+    if not keep:
+        return []
+    roots = {d.parent for d in written if isinstance(d, Path)}
+    removed = []
+    for root in sorted(roots):
+        for cy in sorted(root.glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            name = str(cap.get("name") or cy.parent.name)
+            if str(cap.get("source_role") or "") != SYNTH_ROLE or name in keep:
+                continue
+            shutil.rmtree(cy.parent, ignore_errors=True)
+            removed.append(name)
+    return sorted(removed)
 
 
 def _capture_failure_reason(exc: Exception) -> str:
@@ -2655,7 +2742,8 @@ def _is_roster_capsule(entry: dict) -> bool:
 def update_provenance_manifest(written, cap_root=None, *, target: str | None = None,
                                performance_record: "dict | None" = None,
                                unbuilt_roster: "list | None" = None,
-                               unprovable_forbids: "list | None" = None) -> Path:
+                               unprovable_forbids: "list | None" = None,
+                               superseded: "list | None" = None) -> Path:
     """Rewrite ``MANIFEST.yaml``'s generated/hand_authored split from what this run actually emitted.
 
     The file's own header has always claimed the generator rewrites it, but no writer existed, so it was
@@ -2731,6 +2819,14 @@ def update_provenance_manifest(written, cap_root=None, *, target: str | None = N
             per_lane = dict(man.get("lane_generation") or {})
             per_lane[target] = {"forbid_not_provable": copy.deepcopy(unprovable_forbids)}
             man["lane_generation"] = per_lane
+        # WHICH SYNTHESIZED CAPSULES THIS RUN REMOVED because the requirement stopped asking for their
+        # cell. Recorded for the same reason as the two above: a capsule that quietly disappears between
+        # one regeneration and the next is indistinguishable from one that was never derived, and the
+        # cover would go on citing it from disk until somebody noticed the count.
+        if superseded is not None:
+            per_sup = dict(man.get("superseded_generation") or {})
+            per_sup[target] = {"removed": list(superseded)}
+            man["superseded_generation"] = per_sup
     head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
     man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
     return man_path
