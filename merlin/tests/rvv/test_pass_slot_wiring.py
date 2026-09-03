@@ -99,8 +99,11 @@ class _FakeCertify:
     toolchain. `digests` maps run_id -> the mnemonic digest that run should appear to emit."""
 
     def __init__(self, *, digests=None, gate_ok=True, status="ok", failure=None, cos=0.9999999,
-                 imported=(_REAL_MODULE,)):
+                 imported=(_REAL_MODULE,), inert=False):
         self.imported = imported
+        # By default the candidate's emitted code DIFFERS from the control's, so a test about a later
+        # stage is not short-circuited by the inert check. `inert=True` makes them identical.
+        self.inert = inert
         self.calls = []
         self.digests = digests or {}
         self.gate_ok, self.status, self.failure, self.cos = gate_ok, status, failure, cos
@@ -110,7 +113,13 @@ class _FakeCertify:
                            "model_dir": Path(model_dir).name, "package_dir": Path(package_dir).name})
         d = Path(runs_root) / run_id / "generated"
         d.mkdir(parents=True, exist_ok=True)
-        mnem = self.digests.get(run_id, "vfmacc.vv v1,v2,v3")
+        # A GOOD proposal leaves the frozen (empty-feature) build byte-identical while CHANGING the
+        # feature-enabled build. So only the work-package overlay differs by default; the frozen
+        # overlay must match its control or the frozen check would (correctly) fail.
+        default = "vfmacc.vv v1,v2,v3"
+        if not self.inert and run_id == "gate_bitexact_overlay":
+            default = "vfmacc.vv v1,v2,v3\n   4:\t02b7f0d7          \tvfmul.vv\tv4,v5,v6"
+        mnem = self.digests.get(run_id, default)
         (d / "objdump.txt").write_text(
             "0000000000000000 <forward>:\n"
             f"   0:\t02b7f0d7          \t{mnem}\n")
@@ -355,3 +364,62 @@ def test_the_control_arm_gets_the_checkout_even_with_no_overlay_env(tmp_path, mo
                run_id="r", targets=("spike",), timeout=10)
     pp = (seen.get("env") or {}).get("PYTHONPATH", "")
     assert str(merlin_dir() / "python") in pp, f"control arm not pinned to this checkout: {pp!r}"
+
+
+def test_an_inert_proposal_is_named_as_inert_not_as_a_facet_miss(tmp_path):
+    """The two need different answers. A proposal whose emitted code is byte-identical to the
+    unpatched build did not RUN -- its op matching never fired -- and reporting "the promised facet
+    was not achieved" sends the next turn to improve a polynomial that was never reached.
+
+    MEASURED on the first real agent turn: a 611-line rewrite passed the cheat scan, the frozen
+    baseline and bit-exactness, and produced an object identical to the control down to the
+    instruction count (47,988 insns / 10,782 vector, same undefined symbols) -- reported only as
+    "facet not achieved"."""
+    from merlin.mining.pass_slot import gate
+
+    from merlin.kernels import action_catalog as ac
+    from merlin.kernels.cca_compare import Divergence
+    d = Divergence(axis="compute.activation_vectorization", expert="vectorized_polynomial",
+                   ours="scalar_libm_call", backend="rvv")
+    action = ac.route_escalated(d, ac.route(d).action_class)
+    v = gate(_prop(), action, **w.gate_kwargs(_checks(tmp_path, _FakeCertify(inert=True))))
+    assert not v.accepted
+    assert v.stage == "inert", f"an inert proposal must not be reported as {v.stage!r}"
+    assert "byte-identical" in v.reason and "never fired" in v.reason
+
+
+def test_a_changed_proposal_passes_the_inert_check_and_reaches_the_facet_check(tmp_path):
+    """Uses the REAL escalated action, so the facet check runs against the promise the router
+    actually derives rather than a stand-in missing its fields."""
+    from merlin.kernels import action_catalog as ac
+    from merlin.kernels.cca_compare import Divergence
+    from merlin.mining.pass_slot import gate
+
+    d = Divergence(axis="compute.activation_vectorization", expert="vectorized_polynomial",
+                   ours="scalar_libm_call", backend="rvv")
+    action = ac.route_escalated(d, ac.route(d).action_class)
+    v = gate(_prop(), action, **w.gate_kwargs(_checks(tmp_path, _FakeCertify())))
+    assert v.stage == "facet", f"expected to reach the facet check, stopped at {v.stage!r}"
+
+
+def test_the_inert_control_is_built_in_this_call_not_taken_from_a_digest(tmp_path):
+    """Same-session control, like every other check here: the host is shared and loaded, and a stored
+    digest from another build is not a comparand."""
+    cert = _FakeCertify()
+    checks = _checks(tmp_path, cert)
+    checks["inert_ok"](_prop())
+    ids = [c["run_id"] for c in cert.calls]
+    assert "gate_inert_control" in ids
+    ctrl = next(c for c in cert.calls if c["run_id"] == "gate_inert_control")
+    assert ctrl["overlaid"] is False, "the inert control must be built WITHOUT the overlay"
+
+
+def test_inert_fails_closed_when_there_is_no_emitted_code(tmp_path):
+    class _NoObjdump(_FakeCertify):
+        def __call__(self, env, **kw):
+            _FakeCertify.__call__(self, env, **kw)
+            (Path(kw["runs_root"]) / kw["run_id"] / "generated" / "objdump.txt").unlink()
+            return {"status": "ok", "correctness": {"gate_ok": True, "fp32_cos": 1.0},
+                    "_imported": [_REAL_MODULE]}
+    ok, why = _checks(tmp_path, _NoObjdump())["inert_ok"](_prop())
+    assert not ok and "could not be established" in why

@@ -234,6 +234,7 @@ def gate(proposal: PassProposal, action, *,
          frozen_baseline_ok: Callable[[PassProposal], bool],
          bit_exact_ok: Callable[[PassProposal], tuple[bool, str]],
          lift_cca: Callable[[PassProposal], Any],
+         inert_ok: Callable[[PassProposal], tuple[bool, str]] | None = None,
          heldout_ok: Callable[[PassProposal], tuple[bool, str]] | None = None,
          models: tuple[str, ...] | None = None) -> PassVerdict:
     """Run the ordered gate. Cheapest disqualifier first; every stage fails CLOSED.
@@ -242,8 +243,19 @@ def gate(proposal: PassProposal, action, *,
     board, or an agent -- the same reason ``critic.py`` injects its runner. In production they are:
     ``frozen_baseline_ok``  -> empty features still lower byte-identically
     ``bit_exact_ok``        -> spike run matches the golden
+    ``inert_ok``            -> the emitted code actually CHANGED vs the same package unpatched
     ``lift_cca``            -> cca.lift_asm over the emitted disassembly
     ``heldout_ok``          -> the same two checks on captures the agent never saw
+
+    ``inert_ok`` runs before the facet check because the two failures need different answers. A
+    proposal whose emitted code is byte-identical to the unpatched build did not RUN -- its op
+    matching never fired -- and telling its author "the promised facet was not achieved" points them
+    at the wrong thing entirely: they will improve a polynomial that was never reached. MEASURED on
+    the first real agent turn: a 611-line rewrite passed the cheat scan, the frozen baseline and
+    bit-exactness, and produced an object identical to the control down to the instruction count
+    (47,988 insns / 10,782 vector, same undefined symbols) -- reported only as "facet not achieved".
+    This is the same guard the beam has carried since two shipped levers measured inert while looking
+    correctly wired.
     """
     cheats = scan_cheats(proposal.source, models=models)
     if cheats:
@@ -259,6 +271,10 @@ def gate(proposal: PassProposal, action, *,
         # not RUN (the proposed module was never imported by the build), and reporting that as a
         # numeric regression would send the next proposal chasing a change that never happened.
         return PassVerdict(False, "bit_exact", f"bit-exactness not established: {why}")
+    if inert_ok is not None:
+        ok, why = inert_ok(proposal)
+        if not ok:
+            return PassVerdict(False, "inert", f"the emitted code did not change: {why}")
     verdict = verify_promise(action, lift_cca(proposal))
     if not verdict.accepted:
         return verdict

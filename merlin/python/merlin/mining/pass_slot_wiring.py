@@ -310,6 +310,29 @@ def production_gate_checks(
                 f"routes through this pass.")
         return True, f"cos={_cos_of(rec)}"
 
+    def inert_ok(proposal: PassProposal) -> tuple[bool, str]:
+        """Did the proposal change the emitted code at all, against the SAME package unpatched?
+
+        Without this the gate cannot tell "your pass ran and was not enough" from "your pass never
+        fired", and it reported the second as the first -- so the next turn improves code that was
+        never reached. The control is the work package built WITHOUT the overlay in this same call,
+        so the comparison is not against a stored digest.
+        """
+        cand = state.get("bit_exact")
+        if cand is None:
+            bit_exact_ok(proposal)
+            cand = state["bit_exact"]
+        ctrl = _run(None, work_pkg, model_dir, "gate_inert_control")
+        a, b = emitted_digest_of(ctrl["_run_dir"]), emitted_digest_of(cand["_run_dir"])
+        state["inert"] = {"control_digest": a, "candidate_digest": b}
+        if a is None or b is None:
+            return False, ("no emitted code to compare, so a change could not be established "
+                           f"(control={a}, candidate={b})")
+        if a == b:
+            return False, (f"byte-identical to the unpatched build (digest {a}); the pass was "
+                           f"imported but its matching never fired, so nothing downstream of it ran")
+        return True, f"emitted code changed ({a} -> {b})"
+
     def lift_cca(proposal: PassProposal):
         """The achieved CCA, from the SAME run bit_exact_ok measured -- not a fresh build.
 
@@ -343,7 +366,7 @@ def production_gate_checks(
         return (not bad), ("all held-out captures passed" if not bad else f"failed on {bad}")
 
     checks = {"frozen_baseline_ok": frozen_baseline_ok, "bit_exact_ok": bit_exact_ok,
-              "lift_cca": lift_cca}
+              "inert_ok": inert_ok, "lift_cca": lift_cca}
     if heldout_model_dirs:
         checks["heldout_ok"] = heldout_ok
     checks["_state"] = state       # the caller records this; not consumed by gate()
