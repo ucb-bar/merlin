@@ -695,7 +695,7 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
 def test_underscore_perf_phase_is_excluded_from_functional_graded_roots(tmp_path, monkeypatch):
     from merlin.targetgen import target_experiment as TE
 
-    descriptor = (GC.REPO / "experiments" / "capsule_bench" / "targets"
+    descriptor = (GC.REPO / "merlin" / "experiments" / "capsule_bench" / "targets"
                   / "gemmini" / "target_experiment.yaml")
     loaded = TE.load_target_experiment(descriptor)
     functional = tmp_path / "isa"
