@@ -59,12 +59,17 @@ def test_PL_fires_on_a_band_nothing_declares():
     assert "band" in verdict.obstructions[0]["detail"]
 
 
-def test_PK_is_the_only_family_with_a_decision_procedure_today():
-    """Not a contradiction -- a wiring state -- but the reason a satisfiable family still has no verdict."""
+def test_only_the_families_with_a_frozen_analyzer_have_a_decision_procedure_today():
+    """Not a contradiction -- a wiring state -- but the reason a satisfiable family still has no verdict.
+
+    PK has had one since its contract was frozen. PR joined it when the residency family froze its own
+    acceptance contract and named ``perf_pr_claim``. Every other family here is satisfiable and simply
+    has nothing that turns its rows into a verdict.
+    """
     verdicts = {name: CR.family_reach(perf) for name, perf in _declarations().items()}
     decidable = {name for name, v in verdicts.items() if v.decidable_today}
 
-    assert decidable == {"PK"}, (
+    assert decidable == {"PK", "PR"}, (
         "a family gained or lost its acceptance.analyzer; the per-family audit must say so: "
         + repr(sorted(decidable)))
 
@@ -136,10 +141,16 @@ def test_the_gemmini_audit_table_separates_the_three_ways_a_family_stops():
         "PL": "declaration_contradicted",
         # Refuted by the hardware: one declared contraction encoding, so there is no choice to price.
         "PG": "trait_refuted",
-        # Builds a residency ladder across every reachable band; nothing decides it yet.
-        "PR": "no_analyzer",
+        # Builds a residency ladder across every reachable band, and now names the analyzer that
+        # decides it -- its acceptance contract is frozen.
+        "PR": "decidable",
         # Declared blocked on per-lane cycle accounting, so it never enters the sweep expansion.
         "PB": "not_materialized",
+        # PK's successor: the same affine claim with the same two bounds, re-declared to sit PAST the
+        # overlap fill transient that refuted PK. Blocked on the derivation rather than on the claim
+        # -- its starting depth is a measured property of the target, and no materializer can yet read
+        # a recorded measurement -- so like PB it never enters the sweep expansion.
+        "PT": "not_materialized",
     }, table
 
 

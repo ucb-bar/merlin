@@ -576,16 +576,26 @@ def test_shipped_targets_all_consume_the_same_claim_separated_perf_template():
     # needed nothing at all beyond noticing that `resident_reuse` already varies how many tiles
     # amortize one weight push. PC and PS remain declared as SWEEPS and skip at their own gates (PS's
     # traits are refuted, PC's emitter does not exist), which is a different and honest state.
-    # PB is the ONE family that stays blocked, and deliberately: `L4_boundary` needs cycles attributed
-    # per lane, which the capsule path cannot do (it runs the host lane in this process). It is declared
-    # with its full claim contract so the rung is not simply absent -- an absent rung and an
-    # unaffordable one read the same in a ladder, and only one of them is true here. Any OTHER family
-    # appearing in this list is still a regression, which is what the name check below holds.
-    assert [b["family"] for b in (shared.get("blocked_unimplemented") or [])] == ["PB"], (
-        f"only the boundary family may be blocked; got "
-        f"{[b.get('family') for b in (shared.get('blocked_unimplemented') or [])]}")
-    assert (shared["blocked_unimplemented"][0]["performance"]["emitter"]["knobs"]["needs"]
+    # PB stays blocked deliberately: `L4_boundary` needs cycles attributed per lane, which the capsule
+    # path cannot do (it runs the host lane in this process). PT is blocked from birth rather than
+    # regressed into it: it is PK's successor, and the depths its cohort must sit at are a MEASURED
+    # property of each target, so it waits on an axes derivation that may read a recorded measurement.
+    # Both are declared with their full claim contracts so the rungs are not simply absent -- an absent
+    # rung and an unaffordable one read the same in a ladder, and neither is true here.
+    #
+    # Any family OTHER than these two appearing in this list is still a regression -- that is what the
+    # name check holds -- and each one must say what it is blocked ON, so a blocker cannot go stale
+    # into a bare "not done yet".
+    blocked_by_family = {b["family"]: b for b in (shared.get("blocked_unimplemented") or [])}
+    assert sorted(blocked_by_family) == ["PB", "PT"], (
+        f"only the boundary family and PK's successor may be blocked; got "
+        f"{sorted(blocked_by_family)}")
+    assert (blocked_by_family["PB"]["performance"]["emitter"]["knobs"]["needs"]
             == "per_lane_cycle_accounting")
+    assert (blocked_by_family["PT"]["performance"]["emitter"]["knobs"]["axis_derivation"]
+            == "overlap_settled_reduction_depth")
+    assert all(b["performance"]["emitter"]["status"] == "blocked"
+               for b in blocked_by_family.values())
     assert all("source" not in s["base"] and "operand_dtype" not in s["base"]
                for s in shared["sweeps"])
 
@@ -717,10 +727,13 @@ def test_gemmini_admits_the_runnable_families_and_records_its_trait_refusals():
         f"no family should be blocked at the emitter gate now; got "
         f"{[row['family'] for row in blocked]}")
     assert errors == []
-    # Only the boundary family, and only because per-lane cycle accounting does not exist -- see the
-    # shared-template test above. A second entry here would mean a family lost its emitter.
-    assert [b["family"] for b in
-            (profile["_performance_template"].get("blocked_unimplemented") or [])] == ["PB"]
+    # The boundary family (no per-lane cycle accounting) and PK's successor (its cohort's depths are a
+    # measured property of the target, and no axes derivation may read a recorded measurement yet) --
+    # see the shared-template test above for both. A THIRD entry here would mean a family lost its
+    # emitter, which is what this holds.
+    assert sorted(b["family"] for b in
+                  (profile["_performance_template"].get("blocked_unimplemented") or [])) \
+        == ["PB", "PT"]
     capsule, mlir = GC.CS.build(entries[0], binding)
     assert capsule["numeric_policy"] == {"compare": "exact_int", "dtype": "i32"}
     assert capsule["label"] == "dev" and "merlin_iface.matmul" in mlir
