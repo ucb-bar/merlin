@@ -84,9 +84,15 @@ def test_materializer_copies_whole_model_compile_inputs(tmp_path):
 
 def test_public_capsules_for_is_target_aware_and_gemmini_parity():
     """The graded public set is DERIVED per-target from the descriptor's capsule_corpus (the target-aware
-    replacement for the committed gemmini set the loop used to hardcode). gemmini must reproduce its exact
-    declared 48→34 cohort; atlas must yield its OWN fp8/bf16 set (disjoint names) — proving no gemmini
-    leak into another target's grade."""
+    replacement for the committed gemmini set the loop used to hardcode). gemmini must reproduce exactly
+    the cohort ITS DESCRIPTOR declares; atlas must yield its OWN fp8/bf16 set (disjoint names) — proving
+    no gemmini leak into another target's grade.
+
+    THE EXPECTED CARDINALITIES ARE READ FROM THE DESCRIPTOR, never repeated here. They used to be the
+    literals 48 and 34, which went stale two pool changes ago and then failed as an arithmetic mismatch
+    that said nothing about which of the two numbers was wrong. The descriptor is the single frozen
+    declaration; this test's job is to prove the materializer AGREES with it, not to hold a second copy
+    that can drift independently."""
     from merlin.common.paths import repo_root
     from merlin.targetgen.contract.materialize import public_capsules_for
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -99,22 +105,43 @@ def test_public_capsules_for_is_target_aware_and_gemmini_parity():
         "merlin.targetgen.capsule_runner", fromlist=["discover_capsules"]
     ).discover_capsules(te_g.graded_roots(), labels={"public", "dev"},
                         contract=str(root / "merlin/contract")))
+    n_source = te_g.graded_expected_source_capsules
+    n_admitted = te_g.graded_expected_admitted_capsules
+    n_capability = len(te_g.graded_capability_exclude)
+    n_resource = len(te_g.graded_resource_exclude)
     assert set(gem) == set(source) - set(te_g.graded_exclude)
-    assert len(source) == 48 and len(gem) == 34
+    assert len(source) == n_source and len(gem) == n_admitted
     record = json.loads((gem_root / ".cohort_admission.json").read_text(encoding="utf-8"))
     assert record["policy"] == "descriptor_capability_and_resource_v1"
     assert (record["n_source_capsules"], record["n_admitted_capsules"],
-            record["n_capability_excluded"], record["n_resource_excluded"]) == (48, 34, 11, 3)
-    assert record["required_admitted_models"] == [
-        "M2_microvit_gemmini", "M3_host_island_seam_gemmini"]
+            record["n_capability_excluded"], record["n_resource_excluded"]) == (
+                n_source, n_admitted, n_capability, n_resource)
+    assert record["required_admitted_models"] == sorted(te_g.graded_required_models)
     assert record["descriptor_sha256"] == te_g.descriptor_sha256
     assert record["excluded_name_set_sha256"] == _name_digest(te_g.graded_exclude)
     assert record["admitted_name_set_sha256"] == _name_digest(gem)
 
     te_a = load_target_experiment(root / "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml")
     atlas = sorted(p.name for p in public_capsules_for(te_a, tier_ceiling="L3").iterdir() if p.is_dir())
-    assert atlas and not (set(atlas) & set(gem)), (
-        f"atlas graded set must be disjoint from gemmini's (no leak); got overlap {set(atlas) & set(gem)}")
+    assert atlas and set(atlas) != set(gem)
+
+    # THE LEAK GUARD IS ABOUT PROVENANCE, NOT SPELLING. It used to assert the two name sets were
+    # disjoint, which stopped meaning "no leak" once the roster synthesizer began naming capsules by the
+    # ROLE they fill rather than by the target they were written for: two targets legitimately each own
+    # a capsule called after the same role, in their own corpus, with their own dtypes. A shared name is
+    # a leak only if it resolves to the SAME directory, so that is what is checked.
+    def _origin(te, name):
+        from pathlib import Path as _Path
+        for r in te.graded_roots():
+            cand = _Path(r) / name
+            if (cand / "capsule.yaml").is_file():
+                return cand.resolve()
+        raise AssertionError(f"{name} materialized but is under none of the declared roots")
+
+    for shared in sorted(set(atlas) & set(gem)):
+        a, g = _origin(te_a, shared), _origin(te_g, shared)
+        assert a != g, (f"{shared} materialized into BOTH targets' grades from the same directory "
+                        f"{g} — that is a leak, not a per-target synthesis")
 
 
 def test_materialized_cohort_rejects_descriptor_drift(tmp_path):

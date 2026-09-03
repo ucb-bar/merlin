@@ -37,6 +37,29 @@ capsule_corpus: merlin/contract/capsules/isa
 grading:
   # Cardinalities are frozen without making the hidden names public. Any source-pool deletion/addition,
   # or any cohort filter that moves a row outside this declared boundary, makes readiness fail closed.
+  #
+  # THESE TWO NUMBERS ARE UNCHANGED AND THE POOL BEHIND THEM IS NOT. Re-verified 2026-09-02 after the
+  # guard fired: the source pool went to 63 when SY_model_tiny_llama was added (the whole-model capsule
+  # the roster synthesis writes for the declared tiny_llama entry) and back to 62 when
+  # SY_host_only_normalization was removed. Two unrelated changes that happen to cancel, so 62/48 is
+  # once again the measured truth -- reached by a net, not by nothing having happened.
+  #
+  # WHY SY_model_tiny_llama IS INSIDE THE BOUNDARY rather than a row that should have been excluded:
+  #   * it is `label: public` under merlin/contract/capsules/model/, which is what puts it in the source
+  #     pool at all;
+  #   * its operands are i8/i8, precisely the datapath the frozen Gemmini capability contract declares.
+  #     Run through the hardware predicate directly it comes back eligible, so the boundary this block
+  #     guards -- "no row whose operand dtype is absent from every declared capability" -- is not
+  #     crossed. It is not one of the bf16 rows named below, and it is in no exclude list;
+  #   * it is `kind: model`, so readiness's capability split never reaches it (that split runs over the
+  #     non-model rows), and it lands in admitted by subtraction.
+  # The arithmetic the descriptor parser enforces holds: 62 == 48 + 14.
+  #
+  # KNOWN BLIND SPOT, recorded rather than papered over: this seal is CARDINALITIES ONLY, deliberately,
+  # so that the hidden names stay unpublished -- and a cardinality cannot see a swap. The episode above
+  # is exactly that shape: one row in, one row out, same count, different cohort. What does catch it is
+  # `.cohort_admission.json`'s `admitted_name_set_sha256`, recomputed at materialization; read that, not
+  # these integers, when the question is whether the cohort is the SAME cohort.
   expected_cohort:
     source_capsules: 62
     admitted_capsules: 48
