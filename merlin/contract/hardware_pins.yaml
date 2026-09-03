@@ -62,6 +62,10 @@ pins:
       - src/main/scala/common/Consts.scala
       - src/main/scala/common/Parameters.scala
       - benchmarks/common/bme.h
+      # In the read set because `local_edits` below declares its digest, and a declared digest that is
+      # never compared to anything is decoration. `verify` only reaches a local edit for a path it
+      # READS; while this one sat outside the read set the review below was inert.
+      - chipyard/OPUConfigs.scala
     # This checkout carries the file below UNCOMMITTED, and the geometry derivation reads it, so the
     # commit alone does not describe what would be read. The digest makes "ea373800 plus exactly these
     # bytes" a nameable revision instead of an unexplained dirty tree: `verify` reports it as a note
@@ -265,6 +269,45 @@ pins:
       - src/main/scala/gemmini/Configs.scala
       - src/main/scala/gemmini/GemminiISA.scala
       - src/main/scala/gemmini/Mesh.scala
+      # ELABORATED, NOT PARSED — and that is why it is in the read set. The three files above are read
+      # by fact extraction; this one is read by the Verilator ELABORATION that produces the counters a
+      # timing verdict is computed from. It carries an uncommitted edit, and because it was in no read
+      # set, `verify` reported "8 uncommitted change(s), none of them a source this reads" over a file
+      # that is compiled straight into the simulator. That sentence was true of the pin's declaration
+      # and false of the machine. A read set that omits what the RTL build consumes cannot answer the
+      # only question a performance claim asks of this pin.
+      - src/main/scala/gemmini/LoadController.scala
+    # CONTENT, not `git status`. Turned on for the same reason the sibling pin below turns it on: the
+    # dirty heuristic answers "differs from HEAD", and it cannot distinguish a reviewed edit whose
+    # bytes are declared here from an unreviewed one. With this on, each read path gets a per-file
+    # PINNED / OFF_PIN / UNDETERMINABLE verdict that `check_provenance.py` surfaces by name.
+    content_check: true
+    # DECLARED LOCAL EDIT, with the digest of the bytes actually elaborated.
+    #
+    # WHAT THE EDIT IS: `assert(block_stride >= rows)` in the mvin row counter is commented out (4 added
+    # lines, 1 removed; nothing else). A Chisel `assert` lowers to a verification statement only — in the
+    # emitted LoadController.sv it is an `$error` inside the simulation-only guard — so removing one
+    # changes no datapath, no FSM, and no counter increment condition. It changes exactly one thing: the
+    # simulator no longer $fatals on a workload the assertion rejects.
+    #
+    # WHICH LoadController THE COUNTER BUILD ELABORATED — measured 2026-09-02, not assumed. Chisel embeds
+    # the asserting SOURCE LINE in the message it emits, and that is a fingerprint of the file that was
+    # elaborated:
+    #   generated-src/.../gen-collateral/LoadController.sv and the linked
+    #   simulator-chipyard.harness-GemminiRocketConfig binary both carry
+    #     "at LoadController.scala:192 assert(... must load more than 0 bytes)"
+    #   working tree : that assert is at line 192, `block_stride >= rows` commented at 139
+    #   at 8c3f9923  : that assert is at line 189, `block_stride >= rows` live at 136
+    # 192 is the WORKING-TREE numbering, and `block_stride` appears nowhere in the emitted Verilog or in
+    # the binary. So the build elaborated THESE bytes, not the pinned revision's. (mtimes agree and are
+    # the weaker witness: the edit is 2026-08-11 12:47, the simulator 12:53, the collateral 16:01.)
+    #
+    # CONSEQUENCE FOR THE NUMBERS: the eta values in out/artifacts/perf-calibration/gemmini/ were counted
+    # on RTL built from these bytes. Because the delta is an assertion and nothing else, the LD/EX/ST
+    # busy counters are unaffected — but that is an argument, not a licence to call them pinned. They are
+    # "8c3f9923 plus these bytes", and `provenance.citation()` is what spells that.
+    local_edits:
+      src/main/scala/gemmini/LoadController.scala: "780ee0a292d8653fa8a822aee28e2fb2cffbc25301431b4332182008d34fcf6a"
     # The ISA HEADERS this generator ships are a SEPARATE nested repository with its own revision, and
     # every dtype claim about this target is read out of them. This pin cannot describe them (see the
     # sibling below), so it declares that verifying it INCLUDES verifying them: a caller that verified
@@ -281,9 +324,16 @@ pins:
       with radiance_muon_rtl (the same chipyard tree), which is why both are verified by CONTENT.
 
       EXPECT THIS PIN TO REPORT DRIFT VIA `[gemmini_isa_headers]` ON A DEVELOPMENT CHECKOUT, and read it
-      as the coverage working rather than as a fault in this pin. Its own three Scala files are clean at
-      8c3f9923; what is off-pin is the nested header repository, and the whole point of `covers` is that
-      that no longer hides behind this pin's clean verdict.
+      as the coverage working rather than as a fault in this pin. What is off-pin there is the nested
+      header repository, and the whole point of `covers` is that that no longer hides behind this pin's
+      clean verdict.
+
+      EXPECT A SECOND, LOCAL OFF-PIN FINDING: `src/main/scala/gemmini/LoadController.scala`. Its bytes
+      are declared in `local_edits` above, so it is a REVIEWED off-pin file — the finding is the citation
+      form doing its job, not a fault to chase. This pin's other three Scala files ARE clean at 8c3f9923
+      and `source_status` reports them PINNED by content. Do not re-pin this commit to make the finding
+      go away: the edit is uncommitted and belongs to nobody's revision, so there is no sha to move to.
+      Land it upstream and delete the `local_edits` entry, or revert it in the checkout and rebuild.
 
   gemmini_isa_headers:
     description: >-
@@ -508,12 +558,22 @@ pins:
     commit: 50b371c60910ebe7aaabb248f8c2b8a56c3a96e6
     branch: master
     root_env: MERLIN_EXT_GSIM
+    # ALL NINE PATCHED FILES ARE IN THE READ SET, not the four the smoke path happened to name. A
+    # `local_edits` digest is only ever compared for a path the pin READS, so the five that sat outside
+    # this list were reviewed and then never checked: a different edit to any of them would have gone
+    # unnoticed while the pin still verified. The compiler is BUILT from all nine, and `build/gsim/gsim`
+    # below is that build's product, so the read set is the whole patch set by construction.
     requires_paths:
       - src/AST2Graph.cpp
       - src/splitArray.cpp
       - src/clockOptimize.cpp
       - parser/syntax.y
       - build/gsim/gsim
+      - include/Node.h
+      - src/Node.cpp
+      - src/cppEmitter.cpp
+      - src/graphPartition.cpp
+      - src/splitNodes.cpp
     local_edits:
       include/Node.h: 04de20f71880560a2f2566607352794969b89063b05058973d422f867765f549
       parser/syntax.y: 73aca9db9a0fe8236b3a9a8df2a6f922d55628de4d705b1072dd803153254806

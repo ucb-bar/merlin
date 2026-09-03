@@ -286,8 +286,17 @@ def _provenance(target: str, dirs: dict[str, Path], extra: dict | None = None) -
 
     ``sources`` is the bytes actually READ -- the contract and the selected capsules' declarations --
     because a dirty tree changes what a derivation emitted while the commit still looks right.
+
+    IT ALSO RECORDS THE HARDWARE PINS, which it did not. Every eta in this record is counted on the
+    target's elaborated RTL, so the record is a claim about a specific hardware revision -- and it was
+    written with ``hardware_pins: {}`` and ``all_pins_ok: null``, i.e. saying nothing about which one.
+    The counter file it cites carried the verification; this record forwarded that block but declared
+    none of its own, so a reader of the calibration alone could not tell what it was measured against.
+    The pins come from the TARGET'S OWN contract (``targetgen.provenance.declared_pins``), never a name
+    written here, and a pin that cannot be verified is recorded as a refusal rather than skipped.
     """
     from merlin.common import provenance as P
+    from merlin.targetgen.provenance import declared_pins
     from merlin.targetgen.rtl.facts import target_contract_path
     try:
         sources = [target_contract_path(target)]
@@ -295,9 +304,18 @@ def _provenance(target: str, dirs: dict[str, Path], extra: dict | None = None) -
         sources = []
     sources += [d / "capsule.yaml" for d in sorted(dirs.values())]
     present = [Path(s).resolve() for s in sources if Path(s).is_file()]
+    pins, refused = {}, {}
+    for name in declared_pins(target):
+        try:
+            pins[name] = P.verify(name)
+        except Exception as exc:                             # noqa: BLE001 -- unverifiable is UNKNOWN
+            refused[name] = f"{type(exc).__name__}: {exc}"
+    extra = dict(extra or {})
+    if refused:
+        extra["pins_unverifiable"] = refused
     try:
         from merlin.common.paths import repo_root
-        got = P.record(sources=[str(s) for s in present], extra=dict(extra or {}))
+        got = P.record(sources=[str(s) for s in present], pins=pins, extra=extra)
         # The digest is taken over the ABSOLUTE paths, so it is over bytes that were actually read;
         # the NAMES are then rewritten repo-relative, because an absolute path in a published artifact
         # says where one machine kept its checkout, which is not provenance.

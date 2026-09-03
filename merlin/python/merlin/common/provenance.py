@@ -54,7 +54,8 @@ from typing import Any
 
 __all__ = ["Artifact", "ArtifactCheck", "Observation", "Pin", "PinsError", "SourceStatus",
            "Verification", "load_artifacts", "load_pins", "observe", "pin", "pins_path", "record",
-           "require", "source_digest", "source_status", "verify", "verify_artifact"]
+           "citation", "citations", "require", "source_digest", "source_status", "verify",
+           "verify_artifact"]
 
 #: Recorded where a fact could not be read. Never compares equal to a real value, and callers must not
 #: treat it as "unchanged" — see :mod:`merlin.targetgen.artifact_dag` for the same convention.
@@ -881,6 +882,71 @@ def require(name: str, *, checkout: "str | Path | None" = None,
     return got
 
 
+#: What a citation says when every read path's bytes are the pin's commit's bytes. The ONLY case in
+#: which a result may spell its hardware revision as a bare sha.
+PINNED_CITATION = "pinned"
+
+
+def citation(name: "str | Verification", *, checkout: "str | Path | None" = None,
+             path: "str | Path | None" = None,
+             reads: "Sequence[str] | None" = None) -> str:
+    """How a result must SPELL the revision it was measured on. Never a bare sha.
+
+    A bare sha reads as "pinned". It is the right spelling only when every read path's bytes are that
+    commit's bytes, and this repository has already shipped the other case: run records carrying
+    ``{<pin name>: <40 hex characters>}`` for a checkout whose elaborated RTL source and whose ISA
+    header both differ from that commit. Nothing in the record said so, and a reader has no way to tell
+    a clean citation from a dirty one when both are 40 hex characters.
+
+    The three forms, one per state ``source_status`` can return, kept apart because they demand
+    different responses:
+
+    * ``<commit> (pinned)`` — the bytes are the commit's bytes; cite the sha and stop.
+    * ``<commit> plus these bytes: <path>@<digest>, ...`` — REVIEWED off-pin content. The result is
+      attributable, to a revision that has no name of its own, and it must be written this way.
+    * ``<commit> UNDETERMINABLE: ...`` — nobody can say which revision the bytes belong to. This is not
+      a softer "off-pin"; a claim resting on it must not be published at all.
+
+    Covered pins are folded in, name-prefixed, for the same reason :func:`verify` folds their drift: a
+    citation that omitted the nested surface a claim actually rests on is the failure the registry's
+    ``covers`` field exists to close.
+    """
+    got = name if isinstance(name, Verification) else verify(
+        name, checkout=checkout, path=path, reads=reads)
+    parts = [_cite_one(got, path)]
+    parts.extend(_cite_one(child, path) for child in got.covered)
+    return "; ".join(parts)
+
+
+def _cite_one(got: Verification, path: "str | Path | None") -> str:
+    """One pin's citation clause. Reads the registry again because the DECLARED commit is the subject."""
+    try:
+        declared = pin(got.pin, path).commit
+    except PinsError:
+        declared = UNKNOWN
+    head = f"{got.pin} {declared}"
+    if not got.observed.present:
+        return f"{head} — CHECKOUT ABSENT, so no claim may cite this revision"
+    if got.observed.commit not in (declared, UNKNOWN):
+        head = f"{head} (checkout HEAD is {got.observed.commit[:12]})"
+    unknown = [s for s in got.sources if s.status == UNDETERMINABLE]
+    if unknown:
+        return (f"{head} UNDETERMINABLE: " + ", ".join(f"{s.rel} ({s.reason})" for s in unknown)
+                + " — do not publish a claim resting on these bytes")
+    off = [s for s in got.sources if s.status == OFF_PIN]
+    if off:
+        return f"{head} plus these bytes: " + ", ".join(f"{s.rel}@{s.digest[:16]}" for s in off)
+    if not got.sources:
+        return (f"{head} — read set NOT verified by content, so whether these are the pinned revision's "
+                "bytes is unrecorded; not citable as pinned")
+    return f"{head} ({PINNED_CITATION})"
+
+
+def citations(pins: "Mapping[str, Verification]") -> dict[str, str]:
+    """``{pin name: citation}`` for an already-verified mapping — the form :func:`record` embeds."""
+    return {name: citation(got) for name, got in pins.items()}
+
+
 def source_digest(paths: Sequence["str | Path"]) -> str:
     """One digest over the exact bytes of the sources a derivation read.
 
@@ -927,6 +993,10 @@ def record(*, pins: Mapping[str, Verification] | None = None,
         },
         "hardware_pins": {k: v.to_dict() for k, v in (pins or {}).items()},
         "all_pins_ok": all(v.ok for v in (pins or {}).values()) if pins else None,
+        # The SPELLING a reader may use for each revision, beside the raw verification. Emitted here
+        # rather than left to each caller because every caller got it wrong the same way: a bare sha,
+        # which reads as "pinned" whether or not the read bytes are that commit's. See `citation`.
+        "pin_citations": citations(pins or {}),
     }
     if sources:
         out["source_digest"] = source_digest(sources)

@@ -312,6 +312,11 @@ def toolchain_shas(target: str | None = None) -> dict[str, str]:
 
     A pin whose checkout is absent or unreadable is recorded as UNKNOWN rather than omitted: a missing
     key reads as "this run had no such dependency" when it means "nobody could tell".
+
+    THIS IS A SHA, NOT A CITATION. The value here is the revision the checkout is ON, and it says
+    nothing about whether the bytes that were read are that revision's. A report that prints it beside
+    a verdict is spelling "pinned" for a tree that may not be; pair it with :func:`toolchain_citations`,
+    which is the form :mod:`merlin.common.provenance` licenses a claim to use.
     """
     from ..common import provenance as PROV
 
@@ -322,3 +327,25 @@ def toolchain_shas(target: str | None = None) -> dict[str, str]:
         except Exception:                   # noqa: BLE001 -- unknown/unreadable pin is UNKNOWN, not absent
             shas[name] = PROV.UNKNOWN
     return shas
+
+
+def toolchain_citations(target: str | None = None) -> dict[str, str]:
+    """``{name: citation}`` for every hardware pin ``target`` declares — the spelling a claim may use.
+
+    The sibling of :func:`toolchain_shas`, and the one a verdict-claiming report must carry. A bare sha
+    cannot distinguish "measured on this commit" from "measured on this commit plus a handful of
+    uncommitted lines", and both shapes have shipped in this repo's artifacts under 40 hex characters
+    that look identical.
+
+    Recorded as UNKNOWN, never omitted, for the same reason ``toolchain_shas`` does: an absent key reads
+    as "no such dependency" when it means "nobody could tell".
+    """
+    from ..common import provenance as PROV
+
+    out: dict[str, str] = {}
+    for name in declared_pins(target):
+        try:
+            out[name] = PROV.citation(name)
+        except Exception:                   # noqa: BLE001 -- unknown/unreadable pin is UNKNOWN, not absent
+            out[name] = PROV.UNKNOWN
+    return out
