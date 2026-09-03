@@ -38,7 +38,13 @@ compute_units:
   semantic_capabilities:
   - family: contraction
     dtypes: [fp8_e4m3, bf16]
-    ranks: [2]
+    # rank 3 is the BATCHED contraction, evidenced by `capability_derive._from_lowering`: `device_shim`
+    # emits a 3-D entry for a (B,M,N,K) signature, which is the same (M,N,K) kernel called B times with
+    # the leading offset advanced, so it asks nothing of the MXU that the rank-2 entry does not.
+    # Declaring [2] alone made `is_eligible` answer "rank 3 not in contraction legal ranks [2]" for
+    # every batch matmul, removing those regions from the ARR denominator -- the direction that
+    # flatters recall.
+    ranks: [2, 3]
   - family: elementwise_map
     dtypes: [fp8_e4m3, bf16]
   - family: movement

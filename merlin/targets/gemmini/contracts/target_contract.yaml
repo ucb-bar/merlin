@@ -124,7 +124,16 @@ compute_units:
       # dedicated LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1/2/3 (16-18), so a rank-4 conv
       # region IS acceleratable. Declaring ranks [2] alone made the shipped conv2d capsules score
       # ineligible and silently left them out of the ARR denominator.
-      - {family: contraction, dtypes: [int8], ranks: [2, 4]}
+      #
+      # rank 3 is the BATCHED contraction, and it is here on the same footing: evidenced, not assumed.
+      # `capability_derive._from_lowering` reports it because `device_shim` emits a 3-D entry for a
+      # (B,M,N,K) signature -- a batch is a loop over the same (M,N,K) kernel with the leading offset
+      # advanced, so it asks nothing of the device the rank-2 entry does not. Omitting it repeated the
+      # rank-4 mistake exactly: `is_eligible` answered "rank 3 not in contraction legal ranks [2, 4]"
+      # for every batch matmul, which removed those regions from the ARR denominator and RAISED recall,
+      # while the rewrite, the device builder and the shim's B loop were all already in place. On one
+      # real capture those are 16 of 106 contractions and 8.5% of all contraction MAC work.
+      - {family: contraction, dtypes: [int8], ranks: [2, 3, 4]}
       # Epilogue-only: per-channel scaling + requant apply on the way OUT of the accumulator, so an
       # elementwise map exists ONLY fused behind a contraction. Standalone would be a false_fallback.
       - {family: elementwise_map, dtypes: [int8], composed_with: [contraction]}

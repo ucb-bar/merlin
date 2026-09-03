@@ -56,6 +56,7 @@ needs a new extractor (loop-bound register counting out of the RTL decoder), not
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -447,6 +448,51 @@ def _from_rtl_facts(facts: dict, out: DerivedCapabilities) -> None:
                                         evidence=f"RTL interface {nm!r}", dtypes=dtypes))
 
 
+def _from_lowering(target: str, out: DerivedCapabilities) -> None:
+    """Rung 5 — WHAT THIS COMPILER CAN ACTUALLY EMIT for the target, which is evidence about the
+    target's admissible shapes and was the rung this ladder did not have.
+
+    The four rungs above read what the hardware DECLARES (its ISA roles, its instruction classes, its
+    extracted RTL, its units' intent). None of them can see a shape the *lowering* already handles, and
+    that blind spot has a name: a batched contraction. ``device_shim`` emits a 3-D entry for a
+    ``(B,M,N,K)`` signature on ANY device -- "a batch is a LOOP, not a third tile axis... the same
+    kernel called B times with the leading offset advanced" -- so it needs nothing from the device that
+    the 2-D entry does not already need. The batch dimension is therefore admissible wherever the
+    ordinary contraction is.
+
+    Measured, and this is why the rung exists: gemmini declares ``contraction ranks: [2, 4]`` and atlas
+    declares ``[2]``, so ``is_eligible`` answers "rank 3 not in contraction legal ranks" for every
+    batched matmul on both -- while the rewrite takes ``(B,M,N,K)``, the device builder produces the
+    ``(M,N,K)`` kernel, and the shim loops over B. The execution machinery existed and the contract
+    forbade its use. A rank the contract omits makes every region of that shape score ineligible, which
+    removes it from the ARR DENOMINATOR and RAISES recall -- the direction that flatters us -- and on
+    one real capture those are 16 of 106 contractions carrying 8.5% of all contraction MAC work.
+
+    This rung does not edit the contract. It supplies the evidence, and ``_axis_findings`` then reports
+    the contract's omission as ``missing_axis`` -- the mechanism that was already there and had nothing
+    to fire on.
+    """
+    if "contraction" not in out.supported:
+        return                                   # no contraction at all: a batched one is not a claim
+    try:
+        from merlin.llvmlower.device_shim import tile_edge_for
+        edge = tile_edge_for(target)
+    except Exception:                            # noqa: BLE001 — no shim path for this target
+        return
+    if not edge:
+        # The shim declines to emit ANY entry without a derivable tile edge (it will not guess whether
+        # staging is needed), so it cannot emit the batched one either. Not evidence.
+        return
+    prev = out.supported["contraction"]
+    out.supported["contraction"] = dataclasses.replace(
+        prev,
+        ranks=tuple(sorted({*prev.ranks, 2, 3})),
+        source=f"{prev.source},lowering",
+        evidence=(f"{prev.evidence}; device_shim emits a 3-D entry for a (B,M,N,K) signature at tile "
+                  f"edge {int(edge)} -- a batch is a loop over the same kernel, so rank 3 needs "
+                  f"nothing the rank-2 entry does not"))
+
+
 def _from_unit_intent(contract: dict, out: DerivedCapabilities) -> None:
     """Rung 4 — the residual's own declaration of what each unit is for. Weakest rung, and the only one
     that can yield an EPILOGUE-only capability: a unit whose elementwise hardware is a readout requant
@@ -499,6 +545,7 @@ def derive(target: str, contract: dict, facts: dict | None = None, *,
     _from_isa_classes(contract, out, dtypes)
     _from_rtl_facts(facts or {}, out)
     _from_unit_intent(contract, out)
+    _from_lowering(target, out)
 
     # Anything still unplaced is UNKNOWN unless a conclusive compute census ran and did not find it.
     for fam in _sf.PRIMITIVES:
