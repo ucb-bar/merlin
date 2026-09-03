@@ -126,3 +126,57 @@ def test_the_declared_remedy_fields_are_the_ones_the_corpus_uses():
     assert used["max_oracle_tier"] or used["extends"], (
         "neither remedy field appears anywhere in the corpus, so the gate would be asking for "
         f"something no capsule can express: {used}")
+
+
+def test_the_cost_law_reproduces_the_calibration_runs():
+    """The four measured points, and the model must land on them rather than near them.
+
+    512/1024/2048/4096 written elements took 177.2 / 351.6 / 723.1 / 1682.6 seconds on a
+    cycle-accurate oracle. Seconds per element is 0.346 / 0.343 / 0.353 / 0.411 -- flat over the first
+    three rungs and 16% higher on the fourth -- so a single constant is the wrong shape, and the flat
+    figure UNDER-predicts exactly where being wrong is most expensive.
+    """
+    measured = {512: 177.2, 1024: 351.6, 2048: 723.1, 4096: 1682.6}
+    for out, secs in measured.items():
+        got, extrapolated = CC.predict_seconds_from_output(out)
+        assert got is not None
+        err = abs(got - secs) / secs
+        assert err < 0.06, f"output {out}: model {got:.1f}s vs measured {secs}s ({err:.1%})"
+        assert extrapolated is False, "the calibration points are inside the measured range"
+
+
+def test_the_law_is_superlinear_and_beats_a_flat_rate_at_the_top():
+    """A flat s/element is not merely imprecise; it is optimistic where it matters."""
+    flat = 4096 * CC.MEASURED_S_PER_OUTPUT_ELEMENT
+    law, _ = CC.predict_seconds_from_output(4096)
+    assert law > flat, "the law must not be cheaper than the flat rate at the top rung"
+    assert abs(law - 1682.6) < abs(flat - 1682.6), (
+        f"the law ({law:.0f}s) must be closer to the measured 1682.6s than the flat rate ({flat:.0f}s)")
+    # And doubling the output must cost MORE than double.
+    a, _ = CC.predict_seconds_from_output(2048)
+    b, _ = CC.predict_seconds_from_output(4096)
+    assert b > 2 * a
+
+
+def test_a_size_past_the_calibration_is_flagged_as_extrapolation():
+    """90% of the corpus's predicted bill sits out here; leaving it unsaid makes it a hidden guess."""
+    _, inside = CC.predict_seconds_from_output(CC.MEASURED_MAX_OUTPUT_ELEMENTS)
+    _, outside = CC.predict_seconds_from_output(CC.MEASURED_MAX_OUTPUT_ELEMENTS + 1)
+    assert inside is False and outside is True
+
+
+def test_the_gate_reports_how_much_of_the_bill_is_extrapolated():
+    gate = _gate()
+    rep = gate.audit(budget_s=900.0)
+    assert rep["n_extrapolated"] > 0
+    assert rep["extrapolated_hours"] > 0.5 * (rep["total_predicted_s"] / 3600.0), (
+        "most of this corpus's cost is beyond the calibrated range, and the report must say so")
+
+
+def test_no_capsule_is_priced_at_zero():
+    """Zero reads as free, which is the most dangerous error available here."""
+    gate = _gate()
+    rep = gate.audit(budget_s=900.0)
+    assert rep["unpriceable"] == []
+    # Every priced capsule must have a positive prediction.
+    assert rep["total_predicted_s"] > 0

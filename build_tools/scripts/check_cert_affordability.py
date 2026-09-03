@@ -67,8 +67,10 @@ def _price(fit, output_elements: int) -> tuple[float, str]:
         secs = CC.predict_seconds(fit, output_elements)
         if secs is not None:
             return secs, f"fitted ({fit.n_samples} samples, r2 {fit.r2:.2f})"
-    return (output_elements * CC.MEASURED_S_PER_OUTPUT_ELEMENT,
-            f"measured default {CC.MEASURED_S_PER_OUTPUT_ELEMENT} s/element")
+    secs, extrapolated = CC.predict_seconds_from_output(output_elements)
+    basis = (f"measured law {CC.MEASURED_COEFFICIENT_S} * out^{CC.MEASURED_EXPONENT}"
+             + (" EXTRAPOLATED past the calibrated range" if extrapolated else ""))
+    return (secs or 0.0, basis)
 
 
 def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
@@ -99,6 +101,7 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
             continue
         secs, basis = _price(None, out)
         rows.append({"capsule": cy.parent.name, "output_elements": out,
+                     "extrapolated": out > CC.MEASURED_MAX_OUTPUT_ELEMENTS,
                      "predicted_s": round(secs, 1), "basis": basis,
                      "max_oracle_tier": doc.get("max_oracle_tier"),
                      "extends": doc.get("extends"),
@@ -108,6 +111,9 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
             and str(r["max_oracle_tier"] or "").upper() != "L2"]
     total = sum(r["predicted_s"] for r in rows)
     return {"budget_s": budget_s, "n_demanding_l3": len(rows),
+            "n_extrapolated": sum(1 for r in rows if r["extrapolated"]),
+            "extrapolated_hours": round(sum(r["predicted_s"] for r in rows
+                                            if r["extrapolated"]) / 3600.0, 2),
             "total_predicted_s": round(total, 1),
             "total_predicted_hours": round(total / 3600.0, 2),
             "over_budget": sorted(over, key=lambda r: -r["predicted_s"]),
@@ -145,10 +151,12 @@ def main(argv=None) -> int:
         print(json.dumps({"report": rep, "new_over_budget": new}, indent=2))
     else:
         print(f"== certification affordability at {rep['budget_s']:.0f}s "
-              f"({rep['s_per_output_element']} s per committed element, measured)")
+              f"({rep['s_per_output_element']} s per element at the flat rungs; law is superlinear)")
         print(f"   capsules demanding L3        : {rep['n_demanding_l3']}")
         print(f"   predicted total              : {rep['total_predicted_s']:,.0f}s "
               f"({rep['total_predicted_hours']}h)")
+        print(f"   priced beyond the calibrated range : {rep['n_extrapolated']} "
+              f"({rep['extrapolated_hours']}h of the total — an unstated guess if not said out loud)")
         print(f"   over budget with no L2 cap and no extends: {len(rep['over_budget'])}")
         for r in rep["over_budget"][:20]:
             mark = " " if r["capsule"] in ratchet else "*"

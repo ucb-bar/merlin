@@ -194,9 +194,39 @@ def capsule_output_elements(interface_mlir_text: str) -> int:
     return total
 
 
-#: Seconds per committed element on a cycle-accurate oracle, measured rather than assumed. Kept as a
-#: documented default for callers with no fitted model; a fitted `CostFit` always wins.
+# --- the measured cost law -------------------------------------------------------------------------
+# Four cycle-accurate runs at 512/1024/2048/4096 written elements took 177.2 / 351.6 / 723.1 / 1682.6
+# seconds. Seconds per element is NOT constant across that: 0.346, 0.343, 0.353, 0.411 -- flat over
+# the first three rungs and 16% higher on the fourth. The honest form is a mild power law,
+#
+#     seconds = 0.20509 * output^1.0782          (log-log r2 0.9976, every point within 5.4%)
+#
+# and the exponent matters because the error compounds where it is most expensive to be wrong: at the
+# corpus's largest capsule (262,144 written elements) a flat 0.347 s/element predicts 25.3h where the
+# power law predicts 39.6h, +57%. UNDER-predicting is the dangerous direction -- it is how a run gets
+# committed to that never finishes -- so the power law is what callers get, and anything past the
+# measured range is flagged as extrapolation rather than quietly returned.
+MEASURED_COEFFICIENT_S = 0.20509
+MEASURED_EXPONENT = 1.0782
+#: Largest written-element count any of the calibration runs actually reached.
+MEASURED_MAX_OUTPUT_ELEMENTS = 4096
+#: Seconds per element over the FLAT part of the ladder (512..2048). A mid-range figure for a reader,
+#: never the thing to price a large capsule with -- see the exponent above.
 MEASURED_S_PER_OUTPUT_ELEMENT = 0.347
+
+
+def predict_seconds_from_output(output_elements: int) -> "tuple[float | None, bool]":
+    """``(seconds, extrapolated)`` for a capsule writing ``output_elements``.
+
+    ``extrapolated`` is True past the largest calibration run, and the caller is expected to say so:
+    nine of the corpus's L3-demanding capsules are beyond it and account for 90% of the predicted
+    bill, so silently treating the law as valid out there would put most of the total on an unstated
+    guess.
+    """
+    if not output_elements or output_elements <= 0:
+        return None, False
+    secs = MEASURED_COEFFICIENT_S * float(output_elements) ** MEASURED_EXPONENT
+    return secs, output_elements > MEASURED_MAX_OUTPUT_ELEMENTS
 
 
 def capsule_elements(capsule_yaml: dict) -> int:
