@@ -214,6 +214,69 @@ def rows_from_census(census_json: Path, pkg: Path, *, budget_s: float) -> list[d
     return out
 
 
+def _capability_report(rows: list[dict], census: Path, pkg: Path, digest: str,
+                       budget_s: float) -> str:
+    """The before/after the whole extension turns on, written so a reader can check it.
+
+    Deliberately separates three things this repo has confused before: what the CENSUS says is legal
+    (op and dtype routable), what the LOWERING could emit (both capacity bounds, one block), and what
+    it can emit NOW (a legal cut exists). Only the third is a statement about today's compiler.
+    """
+    L = ["# Model kernel census and the capability it exposes", "",
+         f"- census: `{census}`",
+         f"- compiler package: `{pkg.name}` (source digest `{digest[:16]}`)",
+         f"- per-candidate GSIM wall budget used for sizing: {budget_s:.0f} s", "",
+         "## Expressibility, per model", "",
+         "| model | distinct shapes | fit whole (pre-blocking) | emittable (with blocking) | "
+         "MACs covered |", "|---|---|---|---|---|"]
+    for model in sorted({r["model_id"] for r in rows}):
+        mr = [r for r in rows if r["model_id"] == model and r["M"] != ""]
+        whole = [r for r in mr if r["fits_without_cutting"] == "yes"]
+        expr = [r for r in mr if r["expressible"] == "yes"]
+        L.append(f"| {model} | {len(mr)} | {len(whole)}/{len(mr)} | {len(expr)}/{len(mr)} | "
+                 f"{sum(r['mac_share'] for r in expr):.1%} |")
+    L += ["",
+          "The census's own legality column reports every one of these as legal. Its scope is",
+          "`op_name+element_types` -- *is this op and dtype routable to the mesh at all* -- which is a",
+          "different question from *can the lowering emit it*, and only the second is about the",
+          "compiler. Both bounds have to hold for a single block:",
+          "",
+          "> operand store `Kt*(Mt+Nt) <= spad_rows/dim`  **and**  accumulator `Mt*Nt <= acc_rows/dim`",
+          "",
+          "and the accumulator one binds first and binds everywhere, which is why the pre-blocking",
+          "column is zero rather than small.",
+          "",
+          "## What the frozen compiler did with a shape past the bound",
+          "",
+          "It had no capacity predicate at all, so the answer was not a refusal. MEASURED, two ways:",
+          "",
+          "* `PR06_spills_k8208` (16x16x8208, a 32-row A/B overlap) **passes** at 28118 cycles. At",
+          "  Nt=1 each tile is written and consumed in the same iteration, so the aliased partners are",
+          "  never live together. Accidentally safe.",
+          "* 16x512x528 computes a NEGATIVE weight base (-512) and **does not halt**: stopped after",
+          "  13 minutes having written 557 MB to the console with no `METRIC`/`DONE`. The same shape",
+          "  under blocking is bit-exact at 93366 cycles, cut into 2 K-blocks.",
+          "",
+          "So the defect is not 'wrong answers'. It is that nothing distinguished the two cases.",
+          "",
+          "## Sizing",
+          "",
+          "K is preserved on every row -- it is where accumulation, residency and spill behaviour live",
+          "-- and only the parallel extents are clamped, to the per-candidate wall budget above. The",
+          "true shape is kept beside the clamped one on every row, never overwritten. Sub-tile extents",
+          "(ResNet-50's M=1 classifier, TinyLlama's M=8 at sequence 8) are left exactly as they are:",
+          "a one-tile floor would round them UP, which is a different workload, not a smaller one.",
+          "",
+          "## Claim-model rule",
+          "",
+          "`merlin/contract/claim_models.yaml` declares both models as claim models: they may be",
+          "compiled and graded, and their census may never enter requirement derivation, corpus",
+          "synthesis or capsule selection. This file is a GRADING input only. The recipe space and",
+          "the derived blocking rule are frozen in the package named above, whose digest predates",
+          "this artifact.",
+          ""]
+    return "\n".join(L)
+
 FIELDS = ["model_id", "layer_fqn", "shape_rank", "M", "N", "K", "dtype_in", "invocation_count",
           "macs", "mac_share", "fits_without_cutting", "why_cutting_needed",
           "expressible", "inexpressible_reason", "census_verdict",
@@ -231,6 +294,10 @@ def main(argv=None) -> int:
     ap.add_argument("--budget-s", type=float, default=300.0,
                     help="per-candidate GSIM wall budget that sizing must respect")
     ap.add_argument("--out", default="", help="where to write kernel_census.csv (default: stdout summary only)")
+    ap.add_argument("--product", action="store_true",
+                    help="write a versioned product under out/artifacts/recipe-select/gemmini/v2/ "
+                         "with the census, the capability result and the freeze record")
+    ap.add_argument("--version", type=int, default=2)
     a = ap.parse_args(argv)
 
     if a.census:
@@ -248,6 +315,15 @@ def main(argv=None) -> int:
     rows = rows_from_census(census, pkg, budget_s=a.budget_s)
 
     dest = Path(a.out) if a.out else None
+    if a.product:
+        from merlin.common.artifacts import new_product                   # noqa: PLC0415
+        prod = new_product("recipe-select", version=a.version, target="gemmini",
+                           notes="model kernel census + expressibility, ResNet-50 and TinyLlama")
+        dest = Path(prod.add_artifact("kernel_census.csv"))
+        Path(prod.add_artifact("capability.md")).write_text(
+            _capability_report(rows, census, pkg, digest, a.budget_s), encoding="utf-8")
+        prod.write_manifest()
+        print(f"product: {prod.path}")
     if dest:
         dest.parent.mkdir(parents=True, exist_ok=True)
         with dest.open("w", newline="", encoding="utf-8") as fh:
