@@ -24,6 +24,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import shutil
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -1375,6 +1376,26 @@ def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
     return changed
 
 
+#: ``source_role`` the corpus synthesizer stamps on every entry it derives. Mirrors
+#: ``corpus_synth.SOURCE_ROLE``; compared as data so a hand-authored capsule and a derived
+#: one can be told apart where the two need different handling.
+SYNTH_ROLE = "derived_sweep"
+
+
+class UnprovableForbid(ValueError):
+    """A capsule forbids the mesh on a program the target would legitimately accelerate.
+
+    A distinct type because the right response depends on who wrote the capsule. A HAND-AUTHORED one
+    is a contradiction its author must resolve, and aborting is how they find out. A SYNTHESIZED one
+    is not: synthesis is pure -- it derives entries from the requirement without building or
+    classifying anything -- so the axis genuinely cannot know that `normalization` decomposes into
+    regions this target admits. The generator is the first place that fact exists, and the honest
+    response there is to drop the capsule and REPORT the family as uncovered, which is the same
+    fail-closed shape as `host_only_unsynthesizable`: a requirement that produced no capsule stays
+    visible, and nothing can pass in its place.
+    """
+
+
 def _verify_a_forbidden_lane_is_provable(d: Path, cap: dict, target: "str | None") -> None:
     """A capsule may only forbid the mesh if its own program has nothing the mesh may legitimately take.
 
@@ -1399,7 +1420,7 @@ def _verify_a_forbidden_lane_is_provable(d: Path, cap: dict, target: "str | None
     prof = BD.profile_capsule(d, str(target))
     if prof.kind == BD.HOST_ONLY:
         return
-    raise ValueError(
+    raise UnprovableForbid(
         f"{cap.get('name')!r} forbids `on_mesh`, but {str(target)!r} classifies its program as "
         f"{prof.kind!r} rather than host-only: it contains region(s) the manifest admits, so the "
         f"assertion demands the compiler decline work it is entitled to do. Choose a family whose "
@@ -2493,13 +2514,23 @@ def generate_target(target: str) -> list[Path]:
     # registered) aborted the run before any of the tail-path sweep capsules were written, so a coverage
     # gap stayed open for a reason that had nothing to do with it. Failures are COLLECTED, reported by
     # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
-    written, failures, unbuilt_roster = [], [], []
+    written, failures, unbuilt_roster, unprovable_forbids = [], [], [], []
     for e in entries:
         family = (e.get("performance") or {}).get("family")
         try:
             w = _write_capsule(e, binding, out_root)
         except Exception as exc:                              # noqa: BLE001 — reported, never swallowed
             detail = f"{type(exc).__name__}: {str(exc)[:300]}"
+            if isinstance(exc, UnprovableForbid) and str(e.get("source_role") or "") == SYNTH_ROLE:
+                # See `UnprovableForbid`. The capsule is removed rather than left on disk: a directory
+                # the corpus does not list is exactly the kind of half-written state the seal cannot
+                # see, and a stale one would be picked up by the next glob as though it had been built.
+                shutil.rmtree(out_root / str(e.get("cat") or "") / str(e.get("name") or ""),
+                              ignore_errors=True)
+                unprovable_forbids.append({"capsule": e.get("name", "?"),
+                                           "family": e.get("op"), "reason": str(exc)[:400]})
+                print(f"  [lane] {e.get('name')}: NOT BUILT — its forbid is not provable on this target")
+                continue
             if _is_roster_capsule(e):
                 # A ROSTER MODEL IS A DECLARED INPUT, NOT A COMPILER RESULT. The roster axis emits one
                 # whole-model capsule per model the target's `workload_spec` names, at the format the
@@ -2578,8 +2609,11 @@ def generate_target(target: str) -> list[Path]:
     if unbuilt_roster:
         print(f"  [roster] {len(unbuilt_roster)} declared roster model(s) could not be captured at this "
               f"target's derived format; they are recorded as not_built, never as covered")
+    if unprovable_forbids:
+        print(f"  [lane] {len(unprovable_forbids)} synthesized host-lane capsule(s) were dropped: their "
+              f"program contains regions this target admits, so the forbid they assert is not provable")
     update_provenance_manifest(written, target=target, performance_record=performance_record,
-                               unbuilt_roster=unbuilt_roster)
+                               unbuilt_roster=unbuilt_roster, unprovable_forbids=unprovable_forbids)
     if failures:
         raise RuntimeError(
             f"{len(failures)} capsule(s) failed to generate: {', '.join(n for n, _ in failures)}; the "
@@ -2620,7 +2654,8 @@ def _is_roster_capsule(entry: dict) -> bool:
 
 def update_provenance_manifest(written, cap_root=None, *, target: str | None = None,
                                performance_record: "dict | None" = None,
-                               unbuilt_roster: "list | None" = None) -> Path:
+                               unbuilt_roster: "list | None" = None,
+                               unprovable_forbids: "list | None" = None) -> Path:
     """Rewrite ``MANIFEST.yaml``'s generated/hand_authored split from what this run actually emitted.
 
     The file's own header has always claimed the generator rewrites it, but no writer existed, so it was
@@ -2688,6 +2723,14 @@ def update_provenance_manifest(written, cap_root=None, *, target: str | None = N
             per_roster = dict(man.get("roster_generation") or {})
             per_roster[target] = {"not_built": copy.deepcopy(unbuilt_roster)}
             man["roster_generation"] = per_roster
+        # WHICH SYNTHESIZED NEGATIVE-LANE CAPSULES THIS TARGET HAS NONE OF, and why. Same two-absence
+        # rule as the roster above: an empty list is the result "every forbid this axis derived is
+        # provable", while `None` means nobody looked. Without this the family simply vanishes between
+        # the requirement and the corpus, which is the one failure mode the whole axis exists to avoid.
+        if unprovable_forbids is not None:
+            per_lane = dict(man.get("lane_generation") or {})
+            per_lane[target] = {"forbid_not_provable": copy.deepcopy(unprovable_forbids)}
+            man["lane_generation"] = per_lane
     head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
     man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
     return man_path
