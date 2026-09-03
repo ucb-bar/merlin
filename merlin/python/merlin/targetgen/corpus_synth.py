@@ -199,6 +199,15 @@ _BATCHED_OPS = frozenset({"gemv_batched"})
 _LAYOUT_OPS: frozenset = frozenset()
 
 
+def _sf_primitives(family: str) -> tuple[str, ...]:
+    """The primitive families ``family`` decomposes into, or itself when it is one."""
+    from merlin.targetgen import semantic_families as sf
+    try:
+        return tuple(sf.primitives_of(family)) or (family,)
+    except Exception:                              # noqa: BLE001 -- an unknown family is its own primitive
+        return (family,)
+
+
 def op_for_shape(family: str, *, admitted_ops: set[str] | None = None, dtype: str | None = None,
                  rank: int = 2, layout: str | None = None) -> str | None:
     """The op that exercises ``family`` at ``rank``/``layout``, or ``None`` when nothing materializes it.
@@ -527,9 +536,83 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # These declare `forbid` alone. Requiring the host lane as well would add a demand no op-path grade
     # can measure, and an unmeasurable requirement turns the capsule into a permanent `incomplete`
     # instead of a test. The forbid IS enforceable: a decoded accelerator instruction violates it.
+    _diag = dict(spec_doc.get("diagnostics") or {})
     host_block = spec_doc.get("host_only") or {}
     host_dtypes = dict(host_block.get("dtypes") or {})
     unsized_host: list[str] = []
+    # THE FAMILY BEING UNADMITTED IS NOT ENOUGH. A capsule proves the negative lane only if NOTHING in
+    # its program may be accelerated, and a composite family DECOMPOSES: `normalization` is a reduction
+    # and an elementwise map, so on a target admitting either, a normalization capsule contains regions
+    # the hardware legitimately takes. Measured: every `SY_host_only_normalization` this axis emitted
+    # classifies `A` under `boundary.profile_capsule`, so the coverage gate correctly declined to count
+    # it -- gemmini's negative lane was covered by a HAND-AUTHORED capsule the whole time, and atlas's
+    # was not covered at all while a synthesized capsule sat there asserting it.
+    #
+    # Worse than uncounted: `forbid: [on_mesh]` on such a program is a claim the submission must NOT do
+    # something it is entitled to do, so a compiler that correctly accelerates the admitted elementwise
+    # regions would be recorded as violating the lane.
+    # WIDER THAN `host_only`, AND KEYED ON THE PAIR. `host_only` carries families with no admitted dtype
+    # at all; `host_lane` carries every (family, dtype) the captures contain and the manifest does not
+    # admit -- which on a target admitting one narrow format is most of a real model. Measured on
+    # gemmini: four admitted families, every one of them ALSO present at f32, 10,719 regions of host work
+    # the requirement demanded no capsule of.
+    #
+    # Whether such a capsule can honestly forbid the mesh is NOT decided here. It is a property of the
+    # written program -- `rmsnorm` classifies accelerator at both f32 and bf16 where `layernorm`
+    # classifies host-only at bf16, so the op decides it and the family does not -- and the generator
+    # classifies the capsule and refuses a forbid the classification will not support. A family-level
+    # rule tried here first and was wrong in both directions: it blocked `normalization` on gemmini,
+    # where a layernorm capsule proves the lane, and passed it on a target whose rmsnorm program
+    # contains an eligible region anyway.
+    for _pair in ((spec_doc.get("host_lane") or {}).get("required") or ()):
+        family, dtype = str(_pair.get("family") or ""), str(_pair.get("dtype") or "")
+        if not family or not dtype or family in {str(f) for f in (host_block.get("families") or ())}:
+            continue                               # the narrow axis below already carries this family
+        op = op_for_family(family, admitted_ops=pool, dtype=dtype)
+        if op is None:
+            unsized_host.append(f"{family}/{dtype} (no materializable op at this dtype)")
+            continue
+        entry = {
+            "cat": "model_slices", "kind": "model_slice",
+            "name": f"{SYNTH_PREFIX}_host_lane_{family}_{dtype}".replace("-", "_").replace(".", "_"),
+            "op": op, "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for the host lane: real captures contain {_pair.get('n_regions')} "
+                f"{family!r} region(s) at {dtype}, and this target's manifest admits {family!r} at no "
+                f"such dtype -- so every one of them must be placed on the host. A corpus with no "
+                f"capsule here cannot tell a compiler that routes them correctly from one that does not"),
+            "label": "public", "modes": {},
+            "lanes": {"forbid": ["on_mesh"]},
+            "semantic": {"must_accelerate": False, "eligible": False,
+                         "generalization_axis": "host_lane",
+                         "not_asserted_reason": (
+                             "the target admits no datapath for this family at this dtype; the capsule "
+                             "exists to prove the compiler does NOT accelerate it")},
+            **extents_for("aligned", probes),
+        }
+        # AN OP WITH A `merlin_iface` BUILDER CANNOT SERVE THIS AXIS, whatever dtype it declares.
+        # `merlin_iface` is the ACCELERATOR's interface dialect -- every program expressible in it is
+        # accelerator work by construction -- and the capsule writer derives an iface interface for any
+        # op that has a builder, even on the frontend path. The boundary classifier reads that interface,
+        # so the capsule comes out `A`. Measured: a matmul capsule declaring genuine f32 operands
+        # (tensor<16x32xf32>) still classified accelerator, while `gelu` and `reduce_sum` -- which have
+        # no iface builder, so their interface stays linalg and eligibility is judged dtype-aware --
+        # classified host-only.
+        #
+        # That is what `_writer_for` already means by "pytorch": an op with no builder. Reported rather
+        # than written another way, because there IS no other way: covering host-lane contraction needs a
+        # contraction op the interface dialect cannot express, which the corpus does not yet have.
+        if _writer_for(entry) != "pytorch":
+            unsized_host.append(
+                f"{family}/{dtype} (op {op!r} has a merlin_iface builder, so its capsule carries an "
+                f"accelerator-dialect interface and classifies as accelerator work whatever dtype it "
+                f"declares; this axis needs an op of this family the interface dialect cannot express)")
+            continue
+        entry["source"] = "pytorch"
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     for family in sorted(str(f) for f in (host_block.get("families") or ())):
         dtype = host_dtypes.get(family)
         op = op_for_family(family, admitted_ops=pool, dtype=dtype)

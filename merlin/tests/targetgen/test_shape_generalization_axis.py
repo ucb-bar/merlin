@@ -167,3 +167,53 @@ def test_the_batched_capsule_really_carries_a_rank_3_operand():
     ranks = {len(i["shape"]) for i in cap["inputs"] if i.get("role") in ("input", "weight")}
     assert ranks == {3}, f"batched capsule operands have ranks {ranks}, not rank 3"
     assert cap["operation"]["attributes"].get("batch", 1) > 1
+
+
+# ------------------------------------------------------------------ the host lane, at full width
+
+@pytest.mark.parametrize("target", _TARGETS)
+def test_the_host_lane_axis_keys_on_the_pair_not_the_family(target):
+    """`host_only` carries families with NO admitted dtype at all, which on a narrow-format target is
+    almost nothing. `host_lane` carries every (family, dtype) the captures contain and the manifest does
+    not admit -- which is most of a real model. Measured on gemmini: four admitted families, every one of
+    them also present at f32, 17k regions the requirement demanded no capsule of."""
+    doc = _spec(target)
+    hl = (doc.get("host_lane") or {}).get("required") or []
+    if not hl:
+        pytest.skip(f"{target} admits every (family, dtype) its captures contain")
+    admitted = set((doc.get("host_lane") or {}).get("admitted_pairs") or ())
+    for pair in hl:
+        assert f"{pair['family']}/{pair['dtype']}" not in admitted, (
+            f"{pair} is admitted; the host lane is what the hardware may NOT take")
+        assert pair["n_regions"] > 0, "a pair nothing was observed at is not host-lane work"
+
+
+@pytest.mark.parametrize("target", _TARGETS)
+def test_a_host_lane_capsule_is_written_by_the_frontend_or_reported(target):
+    """An op with a `merlin_iface` builder cannot serve this axis at any dtype: that dialect is the
+    ACCELERATOR's interface, so every program expressible in it classifies as accelerator work and the
+    boundary gate reads exactly that file. Measured: a matmul capsule declaring genuine f32 operands
+    still came out `A`, while `gelu` and `reduce_sum` -- which have no iface builder, so their interface
+    stays linalg -- came out `H`."""
+    from merlin.targetgen.corpus_spec import BUILDERS
+
+    doc = _spec(target)
+    res = CS.synthesize(doc)
+    emitted = [e for e in res["capsules"]
+               if (e.get("semantic") or {}).get("generalization_axis") == "host_lane"]
+    for e in emitted:
+        assert e["op"] not in BUILDERS, (
+            f"{e['name']} uses {e['op']!r}, which has an iface builder; its capsule would assert the "
+            f"accelerator interface for work that must stay off the accelerator")
+        assert e.get("source") == "pytorch"
+        assert (e.get("lanes") or {}).get("forbid") == ["on_mesh"]
+    # Whatever could not be written is reported by name, never dropped.
+    required = {f"{p['family']}/{p['dtype']}" for p in ((doc.get("host_lane") or {}).get("required") or [])}
+    narrow = {str(f) for f in ((doc.get("host_only") or {}).get("families") or ())}
+    holes = " ".join(res["provenance"].get("host_only_unsynthesizable") or ())
+    made = {f"{e['op']}" for e in emitted}
+    for key in sorted(required):
+        fam = key.split("/")[0]
+        if fam in narrow:
+            continue                               # the narrow axis carries this family
+        assert key in holes or made, f"{target}: {key} produced neither a capsule nor a reported hole"

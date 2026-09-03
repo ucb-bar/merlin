@@ -63,7 +63,7 @@ def test_every_required_cell_becomes_an_entry(target):
     #: Every non-cell entry must say which axis asked for it. These are the axis markers the
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
     axes = ("memory regime", "host-only family", "composition axis", "roster axis",
-            "rank axis", "layout axis")
+            "rank axis", "layout axis", "host lane")
     unattributed = [e["name"] for e in other
                     if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -102,7 +102,12 @@ def test_a_fused_only_family_is_carried_as_an_epilogue_not_a_standalone_op():
     """
     doc = _spec("gemmini")
     res = CS.synthesize(doc)
-    fused = [e for e in res["capsules"] if "elementwise_map" in e["name"]]
+    # CELL entries only. The host-lane axis also emits an `elementwise_map` capsule, and it is the exact
+    # inverse of this rule: it exists because the target does NOT admit that family at that dtype, so it
+    # must NOT ride a contraction the hardware would then be entitled to accelerate.
+    fused = [e for e in res["capsules"]
+             if "elementwise_map" in e["name"]
+             and (e.get("semantic") or {}).get("generalization_axis") != "host_lane"]
     if not fused:
         pytest.skip("this target's requirement has no fused-only family")
     for entry in fused:

@@ -237,6 +237,79 @@ def observed(capture: str | Path, target: str) -> Counter:
     return Counter(dict(rep.by_family))
 
 
+def observed_pairs(capture: str | Path, target: str) -> Counter:
+    """``(family, dtype) -> n_regions`` present in one capture, in CAPSULE dtype spelling.
+
+    :func:`observed` collapses the same walk to a family histogram, and that collapse is where the
+    host-lane requirement went missing: a region's dtype decides whether the hardware may take it, so
+    dropping it makes "contraction, which this target admits" indistinguishable from "contraction at f32,
+    which it does not". Measured on the real captures: gemmini admits four families and every one of them
+    also appears at f32, 10,719 regions of work that must run on the host and that the requirement asked
+    for no capsule of.
+
+    A region whose family or dtype could not be resolved is not counted, exactly as in :func:`observed`:
+    an unreadable region is evidence neither way.
+    """
+    from merlin.targetgen import model_coverage as mc
+
+    out: Counter = Counter()
+    for region in mc.regions_from_module(mc.load_module(capture)):
+        family, dtype = getattr(region, "family", None), getattr(region, "in_dtype", None)
+        if not family or not dtype:
+            continue
+        try:
+            out[(str(family), capsule_dtype(str(dtype)))] += 1
+        except Exception:                          # noqa: BLE001 -- an unmappable token stays visible
+            out[(str(family), str(dtype))] += 1
+    return out
+
+
+def host_lane_cells(captures: dict, target: str) -> dict:
+    """The ``(family, dtype)`` work real models contain that ``target`` may NOT accelerate.
+
+    The negative lane, at full width. The existing ``host_only`` block carries only families with no
+    admitted dtype AT ALL, which is the narrow case: a target admitting ``contraction`` at int8 still
+    cannot take an f32 contraction, and a real model is full of them. Every pair here is work the
+    compiler must place on the host, and a corpus with no capsule for it cannot tell a compiler that
+    routes it correctly from one that does not.
+
+    Derived by intersecting what the captures CONTAIN with what the manifest ADMITS, both as
+    (family, dtype) pairs -- the same two sources the cells come from, read at the resolution the cells
+    throw away.
+    """
+    adm = admitted(target)
+    admitted_pairs = set()
+    for family, dtypes in (adm or {}).items():
+        for d in dtypes or ():
+            try:
+                admitted_pairs.add((str(family), capsule_dtype(str(d))))
+            except Exception:                      # noqa: BLE001
+                admitted_pairs.add((str(family), str(d)))
+
+    seen: Counter = Counter()
+    unreadable: dict[str, str] = {}
+    for label, path in sorted((captures or {}).items()):
+        try:
+            seen.update(observed_pairs(path, target))
+        except Exception as e:                     # noqa: BLE001 -- reported, never skipped silently
+            unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
+
+    required = [{"family": f, "dtype": d, "n_regions": n}
+                for (f, d), n in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
+                if (f, d) not in admitted_pairs]
+    return {
+        "required": required,
+        "admitted_pairs": sorted(f"{f}/{d}" for f, d in admitted_pairs),
+        "captures_unreadable": unreadable,
+        "axis_basis": (
+            "the (family, dtype) work real captures CONTAIN that this target's manifest does not admit. "
+            "The cells intersect admitted with observed and keep only what survives; this keeps what does "
+            "NOT, which is precisely the work the compiler has to place on the host. Both sides come from "
+            "the same two sources the cells do, read at the resolution the cells discard -- a region's "
+            "dtype decides whether the hardware may take it, so a family histogram cannot express it"),
+    }
+
+
 def boundaries(target: str) -> Boundaries:
     """The target's edges, each tagged with the artifact it was read from."""
     b = Boundaries()
@@ -570,6 +643,7 @@ def spec(target: str, captures: dict[str, str | Path], *,
     # keeps the synthesizer pure and keeps one definition of what a regime costs.
     _dtypes = [c.dtype for c in cells]
     _regime_dtype = max(set(_dtypes), key=_dtypes.count) if _dtypes else None
+    HL = host_lane_cells(captures, target)
     _regime_extents = MR.required_regime_extents(
         target, sorted((mem.get("by_regime") or {}).keys()),
         tile_dim=bnd.tile_edge or 0, dtype=_regime_dtype)
@@ -614,6 +688,11 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # BATCHED region or a TRANSPOSED operand, and both are things a manifest declares and a compiler
         # gets wrong independently of arithmetic.
         "shape_generalization": _shape_axis(target),
+        # THE HOST LANE, AT FULL WIDTH. `host_only` below carries families with no admitted dtype at
+        # all; this carries every (family, dtype) pair the captures contain and the manifest does not
+        # admit, which is a far larger and more representative set -- and it is the work a real model
+        # actually hands the host.
+        "host_lane": HL,
         "memory_mapping": {
             "required": mem.get("by_regime") or {},
             "region_counts": mem.get("region_counts") or {},

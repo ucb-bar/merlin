@@ -7,7 +7,7 @@ provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: gemmini
   n_required_cells: 8
-  n_entries: 17
+  n_entries: 19
   budget: 160
   precision_preference_kept:
   - i8
@@ -42,7 +42,13 @@ provenance:
   composition_note: one micro-model capsule is synthesized for this axis, and its composition is whatever
     the derived inventory produces. A shape listed here that the micro model does not reach is not covered
     by synthesis -- emitting a capsule per shape would mean inventing inventories no capture supports
-  host_only_unsynthesizable: []
+  host_only_unsynthesizable:
+  - movement/f32 (op 'movement' has a merlin_iface builder, so its capsule carries an accelerator-dialect
+    interface and classifies as accelerator work whatever dtype it declares; this axis needs an op of
+    this family the interface dialect cannot express)
+  - contraction/f32 (op 'matmul' has a merlin_iface builder, so its capsule carries an accelerator-dialect
+    interface and classifies as accelerator work whatever dtype it declares; this axis needs an op of
+    this family the interface dialect cannot express)
   host_only_note: 'a host-only family with no materializable op or no dtype observed in any capture. Reported
     rather than dropped: a negative lane nobody demanded reads downstream exactly like one nothing violates'
   memory_regimes_status: resolved
@@ -277,6 +283,70 @@ capsules:
   K: 2*tile
   N: 2*tile
   pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_elementwise_map_f32
+  op: gelu
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 8096 ''elementwise_map'' region(s)
+    at f32, and this target''s manifest admits ''elementwise_map'' at no such dtype -- so every one of
+    them must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes
+    them correctly from one that does not'
+  label: public
+  modes: {}
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_reduction_f32
+  op: reduce_sum
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 2166 ''reduction'' region(s)
+    at f32, and this target''s manifest admits ''reduction'' at no such dtype -- so every one of them
+    must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
+    correctly from one that does not'
+  label: public
+  modes: {}
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
   - target-isa-lowering
   - tile-schedule
 - cat: model_slices

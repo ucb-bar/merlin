@@ -247,6 +247,46 @@ shape_generalization:
   why_shape_corners_are_excluded: the corner probes (tile, tile+-1, prime, skinny) and the dtype probes
     restate the alignment and dtype axes the cells already carry; requiring them again would inflate the
     requirement with points already required under another name
+host_lane:
+  required:
+  - family: movement
+    dtype: i8
+    n_regions: 1140
+  admitted_pairs:
+  - attention/bf16
+  - attention/f32
+  - attention/fp16
+  - attention/mxfp4
+  - attention/mxfp6
+  - attention/mxfp8
+  - contraction/bf16
+  - contraction/f32
+  - contraction/fp16
+  - contraction/i8
+  - contraction/mxfp4
+  - contraction/mxfp6
+  - contraction/mxfp8
+  - elementwise_map/bf16
+  - elementwise_map/f32
+  - elementwise_map/fp16
+  - movement/bf16
+  - movement/f32
+  - movement/fp16
+  - normalization/bf16
+  - normalization/f32
+  - normalization/fp16
+  - reduction/bf16
+  - reduction/f32
+  - reduction/fp16
+  - softmax/bf16
+  - softmax/f32
+  - softmax/fp16
+  captures_unreadable: {}
+  axis_basis: the (family, dtype) work real captures CONTAIN that this target's manifest does not admit.
+    The cells intersect admitted with observed and keep only what survives; this keeps what does NOT,
+    which is precisely the work the compiler has to place on the host. Both sides come from the same two
+    sources the cells do, read at the resolution the cells discard -- a region's dtype decides whether
+    the hardware may take it, so a family histogram cannot express it
 memory_mapping:
   required: {}
   region_counts: {}
