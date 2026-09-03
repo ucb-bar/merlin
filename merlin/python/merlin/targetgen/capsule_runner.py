@@ -1520,6 +1520,36 @@ def _numeric_not_compared(engine: str, measured_on: str, verify: dict | None,
             "gate": verify or None, "detail": detail}
 
 
+def rtl_tiers_of(target: str | None) -> frozenset[str]:
+    """Public accessor for the tiers ``target``'s capability manifest counts as RTL-derived.
+
+    Callers outside this module (experiment harnesses that must RECORD which tiers a verdict could
+    have been cited at, so a reader can re-derive the decision without the manifest in hand) were
+    reaching for the private spelling; give them a supported one rather than growing that habit.
+    """
+    return _rtl_tiers_of(target)
+
+
+def model_citable_rtl_tier(declared: "list[str] | tuple[str, ...]", target: str | None) -> str | None:
+    """The ONE tier a whole-model capsule can be CITED at on ``target``, or ``None`` if there is none.
+
+    A model capsule never enters the tier ladder: :func:`_model_tier_map` synthesises its tier block
+    from the model's own layer accounting and emits exactly ONE execution tier -- the LAST declared
+    tier the target's capability manifest counts as RTL. Everything else a capsule declares is either
+    not_applicable (L0/L1 interpret a command buffer a whole model does not have) or simply never
+    emitted, so an admission gate that demands, say, ``L2 == "pass"`` on a target whose RTL tiers begin
+    at L3 reads ``None`` on a FLAWLESS run and refuses it unconditionally. That is exactly what an
+    Arm-4 performance campaign hit: every full-model admission failed before a perf cell ever ran.
+
+    Callers that gate on a citable hardware verdict must ask for this tier by derivation rather than
+    writing one down, and must FAIL CLOSED on ``None`` -- a target/declaration pair with no RTL tier
+    has no citable whole-model verdict to admit, and the non-RTL fallback ``_model_tier_map`` uses to
+    keep a refusal attributable is a label, not a hardware claim.
+    """
+    rtl = [t for t in declared if t in _rtl_tiers_of(target)]
+    return rtl[-1] if rtl else None
+
+
 def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | None,
                     ) -> "dict[str, TierResult]":
     """The tier block for a WHOLE-MODEL capsule, derived from the model's OWN layer accounting.
@@ -1545,8 +1575,8 @@ def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | 
         if t in ("L0", "L1"):
             tiers[t] = TierResult(t, "skipped", True, not_applicable=True,
                                   reason="a whole model has no command buffer to interpret")
-    _rtl = [x for x in declared if x in _rtl_tiers_of(target)]
-    tier = _rtl[-1] if _rtl else (declared[-1] if declared else None)
+    _rtl = model_citable_rtl_tier(declared, target)
+    tier = _rtl if _rtl is not None else (declared[-1] if declared else None)
     if tier is None or tier in tiers:
         return tiers
     on = (model_exec or {}).get("matmul_layers_on_mesh")
