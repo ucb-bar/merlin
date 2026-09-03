@@ -33,8 +33,9 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 __all__ = [
-    "IN_FILL_TRANSIENT", "Point", "SATURATED", "UNDETERMINABLE", "marginal_costs",
-    "overlap_trend", "point_from_counter_values", "transient_verdict",
+    "IN_FILL_TRANSIENT", "NEVER_SETTLES_IN_RANGE", "Point", "SATURATED", "SETTLED_AT",
+    "UNDETERMINABLE", "eta_resolution", "marginal_costs", "marginal_settling_depth",
+    "overlap_trend", "point_from_counter_values", "settling_depth", "transient_verdict",
 ]
 
 #: The cohort's points are all inside the transient: marginal cost still falling, overlap still rising.
@@ -43,6 +44,13 @@ IN_FILL_TRANSIENT = "in_fill_transient"
 SATURATED = "saturated"
 #: Spelled the same as everywhere else in this package, and meaning the same thing: not decided.
 UNDETERMINABLE = "undeterminable"
+
+#: A depth was found inside the ladder from which the overlap reading no longer rises, and it stayed
+#: that way for every deeper step measured.
+SETTLED_AT = "settled_at"
+#: Every step in the ladder rises by more than the declared band. This is an ANSWER, not a failure:
+#: it says the machine had not finished filling anywhere in the range that was affordable to measure.
+NEVER_SETTLES_IN_RANGE = "never_settles_in_range"
 
 
 @dataclass(frozen=True)
@@ -206,3 +214,243 @@ def transient_verdict(points: Sequence[Point]) -> dict:
         "marginals": marginals,
         "overlap": trend,
     }
+
+
+def eta_resolution(points: Sequence[Point]) -> list[dict]:
+    """The smallest change in eta each consecutive pair of points could have RESOLVED.
+
+    Eta is ``realised / available``, both integer cycle counts, so the finest difference a point can
+    express is ``1 / available`` -- and a step between two points is only as fine as the coarser of the
+    two. A settling band narrower than that is asking the instrument for a distinction it cannot make,
+    which is why a caller's band is compared against this rather than trusted.
+    """
+    ordered = _ordered(points)
+    out: list[dict] = []
+    for earlier, later in zip(ordered, ordered[1:], strict=False):
+        avail = [p.available_overlap for p in (earlier, later)]
+        if any(a is None or not a for a in avail):
+            out.append({"from": earlier.label, "to": later.label, "resolution": None,
+                        "why": "one of the pair carries no available-overlap reading"})
+            continue
+        coarsest = min(int(a) for a in avail)
+        out.append({"from": earlier.label, "to": later.label,
+                    "resolution": float(Fraction(1, coarsest)),
+                    "exact_numerator": 1, "exact_denominator": coarsest,
+                    "why": f"eta moves in steps of 1/{coarsest} at the coarser of the two points"})
+    return out
+
+
+def settling_depth(points: Sequence[Point], *, band: Fraction, confirming_steps: int) -> dict:
+    """The shallowest axis value from which the overlap reading no longer rises -- or a refusal.
+
+    :func:`transient_verdict` answers WHETHER a cohort sits inside the fill transient. This answers
+    WHERE the transient ends, which is the question a successor cohort has to be built on: a law
+    asserting one constant marginal cost is only testable on points past that depth.
+
+    Both parameters are REQUIRED and are echoed into the result. They are claim decisions, not tuning
+    knobs, and a settling depth quoted without the band it was decided under is not reproducible:
+
+    ``band``
+        the largest per-step rise in eta that counts as "no longer rising". Compared against
+        :func:`eta_resolution` per step, and a step whose band is finer than what the instrument can
+        resolve is FLAGGED rather than silently counted as settled.
+    ``confirming_steps``
+        how many consecutive steps at or past the candidate must stay inside the band. One is not
+        enough to trust: a ladder that stopped one point too early has exactly one flat-looking step
+        at its end, and that is indistinguishable from a machine that settled there.
+
+    The settling depth is the axis value of the EARLIER point of the first qualifying step. If eta at
+    A is already within the band of eta at B, the machine had finished filling by A.
+
+    ``NEVER_SETTLES_IN_RANGE`` is a real answer and the caller must be able to report it as one. It
+    says the ladder ended inside the transient, which bounds the successor cohort from below and is
+    strictly more useful than a plateau extrapolated from points that are themselves still filling.
+    """
+    if int(confirming_steps) < 1:
+        raise ValueError("confirming_steps must be at least 1; zero steps confirm nothing")
+    band = Fraction(band)
+    if band < 0:
+        raise ValueError("band must not be negative; a negative band accepts a RISING step as settled")
+
+    ordered = _ordered(points)
+    trend = overlap_trend(ordered)
+    declared = {"band": float(band), "band_numerator": band.numerator,
+                "band_denominator": band.denominator,
+                "confirming_steps": int(confirming_steps)}
+    if trend["state"] != "measured":
+        return {"state": UNDETERMINABLE, "why": trend["why"], "declared": declared,
+                "settling_axis": None, "steps": [], "overlap": trend,
+                "marginals": marginal_costs(ordered) if len(ordered) > 1 else []}
+
+    resolutions = eta_resolution(ordered)
+    etas = [p.eta for p in ordered]
+    steps: list[dict] = []
+    for i, (earlier, later) in enumerate(zip(ordered, ordered[1:], strict=False)):
+        delta = etas[i + 1] - etas[i]
+        res = resolutions[i].get("resolution")
+        steps.append({
+            "from": earlier.label, "to": later.label,
+            "axis_from": int(earlier.axis), "axis_to": int(later.axis),
+            "eta_from": float(etas[i]), "eta_to": float(etas[i + 1]),
+            "eta_step": float(delta),
+            "within_band": bool(delta <= band),
+            "resolution": res,
+            # A band finer than the instrument's own step size cannot separate "settled" from "rose by
+            # the smallest amount this reading can express". Recorded per step, because resolution
+            # improves with depth and the shallow end is where it bites.
+            "band_below_resolution": bool(res is not None and float(band) < res),
+        })
+
+    n = len(steps)
+    settling_index = None
+    for i in range(n):
+        if n - i < int(confirming_steps):
+            break
+        if all(s["within_band"] for s in steps[i:]):
+            settling_index = i
+            break
+
+    deepest = ordered[-1]
+    common = {"declared": declared, "steps": steps, "overlap": trend,
+              "marginals": marginal_costs(ordered),
+              "deepest_axis_measured": int(deepest.axis),
+              "deepest_eta": float(etas[-1]),
+              "final_step": float(etas[-1] - etas[-2]),
+              "unresolvable_steps": [s["from"] + "->" + s["to"] for s in steps
+                                     if s["band_below_resolution"]]}
+    if settling_index is None:
+        return {
+            "state": NEVER_SETTLES_IN_RANGE,
+            "settling_axis": None,
+            "why": (f"no axis value in this ladder is followed by {int(confirming_steps)} consecutive "
+                    f"step(s) whose eta rise is within {float(band)}; the deepest point measured is "
+                    f"axis {int(deepest.axis)} at eta {float(etas[-1]):.6g}, still rising by "
+                    f"{float(etas[-1] - etas[-2]):.6g}. The overlap does not settle anywhere in the "
+                    "measured range, which bounds a successor cohort from below rather than supplying "
+                    "it a depth"),
+            **common}
+    settled = ordered[settling_index]
+    return {
+        "state": SETTLED_AT,
+        "settling_axis": int(settled.axis),
+        "settling_label": settled.label,
+        "why": (f"from axis {int(settled.axis)} onward every one of the {n - settling_index} remaining "
+                f"step(s) rises by at most {float(band)}, so the machine had finished filling by that "
+                f"depth and a steady-state law is testable at or past it"),
+        "confirmed_by_steps": n - settling_index,
+        **common}
+
+
+def marginal_settling_depth(points: Sequence[Point], *, relative_band: Fraction,
+                            confirming_steps: int) -> dict:
+    """The shallowest axis value from which the MARGINAL cost per axis unit stops changing.
+
+    The companion to :func:`settling_depth`, and the one a successor cohort is actually built on.
+    Realised overlap is the MECHANISM -- it explains why the marginal cost falls -- but the property
+    an affine law asserts is that the marginal cost is CONSTANT. The two need not end together: a
+    machine can still be creeping towards its overlap ceiling while the cycles it charges per extra
+    unit have already stopped moving, and it is the second of those that decides where a steady-state
+    law becomes testable.
+
+    ``relative_band`` is the largest fractional change between consecutive marginals that counts as
+    "unchanged", compared against the LARGER of the pair so the comparison is symmetric. It is
+    REQUIRED and echoed, for the same reason the eta band is: a depth quoted without its band is not
+    reproducible. A caller that wants this to answer for a particular claim should pass that claim's
+    OWN declared tolerance rather than inventing one.
+
+    Exact rationals throughout. The whole verdict turns on whether one ratio sits inside a band, and
+    a rounded ratio can cross it at the boundary.
+    """
+    if int(confirming_steps) < 1:
+        raise ValueError("confirming_steps must be at least 1; zero steps confirm nothing")
+    relative_band = Fraction(relative_band)
+    if relative_band < 0:
+        raise ValueError("relative_band must not be negative")
+
+    ordered = _ordered(points)
+    marginals = marginal_costs(ordered)
+    declared = {"relative_band": float(relative_band),
+                "relative_band_numerator": relative_band.numerator,
+                "relative_band_denominator": relative_band.denominator,
+                "confirming_steps": int(confirming_steps)}
+    if len(marginals) < 2:
+        return {"state": UNDETERMINABLE, "settling_axis": None, "declared": declared, "steps": [],
+                "marginals": marginals,
+                "why": (f"{len(marginals)} marginal(s): comparing one marginal to the next needs at "
+                        "least two, and one marginal cannot be changing or unchanged")}
+
+    rates = [Fraction(m["exact_numerator"], m["exact_denominator"]) for m in marginals]
+    steps: list[dict] = []
+    for i, (earlier, later) in enumerate(zip(rates, rates[1:], strict=False)):
+        scale = max(abs(earlier), abs(later))
+        # A pair of zero marginals is unchanged by construction; guarding it here keeps the ratio
+        # from being a division rather than a judgement.
+        change = Fraction(0) if scale == 0 else abs(later - earlier) / scale
+        steps.append({
+            "from": marginals[i]["from"], "through": marginals[i]["to"],
+            "to": marginals[i + 1]["to"],
+            "axis_from": marginals[i]["axis_from"], "axis_to": marginals[i + 1]["axis_to"],
+            "marginal_before": float(earlier), "marginal_after": float(later),
+            "relative_change": float(change),
+            "within_band": bool(change <= relative_band),
+        })
+
+    n = len(steps)
+    index = None
+    for i in range(n):
+        if n - i < int(confirming_steps):
+            break
+        if all(s["within_band"] for s in steps[i:]):
+            index = i
+            break
+
+    # The longest contiguous stretch of the ladder over which the marginal DOES hold, whether or not
+    # it holds all the way to the end. A cost that goes constant and then changes again has a WINDOW,
+    # and a window is still a place a steady-state law can be tested -- bounded from both sides rather
+    # than only from below. Reporting only "never settles" would throw that away, and reporting the
+    # window as a settling depth would hide that it closes.
+    best_start = best_len = run_start = run_len = 0
+    for i, step in enumerate(steps):
+        if step["within_band"]:
+            if run_len == 0:
+                run_start = i
+            run_len += 1
+            if run_len > best_len:
+                best_start, best_len = run_start, run_len
+        else:
+            run_len = 0
+    window = None
+    if best_len:
+        window = {"axis_from": steps[best_start]["axis_from"],
+                  "axis_to": steps[best_start + best_len - 1]["axis_to"],
+                  "steps": best_len,
+                  "closes_before_the_deepest_point": bool(best_start + best_len < n),
+                  "why": ("the marginal cost holds inside the band across this stretch and changes "
+                          "again outside it" if best_start + best_len < n else
+                          "the marginal cost holds inside the band from here to the deepest point")}
+
+    deepest = ordered[-1]
+    common = {"declared": declared, "steps": steps, "marginals": marginals,
+              "deepest_axis_measured": int(deepest.axis),
+              "longest_within_band_window": window,
+              "final_relative_change": steps[-1]["relative_change"]}
+    if index is None:
+        return {
+            "state": NEVER_SETTLES_IN_RANGE, "settling_axis": None,
+            "why": (f"no axis value in this ladder is followed by {int(confirming_steps)} consecutive "
+                    f"marginal comparison(s) agreeing within {float(relative_band)}; at the deepest "
+                    f"point measured (axis {int(deepest.axis)}) consecutive marginals still differ by "
+                    f"{steps[-1]['relative_change']:.6g}. An affine law asserts ONE constant marginal "
+                    "cost, so it is not testable anywhere in this range"),
+            **common}
+    # The marginal that first holds spans two intervals, and the depth a law becomes testable FROM is
+    # the shallow end of the first of them: that is the first point whose cost is already charged at
+    # the settled rate.
+    settled_axis = steps[index]["axis_from"]
+    return {
+        "state": SETTLED_AT, "settling_axis": int(settled_axis),
+        "why": (f"from axis {int(settled_axis)} onward every one of the {n - index} remaining "
+                f"marginal comparison(s) agrees within {float(relative_band)}, so the cost per extra "
+                "axis unit has stopped changing and an affine law is testable at or past that depth"),
+        "confirmed_by_steps": n - index,
+        **common}
