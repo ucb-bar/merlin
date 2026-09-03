@@ -69,6 +69,14 @@ class TargetInfo:
     external_root: Path | None = None   # OOT package root, when kind == "external"
 
     def load_contract(self) -> dict[str, Any]:
+        if not self.contract_path.is_file():
+            # The fallback branch in `resolve` promises this surfaces the absence honestly; a bare
+            # FileNotFoundError from deep inside a caller's stack is not that. Say which target, which
+            # path, and that the package may simply not be generated.
+            raise TargetContractMissing(
+                f"{self.name!r}: no capability contract at {self.contract_path}. Either the target's "
+                f"package has not been generated, or the name asked for is a DIRECTORY name whose "
+                f"descriptor declares a different `target:` (see `declared_target_for`)")
         return yaml.safe_load(self.contract_path.read_text(encoding="utf-8"))
 
     def load_dialect_plan(self) -> dict[str, Any]:
@@ -165,6 +173,37 @@ def _resolve_external(name: str, root: Path) -> TargetInfo:
         external_root=root)
 
 
+class TargetContractMissing(FileNotFoundError):
+    """A target resolved, but the capability contract it points at does not exist."""
+
+
+def declared_target_for(directory_name: str) -> str | None:
+    """The name a capsule-bench descriptor DECLARES, when it differs from its directory name.
+
+    ⚠️ A DIRECTORY NAME IS NOT ALWAYS THE TARGET NAME, and this repo has now paid for that four
+    separate times: the conformance-coverage gate exited 0 for two targets it could not resolve, the
+    conformance specs were audited under the wrong key, `generate_corpus --target <declared>` dies on
+    a missing descriptor, and the shipped-capsule boundary gate raised FileNotFoundError on a contract
+    that exists under the declared name. A descriptor sits in a short directory and declares a
+    configuration-qualified name, which is the key every artifact path uses.
+
+    Returns None when the directory has no descriptor or the two names agree, so a caller can treat
+    "no hop available" and "hop to X" distinctly.
+    """
+    from merlin.common.paths import repo_root
+
+    desc = (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
+            / str(directory_name) / "target_experiment.yaml")
+    if not desc.is_file():
+        return None
+    try:
+        doc = yaml.safe_load(desc.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    declared = str(doc.get("target") or "")
+    return declared or None if declared and declared != str(directory_name) else None
+
+
 def resolve(name: str) -> TargetInfo:
     """Resolve a target's identity + paths by walking the ordered search path (module docstring),
     first-match-wins:
@@ -212,6 +251,14 @@ def resolve(name: str) -> TargetInfo:
     # surfaces the missing contract honestly rather than fabricating one.
     if not target_contract_path(name).is_file():
         _materialize_discovered(name)
+    # 5. ONE HOP TO THE DECLARED NAME. Nothing resolved for the name as given, and a descriptor in a
+    # directory of that name may declare the configuration-qualified name every artifact path uses.
+    # Tried last so it can never shadow a target that resolves on its own, and exactly once so a
+    # descriptor pointing at itself cannot loop.
+    if not target_contract_path(name).is_file():
+        declared = declared_target_for(name)
+        if declared and target_contract_path(declared).is_file():
+            return resolve(declared)
     return TargetInfo(
         name=name, kind="generated", base=target_base(name),
         contract_path=target_contract_path(name), dialect_plan_path=dialect_plan_path(name),
