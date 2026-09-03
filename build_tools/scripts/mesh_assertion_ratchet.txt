@@ -1,0 +1,47 @@
+# Capsules that decline `semantic.must_accelerate` on work their target's capability contract
+# ADMITS, without stating a `not_asserted_reason`. THIS FILE MAY ONLY SHRINK.
+#
+# Measured 2026-09-02: build_tools/scripts/check_mesh_assertion_not_weakened.py.
+# 169 capsules sit on an admitted (family, dtype) cell; 26 decline the demand
+# with no reason, and 9 of those are HAND-AUTHORED -- the reference set the automation
+# is being built to reproduce.
+#
+# HOW THIS HAPPENS: a regeneration emits its own default for `semantic`, the hand-authored
+# assertion is not in its vocabulary, and the field decays. The repo already paid for this once
+# when regeneration deleted `pass_requirements` from the only two capsules that had it. Measured
+# here: six hand-authored microscaling capsules went from `must_accelerate: true,
+# fallback_allowed: false` to `must_accelerate: false, eligible: auto` on a target whose contract
+# admits contraction at mxfp4, mxfp6 AND mxfp8 -- so the work is eligible and the weaker value was
+# not a decision about the hardware. Three more (MH0/MH1/MH2) are gitignored hidden capsules, so a
+# git diff cannot see them at all; only this derived invariant catches those.
+#
+# THE FIX IS NOT NECESSARILY `true`. A capsule may decline the demand -- some MX paths genuinely
+# cannot be accelerated on the MLIR route -- but it owes a `not_asserted_reason` saying which.
+# Declining silently is what this gate rejects. 24 capsules already carry that field.
+
+M0_mxfp8_single_tile    # HAND-AUTHORED, mx_gemmini contraction/mxfp8
+M1_mxfp8_k_accum    # HAND-AUTHORED, mx_gemmini contraction/mxfp8
+M2_mxfp8_rect    # HAND-AUTHORED, mx_gemmini contraction/mxfp8
+M3_mxfp4_single_tile    # HAND-AUTHORED, mx_gemmini contraction/mxfp4
+M4_mxfp4_k_accum    # HAND-AUTHORED, mx_gemmini contraction/mxfp4
+M5_mxfp6_single_tile    # HAND-AUTHORED, mx_gemmini contraction/mxfp6
+MH0_mxfp8_hidden    # HAND-AUTHORED, mx_gemmini contraction/mxfp8
+MH1_mxfp4_hidden    # HAND-AUTHORED, mx_gemmini contraction/mxfp4
+MH2_mxfp6_hidden    # HAND-AUTHORED, mx_gemmini contraction/mxfp6
+MB0_mxfp8_linear    # mx_gemmini contraction/mxfp8
+MF5_gemv_batched_bf16_pt    # mx_gemmini contraction/bf16
+MF7_fused_matmul_bias_bf16_pt    # mx_gemmini contraction/bf16
+MHA00_mxfp8_hidden_48x32x32    # mx_gemmini contraction/mxfp8
+MHA01_mxfp8_hidden_48x64x32    # mx_gemmini contraction/mxfp8
+MHB00_mxfp4_hidden_32x32x64    # mx_gemmini contraction/mxfp4
+MHB01_mxfp4_hidden_32x64x64    # mx_gemmini contraction/mxfp4
+PG00_encoding0_k16    # mx_gemmini contraction/bf16
+PG02_encoding0_k32    # mx_gemmini contraction/bf16
+SY_contraction_bf16_aligned    # mx_gemmini contraction/bf16
+SY_contraction_bf16_partial    # mx_gemmini contraction/bf16
+SY_contraction_mxfp4_aligned    # mx_gemmini contraction/mxfp4
+SY_contraction_mxfp4_partial    # mx_gemmini contraction/mxfp4
+SY_contraction_mxfp6_aligned    # mx_gemmini contraction/mxfp6
+SY_contraction_mxfp6_partial    # mx_gemmini contraction/mxfp6
+SY_contraction_mxfp8_aligned    # mx_gemmini contraction/mxfp8
+SY_contraction_mxfp8_partial    # mx_gemmini contraction/mxfp8
