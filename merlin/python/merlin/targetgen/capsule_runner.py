@@ -1023,6 +1023,21 @@ def _dtype_has_no_datapath(region, cmap, _el) -> tuple[bool, str]:
     return True, f"operand dtype {dt!r} is in no capability this target declares"
 
 
+def _forbids_the_mesh(capsule: dict) -> bool:
+    """Whether this capsule's whole purpose is NOT to be accelerated.
+
+    Shared by the suite's withholding rule and the gate's denominator, because those two drifting apart
+    is a defect this module has already paid for once: they ran different tests, and a capsule the
+    suite graded and scored was silently absent from the gate that decided whether a whole-model
+    capstone could launch. One predicate, used by both.
+
+    Such a capsule declares ``forbid: [on_mesh]`` -- it exists to prove the compiler leaves work on the
+    host -- so the absent datapath that would withhold any other capsule is its PREMISE. Withholding it
+    deletes the only test of the negative lane.
+    """
+    return "on_mesh" in {str(x) for x in ((capsule.get("lanes") or {}).get("forbid") or ())}
+
+
 def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], list[dict]]:
     """Partition op capsules into (to grade, not-gradeable-on-this-target).
 
@@ -1069,6 +1084,16 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
         dtype_absent, why = _dtype_has_no_datapath(region, cmap, _el)
         if not dtype_absent:
             keep.append(c); continue
+        # A CAPSULE THAT FORBIDS THE MESH IS ASKING FOR EXACTLY THIS, so withholding it deletes the
+        # test. The rule above is "no datapath can hold these operands, so do not ask the device to
+        # certify this arithmetic" -- sound for a capsule that WANTS to be accelerated. A host-lane
+        # capsule wants the opposite: it declares `forbid: [on_mesh]` and exists to prove the compiler
+        # leaves the work on the host, and the absent datapath is its premise rather than its problem.
+        # Withheld, the negative lane is never graded, and an axis that derives such capsules produces
+        # nothing while looking like it ran -- the exact silence this corpus is built to prevent. The
+        # forbid IS gradeable: a decoded accelerator instruction violates it.
+        if _forbids_the_mesh(c):
+            keep.append(c); continue
         withheld.append({
             "capsule": c.get("name"), "kind": c.get("kind"), "label": c.get("label"),
             "status": "not_graded", "ineligible": True,
@@ -1109,6 +1134,8 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     except Exception:                                     # noqa: BLE001 - a gate must not crash a grade
         return True
     if getattr(verdict, "undetermined", False) or getattr(verdict, "eligible", True):
+        return True
+    if _forbids_the_mesh(cap):
         return True
     dtype_absent, _why = _dtype_has_no_datapath(region, cmap, _el)
     return not dtype_absent
