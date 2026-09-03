@@ -274,6 +274,74 @@ def _fused_carrier(family: str, composed_with: tuple, pool: set[str]) -> tuple[s
     return (carrier, [stage]) if stage else None
 
 
+def _tile_int(token, tile: int):
+    """A tile-relative extent as an integer, or ``None`` when it cannot be resolved here."""
+    if isinstance(token, int):
+        return token
+    text = str(token or "").strip()
+    if not text:
+        return None
+    if text == "tile":
+        return int(tile)
+    mult, sep, rest = text.partition("*tile")
+    if sep and not rest:
+        try:
+            return int(mult) * int(tile)
+        except ValueError:
+            return None
+    base, sep, delta = text.partition("-")
+    if sep and base.strip() == "tile":
+        try:
+            return int(tile) - int(delta)
+        except ValueError:
+            return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def cap_to_affordable(entry: dict, spec_doc: dict, *, extends: str = "") -> "str | None":
+    """Cap ``entry`` at the loop tier when its SIZE cannot be certified. Returns the reason, or None.
+
+    One rule for every axis, applied to the shape rather than to the axis that produced it. The tier a
+    capsule may demand is a fact about how long it takes to simulate, and until now it was a property
+    of which code path emitted it -- so the accumulation-depth axis capped its deep capsules while the
+    memory-regime axis, emitting shapes of the same order, demanded the cycle-accurate tier from all
+    of them.
+
+    Fails OPEN, deliberately: a target with no measured history, or an extent this function cannot
+    resolve, leaves the tier untouched. Capping on a cost nobody measured would shrink the certified
+    corpus on a guess, which is worse than an expensive capsule somebody can see in the bill.
+    """
+    aff = (spec_doc.get("cert_affordability") or {})
+    ceiling = aff.get("max_elements")
+    if not ceiling:
+        return None
+    tile = ((spec_doc.get("boundaries") or {}).get("tile_edge")) or 0
+    if not tile:
+        return None
+    dims = {k: _tile_int(entry.get(k), tile) for k in ("M", "K", "N")}
+    if any(v is None for v in dims.values()):
+        return None
+    # WRITTEN OUTPUT, which is what the cost law was calibrated on -- see `_cert_affordability`. The
+    # reduction depth is deliberately absent from this product: a capsule drains `M x N` elements
+    # whatever `K` is, so a deep accumulation is cheap to certify and must not be capped as though it
+    # were large. Pricing by operand size instead (the first attempt) capped exactly the capsules most
+    # worth certifying.
+    elements = dims["M"] * dims["N"]
+    if elements <= int(ceiling):
+        return None
+    entry["max_oracle_tier"] = "L2"
+    if extends:
+        entry["extends"] = extends
+    return (f"{elements} operand elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
+            f"certification budget affords on this target, so it is graded at the loop tier and "
+            f"rests on {extends!r}" if extends else
+            f"{elements} operand elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
+            f"certification budget affords on this target, so it is graded at the loop tier")
+
+
 def extents_for(alignment: str, probes: list[dict]) -> dict[str, str]:
     """Tile-relative extents for an alignment, spelled so the entry stays geometry-free.
 
@@ -293,6 +361,13 @@ def extents_for(alignment: str, probes: list[dict]) -> dict[str, str]:
             "guessing an edge")
     if alignment == "partial":
         return {"M": "tile", "K": "2*tile", "N": "tile-1"}
+    if alignment == "sub_tile":
+        # BARELY OCCUPIED, which `partial` (ragged by one) cannot express. Spelled tile-relative like
+        # every other extent, so a target with a 64-wide edge gets 16/32/16 from the same entry. K
+        # stays at tile//2 rather than dropping to tile//4 so the capsule still asks for a real
+        # reduction: a single-pass contraction would exercise accumulation not at all, and every other
+        # capsule already carries one.
+        return {"M": "tile/4", "K": "tile/2", "N": "tile/4"}
     return {"M": "tile", "K": "2*tile", "N": "tile"}
 
 
@@ -524,6 +599,16 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "label": "public", "modes": {},
             "M": ext["M"], "K": ext["K"], "N": ext["N"],
         }
+        # A REGIME THAT FILLS THE STORE CANNOT BE CERTIFIED, and saying so is what keeps the corpus
+        # runnable. Measured on gemmini: `fits_single` and `spills` resolve to 131k and 262k operand
+        # elements against a fitted history topping out at 4096 -- roughly 6.6 hours of extrapolated
+        # simulation between them, demanded at the cycle-accurate tier by an axis that never asked
+        # what it cost. They stay in the corpus at the loop tier, resting on the certified cell
+        # capsule that proves the same arithmetic at a size somebody can afford.
+        _sibling = f"{SYNTH_PREFIX}_contraction_{regime_dtype}_aligned"
+        _why = cap_to_affordable(entry, spec_doc, extends=_sibling)
+        if _why:
+            entry["source_reference"] += f". {_why}"
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
@@ -787,6 +872,103 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the ACCUMULATION-DEPTH axis ----------------------------------------------------------------
+    # How deep a reduction the accumulator survives. The memory-regime axis proves the operand store is
+    # LOADED to each residency level; this proves the ACCUMULATION that fills it completes -- different
+    # questions, and only the first was derived. The hand-authored corpus tests K_tiles 1, 2 and 4 by
+    # hand precisely because a single K says nothing about a multi-pass reduction.
+    #
+    # THE TIER SPLIT IS THE WHOLE POINT HERE. Filling the operand store takes thousands of elements of
+    # K (measured on gemmini: 65k-262k operand elements against a certification history topping out at
+    # 4096), so a residency-depth capsule is not something anyone can certify cycle-accurately. The
+    # requirement side therefore sizes ONE certified point -- the deepest K the measured cost model puts
+    # inside the budget -- and the residency points ride on it as L2-only perf extensions. That ordering
+    # is load-bearing: emit the certified capsule first, and admit a deeper one only when it exists, so
+    # a large capsule can never enter the corpus resting on nothing.
+    _depth = ((spec_doc.get("memory_mapping") or {}).get("reduction_depth") or {})
+    _depth_dtype = ((spec_doc.get("memory_mapping") or {}).get("regime_dtype")
+                    or (sorted(admitted_dtypes)[0] if admitted_dtypes else ""))
+    _depth_op = (op_for_family("contraction", admitted_ops=pool, dtype=_depth_dtype)
+                 if _depth_dtype else None)
+    _certified_depth_name = ""
+    #: Depths this target could not size, kept OUT of `cells_no_writer_can_express`. That list means
+    #: "a required cell has no writer" -- a capability gap in the corpus. A target with no measured
+    #: certification history has no such gap: the writer exists and the evidence to SIZE it does not,
+    #: which licenses a completely different action (run a cert and refit, not build a new builder).
+    unsized_depth: list[str] = []
+
+    def _depth_entry(name, point, *, tier, extends="", why=""):
+        # TILE-RELATIVE, like every other sweep. The axis is about the NUMBER OF ACCUMULATION PASSES,
+        # so `11*tile` says what the capsule is for in a way `176` does not -- and it keeps the entry
+        # portable in spelling, which is the property `derived_sweep` promises. Only the application
+        # axis bakes integers, because only there is the shape a model's rather than the target's.
+        e = {
+            "cat": "layers", "kind": "layer", "name": name,
+            "op": _depth_op, "operand_dtype": _depth_dtype,
+            "lhs": "A0", "weight": "W", "out": "Y0",
+            "M": "tile", "K": f"{int(point['K_tiles'])}*tile", "N": "tile",
+            "source_role": SOURCE_ROLE, "source_reference": why,
+            "label": "public", "modes": {},
+            "semantic": {"generalization_axis": "accumulation_depth"},
+        }
+        if tier != "L3":
+            e["max_oracle_tier"] = tier
+            e["extends"] = extends
+        _mark_source(e)
+        e["pass_requirements"] = pass_requirements_for(e, spec_doc)
+        return e
+
+    if _depth_op is None and (_depth.get("certified") or _depth.get("by_regime")):
+        unsized_depth.append(f"no op materializes a contraction at {_depth_dtype!r}")
+    elif _depth_op is not None:
+        # THE ANCHOR IS A FALLBACK, NOT A FIXTURE. It guarantees a multi-pass reduction somewhere on
+        # targets whose residency regimes yield no depth at all. Where the regimes DO yield one that
+        # certifies -- which, since a reduction writes one output tile, is the normal case -- the
+        # anchor is a strictly shallower duplicate of a capsule already in the corpus, and shipping it
+        # would be one more certification buying nothing.
+        _regime_depths = [pt for blk in (_depth.get("by_regime") or {}).values()
+                          for pt in (blk.get("points") or ()) if pt.get("K")]
+        _cert_pt = _depth.get("certified") if not _regime_depths else None
+        if _cert_pt:
+            _certified_depth_name = f"{SYNTH_PREFIX}_kdepth_certified"
+            entries.append(_depth_entry(
+                _certified_depth_name, _cert_pt, tier="L3",
+                why=(f"synthesized for the accumulation-depth axis: {_cert_pt['K_tiles']} accumulation "
+                     f"passes, the shallowest reduction that writes the accumulator more than once. "
+                     f"Emitted only because this target's residency regimes yield no depth of their "
+                     f"own; where they do, they produce deeper capsules and this would duplicate one. "
+                     f"Costs {_cert_pt['predicted_seconds']}s against a {_cert_pt['budget_s']}s "
+                     f"budget -- priced on the OUTPUT tile, which the reduction depth does not move")))
+        elif _depth.get("certified_refusal"):
+            unsized_depth.append(str(_depth["certified_refusal"]))
+
+        for _regime, _blk in sorted((_depth.get("by_regime") or {}).items()):
+            _points = [pt for pt in (_blk.get("points") or ()) if pt.get("K")]
+            if not _points:
+                continue
+            _deep = max(_points, key=lambda pt: int(pt["K"]))
+            # TIER DECIDED BY THE COST LAW, not asserted by this axis. These capsules were capped at
+            # L2 on the belief that a deep reduction is expensive, which the operand-size metric
+            # implied and the measured law refutes: a capsule drains `M x N` elements whatever `K` is,
+            # so the deepest reduction the store admits writes ONE TILE and certifies for about the
+            # price of the shallowest. That is the sweet spot this axis was looking for -- maximum
+            # accumulation depth at minimum simulation cost -- and capping it would have thrown away
+            # the cycle-accurate guarantee on the very behaviour hardest to get right.
+            _e = _depth_entry(
+                f"{SYNTH_PREFIX}_kdepth_{_regime}", _deep, tier="L3",
+                why=(f"synthesized for the accumulation-depth axis: the deepest reduction the "
+                     f"{_regime!r} residency regime admits ({_deep['K_tiles']} accumulation passes, "
+                     f"{_deep.get('fraction_of_capacity')} of the operand store). The reduction moves "
+                     f"the operands and not the result, so this certifies at one output tile"))
+            _why = cap_to_affordable(
+                _e, spec_doc,
+                extends=(_certified_depth_name
+                         or f"{SYNTH_PREFIX}_contraction_{_depth_dtype}_aligned"))
+            if _why:
+                _e["source_reference"] += f". {_why}"
+                _e["pass_requirements"] = pass_requirements_for(_e, spec_doc)
+            entries.append(_e)
+
     # ---- the APPLICATION axis -----------------------------------------------------------------------
     # The only axis whose capsules carry a shape a real model CONTAINS rather than a tile multiple.
     # Everything else here is tile-relative on purpose, so the same entry means the same thing on a
@@ -963,6 +1145,14 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 "a host-only family with no materializable op or no dtype observed in any capture. "
                 "Reported rather than dropped: a negative lane nobody demanded reads downstream exactly "
                 "like one nothing violates"),
+            "accumulation_depth_unsizable": unsized_depth,
+            "accumulation_depth_note": (
+                "a reduction depth this target could not size. Kept separate from "
+                "`cells_no_writer_can_express` because the two license different actions: a cell with "
+                "no writer needs a builder, while an unsized depth needs a CERTIFICATION RUN -- the "
+                "writer is there and the measured history to size it against is not. Reporting them "
+                "together would make 'we never timed this target' read as 'the corpus cannot express "
+                "this'"),
             "memory_regimes_status": "resolved" if regimes_resolved else "not_resolved",
             "memory_regimes_unreachable": unreachable_regimes,
             "memory_regime_note": (

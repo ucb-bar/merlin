@@ -80,10 +80,19 @@ def capsule_dtype(token: str) -> str:
 class Cell:
     """One coverage requirement, in ``cert_capsule_cover``'s vocabulary.
 
-    ``alignment`` is ``"aligned"`` / ``"partial"`` (extents that are, or are not, whole multiples of the
-    target's tile edge) or ``None`` when the target declares no tiling edge at all. Both alignments are
-    required wherever an edge exists: a unit that only ever sees whole tiles has never exercised its tail
-    path, and the tail is where tiling bugs live.
+    ``alignment`` is ``"aligned"`` / ``"partial"`` / ``"sub_tile"``, or ``None`` when the target
+    declares no tiling edge at all. All are required wherever an edge exists: a unit that only ever
+    sees whole tiles has never exercised its tail path, and the tail is where tiling bugs live.
+
+    ``sub_tile`` IS NOT ``partial`` UNDER ANOTHER NAME, and the difference was measured. ``partial``
+    rags one axis by a single element, so the tile it produces is NEARLY FULL -- 15 of 16 lanes live
+    on a 16-wide edge. A tile that is BARELY OCCUPIED is a different question for a tiling compiler:
+    whether it still issues a full tile, whether it skips the pass, whether the tail predicate is
+    even reached. Across the hand-authored corpus, extents of 2/4/7/8/9/10/12 against a 16-wide tile
+    occur 45 times; across the derived corpus they occurred ZERO times, because the two alignment
+    classes could not express one. That is the single largest structural gap between the two corpora,
+    and by the measured certification cost law it is also the cheapest to close: a tile/4 capsule
+    writes 16 elements and certifies in seconds, where the corpus median is 256 elements.
     """
 
     family: str
@@ -141,17 +150,33 @@ class Boundaries:
     def extent_probes(self) -> list[dict]:
         """Extents that straddle each real boundary — the derived edge cases.
 
-        One point below, one on, one above each edge. ``tile_edge`` catches the tiling tail;
-        ``block_scale_group`` catches a K that does not divide the block-scale group, which is not a
-        hypothetical: a captured LLaMA's own hidden size (344) is not a multiple of a 32-element group.
+        ``tile_edge`` catches the tiling tail; ``block_scale_group`` catches a K that does not divide
+        the block-scale group, which is not a hypothetical: a captured LLaMA's own hidden size (344)
+        is not a multiple of a 32-element group.
+
+        SUB-BOUNDARY POINTS ARE A SEPARATE CLASS, and leaving them out was measured as the structural
+        gap between this corpus and the hand-authored one. The points used to be
+        ``[edge-1, edge, edge+1, edge*2]`` -- straddling the edge and doubling it, but never sampling
+        WELL below it. Across the hand-authored capsules, extents of 2/4/7/8/9/10/12 against a 16-wide
+        tile occur 45 times; across the derived corpus they occurred ZERO times, because no token in
+        this list could produce one. A partial tile that is nearly full (``edge-1``) and one that is
+        barely occupied (``edge//4``) are different cases for a tiling compiler: the first exercises
+        the tail predicate, the second exercises whether a mostly-empty tile is issued at all.
+
+        So each boundary now also contributes ``1`` (the degenerate extent -- a single row or element,
+        which the hand set probes 26 times), ``edge//2`` and ``edge//4``. Deduplicated and ordered, so
+        a small edge that collapses these onto each other simply yields fewer points rather than
+        repeats.
         """
         out: list[dict] = []
         for name, edge, src in (("tile_edge", self.tile_edge, self.tile_edge_source),
                                 ("block_scale_group", self.block_scale_group, self.block_scale_source)):
             if not edge or edge < 2:
                 continue
-            out.append({"boundary": name, "edge": int(edge), "source": src,
-                        "points": [int(edge) - 1, int(edge), int(edge) + 1, int(edge) * 2]})
+            e = int(edge)
+            points = {1, e // 4, e // 2, e - 1, e, e + 1, e * 2}
+            out.append({"boundary": name, "edge": e, "source": src,
+                        "points": sorted(x for x in points if x >= 1)})
         return out
 
     def to_dict(self) -> dict:
@@ -408,7 +433,15 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     adm, adm_reason = admitted_with_reason(target)
     units = admitting_units(target)
     bnd = boundaries(target)
-    aligns: tuple[str | None, ...] = ("aligned", "partial") if bnd.tile_edge else (None,)
+    # A tile edge admits three occupancy classes, not two -- see `Cell.alignment`. `sub_tile` is
+    # required only where the edge is wide enough for "barely occupied" to differ from "ragged by
+    # one": at edge 2, `tile-1` and `tile//2` are the same extent and a third cell would be a repeat.
+    if not bnd.tile_edge:
+        aligns: tuple[str | None, ...] = (None,)
+    elif int(bnd.tile_edge) >= 4:
+        aligns = ("aligned", "partial", "sub_tile")
+    else:
+        aligns = ("aligned", "partial")
 
     seen: Counter = Counter()
     seen_in: dict[str, list[str]] = {}
@@ -772,7 +805,98 @@ def _shape_axis(target: str) -> dict:
         "why_shape_corners_are_excluded": (
             "the corner probes (tile, tile+-1, prime, skinny) and the dtype probes restate the alignment "
             "and dtype axes the cells already carry; requiring them again would inflate the requirement "
-            "with points already required under another name"),
+            "with points already required under another name. NOTE the alignment axis now carries three "
+            "occupancy classes rather than two: `partial` rags one axis by one element (a nearly-full "
+            "tile) and `sub_tile` leaves the tile barely occupied, which the hand-authored corpus probes "
+            "45 times and the derived corpus could not express at all. That is a genuinely distinct "
+            "point, not a corner probe under another name"),
+    }
+
+
+def _certified_depth(target: str, *, tile: int, budget_s: float | None):
+    """A multi-pass reduction this target certifies, as a FALLBACK. ``(point, refusal)``.
+
+    Only used where the residency regimes yield no depth of their own; where they do, they produce
+    deeper capsules and this one would be a shallower duplicate.
+
+    WHAT DECIDES ITS SIZE, and what does not. A capsule writes ``M x N`` elements whatever ``K`` is,
+    and the measured cost law is a function of that written output -- so the reduction depth is very
+    nearly free and there is no budget to clip ``K`` against. An earlier version did clip it, priced
+    by operand size, and produced the wrong answer in the expensive direction: it capped the deepest
+    reductions out of the cycle-accurate tier while calling the number "measured".
+
+    So the depth is derived from what makes a reduction MULTI-PASS -- two tiles of ``K``, the first
+    depth at which an accumulator must survive being written twice -- and the affordability question
+    is asked of the OUTPUT TILE instead, which is the thing that actually costs. Refuses when the
+    tile edge is unknown or when a single output tile already exceeds the budget, because then no
+    capsule of any depth is certifiable here.
+    """
+    from merlin.targetgen import cert_cost as CC
+
+    if not tile:
+        return None, "no tile edge, so there is no whole-tile depth to size"
+    budget = float(budget_s if budget_s else _DEFAULT_CERT_BUDGET_S)
+    seconds, extrapolated = CC.predict_seconds_from_output(int(tile) * int(tile))
+    if seconds is None:
+        return None, "no measured certification cost law, so one output tile cannot be priced"
+    if seconds > budget:
+        return None, (f"a single {tile}x{tile} output tile already costs {seconds:.0f}s against a "
+                      f"{budget}s budget on this target, so no reduction of any depth is certifiable")
+    return {
+        "M": int(tile), "K": 2 * int(tile), "N": int(tile), "K_tiles": 2,
+        "predicted_seconds": round(seconds, 1), "budget_s": budget,
+        "sized_by": "multi_pass_minimum_at_one_output_tile",
+        "extrapolated": bool(extrapolated),
+        "why": ("two tiles of K is the shallowest reduction that writes the accumulator twice; the "
+                "cost is the output tile, which K does not move"),
+    }, None
+
+
+def _cert_affordability(target: str, *, budget_s: float | None) -> dict:
+    """The largest WRITTEN OUTPUT this target can certify inside the budget. Never operand size.
+
+    Which size metric drives certification cost was measured, and the first answer was wrong. An
+    observational fit over graded runs picked the largest operand, because in a corpus where every
+    capsule is a tile-multiple square the operand and the output move together. A calibration ladder
+    that deliberately broke that correlation -- growing the weight while holding the output nearly
+    fixed -- showed time following the OUTPUT, and refitting over this target's own 20 shape-resolvable
+    certifications agrees decisively:
+
+        written output  r2 0.924      max operand  r2 0.226      work (M*K*N)  r2 0.655
+
+    The consequence is the useful part, and it is the opposite of what the operand metric implied:
+    REDUCTION DEPTH IS CHEAP TO CERTIFY. A capsule writes ``M x N`` elements whatever ``K`` is, so a
+    deep accumulation drains the same result tile as a shallow one. Measured here: ``PK03_k128``
+    (K=128) took 161.5 s against 121.1 s for the same shape at K=16 -- eight times the reduction for a
+    third more time, where the operand metric predicted a capsule nobody could afford. So the deepest
+    accumulation a compiler must survive can be certified cycle-accurately at one output tile, which
+    is exactly the minimal-but-representative shape a functional corpus wants.
+
+    ``max_elements`` is ``None`` when the law cannot be applied, and the caller must then leave every
+    tier alone rather than cap on a cost nobody measured.
+    """
+    from merlin.targetgen import cert_cost as CC
+
+    budget = float(budget_s if budget_s else _DEFAULT_CERT_BUDGET_S)
+    coeff = getattr(CC, "MEASURED_COEFFICIENT_S", None)
+    exponent = getattr(CC, "MEASURED_EXPONENT", None)
+    if not coeff or not exponent:
+        return {"max_elements": None, "budget_s": budget, "metric": "written_output_elements",
+                "why": "no measured certification cost law is available in this checkout"}
+    # Invert the power law: the output at which the predicted certification exactly spends the budget.
+    ceiling = int((budget / float(coeff)) ** (1.0 / float(exponent)))
+    calibrated_to = getattr(CC, "MEASURED_MAX_OUTPUT_ELEMENTS", 0)
+    return {
+        "max_elements": max(1, ceiling),
+        "budget_s": budget,
+        "metric": "written_output_elements",
+        "law": f"seconds = {coeff} * output ** {exponent}",
+        "calibrated_to_elements": calibrated_to,
+        "extrapolated": bool(calibrated_to and ceiling > calibrated_to),
+        "why": ("the largest written output whose predicted certification fits the budget. A capsule "
+                "above it is graded at the loop tier and rests on a certified sibling -- not because "
+                "it is uninteresting, but because nobody can afford to run it cycle-accurately. "
+                "Reduction depth does NOT count against this: K moves the operands, not the result"),
     }
 
 
@@ -798,6 +922,14 @@ def spec(target: str, captures: dict[str, str | Path], *,
     _dtypes = [c.dtype for c in cells]
     _regime_dtype = max(set(_dtypes), key=_dtypes.count) if _dtypes else None
     HL = host_lane_cells(captures, target)
+    try:
+        _reduction_depth = MR.reduction_depth_regimes(
+            target, sorted((mem.get("by_regime") or {}).keys()),
+            tile_dim=bnd.tile_edge or 0, dtype=_regime_dtype)
+    except Exception as _exc:                      # noqa: BLE001 -- an underivable depth is not zero
+        _reduction_depth = {"unavailable": f"{type(_exc).__name__}: {_exc}"}
+    _reduction_depth["certified"], _reduction_depth["certified_refusal"] = _certified_depth(
+        target, tile=bnd.tile_edge or 0, budget_s=cert_budget_s)
     _regime_extents = MR.required_regime_extents(
         target, sorted((mem.get("by_regime") or {}).keys()),
         tile_dim=bnd.tile_edge or 0, dtype=_regime_dtype)
@@ -856,6 +988,9 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # multiple, and the only one whose sizing is bounded by what a certification costs.
         "application_shapes": _application_axis(target, captures=applications,
                                                 budget_s=cert_budget_s),
+        # WHAT A CERTIFICATION COSTS HERE, so an axis can size against it instead of assuming every
+        # capsule it derives is affordable at the deepest tier.
+        "cert_affordability": _cert_affordability(target, budget_s=cert_budget_s),
         "memory_mapping": {
             "required": mem.get("by_regime") or {},
             "region_counts": mem.get("region_counts") or {},
@@ -869,6 +1004,12 @@ def spec(target: str, captures: dict[str, str | Path], *,
             # coincide and the regime that separates them cannot arise from inputs alone.
             "regime_extents": _regime_extents,
             "regime_dtype": _regime_dtype,
+            # ACCUMULATION DEPTH, per regime. `regime_extents` gives ONE shape that reaches each
+            # residency band; this gives the deepest K within it. They are different questions: a
+            # regime capsule proves the store is loaded to that level, a deep-K capsule proves the
+            # accumulator survives the reduction that fills it. The hand-authored corpus tests
+            # K_tiles 1, 2 and 4 by hand for exactly this reason and nothing derived it.
+            "reduction_depth": _reduction_depth,
             "axis_basis": (
                 "the regimes real captured models put this target's operand store in, derived from the "
                 "store's own geometry (bytes / row width from the compute array and the datapath "
