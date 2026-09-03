@@ -558,8 +558,17 @@ def test_shipped_targets_all_consume_the_same_claim_separated_perf_template():
     assert claims == {"PREDICTS", "DIFFERENTIAL"}
     assert all(s["base"]["cat"] == "_perf" and s["base"]["label"] == "dev"
                for s in shared["sweeps"])
-    # PG last: the encoding family occupies `L6_global`, the rung that had a level name and no family.
-    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC", "PF", "PL", "PG"]
+    # DERIVED, never listed. A hardcoded roster here fails the moment a rung is occupied -- it did,
+    # twice, for the encoding and residency families -- and the failure says nothing about the
+    # template except that somebody added to it. What is actually invariant is that each sweep's id
+    # and the family it declares are the SAME name, which is the property every other derivation in
+    # this tree (the provenance record, the corpus generator, the per-target merge below) relies on
+    # when it reads a family out of an id.
+    assert shared_ids, "the shared performance template declares no families at all"
+    assert len(set(shared_ids)) == len(shared_ids), f"duplicate family ids: {shared_ids}"
+    assert [s["base"]["performance"]["family"] for s in shared["sweeps"]] == shared_ids, (
+        "a sweep's id and its declared family name must agree, or a family cannot be located "
+        "from its id")
     # `blocked_unimplemented` exists so a family whose lever cannot be emitted is declared and skipped
     # with evidence instead of quietly missing. The two entries it originally held turned out to be
     # stale reasons, not
@@ -596,7 +605,7 @@ def test_every_required_performance_contract_field_is_fail_closed(missing):
         GC._validate_performance_block(block, owner="fixture")
 
 
-def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
+def test_gemmini_admits_the_runnable_families_and_records_its_trait_refusals():
     profile = GC.load_profile("gemmini", include_holdouts=False)
     # Selected by WHAT THEY ARE, not by counting from the end. A `[-3:]` slice silently changed which
     # sweeps this test exercised the moment a fourth shared family was declared -- it dropped PK and
@@ -611,12 +620,38 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
         trait_facts=GC._performance_facts("gemmini"), skipped=skips,
         blocked_unimplemented=blocked, errors=errors)
 
-    # PK's four reduction depths, then PF's two shape groups of three members each. Order is the
-    # declaration order in the shared template, which is what makes this readable as a whole.
-    # PC joined once its emitter was repointed at the archetype it belongs to: its traits were
-    # satisfied on gemmini alone and its old emitter needed a self-hosted ISA gemmini does not have.
-    assert [entry["performance"]["family"] for entry in entries] == (
-        ["PK"] * 4 + ["PC"] * 2 + ["PF"] * 6 + ["PL"] * 4)
+    # DERIVED from the template, not listed here. The admitted families are exactly the declared
+    # sweeps minus the ones their own gates turned away, in declaration order, and each family's
+    # members are contiguous. A hardcoded sequence pins the ROSTER, which changes whenever a rung is
+    # occupied; this pins the RELATION between what is declared, what is refused, and what is built,
+    # which is what the expansion is actually responsible for.
+    turned_away = {row["family"] for row in skips} | {row["family"] for row in blocked}
+    expected_admitted = [s["id"] for s in shared_sweeps if s["id"] not in turned_away]
+    produced = [entry["performance"]["family"] for entry in entries]
+    seen: list[str] = []
+    for family in produced:
+        if not seen or seen[-1] != family:
+            assert family not in seen, f"{family} members are not contiguous in {produced}"
+            seen.append(family)
+    assert seen == expected_admitted, (
+        f"admitted families {seen} are not the declared sweeps minus the refused ones "
+        f"{expected_admitted}")
+    # And the member COUNT is the declaration's own product, wherever the declaration states it: a
+    # family that silently emitted no members would otherwise pass the order check above. A sweep
+    # whose axis is a DERIVATION (a dict rather than a list of extents) states no count -- its ladder
+    # comes from the target's operand store -- so it is checked for non-emptiness only.
+    for sweep in shared_sweeps:
+        if sweep["id"] in turned_away:
+            continue
+        built = produced.count(sweep["id"])
+        assert built > 0, f"{sweep['id']} was admitted and produced no members"
+        axes = sweep.get("axes") or {}
+        if all(isinstance(values, list) for values in axes.values()):
+            expected = max(1, len(sweep.get("variants") or []))
+            for values in axes.values():
+                expected *= len(values)
+            assert built == expected, (
+                f"{sweep['id']} declares {expected} members (axes x variants) and built {built}")
     # PF's members are a fused capsule and the two capsules it replaces, twice, and every group is
     # complete -- a group of one cannot be compared to anything.
     groups: dict[str, list[str]] = {}
@@ -654,19 +689,30 @@ def test_gemmini_admits_the_runnable_families_and_records_PS_PC_trait_skips():
     # `explicit_completion` could not be derived, and that was an artefact of the fact bundle recording
     # interfaces by name with no port list: the elaborated FIRRTL shows LoadController and
     # StoreController each exposing `completed : { flip ready, valid, bits : UInt<6> }`, a decoupled
-    # channel tagged with the reservation-station id. So the trait is now derived True and PC's gate
-    # PASSES. It is blocked instead on its emitter (`new:instruction_reorder`), which is honest: the
-    # measurement is admissible and the thing that would generate the pair does not exist yet.
+    # channel tagged with the reservation-station id. So the trait is now derived True, and once its
+    # emitter was repointed at `command_stream_gen` -- the archetype it belongs to -- PC MATERIALIZES.
+    # It is asserted as an admitted family rather than a skip for exactly that reason.
     #
     # PG is the encoding lever, and it is refuted here for the third distinct reason: this target's
     # contraction family declares ONE operand encoding, so there is no choice to price. That is an
     # answer about the hardware rather than a gap in the tooling -- which is exactly why the trait
     # refutes rather than reporting itself unestablished.
-    assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [("PS", "refuted"),
-                                                                         ("PG", "refuted")]
-    assert skips[0]["gate"]["facts"]["self_hosted_program"]["satisfied"] is False
-    assert skips[0]["gate"]["facts"]["explicit_completion"]["satisfied"] is True
-    assert skips[1]["gate"]["facts"]["multiple_operand_encodings"]["satisfied"] is False
+    refusals = {row["family"]: row["gate"] for row in skips}
+    assert "PC" not in refusals, (
+        "PC's traits derive True on this target and its emitter is the command-stream sibling; a "
+        f"skip here means one of those regressed: {refusals.get('PC')}")
+    assert refusals["PS"]["outcome"] == "refuted"
+    assert refusals["PS"]["facts"]["self_hosted_program"]["satisfied"] is False
+    assert refusals["PS"]["facts"]["explicit_completion"]["satisfied"] is True
+    assert refusals["PG"]["outcome"] == "refuted"
+    assert refusals["PG"]["facts"]["multiple_operand_encodings"]["satisfied"] is False
+    # Every refusal, including one a family declared after this test was written, carries the named
+    # trait it turned on. A skip with no unsatisfied fact is a family disappearing quietly, which is
+    # the state `on_missing: skip_with_evidence` exists to make impossible.
+    for family, gate in sorted(refusals.items()):
+        assert gate["outcome"] in {"refuted", "unestablished"}, f"{family}: {gate['outcome']}"
+        assert any(fact["satisfied"] is not True for fact in gate["facts"].values()), (
+            f"{family} was skipped with every declared trait satisfied: {gate['facts']}")
     assert blocked == [], (
         f"no family should be blocked at the emitter gate now; got "
         f"{[row['family'] for row in blocked]}")
