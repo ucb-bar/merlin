@@ -38,7 +38,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-__all__ = ["RegionClass", "ClassEvidence", "classify_capture", "classify_captures"]
+__all__ = ["RegionClass", "ClassEvidence", "SizedCapsule", "classify_capture", "classify_captures",
+           "size_class"]
 
 
 @dataclass(frozen=True)
@@ -254,3 +255,121 @@ def classify_captures(captures: dict, target: str) -> dict:
             "cut would rest on a threshold nobody can defend. Grouping by behaviour bounds the "
             "capsule count by the lattice instead of by the size of the model"),
     }
+
+
+# ---------------------------------------------------------------------------------------------
+# Sizing: a class becomes one capsule that can be certified and, when the application is bigger
+# than that, a second that extends it.
+# ---------------------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SizedCapsule:
+    """One capsule derived from a class, with the tier it can afford and why."""
+
+    region_class: RegionClass
+    m: int
+    k: int
+    n: int
+    batch: int
+    tier: str                                      # the deepest tier this size can afford
+    extends: "str | None"                          # the sibling this one rests on, when L2-only
+    basis: dict
+
+    def to_dict(self) -> dict:
+        return {"class": self.region_class.key(), "M": self.m, "K": self.k, "N": self.n,
+                "batch": self.batch, "tier": self.tier, "extends": self.extends,
+                "basis": dict(self.basis)}
+
+
+def _round_down_to_tile(value: int, tile: int) -> int:
+    """The largest whole number of tiles at or below ``value``, never zero."""
+    if tile <= 1:
+        return max(1, int(value))
+    return max(tile, (int(value) // tile) * tile)
+
+
+def size_class(evidence: "ClassEvidence", *, target: str, budget_s: float,
+               tile: int | None = None, fit=None) -> "tuple[list[SizedCapsule], str | None]":
+    """``([capsules], refusal)`` for one behavioural class.
+
+    THE CONSTRAINT THAT DECIDES WHETHER ANY OF THIS IS USABLE. A capsule at an application's real
+    shape is worthless if nobody can afford to certify it: the heaviest class measured here carries a
+    65.5M-element operand against a cost model whose measured range tops out at 4096. Emitting it and
+    calling it certified would be a claim nothing could pay for.
+
+    So each class yields up to two capsules:
+
+    * a **cycle-accurate** one, at the largest size the cost model puts inside ``budget_s``. K is
+      preserved -- it is where accumulation, residency and spill behaviour live, and it is what makes
+      the capsule a member of this class at all -- and only the parallel extents are clamped, then
+      rounded to whole tiles.
+    * an **L2-only** one at the application's true shape, emitted ONLY when the true shape is bigger
+      than the clamp, and always naming the cycle-accurate capsule it ``extends``. That is what keeps
+      the large, representative, perf-facing capsule resting on a functional guarantee instead of
+      replacing it. An L2 pass on a shape nothing ever certified cycle-accurately is exactly the
+      "read ``tier_reached``, never a bare score" failure this corpus already has scar tissue for.
+
+    When no cost model exists the affordable size falls back to the corpus's own tile convention --
+    the size this target is already certifying today, so a sibling provably exists -- and the basis
+    records that the number came from convention rather than measurement. The refusal is returned,
+    never raised, when even one tile of this class's K cannot be afforded: that is a real statement
+    about the class, and dropping it silently would make an unaffordable behaviour look absent.
+    """
+    from merlin.targetgen import cert_cost as CC
+
+    tile = int(tile or 0) or 1
+    k = int(evidence.k)
+    budget_elements = CC.max_elements_within(fit, budget_s) if fit is not None else None
+    if budget_elements is None:
+        # NO MEASUREMENT, NO CAPSULE. A tile-convention fallback suggests itself and is wrong: the
+        # convention is M=tile, K=2*tile, N=tile, and this class's K is whatever the application
+        # carries -- 2048 in the measured LM-head case, 32x the convention. Clamping the parallel
+        # extents to a tile while leaving K there is NOT "the size the corpus already certifies", so
+        # calling it known-payable would be an invention. Clamping K instead would put the capsule in
+        # a different behavioural class, which is the one thing this axis may not do.
+        #
+        # So the class is refused with the reason. The consequence is deliberate: a target must have
+        # certified something before application-derived capsules are admitted for it, because
+        # otherwise the large L2 capsule would rest on a sibling nobody could size.
+        return [], (f"{evidence.region_class.key()}: no measured certification history for "
+                    f"{target!r}, so no size of this class can be shown affordable; certify this "
+                    f"target's existing corpus first, then the fit gives a size")
+    else:
+        # max operand elements is max(M*K, K*N), so both parallel extents are bounded by
+        # budget_elements / K. K is never clamped: a shallower K is a different behavioural class.
+        per_extent = budget_elements // max(1, k)
+        if per_extent < tile:
+            return [], (f"{evidence.region_class.key()}: K={k} alone needs {k * tile} elements for a "
+                        f"single tile of parallel extent, over the {budget_elements}-element budget "
+                        f"at {budget_s:.0f}s; no size of this class is certifiable here")
+        affordable_m = _round_down_to_tile(min(per_extent, evidence.m), tile)
+        affordable_n = _round_down_to_tile(min(per_extent, evidence.n), tile)
+        size_basis = {"sized_by": "measured_cost_model", "budget_s": budget_s,
+                      "budget_elements": budget_elements,
+                      "fitted_seconds": CC.predict_seconds(fit, max(affordable_m, affordable_n) * k),
+                      "cost_fit": fit.to_dict()}
+
+    cert = SizedCapsule(
+        region_class=evidence.region_class, m=affordable_m, k=k, n=affordable_n,
+        batch=int(evidence.batch), tier="L3", extends=None,
+        basis={**size_basis, "clamped_from": [evidence.m, evidence.k, evidence.n],
+               "clamped": [affordable_m, k, affordable_n] != [evidence.m, k, evidence.n],
+               "representative_of": evidence.multiplicity, "work": evidence.work,
+               "source": evidence.source},
+    )
+    out = [cert]
+
+    if (evidence.m, evidence.n) != (affordable_m, affordable_n):
+        # The application's own shape, kept as an L2 EXTENSION of the certified one. Perf wants this
+        # size; correctness rests on its smaller sibling having been certified cycle-accurately.
+        out.append(SizedCapsule(
+            region_class=evidence.region_class, m=int(evidence.m), k=k, n=int(evidence.n),
+            batch=int(evidence.batch), tier="L2", extends=cert.region_class.key(),
+            basis={"sized_by": "application_shape",
+                   "why": "the shape the application actually contains, too large to certify "
+                          "cycle-accurately; admissible only as an extension of the certified "
+                          "sibling of the same behavioural class",
+                   "representative_of": evidence.multiplicity, "work": evidence.work,
+                   "source": evidence.source},
+        ))
+    return out, None

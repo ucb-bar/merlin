@@ -132,3 +132,104 @@ def test_merging_two_applications_sums_the_mass_and_keeps_the_heavier_shape(tmp_
     if not merged:
         pytest.skip("the two shapes did not land in one class on this target")
     assert merged[0]["M"] == 128, "the heavier representative survives the merge"
+
+
+# ------------------------------------------------------------------ sizing and tier assignment
+
+def _evidence(m, k, n, *, mult=1, geometry="squareish_gemm"):
+    return APP.ClassEvidence(
+        region_class=APP.RegionClass("contraction", "i8", "aligned", "spills", 2, geometry),
+        m=m, k=k, n=n, batch=1, multiplicity=mult, work=m * k * n * mult,
+        work_complete=True, source="app")
+
+
+def _fit_or_skip():
+    from merlin.targetgen import cert_cost as CC
+    fit = CC.fit_for("gemmini")
+    if fit is None:
+        pytest.skip("no measured certification history in this checkout")
+    return fit
+
+
+def test_a_certifiable_class_yields_a_clamped_capsule_and_the_real_one_extending_it():
+    """The two-capsule split the whole design turns on: something small enough to certify
+    cycle-accurately, and the application's own shape resting on it."""
+    fit = _fit_or_skip()
+    caps, refusal = APP.size_class(_evidence(256, 64, 784), target="gemmini",
+                                   budget_s=300.0, tile=16, fit=fit)
+    assert refusal is None
+    tiers = [c.tier for c in caps]
+    assert tiers == ["L3", "L2"]
+    cert, large = caps
+    assert cert.extends is None
+    assert large.extends == cert.region_class.key(), "an L2 capsule must name what it rests on"
+    assert (large.m, large.k, large.n) == (256, 64, 784), "the L2 capsule is the application's shape"
+    assert cert.m <= 256 and cert.n <= 784, "the certified capsule is a clamp, never a growth"
+
+
+def test_k_is_never_clamped_because_k_is_what_makes_the_class():
+    """Accumulation, residency and spill behaviour live in the reduction depth. A shallower K is a
+    different behavioural class, so clamping it would silently answer a different question."""
+    fit = _fit_or_skip()
+    caps, refusal = APP.size_class(_evidence(256, 64, 784), target="gemmini",
+                                   budget_s=300.0, tile=16, fit=fit)
+    assert refusal is None
+    assert all(c.k == 64 for c in caps)
+
+
+def test_a_class_whose_reduction_depth_alone_blows_the_budget_is_refused_by_name():
+    """Measured on a real class: a vocabulary-32000 LM head at K=2048 needs 32768 elements for a
+    single tile of parallel extent. There is no size of that class this budget can certify, and
+    saying so is the point -- dropping it would make an unaffordable behaviour look absent."""
+    fit = _fit_or_skip()
+    caps, refusal = APP.size_class(_evidence(8, 2048, 32000), target="gemmini",
+                                   budget_s=300.0, tile=16, fit=fit)
+    assert caps == []
+    assert refusal and "K=2048" in refusal
+
+
+def test_no_cost_model_means_no_capsule_rather_than_a_convention_sized_one():
+    """A tile-convention fallback suggests itself and is wrong. The convention is K=2*tile; this
+    class's K is whatever the application carries, so clamping only the parallel extents would not
+    be 'the size the corpus already certifies', and clamping K would change the class. A target must
+    certify something before application capsules are admitted for it — otherwise the large L2
+    capsule rests on a sibling nobody could size."""
+    caps, refusal = APP.size_class(_evidence(256, 64, 784), target="definitely_not_a_target",
+                                   budget_s=300.0, tile=16, fit=None)
+    assert caps == []
+    assert refusal and "no measured certification history" in refusal
+
+
+def test_a_class_already_small_enough_yields_one_capsule_not_two():
+    """No L2 extension when the application's own shape is already certifiable — a second capsule at
+    the identical shape would be a duplicate wearing a weaker tier."""
+    fit = _fit_or_skip()
+    caps, refusal = APP.size_class(_evidence(16, 32, 16), target="gemmini",
+                                   budget_s=600.0, tile=16, fit=fit)
+    assert refusal is None
+    assert [c.tier for c in caps] == ["L3"]
+
+
+def test_the_certified_size_carries_the_evidence_it_was_sized_by():
+    """A reader must be able to tell a capsule sized by measurement from one sized by a default,
+    which is why there is no default."""
+    fit = _fit_or_skip()
+    caps, _ = APP.size_class(_evidence(256, 64, 784), target="gemmini",
+                             budget_s=300.0, tile=16, fit=fit)
+    basis = caps[0].basis
+    assert basis["sized_by"] == "measured_cost_model"
+    assert basis["budget_s"] == 300.0
+    assert basis["fitted_seconds"] is not None and basis["fitted_seconds"] <= 300.0
+    assert basis["cost_fit"]["n_samples"] >= 5
+    assert basis["clamped_from"] == [256, 64, 784]
+
+
+def test_the_certified_size_is_whole_tiles():
+    """A capsule whose parallel extents are not tile multiples is testing the tail path by accident
+    rather than by declaration — the alignment axis is where that belongs."""
+    fit = _fit_or_skip()
+    caps, refusal = APP.size_class(_evidence(999, 64, 999), target="gemmini",
+                                   budget_s=300.0, tile=16, fit=fit)
+    if refusal:
+        pytest.skip("this class is not certifiable at this budget")
+    assert caps[0].m % 16 == 0 and caps[0].n % 16 == 0
