@@ -75,6 +75,36 @@ composition:
     demand cells like `movement/i8/partial/routing` that no real model presents, manufacturing uncovered
     cells nobody should build; composition is a property of how a program is assembled, not of the arithmetic
     in it
+shape_generalization:
+  required:
+  - probe: contraction.transpose
+    axis: layout
+    family: contraction
+    dtype: mxfp4
+    rank: 2
+    layout: transposed
+    m: 16
+    k: 16
+    n: 16
+    batch: 1
+  - probe: contraction.batched
+    axis: rank
+    family: contraction
+    dtype: mxfp4
+    rank: 3
+    layout: null
+    m: 16
+    k: 16
+    n: 16
+    batch: 2
+  axis_basis: 'the rank and operand-layout regions this target''s capability manifest DECLARES it handles,
+    via capability_probes. A (family, dtype, alignment) cell cannot express either: it says what arithmetic
+    the corpus must contain and nothing about whether the unit was ever asked for a batched region or
+    a transposed operand. Both are declared capabilities, so a target that claims them and is never asked
+    for one has an untested claim'
+  why_shape_corners_are_excluded: the corner probes (tile, tile+-1, prime, skinny) and the dtype probes
+    restate the alignment and dtype axes the cells already carry; requiring them again would inflate the
+    requirement with points already required under another name
 memory_mapping:
   required: {}
   region_counts: {}
@@ -83,7 +113,7 @@ memory_mapping:
   why: '''mx_gemmini'' declares no operand-store capacity we can derive, so no regime is required of the
     corpus -- that is ''we do not know'', never ''nothing is required'''
   regime_extents: {}
-  regime_dtype: mxfp6
+  regime_dtype: bf16
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -97,9 +127,9 @@ host_only:
   - reduction
   dtypes:
     movement: f32
-    reduction: f32
     normalization: f32
     elementwise_map: f32
+    reduction: f32
   observed_in:
     elementwise_map: 8739
     movement: 5504

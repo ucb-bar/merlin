@@ -18,6 +18,15 @@ provenance:
   - fp16
   - f32
   cells_no_writer_can_express: []
+  shape_regions_no_writer_can_express:
+  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''fp8_e4m3''): no builder materializes
+    a transposed-layout region for this family at this dtype'
+  - 'contraction.batched (rank axis, family ''contraction'', dtype ''fp8_e4m3''): no builder materializes
+    a rank-3 region for this family at this dtype'
+  - 'elementwise_map.batched (rank axis, family ''elementwise_map'', dtype ''fp8_e4m3''): no builder materializes
+    a rank-3 region for this family at this dtype'
+  - 'movement.batched (rank axis, family ''movement'', dtype ''fp8_e4m3''): no builder materializes a
+    rank-3 region for this family at this dtype'
   cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
     writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
     nothing can write; adding a builder for that op closes it

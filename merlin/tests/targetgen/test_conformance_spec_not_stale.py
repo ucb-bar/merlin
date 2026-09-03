@@ -83,6 +83,18 @@ def test_the_spec_states_the_basis_of_each_axis(spec_path):
     assert basis, f"{spec_path.name} records no axis_basis — regenerate"
     assert "ADMITTED ONLY" in (basis.get("dtype") or "")
 
+    # Every axis that lives at the top level states its own basis too, for the same reason: a reader
+    # who cannot tell what evidence an axis rests on cannot tell whether its cells are a measured
+    # demand or a declared one. The shape axis is DECLARED (a manifest capability), where the cells are
+    # admitted-and-observed, and a spec that did not say so would read as though the hardware had been
+    # seen doing it.
+    for axis in ("composition", "memory_mapping", "shape_generalization"):
+        block = doc.get(axis)
+        if block is None:
+            continue                                   # an axis a target does not carry
+        assert (block.get("axis_basis") or "").strip(), (
+            f"{spec_path.name}: the {axis!r} axis records no basis — regenerate")
+
 
 @pytest.mark.parametrize("spec_path", _specs(), ids=lambda p: p.stem)
 def test_composite_cells_name_the_primitives_that_evidence_them(spec_path):

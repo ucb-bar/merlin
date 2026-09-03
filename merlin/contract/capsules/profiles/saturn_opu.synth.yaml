@@ -12,6 +12,7 @@ provenance:
   precision_preference_kept: []
   precision_preference_dropped: []
   cells_no_writer_can_express: []
+  shape_regions_no_writer_can_express: []
   cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
     writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
     nothing can write; adding a builder for that op closes it

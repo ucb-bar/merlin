@@ -18,6 +18,27 @@ provenance:
   precision_preference_dropped:
   - fp8_e4m3
   cells_no_writer_can_express: []
+  shape_regions_no_writer_can_express:
+  - 'attention.transpose (layout axis, family ''attention'', dtype ''fp16''): no builder materializes
+    a transposed-layout region for this family at this dtype'
+  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''fp32''): no builder materializes
+    a transposed-layout region for this family at this dtype'
+  - 'attention.batched (rank axis, family ''attention'', dtype ''fp16''): no builder materializes a rank-3
+    region for this family at this dtype'
+  - 'contraction.batched (rank axis, family ''contraction'', dtype ''fp32''): no builder materializes
+    a rank-3 region for this family at this dtype'
+  - 'elementwise_map.batched (rank axis, family ''elementwise_map'', dtype ''fp32''): no builder materializes
+    a rank-3 region for this family at this dtype'
+  - 'movement.batched (rank axis, family ''movement'', dtype ''fp32''): no builder materializes a rank-3
+    region for this family at this dtype'
+  - 'normalization.batched (rank axis, family ''normalization'', dtype ''fp32''): no builder materializes
+    a rank-3 region for this family at this dtype'
+  - 'reduction.batched (rank axis, family ''reduction'', dtype ''fp32''): no builder materializes a rank-3
+    region for this family at this dtype'
+  - 'softmax.batched (rank axis, family ''softmax'', dtype ''fp32''): no builder materializes a rank-3
+    region for this family at this dtype'
+  - 'synchronization.batched (rank axis, family ''synchronization'', dtype ''''): no builder materializes
+    a rank-3 region for this family at this dtype'
   cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
     writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
     nothing can write; adding a builder for that op closes it

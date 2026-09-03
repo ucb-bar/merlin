@@ -163,6 +163,66 @@ composition:
     demand cells like `movement/i8/partial/routing` that no real model presents, manufacturing uncovered
     cells nobody should build; composition is a property of how a program is assembled, not of the arithmetic
     in it
+shape_generalization:
+  required:
+  - probe: contraction.transpose
+    axis: layout
+    family: contraction
+    dtype: int8
+    rank: 2
+    layout: transposed
+    m: 16
+    k: 16
+    n: 16
+    batch: 1
+  - probe: contraction.batched
+    axis: rank
+    family: contraction
+    dtype: int8
+    rank: 3
+    layout: null
+    m: 16
+    k: 16
+    n: 16
+    batch: 2
+  - probe: elementwise_map.batched
+    axis: rank
+    family: elementwise_map
+    dtype: int8
+    rank: 3
+    layout: null
+    m: 16
+    k: null
+    n: null
+    batch: 2
+  - probe: movement.batched
+    axis: rank
+    family: movement
+    dtype: int8
+    rank: 3
+    layout: null
+    m: 16
+    k: null
+    n: null
+    batch: 2
+  - probe: reduction.batched
+    axis: rank
+    family: reduction
+    dtype: int8
+    rank: 3
+    layout: null
+    m: 16
+    k: null
+    n: null
+    batch: 2
+  axis_basis: 'the rank and operand-layout regions this target''s capability manifest DECLARES it handles,
+    via capability_probes. A (family, dtype, alignment) cell cannot express either: it says what arithmetic
+    the corpus must contain and nothing about whether the unit was ever asked for a batched region or
+    a transposed operand. Both are declared capabilities, so a target that claims them and is never asked
+    for one has an untested claim'
+  why_shape_corners_are_excluded: the corner probes (tile, tile+-1, prime, skinny) and the dtype probes
+    restate the alignment and dtype axes the cells already carry; requiring them again would inflate the
+    requirement with points already required under another name
 memory_mapping:
   required:
     fits_double:

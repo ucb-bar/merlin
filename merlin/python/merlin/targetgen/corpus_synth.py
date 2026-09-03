@@ -154,6 +154,53 @@ def source_for_op(op: str) -> str | None:
     return "pytorch" if op in _OP_BODIES else None
 
 
+#: Ops whose builder materializes a RANK-3 (batched) region.
+#:
+#: Derived rather than assumed: it is the set of builders that emit the dialect's batched contraction op
+#: (``merlin_iface.matmul_batched``), and `test_perf_encoding_family`'s sibling in the shape-axis tests
+#: builds one and looks for that op, so the claim is checked rather than restated. Today it holds one
+#: entry, and that IS the finding the rank axis exists to surface: every target whose manifest declares
+#: batching, except the block-scaled one, declares a capability the corpus cannot yet ask for.
+_BATCHED_OPS = frozenset({"gemv_batched"})
+
+#: Ops whose builder materializes a non-default operand LAYOUT (a transposed or repacked operand).
+#:
+#: EMPTY, deliberately. The interface declares a contraction's weight ``[K, N]``; a quantized
+#: ``nn.Linear`` stores it ``[N, K]``, and the shape check correctly refuses the pair rather than
+#: loosening. Closing it means teaching the builder the transposed-RHS layout -- the iface's
+#: ``resident_pack`` already carries a ``layout`` attribute -- which is a feature, not a wiring gap. The
+#: builders that DO name a layout (``packed_rhs``, ``nhwc``) fix one internally; they do not offer the
+#: caller a choice, so they cannot exercise a layout axis.
+_LAYOUT_OPS: frozenset = frozenset()
+
+
+def op_for_shape(family: str, *, admitted_ops: set[str] | None = None, dtype: str | None = None,
+                 rank: int = 2, layout: str | None = None) -> str | None:
+    """The op that exercises ``family`` at ``rank``/``layout``, or ``None`` when nothing materializes it.
+
+    A thin constraint over :func:`op_for_family`: the family and dtype still decide WHICH op represents
+    the cell, and this additionally refuses one that cannot express the region's shape. ``None`` is a
+    reportable capability gap, never a reason to substitute a plain 2-D region -- a rank-3 requirement
+    met by a rank-2 capsule is an uncovered point that reads as covered.
+    """
+    op = op_for_family(family, admitted_ops=admitted_ops, dtype=dtype)
+    if op is None:
+        return None
+    if layout:
+        return op if op in _LAYOUT_OPS else None
+    if int(rank) >= 3:
+        # NARROWED BY THE GOLDEN, not just by the builder. The one batched builder emits a BLOCK-SCALED
+        # contraction, so it can be BUILT for any target and GRADED only where the dtype is block
+        # scaled. Choosing it anyway produced a rank-3 entry on every target that declares batching,
+        # which the generator would then have rejected downstream -- turning a reportable capability gap
+        # into a capsule that silently disappears. `ops_gradeable_at` is the same predicate the cell
+        # axis uses, so the two cannot disagree about what a dtype can grade.
+        pool = admitted_ops if admitted_ops is not None else available_ops()
+        batched = sorted(_BATCHED_OPS & ops_gradeable_at(str(dtype or ""), set(pool)))
+        return batched[0] if batched else None
+    return op
+
+
 def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
                   dtype: str | None = None) -> str | None:
     """The cheapest op that exercises ``family`` AND can actually be written at ``dtype``.
@@ -340,6 +387,12 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     entries: list[dict] = []
     unexpressable: list[str] = []
     unwritable: list[str] = []
+    #: Shape-axis regions no writer materializes. SEPARATE from `unwritable`, which is about CELLS: the
+    #: two are different claims and merging them would weaken a standing guarantee. Every cell every
+    #: target requires currently has a writer, and a test asserts exactly that; folding a declared-but-
+    #: unbuildable batched region into the same list would have made that assertion start failing for a
+    #: reason it was never about.
+    shape_unwritable: list[str] = []
     for cell in sorted(cells, key=lambda c: str(c.get("cell"))):
         family = str(cell.get("family") or "")
         dtype = str(cell.get("dtype") or "")
@@ -511,6 +564,57 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the SHAPE-GENERALIZATION axis --------------------------------------------------------------
+    # Rank and operand layout: the two things a `(family, dtype, alignment)` cell cannot say. A target's
+    # manifest DECLARES that a unit batches, or transposes, or accepts a packed layout; `capability_probes`
+    # has always turned those declarations into region descriptors, and nothing outside the fuzzer read
+    # them -- so a target could claim batching and never be asked for a batched region by anything that
+    # grades it.
+    #
+    # Reported, not raised, when no writer exists. A batched contraction is writable only through the
+    # block-scaled builder today, and a transposed RHS needs a builder that does not exist (the interface
+    # declares the weight [K, N] while a quantized `nn.Linear` stores it [N, K], which is a real feature
+    # rather than a check to loosen). Those are capability gaps to argue about with the probe NAMED, and
+    # the alternative -- leaving the axis out entirely, as before -- is the one that hides them.
+    for req in ((spec_doc.get("shape_generalization") or {}).get("required") or ()):
+        axis = str(req.get("axis") or "")
+        family = str(req.get("family") or "")
+        dtype = str(req.get("dtype") or "")
+        probe = str(req.get("probe") or f"{family}.{axis}")
+        op = op_for_shape(family, admitted_ops=pool, dtype=dtype,
+                          rank=int(req.get("rank") or 2), layout=req.get("layout"))
+        if op is None:
+            shape_unwritable.append(
+                f"{probe} ({axis} axis, family {family!r}, dtype {dtype!r}): no builder materializes a "
+                f"{'rank-' + str(req.get('rank')) if axis == 'rank' else str(req.get('layout')) + '-layout'} "
+                f"region for this family at this dtype")
+            continue
+        entry = {
+            "cat": "model_slices", "kind": "model_slice",
+            "name": f"{SYNTH_PREFIX}_{axis}_{probe.replace('.', '_')}",
+            "op": op, "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for the {axis} axis: this target's capability manifest declares "
+                f"{family!r} handles a {probe.split('.')[-1]} region, and a (family, dtype, alignment) "
+                f"cell cannot demand one. Shape and layout come from capability_probes"),
+            "label": "public", "modes": {},
+            "semantic": {"generalization_axis": axis},
+        }
+        for key, val in (("M", req.get("m")), ("K", req.get("k")), ("N", req.get("n"))):
+            if val:
+                entry[key] = int(val)
+        if int(req.get("batch") or 1) > 1:
+            # `B` is the key the batched builder reads. Spelling it `batch` produced an entry that built
+            # at the builder's DEFAULT batch instead of the probe's, so the capsule would have carried a
+            # batch nobody derived while looking like it carried the declared one.
+            entry["B"] = int(req["batch"])
+        if req.get("layout"):
+            entry["layout"] = str(req["layout"])
+        _mark_source(entry)
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     # ---- the ROSTER axis ----------------------------------------------------------------------------
     # The declared roster is the one thing the workload spec says that nothing consumed. Every capsule
     # above is a SLICE -- a cell, a regime, a lane, a derived micro model -- and the claim the whole
@@ -599,6 +703,11 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "precision_preference_kept": kept,
             "precision_preference_dropped": dropped,
             "cells_no_writer_can_express": unwritable,
+            # The rank/layout regions the manifest declares and nothing can build. Reported here rather
+            # than raised: unlike a cell, a declared shape capability with no builder is a gap to argue
+            # about with the probe named, and leaving the axis out entirely -- which is what happened
+            # before it existed -- is the version that hides it.
+            "shape_regions_no_writer_can_express": shape_unwritable,
             "cells_no_writer_note": (
                 "a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch writer "
                 "cannot express. Reported as an uncovered cell to argue about rather than emitted as an "

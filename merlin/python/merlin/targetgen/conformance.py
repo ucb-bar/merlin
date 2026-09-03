@@ -488,6 +488,69 @@ def host_only_dtypes(captures: dict, families) -> dict:
     return out
 
 
+#: What the shape axis rests on. One string, because it is stated on the derived path and on the
+#: unreadable-manifest path alike, and two copies would drift into two claims.
+_SHAPE_AXIS_BASIS = (
+    "the rank and operand-layout regions this target's capability manifest DECLARES it handles, via "
+    "capability_probes. A (family, dtype, alignment) cell cannot express either: it says what arithmetic "
+    "the corpus must contain and nothing about whether the unit was ever asked for a batched region or a "
+    "transposed operand. Both are declared capabilities, so a target that claims them and is never asked "
+    "for one has an untested claim")
+
+
+def _shape_axis(target: str) -> dict:
+    """The rank and layout regions ``target``'s own manifest declares it handles.
+
+    Derived from :mod:`merlin.targetgen.capability_probes`, which already turns each family's declared
+    capability into region descriptors -- ``batch`` into a rank-3 region, ``transpose`` and each declared
+    layout into an operand-layout variant. Nothing consumed them outside the fuzzer, so a target could
+    declare batching and never be asked for a batched region by anything that grades it.
+
+    Fails soft: a target whose capability map cannot be read contributes an empty axis with the reason,
+    because an unreadable manifest is not a target that declares no batching.
+    """
+    try:
+        from merlin.targetgen.capability_probes import synthesize as _probes
+        from merlin.targetgen.eligibility import capability_map_for_target
+        cap_map = capability_map_for_target(target) or {}
+        probes = _probes(cap_map, target=target)
+    except Exception as exc:                               # noqa: BLE001 -- unreadable is not empty
+        return {
+            "required": [],
+            "unavailable": f"{type(exc).__name__}: {exc}",
+            # The basis is stated even when nothing could be derived. An axis with no basis reads as an
+            # axis nobody thought about, and "the manifest could not be read" is a different and more
+            # useful fact than "this target declares no batched or transposed region".
+            "axis_basis": _SHAPE_AXIS_BASIS,
+        }
+
+    required = []
+    for pr in probes:
+        d = pr.descriptor
+        rank = int(getattr(d, "rank", 2) or 2)
+        layout = getattr(d, "layout", None)
+        if rank < 3 and not layout:
+            continue                                       # a plain 2-D region: the cells already say it
+        required.append({
+            "probe": pr.name,
+            "axis": "rank" if rank >= 3 else "layout",
+            "family": d.family,
+            "dtype": d.in_dtype,
+            "rank": rank,
+            "layout": layout,
+            "m": d.m, "k": d.k, "n": d.n,
+            "batch": int(getattr(d, "batch", 1) or 1),
+        })
+    return {
+        "required": sorted(required, key=lambda r: (r["axis"], r["probe"])),
+        "axis_basis": _SHAPE_AXIS_BASIS,
+        "why_shape_corners_are_excluded": (
+            "the corner probes (tile, tile+-1, prime, skinny) and the dtype probes restate the alignment "
+            "and dtype axes the cells already carry; requiring them again would inflate the requirement "
+            "with points already required under another name"),
+    }
+
+
 def spec(target: str, captures: dict[str, str | Path], *,
          declared: dict[str, dict] | None = None,
          personas: dict[str, dict] | None = None) -> dict:
@@ -539,6 +602,18 @@ def spec(target: str, captures: dict[str, str | Path], *,
                 "manufacturing uncovered cells nobody should build; composition is a property of how a "
                 "program is assembled, not of the arithmetic in it"),
         },
+        # THE SHAPE-GENERALIZATION AXIS. `capability_probes` already enumerates, per family and from the
+        # manifest's own declarations, the region shapes a target claims to handle -- and until now it
+        # fed only the fuzzer, so nothing in the REQUIREMENT said the corpus had to contain them.
+        #
+        # Only two of its axes reach here, deliberately. The shape-corner probes (tile, tile+-1, prime,
+        # skinny) restate the alignment axis the cells already carry, and the dtype probes restate the
+        # cells themselves; adding either would inflate the requirement with points already required
+        # under another name. Rank and layout are the two the cell vocabulary genuinely cannot express:
+        # a `(family, dtype, alignment)` cell says nothing about whether the unit was asked for a
+        # BATCHED region or a TRANSPOSED operand, and both are things a manifest declares and a compiler
+        # gets wrong independently of arithmetic.
+        "shape_generalization": _shape_axis(target),
         "memory_mapping": {
             "required": mem.get("by_regime") or {},
             "region_counts": mem.get("region_counts") or {},

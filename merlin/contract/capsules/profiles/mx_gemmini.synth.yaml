@@ -7,11 +7,14 @@ provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: mx_gemmini
   n_required_cells: 10
-  n_entries: 15
+  n_entries: 16
   budget: 160
   precision_preference_kept: []
   precision_preference_dropped: []
   cells_no_writer_can_express: []
+  shape_regions_no_writer_can_express:
+  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''mxfp4''): no builder materializes
+    a transposed-layout region for this family at this dtype'
   cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
     writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
     nothing can write; adding a builder for that op closes it
@@ -359,4 +362,26 @@ capsules:
     generalization_axis: composition
   pass_requirements:
   - region-partition
+  - target-isa-lowering
+- cat: model_slices
+  kind: model_slice
+  name: SY_rank_contraction_batched
+  op: gemv_batched
+  operand_dtype: mxfp4
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the rank axis: this target''s capability manifest declares ''contraction''
+    handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
+    come from capability_probes'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: rank
+  M: 16
+  K: 16
+  N: 16
+  B: 2
+  pass_requirements:
   - target-isa-lowering
