@@ -66,8 +66,15 @@ def main(argv=None) -> int:
     done: list[dict] = []
     manifest = logs / "campaign.jsonl"
 
-    def _reap(block: bool) -> None:
-        while running:
+    def _reap(block: bool) -> bool:
+        """Retire finished children. Returns True once at least one slot is free.
+
+        ⚠️ The obvious loop shape is wrong and was measured to be: reaping one child and then
+        CONTINUING to loop while `running` is non-empty drains the pool to zero before the caller
+        gets its slot back, which turns a rolling window into fixed batches and makes every batch as
+        slow as its slowest shape. Return as soon as a slot opens.
+        """
+        while True:
             for i, (proc, path, t0) in enumerate(list(running)):
                 if proc.poll() is not None:
                     rec = {"workload": path.name, "rc": proc.returncode,
@@ -79,14 +86,10 @@ def main(argv=None) -> int:
                     print(f"[{len(done)}/{len(shapes)}] {path.name} rc={proc.returncode} "
                           f"{rec['wall_s']:.0f}s", flush=True)
                     running.pop(i)
-                    break
-            else:
-                if not block:
-                    return
-                time.sleep(5)
-                continue
-            if not block:
-                return
+                    return True
+            if not block or not running:
+                return bool(running) is False
+            time.sleep(5)
 
     for path in shapes:
         while len(running) >= a.slots:
@@ -110,6 +113,7 @@ def main(argv=None) -> int:
 
     while running:
         _reap(block=True)
+
 
     ok = sum(1 for d in done if d["rc"] == 0)
     print(f"\n{ok}/{len(done)} shapes completed cleanly; manifest {manifest}")
