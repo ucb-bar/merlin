@@ -3,7 +3,7 @@ title: "Design note: where the whole-model codegen-vs-hand-C gap lives (it is th
 kind: design
 status: current
 owner: core
-last_verified: 2026-07-19
+last_verified: 2026-09-03
 related: [expert_gap_attribution]
 code_refs: [build_tools/scripts/k1_codegen_vs_handc.py, merlin/python/merlin/mining/k1.py, merlin/python/merlin/llvmlower/impr_features.py, merlin/runtime/backends/ours_board/ours_gemm_rvv_shim.c]
 ---
@@ -122,3 +122,41 @@ static M) gives the codegen the shim's kernel and closes the ~10 s rdt2 gap at i
 - **"Our matmul kernel is fundamentally worse than the expert's."** No — our own hand-C shim (same
   inlined v3 micro-kernel) at MR=4 is within 8.5% of XNNPACK; the codegen just fails to emit the
   MR>1 register block the shim uses.
+
+## UPDATE 2026-09-03: the dominant term above is CLOSED, and the conclusion no longer holds
+
+The "what would close it" section called for giving the codegen the shim's MR>1 register block. That
+landed (per-op register blocking, integer A-operand scalarization to `vwmacc.vx`, and the tile-epilogue
+self-copy erase that MR>1 implies), and the emitted matmul is no longer the gap.
+
+Measured on the cross-framework ceiling matrix (`kernels/ceiling_drivers/multishape_compare.py`,
+square fp32 GEMM, every column a bare-metal ELF timed over the same inner-compute scope, bit-exact
+verified):
+
+| 128^3 | retired instructions | vs XNNPACK |
+|---|---|---|
+| XNNPACK `xnn_f32_gemm_ukernel_1x4v__rvv` | 798,857 | 1.00x |
+| OpenBLAS `sgemm_kernel_8x8_zvl128b` | 664,811 | 1.20x |
+| ours, hand-written intrinsics (the ceiling) | 399,241 | 2.00x |
+| **ours, EMITTED, `perop_register_block`** | **394,442** | **2.03x** |
+| ours, emitted, `accumulator_resident_wholemodel_vf_mrpad` | 458,022 | 1.74x |
+| ours, emitted, best lever available when this note was written | 10,002,281 | 0.08x |
+
+The same ordering holds at 32^3 (2.14x) and 64^3 (2.08x). So the emitted matmul went from ~12x WORSE
+than XNNPACK to ~2x better, and now matches our own hand-written intrinsic ceiling to within 1.2%.
+
+⚠️ **Scope of that claim.** Spike here reports `cycles == instret` exactly, so this is a RETIRED
+INSTRUCTION comparison on a functional simulator, not cycles on silicon. It says we emit ~2x fewer
+instructions than XNNPACK; it does not by itself say we run 2x faster, since it accounts for no IPC
+difference. A K1 board measurement of the same kernels is what would settle that.
+
+**What this changes.** The whole-model gap is no longer explained by the contraction. On small_llama
+fp32 we are 3.685x behind ExecuTorch (9,320,818 ns vs 2,529,403 ns, protocol-matched, one bundle),
+and the dynamic profile puts only 45.11% of real work inside `forward` at all -- against a copy family
+at 33.11% and scalar transcendentals at 16.48%. The open terms are now the ones AROUND the GEMM:
+the residual rank-generic copies (`pass:tile-epilogue-store-once`, which needs a new module -- upstream
+bufferization creates those copies, no pass of ours does), the scalar libm activations
+(`pass:llvmlower/act_poly.py`), and elementwise ops that lower to scalar rather than vector code.
+
+The "what was refuted" list below stands, with one entry now inverted: our emitted matmul is no longer
+worse than the expert's -- it is better, on this metric.
