@@ -217,3 +217,65 @@ def test_a_host_lane_capsule_is_written_by_the_frontend_or_reported(target):
         if fam in narrow:
             continue                               # the narrow axis carries this family
         assert key in holes or made, f"{target}: {key} produced neither a capsule nor a reported hole"
+
+
+# --------------------------------------------------------------------- the epilogue axis
+
+@pytest.mark.parametrize("target", _TARGETS)
+def test_the_epilogue_axis_evidences_every_stage_it_requires(target):
+    """Two sources, and each required stage says which one it came from. Deriving from the manifest
+    alone would have been a single-target axis: only one target in this repo declares a family
+    `composed_with` a contraction, and the others are not fusion-less -- atlas's own ISA resolves
+    `TensorComputeUnary` for a relu stage and `TensorComputeBinary` for a bias stage, so its manifest
+    under-declares against its RTL."""
+    axis = CF._epilogue_axis(target)
+    for req in axis.get("required") or []:
+        assert req["evidenced_by"], f"{target}/{req['stage']} is required with no evidence"
+        for src in req["evidenced_by"]:
+            assert src in ("manifest_composed_with", "isa_instruction_class")
+        if "isa_instruction_class" in req["evidenced_by"]:
+            assert req["isa_classes"], "an ISA-evidenced stage must name the class it resolved"
+    # A stage neither source evidences is rejected WITH its reason, never silently absent.
+    for rej in axis.get("rejected") or []:
+        assert rej.get("why")
+
+
+def test_a_target_whose_isa_declares_a_fusion_role_gets_the_stage():
+    """The half a manifest-only derivation misses, pinned on the target that exhibits it."""
+    axis = CF._epilogue_axis("atlas")
+    by_stage = {r["stage"]: r for r in (axis.get("required") or [])}
+    if not by_stage:
+        pytest.skip("atlas resolves no instruction taxonomy in this checkout")
+    assert "relu" in by_stage, "atlas's ISA resolves a unary tensor-compute class for a relu stage"
+    assert by_stage["relu"]["evidenced_by"] == ["isa_instruction_class"], (
+        "atlas declares no composed_with, so the manifest cannot be what evidences this")
+
+
+@pytest.mark.parametrize("target", ["gemmini"])
+def test_every_required_stage_becomes_a_capsule(target):
+    """The point of the axis. A (family, dtype, alignment) cell cannot say WHICH epilogue rides the
+    contraction, so a corpus derived from cells alone tests whichever single stage the cell axis picked
+    and reports the fusion capability covered."""
+    doc = _spec(target)
+    required = {r["stage"] for r in ((doc.get("epilogue") or {}).get("required") or [])}
+    if not required:
+        pytest.skip(f"{target} evidences no epilogue stage")
+    made = {tuple(e.get("epilogue") or [])[0]
+            for e in CS.synthesize(doc)["capsules"]
+            if (e.get("semantic") or {}).get("generalization_axis") == "epilogue"}
+    assert made == required, f"{target}: required {sorted(required)}, synthesized {sorted(made)}"
+
+
+def test_a_pooling_stage_leaves_its_geometry_to_the_generator():
+    """Synthesis writes extents as tile-relative TOKENS because it does not know the target's edge, so
+    it cannot factor the rows into an H x W. Declaring the window (2x2 stride 2, which is the shape a
+    pooling datapath has) and deriving the input geometry where the edge is known is the split that
+    keeps both halves honest -- computing it in synthesis raised on `int('tile')`."""
+    doc = _spec("gemmini")
+    pooled = [e for e in CS.synthesize(doc)["capsules"]
+              if "maxpool" in (e.get("epilogue") or [])]
+    if not pooled:
+        pytest.skip("gemmini evidences no maxpool stage")
+    for e in pooled:
+        assert e.get("pool_size") == [2, 2] and e.get("pool_stride") == [2, 2]
+        assert "pool_in_dims" not in e, "the input geometry is the generator's to derive"

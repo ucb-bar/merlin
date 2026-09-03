@@ -243,6 +243,34 @@ host_lane:
     which is precisely the work the compiler has to place on the host. Both sides come from the same two
     sources the cells do, read at the resolution the cells discard -- a region's dtype decides whether
     the hardware may take it, so a family histogram cannot express it
+epilogue:
+  required:
+  - stage: relu
+    family: elementwise_map
+    evidenced_by:
+    - isa_instruction_class
+    isa_classes:
+    - TensorComputeUnary
+  - stage: bias_add
+    family: elementwise_map
+    evidenced_by:
+    - isa_instruction_class
+    isa_classes:
+    - TensorComputeBinary
+  rejected:
+  - stage: acc_scale
+    family: elementwise_map
+    why: the manifest declares no family fused-only for it and this target's instruction taxonomy resolves
+      no class for the role it needs
+  - stage: maxpool
+    family: reduction
+    why: the manifest declares no family fused-only for it and this target's instruction taxonomy resolves
+      no class for the role it needs
+  axis_basis: the epilogue stages this target can fuse onto a contraction, evidenced by its capability
+    manifest declaring the stage's family fused-only OR by its own instruction taxonomy resolving a class
+    for the role the stage needs. A (family, dtype, alignment) cell cannot express WHICH epilogue rides
+    the contraction, so a corpus derived from cells alone tests one stage and calls the fusion capability
+    covered
 memory_mapping:
   required: {}
   region_counts: {}
@@ -251,7 +279,7 @@ memory_mapping:
   why: '''atlas'' declares no operand-store capacity we can derive, so no regime is required of the corpus
     -- that is ''we do not know'', never ''nothing is required'''
   regime_extents: {}
-  regime_dtype: fp8_e4m3
+  regime_dtype: bf16
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -262,8 +290,8 @@ host_only:
   - normalization
   - reduction
   dtypes:
-    normalization: f32
     reduction: f32
+    normalization: f32
   observed_in:
     normalization: 876
     reduction: 2166

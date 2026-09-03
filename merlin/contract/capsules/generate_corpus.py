@@ -1281,6 +1281,10 @@ def _write_capsule(entry, binding, out_root):
     dirty = _backfill_required_classes(cap, binding) or dirty
     _validate_lane_declaration(entry, binding)
     dirty = _carry_declared_blocks(entry, cap) or dirty
+    # AFTER the declared blocks are carried, because `lanes` reaches the capsule THERE. Checking before
+    # it read an empty lanes block and passed everything -- a verification that cannot see what it
+    # verifies is worse than none, because it reports the assertion as checked.
+    _verify_a_forbidden_lane_is_provable(d, cap, getattr(binding, "target", None))
     # THE TOLERANCE MUST BE FALSIFIABLE AT THIS GOLDEN'S SCALE, and here is the first point at which
     # both the capsule and its golden exist for EVERY writer -- the same reason the generalization stamp
     # lives here. A profile declares ONE absolute tolerance for a whole target, which is the right shape
@@ -1338,6 +1342,37 @@ def _carry_declared_blocks(entry: dict, cap: dict) -> bool:
         cap[key] = dict(value) if isinstance(value, dict) else value
         dirty = True
     return dirty
+
+
+def _verify_a_forbidden_lane_is_provable(d: Path, cap: dict, target: "str | None") -> None:
+    """A capsule may only forbid the mesh if its own program has nothing the mesh may legitimately take.
+
+    CLASSIFIED, not predicted. Whether a capsule is host-only is a property of the regions its written
+    interface contains, and the only honest way to know is to ask the classifier the coverage gate asks
+    (`boundary.profile_capsule`). Deriving it from the family instead is nearly right and not right
+    enough: `normalization` decomposes into a reduction and an elementwise map, so the family-level rule
+    catches a target that admits either -- and still passed a target admitting NEITHER whose rmsnorm
+    program turned out to contain an eligible region anyway.
+
+    Why it must raise rather than quietly drop the assertion. `forbid: [on_mesh]` says the submission
+    must NOT accelerate this; on a program containing admitted work that is a demand to leave
+    performance on the table, and a compiler doing the right thing is recorded as violating a lane. The
+    capsule is wrong, not the compiler, and the generator is where that is still cheap to fix.
+    """
+    if not target:
+        return
+    forbid = {str(x) for x in ((cap.get("lanes") or {}).get("forbid") or ())}
+    if "on_mesh" not in forbid:
+        return
+    from merlin.targetgen import boundary as BD
+    prof = BD.profile_capsule(d, str(target))
+    if prof.kind == BD.HOST_ONLY:
+        return
+    raise ValueError(
+        f"{cap.get('name')!r} forbids `on_mesh`, but {str(target)!r} classifies its program as "
+        f"{prof.kind!r} rather than host-only: it contains region(s) the manifest admits, so the "
+        f"assertion demands the compiler decline work it is entitled to do. Choose a family whose "
+        f"decomposition this target admits nothing of, or drop the forbid")
 
 
 def _validate_lane_declaration(entry: dict, binding) -> None:
@@ -1654,7 +1689,22 @@ def _resolve_flat_extents(entry: dict, binding) -> dict:
         if out is None:
             out = dict(entry)
         out[key] = resolve_extent(value, int(tile))
-    return out if out is not None else entry
+    resolved = out if out is not None else entry
+    # A POOLING EPILOGUE NEEDS ITS SPATIAL SHAPE, and this is the first point at which it can be had:
+    # the entry's rows are known only after the tile-relative tokens resolve. A synthesized entry
+    # declares the pool WINDOW (a 2x2 with stride 2 is the shape every pooling datapath has) and leaves
+    # the input geometry to be derived, because the number of rows to factor is the target's tile edge.
+    if "maxpool" in [str(x) for x in (resolved.get("epilogue") or ())] and not resolved.get("pool_in_dims"):
+        rows = int(resolved.get("M") or 0)
+        side = int(rows ** 0.5)
+        if side >= 2 and side * side == rows:
+            resolved = {**resolved, "pool_in_dims": [side, side]}
+        else:
+            # NOT a square number of rows: there is no H x W the rows can mean. Left absent so the
+            # builder refuses with its own message rather than this inventing a geometry that silently
+            # pools over the wrong axis.
+            pass
+    return resolved
 
 
 def target_encodings(target: str) -> list[str]:

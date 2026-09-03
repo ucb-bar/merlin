@@ -154,10 +154,10 @@ host_only:
   - normalization
   - reduction
   dtypes:
-    reduction: f32
     elementwise_map: f32
     movement: f32
     normalization: f32
+    reduction: f32
   observed_in:
     elementwise_map: 8739
     movement: 5504

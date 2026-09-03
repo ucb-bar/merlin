@@ -742,6 +742,51 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the EPILOGUE axis --------------------------------------------------------------------------
+    # WHICH stage rides the contraction. The cells already say that a fused-only family must be carried
+    # as an epilogue rather than standalone -- but they cannot say WHICH one, so a corpus derived from
+    # cells alone picks a single representative (gemmini got `relu` for elementwise_map and `acc_scale`
+    # for reduction) and reports the fusion capability covered. The hand-authored corpus tests four
+    # stages and their combinations, which is the level this axis is for.
+    #
+    # The requirement side evidences each stage from the manifest or from the target's own instruction
+    # taxonomy; here we only have to write one contraction per stage.
+    for _st in ((spec_doc.get("epilogue") or {}).get("required") or ()):
+        stage = str(_st.get("stage") or "")
+        if not stage:
+            continue
+        dtype = kept[0] if kept else (sorted(admitted_dtypes)[0] if admitted_dtypes else "")
+        if not dtype:
+            unexpressable.append(f"epilogue axis: no admitted dtype to build a {stage!r} stage at")
+            continue
+        entry = {
+            "cat": "layers", "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_epilogue_{stage}",
+            "op": "matmul", "operand_dtype": dtype,
+            "lhs": "A0", "weight": "W", "out": "Y0",
+            "epilogue": [stage],
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for the epilogue axis: this target can fuse a {stage!r} stage onto a "
+                f"contraction (evidenced by {_st.get('evidenced_by')}), and a (family, dtype, "
+                f"alignment) cell cannot demand a particular stage -- so without this the capability is "
+                f"reported covered by whichever single stage the cell axis happened to pick"),
+            "label": "public", "modes": {},
+            "semantic": {"generalization_axis": "epilogue"},
+            **extents_for("aligned", probes),
+        }
+        # A POOLING STAGE COMMITS FEWER ROWS THAN IT READS, so the builder needs the geometry: without
+        # `pool_in_dims` it cannot know what the contraction's rows mean spatially. It is NOT derived
+        # here -- the extents at this point are tile-relative TOKENS (`tile`, `2*tile`), because the
+        # whole reason synthesis writes them that way is that it does not know the target's edge. The
+        # generator resolves them against the edge and derives the geometry there, which is the only
+        # place both facts are in hand.
+        if stage == "maxpool":
+            entry["pool_size"] = [2, 2]
+            entry["pool_stride"] = [2, 2]
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     # ---- the ROSTER axis ----------------------------------------------------------------------------
     # The declared roster is the one thing the workload spec says that nothing consumed. Every capsule
     # above is a SLICE -- a cell, a regime, a lane, a derived micro model -- and the claim the whole

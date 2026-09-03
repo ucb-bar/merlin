@@ -571,6 +571,82 @@ _SHAPE_AXIS_BASIS = (
     "for one has an untested claim")
 
 
+#: Epilogue stages the capsule builder can actually emit. Not a guess about hardware -- it is the
+#: writer's vocabulary, and a stage outside it could be required and never written.
+_BUILDER_EPILOGUE_STAGES = ("relu", "acc_scale", "bias_add", "maxpool")
+
+
+def _epilogue_axis(target: str) -> dict:
+    """Which epilogue stages ``target`` must be asked to fuse onto a contraction.
+
+    TWO SOURCES, because either alone is demonstrably incomplete.
+
+    The capability manifest declares a family ``composed_with`` a contraction when that family exists
+    only as an epilogue -- which is exactly a fusion capability. But only one target in this repo
+    declares it, and the others are not fusion-less: atlas's own ISA resolves ``TensorComputeUnary`` for
+    a relu stage and ``TensorComputeBinary`` for a bias stage, so its manifest under-declares against
+    its RTL. Deriving from the manifest alone would have produced an epilogue requirement for one target
+    and called the rest incapable, which is the single-target overfit this axis exists to remove.
+
+    So a stage is required when the manifest says its family is fused-only, OR the target's own
+    instruction taxonomy resolves a class for the role the stage needs. Each stage records which of the
+    two evidenced it, because "the manifest declares it" and "the ISA has an instruction for it" are
+    different claims and a reader must be able to tell them apart.
+    """
+    from merlin.targetgen import isa_taxonomy as IT
+    from merlin.targetgen import semantic_families as sf
+
+    try:
+        from merlin.targetgen.eligibility import capability_map_for_target
+        cap_map = capability_map_for_target(target) or {}
+    except Exception:                              # noqa: BLE001 -- unreadable manifest evidences nothing
+        cap_map = {}
+    fused_families = {f for f, c in cap_map.items() if tuple(getattr(c, "composed_with", ()) or ())}
+
+    base: set = set()
+    taxonomy = None
+    try:
+        taxonomy = IT.taxonomy_for_target(target)
+        base = set(IT.required_classes_for_op(taxonomy, op="matmul"))
+    except Exception:                              # noqa: BLE001 -- no taxonomy is not "no capability"
+        taxonomy = None
+
+    required, rejected = [], []
+    for stage in _BUILDER_EPILOGUE_STAGES:
+        family = sf.from_op(stage)
+        by_manifest = family in fused_families
+        classes: list = []
+        if taxonomy is not None:
+            try:
+                classes = sorted(set(IT.required_classes_for_op(
+                    taxonomy, op="matmul", epilogue=(stage,))) - base)
+            except Exception:                      # noqa: BLE001
+                classes = []
+        if by_manifest or classes:
+            required.append({
+                "stage": stage, "family": family,
+                "evidenced_by": ([  "manifest_composed_with"] if by_manifest else [])
+                                + (["isa_instruction_class"] if classes else []),
+                "isa_classes": classes,
+            })
+        else:
+            rejected.append({
+                "stage": stage, "family": family,
+                "why": ("the manifest declares no family fused-only for it and this target's "
+                        "instruction taxonomy resolves no class for the role it needs"),
+            })
+    return {
+        "required": required,
+        "rejected": rejected,
+        "axis_basis": (
+            "the epilogue stages this target can fuse onto a contraction, evidenced by its capability "
+            "manifest declaring the stage's family fused-only OR by its own instruction taxonomy "
+            "resolving a class for the role the stage needs. A (family, dtype, alignment) cell cannot "
+            "express WHICH epilogue rides the contraction, so a corpus derived from cells alone tests "
+            "one stage and calls the fusion capability covered"),
+    }
+
+
 def _shape_axis(target: str) -> dict:
     """The rank and layout regions ``target``'s own manifest declares it handles.
 
@@ -693,6 +769,10 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # admit, which is a far larger and more representative set -- and it is the work a real model
         # actually hands the host.
         "host_lane": HL,
+        # WHICH epilogue rides the contraction. The cells say a fused-only family must be carried as an
+        # epilogue; they cannot say which stage, so a corpus derived from them tests one and reports the
+        # capability covered.
+        "epilogue": _epilogue_axis(target),
         "memory_mapping": {
             "required": mem.get("by_regime") or {},
             "region_counts": mem.get("region_counts") or {},

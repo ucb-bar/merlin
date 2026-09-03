@@ -7,7 +7,7 @@ provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: atlas
   n_required_cells: 12
-  n_entries: 20
+  n_entries: 22
   budget: 160
   precision_preference_kept:
   - fp8_e4m3
@@ -401,6 +401,56 @@ capsules:
   pass_requirements:
   - region-partition
   - target-isa-lowering
+- cat: layers
+  kind: layer
+  name: SY_epilogue_relu
+  op: matmul
+  operand_dtype: fp8_e4m3
+  lhs: A0
+  weight: W
+  out: Y0
+  epilogue:
+  - relu
+  source_role: derived_sweep
+  source_reference: 'synthesized for the epilogue axis: this target can fuse a ''relu'' stage onto a contraction
+    (evidenced by [''isa_instruction_class'']), and a (family, dtype, alignment) cell cannot demand a
+    particular stage -- so without this the capability is reported covered by whichever single stage the
+    cell axis happened to pick'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: epilogue
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_epilogue_bias_add
+  op: matmul
+  operand_dtype: fp8_e4m3
+  lhs: A0
+  weight: W
+  out: Y0
+  epilogue:
+  - bias_add
+  source_role: derived_sweep
+  source_reference: 'synthesized for the epilogue axis: this target can fuse a ''bias_add'' stage onto
+    a contraction (evidenced by [''isa_instruction_class'']), and a (family, dtype, alignment) cell cannot
+    demand a particular stage -- so without this the capability is reported covered by whichever single
+    stage the cell axis happened to pick'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: epilogue
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
 - cat: model
   kind: model
   op: model

@@ -63,7 +63,7 @@ def test_every_required_cell_becomes_an_entry(target):
     #: Every non-cell entry must say which axis asked for it. These are the axis markers the
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
     axes = ("memory regime", "host-only family", "composition axis", "roster axis",
-            "rank axis", "layout axis", "host lane")
+            "rank axis", "layout axis", "host lane", "epilogue axis")
     unattributed = [e["name"] for e in other
                     if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"

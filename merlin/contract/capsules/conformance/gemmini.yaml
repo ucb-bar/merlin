@@ -251,6 +251,34 @@ host_lane:
     which is precisely the work the compiler has to place on the host. Both sides come from the same two
     sources the cells do, read at the resolution the cells discard -- a region's dtype decides whether
     the hardware may take it, so a family histogram cannot express it
+epilogue:
+  required:
+  - stage: relu
+    family: elementwise_map
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
+  - stage: acc_scale
+    family: elementwise_map
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
+  - stage: bias_add
+    family: elementwise_map
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
+  - stage: maxpool
+    family: reduction
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
+  rejected: []
+  axis_basis: the epilogue stages this target can fuse onto a contraction, evidenced by its capability
+    manifest declaring the stage's family fused-only OR by its own instruction taxonomy resolving a class
+    for the role the stage needs. A (family, dtype, alignment) cell cannot express WHICH epilogue rides
+    the contraction, so a corpus derived from cells alone tests one stage and calls the fusion capability
+    covered
 memory_mapping:
   required:
     fits_double:
