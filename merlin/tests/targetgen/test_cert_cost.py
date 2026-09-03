@@ -105,3 +105,47 @@ def test_the_size_metric_is_the_largest_operand_and_tolerates_a_symbolic_dim():
     # A symbolic dim makes THAT operand unmeasurable, not the capsule.
     assert CC.capsule_elements({"inputs": [
         {"name": "A0", "shape": ["?", 32]}, {"name": "W", "shape": [8, 8]}]}) == 64
+
+
+def test_the_fit_predicts_capsules_it_has_never_seen():
+    """The falsification that matters: refit without each capsule, then predict it. A line through
+    its own inputs proves nothing — this asks whether the model generalizes to a size it was not
+    told about, which is exactly what sizing a NEW capsule requires of it.
+
+    The bound is deliberately loose. Measured on gemmini the median absolute error is 17.5% and the
+    worst 51%, so this is a sizing instrument rather than a stopwatch; the assertion exists to catch
+    a model that has stopped predicting at all, not to pretend to a precision it does not have."""
+    import statistics
+
+    from merlin.common.paths import merlin_dir
+
+    timings = CC._timing_records("gemmini")
+    sizes = CC._capsule_sizes([merlin_dir() / "contract" / "capsules"])
+    points = [(sizes[n], s) for n, (s, _src) in sorted(timings.items()) if sizes.get(n)]
+    if len(points) < CC._MIN_SAMPLES + 1:
+        pytest.skip("not enough measured capsules to hold one out")
+
+    def _line(pts):
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        mx, my = statistics.mean(xs), statistics.mean(ys)
+        den = sum((x - mx) ** 2 for x in xs)
+        if den == 0:
+            return None
+        slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / den
+        return my - slope * mx, slope
+
+    errors = []
+    for i in range(len(points)):
+        held = _line(points[:i] + points[i + 1:])
+        if held is None:
+            continue
+        intercept, slope = held
+        x, y = points[i]
+        errors.append(abs((intercept + slope * x) - y) / y)
+    assert errors
+    assert statistics.median(errors) < 0.35, (
+        f"the cost model no longer predicts held-out capsules (median error "
+        f"{statistics.median(errors):.0%}); sizing against it would be guessing")
+    assert sum(1 for e in errors if e <= 0.5) >= 0.8 * len(errors), (
+        "fewer than four in five held-out capsules land within 50% of prediction")

@@ -9,13 +9,19 @@ So it is measured. Every graded run already records ``sim_active_s`` per capsule
 (``capsule_grade``'s timing block), and the corpus records each capsule's declared operands. Joining
 the two gives a cost model per target, and the shape of it is the useful part:
 
-    gemmini, n=15 measured L3 runs:  seconds ~= 105.5 + 0.0596 * elements   (R^2 = 0.914)
+    gemmini, n=32 measured runs:  seconds ~= 114.8 + 0.0605 * elements   (R^2 = 0.70)
 
-A ~105 second FLOOR that a capsule pays for existing, and ~0.06 s per operand element on top. The
-floor dominates below ~1769 elements, and today's capsules are 256-512 — so the corpus is paying
+A ~115 second FLOOR that a capsule pays for existing, and ~0.06 s per operand element on top. The
+floor dominates below ~1900 elements, and today's capsules are 256-512 — so the corpus is paying
 almost the whole cost of a certification to exercise a 16x16 tile, and could grow roughly sevenfold
 before size is what it is paying for. That is a fact about this hardware and this oracle, not a
 guess, and it is why sizing belongs here rather than in a constant someone picked.
+
+HOW WELL IT PREDICTS, measured rather than hoped. Leave-one-out over those 32 runs -- refit without
+each capsule, then predict it -- gives a median absolute error of 17.5%, p90 31%, worst case 51%,
+with 31 of 32 inside 50%. So it is a sizing instrument, not a stopwatch: budget with margin and
+expect a capsule sized to 300 s to sometimes land near 350. That is the honest reading of an R^2 of
+0.70, and it is why the fit reports ``r2`` and its sample count rather than presenting a number.
 
 TWO REFUSALS, both deliberate:
 
@@ -26,8 +32,9 @@ TWO REFUSALS, both deliberate:
   outside the measured range (with a small margin) return ``None``, because the honest answer to
   "how long would a capsule 100x bigger than anything we have run take" is that we do not know.
 
-WHICH SIZE METRIC. Measured, not assumed: against these runs, the largest single operand predicts
-cost at R^2 0.914 and total operand elements at 0.908, while declared OUTPUT elements is degenerate
+WHICH SIZE METRIC. Measured, not assumed: on the first 15-run subset the largest single operand
+predicted cost at R^2 0.914 against 0.908 for total operand elements, and declared OUTPUT elements is
+degenerate
 because a capsule records its inputs and not its result shape. That last point matters, because the
 memory-regime module reasons that a deep-K sweep is cheap on the grounds that cost tracks output
 size (``memory_regime.deep_k_rows``). It is cheapER -- doubling K moved A3 only 5 s -- but the
