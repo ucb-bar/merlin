@@ -49,16 +49,30 @@ PREFIX = "codex/"
 #: ("gpt-5.6-codex", "gpt-5.6-codex-mini", "o4-mini") returns
 #: `Model metadata for ... not found. Defaulting to fallback metadata` and never completes a turn.
 #: So a two-tier plan/implement split is NOT available on codex alone -- pair it with a cheap API
-#: model for the implementation tier.
+#: The tier defaults: an expensive planner and a cheap implementer, which is the split AutoComp is
+#: built around. Effort is per tier too, and `xhigh` exists above `high`.
 SEAT_MODEL = "gpt-5.6-sol"
+PLAN_DEFAULT = "codex/gpt-5.6-sol:high"
+CODE_DEFAULT = "codex/gpt-5.3-codex-spark:low"
+KNOWN_MODELS = ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4",
+                "gpt-5.4-mini", "gpt-5.3-codex-spark")
 
-#: A tier is named `codex/<model>[:<effort>]`. RE-PROBED on codex-cli 0.153.0 (2026-09-03): the seat
-#: serves ONLY `gpt-5.6-sol` -- `spark`, `gpt-5.6-spark`, `gpt-5.6-mini` and `gpt-5.6-codex-mini` all
-#: return 400 invalid_request_error. So AutoComp's plan/implement split cannot be two MODELS here.
-#: What the seat does expose is `model_reasoning_effort`, which is a real capability-and-cost axis, so
-#: that is the axis the tiers differ on and the ledger records it per call. A genuine cheap-model code
-#: tier needs a second provider (Bedrock), which is a metered arm and a deliberate choice, not a
-#: default.
+#: A tier is named `codex/<model>[:<effort>]`. MEASURED on codex-cli 0.153.0 (2026-09-03), every one
+#: of these answers on this ChatGPT subscription -- the seat is NOT single-model:
+#:
+#:   gpt-5.6-sol           reliable agentic workhorse (the planning tier, and the recipe arm's model)
+#:   gpt-5.6-terra         balanced agentic coding
+#:   gpt-5.6-luna          fast and affordable agentic coding
+#:   gpt-5.5 / gpt-5.4     previous generations
+#:   gpt-5.4-mini          small, fast, cost-efficient
+#:   gpt-5.3-codex-spark   ULTRA-FAST coding model -- the implementation tier
+#:
+#: ⚠️ The names come from `codex` interactive `/model`, not from guessing. An earlier probe here
+#: concluded "the seat serves only gpt-5.6-sol" because it tried `spark` and `gpt-5.6-spark`, and the
+#: API answers a bad name with "The '<x>' model is not supported when using Codex with a ChatGPT
+#: account" -- the SAME message it gives for a name that was never real. That message echoes whatever
+#: string you send, so it cannot distinguish "wrong slug" from "not entitled", and reading it as the
+#: latter cost this experiment its whole model-tiering axis. Ask the CLI for the list; do not infer it.
 def split_model(spec: str) -> "tuple[str, str | None]":
     """`codex/gpt-5.6-sol:low` -> (`gpt-5.6-sol`, `low`). No effort suffix -> (model, None)."""
     name = spec[len(PREFIX):] if spec.startswith(PREFIX) else spec

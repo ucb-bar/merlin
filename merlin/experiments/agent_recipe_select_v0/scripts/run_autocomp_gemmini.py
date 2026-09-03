@@ -88,13 +88,12 @@ def main(argv: list[str] | None = None) -> int:
                          "compiles, so both arms provably see one shape")
     ap.add_argument("--plan-model", default="codex/gpt-5.6-sol:high",
                     help="the EXPENSIVE tier: planning. Same seat model the recipe arm uses.")
-    ap.add_argument("--code-model", default="codex/gpt-5.6-sol:low",
+    ap.add_argument("--code-model", default="codex/gpt-5.3-codex-spark:low",
                     help="the CHEAP tier: implementation. AutoComp's split is models= plans and "
                          "code_models= implements, and the repo's earlier bridge collapsed both to "
-                         "one. Re-probed on codex-cli 0.153.0: the seat serves ONLY gpt-5.6-sol "
-                         "(spark, gpt-5.6-spark and every mini variant return 400), so the tiers "
-                         "differ on reasoning EFFORT, which is the cost axis the seat does expose. "
-                         "A cheap-MODEL code tier needs a second provider and is a metered choice.")
+                         "one. This subscription serves seven models (see autocomp_codex."
+                         "KNOWN_MODELS); gpt-5.3-codex-spark is the ultra-fast coding one, so the "
+                         "tiers differ in MODEL and in effort, not effort alone.")
     ap.add_argument("--beam", type=int, default=4)
     ap.add_argument("--plans", type=int, default=4)
     ap.add_argument("--codes", type=int, default=2)
