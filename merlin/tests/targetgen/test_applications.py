@@ -177,15 +177,34 @@ def test_k_is_never_clamped_because_k_is_what_makes_the_class():
     assert all(c.k == 64 for c in caps)
 
 
-def test_a_class_whose_reduction_depth_alone_blows_the_budget_is_refused_by_name():
-    """Measured on a real class: a vocabulary-32000 LM head at K=2048 needs 32768 elements for a
-    single tile of parallel extent. There is no size of that class this budget can certify, and
-    saying so is the point -- dropping it would make an unaffordable behaviour look absent."""
+def test_a_class_outside_the_measured_range_is_refused_by_name():
+    """Measured on a real class: a vocabulary-32000 LM head at K=2048 carries a 65.5M-element operand.
+
+    No size of that class can be shown affordable and saying so is the point -- dropping it would make
+    an unaffordable behaviour look absent.
+
+    ⚠️ THE REASON CHANGED, and the old one was refuted by measurement. This used to refuse the class
+    because K alone needed 32768 elements for a single tile of parallel extent, which assumed the cost
+    model was fitted against the largest OPERAND. It is now fitted against the WRITTEN OUTPUT, because
+    that is what a cycle-accurate oracle's time actually tracks (r2 0.92 on the corpus, 0.9976 on a
+    deliberate ladder, against 0.20 for the operand metric) -- and reduction depth turns out to be
+    nearly free: the same shape at K=16 and K=128 writes the same 256 elements and took 121.1s and
+    161.5s. So "K is too deep to afford" is simply not true.
+
+    What IS true is that every calibration run moved at most 65,536 operand elements, and this class
+    moves a thousand times that. The refusal therefore names the operand volume and the calibrated
+    ceiling, and says the cost is UNKNOWN rather than large. Bounding on output alone would have
+    clamped this class to a 16x16 output tile and called it affordable, pricing an enormous transfer
+    at zero.
+    """
     fit = _fit_or_skip()
     caps, refusal = APP.size_class(_evidence(8, 2048, 32000), target="gemmini",
                                    budget_s=300.0, tile=16, fit=fit)
     assert caps == []
-    assert refusal and "K=2048" in refusal
+    assert refusal, "an unaffordable class must be refused with a reason, never dropped"
+    # Named specifically enough that a reader knows what to measure next.
+    assert "65,536,000" in refusal and "65,536" in refusal, refusal
+    assert "UNKNOWN" in refusal, refusal
 
 
 def test_no_cost_model_means_no_capsule_rather_than_a_convention_sized_one():

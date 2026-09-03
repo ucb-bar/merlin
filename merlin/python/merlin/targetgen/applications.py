@@ -335,18 +335,52 @@ def size_class(evidence: "ClassEvidence", *, target: str, budget_s: float,
                     f"{target!r}, so no size of this class can be shown affordable; certify this "
                     f"target's existing corpus first, then the fit gives a size")
     else:
-        # max operand elements is max(M*K, K*N), so both parallel extents are bounded by
-        # budget_elements / K. K is never clamped: a shallower K is a different behavioural class.
-        per_extent = budget_elements // max(1, k)
+        # THE BUDGET IS IN WRITTEN OUTPUT ELEMENTS, so the bound is on M*N and NOT on max(M*K, K*N).
+        # It used to be the latter, because the cost model was fitted against the largest operand; the
+        # fit now runs against what the capsule WRITES, since that is what a cycle-accurate oracle's
+        # time actually tracks (r2 0.92 on the corpus and 0.9976 on a deliberate ladder, against 0.20
+        # for the operand metric). Dividing by K under the new units silently shrank every clamp by a
+        # factor of K and refused whole classes that are affordable: measured on a K=64 class, the
+        # old arithmetic asked for 875//64 = 13 elements of parallel extent, under one tile, and
+        # returned "no size of this class is certifiable".
+        #
+        # K is still never clamped -- a shallower K is a different behavioural class -- and it no
+        # longer enters the bound at all, which is the correct consequence of the measurement rather
+        # than a convenience: reduction depth is nearly free, and the same shape at K=16 and K=128
+        # writing the same 256 elements was measured at 121.1s and 161.5s.
+        import math
+
+        # ⚠️ THE OUTPUT BOUND IS NOT THE ONLY BOUND. Output is what the cost law was fitted against,
+        # and it is the right metric INSIDE the calibrated range -- but every calibration run moved at
+        # most 65,536 operand elements. This axis's heaviest class carries a 65.5M-element operand, a
+        # thousand times past that, and no measurement says what moving it costs. Bounding on output
+        # alone would clamp that class to a 16x16 output tile and call it affordable, pricing an
+        # enormous transfer at zero. So a class whose operands leave the measured range is refused,
+        # and refused for what is actually true about it: the cost is unknown, not large.
+        operand_elements = max(evidence.m * k, k * evidence.n)
+        if operand_elements > CC.MEASURED_MAX_OPERAND_ELEMENTS:
+            return [], (f"{evidence.region_class.key()}: its operands carry {operand_elements:,} "
+                        f"elements against a cost model calibrated to "
+                        f"{CC.MEASURED_MAX_OPERAND_ELEMENTS:,}, so the certification cost of this "
+                        f"class is UNKNOWN rather than affordable; measure a deeper operand first")
+        per_extent = int(math.isqrt(max(0, budget_elements)))
         if per_extent < tile:
-            return [], (f"{evidence.region_class.key()}: K={k} alone needs {k * tile} elements for a "
-                        f"single tile of parallel extent, over the {budget_elements}-element budget "
-                        f"at {budget_s:.0f}s; no size of this class is certifiable here")
+            return [], (f"{evidence.region_class.key()}: a single {tile}x{tile} output tile writes "
+                        f"{tile * tile} elements, over the {budget_elements}-element budget at "
+                        f"{budget_s:.0f}s; no size of this class is certifiable here")
         affordable_m = _round_down_to_tile(min(per_extent, evidence.m), tile)
         affordable_n = _round_down_to_tile(min(per_extent, evidence.n), tile)
+        # Spend any budget the square clamp left over on the axis the application actually wants,
+        # rather than discarding it: a class whose N dwarfs its M should get a wider N.
+        for _ in range(2):
+            if affordable_m < evidence.m and (affordable_m + tile) * affordable_n <= budget_elements:
+                affordable_m = _round_down_to_tile(min(affordable_m + tile, evidence.m), tile)
+            if affordable_n < evidence.n and affordable_m * (affordable_n + tile) <= budget_elements:
+                affordable_n = _round_down_to_tile(min(affordable_n + tile, evidence.n), tile)
         size_basis = {"sized_by": "measured_cost_model", "budget_s": budget_s,
                       "budget_elements": budget_elements,
-                      "fitted_seconds": CC.predict_seconds(fit, max(affordable_m, affordable_n) * k),
+                      "budget_metric": getattr(fit, "metric", "written_output_elements"),
+                      "fitted_seconds": CC.predict_seconds(fit, affordable_m * affordable_n),
                       "cost_fit": fit.to_dict()}
 
     cert = SizedCapsule(

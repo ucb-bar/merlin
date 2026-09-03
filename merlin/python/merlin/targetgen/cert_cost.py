@@ -210,6 +210,14 @@ MEASURED_COEFFICIENT_S = 0.20509
 MEASURED_EXPONENT = 1.0782
 #: Largest written-element count any of the calibration runs actually reached.
 MEASURED_MAX_OUTPUT_ELEMENTS = 4096
+#: Largest SINGLE OPERAND any calibration run carried -- the ladder's deepest weight was 256x256.
+#:
+#: The law is silent beyond this, and the silence matters. Time tracked the written output across the
+#: ladder while operands grew 64x, which is why output is the metric; but every one of those runs moved
+#: at most 65,536 operand elements. A class carrying a 65.5M-element operand is a THOUSAND times past
+#: that, and no measurement here says what moving it costs. Treating output as the only bound there
+#: would price an enormous transfer at zero, so a caller must refuse rather than extrapolate.
+MEASURED_MAX_OPERAND_ELEMENTS = 65536
 #: Seconds per element over the FLAT part of the ladder (512..2048). A mid-range figure for a reader,
 #: never the thing to price a large capsule with -- see the exponent above.
 MEASURED_S_PER_OUTPUT_ELEMENT = 0.347

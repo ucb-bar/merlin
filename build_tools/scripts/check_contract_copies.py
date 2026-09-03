@@ -51,6 +51,44 @@ def _digest(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+#: Suffixes the BUILD refuses to bundle, so their absence from the packaged copy is intended rather
+#: than drift. setup.py's `_CODE_SUFFIXES` is the authority ("The bundle ships read-only DATA only --
+#: never code"); this is a second copy of that fact, and `_build_excluded_suffixes` below asserts the
+#: two agree instead of letting them drift.
+#:
+#: ⚠️ WITHOUT THIS THE GATE COULD NEVER GO GREEN. `merlin/contract/external/gsim/cxxwrap.sh` is a
+#: shell script under the contract tree; the build will never ship it, so a plain tree comparison
+#: reports it as missing on every run, forever. A check that cannot pass is as useless as one that
+#: cannot fail, and it trains readers to ignore the output -- which is the same failure this repo has
+#: paid for from the other direction all day.
+_NEVER_BUNDLED_SUFFIXES = (".py", ".pyc", ".pyo", ".sh")
+#: Directory names the build drops wholesale.
+_NEVER_BUNDLED_DIRS = ("__pycache__",)
+
+
+def _build_excluded_suffixes() -> tuple[str, ...]:
+    """setup.py's own ``_CODE_SUFFIXES``, read structurally so a drift is reported not inherited."""
+    import ast
+
+    src = (repo_root() / "setup.py")
+    if not src.is_file():
+        return ()
+    try:
+        tree = ast.parse(src.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return ()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for tgt in node.targets:
+            if isinstance(tgt, ast.Name) and tgt.id == "_CODE_SUFFIXES":
+                try:
+                    return tuple(ast.literal_eval(node.value))
+                except (ValueError, TypeError):
+                    return ()
+    return ()
+
+
 def _tree(root: Path) -> dict[str, str]:
     """``relative path -> content digest`` for every readable file outside an exempt subtree."""
     out: dict[str, str] = {}
@@ -64,6 +102,10 @@ def _tree(root: Path) -> dict[str, str]:
             continue
         rel = p.relative_to(root)
         if rel.parts and rel.parts[0] in _EXEMPT:
+            continue
+        if p.suffix in _NEVER_BUNDLED_SUFFIXES:
+            continue                                     # the build will never ship it
+        if any(part in _NEVER_BUNDLED_DIRS for part in rel.parts):
             continue
         try:
             out[str(rel)] = _digest(p)
