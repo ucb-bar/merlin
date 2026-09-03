@@ -561,6 +561,82 @@ def host_only_dtypes(captures: dict, families) -> dict:
     return out
 
 
+#: How long a single cycle-accurate certification may take before a capsule is too big to be one.
+#: A POLICY number, not a hardware fact -- it says how much simulator time this experiment is willing
+#: to spend, so it is declarable per target and defaulted here rather than derived. The default is
+#: recorded in the axis so a reader can tell a declared budget from an inherited one.
+_DEFAULT_CERT_BUDGET_S = 300.0
+
+
+def _application_axis(target: str, *, captures: dict | None = None,
+                      budget_s: float | None = None) -> dict:
+    """The shapes this target's declared APPLICATIONS contain, sized to what a cert costs.
+
+    The corpus gives every synthesized capsule one of two tile-relative shapes, and real models do
+    not look like that -- 757 contraction regions across six captures carry shapes like
+    ``(8,2048,32000)``, against a corpus that tests 16x16x16. This axis is where a user's own
+    applications reach the requirement.
+
+    It emits at most two capsules per behavioural class, and the split is what makes the whole thing
+    runnable: one sized to be affordable cycle-accurately, and -- where the application is larger --
+    one at the true shape that EXTENDS it. See :mod:`merlin.targetgen.applications` for why K is
+    never clamped and why a class with no cost model is refused rather than sized by convention.
+
+    Empty and inert for a target declaring no applications, which is every target today.
+    """
+    from merlin.targetgen import applications as APP
+    from merlin.targetgen import cert_cost as CC
+
+    budget = float(budget_s) if budget_s else _DEFAULT_CERT_BUDGET_S
+    basis = {
+        "axis_basis": (
+            "the contraction shapes this target's DECLARED applications contain, grouped by what the "
+            "compiler must do with them and sized to what a certification costs. A capsule at an "
+            "application's real shape is worthless if nobody can afford to certify it, so each class "
+            "yields a cycle-accurate capsule at an affordable size plus, when the application is "
+            "larger, an L2 capsule at the true shape that extends it -- never one without the other"),
+        "cert_budget_s": budget,
+        "budget_source": "declared" if budget_s else "default",
+    }
+    if not captures:
+        return {"required": [], "refused": [], "declared_applications": 0, **basis}
+
+    grouped = APP.classify_captures(captures, target)
+    fit = CC.fit_for(target)
+    try:
+        from merlin.targetgen.corpus_spec import _tile_dim  # noqa: PLC2701
+        from merlin.targetgen.target_registry import load_contract
+        tile = int(_tile_dim(target, load_contract(target)) or 0)
+    except Exception:                              # noqa: BLE001 -- no edge is a real answer
+        tile = 0
+
+    required, refused = [], []
+    for row in grouped.get("classes") or ():
+        evidence = APP.ClassEvidence(
+            region_class=APP.RegionClass(
+                family=row["family"], dtype=row["dtype"], alignment=row["alignment"],
+                regime=row["regime"], rank=int(row["rank"]), geometry=row["geometry"]),
+            m=int(row["M"]), k=int(row["K"]), n=int(row["N"]), batch=int(row["batch"]),
+            multiplicity=int(row["multiplicity"]), work=int(row["work"]),
+            work_complete=bool(row["work_complete"]), source=str(row["source"]))
+        sized, refusal = APP.size_class(evidence, target=target, budget_s=budget,
+                                        tile=tile or None, fit=fit)
+        if refusal:
+            refused.append(refusal)
+            continue
+        required.extend(cap.to_dict() for cap in sized)
+    return {
+        "required": required, "refused": refused,
+        "declared_applications": len(captures),
+        "n_classes": grouped.get("n_classes", 0),
+        "n_regions": grouped.get("n_regions", 0),
+        "total_work": grouped.get("total_work", 0),
+        "captures_unreadable": grouped.get("captures_unreadable") or {},
+        "cost_model": fit.to_dict() if fit is not None else None,
+        **basis,
+    }
+
+
 #: What the shape axis rests on. One string, because it is stated on the derived path and on the
 #: unreadable-manifest path alike, and two copies would drift into two claims.
 _SHAPE_AXIS_BASIS = (
@@ -702,7 +778,9 @@ def _shape_axis(target: str) -> dict:
 
 def spec(target: str, captures: dict[str, str | Path], *,
          declared: dict[str, dict] | None = None,
-         personas: dict[str, dict] | None = None) -> dict:
+         personas: dict[str, dict] | None = None,
+         applications: dict[str, str | Path] | None = None,
+         cert_budget_s: float | None = None) -> dict:
     """The full derived conformance spec, ready to serialize.
 
     Regenerable and tracked: a reviewer diffs it to see the requirement change when a target's manifest
@@ -773,6 +851,11 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # epilogue; they cannot say which stage, so a corpus derived from them tests one and reports the
         # capability covered.
         "epilogue": _epilogue_axis(target),
+        # THE USER'S OWN APPLICATIONS. Empty unless the target declares some; when it does, this is
+        # the only axis whose capsules carry a shape a real model contains rather than a tile
+        # multiple, and the only one whose sizing is bounded by what a certification costs.
+        "application_shapes": _application_axis(target, captures=applications,
+                                                budget_s=cert_budget_s),
         "memory_mapping": {
             "required": mem.get("by_regime") or {},
             "region_counts": mem.get("region_counts") or {},

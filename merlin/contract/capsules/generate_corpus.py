@@ -1285,6 +1285,7 @@ def _write_capsule(entry, binding, out_root):
     # it read an empty lanes block and passed everything -- a verification that cannot see what it
     # verifies is worse than none, because it reports the assertion as checked.
     _verify_a_forbidden_lane_is_provable(d, cap, getattr(binding, "target", None))
+    dirty = _cap_oracle_tiers(entry, cap) or dirty
     # THE TOLERANCE MUST BE FALSIFIABLE AT THIS GOLDEN'S SCALE, and here is the first point at which
     # both the capsule and its golden exist for EVERY writer -- the same reason the generalization stamp
     # lives here. A profile declares ONE absolute tolerance for a whole target, which is the right shape
@@ -1342,6 +1343,36 @@ def _carry_declared_blocks(entry: dict, cap: dict) -> bool:
         cap[key] = dict(value) if isinstance(value, dict) else value
         dirty = True
     return dirty
+
+
+def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
+    """Trim a capsule's required tiers to the deepest one its SIZE can afford, and say what it rests on.
+
+    ``corpus_spec.build`` gives every capsule the target's full tier list, which is right for a
+    capsule sized to the tile edge and wrong for one sized to an application: a shape too large to
+    simulate cycle-accurately cannot demand the cycle-accurate tier, and demanding it anyway makes
+    the whole corpus unrunnable rather than making the capsule affordable.
+
+    ``extends`` is carried onto the capsule for the same reason it exists at all -- an L2-only
+    capsule is admissible only as an extension of a sibling that WAS certified, so the thing it rests
+    on has to be readable from the capsule itself rather than inferred from a naming convention.
+    """
+    cap_to = str(entry.get("max_oracle_tier") or "")
+    if not cap_to:
+        return False
+    tiers = [str(t) for t in (cap.get("required_oracle_tiers") or ())]
+    if cap_to not in tiers:
+        raise ValueError(
+            f"{cap.get('name')!r} caps its oracle tier at {cap_to!r}, which is not among the tiers "
+            f"this target declares ({tiers}); a cap onto a tier that does not exist would silently "
+            f"leave the capsule demanding everything")
+    trimmed = tiers[:tiers.index(cap_to) + 1]
+    changed = trimmed != tiers
+    cap["required_oracle_tiers"] = trimmed
+    if entry.get("extends"):
+        cap["extends"] = str(entry["extends"])
+        changed = True
+    return changed
 
 
 def _verify_a_forbidden_lane_is_provable(d: Path, cap: dict, target: "str | None") -> None:

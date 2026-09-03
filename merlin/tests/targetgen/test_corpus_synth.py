@@ -63,7 +63,7 @@ def test_every_required_cell_becomes_an_entry(target):
     #: Every non-cell entry must say which axis asked for it. These are the axis markers the
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
     axes = ("memory regime", "host-only family", "composition axis", "roster axis",
-            "rank axis", "layout axis", "host lane", "epilogue axis")
+            "rank axis", "layout axis", "host lane", "epilogue axis", "application axis")
     unattributed = [e["name"] for e in other
                     if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -131,10 +131,55 @@ def test_extents_are_tile_relative_not_baked_integers():
     res = CS.synthesize(_spec("gemmini"))
     # OP-LEVEL entries only. A model capsule carries no M/K/N -- its extents live in the derived
     # inventory that writes its loader, and demanding them here would demand a shape it does not have.
-    for entry in [e for e in res["capsules"] if e.get("op")]:
+    #
+    # And NOT the application axis, whose whole content is a shape a real model contains. That one is
+    # deliberately not portable across tile edges -- `968` has no tile-relative spelling at tile 16 --
+    # which is exactly why it carries `source_role: model_derived` instead of `derived_sweep`. Scoping
+    # by that role rather than by name keeps this test meaning "a SWEEP's shapes track the geometry".
+    for entry in [e for e in res["capsules"]
+                  if e.get("op") and e.get("source_role") != "model_derived"]:
         for axis in ("M", "K", "N"):
             assert isinstance(entry[axis], str) and "tile" in entry[axis], (
                 f"{entry['name']}.{axis} = {entry[axis]!r} is not tile-relative")
+
+
+def test_an_application_capsule_carries_a_concrete_shape_and_says_where_it_came_from():
+    """The inverse of the rule above, pinned so the exemption cannot quietly widen: only a
+    `model_derived` entry may bake integers, and it must name the class and the model it represents."""
+    doc = _spec("gemmini")
+    doc["application_shapes"] = {
+        "required": [{"class": "contraction/i8/aligned/spills/rank2/squareish_gemm",
+                      "M": 64, "K": 64, "N": 64, "batch": 1, "tier": "L3", "extends": None,
+                      "basis": {"sized_by": "measured_cost_model", "representative_of": 12,
+                                "source": "an_app"}}],
+        "cert_budget_s": 300.0,
+    }
+    made = [e for e in CS.synthesize(doc)["capsules"]
+            if (e.get("semantic") or {}).get("generalization_axis") == "application"]
+    assert len(made) == 1
+    entry = made[0]
+    assert entry["source_role"] == "model_derived"
+    assert (entry["M"], entry["K"], entry["N"]) == (64, 64, 64)
+    assert "an_app" in entry["source_reference"] and "squareish_gemm" in entry["source_reference"]
+
+
+def test_an_l2_only_application_capsule_names_the_sibling_it_extends():
+    """A large capsule resting on nothing is the failure this axis exists to avoid. The cap and the
+    sibling travel together on the entry so the generator can enforce both."""
+    doc = _spec("gemmini")
+    doc["application_shapes"] = {
+        "required": [{"class": "contraction/i8/aligned/spills/rank2/wide_skinny",
+                      "M": 256, "K": 64, "N": 784, "batch": 1, "tier": "L2",
+                      "extends": "contraction/i8/aligned/spills/rank2/wide_skinny",
+                      "basis": {"sized_by": "application_shape", "representative_of": 12,
+                                "source": "an_app"}}],
+        "cert_budget_s": 300.0,
+    }
+    entry = [e for e in CS.synthesize(doc)["capsules"]
+             if (e.get("semantic") or {}).get("generalization_axis") == "application"][0]
+    assert entry["max_oracle_tier"] == "L2"
+    assert entry["extends"], "an L2-only capsule must say what carries its cycle-accurate guarantee"
+    assert "extends" in entry["source_reference"]
 
 
 def test_a_preference_cannot_widen_what_the_target_admits():

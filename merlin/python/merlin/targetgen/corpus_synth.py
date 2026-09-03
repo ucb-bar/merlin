@@ -787,6 +787,60 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    # ---- the APPLICATION axis -----------------------------------------------------------------------
+    # The only axis whose capsules carry a shape a real model CONTAINS rather than a tile multiple.
+    # Everything else here is tile-relative on purpose, so the same entry means the same thing on a
+    # target with a different edge; an application shape is the opposite by design -- it is evidence
+    # about one model, and it is not portable, which is why it carries its own provenance.
+    #
+    # The requirement side has already done the hard part: grouped the application's regions by what
+    # the compiler must do with them, and sized each class against what a certification costs. Here we
+    # only turn each sized capsule into an entry. A class that could not be sized is not in `required`
+    # at all -- it is in the axis's `refused` list with its reason, which is reported rather than
+    # raised because an unaffordable behaviour is a fact about the budget, not a broken corpus.
+    _app = spec_doc.get("application_shapes") or {}
+    for _cap in (_app.get("required") or ()):
+        _cls = str(_cap.get("class") or "")
+        _tier = str(_cap.get("tier") or "L3")
+        _dtype = _cls.split("/")[1] if "/" in _cls else ""
+        if not _dtype:
+            continue
+        _op = op_for_family("contraction", admitted_ops=pool, dtype=_dtype)
+        if _op is None:
+            unwritable.append(f"application class {_cls}: no op materializes a contraction at {_dtype!r}")
+            continue
+        _slug = _cls.replace("/", "_").replace("-", "_")
+        entry = {
+            "cat": "layers", "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_app_{_slug}_{_tier.lower()}",
+            "op": _op, "operand_dtype": _dtype,
+            "lhs": "A0", "weight": "W", "out": "Y0",
+            "M": int(_cap["M"]), "K": int(_cap["K"]), "N": int(_cap["N"]),
+            # NOT `derived_sweep`: a sweep's shapes track the target's geometry, and this one tracks a
+            # model's. Conflating them would tell a reader the extents move with the tile edge.
+            "source_role": "model_derived",
+            "source_reference": (
+                f"synthesized for the application axis: behavioural class {_cls}, representing "
+                f"{_cap['basis'].get('representative_of')} region(s) of "
+                f"{_cap['basis'].get('source')}. Sized by {_cap['basis'].get('sized_by')}"
+                + (f" against a {_app.get('cert_budget_s')}s certification budget"
+                   if _cap["basis"].get("sized_by") == "measured_cost_model" else "")
+                + (f"; extends {_cap['extends']}, which carries the cycle-accurate guarantee this "
+                   f"larger shape rests on" if _cap.get("extends") else "")),
+            "label": "public", "modes": {},
+            "semantic": {"generalization_axis": "application"},
+        }
+        if _tier != "L3":
+            # AN L2-ONLY CAPSULE IS AN EXTENSION, NEVER A SUBSTITUTE. The tier is capped because this
+            # shape is too large to certify, and `extends` names the sibling that was -- so a reader
+            # (and the gate) can tell a large capsule resting on a guarantee from one resting on
+            # nothing.
+            entry["max_oracle_tier"] = _tier
+            entry["extends"] = str(_cap.get("extends") or "")
+        _mark_source(entry)
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
     # ---- the ROSTER axis ----------------------------------------------------------------------------
     # The declared roster is the one thing the workload spec says that nothing consumed. Every capsule
     # above is a SLICE -- a cell, a regime, a lane, a derived micro model -- and the claim the whole

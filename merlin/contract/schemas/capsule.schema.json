@@ -36,9 +36,10 @@
         "handauthored_compiler_test",
         "uplifted_from_bareMetalC",
         "spec_derived",
-        "derived_sweep"
+        "derived_sweep",
+        "model_derived"
       ],
-      "description": "where this capsule came from. derived_sweep = expanded from a profile's declared tile-relative sweep, so its shapes track the target's geometry rather than being written down; the sweep's prose is carried in source_reference along with the tile the extents resolved against"
+      "description": "where this capsule came from. derived_sweep = expanded from a profile's declared tile-relative sweep, so its shapes track the target's geometry rather than being written down; the sweep's prose is carried in source_reference along with the tile the extents resolved against; model_derived = the shape came from a real application the user declared, so it is deliberately NOT tile-relative -- it is the geometry that model actually contains, and it carries the class and the cost basis it was sized against in source_reference"
     },
     "source_reference": {
       "type": "string",
