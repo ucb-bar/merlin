@@ -23,6 +23,9 @@ boundaries:
     edge: 32
     source: capability manifest (declared mesh/tile rows)
     points:
+    - 1
+    - 8
+    - 16
     - 31
     - 32
     - 33
@@ -207,9 +210,13 @@ shape_generalization:
     the corpus must contain and nothing about whether the unit was ever asked for a batched region or
     a transposed operand. Both are declared capabilities, so a target that claims them and is never asked
     for one has an untested claim'
-  why_shape_corners_are_excluded: the corner probes (tile, tile+-1, prime, skinny) and the dtype probes
+  why_shape_corners_are_excluded: 'the corner probes (tile, tile+-1, prime, skinny) and the dtype probes
     restate the alignment and dtype axes the cells already carry; requiring them again would inflate the
-    requirement with points already required under another name
+    requirement with points already required under another name. NOTE the alignment axis now carries three
+    occupancy classes rather than two: `partial` rags one axis by one element (a nearly-full tile) and
+    `sub_tile` leaves the tile barely occupied, which the hand-authored corpus probes 45 times and the
+    derived corpus could not express at all. That is a genuinely distinct point, not a corner probe under
+    another name'
 host_lane:
   required:
   - family: elementwise_map
@@ -271,6 +278,28 @@ epilogue:
     for the role the stage needs. A (family, dtype, alignment) cell cannot express WHICH epilogue rides
     the contraction, so a corpus derived from cells alone tests one stage and calls the fusion capability
     covered
+application_shapes:
+  required: []
+  refused: []
+  declared_applications: 0
+  axis_basis: the contraction shapes this target's DECLARED applications contain, grouped by what the
+    compiler must do with them and sized to what a certification costs. A capsule at an application's
+    real shape is worthless if nobody can afford to certify it, so each class yields a cycle-accurate
+    capsule at an affordable size plus, when the application is larger, an L2 capsule at the true shape
+    that extends it -- never one without the other
+  cert_budget_s: 300.0
+  budget_source: default
+cert_affordability:
+  max_elements: 862
+  budget_s: 300.0
+  metric: written_output_elements
+  law: seconds = 0.20509 * output ** 1.0782
+  calibrated_to_elements: 4096
+  extrapolated: false
+  why: 'the largest written output whose predicted certification fits the budget. A capsule above it is
+    graded at the loop tier and rests on a certified sibling -- not because it is uninteresting, but because
+    nobody can afford to run it cycle-accurately. Reduction depth does NOT count against this: K moves
+    the operands, not the result'
 memory_mapping:
   required: {}
   region_counts: {}
@@ -279,7 +308,16 @@ memory_mapping:
   why: '''atlas'' declares no operand-store capacity we can derive, so no regime is required of the corpus
     -- that is ''we do not know'', never ''nothing is required'''
   regime_extents: {}
-  regime_dtype: bf16
+  regime_dtype: fp8_e4m3
+  reduction_depth:
+    capacity_rows: null
+    tile_dim: 32
+    m_tiles: 1
+    n_tiles: 1
+    by_regime: {}
+    certified: null
+    certified_refusal: a single 32x32 output tile already costs 361s against a 300.0s budget on this target,
+      so no reduction of any depth is certifiable
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -290,8 +328,8 @@ host_only:
   - normalization
   - reduction
   dtypes:
-    reduction: f32
     normalization: f32
+    reduction: f32
   observed_in:
     normalization: 876
     reduction: 2166
@@ -301,7 +339,7 @@ host_only:
     captures contain is admitted -- and never that none is needed: a target with an empty complement simply
     cannot be asked this question, which is a different fact from passing it'
 diagnostics:
-  n_cells: 12
+  n_cells: 18
   captures_read:
   - gemma2_2b_int8
   - gemma2_2b_int8_full
@@ -335,6 +373,7 @@ diagnostics:
   alignment_axis:
   - aligned
   - partial
+  - sub_tile
   admitted_status: resolved
   notes:
   - 2 family/families appear in a real capture but the hardware declares no capability for them (normalization,
@@ -378,6 +417,32 @@ cells:
   family: contraction
   dtype: bf16
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mxu
+  n_regions: 2049
+- cell: contraction/bf16/sub_tile
+  family: contraction
+  dtype: bf16
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -452,6 +517,32 @@ cells:
   admitted_by:
   - mxu
   n_regions: 2049
+- cell: contraction/fp8_e4m3/sub_tile
+  family: contraction
+  dtype: fp8_e4m3
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mxu
+  n_regions: 2049
 - cell: elementwise_map/bf16/aligned
   family: elementwise_map
   dtype: bf16
@@ -483,6 +574,33 @@ cells:
   family: elementwise_map
   dtype: bf16
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mxu
+  - vector_unit
+  n_regions: 8739
+- cell: elementwise_map/bf16/sub_tile
+  family: elementwise_map
+  dtype: bf16
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -560,6 +678,33 @@ cells:
   - mxu
   - vector_unit
   n_regions: 8739
+- cell: elementwise_map/fp8_e4m3/sub_tile
+  family: elementwise_map
+  dtype: fp8_e4m3
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mxu
+  - vector_unit
+  n_regions: 8739
 - cell: movement/bf16/aligned
   family: movement
   dtype: bf16
@@ -612,6 +757,32 @@ cells:
   admitted_by:
   - mxu
   n_regions: 5504
+- cell: movement/bf16/sub_tile
+  family: movement
+  dtype: bf16
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mxu
+  n_regions: 5504
 - cell: movement/fp8_e4m3/aligned
   family: movement
   dtype: fp8_e4m3
@@ -642,6 +813,32 @@ cells:
   family: movement
   dtype: fp8_e4m3
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mxu
+  n_regions: 5504
+- cell: movement/fp8_e4m3/sub_tile
+  family: movement
+  dtype: fp8_e4m3
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8

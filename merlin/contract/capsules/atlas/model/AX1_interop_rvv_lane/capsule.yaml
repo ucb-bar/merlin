@@ -65,6 +65,6 @@ semantic:
 numeric_falsifiability:
   status: ok
   declared_atol: 0.25
-  ceiling_atol: 1.9127738308906554
+  ceiling_atol: 2.2408157205581665
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true

@@ -25,6 +25,9 @@ boundaries:
     source: software-tiling default (16); this target declares no fixed hardware mesh, so it is NOT a
       hardware boundary
     points:
+    - 1
+    - 4
+    - 8
     - 15
     - 16
     - 17
@@ -33,6 +36,9 @@ boundaries:
     edge: 32
     source: target contract mx_mmio.group (one E8M0 scale per K group)
     points:
+    - 1
+    - 8
+    - 16
     - 31
     - 32
     - 33
@@ -244,9 +250,13 @@ shape_generalization:
     the corpus must contain and nothing about whether the unit was ever asked for a batched region or
     a transposed operand. Both are declared capabilities, so a target that claims them and is never asked
     for one has an untested claim'
-  why_shape_corners_are_excluded: the corner probes (tile, tile+-1, prime, skinny) and the dtype probes
+  why_shape_corners_are_excluded: 'the corner probes (tile, tile+-1, prime, skinny) and the dtype probes
     restate the alignment and dtype axes the cells already carry; requiring them again would inflate the
-    requirement with points already required under another name
+    requirement with points already required under another name. NOTE the alignment axis now carries three
+    occupancy classes rather than two: `partial` rags one axis by one element (a nearly-full tile) and
+    `sub_tile` leaves the tile barely occupied, which the hand-authored corpus probes 45 times and the
+    derived corpus could not express at all. That is a genuinely distinct point, not a corner probe under
+    another name'
 host_lane:
   required:
   - family: movement
@@ -311,6 +321,28 @@ epilogue:
     for the role the stage needs. A (family, dtype, alignment) cell cannot express WHICH epilogue rides
     the contraction, so a corpus derived from cells alone tests one stage and calls the fusion capability
     covered
+application_shapes:
+  required: []
+  refused: []
+  declared_applications: 0
+  axis_basis: the contraction shapes this target's DECLARED applications contain, grouped by what the
+    compiler must do with them and sized to what a certification costs. A capsule at an application's
+    real shape is worthless if nobody can afford to certify it, so each class yields a cycle-accurate
+    capsule at an affordable size plus, when the application is larger, an L2 capsule at the true shape
+    that extends it -- never one without the other
+  cert_budget_s: 300.0
+  budget_source: default
+cert_affordability:
+  max_elements: 862
+  budget_s: 300.0
+  metric: written_output_elements
+  law: seconds = 0.20509 * output ** 1.0782
+  calibrated_to_elements: 4096
+  extrapolated: false
+  why: 'the largest written output whose predicted certification fits the budget. A capsule above it is
+    graded at the loop tier and rests on a certified sibling -- not because it is uninteresting, but because
+    nobody can afford to run it cycle-accurately. Reduction depth does NOT count against this: K moves
+    the operands, not the result'
 memory_mapping:
   required: {}
   region_counts: {}
@@ -319,7 +351,25 @@ memory_mapping:
   why: '''radiance'' declares no operand-store capacity we can derive, so no regime is required of the
     corpus -- that is ''we do not know'', never ''nothing is required'''
   regime_extents: {}
-  regime_dtype: fp16
+  regime_dtype: f32
+  reduction_depth:
+    capacity_rows: null
+    tile_dim: 16
+    m_tiles: 1
+    n_tiles: 1
+    by_regime: {}
+    certified:
+      M: 16
+      K: 32
+      N: 16
+      K_tiles: 2
+      predicted_seconds: 81.0
+      budget_s: 300.0
+      sized_by: multi_pass_minimum_at_one_output_tile
+      extrapolated: false
+      why: two tiles of K is the shallowest reduction that writes the accumulator twice; the cost is the
+        output tile, which K does not move
+    certified_refusal: null
   axis_basis: the regimes real captured models put this target's operand store in, derived from the store's
     own geometry (bytes / row width from the compute array and the datapath element type). A corpus whose
     capsules all fit the store many times over cannot detect a memory-mapping failure of any kind, and
@@ -335,7 +385,7 @@ host_only:
     captures contain is admitted -- and never that none is needed: a target with an empty complement simply
     cannot be asked this question, which is a different fact from passing it'
 diagnostics:
-  n_cells: 56
+  n_cells: 84
   captures_read:
   - gemma2_2b_int8
   - gemma2_2b_int8_full
@@ -377,6 +427,7 @@ diagnostics:
   alignment_axis:
   - aligned
   - partial
+  - sub_tile
   admitted_status: resolved
   notes:
   - 2 composite family/families (attention, softmax) appear in NO capture as a region of their own because
@@ -426,6 +477,36 @@ cells:
   family: attention
   dtype: bf16
   alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 2049
+- cell: attention/bf16/sub_tile
+  family: attention
+  dtype: bf16
+  alignment: sub_tile
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -512,6 +593,36 @@ cells:
   - reduction
   - elementwise_map
   n_regions: 2049
+- cell: attention/f32/sub_tile
+  family: attention
+  dtype: f32
+  alignment: sub_tile
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 2049
 - cell: attention/fp16/aligned
   family: attention
   dtype: fp16
@@ -546,6 +657,36 @@ cells:
   family: attention
   dtype: fp16
   alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 2049
+- cell: attention/fp16/sub_tile
+  family: attention
+  dtype: fp16
+  alignment: sub_tile
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -632,6 +773,36 @@ cells:
   - reduction
   - elementwise_map
   n_regions: 2049
+- cell: attention/mxfp4/sub_tile
+  family: attention
+  dtype: mxfp4
+  alignment: sub_tile
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 2049
 - cell: attention/mxfp6/aligned
   family: attention
   dtype: mxfp6
@@ -666,6 +837,36 @@ cells:
   family: attention
   dtype: mxfp6
   alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 2049
+- cell: attention/mxfp6/sub_tile
+  family: attention
+  dtype: mxfp6
+  alignment: sub_tile
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -752,6 +953,36 @@ cells:
   - reduction
   - elementwise_map
   n_regions: 2049
+- cell: attention/mxfp8/sub_tile
+  family: attention
+  dtype: mxfp8
+  alignment: sub_tile
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - contraction
+  - reduction
+  - elementwise_map
+  n_regions: 2049
 - cell: contraction/bf16/aligned
   family: contraction
   dtype: bf16
@@ -783,6 +1014,33 @@ cells:
   family: contraction
   dtype: bf16
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mx_pe
+  - simt_cluster
+  n_regions: 2049
+- cell: contraction/bf16/sub_tile
+  family: contraction
+  dtype: bf16
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -858,6 +1116,32 @@ cells:
   admitted_by:
   - simt_cluster
   n_regions: 2049
+- cell: contraction/f32/sub_tile
+  family: contraction
+  dtype: f32
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 2049
 - cell: contraction/fp16/aligned
   family: contraction
   dtype: fp16
@@ -888,6 +1172,32 @@ cells:
   family: contraction
   dtype: fp16
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 2049
+- cell: contraction/fp16/sub_tile
+  family: contraction
+  dtype: fp16
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -962,6 +1272,32 @@ cells:
   admitted_by:
   - mx_pe
   n_regions: 2049
+- cell: contraction/i8/sub_tile
+  family: contraction
+  dtype: i8
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mx_pe
+  n_regions: 2049
 - cell: contraction/mxfp4/aligned
   family: contraction
   dtype: mxfp4
@@ -992,6 +1328,32 @@ cells:
   family: contraction
   dtype: mxfp4
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mx_pe
+  n_regions: 2049
+- cell: contraction/mxfp4/sub_tile
+  family: contraction
+  dtype: mxfp4
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1066,6 +1428,32 @@ cells:
   admitted_by:
   - mx_pe
   n_regions: 2049
+- cell: contraction/mxfp6/sub_tile
+  family: contraction
+  dtype: mxfp6
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mx_pe
+  n_regions: 2049
 - cell: contraction/mxfp8/aligned
   family: contraction
   dtype: mxfp8
@@ -1096,6 +1484,32 @@ cells:
   family: contraction
   dtype: mxfp8
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - mx_pe
+  n_regions: 2049
+- cell: contraction/mxfp8/sub_tile
+  family: contraction
+  dtype: mxfp8
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1170,6 +1584,32 @@ cells:
   admitted_by:
   - simt_cluster
   n_regions: 8739
+- cell: elementwise_map/bf16/sub_tile
+  family: elementwise_map
+  dtype: bf16
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 8739
 - cell: elementwise_map/f32/aligned
   family: elementwise_map
   dtype: f32
@@ -1200,6 +1640,32 @@ cells:
   family: elementwise_map
   dtype: f32
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 8739
+- cell: elementwise_map/f32/sub_tile
+  family: elementwise_map
+  dtype: f32
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1274,6 +1740,32 @@ cells:
   admitted_by:
   - simt_cluster
   n_regions: 8739
+- cell: elementwise_map/fp16/sub_tile
+  family: elementwise_map
+  dtype: fp16
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 8739
 - cell: movement/bf16/aligned
   family: movement
   dtype: bf16
@@ -1304,6 +1796,32 @@ cells:
   family: movement
   dtype: bf16
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 5504
+- cell: movement/bf16/sub_tile
+  family: movement
+  dtype: bf16
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1378,6 +1896,32 @@ cells:
   admitted_by:
   - simt_cluster
   n_regions: 5504
+- cell: movement/f32/sub_tile
+  family: movement
+  dtype: f32
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 5504
 - cell: movement/fp16/aligned
   family: movement
   dtype: fp16
@@ -1408,6 +1952,32 @@ cells:
   family: movement
   dtype: fp16
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 5504
+- cell: movement/fp16/sub_tile
+  family: movement
+  dtype: fp16
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1482,6 +2052,32 @@ cells:
   admitted_by:
   - simt_cluster
   n_regions: 876
+- cell: normalization/bf16/sub_tile
+  family: normalization
+  dtype: bf16
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 876
 - cell: normalization/f32/aligned
   family: normalization
   dtype: f32
@@ -1512,6 +2108,32 @@ cells:
   family: normalization
   dtype: f32
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 876
+- cell: normalization/f32/sub_tile
+  family: normalization
+  dtype: f32
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1586,6 +2208,32 @@ cells:
   admitted_by:
   - simt_cluster
   n_regions: 876
+- cell: normalization/fp16/sub_tile
+  family: normalization
+  dtype: fp16
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 876
 - cell: reduction/bf16/aligned
   family: reduction
   dtype: bf16
@@ -1616,6 +2264,32 @@ cells:
   family: reduction
   dtype: bf16
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 2166
+- cell: reduction/bf16/sub_tile
+  family: reduction
+  dtype: bf16
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1690,6 +2364,32 @@ cells:
   admitted_by:
   - simt_cluster
   n_regions: 2166
+- cell: reduction/f32/sub_tile
+  family: reduction
+  dtype: f32
+  alignment: sub_tile
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 2166
 - cell: reduction/fp16/aligned
   family: reduction
   dtype: fp16
@@ -1720,6 +2420,32 @@ cells:
   family: reduction
   dtype: fp16
   alignment: partial
+  basis: observed
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  n_regions: 2166
+- cell: reduction/fp16/sub_tile
+  family: reduction
+  dtype: fp16
+  alignment: sub_tile
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1775,6 +2501,35 @@ cells:
   family: softmax
   dtype: bf16
   alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 2166
+- cell: softmax/bf16/sub_tile
+  family: softmax
+  dtype: bf16
+  alignment: sub_tile
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -1858,6 +2613,35 @@ cells:
   - reduction
   - elementwise_map
   n_regions: 2166
+- cell: softmax/f32/sub_tile
+  family: softmax
+  dtype: f32
+  alignment: sub_tile
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 2166
 - cell: softmax/fp16/aligned
   family: softmax
   dtype: fp16
@@ -1891,6 +2675,35 @@ cells:
   family: softmax
   dtype: fp16
   alignment: partial
+  basis: observed_via_primitives
+  observed_in:
+  - gemma2_2b_int8
+  - gemma2_2b_int8_full
+  - gemma2_2b_int8_full_seq8
+  - gemma2_2b_int8_full_seq8_pretransposed
+  - gemma2_2b_int8_full_seq8_sliced
+  - gemma2_2b_int8_full_seq8_sliced_tiledhead
+  - gemma2_2b_int8_full_spec
+  - gemma2_2b_int8_full_spec_pretransposed
+  - gemma2_2b_int8_section1
+  - gemma2_2b_int8_section12
+  - gemma2_2b_int8_section2
+  - gemma2_2b_int8_spec
+  - gemma2_2b_int8_spec_pretransposed
+  - small_llama
+  - small_llama_fp8
+  - small_llama_int8
+  - spectformer_int8_full
+  admitted_by:
+  - simt_cluster
+  via_primitives:
+  - reduction
+  - elementwise_map
+  n_regions: 2166
+- cell: softmax/fp16/sub_tile
+  family: softmax
+  dtype: fp16
+  alignment: sub_tile
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8

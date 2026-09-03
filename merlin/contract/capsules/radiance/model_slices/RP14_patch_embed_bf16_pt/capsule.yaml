@@ -53,3 +53,10 @@ semantic:
   generalization_axis: composition
   must_accelerate: true
   eligible: auto
+comparison_group: patch_embed
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 2.733642578125
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

@@ -38,11 +38,46 @@ grading:
   # Cardinalities are frozen without making the hidden names public. Any source-pool deletion/addition,
   # or any cohort filter that moves a row outside this declared boundary, makes readiness fail closed.
   #
-  # THESE TWO NUMBERS ARE UNCHANGED AND THE POOL BEHIND THEM IS NOT. Re-verified 2026-09-02 after the
-  # guard fired: the source pool went to 63 when SY_model_tiny_llama was added (the whole-model capsule
-  # the roster synthesis writes for the declared tiny_llama entry) and back to 62 when
-  # SY_host_only_normalization was removed. Two unrelated changes that happen to cancel, so 62/48 is
-  # once again the measured truth -- reached by a net, not by nothing having happened.
+  # RE-SEALED 2026-09-03: 62/48 -> 75/61, from thirteen capsules four derivation axes added. Each was
+  # enumerated against the previous pool rather than inferred from the count, and no row LEFT the pool:
+  #
+  #   the epilogue axis (4)     SY_epilogue_relu / acc_scale / bias_add / maxpool -- one per fusion
+  #                             stage this target's ISA declares it can fuse onto a contraction. The
+  #                             cells can say a fused-only family must ride an epilogue; they cannot
+  #                             say WHICH stage, so nothing previously demanded these.
+  #   the host lane (2)         SY_host_lane_elementwise_map_f32 / _reduction_f32 -- (family, dtype)
+  #                             pairs real captures contain and this target's manifest admits at no
+  #                             dtype, so the compiler must leave them on the host. They are
+  #                             capability-INELIGIBLE by construction and that is the point: see the
+  #                             note below on why they are nonetheless inside the boundary.
+  #   accumulation depth (3)    SY_kdepth_fits_double / fits_single / spills -- 256, 512 and 1024
+  #                             accumulation passes, the depths this target's operand store admits.
+  #                             All i8/i8 on the declared datapath, and all CERTIFIED: a reduction
+  #                             writes one output tile whatever its depth, so the deepest costs about
+  #                             what the shallowest does.
+  #   the sub-tile class (4)    SY_*_i8_sub_tile -- a barely-occupied tile, which neither `aligned`
+  #                             nor `partial` could express (`partial` rags one axis by one element,
+  #                             so it yields a NEARLY FULL tile). Extents of 2/4/7/8/9/10/12 against a
+  #                             16-wide tile occur 45 times among hand-authored capsules and had zero
+  #                             derived counterparts. ~4.1s each to certify.
+  #
+  # Every one of the ten is `label: public` under a graded root, which is what puts it in the source
+  # pool, and every one carries an operand dtype the frozen capability contract declares -- except the
+  # two host-lane rows, which are deliberately the opposite and are handled by the boundary below.
+  #
+  # WHY THE TWO HOST-LANE ROWS ARE ADMITTED rather than capability-excluded. The exclusion boundary
+  # exists so an int8 accelerator is not asked to CERTIFY bf16 arithmetic. A host-lane capsule asks the
+  # opposite: it declares `forbid: [on_mesh]` and exists to prove the compiler does NOT accelerate work
+  # the device cannot hold. Withholding it deletes the test -- the absent datapath is its premise, not
+  # its problem -- so `capsule_runner._split_ineligible` now keeps a capsule that forbids the mesh, and
+  # the readiness gate's independently recomputed set once again equals the eleven named below. That
+  # also closed a pre-existing disagreement on GN0_layernorm_host_only_bf16_pt, which materialize
+  # admitted while readiness proved it excludable.
+  #
+  # THE COST OF THE ADMITTED SET WAS MEASURED, not assumed, because a bigger denominator is only honest
+  # if it still runs: 0.6 h of predicted L3 wall-clock across the shape-resolvable admitted capsules,
+  # no single capsule over 30 minutes. The two store-filling SY_regime_* rows that would have cost 39.6
+  # h and 18.8 h alone are now `max_oracle_tier: L2` resting on a certified sibling.
   #
   # WHY SY_model_tiny_llama IS INSIDE THE BOUNDARY rather than a row that should have been excluded:
   #   * it is `label: public` under merlin/contract/capsules/model/, which is what puts it in the source
@@ -53,7 +88,7 @@ grading:
   #     crossed. It is not one of the bf16 rows named below, and it is in no exclude list;
   #   * it is `kind: model`, so readiness's capability split never reaches it (that split runs over the
   #     non-model rows), and it lands in admitted by subtraction.
-  # The arithmetic the descriptor parser enforces holds: 62 == 48 + 14.
+  # The arithmetic the descriptor parser enforces holds: 75 == 61 + 14.
   #
   # KNOWN BLIND SPOT, recorded rather than papered over: this seal is CARDINALITIES ONLY, deliberately,
   # so that the hidden names stay unpublished -- and a cardinality cannot see a swap. The episode above
@@ -61,8 +96,8 @@ grading:
   # `.cohort_admission.json`'s `admitted_name_set_sha256`, recomputed at materialization; read that, not
   # these integers, when the question is whether the cohort is the SAME cohort.
   expected_cohort:
-    source_capsules: 62
-    admitted_capsules: 48
+    source_capsules: 75
+    admitted_capsules: 61
   hidden_capability_admission:
     source_capsules: 15
     admitted_capsules: 14

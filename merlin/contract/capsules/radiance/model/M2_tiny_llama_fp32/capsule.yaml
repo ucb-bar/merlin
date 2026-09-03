@@ -47,7 +47,13 @@ semantic:
   semantic_family: contraction
   generalization_axis: model
   must_accelerate: false
-  eligible: auto
   not_asserted_reason: the accelerator demand could not be derived from this model's
     linalg against this target's declared capabilities and role census, so must_accelerate
     is withheld rather than asserted ungrounded
+  eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 14.828888073563576
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

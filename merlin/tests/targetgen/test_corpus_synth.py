@@ -63,7 +63,8 @@ def test_every_required_cell_becomes_an_entry(target):
     #: Every non-cell entry must say which axis asked for it. These are the axis markers the
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
     axes = ("memory regime", "host-only family", "composition axis", "roster axis",
-            "rank axis", "layout axis", "host lane", "epilogue axis", "application axis")
+            "rank axis", "layout axis", "host lane", "epilogue axis", "application axis",
+            "accumulation-depth axis")
     unattributed = [e["name"] for e in other
                     if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -355,6 +356,31 @@ def test_no_required_cell_is_left_without_a_writer():
             f"{target}: {prov['cells_no_writer_can_express']}")
 
 
+def test_an_unsized_depth_is_not_reported_as_a_missing_writer():
+    """Two absences that license opposite actions must not share a channel.
+
+    A cell with no writer needs somebody to build a builder. A depth that could not be sized needs a
+    CERTIFICATION RUN -- the writer is there, and the measured history to size it against is not. A
+    target that has simply never been timed would otherwise read as one whose corpus cannot express a
+    reduction, which is both false and the more alarming of the two."""
+    for target in _specs():
+        res = CS.synthesize(_spec(target))
+        prov = res["provenance"]
+        joined = " ".join(prov.get("cells_no_writer_can_express") or ())
+        assert "certifiable" not in joined and "certification history" not in joined, (
+            f"{target}: an unsized depth is being reported as a missing writer")
+        # THE INVARIANT, stated over what was EMITTED rather than over which target it is: a target
+        # that produced no depth capsule owes a reason, and one that produced some owes nothing. Keying
+        # this on a target name instead was wrong the moment the cost law stopped being per-target --
+        # mx_gemmini has no measured history of its own and still sizes a depth, because the law prices
+        # the output tile and the tile edge is a fact about the target rather than about its run log.
+        emitted = [e for e in res["capsules"]
+                   if (e.get("semantic") or {}).get("generalization_axis") == "accumulation_depth"]
+        if not emitted:
+            assert prov.get("accumulation_depth_unsizable"), (
+                f"{target} synthesized no depth capsule and said nothing about why")
+
+
 # --------------------------------------------------------------------- the roster axis
 
 def _ws(target: str) -> dict:
@@ -472,3 +498,112 @@ def test_an_l2_application_capsule_ships_when_its_sibling_does():
     made = [e for e in CS.synthesize(doc)["capsules"]
             if (e.get("semantic") or {}).get("generalization_axis") == "application"]
     assert [e.get("max_oracle_tier") for e in made] == [None, "L2"]
+
+
+# ------------------------------------------------------------------- the accumulation-depth axis
+
+def _depth_axis(res):
+    return [e for e in res["capsules"]
+            if (e.get("semantic") or {}).get("generalization_axis") == "accumulation_depth"]
+
+
+def _with_depth(doc, *, certified=True, refusal=None, regimes=True, ceiling=862):
+    """A spec carrying an affordability ceiling and the residency depths a real target derives."""
+    doc = dict(doc)
+    doc["cert_affordability"] = {"max_elements": ceiling, "budget_s": 300.0,
+                                 "metric": "written_output_elements"}
+    mm = dict(doc.get("memory_mapping") or {})
+    mm["regime_dtype"] = mm.get("regime_dtype") or "i8"
+    mm["reduction_depth"] = {
+        "certified": ({"M": 16, "K": 176, "N": 16, "K_tiles": 11, "predicted_seconds": 81.0,
+                       "budget_s": 300.0, "sized_by": "measured_cost_model",
+                       "cost_fit": {"n_samples": 32}} if certified else None),
+        "certified_refusal": refusal,
+        "by_regime": ({
+            "fits_single": {"points": [{"M": 16, "K": 4112, "N": 16, "K_tiles": 257,
+                                        "fraction_of_capacity": 0.5},
+                                       {"M": 16, "K": 8192, "N": 16, "K_tiles": 512,
+                                        "fraction_of_capacity": 1.0}]},
+            "spills": {"points": [{"M": 16, "K": 16384, "N": 16, "K_tiles": 1024,
+                                   "fraction_of_capacity": 2.0}]},
+        } if regimes else {}),
+    }
+    doc["memory_mapping"] = mm
+    return doc
+
+
+def _passes(entry):
+    """The tile multiple, which IS the number of accumulation passes this capsule performs."""
+    assert entry["M"] == "tile" and entry["N"] == "tile"
+    return int(str(entry["K"]).partition("*tile")[0])
+
+
+def test_a_deep_reduction_is_certified_because_it_writes_one_tile():
+    """The measurement that reversed this axis's design.
+
+    Sized by OPERANDS, a K=1024-tile reduction looks like the most expensive capsule in the corpus and
+    was capped at the loop tier. Sized by WRITTEN OUTPUT -- which is what the cost law was calibrated
+    on, and what refitting this target's own certifications confirms (r2 0.924 against 0.226 for the
+    largest operand) -- it drains a single result tile and certifies for about the price of the
+    shallowest capsule there is. Measured on this target: `PK03_k128` took 161.5 s against 121.1 s for
+    the same shape at K=16, so eight times the reduction cost a third more time.
+
+    That is the sweet spot the axis exists to find: maximum accumulation depth at minimum simulation
+    cost. Capping it would throw the cycle-accurate guarantee away on the behaviour hardest to get
+    right, which is exactly what the wrong metric did."""
+    made = _depth_axis(CS.synthesize(_with_depth(_spec("gemmini"))))
+    assert made, "the residency depths must be exercised"
+    deepest = max(made, key=_passes)
+    assert _passes(deepest) >= 512, "the deepest reduction the store admits must be reached"
+    for e in made:
+        assert not e.get("max_oracle_tier"), (
+            f"{e['name']} was capped below the cert tier, but it writes one output tile")
+        assert _passes(e) >= 2, "a single-pass K exercises no accumulation at all"
+
+
+def test_a_capsule_whose_OUTPUT_is_too_large_is_capped_and_names_its_sibling():
+    """The other half of the same rule, and the one that keeps the corpus runnable. Depth is cheap;
+    PARALLEL EXTENT is not, because that is what the result tile is made of. A ceiling low enough to
+    bite must cap and must name what the capped capsule rests on."""
+    doc = _with_depth(_spec("gemmini"), ceiling=4)   # below one 16x16 tile, so everything is too big
+    made = _depth_axis(CS.synthesize(doc))
+    assert made
+    for e in made:
+        assert e["max_oracle_tier"] == "L2"
+        assert e["extends"], "a capped capsule that names nothing rests on nothing"
+
+
+def test_the_anchor_is_dropped_when_a_regime_depth_already_certifies():
+    """A shallower duplicate of a capsule already in the corpus is one more certification buying
+    nothing -- and this corpus is paid for in simulator hours."""
+    with_regimes = {e["name"] for e in _depth_axis(CS.synthesize(_with_depth(_spec("gemmini"))))}
+    assert not any("certified" in n for n in with_regimes), (
+        "the anchor duplicates a deeper regime capsule that already certifies")
+    # ...but a target whose regimes yield no depth still gets its multi-pass guarantee.
+    without = {e["name"] for e in _depth_axis(
+        CS.synthesize(_with_depth(_spec("gemmini"), regimes=False)))}
+    assert any("certified" in n for n in without), (
+        "with no regime depth, nothing else guarantees a multi-pass reduction is certified"
+    )
+
+
+def test_an_unsizable_depth_is_reported_rather_than_dropped():
+    """A target that could size no depth at all must say so. Silence here is indistinguishable from
+    a target whose accumulator was actually exercised."""
+    res = CS.synthesize(_with_depth(_spec("gemmini"), certified=False, regimes=False,
+                                    refusal="no measured certification history"))
+    assert _depth_axis(res) == []
+    holes = " ".join(res["provenance"].get("accumulation_depth_unsizable") or ())
+    assert "no measured certification history" in holes
+    # ...and NOT in the missing-writer channel, which would send a reader after a builder that exists.
+    assert not res["provenance"].get("cells_no_writer_can_express")
+
+
+def test_a_target_deriving_no_depth_synthesizes_none():
+    """Inertness. The axis must not manufacture a depth on a target whose store geometry it could
+    not read -- an underivable depth is not a shallow one."""
+    doc = dict(_spec("gemmini"))
+    mm = dict(doc.get("memory_mapping") or {})
+    mm["reduction_depth"] = {"unavailable": "RuntimeError: no operand store"}
+    doc["memory_mapping"] = mm
+    assert _depth_axis(CS.synthesize(doc)) == []

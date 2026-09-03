@@ -1,0 +1,54 @@
+name: SY_reduction_fp16_aligned
+kind: isa
+source_role: pytorch_model_slice
+source_reference: synthesized for conformance cell reduction/fp16/aligned (basis=observed,
+  admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: fp16
+operation:
+  op: reduce_sum
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: fp16
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: reduce_sum
+  dtype: fp16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: reduction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 6.77166748046875
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

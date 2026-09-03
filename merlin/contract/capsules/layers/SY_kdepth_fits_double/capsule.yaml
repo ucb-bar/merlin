@@ -1,0 +1,60 @@
+name: SY_kdepth_fits_double
+kind: layer
+source_role: derived_sweep
+source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction
+  the ''fits_double'' residency regime admits (256 accumulation passes, 0.5 of the
+  operand store). The reduction moves the operands and not the result, so this certifies
+  at one output tile'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 4096
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 4096
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+    semantic:
+      generalization_axis: accumulation_depth
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering

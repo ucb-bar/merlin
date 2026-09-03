@@ -1,0 +1,57 @@
+name: SY_contraction_mxfp8_aligned
+kind: isa
+source_role: derived_sweep
+source_reference: synthesized for conformance cell contraction/mxfp8/aligned (basis=observed,
+  admitted_by=['mx_pe']); extents from boundaries.extent_probes
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: mxfp8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: mxfp8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.03125
+  rtol: 0.03125
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: false
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 1307.75
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

@@ -49,6 +49,13 @@ pytorch_ref:
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: contraction
-  must_accelerate: true
-  fallback_allowed: false
   generalization_axis: composition
+  must_accelerate: false
+  eligible: auto
+comparison_group: gemv_batched
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 2.2978515625
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

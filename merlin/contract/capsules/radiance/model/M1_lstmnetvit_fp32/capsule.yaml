@@ -24,7 +24,19 @@ inputs:
   shape:
   - 1
   - 4
-  dtype: i64
+  dtype: f32
+- name: I3
+  role: input
+  shape:
+  - 3
+  - 128
+  dtype: f32
+- name: I4
+  role: input
+  shape:
+  - 3
+  - 128
+  dtype: f32
 operation:
   op: model
   attributes:
@@ -36,6 +48,8 @@ operation:
     - I0
     - I1
     - I2
+    - I3
+    - I4
     - Y0
     weights: capsule.weights.safetensors
 numeric_policy:
@@ -62,7 +76,10 @@ semantic:
   semantic_family: contraction
   generalization_axis: model
   must_accelerate: false
-  eligible: auto
   not_asserted_reason: the accelerator demand could not be derived from this model's
     linalg against this target's declared capabilities and role census, so must_accelerate
     is withheld rather than asserted ungrounded
+  eligible: auto
+numeric_falsifiability:
+  status: not_measured
+  why: no golden output could be sized

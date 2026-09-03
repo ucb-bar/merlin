@@ -1,0 +1,70 @@
+name: SY_epilogue_bias_add
+kind: layer
+source_role: derived_sweep
+source_reference: 'synthesized for the epilogue axis: this target can fuse a ''bias_add''
+  stage onto a contraction (evidenced by [''manifest_composed_with'']), and a (family,
+  dtype, alignment) cell cannot demand a particular stage -- so without this the capability
+  is reported covered by whichever single stage the cell axis happened to pick'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: B
+  role: bias
+  shape:
+  - 16
+  dtype: i32
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue:
+    - bias_add
+    output_dtype: i32
+    bias: B
+    semantic:
+      generalization_axis: epilogue
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+  composed_families:
+  - elementwise_map
+pass_requirements:
+- target-isa-lowering
+- tile-schedule

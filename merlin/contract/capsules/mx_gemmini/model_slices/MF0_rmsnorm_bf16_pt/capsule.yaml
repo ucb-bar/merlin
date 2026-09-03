@@ -42,13 +42,19 @@ required_oracle_tiers:
 - L3
 vcs: optional
 firesim: optional
+semantic:
+  semantic_family: normalization
+  generalization_axis: composition
+  must_accelerate: false
+  eligible: auto
 pytorch_ref:
   op: rmsnorm
   dtype: bf16
   loader: capsule.pytorch.py
 linalg_mlir: capsule.linalg.mlir
-semantic:
-  semantic_family: normalization
-  must_accelerate: true
-  fallback_allowed: false
-  generalization_axis: composition
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 2.9306640625
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

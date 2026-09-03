@@ -6,8 +6,8 @@
 provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: gemmini
-  n_required_cells: 8
-  n_entries: 23
+  n_required_cells: 12
+  n_entries: 30
   budget: 160
   precision_preference_kept:
   - i8
@@ -51,6 +51,12 @@ provenance:
     this family the interface dialect cannot express)
   host_only_note: 'a host-only family with no materializable op or no dtype observed in any capture. Reported
     rather than dropped: a negative lane nobody demanded reads downstream exactly like one nothing violates'
+  accumulation_depth_unsizable: []
+  accumulation_depth_note: 'a reduction depth this target could not size. Kept separate from `cells_no_writer_can_express`
+    because the two license different actions: a cell with no writer needs a builder, while an unsized
+    depth needs a CERTIFICATION RUN -- the writer is there and the measured history to size it against
+    is not. Reporting them together would make ''we never timed this target'' read as ''the corpus cannot
+    express this'''
   memory_regimes_status: resolved
   memory_regimes_unreachable: []
   memory_regime_note: 'a regime with no capsule shape that reaches it on this target. `fits_on_reuse`
@@ -99,6 +105,24 @@ capsules:
   - tile-schedule
 - cat: isa
   kind: isa
+  name: SY_contraction_i8_sub_tile
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell contraction/i8/sub_tile (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile/4
+  K: tile/2
+  N: tile/4
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
   name: SY_elementwise_map_i8_aligned
   op: matmul
   operand_dtype: i8
@@ -145,6 +169,28 @@ capsules:
   - tile-schedule
 - cat: isa
   kind: isa
+  name: SY_elementwise_map_i8_sub_tile
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell elementwise_map/i8/sub_tile (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes; elementwise_map is admitted only in composition with ['contraction'],
+    so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be refused by
+    the eligibility oracle as a false fallback
+  label: public
+  modes: {}
+  M: tile/4
+  K: tile/2
+  N: tile/4
+  epilogue:
+  - relu
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
   name: SY_movement_i8_aligned
   op: movement
   operand_dtype: i8
@@ -181,6 +227,24 @@ capsules:
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_movement_i8_sub_tile
+  op: movement
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell movement/i8/sub_tile (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes
+  label: public
+  modes: {}
+  M: tile/4
+  K: tile/2
+  N: tile/4
+  pass_requirements:
+  - target-isa-lowering
 - cat: isa
   kind: isa
   name: SY_reduction_i8_aligned
@@ -229,6 +293,28 @@ capsules:
   - tile-schedule
 - cat: isa
   kind: isa
+  name: SY_reduction_i8_sub_tile
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: synthesized for conformance cell reduction/i8/sub_tile (basis=observed, admitted_by=['systolic_mesh']);
+    extents from boundaries.extent_probes; reduction is admitted only in composition with ['contraction',
+    'movement'], so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be
+    refused by the eligibility oracle as a false fallback
+  label: public
+  modes: {}
+  M: tile/4
+  K: tile/2
+  N: tile/4
+  epilogue:
+  - acc_scale
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
   name: SY_regime_fits_double
   op: matmul
   operand_dtype: i8
@@ -257,12 +343,16 @@ capsules:
   source_role: derived_sweep
   source_reference: 'synthesized for memory regime ''fits_single'': the declared inputs occupy 8208 of
     16384 operand-store rows (0.500977 of capacity), which is what puts this capsule in that regime. Extents
-    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with'
+    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with.
+    131072 operand elements exceeds the 862 a 300.0s certification budget affords on this target, so it
+    is graded at the loop tier and rests on ''SY_contraction_i8_aligned'''
   label: public
   modes: {}
   M: 512*tile
   K: tile
   N: tile
+  max_oracle_tier: L2
+  extends: SY_contraction_i8_aligned
   pass_requirements:
   - target-isa-lowering
 - cat: isa
@@ -276,12 +366,16 @@ capsules:
   source_role: derived_sweep
   source_reference: 'synthesized for memory regime ''spills'': the declared inputs occupy 16448 of 16384
     operand-store rows (1.003906 of capacity), which is what puts this capsule in that regime. Extents
-    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with'
+    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with.
+    262144 operand elements exceeds the 862 a 300.0s certification budget affords on this target, so it
+    is graded at the loop tier and rests on ''SY_contraction_i8_aligned'''
   label: public
   modes: {}
   M: 512*tile
   K: 2*tile
   N: 2*tile
+  max_oracle_tier: L2
+  extends: SY_contraction_i8_aligned
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -504,6 +598,69 @@ capsules:
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_kdepth_fits_double
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: tile
+  K: 256*tile
+  N: tile
+  source_role: derived_sweep
+  source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction the ''fits_double''
+    residency regime admits (256 accumulation passes, 0.5 of the operand store). The reduction moves the
+    operands and not the result, so this certifies at one output tile'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: accumulation_depth
+  pass_requirements:
+  - target-isa-lowering
+- cat: layers
+  kind: layer
+  name: SY_kdepth_fits_single
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: tile
+  K: 512*tile
+  N: tile
+  source_role: derived_sweep
+  source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction the ''fits_single''
+    residency regime admits (512 accumulation passes, 1.0 of the operand store). The reduction moves the
+    operands and not the result, so this certifies at one output tile'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: accumulation_depth
+  pass_requirements:
+  - target-isa-lowering
+- cat: layers
+  kind: layer
+  name: SY_kdepth_spills
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: tile
+  K: 1024*tile
+  N: tile
+  source_role: derived_sweep
+  source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction the ''spills''
+    residency regime admits (1024 accumulation passes, 2.0 of the operand store). The reduction moves
+    the operands and not the result, so this certifies at one output tile'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: accumulation_depth
+  pass_requirements:
+  - target-isa-lowering
 - cat: model
   kind: model
   op: model

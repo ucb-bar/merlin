@@ -4,7 +4,9 @@ source_role: derived_sweep
 source_reference: 'synthesized for memory regime ''spills'': the declared inputs occupy
   16448 of 16384 operand-store rows (1.003906 of capacity), which is what puts this
   capsule in that regime. Extents resolved by memory_regime.extents_for_regime with
-  the same sizing the coverage gate measures with'
+  the same sizing the coverage gate measures with. 262144 operand elements exceeds
+  the 862 a 300.0s certification budget affords on this target, so it is graded at
+  the loop tier and rests on ''SY_contraction_i8_aligned'''
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -46,7 +48,6 @@ required_oracle_tiers:
 - L0
 - L1
 - L2
-- L3
 vcs: optional
 firesim: optional
 semantic:
@@ -57,3 +58,4 @@ semantic:
 pass_requirements:
 - target-isa-lowering
 - tile-schedule
+extends: SY_contraction_i8_aligned

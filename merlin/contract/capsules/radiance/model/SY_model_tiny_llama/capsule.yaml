@@ -1,0 +1,69 @@
+name: SY_model_tiny_llama
+kind: model
+source_role: pytorch_model_slice
+source_reference: 'synthesized for the roster axis: whole model ''tiny_llama'' at
+  int8, the highest-ranked precision this target''s manifest admits for a contraction
+  out of the declared preference [''int8'', ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'',
+  ''fp32''], captured with int8_dyn_act_int8_weight so the program contains the target''s
+  own arithmetic rather than a float matmul over dequantized weights. Accuracy in
+  that format is not_established'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 1
+  - 8
+  dtype: i64
+operation:
+  op: model
+  attributes:
+    model: tiny_llama
+    dtype: i8
+    out: Y0
+    compile_dtype: int8
+    arg_order:
+    - I0
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+gate:
+  after_op_pass_fraction: 0.8
+lanes:
+  require:
+  - on_mesh
+pytorch_ref:
+  op: model
+  dtype: i8
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: model
+  must_accelerate: false
+  not_asserted_reason: the accelerator demand could not be derived from this model's
+    linalg against this target's declared capabilities and role census, so must_accelerate
+    is withheld rather than asserted ungrounded
+  eligible: auto
+pass_requirements:
+- region-partition
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 16.3048415184021
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

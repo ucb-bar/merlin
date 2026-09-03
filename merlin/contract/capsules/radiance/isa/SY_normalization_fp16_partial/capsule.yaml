@@ -1,0 +1,58 @@
+name: SY_normalization_fp16_partial
+kind: isa
+source_role: derived_sweep
+source_reference: synthesized for conformance cell normalization/fp16/partial (basis=observed,
+  admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: fp16
+- name: G
+  role: weight
+  shape:
+  - 1
+  - 32
+  dtype: fp16
+operation:
+  op: rmsnorm
+  attributes:
+    src: X
+    gamma: G
+    out: Y0
+    eps: 1.52587890625e-05
+    semantic: rmsnorm
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    rmsnorm: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: normalization
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 0.11952537461183965
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

@@ -1,0 +1,48 @@
+name: SY_contraction_i8_aligned
+kind: isa
+source_role: derived_sweep
+source_reference: synthesized for conformance cell contraction/i8/aligned (basis=observed,
+  admitted_by=['mx_pe']); extents from boundaries.extent_probes
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: exact_int
+  dtype: f32
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule

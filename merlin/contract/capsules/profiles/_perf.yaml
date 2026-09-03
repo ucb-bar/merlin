@@ -580,6 +580,170 @@ sweeps:
     shared operand-residency ladder: one deep-K contraction per derived residency band of the target's
     own operand store, three depths spread across each band, at fixed single-tile parallel extents
 
+# ---------------------------------------------------------------------------------------------------
+# L2_intra_layer -- the BARRIER lever. Q for the dispatch QUEUE whose bookkeeping the barrier repeats.
+#
+# WHY THIS FAMILY EXISTS, and it is the sibling of a REFUTED result rather than a new guess. The
+# scheduling family (`PC`, and `merlin.perf.command_stream_gen`) rests on the theory that issue ORDER
+# is the lever a hardware-interlocked, command-driven accelerator gives a compiler. Measured on this
+# repo's command-driven target, it is not: a legal permutation of the same command multiset cost
+# EXACTLY ZERO cycles at two depths (3004 vs 3004 at K=64, 5442 vs 5442 at K=128), with the reorder
+# verified to reach the ELF and the counter verified to move with work but not with order.
+#
+# The same fact that kills the order lever creates this one. The dispatch queue tracks the dependence
+# itself -- which is why every legal order runs identically -- and therefore every barrier the compiler
+# inserts to enforce a dependence the queue already tracks is pure serialisation. What a compiler can
+# move on this machine is not the ORDER of the commands but the NUMBER OF BARRIERS between them.
+#
+# MEASURED, on the citable engine (`rtl_verilator`, `derived_from_rtl: true`), on gemmini_rtl
+# 8c3f9923 plus these bytes -- both gemmini pins verify False, so no number here is "pinned"; the full
+# verification record is in the artifact beside the rows. One tile of work per job, K = tile:
+#
+#         jobs  removed   once   per_job   saving  cyc/bar   ratio
+#            1        0    215       215        0      --  1.0000
+#            2        1    327       421       94    94.0  1.2875
+#            3        2    441       644      203   101.5  1.4603
+#            4        3    560       864      304   101.3  1.5429
+#            6        5    790      1276      486    97.2  1.6152
+#            8        7   1012      1700      688    98.3  1.6798
+#
+# saving = 97.76 x removed_barriers +3.07 cycles, R^2 = 0.99928. The alternative a two-job capsule
+# CANNOT exclude -- that the saving is a CONSTANT, one barrier's worth however many jobs the kernel has
+# -- has a residual sum of squares of 221876 against 159 for the per-barrier fit. The saving is per
+# barrier removed, at ~98 cycles each, and the ratio therefore GROWS with the job count: the
+# two-job kernel's 1.29x is the one-barrier case and a floor, not the headline.
+#
+# THE DEPTH CONTROL, at a fixed two jobs (exactly one barrier removed), says the cost is NOT a drain:
+#
+#            K  removed   once   per_job   saving  cyc/bar   ratio
+#           16        1    327       421       94    94.0  1.2875
+#           32        1    497       576       79    79.0  1.1590
+#           64        1    801       898       97    97.0  1.1211
+#
+# Over a 4x depth range the ONE removed barrier costs 94, 79 and 97 cycles while the kernel it sits in
+# grows from 327 to 801. A barrier that drained the work it waits on would track that growth; this one
+# does not. It is a fixed serialisation, so a SHALLOW member prices it as well as a deep one -- which
+# is why this family's members are shallow and why it competes for no deep-K slot. The depth axis is
+# carried as this control and nothing else; the axis that costs is the job count. (That axis also costs
+# WALL TIME: the L3 engine's cost tracks OUTPUT size, and a member drains one tile per job, so four
+# jobs is where this family stops.)
+#
+# ⚠️ WHY THE `cancels` LIST IS CREDIBLE, stated as the measurement that establishes it rather than as an
+# assertion. The neighbouring fusion family was found VACUOUS because it cancelled
+# `[operation_shape, operands, numeric_policy]` and never mentioned the invocation count, which was the
+# term that dominated. This family's two arms are ONE capsule emitted twice through the target's own
+# emitter at two settings of its retire knob, and the difference between the two LINKED ELFs was
+# counted per instruction mnemonic: at 1, 2 and 4 jobs the delta is `{}`, `{fence: 1}` and `{fence: 3}`
+# -- the removed barriers and NOTHING ELSE. The job count is held equal WITHIN a pair (it is what
+# indexes the members, not what separates the arms) and is named in `demand_equal` for that reason.
+#
+# ⚠️ THE NEGATIVE CONTROL IS TRUE BY CONSTRUCTION AND WAS STILL MEASURED. A one-job kernel has no
+# redundant barrier to remove, so both settings emit the byte-identical program; its differential must
+# be exactly zero, and it is (215 vs 215 cycles, identical driver digest, identical output digest). A
+# family whose control could only pass would not be a control.
+#
+# NO `acceptance` BLOCK, DELIBERATELY. A frozen acceptance contract names the analyzer that turns rows
+# into a verdict, and no analyzer for this family exists. Declaring one that does not is the reason the
+# sibling `PT` is blocked, and the residency family's author refused `PREDICTS` on the same grounds. The
+# family is satisfiable and undecidable-today, and those two states are reported separately.
+- id: PQ
+  fit_axes: [K]
+  comparison_roles: [minimum_barriers, barrier_after_every_job]
+  base:
+    cat: _perf
+    kind: model_slice
+    op: resident_reuse
+    weight: W
+    N_tiles: 1
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L2_intra_layer
+      family: PQ
+      lever: redundant_synchronization_removal
+      claim: DIFFERENTIAL
+      comparand:
+        kind: paired_run
+        against: the_same_capsule_emitted_with_a_barrier_after_every_job
+        # Established at the instruction level, not asserted: the two linked ELFs differ by the
+        # removed barrier instructions and by nothing else, at every job count.
+        cancels: [operation, M, N, K, job_count, operands, epilogue, operand_dtype, accum_dtype,
+                  movement_and_compute_command_multiset, scratchpad_and_accumulator_addressing,
+                  drained_output_bytes, emitted_instruction_multiset_except_the_barrier]
+        demand_equal: [operation, M, N, K, job_count, operand_dtype, accum_dtype, epilogue]
+      falsifier:
+        observation: paired_cycle_saving_by_removed_barrier_count
+        fires_when: the_saving_does_not_grow_with_the_removed_barrier_count_beyond_the_declared_noise_band
+        negative_control: the_single_job_member_whose_two_arms_are_the_byte_identical_program
+      gate:
+        # Both derived True from this target's own elaborated FIRRTL. `explicit_completion` is what
+        # makes a barrier expressible at all (there is something to remove); `host_dispatched_queue`
+        # is what makes removing it CORRECT -- the decoupled command queue tracks the dependence, so
+        # the barrier bought nothing. A target with the first and not the second would be refuted
+        # here rather than measured, which is the right answer for it.
+        traits: [host_dispatched_queue, explicit_completion]
+        instrument: cycle_count
+        capacity: at_least_two_removed_barrier_counts_across_the_members
+        on_missing: skip_with_evidence
+      regime:
+        separation: one_shape_per_pair_and_the_pair_is_two_emissions_of_that_one_capsule
+        layout: identical_operands_and_identical_command_stream_plus_the_removed_barriers
+      emitter:
+        # The pair is derived at MEASUREMENT time from one capsule, as in the scheduling family: the
+        # member is a single resident-reuse capsule and the arms are two emissions of it. The entry
+        # calls the TARGET'S OWN emitter twice and then PROVES the two sources are the same program
+        # plus one repeated inserted statement, refusing the pair when they are not -- a pair that
+        # differed by more than its lever would price the difference and call it the lever.
+        status: existing
+        entry: merlin.perf.barrier_arms.pair_from_emitter
+        knobs: {transformation: emit_one_capsule_at_two_settings_of_the_target_emitters_retire_knob}
+      # MEASURED, never a constant. A constant written here is a knob somebody can turn until the
+      # answer changes; the band is read off this family's own replicates instead. Every replicate pair
+      # in the founding measurement was observed IDENTICAL, so the dispersion is zero BY OBSERVATION and
+      # a saving counts iff it is nonzero. A member with one replicate has an UNDETERMINABLE dispersion
+      # and its band is refused rather than assumed noiseless.
+      noise_band:
+        kind: measured_replicate_dispersion
+        declared_constant: null
+        minimum_replicate_count: 2
+        predicate: a_saving_counts_iff_it_exceeds_the_measured_replicate_dispersion_of_its_own_pair
+      cost:
+        tier: 1
+        runs: two_arms_by_two_replicates_per_member
+        projected_cycles: derived_at_preflight
+        basis: >-
+          the members are deliberately SHALLOW: the measured per-barrier cost does not grow with the
+          reduction depth, so the shallowest point prices it conservatively and this family competes
+          for no deep-K slot. The expensive axis is the job count -- the L3 engine's wall cost tracks
+          OUTPUT size and a member drains one tile per job -- and four jobs is enough to separate a
+          per-barrier saving from a constant one
+  # The job count is what indexes the members, and it is spelled as the matmul list rather than as an
+  # extent because it is not one. The one-job member is the negative control and is NOT optional: it is
+  # the only member whose differential is zero by construction.
+  variants:
+  - jobs: 1
+    matmuls:
+    - {lhs: A0, out: Y0, M_tiles: 1}
+  - jobs: 2
+    matmuls:
+    - {lhs: A0, out: Y0, M_tiles: 1}
+    - {lhs: A1, out: Y1, M_tiles: 1}
+  - jobs: 4
+    matmuls:
+    - {lhs: A0, out: Y0, M_tiles: 1}
+    - {lhs: A1, out: Y1, M_tiles: 1}
+    - {lhs: A2, out: Y2, M_tiles: 1}
+    - {lhs: A3, out: Y3, M_tiles: 1}
+  # TWO depths, and they are a CONTROL rather than the claim: a barrier that drained the work it waits
+  # on would cost more at the deeper point, and it does not.
+  axes:
+    K: [tile, 2*tile]
+  name: '{id}{i:02d}_j{jobs}_k{K}'
+  source_reference: >-
+    shared barrier-removal pair: one resident weight reused by one, two and four jobs at two reduction
+    depths, where each member's A/B is that one capsule emitted at two settings of the target emitter's
+    retire knob
+
 blocked_unimplemented:
 # L4_boundary -- the host/accelerator SEAM, priced. Declared rather than omitted, because an absent
 # rung and an unaffordable one read the same in a ladder and only one of them is true.

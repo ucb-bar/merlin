@@ -215,3 +215,56 @@ performance:
     basis: the spilling members are the most expensive capsules in this corpus and
       are paid on every grade, so the top of the search is a declared multiple of
       the target's OWN capacity rather than an unbounded sweep
+  acceptance:
+    schema_version: 1
+    analyzer: perf_pr_claim.analyze_pr_claim/v1
+    fit:
+      form: affine_per_residency_band
+      method: ordinary_least_squares_over_the_replicate_agreed_cycles_of_one_band
+      independent_variable: K
+      dependent_metric: verilator_L3_cycles
+      comparands: the_fitted_rate_of_one_band_against_the_fitted_rate_of_another
+    cohort:
+      operation: matmul
+      fixed_shape_axes:
+      - M
+      - N
+      fixed_fields:
+      - operation
+      - operand_dtype
+      - accum_dtype
+      - epilogue
+      axis_derivation: memory_regime_reduction_depth
+      minimum_reachable_bands: 2
+      points_per_regime: 3
+    replicates:
+      minimum_count: 2
+      identities_authored_by: run
+      why: two replicates are the smallest set that MEASURES the dispersion this family's
+        noise band is read from; one replicate leaves it UNDETERMINABLE, and assuming
+        it zero on a deterministic simulator is the assumption this contract refuses
+    evidence:
+      correctness_simulator: spike
+      correctness_tier: L2
+      timing_simulator: verilator
+      timing_tier: L3
+      spike_cycles_citable: false
+      overlap_instrument: target_derived_combination_counters
+      overlap_required_per_member: true
+    noise_band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: fitted_rates_agree_iff_exactly_equal_when_the_measured_dispersion_is_zero
+      why: 'a constant written here would be a knob somebody can turn until the answer
+        changes. The band is read off the evidence instead: replicates that are observed
+        IDENTICAL make the dispersion zero by measurement, so agreement means exact
+        rational equality. A member with one replicate has an UNDETERMINABLE dispersion
+        and its band is refused rather than assumed noiseless'
+    transient_guard:
+      module: merlin.perf.fill_transient.transient_verdict
+      applied: per_residency_band
+      on_in_fill_transient: refuse_the_band_and_quote_no_rate
+      why: the sibling reduction-depth family was refuted because every one of its
+        depths lay inside the machine's overlap fill transient. This family's cheapest
+        band starts at the same depth, so a band is put through the guard before any
+        rate is quoted

@@ -86,3 +86,9 @@ semantic:
   generalization_axis: composition
   must_accelerate: true
   eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 21.71875
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
