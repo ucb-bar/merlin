@@ -198,13 +198,27 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
                 usage.setdefault("phase", _STATE.get("phase") or "codex")
                 usage.setdefault("tier", getattr(self, "_codex_tier", None) or "unknown")
                 self._usage_accumulator.append(usage)
+                # BUCKETS, NOT A TOTAL. Fresh input, output and cache-read price differently and
+                # behave differently: output is what the model actually produced, cache-read is
+                # nearly free and is dominated by this loop's fixed per-session overhead, and only
+                # fresh input scales with the prompt we designed. A single "tokens" number hides all
+                # three, and the claim this experiment makes is about token COST, so the breakdown is
+                # the measurement rather than a detail of it.
                 key = f"{usage.get('model')}@{usage.get('effort')}"
-                t = _STATE["by_tier"].setdefault(
-                    key, {"calls": 0, "tokens": 0, "seconds": 0.0, "tiers": []})
+                t = _STATE["by_tier"].setdefault(key, {
+                    "calls": 0, "seconds": 0.0, "tiers": [],
+                    "tokens_input_fresh": 0, "tokens_output": 0,
+                    "tokens_cache_read": 0, "tokens_cache_write": 0, "tokens_total": 0})
+                fresh = int(usage.get("input_tokens", 0) or 0)
+                outp = int(usage.get("output_tokens", 0) or 0)
+                cread = int(usage.get("cache_read_tokens", 0) or 0)
+                cwrite = int(usage.get("cache_write_tokens", 0) or 0)
                 t["calls"] += 1
-                t["tokens"] += (int(usage.get("input_tokens", 0) or 0)
-                                + int(usage.get("output_tokens", 0) or 0)
-                                + int(usage.get("cache_read_tokens", 0) or 0))
+                t["tokens_input_fresh"] += fresh
+                t["tokens_output"] += outp
+                t["tokens_cache_read"] += cread
+                t["tokens_cache_write"] += cwrite
+                t["tokens_total"] += fresh + outp + cread + cwrite
                 t["seconds"] += float(usage.get("duration_s", 0) or 0)
                 if usage["tier"] not in t["tiers"]:
                     t["tiers"].append(usage["tier"])
@@ -230,8 +244,13 @@ def stats() -> dict:
     return {"calls": _STATE["calls"], "tokens_total": _STATE["tokens"],
             "billed_usd": None, "billing_mode": "subscription_notional",
             "seat_model": SEAT_MODEL,
-            #: what each tier actually cost, keyed by the model@effort that answered
+            #: what each tier actually cost, keyed by the model@effort that answered, with the
+            #: token buckets kept apart (fresh input / output / cache read / cache write)
             "by_tier": {k: dict(v) for k, v in _STATE["by_tier"].items()},
+            "token_bucket_note": (
+                "`input_tokens` from this CLI ALREADY CONTAINS the cached and cache-write buckets, "
+                "so fresh input is recorded by SUBTRACTION; adding them overstated a measured round "
+                "by 85% once. tokens_total here is the sum of the four disjoint buckets."),
             "deviations": [
                 "no temperature control: codex exec exposes none, so sample diversity comes only "
                 "from independent invocations",

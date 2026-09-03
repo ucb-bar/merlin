@@ -327,14 +327,38 @@ def main(argv: list[str] | None = None) -> int:
                "speedup_vs_default": round(baseline / best, 4) if (best and baseline) else None,
                "candidates": len(history), "invalid_candidates": n_invalid,
                "duplicate_candidates": n_dup, "totals": tot,
+               # Same shape the AutoComp arm reports, keyed by the model@effort that answered, so a
+               # cross-arm token comparison is a lookup rather than a reconciliation. This arm runs
+               # ONE tier by construction -- the agent only ever selects -- and saying so explicitly
+               # is the point: the arms differ in how many tiers they need, not only in how many
+               # tokens they spend.
+               "by_tier": {f"{args.model}@{args.effort}": {
+                   "calls": len(history),
+                   "tiers": ["select"],
+                   "tokens_input_fresh": tot["tokens_input"],
+                   "tokens_output": tot["tokens_output"],
+                   "tokens_cache_read": tot["tokens_cached"],
+                   "tokens_cache_write": tot["tokens_cache_write"],
+                   "tokens_reasoning": tot["tokens_reasoning"],
+                   "tokens_total": tot["tokens_total"],
+                   "seconds": round(sum(float(r.get("agent_seconds") or 0) for r in history), 1),
+               }},
+               "token_bucket_note": (
+                   "`input_tokens` from this CLI ALREADY CONTAINS the cached and cache-write "
+                   "buckets, so fresh input is recorded by SUBTRACTION; adding them overstated a "
+                   "measured round by 85% once. Note also that ~20k tokens per turn is FIXED codex "
+                   "session overhead (a fresh session per candidate), so the cache-read bucket "
+                   "measures the loop design as much as the prompt."),
                "engine_note": T.ENGINE_NOTE, "history": history}
     (h.run_dir / "agent_summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
 
     print(f"\nbaseline {baseline} -> best {best} "
           f"({summary['speedup_vs_default']}x) in {len(history)} candidates "
           f"({n_invalid} invalid, {n_dup} duplicate)")
-    print(f"tokens: {tot['tokens_total']} total ({tot['tokens_input']} fresh in / "
-          f"{tot['tokens_output']} out / {tot['tokens_cached']} cached), "
+    print(f"tokens: {tot['tokens_total']} total = {tot['tokens_input']} fresh in + "
+          f"{tot['tokens_output']} out + {tot['tokens_cached']} cache-read + "
+          f"{tot['tokens_cache_write']} cache-write "
+          f"(reasoning {tot['tokens_reasoning']}), model {args.model}@{args.effort}, "
           f"notional ${tot['notional_usd']} (billed: none — seat)")
     finish_run(h, "ok", summary={"best_cycles": best, "tokens_total": tot["tokens_total"],
                                  "candidates": len(history)})
