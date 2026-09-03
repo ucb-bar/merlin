@@ -102,3 +102,47 @@ def test_the_budget_refuses_to_extrapolate_far_past_the_evidence():
     assert CC.max_elements_within(fit, 50.0) is None, (
         "a budget under the fixed floor admits no capsule of any size, which is a statement about "
         "the budget rather than about the shape")
+
+
+def test_a_single_capsule_run_is_a_cost_sample(tmp_path):
+    """A calibration run writes capsule_result.json and NO score file, and was invisible to the model.
+
+    `_timing_records` only read score files -- the batch grader's roll-up -- so the one kind of run you
+    would deliberately make to calibrate the model (a single capsule at a chosen size) contributed
+    nothing. The per-capsule result is the primary record and always carries per-tier timing; the score
+    file is derived from it. Measured after this was fixed: the visible sample count for gemmini went
+    from 32 to 75, because every capsule run under out/runs/ had been ignored.
+    """
+    import json
+
+    run = tmp_path / "runs" / "t-capsule-bench" / "CAL_probe"
+    run.mkdir(parents=True)
+    (run / "capsule_result.json").write_text(json.dumps({
+        "capsule": "CAL_probe",
+        "tiers": {
+            "L2": {"timing": {"sim_active_s": 0.006}, "cycle_accurate": False,
+                   "derived_from_rtl": False, "evidence": "spike_console.log"},
+            "L3": {"timing": {"sim_active_s": 177.249}, "cycle_accurate": True,
+                   "derived_from_rtl": True, "evidence": "rtl_verilator_console.log"},
+        },
+    }), encoding="utf-8")
+
+    recs = CC._timing_records("t", root=tmp_path)
+    assert "CAL_probe" in recs, f"a single-capsule run must contribute a sample: {recs}"
+    seconds, source = recs["CAL_probe"]
+    assert seconds == 177.249, "the cycle-accurate tier's time, not the functional one or the sum"
+    assert "cycle_accurate_tier:L3" in source
+
+
+def test_a_result_whose_only_tier_is_functional_contributes_nothing(tmp_path):
+    import json
+
+    run = tmp_path / "runs" / "t-capsule-bench" / "FUNC_only"
+    run.mkdir(parents=True)
+    (run / "capsule_result.json").write_text(json.dumps({
+        "capsule": "FUNC_only",
+        "tiers": {"L2": {"timing": {"sim_active_s": 0.006}, "cycle_accurate": False,
+                          "derived_from_rtl": False}},
+    }), encoding="utf-8")
+    assert CC._timing_records("t", root=tmp_path) == {}, (
+        "0.006s from a functional oracle must never enter a certification cost model")

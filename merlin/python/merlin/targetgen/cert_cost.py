@@ -152,34 +152,73 @@ def _cycle_accurate_seconds(timing: dict) -> tuple[float | None, str]:
     return None, "no positive sim_active_s"
 
 
-def _timing_records(target: str, root: Path | None = None) -> dict[str, tuple[float, str]]:
-    """``capsule -> (cycle_accurate_seconds, source)`` from every graded run this target has on disk.
+def _per_tier_from_result(doc: dict) -> dict:
+    """A capsule_result's ``tiers`` reshaped into the ``by_tier`` block a score file carries.
 
-    Later files win on a repeat, which is what "the most recent measurement" means when a capsule
-    has been certified more than once. A capsule whose graded run never reached a cycle-accurate tier
+    The per-capsule result is the PRIMARY record and always has per-tier timing; a score file's
+    ``timing_diagnostic`` is a roll-up of it. Reading both means a cost sample comes from any capsule
+    run, not only from a graded batch -- which is what a single calibration run produces, and it was
+    otherwise invisible to this model.
+    """
+    out = {}
+    for name, rec in (doc.get("tiers") or {}).items():
+        if not isinstance(rec, dict):
+            continue
+        tm = rec.get("timing")
+        if not isinstance(tm, dict):
+            continue
+        out[str(name)] = {"sim_active_s": tm.get("sim_active_s"),
+                          "build_s": tm.get("build_s"),
+                          "oracle_wait_s": tm.get("oracle_wait_s"),
+                          "cycle_accurate": rec.get("cycle_accurate"),
+                          "derived_from_rtl": rec.get("derived_from_rtl"),
+                          "evidence": rec.get("evidence")}
+    return out
+
+
+def _timing_records(target: str, root: Path | None = None,
+                    extra_roots=()) -> dict[str, tuple[float, str]]:
+    """``capsule -> (cycle_accurate_seconds, source)`` from every run this target has on disk.
+
+    Two record kinds are read, because they are written by different paths: a score file's
+    ``timing_diagnostic`` (the batch grader's roll-up) and a ``capsule_result.json``'s ``tiers``
+    (the per-capsule primary record, which a single-capsule run writes and a score file does not
+    exist for). Later files win on a repeat, which is what "the most recent measurement" means when a
+    capsule has been certified more than once. A run that never reached a cycle-accurate tier
     contributes NOTHING rather than its functional time -- a fit that absorbed those would read a
     near-zero cost for a capsule nobody certified.
     """
-    from merlin.common.paths import artifacts_dir
+    from merlin.common.paths import artifacts_dir, runs_dir
 
-    base = Path(root) if root else (artifacts_dir() / "capsule-bench" / str(target))
+    bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target),
+                                       runs_dir()]
+    bases += [Path(r) for r in extra_roots]
     out: dict[str, tuple[float, str]] = {}
-    if not base.is_dir():
-        return out
-    for path in sorted(base.rglob("*.json")):
-        try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):    # an unreadable score file is not a measurement
+    for base in bases:
+        if not base.is_dir():
             continue
-        block = doc.get("timing_diagnostic")
-        if not isinstance(block, dict):
-            continue
-        for name, timing in block.items():
-            if not isinstance(timing, dict):
+        for path in sorted(base.rglob("*.json")):
+            if path.name != "capsule_result.json" and not path.name.startswith("score"):
                 continue
-            seconds, basis = _cycle_accurate_seconds(timing)
-            if seconds is not None:
-                out[str(name)] = (seconds, f"{path}#{basis}")
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):   # unreadable is not a measurement
+                continue
+            block = doc.get("timing_diagnostic")
+            if isinstance(block, dict) and block:
+                for name, timing in block.items():
+                    if not isinstance(timing, dict):
+                        continue
+                    seconds, basis = _cycle_accurate_seconds(timing)
+                    if seconds is not None:
+                        out[str(name)] = (seconds, f"{path}#{basis}")
+                continue
+            name = doc.get("capsule")
+            per_tier = _per_tier_from_result(doc)
+            if name and per_tier:
+                seconds, basis = _cycle_accurate_seconds({"by_tier": per_tier})
+                if seconds is not None:
+                    out[str(name)] = (seconds, f"{path}#{basis}")
     return out
 
 
@@ -204,7 +243,8 @@ def _capsule_sizes(corpus_roots) -> dict[str, int]:
     return sizes
 
 
-def fit_for(target: str, *, corpus_roots=None, timing_root=None) -> "CostFit | None":
+def fit_for(target: str, *, corpus_roots=None, timing_root=None,
+            extra_timing_roots=()) -> "CostFit | None":
     """The cost model for ``target``, or ``None`` when nothing has been measured.
 
     ``None`` is a real answer and the caller must honour it: a target with no certification history
@@ -213,7 +253,7 @@ def fit_for(target: str, *, corpus_roots=None, timing_root=None) -> "CostFit | N
     """
     from merlin.common.paths import merlin_dir
 
-    timings = _timing_records(target, timing_root)
+    timings = _timing_records(target, timing_root, extra_roots=extra_timing_roots or ())
     if not timings:
         return None
     roots = list(corpus_roots) if corpus_roots else [merlin_dir() / "contract" / "capsules"]
