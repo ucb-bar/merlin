@@ -1,0 +1,105 @@
+name: PG02_encoding0_k32
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared operand-encoding pair: one identical contraction computed
+  in two of the target''s own declared encodings, so the cost of the encoding choice
+  is isolated (tile=16; K=32, M=16, N=16; op=matmul, operand_dtype=encoding0)'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: bf16
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: bf16
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L6_global
+  family: PG
+  lever: operand_encoding
+  claim: DIFFERENTIAL
+  comparand:
+    kind: group_arithmetic
+    against: the_same_layer_in_the_other_encoding
+    cancels:
+    - operation_shape
+    - operands
+    demand_equal:
+    - M
+    - N
+    - K
+  falsifier:
+    observation: encoding_a_cycles_minus_encoding_b_cycles
+    fires_when: the_two_encodings_cost_the_same_within_the_noise_band
+    negative_control: the_same_encoding_compared_against_itself
+  gate:
+    traits:
+    - multiple_operand_encodings
+    instrument: cycle_count
+    capacity: two_encodings_of_one_identical_shape
+    on_missing: skip_with_evidence
+  regime:
+    separation: one_identical_shape_per_group
+    layout: both_members_share_every_extent
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      encodings:
+      - encoding0
+      - encoding1
+    resolved:
+      source: direct
+      operand_dtype: bf16
+      accum_dtype: f32
+      datatype_basis: declared_encoding_variant
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: two_per_shape
+    projected_cycles: derived_at_preflight
+    basis: one_matmul_per_encoding
+comparison_group:
+  name: enc_m16k32n16
+  role: encoding_a
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 128.92405278794467
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
