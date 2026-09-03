@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-09-02
 related: [whole_model_on_accelerator, reproducing_whole_model_on_rtl, gemmini_experiment, reproducibility, adding_a_target]
-code_refs: [merlin/python/merlin/targetgen/capsule_grade.py, merlin/python/merlin/targetgen/capsule_runner.py, merlin/python/merlin/targetgen/rtl_engine_policy.py, merlin/python/merlin/targetgen/contract/compile.py, merlin/python/merlin/perf/hw_counters.py, merlin/contract/hardware_pins.yaml]
+code_refs: [merlin/python/merlin/targetgen/capsule_grade.py, merlin/python/merlin/targetgen/capsule_runner.py, merlin/python/merlin/targetgen/rtl_engine_policy.py, merlin/python/merlin/targetgen/contract/compile.py, merlin/python/merlin/perf/hw_counters.py, merlin/python/merlin/perf/calibration.py, merlin/contract/hardware_pins.yaml]
 ---
 
 # Running the certified gemmini OOT backend on a fresh machine
@@ -204,6 +204,40 @@ the *thousands* for a 52-cycle window.
 
 Measured on the K-sweep with this package, Verilator: 20–41% of each window has **no** engine busy, and
 `min(T_compute, T_movement) − realised_overlap` leaves 70–83 cycles of overlap still available.
+
+### Turning those counters into a mechanism calibration
+
+The same counters are the second seam into the mechanism calibration an analytical performance model
+has to be fitted against. Two commands:
+
+```bash
+# 1. run the workloads with the bracket in place, on elaborated RTL, and keep the readings
+merlin/experiments/performance_contract/counter_occupancy.py --target gemmini \
+    --shape 16x16x16 --shape 32x32x32 --pin gemmini_rtl --pin gemmini_isa_headers
+# -> out/artifacts/perf-counters/<target>/v1/latest/counter_occupancy.json
+
+# 2. fit the calibration against them
+merlin/experiments/capsule_bench/harness/perf_calibrate.py --target gemmini \
+    --counters out/artifacts/perf-counters/gemmini/v1/latest/counter_occupancy.json
+# -> out/artifacts/perf-calibration/<target>/v2/latest/calibration.json
+```
+
+Read the result with two things in mind.
+
+- **The counter block is an AGGREGATE instrument and is never compared with a per-cycle trace.** It
+  fills `counter_calibration` only; `ran_against_traces` stays False without a trace, the capsule cover
+  stays UNKNOWN, and no number crosses between the blocks. Its engine axis is `EX`/`LD`/`ST` — factored
+  out of the shipped counter header — while a trace's axis is whatever the capability contract
+  declares. Same word, different quantity.
+- **A per-engine busy total is the single counter plus every combination containing it.** Reading the
+  singles alone understates the busiest engine, which is η's denominator. A counter that did not print
+  is absent, which makes the whole reading UNKNOWN — never a smaller overlap.
+
+The per-cycle seam still exists and is the better instrument where it runs: point `MERLIN_MLC_DIR` at a
+modelling checkout with a BUILT co-simulation model and run `gemmini_occupancy.py --write-trace`. Its
+current limit is the workload, not the model — that driver places operands straight into the
+scratchpad, so the load and store controllers never run and the joint vector has one live column, which
+reports zero overlap by construction and is refused as such.
 
 ## Grading the excluded capstones
 

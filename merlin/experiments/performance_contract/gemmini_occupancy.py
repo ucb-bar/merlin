@@ -68,6 +68,34 @@ def mlc_dir() -> Path:
     return Path(d)
 
 
+class _in_mlc_checkout:
+    """Run a block with the modelling checkout as the working directory, then put it back.
+
+    Not cosmetic. The modelling repo resolves its own artifact handles -- the compiled model, the state
+    manifest, the discovered-interface cache -- as paths RELATIVE to the process working directory, so
+    importing it from elsewhere makes it report "no discovered-interface cache for <target>": a
+    perfectly built model reported as an absent one. That reading is what a calibration record then
+    repeats as "no cycle-accurate trace obtainable in this environment", which is a statement about a
+    working directory wearing the clothes of a statement about the host.
+
+    Nothing is written into that checkout -- other sessions work in those trees -- and the previous
+    directory is restored even when the model raises.
+    """
+
+    def __init__(self, where: Path):
+        self._where, self._prev = Path(where), None
+
+    def __enter__(self):
+        self._prev = Path.cwd()
+        os.chdir(self._where)
+        return self._where
+
+    def __exit__(self, *exc):
+        if self._prev is not None:
+            os.chdir(self._prev)
+        return False
+
+
 def _cosim(target: str):
     """The target's co-simulation model, plus the signals its manifest actually exposes."""
     sys.path.insert(0, str(mlc_dir()))
@@ -91,7 +119,8 @@ def trace_matmul(target: str, m: int, k: int, n: int) -> tuple[dict, dict]:
     """
     import numpy as np                                            # noqa: PLC0415
 
-    cosim, declared = _cosim(target)
+    with _in_mlc_checkout(mlc_dir()):
+        cosim, declared = _cosim(target)
     present = [s for s in (*STATE_SIGNALS, *PORT_SIGNALS) if s in declared]
     absent = [s for s in (*STATE_SIGNALS, *PORT_SIGNALS) if s not in declared]
 
@@ -166,11 +195,131 @@ def _contract(target: str) -> dict:
     return yaml.safe_load(target_contract_path(target).read_text())
 
 
+def instance_modules(target: str) -> dict[str, str]:
+    """``{instance name: module name}`` from the target's OWN elaborated HW dialect.
+
+    The co-simulation state manifest addresses a signal by its INSTANCE path
+    (``ex_controller/control_state``), while a capability contract and a synthesis FSM inventory both
+    name a unit by its MODULE (``ExecuteController``). Nothing joins the two but the design itself, and
+    the join must come from the design: turning ``ex_controller`` into ``ExecuteController`` by pattern
+    is precisely the guess the repo's cardinal rule forbids, and it is wrong the moment a design
+    instantiates a module under a name that does not resemble it.
+
+    Parsed structurally -- ``partition`` and ``split`` over ``hw.instance "<name>" @<Module>``, no
+    pattern matching -- and an unparseable or absent dialect returns an empty map, which leaves every
+    column UNBOUND and reported rather than bound to a guess.
+    """
+    outputs = mlc_dir() / "runs" / "circt-arc" / target / "outputs"
+    hw = next(iter(sorted(outputs.glob("*_core_hw.mlir"))), None)
+    if hw is None:
+        return {}
+    out: dict[str, str] = {}
+    for line in hw.read_text(encoding="utf-8", errors="replace").splitlines():
+        _, sep, rest = line.partition("hw.instance ")
+        if not sep or not rest.startswith('"'):
+            continue
+        name, quoted, tail = rest[1:].partition('"')
+        at = tail.find("@")
+        if not quoted or at == -1:
+            continue
+        module = tail[at + 1:].split("(")[0].split("<")[0].strip()
+        if name and module:
+            out.setdefault(name, module)
+    return out
+
+
+def engine_by_module(target: str) -> dict[str, str]:
+    """``{module name: the engine that module IS}``, from the target's own declarations.
+
+    Two sources, both the target's own: a contract compute unit that names its ``rtl_module``, and the
+    synthesis FSM inventory, whose engines are named by module already. A module in neither is absent,
+    not defaulted -- a column in it stays unbound and is reported as such.
+    """
+    from merlin.targetgen.rtl.fsm import fsm_inventory                # noqa: PLC0415
+
+    out: dict[str, str] = {}
+    for unit in (_contract(target) or {}).get("compute_units") or ():
+        module, name = unit.get("rtl_module"), unit.get("name")
+        if module and name:
+            out.setdefault(str(module), str(name))
+    try:
+        for reg in fsm_inventory(target):
+            module = str(getattr(reg, "module", "") or "")
+            if module:
+                out.setdefault(module, module)
+    except OSError:
+        pass                          # no extraction on disk: the contract's own units still stand
+    return out
+
+
+def mechanism_traces(target: str, traces: list[dict], metas: list[dict]) -> list[dict]:
+    """The per-cycle recordings, in the shape ``perf_calibrate.py --traces`` consumes.
+
+    The summary this driver already writes is the AGGREGATE (joint busy, overlap, idle). The columns it
+    was computed from lived only in this process, so the calibration seam -- which needs the per-cycle
+    values, not the totals -- had nothing to read and every eta in a calibration record stayed UNKNOWN
+    beside a real measurement. This writes the columns out.
+
+    What the file DECLARES is the part that is not derivable from the samples: which columns are busy
+    ports and which are state registers whose encoding must be calibrated, and which engine each column
+    belongs to. The binding names the DESIGN's own controller modules, because that is what the
+    instrument read; whether the target's capability contract declares those engines is the contract's
+    business, and where it does not, the calibration refuses the reading and says so. Renaming a column
+    onto whatever engine the contract happens to declare, so the reading resolves, is the failure this
+    seam is built to prevent -- three decoupled controllers reported as one systolic array would put
+    their concurrency inside a single engine, where it cannot be seen.
+
+    ``bit_exact`` travels with each trace as the work fingerprint: an occupancy vector from a run that
+    computed the wrong thing is not this machine's behaviour on that workload.
+    """
+    instances = instance_modules(target)
+    engines = engine_by_module(target)
+    out = []
+    for trace, meta in zip(traces, metas):
+        present = list(meta.get("signals_present") or trace.keys())
+        states = [c for c in present if c in STATE_SIGNALS]
+        ports = [c for c in present if c in PORT_SIGNALS]
+        binding, unbound = {}, []
+        for c in states:
+            engine = engines.get(instances.get(c.split("/")[0], ""), "")
+            if engine:
+                binding[c] = engine
+            else:
+                unbound.append(c)
+        out.append({
+            "capsule": f"cosim_matmul_{meta.get('shape')}",
+            "columns": {c: list(trace[c]) for c in present if c in trace},
+            # Derived: instance -> module from the design's HW dialect, module -> engine from the
+            # target's own declarations. A column whose instance resolves to no declared engine is left
+            # OUT of the binding and reported unbound, never attached to whichever engine is nearest.
+            "binding": binding,
+            "port_columns": ports,
+            "state_columns": states,
+            "unmeasured_units": list(meta.get("signals_absent") or ()),
+            "work": (f"{meta.get('shape')} i8 matmul, bit_exact={meta.get('bit_exact')}"
+                     if meta.get("bit_exact") is not None else None),
+            # The recording wraps the model's clock and samples state; it does not observe when a
+            # controller's work COMPLETED. Stated, because defaulting it True satisfies a gate nothing
+            # measured.
+            "completion_observable": False,
+            "provenance": (f"co-simulation model of {target} under MERLIN_MLC_DIR, recorded per cycle "
+                           f"around its own matmul driver; column->engine derived via the design's "
+                           f"own hw.instance map"
+                           + (f"; UNBOUND (no declared engine for their module): {sorted(unbound)}"
+                              if unbound else "")),
+        })
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", required=True)
     ap.add_argument("--shape", action="append", default=None,
                     help="MxKxN; repeatable (default: two sizes)")
+    ap.add_argument("--write-trace", action="store_true",
+                    help="also write mechanism_trace.json -- the PER-CYCLE columns, in the shape "
+                         "perf_calibrate.py --traces consumes. Without it only the aggregate is kept "
+                         "and the calibration seam has nothing to read")
     args = ap.parse_args()
     shapes = args.shape or ["16x16x16", "32x32x32"]
 
@@ -196,6 +345,10 @@ def main() -> int:
                        notes="joint controller occupancy from the co-simulation model")
     (pd.path / "occupancy.json").write_text(json.dumps(rep, indent=1))
     print(f"\nwrote {pd.path / 'occupancy.json'}")
+    if args.write_trace:
+        mt = pd.path / "mechanism_trace.json"
+        mt.write_text(json.dumps(mechanism_traces(args.target, traces, metas), indent=1) + "\n")
+        print(f"wrote {mt}")
     return 0
 
 

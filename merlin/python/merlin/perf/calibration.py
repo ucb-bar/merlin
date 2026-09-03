@@ -50,6 +50,21 @@ readings are taken by the existing measurement libraries rather than re-derived 
 :func:`~merlin.perf.headroom.composition_operator` for the operator, and
 :func:`~merlin.targetgen.memory_regime.capsule_regime` for the regime. Re-deriving any of them would
 re-make the mistake each one was written to stop.
+
+TWO INSTRUMENTS, REPORTED SEPARATELY
+------------------------------------
+A per-cycle trace needs a waveform build or a co-simulation model, and a target with neither leaves
+every eta here UNKNOWN however good its RTL is. So there is a second seam: :class:`CounterReading`, the
+AGGREGATE totals a target's own COMBINATION performance counters hold. Where the RTL counts the cycles
+each subset of its engines was busy, realised overlap is a counter value rather than an inference, and
+it comes off the same elaborated RTL that certifies a capsule.
+
+The two are never merged. They are two instruments over two engine axes -- a trace is per-cycle over
+the engines the CONTRACT declares, a counter set is aggregate over the engines the target's counter
+HEADER names -- and the second fills ``counter_calibration`` alone: ``ran_against_traces`` stays False
+without a trace, the capsule cover stays UNKNOWN, and no number crosses between the blocks. See
+:data:`INSTRUMENTS_NOT_COMPARABLE`. This module already refuses to compare its own two axes for a
+weaker version of the same reason (:data:`KIND_AXIS_NOTE`); an instrument boundary is the stronger one.
 """
 from __future__ import annotations
 
@@ -57,15 +72,22 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 __all__ = [
-    "CALIBRATED", "Cell", "DEFAULT_PORT_LOW", "ENGINE_PAIR_AXIS", "EngineInventory",
+    "CALIBRATED", "COMPOSITION_TOLERANCE", "COUNTER_INSTRUMENT", "Cell", "CounterReading",
+    "DEFAULT_PORT_LOW", "ENGINE_PAIR_AXIS", "EngineInventory",
     "EngineObservability", "IDLE_DECLARED", "IDLE_DERIVED", "IDLE_UNESTABLISHED",
-    "IdleCalibration", "KIND_AXIS_NOTE", "MEASURED", "MEMORY_REGIME_AXIS", "MechanismTrace",
-    "POINTS_PER_CELL", "SCHEMA_VERSION", "UNCALIBRATABLE", "UNCOVERED", "UNKNOWN", "audit",
-    "busy_vectors", "calibrate", "calibrate_idle", "engine_inventory", "measured",
-    "required_cells", "select_calibration_set", "unknown",
+    "IdleCalibration", "INSTRUMENTS_NOT_COMPARABLE", "KIND_AXIS_NOTE", "MEASURED",
+    "MEMORY_REGIME_AXIS", "MechanismTrace", "POINTS_PER_CELL", "SCHEMA_VERSION", "TRACE_INSTRUMENT",
+    "UNCALIBRATABLE", "UNCOVERED", "UNKNOWN", "audit",
+    "busy_vectors", "calibrate", "calibrate_idle", "counter_calibration", "engine_inventory",
+    "measured", "required_cells", "select_calibration_set", "unknown",
 ]
 
-SCHEMA_VERSION = 1
+#: Bumped to 2 when the second instrument arrived: a v2 record carries ``counter_calibration``,
+#: ``ran_against_counters`` and ``measured_basis`` beside the trace-side blocks a v1 record had. The
+#: addition is backward-compatible in shape but not in MEANING -- a reader that checks only
+#: ``ran_against_traces`` would call a counter-calibrated v2 record uncalibrated -- so the version says
+#: so rather than leaving the reader to notice.
+SCHEMA_VERSION = 2
 
 #: The two states any single quantity in a calibration record may be in. There is no third spelling
 #: and in particular there is no numeric stand-in for the second: see the module docstring.
@@ -524,6 +546,73 @@ KIND_AXIS_NOTE = (
     "construction. These are two instruments, not two readings, and must not be compared")
 
 
+#: The eta thresholds a composition operator is classified against. Declared once so the trace seam and
+#: the counter seam classify the same eta the same way; changing it in one place would let the two
+#: instruments disagree about the operator while agreeing about the number.
+COMPOSITION_TOLERANCE = 0.05
+
+#: The two instruments this module accepts, named so a record says which one produced it.
+TRACE_INSTRUMENT = "per_cycle_trace"
+COUNTER_INSTRUMENT = "hardware_combination_counters"
+
+#: Why a counter reading and a trace reading are never merged, averaged or compared.
+#:
+#: A trace is a per-cycle vector: it can say WHEN each engine was busy, so overlap is read off the
+#: timeline and the vector's own live-column count says whether overlap could have been seen at all. A
+#: combination counter is an AGGREGATE: the hardware has already reduced the timeline to seven totals,
+#: overlap is a counter value rather than an inference, and no per-cycle question can be asked of it
+#: afterwards. The two also disagree about what an engine IS -- a trace binds columns to the engines the
+#: CONTRACT declares, while the counter block's engines are factored out of the target's own counter
+#: names -- so an eta from one is not the same quantity as an eta from the other even when the numbers
+#: are close. This module already refuses to compare its own two axes for a weaker version of this
+#: reason (see :data:`KIND_AXIS_NOTE`); the same rule applies here, more strongly.
+INSTRUMENTS_NOT_COMPARABLE = (
+    "a counter reading is an AGGREGATE from the target's own combination counters and a trace reading "
+    "is a per-cycle vector over the engines the CONTRACT declares. They are two instruments over two "
+    "engine axes, not two readings of one quantity: they are reported side by side and never merged, "
+    "averaged, cross-checked as agreement, or substituted for one another")
+
+
+@dataclass(frozen=True)
+class CounterReading:
+    """One workload's joint occupancy, as the target's OWN hardware counted it.
+
+    The SECOND seam, and deliberately a separate one. :class:`MechanismTrace` needs a per-cycle
+    instrument -- a waveform build or a co-simulation model -- and on a target that has neither, every
+    eta in a calibration record stays UNKNOWN however good the RTL is. A target whose RTL carries
+    combination performance counters needs neither: the hardware already counts the cycles in which
+    each SUBSET of its engines was busy, and a combination counter IS a joint-occupancy reading.
+
+    What the producer declares here, because none of it is derivable from the values:
+
+    * ``values`` -- the counter readings a bracketed run actually printed back. A counter the bracket
+      configured but whose value did not come back must be ABSENT from this mapping, never zero:
+      :func:`~merlin.perf.hw_counters.eta_from_counters` refuses on a missing counter, and a zero
+      would report overlap that was never measured as overlap that did not happen.
+    * ``counters`` -- the :class:`~merlin.perf.hw_counters.OccupancyCounters` block the target's own
+      shipped header was factored into. The engine axis comes from there, not from this module, and
+      not from the contract.
+    * ``kind_of`` -- each counter engine's resource KIND, if the producer can state it. A kind cannot
+      be derived from a counter's spelling (deriving "LD means movement" from the token is exactly the
+      overfit the repo's cardinal rule forbids), so absent it the kind axis refuses rather than
+      guesses.
+    """
+
+    workload: str
+    #: ``{counter name: cycles}``. A missing counter is UNKNOWN; it is never defaulted to 0.
+    values: Mapping[str, int]
+    #: The target's derived combination-counter block (``hw_counters.OccupancyCounters``).
+    counters: object
+    #: The run's total cycle window, if the harness measured one. ``None`` == not stated; the idle
+    #: residual is then simply not emitted rather than computed against a guessed window.
+    total_cycles: int | None = None
+    #: ``{counter engine: resource kind}``, declared by the producer. Absent == the kind axis refuses.
+    kind_of: Mapping[str, str] | None = None
+    #: Whether the harness could observe when an engine's work COMPLETED. Tri-state, never defaulted.
+    completion_observable: bool | None = None
+    provenance: str = ""
+
+
 #: How many capsules a fitted cell gets by default. TWO, because the repo's standing rule is at least
 #: two points per fitted parameter: one point cannot separate a rate from a fixed fill/drain
 #: intercept, and the one place a single point was used it could not (a layer at 751.1 cycles per tile
@@ -732,7 +821,7 @@ def _composition(readings: Mapping[str, Mapping], inventory: EngineInventory) ->
     from merlin.perf.decompose import ActivitySource, Resource, ResourceKind, Unavailable
     from merlin.perf.headroom import Composition, composition_operator
 
-    tol = 0.05
+    tol = COMPOSITION_TOLERANCE
     kinds_declared = sorted({o.kind for o in inventory.declared.values()})
     unreadable = {name for name, r in readings.items()
                   if (r.get("overlap") or {}).get("realised_cycles", {}).get("state") != MEASURED
@@ -805,8 +894,202 @@ def _composition(readings: Mapping[str, Mapping], inventory: EngineInventory) ->
     return out
 
 
+def counter_calibration(readings: Sequence[CounterReading]) -> dict:
+    """The corpus composition operator from AGGREGATE hardware combination counters.
+
+    The second instrument, kept structurally apart from :func:`_composition` rather than folded into
+    it. Both produce an operator and an eta, and that is exactly why they must not share a code path:
+    the numbers would then look like two readings of one quantity, and the first thing a reader would
+    do is compare them. They are over different engine axes and different instruments; see
+    :data:`INSTRUMENTS_NOT_COMPARABLE`.
+
+    Every reading is taken by :mod:`merlin.perf.hw_counters`, which already knows how a counter set
+    lies -- that a per-engine busy total is the single counter PLUS every combination containing it
+    (reading the singles as whole-engine totals understates the busiest engine, which is eta's
+    denominator, and so inflates eta), and that a missing counter makes the whole reading UNKNOWN
+    rather than a lower bound reported as a total. Re-deriving either here would re-make the mistake
+    each rule was written to stop.
+
+    UNKNOWN propagates exactly as it does on the trace side: one run without a reading leaves the
+    corpus operator unestablished rather than partially derived, because dropping it reweights the
+    corpus towards whatever happened to be measurable.
+    """
+    from merlin.perf.decompose import ActivitySource, Resource, ResourceKind, Unavailable
+    from merlin.perf.headroom import Composition, composition_operator
+    from merlin.perf.hw_counters import eta_from_counters, observations_from_counters
+
+    out: dict = {"instrument": COUNTER_INSTRUMENT, "n_runs": len(readings),
+                 "not_comparable_with_traces": INSTRUMENTS_NOT_COMPARABLE,
+                 "engine_axis_source": ("factored out of the target's OWN shipped counter header, "
+                                        "not read from the capability contract"),
+                 "runs": []}
+    if not readings:
+        why = ("no counter reading was supplied, so the target's own combination counters constrain "
+               "nothing here")
+        out["engine_axis"] = {"operator": unknown(why), "eta": unknown(why),
+                              "realised_cycles": unknown(why), "available_cycles": unknown(why)}
+        out["kind_axis"] = {"operator": unknown(why), "eta": unknown(why)}
+        out["engines"] = []
+        out["runs_without_a_reading"] = []
+        return out
+
+    # Readings taken over DIFFERENT engine sets are two instruments, not one corpus: summing their
+    # totals would build a corpus figure whose denominator is over engines the numerator never saw.
+    engine_sets = {tuple(getattr(r.counters, "engines", ())) for r in readings}
+    mixed = len(engine_sets) != 1
+    out["engines"] = [] if mixed else sorted(next(iter(engine_sets)))
+    per_run: dict[str, dict] = {}
+    for r in sorted(readings, key=lambda x: x.workload):
+        got = eta_from_counters(dict(r.values), r.counters)
+        obs = observations_from_counters(
+            dict(r.values), r.counters, total_cycles=r.total_cycles,
+            source=r.provenance or COUNTER_INSTRUMENT,
+            kind_of=dict(r.kind_of) if r.kind_of else None)
+        entry: dict = {
+            "workload": r.workload,
+            "counters": r.counters.to_dict() if hasattr(r.counters, "to_dict") else {},
+            "counter_values": {k: int(v) for k, v in sorted(dict(r.values).items())},
+            "total_cycles": r.total_cycles,
+            "completion_observable": r.completion_observable,
+            "provenance": r.provenance,
+            "observations": obs,
+        }
+        if got.get("state") == "measured":
+            entry["busy_cycles"] = measured(
+                {k: int(v) for k, v in sorted(got["busy_cycles"].items())},
+                detail="per COUNTER-DERIVED engine: the single counter plus every combination "
+                       "containing it, which is exact because the increment conditions partition "
+                       "busy time")
+            entry["realised_cycles"] = measured(
+                int(got["realised_cycles"]),
+                detail="cycles the hardware itself counted with >=2 engines busy together -- "
+                       "measured, not inferred from buckets")
+            entry["available_cycles"] = measured(
+                int(got["available_cycles"]),
+                detail="min(total - busiest, total // 2); equals the second-largest per-engine total "
+                       "for two engines, which is the falsifier's denominator")
+            entry["eta"] = measured(float(got["eta"]),
+                                    detail="realised / available overlap on the counter-derived "
+                                           "engine axis")
+            entry["counter_set_complete"] = bool(got.get("complete"))
+        else:
+            why = str(got.get("why") or "the counter set supports no eta reading")
+            entry["busy_cycles"] = unknown(why)
+            entry["realised_cycles"] = unknown(why)
+            entry["available_cycles"] = unknown(why)
+            entry["eta"] = unknown(why)
+            entry["counter_set_complete"] = None
+        per_run[r.workload] = entry
+        out["runs"].append(entry)
+
+    unreadable = sorted(w for w, e in per_run.items() if e["eta"]["state"] != MEASURED)
+    if mixed:
+        why = ("the supplied runs were counted over DIFFERENT engine sets, so their totals are not "
+               "over one axis and summing them would build a corpus figure out of two instruments")
+    elif unreadable:
+        why = (f"run(s) {unreadable} yielded no counter reading; UNKNOWN propagates -- one unmeasured "
+               "run leaves the corpus operator unestablished rather than partially derived, since "
+               "dropping it reweights the corpus towards whatever was measurable")
+    else:
+        why = ""
+
+    if why:
+        out["engine_axis"] = {"operator": unknown(why), "eta": unknown(why),
+                              "realised_cycles": unknown(why), "available_cycles": unknown(why)}
+        out["kind_axis"] = {"operator": unknown(why), "eta": unknown(why)}
+        out["runs_without_a_reading"] = unreadable
+        return out
+
+    out["runs_without_a_reading"] = []
+    realised = sum(int(e["realised_cycles"]["value"]) for e in per_run.values())
+    available = sum(int(e["available_cycles"]["value"]) for e in per_run.values())
+    if available == 0:
+        zero = ("no supplied run has any overlappable time (every run's second-busiest engine is busy "
+                "0 cycles), so the operator is 0/0 -- undefined, not SUM")
+        out["engine_axis"] = {"operator": unknown(zero), "eta": unknown(zero),
+                              "realised_cycles": measured(realised), "available_cycles": measured(0)}
+    else:
+        eta = realised / available
+        op = (Composition.SUM if eta <= COMPOSITION_TOLERANCE
+              else Composition.MAX if eta >= 1.0 - COMPOSITION_TOLERANCE else Composition.PARTIAL)
+        out["engine_axis"] = {
+            "operator": measured(op.value, detail=f"over {len(per_run)} counter-bracketed run(s), "
+                                                  f"tolerance {COMPOSITION_TOLERANCE}"),
+            "eta": measured(eta, detail="realised / available overlap summed over the corpus, on the "
+                                        "COUNTER-DERIVED engine axis"),
+            "realised_cycles": measured(realised), "available_cycles": measured(available)}
+
+    # The KIND axis needs each counter engine's resource kind, and a kind is NOT derivable from a
+    # counter's spelling -- reading "LD" as movement is the overfit the cardinal rule forbids. So it is
+    # declared by the producer or the axis refuses.
+    declared_kinds = {}
+    for r in readings:
+        for engine, kind in (r.kind_of or {}).items():
+            declared_kinds[str(engine)] = str(kind)
+    missing_kinds = sorted(e for e in out["engines"] if e not in declared_kinds)
+    if missing_kinds:
+        why_k = (f"no resource kind is declared for counter engine(s) {missing_kinds}. A kind cannot "
+                 "be derived from a counter's name, and the capability contract does not declare "
+                 "these engines, so the kind axis refuses rather than inventing a grouping")
+        out["kind_axis"] = {"operator": unknown(why_k), "eta": unknown(why_k)}
+        out["declared_kinds"] = dict(sorted(declared_kinds.items()))
+        return out
+
+    sources, overlaps = [], {}
+    for workload, e in sorted(per_run.items()):
+        resources = tuple(Resource(name=n, kind=ResourceKind(declared_kinds[n]), busy_cycles=int(v))
+                          for n, v in sorted(e["busy_cycles"]["value"].items()))
+        sources.append(ActivitySource(
+            workload=workload, total_cycles=int(e.get("total_cycles") or 0), resources=resources,
+            # A combination-counter set does NOT partition the timeline once each single is summed
+            # with the combinations containing it -- which is what licenses the overlap reading.
+            partitioned=False,
+            completion_observable=e.get("completion_observable"),
+            provenance=str(e.get("provenance") or COUNTER_INSTRUMENT)))
+        overlaps[workload] = int(e["realised_cycles"]["value"])
+    got = composition_operator(sources, observed_overlap_cycles=overlaps)
+    if isinstance(got, Unavailable):
+        why_k = f"{got.what}: missing {list(got.missing)}" + (f" ({got.detail})" if got.detail else "")
+        out["kind_axis"] = {"operator": unknown(why_k), "eta": unknown(why_k)}
+    else:
+        op, eta = got
+        out["kind_axis"] = {
+            "operator": measured(op.value, detail=f"over {len(sources)} counter-bracketed run(s)"),
+            "eta": measured(eta, detail="realised / available overlap on the resource-KIND axis")}
+    out["declared_kinds"] = dict(sorted(declared_kinds.items()))
+    return out
+
+
+def _measurement_basis(n_traces: int, n_counter_runs: int) -> str:
+    """The one sentence that says which instruments actually ran, naming each one it did not.
+
+    Written as a function because the failure this whole module guards against is a record whose
+    headline outlives its evidence: a plan that reads as a calibration. Every branch below names what
+    was NOT supplied as well as what was, so no reader has to infer the absence from a missing field.
+    """
+    if n_traces and n_counter_runs:
+        return (f"{n_traces} per-cycle trace(s) through the MechanismTrace seam AND {n_counter_runs} "
+                f"aggregate hardware-counter run(s) through the CounterReading seam. Two instruments, "
+                f"reported separately: {INSTRUMENTS_NOT_COMPARABLE}")
+    if n_traces:
+        return (f"{n_traces} per-cycle trace(s) supplied through the MechanismTrace seam. No hardware "
+                "combination counters were supplied, so counter_calibration is UNKNOWN throughout")
+    if n_counter_runs:
+        return (f"{n_counter_runs} aggregate hardware-counter run(s) through the CounterReading seam. "
+                "NO per-cycle trace was supplied, so the trace-side composition, every per-capsule "
+                "eta and the whole capsule cover stay UNKNOWN and ran_against_traces is False. The "
+                "counter block below is a real measurement of the composition operator on the "
+                "COUNTER-DERIVED engine axis, and it is not a per-cycle trace: "
+                f"{INSTRUMENTS_NOT_COMPARABLE}")
+    return ("NO per-cycle trace and NO hardware counter reading were supplied. The engine inventory "
+            "and the regime cover below are derived and real; every eta, overlap split and per-engine "
+            "busy count is UNKNOWN and no mechanism is calibrated. This record is a PLAN, not a "
+            "calibration")
+
+
 def calibrate(*, target: str, contract: Mapping,
               traces: Sequence[MechanismTrace] = (),
+              counter_readings: Sequence[CounterReading] = (),
               corpus_regimes: Mapping | None = None,
               regime_by_capsule: Mapping[str, Mapping] | None = None,
               fsm_registers: Sequence = (),
@@ -821,6 +1104,13 @@ def calibrate(*, target: str, contract: Mapping,
     mechanisms are uncalibratable on this target at all, which capsules the cover would spend the
     cycle-accurate tier on, and every eta as UNKNOWN. It never reports a calibration that did not
     happen -- ``ran_against_traces`` is False and every reading is an :func:`unknown`.
+
+    ``counter_readings`` is the SECOND, independent seam (:class:`CounterReading`), for a target whose
+    RTL counts its own engine combinations. It fills ``counter_calibration`` and nothing else: it does
+    not enter the capsule cover, the engine inventory, the idle calibration or ``composition``, and
+    ``ran_against_traces`` stays False when no trace was supplied however many counter runs there
+    were. The two instruments are reported side by side and never merged -- see
+    :data:`INSTRUMENTS_NOT_COMPARABLE`.
     """
     from merlin.targetgen import memory_regime as MR
 
@@ -881,14 +1171,18 @@ def calibrate(*, target: str, contract: Mapping,
                                  "corpus is 46/48 fits_double while 90.1% of contraction regions "
                                  "across 20 real captures land in spills"),
         },
+        "counter_calibration": counter_calibration(counter_readings),
         "ran_against_traces": bool(traces),
         "n_traces": len(traces),
-        "measurement_basis": (
-            f"{len(traces)} per-cycle trace(s) supplied through the MechanismTrace seam"
-            if traces else
-            "NO per-cycle trace was supplied. The engine inventory and the regime cover below are "
-            "derived and real; every eta, overlap split and per-engine busy count is UNKNOWN and no "
-            "mechanism is calibrated. This record is a PLAN, not a calibration"),
+        "ran_against_counters": bool(counter_readings),
+        "n_counter_runs": len(counter_readings),
+        "measured_basis": {
+            TRACE_INSTRUMENT: bool(traces),
+            COUNTER_INSTRUMENT: bool(counter_readings),
+            "any": bool(traces or counter_readings),
+            "note": INSTRUMENTS_NOT_COMPARABLE,
+        },
+        "measurement_basis": _measurement_basis(len(traces), len(counter_readings)),
     }
     record["audit"] = audit(record)
     return record
