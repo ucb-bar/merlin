@@ -53,9 +53,11 @@ class InsnStream:
     # section -> (addresses, instructions) in stream order, plus whether the addresses ascend, built
     # once on first use. Same reason as `_section_at` one line up, for the other per-span scan:
     # `insns_in` filtered the WHOLE stream per call, and its callers ask per span. MEASURED on a
-    # 30,397-instruction int8 whole-model objdump: `cca.lift_asm` spent 33.3 s of 33.9 s inside
-    # `insns_in` across 5,672 calls, which made the beam's per-fork CCA audit ~55 s and a
-    # 30-fork generation ~27 minutes.
+    # 30,397-instruction int8 whole-model objdump, both versions timed in the same moment on the same
+    # file: `cca.lift_asm` 6.31 s -> 0.14 s, ~45x, with 98% of the old time inside `insns_in` across
+    # 5,672 calls. On a host loaded by the beam itself the pre-index lift reached ~55 s, which is what
+    # made a 30-fork generation stall for ~27 minutes; that 55 s is a wall observation under load, not
+    # a clean measure of the code, so the ratio to quote is the same-moment one.
     _by_section: "dict[str, tuple[list[int], list[VInsn], bool]] | None" = field(
         default=None, repr=False, compare=False)
 

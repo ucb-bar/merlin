@@ -3,8 +3,13 @@
 `insns_in` filtered the ENTIRE instruction stream on every call, and its callers ask per span. On a
 30,397-instruction int8 whole-model objdump `cca.lift_asm` spent 33.3 s of 33.9 s inside it across
 5,672 calls (`_fma_loop`, `_infer_accumulator_resident`, `_infer_register_block`, `analyze_memory`),
-which made the beam's per-fork CCA audit ~55 s and a 30-fork generation roughly 27 minutes -- the
-search's real cost was reading its own output, not building or measuring. Measured after: 0.25 s.
+which made a 30-fork generation stall for ~27 minutes -- the search's real cost was reading its own
+output rather than building or measuring it.
+
+Both versions timed in the same moment on the same file: 6.31 s -> 0.14 s, ~45x. On a host loaded by
+the beam itself the pre-index lift reached ~55 s, which is what produced the stall; that 55 s is a
+wall observation under load, not a clean measure of the code, so the ratio quoted is the same-moment
+one.
 
 The class already cached a section index for exactly this reason on the sibling path
 (`_span_section`); this is the same fix on the path that dominated.
