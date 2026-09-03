@@ -666,10 +666,20 @@ def _iface_prelude(target: str, comment: str) -> list[str]:
 
 
 def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """One resident weight reused across two matmuls (op == resident_reuse)."""
+    """One resident weight reused across two matmuls (op == resident_reuse).
+
+    ⚠️ AN EXTENT MAY BE DECLARED EITHER WAY, and reading only the ``_tiles`` spelling silently drops
+    the other. `expand_sweeps` resolves an ``axes:`` entry to the BARE name (`K`, `N`, `M`), so a sweep
+    declaring ``K: ["4*tile", "8*tile"]`` reached `entry["K"]` while this builder read
+    ``entry["K_tiles"]``, defaulted to 1, and emitted the tile edge for BOTH points. Measured: PC00_k64
+    and PC01_k128 had BYTE-IDENTICAL interfaces and differed only in their name and a prose string --
+    the two "separation regimes" `gate.capacity: at_least_two_separation_regimes` demands were one
+    regime with two labels, so a paired differential over them would have measured the same program
+    twice. Same failure shape as the holdout sets that turned out to be renames.
+    """
     D = binding.tile_dim
-    K = entry.get("K_tiles", 1) * D
-    N = entry.get("N_tiles", 1) * D
+    K = entry.get("K", entry.get("K_tiles", 1) * D)
+    N = entry.get("N", entry.get("N_tiles", 1) * D)
     weight = entry.get("weight", "W")
     idt, adt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
     midt, madt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
@@ -679,7 +689,7 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
     L.append(f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{K}x{N}x{midt}>')
     for idx, mm in enumerate(entry["matmuls"]):
         an, oname = mm["lhs"], mm["out"]
-        M = mm.get("M_tiles", 1) * D
+        M = mm.get("M", mm.get("M_tiles", 1) * D)
         epi = list(mm.get("epilogue", []))
         inputs.append({"name": an, "role": "input", "shape": [M, K], "dtype": idt})
         matmuls.append({"lhs": an, "out": oname, "epilogue": epi, "output_dtype": adt})
@@ -688,7 +698,7 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
              f': (tensor<{K}x{N}x{midt}>) -> !merlin_iface.resident')
     for idx, mm in enumerate(entry["matmuls"]):
         an, oname = mm["lhs"], mm["out"]
-        M = mm.get("M_tiles", 1) * D
+        M = mm.get("M", mm.get("M_tiles", 1) * D)
         epi = ", ".join(f'"{e}"' for e in mm.get("epilogue", []))
         L.append(f'  %acc{idx} = merlin_iface.matmul %{an}, %{weight}_res '
                  f': (tensor<{M}x{K}x{midt}>, !merlin_iface.resident) -> !merlin_iface.acc<{madt}>')
@@ -744,8 +754,10 @@ def build_movement(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 def build_attention_qk(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """Q @ K^T attention scores (op == attention_qk): the device does the transpose internally."""
     D = binding.tile_dim
-    M = entry.get("M_tiles", 1) * D
-    Kd = entry.get("K_tiles", 1) * D
+    # Both spellings, for the reason spelled out in `build_resident_reuse`: a sweep declares the bare
+    # axis name, and reading only `_tiles` turns a declared extent into the tile edge without a word.
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    Kd = entry.get("K", entry.get("K_tiles", 1) * D)
     q, k, out = entry.get("q", "Q"), entry.get("k", "K"), entry.get("out", "Y0")
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
