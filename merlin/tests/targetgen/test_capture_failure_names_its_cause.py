@@ -16,6 +16,8 @@ license different next steps.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from merlin.targetgen.capsule_source import _stderr_cause
 
 
@@ -64,3 +66,87 @@ def test_the_two_failure_conditions_are_distinguished_in_the_message():
            / "capsule_source.py").read_text(encoding="utf-8")
     assert "worker exited non-zero" in src
     assert "wrote no meta.json" in src
+
+
+def test_a_worker_verdict_is_reported_from_meta_not_from_stderr(tmp_path, monkeypatch):
+    """rc=3 is a VERDICT, not a crash, and the verdict is in meta.json.
+
+    The worker returns 3 for "ran fine, but the program is not clean" and writes meta.json with
+    `opaque` and `opaque_detail` BEFORE doing so. The caller's non-zero-rc branch fired first and
+    dumped the stderr tail -- for a torch export, a wall of warnings -- while the block just below
+    already had the useful message.
+
+    Measured on the lstmnetvit roster model at W8A8: the real answer is opaque=44 from un-inlined
+    torchao choose_qparams_affine / quantize_affine calls, and what got reported was an LSTM
+    `_flat_weights` contiguity notice. The same model captures CLEANLY at plain int8, so the scheme is
+    the fact that matters and it is now named in the message.
+
+    The fake worker writes meta.json into the directory it is HANDED, because `_run` substitutes a
+    content-addressed cache slot for the caller's workdir -- pre-writing the file next to the caller's
+    path tests nothing (it was this test's first shape, and it passed the old code).
+    """
+    import json
+    import subprocess
+
+    from merlin.targetgen import capsule_source as CS
+
+    payload = {"ok": True, "opaque": 44, "scheme": "int8_dyn_act_int8_weight",
+               "opaque_detail": {"torchao_quantize_affine_default_1": 6,
+                                 "torchao_choose_qparams_affine_default_1": 6},
+               "input_abi": []}
+
+    class _Proc:
+        returncode = 3
+        stdout = '__M2M_CAPTURE__ {"ok": true, "opaque": 44}\n'
+        stderr = "UserWarning: _flat_weights are not part of a single contiguous chunk\n" * 40
+
+    def _fake_run(cmd, **_kw):
+        out = Path(cmd[cmd.index("--out") + 1])
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "meta.json").write_text(json.dumps(payload), encoding="utf-8")
+        return _Proc()
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    src = CS.PytorchRefSource()
+    monkeypatch.setattr(type(src), "available", lambda self: True)
+
+    loader = tmp_path / "loader.py"
+    loader.write_text("# loader\n", encoding="utf-8")
+    try:
+        src.capture_loader(loader, "i8", workdir=tmp_path / "cap",
+                           scheme="int8_dyn_act_int8_weight")
+    except CS.M2MUnavailable as exc:
+        msg = str(exc)
+    else:
+        raise AssertionError("a non-clean program must be refused")
+
+    assert "opaque=44" in msg, msg
+    assert "int8_dyn_act_int8_weight" in msg, "the scheme distinguishes the clean run from this one"
+    assert "torchao_quantize_affine_default_1" in msg, "name what to go and inline"
+    assert "_flat_weights" not in msg, "the stderr warnings must not be the reported cause"
+
+
+def test_a_worker_that_produced_no_diagnosis_still_reports_stderr(tmp_path, monkeypatch):
+    """The stderr path must survive for a worker that died before writing meta.json."""
+    import subprocess
+
+    from merlin.targetgen import capsule_source as CS
+
+    class _Proc:
+        returncode = 1
+        stdout = ""
+        stderr = "Traceback (most recent call last):\nImportError: no module named lerobot\n"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Proc())
+    src = CS.PytorchRefSource()
+    monkeypatch.setattr(type(src), "available", lambda self: True)
+    loader = tmp_path / "loader.py"
+    loader.write_text("# loader\n", encoding="utf-8")
+    try:
+        src.capture_loader(loader, "i8", workdir=tmp_path / "cap2")
+    except CS.M2MUnavailable as exc:
+        msg = str(exc)
+    else:
+        raise AssertionError("a worker that wrote no meta must be refused")
+    assert "no module named lerobot" in msg
+    assert "worker exited non-zero" in msg

@@ -478,7 +478,17 @@ class PytorchRefSource:
             cmd += ["--scheme", str(scheme)]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout, env=env)
         meta_p = workdir / "meta.json"
-        if proc.returncode != 0 or not meta_p.exists():
+        # ⚠️ A NON-ZERO RC IS NOT NECESSARILY A CRASH, and treating it as one threw away the
+        # diagnosis. The worker returns 3 for "ran fine, but the program is not clean" -- and it
+        # WRITES meta.json with `opaque` and `opaque_detail` before doing so. This branch fired first
+        # on rc=3 and dumped the stderr tail, which for a torch export is a wall of warnings, while
+        # the block just below already had the useful message. Measured on the lstmnetvit roster model
+        # at W8A8: the real answer is opaque ops from un-inlined torchAO quantization calls, and what
+        # got reported was an LSTM `_flat_weights` contiguity notice.
+        #
+        # So the stderr path is now for a worker that produced NO diagnosis at all; if meta.json
+        # exists the worker reached its own verdict and that verdict is what to report.
+        if not meta_p.exists():
             # ⚠️ REPORT THE CAUSE, NOT THE TAIL. This used to print `stderr[-1500:]`, and a capture
             # that emits warnings AFTER its traceback therefore reported the warnings. Measured on
             # the lstmnetvit roster model: the failure was attributed to a benign
@@ -493,9 +503,18 @@ class PytorchRefSource:
                                  f"(rc={proc.returncode})\n{_stderr_cause(proc.stderr)}")
         meta = json.loads(meta_p.read_text())
         if not meta.get("ok") or meta.get("opaque", -1) != 0:
+            # Name WHICH ops are opaque: "opaque=44" says a capsule cannot use this program, and the
+            # detail says what to go and inline. The scheme is included because the same model is
+            # clean under one quantization and not another -- lstmnetvit captures cleanly at plain
+            # int8 and carries opaque torchAO calls at W8A8, which is a fact about the scheme.
+            detail = meta.get("opaque_detail") or {}
+            top = ", ".join(f"{k}={v}" for k, v in sorted(detail.items(),
+                                                          key=lambda kv: -int(kv[1] or 0))[:6])
             raise M2MUnavailable(
                 f"m2m capture produced a non-clean program for op {op!r}/{dtype} "
-                f"(ok={meta.get('ok')}, opaque={meta.get('opaque')}); a capsule input must be 0-opaque")
+                f"(ok={meta.get('ok')}, opaque={meta.get('opaque')}, "
+                f"scheme={meta.get('scheme')!r}, rc={proc.returncode}); a capsule input must be "
+                f"0-opaque. Opaque ops: {top or '(none reported)'}")
         return CapsuleArtifacts(
             op=op, dtype=dtype, pytorch_src=src,
             linalg_mlir=(workdir / "linalg.mlir").read_text(encoding="utf-8"),
