@@ -60,16 +60,30 @@ from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import zephyr_model as zm
 
 TIMEBASE_HZ = k1.K1_TIMEBASE_HZ
-VF = "accumulator_resident_wholemodel_vf"
 
-ARMS = {
-    # tag           -> (compiler_features, kernel_backend)
-    "A_base":       ([],   None),      # baseline lowering, codegen matmul
-    "B_vf":         ([VF], None),      # THE CODEGEN ARM (vf lowering, codegen matmul)
-    "C_base_shim":  ([],   "ours"),    # THE HAND-C ARM (baseline lowering, shim matmul)
-    "D_vf_shim":    ([VF], "ours"),    # THE NEW ARM (vf lowering, shim matmul)
-    "ctrl":         ([],   "ours"),    # identical config to C -> board noise floor
-}
+#: The compiler feature whose EMITTED matmul is being weighed against the hand-C shim. A parameter,
+#: not a constant, because the question this driver answers -- "how far is our codegen from
+#: hand-written RVV" -- has a different answer for every lever, and pinning it to one historical
+#: feature meant the measurement went stale the moment a better lever landed. The default is the
+#: feature the original 4.21x result was measured with, so an unparameterised re-run reproduces it.
+DEFAULT_FEATURE = "accumulator_resident_wholemodel_vf"
+
+
+def build_arms(feature: str = DEFAULT_FEATURE) -> dict:
+    """The 2x2 (plus control), for ``feature``. Tags keep their historical names so a comparison
+    against the recorded numbers is a like-for-like read of the same cell."""
+    return {
+        # tag           -> (compiler_features, kernel_backend)
+        "A_base":       ([],        None),      # baseline lowering, codegen matmul
+        "B_vf":         ([feature], None),      # THE CODEGEN ARM (feature lowering, codegen matmul)
+        "C_base_shim":  ([],        "ours"),    # THE HAND-C ARM (baseline lowering, shim matmul)
+        "D_vf_shim":    ([feature], "ours"),    # THE NEW ARM (feature lowering, shim matmul)
+        "ctrl":         ([],        "ours"),    # identical config to C -> board noise floor
+    }
+
+
+VF = DEFAULT_FEATURE          # kept: referenced by the module docstring's narrative and by callers
+ARMS = build_arms()
 
 _LABEL = {"A_base": ("baseline", "our codegen"),
           "B_vf": ("vf", "our codegen"),
@@ -184,18 +198,20 @@ def _attribute(r: dict) -> dict:
 
 
 def run_workload(model_dir, baseline_pkg="out/artifacts/targets/rvv/hand_v0", n=3,
-                 arms="A_base,B_vf,C_base_shim,D_vf_shim,ctrl", out=None) -> dict:
+                 arms="A_base,B_vf,C_base_shim,D_vf_shim,ctrl", out=None,
+                 feature: str = DEFAULT_FEATURE) -> dict:
     md = Path(model_dir)
     golden = np.load(md / "golden.npy")
     base = load_rvv_package(baseline_pkg)
+    table = build_arms(feature)
     want = [a for a in arms.split(",") if a]
-    unknown = [a for a in want if a not in ARMS]
+    unknown = [a for a in want if a not in table]
     if unknown:
-        raise SystemExit(f"unknown arm(s) {unknown}; known: {sorted(ARMS)}")
+        raise SystemExit(f"unknown arm(s) {unknown}; known: {sorted(table)}")
 
     results = {}
     for tag in want:
-        feats, kb = ARMS[tag]
+        feats, kb = table[tag]
         print(f"=== {tag} (features={feats or '[]'} kernel_backend={kb}) ===")
         results[tag] = run_arm(md, base, golden, n, tag, feats, kb)
 
@@ -278,10 +294,16 @@ def main() -> None:
     ap.add_argument("-n", type=int, default=3)
     ap.add_argument("--arms", default="A_base,B_vf,C_base_shim,D_vf_shim,ctrl")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--feature", default=DEFAULT_FEATURE,
+                    help="the compiler feature whose EMITTED matmul is weighed against the hand-C "
+                         f"shim (default {DEFAULT_FEATURE!r}, the one the recorded 4.21x was "
+                         "measured with). Pass the lever you actually ship -- the answer differs "
+                         "per lever, and the recorded number goes stale when a better one lands.")
     a = ap.parse_args()
     name = Path(a.model).name.replace("_fp32_consistent", "")
-    out = a.out or f"out/artifacts/kernel-mining/rvv/bench/k1_codegen_vs_handc_{name}.json"
-    s = run_workload(a.model, a.baseline, a.n, a.arms, out=out)
+    tag = "" if a.feature == DEFAULT_FEATURE else "_" + a.feature.replace(".", "_")
+    out = a.out or f"out/artifacts/kernel-mining/rvv/bench/k1_codegen_vs_handc_{name}{tag}.json"
+    s = run_workload(a.model, a.baseline, a.n, a.arms, out=out, feature=a.feature)
     print("\n=== ATTRIBUTION ===")
     print(json.dumps(s["attribution"], indent=2))
 
