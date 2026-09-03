@@ -52,7 +52,26 @@ PREFIX = "codex/"
 #: model for the implementation tier.
 SEAT_MODEL = "gpt-5.6-sol"
 
-_STATE: dict = {"calls": 0, "tokens": 0, "notional_usd": 0.0, "home": None, "log": None}
+#: A tier is named `codex/<model>[:<effort>]`. RE-PROBED on codex-cli 0.153.0 (2026-09-03): the seat
+#: serves ONLY `gpt-5.6-sol` -- `spark`, `gpt-5.6-spark`, `gpt-5.6-mini` and `gpt-5.6-codex-mini` all
+#: return 400 invalid_request_error. So AutoComp's plan/implement split cannot be two MODELS here.
+#: What the seat does expose is `model_reasoning_effort`, which is a real capability-and-cost axis, so
+#: that is the axis the tiers differ on and the ledger records it per call. A genuine cheap-model code
+#: tier needs a second provider (Bedrock), which is a metered arm and a deliberate choice, not a
+#: default.
+def split_model(spec: str) -> "tuple[str, str | None]":
+    """`codex/gpt-5.6-sol:low` -> (`gpt-5.6-sol`, `low`). No effort suffix -> (model, None)."""
+    name = spec[len(PREFIX):] if spec.startswith(PREFIX) else spec
+    if ":" in name:
+        model, _, eff = name.partition(":")
+        return model, (eff or None)
+    return name, None
+
+_STATE: dict = {"calls": 0, "tokens": 0, "notional_usd": 0.0, "home": None, "log": None,
+                #: (model, effort) -> {calls, tokens, seconds}. The request AutoComp is built around
+                #: is "plan with one model, implement with another", and an arm that cannot say which
+                #: tier spent what has not measured the tiering -- it has only declared it.
+                "by_tier": {}}
 
 
 def _codex_home() -> Path:
@@ -70,8 +89,12 @@ def _one_sample(prompt: str, model: str, effort: str, timeout: int) -> tuple[str
     ws.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["CODEX_HOME"] = str(home)
+    # ⚠️ `--model` was previously OMITTED, so every tier silently ran the seat default and the
+    # plan/code split AutoComp is built around was cosmetic: two model strings were recorded and one
+    # model answered both. Naming it here is what makes the tiering real and the record true.
     argv = ["codex", "exec", "--json", "--skip-git-repo-check",
             "-c", "approval_policy=never", "-c", f"model_reasoning_effort={effort}",
+            "--model", model,
             "--sandbox", "read-only", "--cd", str(ws)]
     t0 = time.time()
     try:
@@ -106,7 +129,7 @@ def _one_sample(prompt: str, model: str, effort: str, timeout: int) -> tuple[str
             usage = {"input_tokens": max(int(u.get("input_tokens", 0) or 0) - cached - cw, 0),
                      "output_tokens": int(u.get("output_tokens", 0) or 0),
                      "cache_read_tokens": cached, "cache_write_tokens": cw}
-    usage.update({"model": model, "duration_s": round(dur, 3),
+    usage.update({"model": model, "effort": effort, "duration_s": round(dur, 3),
                   # A seat is not billed per token. Zero here is the TRUTH about money spent; the
                   # projection lives beside it and is never summed into a real budget.
                   "cost_usd": 0.0, "billing_mode": "subscription_notional"})
@@ -114,11 +137,13 @@ def _one_sample(prompt: str, model: str, effort: str, timeout: int) -> tuple[str
 
 
 def install(*, home: Path, log: Path | None = None, effort: str = "high",
-            timeout: int = 900, max_parallel: int = 4) -> None:
+            timeout: int = 900, max_parallel: int = 4,
+            tier_names: "dict[str, str] | None" = None) -> None:
     """Teach AutoComp's ``LLMClient`` the ``codex`` provider. Idempotent."""
     from autocomp.common import llm_utils as LU
 
-    _STATE.update({"home": Path(home), "log": Path(log) if log else None})
+    _STATE.update({"home": Path(home), "log": Path(log) if log else None,
+                   "tier_names": dict(tier_names or {})})
     Path(home).mkdir(parents=True, exist_ok=True)
     auth = Path.home() / ".codex" / "auth.json"
     if auth.exists():
@@ -135,7 +160,8 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
     def __init__(self, model: str, provider: str | None = None):
         if str(model).startswith(PREFIX) or provider == "codex":
             # Bypass every API-client constructor: there is no client, only a subprocess.
-            self.model = str(model)[len(PREFIX):] if str(model).startswith(PREFIX) else str(model)
+            self.model, self._codex_effort = split_model(str(model))
+            self._codex_tier = _STATE.get("tier_names", {}).get(str(model))
             self.provider = "codex"
             self.client = self.async_client = None
             self._vllm_api_base = None
@@ -151,7 +177,10 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
         if getattr(self, "provider", None) != "codex":
             return orig_chat_async(self, prompts_lst, num_samples=num_samples,
                                    temperature=temperature, reasoning_effort=reasoning_effort)
-        eff = reasoning_effort or effort
+        # Precedence: the tier's own effort (from its model string) beats AutoComp's per-call
+        # default, which beats the install-time one. That ordering is what lets `models=` and
+        # `code_models=` differ while AutoComp passes the same `reasoning_effort` to both.
+        eff = getattr(self, "_codex_effort", None) or reasoning_effort or effort
         # Index BY POSITION, not by value: `prompts_lst.index(p)` misroutes every duplicate prompt
         # onto the first occurrence, and AutoComp's beam legitimately re-asks the same prompt.
         jobs = [(pi, si) for pi in range(len(prompts_lst)) for si in range(num_samples)]
@@ -167,7 +196,18 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
                 except Exception as exc:              # a failed sample is EMPTY, never fabricated
                     text, usage = "", {"model": self.model, "error": str(exc), "cost_usd": 0.0}
                 usage.setdefault("phase", _STATE.get("phase") or "codex")
+                usage.setdefault("tier", getattr(self, "_codex_tier", None) or "unknown")
                 self._usage_accumulator.append(usage)
+                key = f"{usage.get('model')}@{usage.get('effort')}"
+                t = _STATE["by_tier"].setdefault(
+                    key, {"calls": 0, "tokens": 0, "seconds": 0.0, "tiers": []})
+                t["calls"] += 1
+                t["tokens"] += (int(usage.get("input_tokens", 0) or 0)
+                                + int(usage.get("output_tokens", 0) or 0)
+                                + int(usage.get("cache_read_tokens", 0) or 0))
+                t["seconds"] += float(usage.get("duration_s", 0) or 0)
+                if usage["tier"] not in t["tiers"]:
+                    t["tiers"].append(usage["tier"])
                 _STATE["calls"] += 1
                 _STATE["tokens"] += (int(usage.get("input_tokens", 0) or 0)
                                      + int(usage.get("output_tokens", 0) or 0)
@@ -190,6 +230,8 @@ def stats() -> dict:
     return {"calls": _STATE["calls"], "tokens_total": _STATE["tokens"],
             "billed_usd": None, "billing_mode": "subscription_notional",
             "seat_model": SEAT_MODEL,
+            #: what each tier actually cost, keyed by the model@effort that answered
+            "by_tier": {k: dict(v) for k, v in _STATE["by_tier"].items()},
             "deviations": [
                 "no temperature control: codex exec exposes none, so sample diversity comes only "
                 "from independent invocations",

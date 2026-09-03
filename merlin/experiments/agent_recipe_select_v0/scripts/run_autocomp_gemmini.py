@@ -86,14 +86,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workload-mlir", default="",
                     help="a census workload; its extents are read from the same file the recipe arm "
                          "compiles, so both arms provably see one shape")
-    ap.add_argument("--plan-model", default="codex/gpt-5.6-sol",
+    ap.add_argument("--plan-model", default="codex/gpt-5.6-sol:high",
                     help="the EXPENSIVE tier: planning. Same seat model the recipe arm uses.")
-    ap.add_argument("--code-model", default="codex/gpt-5.6-sol",
-                    help="the CHEAP tier: implementation. A Bedrock id here (e.g. "
-                         "anthropic.claude-haiku-4-5-20251001-v1:0) gives the intended split; "
-                         "codex alone cannot tier because the seat serves one model.")
-    # AutoComp's OWN gemmini defaults (autocomp/search/run_search.py:63-65), so the baseline is the
-    # framework as it ships rather than something tuned here.
+    ap.add_argument("--code-model", default="codex/gpt-5.6-sol:low",
+                    help="the CHEAP tier: implementation. AutoComp's split is models= plans and "
+                         "code_models= implements, and the repo's earlier bridge collapsed both to "
+                         "one. Re-probed on codex-cli 0.153.0: the seat serves ONLY gpt-5.6-sol "
+                         "(spark, gpt-5.6-spark and every mini variant return 400), so the tiers "
+                         "differ on reasoning EFFORT, which is the cost axis the seat does expose. "
+                         "A cheap-MODEL code tier needs a second provider and is a metered choice.")
     ap.add_argument("--beam", type=int, default=4)
     ap.add_argument("--plans", type=int, default=4)
     ap.add_argument("--codes", type=int, default=2)
@@ -126,12 +127,21 @@ def main(argv: list[str] | None = None) -> int:
     (run_dir / "run_record.json").write_text(json.dumps(
         {"run_id": run_id, "suite": T.SUITE, "target": T.TARGET, "method": a.method, "seed": 0,
          "timestamp": utc_stamp(), "git_sha": git_sha7(), "arm": "autocomp",
-         "workload": a.workload, "shape": [M, K, N], "plan_model": a.plan_model,
-         "code_model": a.code_model, "engine": a.engine,
+         "workload": a.workload, "shape": [M, K, N],
+         "tiers": {"plan": {"spec": a.plan_model,
+                            "model": CX.split_model(a.plan_model)[0],
+                            "effort": CX.split_model(a.plan_model)[1]},
+                   "code": {"spec": a.code_model,
+                            "model": CX.split_model(a.code_model)[0],
+                            "effort": CX.split_model(a.code_model)[1]}},
+         "tiering_note": ("the seat serves one model, so the tiers differ on reasoning effort; "
+                          "per-tier spend is in the run summary's by_tier block"),
+         "plan_model": a.plan_model, "code_model": a.code_model, "engine": a.engine,
          "interpreter": "autocomp venv (the oracle runs under merlin's, across the seam)"},
         indent=1), encoding="utf-8")
 
-    CX.install(home=run_dir / "codex_home", log=run_dir / "codex_calls.jsonl")
+    CX.install(home=run_dir / "codex_home", log=run_dir / "codex_calls.jsonl",
+               tier_names={a.plan_model: "plan", a.code_model: "code"})
 
     # Import AFTER the patch so the client class is already taught the provider.
     sys.path.insert(0, str(Path(T.REPO).parent / "autocomp"))
