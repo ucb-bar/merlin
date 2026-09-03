@@ -92,6 +92,113 @@ class CostFit:
         }
 
 
+def _linalg_result_elements(mlir_text: str) -> int:
+    """Elements in the entry function's result types, for a linalg-on-tensors capsule.
+
+    Parsed through the repo's own linalg frontend rather than scanned: a shape read off a text line is
+    exactly the brittleness the no-regex rule exists to prevent, and a wrong extent here would misprice
+    a certification. The frontend is also what knows which dialects to register -- a bare builtin
+    context fails on the first `tensor.empty` with "does not have a custom format", so registering them
+    here would be a second, drifting copy of that list.
+
+    Returns 0 when the module cannot be parsed, so the caller reports the capsule as unpriceable rather
+    than as free.
+    """
+    try:
+        from merlin.frontends.linalg_mlir import parse_mlir_text
+    except ImportError:
+        return 0
+    try:
+        module = parse_mlir_text(mlir_text)
+    except Exception:                              # noqa: BLE001 -- unparseable is not zero-cost
+        return 0
+    total = 0
+    for op in module.walk():
+        if op.name != "func.func":
+            continue
+        ftype = op.properties.get("function_type") or op.attributes.get("function_type")
+        outputs = getattr(ftype, "outputs", None)
+        entries = outputs.data if outputs is not None and hasattr(outputs, "data") else ()
+        for t in entries:
+            shape = getattr(getattr(t, "shape", None), "data", None)
+            if not shape:
+                continue
+            n = 1
+            for d in shape:
+                n *= int(getattr(d, "data", d))
+            total += n
+    return total
+
+
+def capsule_output_elements(interface_mlir_text: str) -> int:
+    """Total elements a capsule WRITES OUT, across every terminal write in its interface.
+
+    THE MEASURED COST DRIVER, and the reason this exists beside `capsule_elements`. A calibration
+    ladder holding the lhs at one tile while the weight grew 64x measured cycle-accurate seconds
+    scaling with the written output and not with the operands: x1.98 then x2.06 against output x2 and
+    x2, r2 0.9998, at a near-constant 0.347 s per element with no fixed floor. Independently confirmed
+    outside the ladder on a two-commit resident-reuse capsule at 0.3409 s/element.
+
+    A TERMINAL WRITE is a command whose ``dst`` no later command reads -- i.e. a program output rather
+    than an intermediate. Deriving it that way, instead of looking for a ``COMMIT``, is what makes the
+    metric work for the whole corpus: an epilogue-only capsule (``BIAS_ADD``) and a movement capsule
+    (``MOVEMENT``) write their result directly with no commit at all, and asking only about commits
+    priced 85 of 295 L3-demanding capsules at zero -- reporting "commits nothing measurable" for
+    capsules that plainly write a 16x16 tensor.
+
+    Summed rather than maximised, because a capsule that writes twice pays for both. A contraction's
+    extent comes from the grammar's own ``_commit_out_shape`` (so a pooled commit contributes its
+    POOLED extent, and this file does not become a second copy of that formula); every other terminal
+    write takes the extent of the operand it reads, which is what an elementwise stage produces.
+    """
+    from merlin.targetgen.contract import interface_emit as IE
+
+    cb = IE.parse_interface_mlir(interface_mlir_text)
+    commands = list(cb.get("commands") or ())
+    tensors = cb.get("tensors") or {}
+    if not commands:
+        # A LINALG-ON-TENSORS capsule, not a merlin_iface program: the two grammars are both first
+        # class here, and 54 of 295 L3-demanding capsules are the linalg kind. Its outputs are the
+        # entry function's RESULT types, read with a real parser rather than by scanning the text.
+        return _linalg_result_elements(interface_mlir_text)
+
+    def _read_names(cmd: dict) -> set[str]:
+        ops = dict(cmd.get("operands") or {})
+        ops.pop("dst", None)
+        return {str(v) for v in ops.values() if isinstance(v, str)}
+
+    total = 0
+    for i, cmd in enumerate(commands):
+        dst = (cmd.get("operands") or {}).get("dst")
+        if not dst:
+            continue                               # a lifetime op writes nothing
+        if any(dst in _read_names(later) for later in commands[i + 1:]):
+            continue                               # an intermediate, not an output
+        if cmd.get("opcode") == "COMMIT":
+            src = (cmd.get("operands") or {}).get("src")
+            if src:
+                m, n = IE._commit_out_shape(cb, src, cmd.get("attributes") or {})
+                total += int(m) * int(n)
+                continue
+        # Every other terminal write produces the extent of what it read.
+        for key in ("src", "lhs", "q", "ifm", "a"):
+            name = (cmd.get("operands") or {}).get(key)
+            spec = tensors.get(name) if name else None
+            shape = (spec or {}).get("shape")
+            if shape:
+                n = 1
+                for d in shape:
+                    n *= int(d)
+                total += n
+                break
+    return total
+
+
+#: Seconds per committed element on a cycle-accurate oracle, measured rather than assumed. Kept as a
+#: documented default for callers with no fitted model; a fitted `CostFit` always wins.
+MEASURED_S_PER_OUTPUT_ELEMENT = 0.347
+
+
 def capsule_elements(capsule_yaml: dict) -> int:
     """The size metric: the largest single declared operand, in elements.
 
