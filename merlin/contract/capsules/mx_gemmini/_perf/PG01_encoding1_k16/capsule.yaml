@@ -1,0 +1,99 @@
+name: PG01_encoding1_k16
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared operand-encoding pair: one identical contraction computed
+  in two of the target''s own declared encodings, so the cost of the encoding choice
+  is isolated (tile=16; K=16, M=16, N=16; op=matmul, operand_dtype=encoding1)'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+numeric_policy:
+  compare: exact_int
+  dtype: bf16
+expected:
+  instruction_classes: []
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: false
+  eligible: auto
+performance:
+  level: L6_global
+  family: PG
+  lever: operand_encoding
+  claim: DIFFERENTIAL
+  comparand:
+    kind: group_arithmetic
+    against: the_same_layer_in_the_other_encoding
+    cancels:
+    - operation_shape
+    - operands
+    demand_equal:
+    - M
+    - N
+    - K
+  falsifier:
+    observation: encoding_a_cycles_minus_encoding_b_cycles
+    fires_when: the_two_encodings_cost_the_same_within_the_noise_band
+    negative_control: the_same_encoding_compared_against_itself
+  gate:
+    traits:
+    - multiple_operand_encodings
+    instrument: cycle_count
+    capacity: two_encodings_of_one_identical_shape
+    on_missing: skip_with_evidence
+  regime:
+    separation: one_identical_shape_per_group
+    layout: both_members_share_every_extent
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      encodings:
+      - encoding0
+      - encoding1
+    resolved:
+      source: direct
+      operand_dtype: i8
+      accum_dtype: i32
+      datatype_basis: declared_encoding_variant
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: two_per_shape
+    projected_cycles: derived_at_preflight
+    basis: one_matmul_per_encoding
+comparison_group:
+  name: enc_m16k16n16
+  role: encoding_b

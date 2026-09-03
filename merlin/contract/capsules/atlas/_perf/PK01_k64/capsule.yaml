@@ -143,3 +143,9 @@ performance:
     runs: 4
     projected_cycles: derived_at_preflight
     basis: four_members_before_repetition
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 525.28
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
