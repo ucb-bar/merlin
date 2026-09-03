@@ -77,15 +77,37 @@ def test_beam_climbs_and_writes_tree(tmp_path):
     assert os.path.isfile(out["tree_path"])
 
 
-def test_beam_stops_when_no_correct_parent(tmp_path):
+def test_an_incorrect_seed_is_explored_but_never_credited(tmp_path):
+    """This test used to assert that an incorrect seed minted NO forks, which made the defect the
+    contract: a model whose BASELINE is numerically wrong could never have any lever tried, even
+    though the fix is often a lever already in the space (deepjscc went from cos 0.9176 to BIT-EXACT
+    purely by switching to per-op register blocking). Measured on lstmnetvit int8, the frozen seed
+    reports w8a8_rel 0.250 at cos 0.985, and the beam answered "0 forks, best=seed, gate_ok=False".
+
+    The property it was really protecting is kept and asserted below: nothing is credited a win from
+    an incorrect baseline. No speedup is computed at all -- a ratio against a seed that computes the
+    wrong answer is a speedup over a program that does not work -- and `best` never comes back
+    passing. What changes is that the search now runs, with correctness as the objective.
+
+    This certify reports NO relative error, so there is no residual to climb. That must stop the
+    search after one generation rather than spend the remaining depth: an UNKNOWN residual is not
+    progress, and unknown must never be read as 0.
+    """
     def all_fail(**kw):
         return {"correctness": {"gate_ok": False}, "measurement": [], "divergences": _DIVS}
     out = run_beam(HAND_V0, model_dir=tmp_path / "wl", curated_text="", op_key={"op": "gemm"},
                    runs_root=tmp_path / "runs", out_root=tmp_path / "gen",
                    width=2, depth=3, top_k=1, timestamp="t", certify_fn=all_fail)
-    # seed fails the gate -> no parents -> no forks minted
+    assert out["repair_mode"] is True
     assert out["best"] is None or not out["best"]["gate_ok"]
-    assert not list((tmp_path / "gen" / "rvv").glob("rvv_tuned_*"))
+    # no win from a broken baseline, on either axis
+    assert all(n.get("speedup") is None for n in out["nodes"])
+    # explored, so the levers were at least tried
+    assert len(out["nodes"]) > 1, "an incorrect seed must still get one generation of levers"
+    assert list((tmp_path / "gen" / "rvv").glob("rvv_tuned_*"))
+    # but stopped, because no candidate reported a residual to improve on
+    assert max(n.get("depth") or 0 for n in out["nodes"]) == 1, (
+        "with no residual signal the search must stop, not spend the remaining depth")
 
 
 def test_rank_results_prefers_real_k1_speedup_and_fails_closed_on_incorrectness():

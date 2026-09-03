@@ -128,6 +128,20 @@ def _emitted_digest(run_dir: "Path") -> str | None:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
+def _correctness_residual(result: dict) -> float | None:
+    """The worst relative error a certify result reports, or None when it reports none.
+
+    None means UNKNOWN, never 0.0 -- a candidate whose error was not measured must not sort ahead of
+    one measured at 3%. Takes the MAX across the reported metrics rather than a mean, for the same
+    reason the per-element gate exists: an aggregate can look fine while individual elements are far
+    out (measured: 1209% off per element at a passing cos).
+    """
+    c = result.get("correctness") or {}
+    vals = [v for k, v in c.items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and "rel" in k]
+    return float(max(vals)) if vals else None
+
+
 def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict,
            target: str | None = None) -> dict:
     """Attach gate_ok + structural_match + divergences to a certify result."""
@@ -177,6 +191,11 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict,
     out = {"gate_ok": gate_ok, "structural_match": sm, "cycles": cycles,
            "k1_wall_ns": k1_wall, "divergences": divs,
            "whole_model_objective": objective,
+           # How WRONG it is, not just that it is wrong. Without this a repair search has nothing to
+           # climb: every incorrect candidate looks identical to every other. The WORST reported
+           # relative error, because a mean hides the per-element failure an aggregate cos already
+           # hides (a kernel measured 1209% off on individual elements while cos looked fine).
+           "correctness_residual": _correctness_residual(result),
            # Which substrate each number came from, so a reader never has to infer it. A number whose
            # provenance is inferred is a number that gets attributed to the wrong device.
            "cycles_from": _cyc_from, "wall_from": _wall_from}
@@ -311,11 +330,28 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     seed_node = certify_and_score(Path(seed_pkg), f"{seed.run_id}__beam", None, "seed",
                                   ["baseline"], 0)
     nodes.append(seed_node)
-    parents = [(seed, seed_node)] if seed_node["gate_ok"] else []
+    # REPAIR MODE: an incorrect seed still seeds the search, with correctness as the objective.
+    #
+    # It used to yield no parents at all, so the beam stopped after generation 0 and returned nothing
+    # -- for any model whose BASELINE is numerically wrong, no lever could ever be tried. That is not
+    # hypothetical and not rare: deepjscc went from cos 0.9176 to BIT-EXACT purely by switching to
+    # per-op register blocking, i.e. the fix was a lever already in this search space. Measured on
+    # lstmnetvit int8, the frozen seed reports w8a8_rel 0.250 (25% off) at cos 0.985 -- so the beam
+    # reported "0 forks, best=seed, gate_ok=False" and the levers were never tried.
+    #
+    # Nothing can be credited a win from here: rank_results sorts correctness FIRST, so any candidate
+    # that achieves gate_ok outranks every incorrect one regardless of speed.
+    repair_mode = not seed_node["gate_ok"]
+    parents = [(seed, seed_node)]
 
     # The seed's real-silicon wall time is the baseline every fork's REAL speedup is measured against
     # (when the beam ran the k1 target). fail-closed: no baseline wall -> no real speedup credit.
-    seed_k1_wall = seed_node.get("k1_wall_ns")
+    #
+    # In repair mode there IS no legitimate baseline: the seed computes the wrong answer, so a ratio
+    # against its wall would be a speedup over a program that does not work. Suppressed outright --
+    # the deliverable of a repair run is WHICH LEVER restores correctness, and the speed search is a
+    # separate run seeded from the repaired package.
+    seed_k1_wall = None if repair_mode else seed_node.get("k1_wall_ns")
 
     def _real_speedup(node: dict) -> float | None:
         w = node.get("k1_wall_ns")
@@ -514,6 +550,17 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
         # a no-op lever must never be promoted to a parent and propagate as if it were progress.
         survivors = [n for n in rank_results(gen_nodes)
                      if n["gate_ok"] and not n.get("inert")][:top_k]
+        if repair_mode and not survivors:
+            # Nothing is correct yet. Carry forward the candidates that got CLOSER than their parent,
+            # so the search can climb toward correctness over generations instead of stopping after
+            # one. Strictly closer: a candidate that did not improve the residual is not progress, and
+            # an UNKNOWN residual is not an improvement (None is not 0).
+            _par = seed_node.get("correctness_residual")
+            closer = [n for n in gen_nodes
+                      if not n.get("inert")
+                      and n.get("correctness_residual") is not None
+                      and (_par is None or n["correctness_residual"] < _par)]
+            survivors = sorted(closer, key=lambda n: n["correctness_residual"])[:top_k]
         # P1 two-phase: re-certify the survivor set with the full validate_fn and re-rank on the
         # VALIDATED scores before promoting parents / picking best (explore was a cheap proxy).
         if validate_fn is not None and survivors:
@@ -548,6 +595,8 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     best = ranked[0] if ranked else None
     tree = {"target": target, "seed": str(seed_pkg), "op_key": op_key,
             "baseline_frozen": {"digest": seed_digest_pre, "verified_unchanged": True},
+            "repair_mode": repair_mode,
+            "seed_correctness_residual": seed_node.get("correctness_residual"),
             "width": width, "depth": depth, "top_k": top_k,
             "expert_wall_ns": getattr(expert_wall_ns, "wall_ns", expert_wall_ns),
             "expert_baseline": (_baseline_identity(expert_wall_ns)), "noise_margin": margin,
@@ -558,4 +607,9 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
             "nodes": nodes, "deferred_work_items": deferred}
     tree_path = runs_root / "beam_tree.yaml"
     write_yaml(tree_path, tree, header="RVV beam-search tree (mining.beam.run_beam)")
-    return {"best": best, "nodes": nodes, "deferred": deferred, "tree_path": str(tree_path)}
+    return {"best": best, "nodes": nodes, "deferred": deferred, "tree_path": str(tree_path),
+            # Surfaced, not just written to the tree: a caller that cannot tell a repair run from a
+            # speed run would read "no speedup" as a failed search rather than as the one honest
+            # answer available from an incorrect baseline.
+            "repair_mode": repair_mode,
+            "seed_correctness_residual": seed_node.get("correctness_residual")}
