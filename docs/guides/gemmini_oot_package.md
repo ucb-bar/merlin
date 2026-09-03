@@ -10,9 +10,21 @@ code_refs: [merlin/python/merlin/targetgen/capsule_grade.py, merlin/python/merli
 
 # Running the certified gemmini OOT backend on a fresh machine
 
-There is a gemmini out-of-tree MLIR backend that certified **33/33 capsules at L3** (elaborated RTL) on
+There is a gemmini out-of-tree MLIR backend that passed **33/33 capsules on Spike (L2, functional)** on
 2026-09-02. This page is what a second person needs to re-run it somewhere else and read the result
-correctly. Concepts for the *other* whole-model path live in
+correctly.
+
+⚠️ **The 33/33 is not an L3 result, and an earlier version of this page said it was.** The package's own
+`REPORT.md` records what happened: the required all-capsule command was run with `--sim spike`, and *"the
+certifying Verilator request was also attempted unchanged after functional convergence, but the broker
+aborted at its timeout without returning a capsule-level failure. Therefore L3 certification is not
+claimed."* The package `manifest.yaml` carries no `rtl_certified` or `cert_status` field, and no
+33-capsule grade record exists anywhere in this repo. Read `tier_reached`, never a bare score.
+
+**What IS cycle-accurate.** The largest set of real elaborated-RTL cycles for this backend is **31
+capsules**, assembled from every grade on disk; the largest single coherent run is the 2026-09-02
+re-freeze at **20 public + 5 hidden, all `tier_reached.L3`**. Regenerate both tables with
+`build_tools/scripts/` or see "Reading the cycle numbers" below. Concepts for the *other* whole-model path live in
 [whole_model_on_accelerator](whole_model_on_accelerator.md); its runbook is
 [reproducing_whole_model_on_rtl](reproducing_whole_model_on_rtl.md). **This is a different artifact and
 a different flow** — an agent-generated OOT backend graded through `capsule_grade`, not
@@ -36,9 +48,9 @@ resource_bound:
 
 | | |
 |---|---|
-| **Established** | 13 ISA capsules + 11 layers + 8 model slices + 1 model capsule, certified on elaborated RTL |
+| **Established** | 13 ISA capsules + 11 layers + 8 model slices + 1 model capsule pass the functional (Spike/L2) command — a correctness result, not a timing one |
 | **Established** | the host/device seam: `M3_host_island_seam` (GEMM → host LayerNorm → GEMM) with an ordered dispatch ledger and per-tile mesh verification |
-| **Not established** | whole-model compilation — the three capstones that would show it are excluded by `resource_bound`, and are neither passed nor refuted |
+| **REFUTED, not merely unestablished** | whole-model acceleration. Measured 2026-09-02 against this frozen package: `M3_host_island_seam` routed **21 of 21 admitted regions to the host** (`FALLBACK_ON_ELIGIBLE_REGION`), and `M2_microvit` got **0 of 12 tiles on the mesh** (`matmul_layers_on_mesh: 0`, `host_fallback: 12`, `lane_report.unexercised: ["on_mesh"]`). Numerics pass in both — it is pure host fallback. The graded functional run also executed **zero** model capsules (`n_model_execution_capsules: 0` for both cohorts), so the certification never asked the compiler to place model work on the accelerator at all |
 | **Not established** | anything about `M2_microvit`, which ended `budget_exhausted` |
 
 So: **do not tell anyone that 33/33 means a full model compiles.** If that is the question, the
