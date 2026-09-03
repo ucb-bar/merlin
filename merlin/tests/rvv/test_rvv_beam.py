@@ -203,3 +203,25 @@ def test_escalation_routes_unmet_promise_to_next_stronger_class():
     # no residual -> no escalation.
     ok = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(accumulator_resident=True))
     assert _escalations(action, ok, {}) == []
+
+
+def test_the_beam_certifies_on_a_SUSTAINED_board_measurement():
+    """The beam ranks forks on this number and every ours-vs-framework ratio is read against it, so
+    it must be the protocol the other side is measured under.
+
+    ExecuTorch's runner has no warmup and averages its cold first execution into --num_executions;
+    measured on small_llama int8 its cold inference is 1.62x its warm one. Ours was fully cold, so the
+    mismatch misread AGAINST us: the same model measured 6,446,228 ns cold and 4,878,645 ns sustained,
+    1.32x purely from the protocol.
+    """
+    import inspect
+
+    from merlin.mining import runner
+    ps = inspect.signature(runner.certify_rvv).parameters
+    assert ps["warmup"].default >= 1, "a cold first inference must not be inside the timed window"
+    assert ps["iters"].default >= 2, "one timed iteration cannot survive a single outlier"
+
+    src = inspect.getsource(runner.certify_rvv)
+    assert "iters=iters" in src and "warmup=warmup" in src, (
+        "certify_rvv takes the protocol but does not pass it to run_on_k1 -- which is exactly how the "
+        "beam ended up ranking on cold single inferences while claiming to be comparable")
