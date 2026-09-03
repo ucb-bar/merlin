@@ -1784,6 +1784,63 @@ def ensure_vec_noncontraction(lanes: int) -> str:
 #: here is 8 MB and these intermediates are small (the largest activation on this model is 8x344 f32
 #: = 11 KB), so the cap is what keeps a promotion from turning into a stack overflow on a model with
 #: larger tensors.
+#: Fuse elementwise producers into their consumers AFTER named ops have been generalized.
+#:
+#: The upstream pipeline runs `linalg-fuse-elementwise-ops` at position 2 and
+#: `linalg-generalize-named-ops` at position 3 -- fusion BEFORE generalization. Fusion works on
+#: `linalg.generic`; a NAMED op (linalg.broadcast, linalg.add, linalg.mul...) is not generalized until
+#: the pass after, so it can never be fused. The ordering makes the fusion pass structurally unable to
+#: see most of what it exists to fuse.
+#:
+#: MEASURED cost of that on small_llama int8: 39 `linalg.broadcast` ops, 23.9% of the model, each
+#: MATERIALISING a per-channel quantization scale into a full weight-sized tensor -- a 344-element
+#: scale vector splatted to tensor<344x128> (44,032 elements, a 128x amplification) and then read
+#: straight back by the dequantize. Folding a broadcast into its consumer's indexing map is exactly
+#: what elementwise fusion does, and it never got the chance.
+#:
+#: Added as a SECOND fusion after generalization rather than by reordering the existing one: the
+#: pre-generalization pass still fuses the generics that are already generic, and leaving it in place
+#: keeps this a strict addition to the baseline rather than a reshuffle whose effect is harder to
+#: attribute. General, not target-specific -- every per-channel-quantized model has this shape.
+FUSE_AFTER_GENERALIZE_NAME = "fuse_elementwise_after_generalize"
+
+
+def _fuse_after_generalize(passes: list[str]) -> list[str]:
+    """Insert a second ``linalg-fuse-elementwise-ops`` immediately after generalization."""
+    out = list(passes)
+    anchor = "func.func(linalg-generalize-named-ops)"
+    try:
+        i = out.index(anchor)
+    except ValueError:
+        raise ValueError(
+            f"{FUSE_AFTER_GENERALIZE_NAME}: anchor {anchor!r} not in the pipeline; refusing to guess "
+            f"where the second fusion belongs") from None
+    out.insert(i + 1, "func.func(linalg-fuse-elementwise-ops)")
+    return out
+
+
+register(ImprFeature(
+    name=FUSE_AFTER_GENERALIZE_NAME,
+    action_class="PASS",
+    description="run elementwise fusion a second time, AFTER linalg-generalize-named-ops. The "
+                "upstream order fuses (pos 2) before generalizing (pos 3), and fusion only sees "
+                "linalg.generic -- so every NAMED op is invisible to it. MEASURED on small_llama "
+                "int8: 39 linalg.broadcast ops at 23.9% of the model, each materialising a "
+                "per-channel quantization scale into a full weight-sized tensor (a 344-element "
+                "vector splatted to 44,032 elements, then read straight back). "
+                "MEASURED AND REFUTED as a whole-model lever on that same model: 3,543,517 -> "
+                "4,313,041 ns, 1.22x SLOWER (sustained, n=3, cos identical). It does what it says -- "
+                "the scalar bucket falls 3.1 -> 2.8 ms -- but the contraction RISES 1.8 -> 2.8 ms, "
+                "because fusing the dequant chain into the producers perturbs the shape the "
+                "contraction was vectorized into and costs more than the broadcast it removes. Kept "
+                "registered so the finding is reproducible and the lever is not re-attempted blindly; "
+                "the broadcast waste is real but needs a TARGETED fold of the broadcast into its "
+                "consumer's indexing map, not blanket elementwise fusion. Default-off; baseline "
+                "byte-identical.",
+    edit_pipeline=_fuse_after_generalize,
+))
+
+
 PROMOTE_STACK_NAME = "promote_buffers_to_stack"
 PROMOTE_STACK_BYTES_ENV = "MERLIN_PROMOTE_STACK_BYTES"
 _PROMOTE_STACK_DEFAULT_BYTES = 16384
