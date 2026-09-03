@@ -318,3 +318,162 @@ def max_elements_within(fit: "CostFit | None", budget_s: float) -> "int | None":
     raw = int((budget_s - fit.intercept_s) / fit.per_element_s)
     ceiling = int(fit.elements_max * _EXTRAPOLATION_MARGIN)
     return max(1, min(raw, ceiling))
+
+# ---------------------------------------------------------------------------------------------------
+# sizing by WORK rather than by shape
+# ---------------------------------------------------------------------------------------------------
+# A shape metric is a proxy, and a weak one: measured over 72 real gemmini certifications, seconds vs
+# `max_operand_elements` has r2 0.20, and the best of five shape candidates (`output_elements`) only
+# reaches 0.33. An RTL simulator's time is not spent on a tensor's declared extent, it is spent
+# advancing cycles -- so the honest independent variable is the cycle count, and it happens to be
+# something we can obtain almost free. Measured on the calibration ladder: the FUNCTIONAL tier costs
+# 0.006-0.008s and reports a cycle count, and the cycle-accurate tier's count tracks it at a roughly
+# stable ratio. So a capsule that has only ever run at L2 can still be sized for L3.
+#
+# This does not replace the shape fit; a capsule that has never run at all has no cycles either, and
+# the shape fit is the only thing that can speak for it. Both are offered, and each says what it rests
+# on rather than pretending to one authority.
+
+
+@dataclass(frozen=True)
+class CycleCostFit:
+    """``seconds ~= intercept_s + per_cycle_s * cycles`` on the cycle-accurate tier."""
+
+    target: str
+    intercept_s: float
+    per_cycle_s: float
+    r2: float
+    n_samples: int
+    cycles_min: int
+    cycles_max: int
+    #: median ``cycle_accurate_cycles / functional_cycles`` over capsules that ran both, or None.
+    functional_ratio: float | None = None
+    n_ratio_samples: int = 0
+    sources: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict:
+        return {"target": self.target, "intercept_s": round(self.intercept_s, 3),
+                "per_cycle_s": round(self.per_cycle_s, 6), "r2": round(self.r2, 4),
+                "n_samples": self.n_samples,
+                "measured_range_cycles": [self.cycles_min, self.cycles_max],
+                "functional_to_cycle_accurate_ratio": (round(self.functional_ratio, 3)
+                                                       if self.functional_ratio else None),
+                "n_ratio_samples": self.n_ratio_samples, "sources": list(self.sources)}
+
+
+def _cycle_records(target: str, root: Path | None = None, extra_roots=()) -> dict[str, dict]:
+    """``capsule -> {seconds, cycles, functional_cycles, source}`` for cycle-accurate runs.
+
+    Only a tier that DECLARES itself cycle-accurate contributes seconds and cycles; a functional
+    tier's cycle count is kept separately, as the cheap predictor, and never as the cost itself.
+    """
+    from merlin.common.paths import artifacts_dir, runs_dir
+
+    bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target), runs_dir()]
+    bases += [Path(r) for r in extra_roots]
+    out: dict[str, dict] = {}
+    for base in bases:
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("capsule_result.json")):
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            name = doc.get("capsule")
+            if not name:
+                continue
+            secs = cycles = func_cycles = None
+            for rec in (doc.get("tiers") or {}).values():
+                if not isinstance(rec, dict):
+                    continue
+                tm = rec.get("timing") if isinstance(rec.get("timing"), dict) else {}
+                accurate = rec.get("cycle_accurate") is True or rec.get("derived_from_rtl") is True
+                c = rec.get("cycles")
+                if accurate:
+                    sv = tm.get("sim_active_s")
+                    if isinstance(sv, (int, float)) and sv > 0 and isinstance(c, int) and c > 0:
+                        if secs is None or sv > secs:
+                            secs, cycles = float(sv), int(c)
+                elif isinstance(c, int) and c > 0 and func_cycles is None:
+                    func_cycles = int(c)
+            if secs is not None:
+                out[str(name)] = {"seconds": secs, "cycles": cycles,
+                                  "functional_cycles": func_cycles, "source": str(path)}
+    return out
+
+
+def fit_cycles_for(target: str, *, timing_root=None, extra_timing_roots=()) -> "CycleCostFit | None":
+    """Seconds-per-cycle for ``target``'s cycle-accurate tier, or None when too little was measured.
+
+    ``None`` is a real answer, honoured the same way :func:`fit_for`'s is: a target nobody has timed
+    cannot have its capsules sized to a budget, and the correct response is to leave them shallow
+    rather than certify a size on a guess.
+    """
+    recs = _cycle_records(target, timing_root, extra_timing_roots)
+    xs = [r["cycles"] for r in recs.values()]
+    ys = [r["seconds"] for r in recs.values()]
+    ratios = [r["cycles"] / r["functional_cycles"] for r in recs.values()
+              if r.get("functional_cycles")]
+    if len(xs) < _MIN_SAMPLES or len(set(xs)) < 2:
+        return None
+    n = len(xs)
+    mx, my = sum(xs) / n, sum(ys) / n
+    den = sum((x - mx) ** 2 for x in xs)
+    if den <= 0:
+        return None
+    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / den
+    icept = my - slope * mx
+    sst = sum((y - my) ** 2 for y in ys)
+    r2 = 1.0 - (sum((y - (icept + slope * x)) ** 2 for x, y in zip(xs, ys)) / sst) if sst else 0.0
+    med = None
+    if ratios:
+        rs = sorted(ratios)
+        med = rs[len(rs) // 2] if len(rs) % 2 else (rs[len(rs) // 2 - 1] + rs[len(rs) // 2]) / 2
+    return CycleCostFit(target=str(target), intercept_s=icept, per_cycle_s=slope, r2=r2,
+                        n_samples=n, cycles_min=min(xs), cycles_max=max(xs),
+                        functional_ratio=med, n_ratio_samples=len(ratios),
+                        sources=tuple(sorted({r["source"] for r in recs.values()})))
+
+
+def predict_seconds_from_cycles(fit: "CycleCostFit | None", cycles: int) -> "float | None":
+    """Certification seconds for a capsule expected to run ``cycles``, or None with no fit."""
+    if fit is None or not cycles or cycles <= 0:
+        return None
+    return fit.intercept_s + fit.per_cycle_s * float(cycles)
+
+
+def predict_seconds_from_functional_cycles(fit: "CycleCostFit | None",
+                                           functional_cycles: int) -> "tuple[float | None, str]":
+    """Estimate the cycle-accurate cost from a FUNCTIONAL run's cycle count.
+
+    This is the cheap path the ladder exists to justify: the functional tier costs milliseconds and
+    reports a cycle count, so a capsule can be priced for certification without ever being certified.
+    Returns ``(seconds, basis)`` and refuses -- rather than guessing -- when no ratio was measured.
+    """
+    if fit is None:
+        return None, "no cycle cost fit for this target"
+    if not functional_cycles or functional_cycles <= 0:
+        return None, "no functional cycle count to scale"
+    if not fit.functional_ratio:
+        return None, ("no capsule has run at BOTH tiers on this target, so the functional-to-"
+                      "cycle-accurate cycle ratio is unmeasured and cannot be assumed")
+    est = fit.intercept_s + fit.per_cycle_s * functional_cycles * fit.functional_ratio
+    return est, (f"functional cycles x measured ratio {fit.functional_ratio:.2f} "
+                 f"(n={fit.n_ratio_samples}), then {fit.per_cycle_s:.4f} s/cycle "
+                 f"over a {fit.intercept_s:.0f}s floor")
+
+
+def max_cycles_within(fit: "CycleCostFit | None", budget_s: float) -> "int | None":
+    """The most cycles a capsule may run and still certify inside ``budget_s``.
+
+    Clamped to the measured range for the same reason :func:`max_elements_within` is: past the
+    evidence the line is an opinion.
+    """
+    if fit is None or budget_s <= 0 or fit.per_cycle_s <= 0:
+        return None
+    if budget_s <= fit.intercept_s:
+        return None
+    raw = int((budget_s - fit.intercept_s) / fit.per_cycle_s)
+    return max(1, min(raw, int(fit.cycles_max * _EXTRAPOLATION_MARGIN)))
+
