@@ -112,7 +112,25 @@ def run_instrumented_beam(
                        extra={"op_key": op_key, "width": width, "depth": depth, "top_k": top_k,
                               "targets": list(targets), "workload": Path(model_dir).name,
                               "expert_objdump": str(expert_objdump), "role": "beam_parent",
-                              "teachers": (teachers or "single-expert")})
+                              "teachers": (teachers or "single-expert"),
+                          "pass_slot_runs": sum(len(n.get("pass_slot") or ())
+                                                for n in res.get("nodes", [])),
+                          "pass_slot_accepted": sum(
+                              1 for n in res.get("nodes", []) for r in (n.get("pass_slot") or ())
+                              if r.get("accepted")),
+                              "pass_slot_turns": pass_slot_turns})
+    # The CODEGEN leaf. OFF unless asked for: a slot turn costs an agent and a build, so the ladder
+    # never enters it implicitly. When on, every escalation the beam cannot fork is handed to the slot
+    # -- which proposes a pass and gates it deterministically -- instead of only being recorded as a
+    # work-item. Paths are inside the parent run, so a slot's builds and transcripts land with the
+    # search that produced them.
+    if pass_slot_fn is None and pass_slot_turns > 0:
+        from .pass_slot_wiring import make_pass_slot_fn
+        pass_slot_fn = make_pass_slot_fn(
+            frozen_pkg=Path(seed_pkg), model_dir=Path(model_dir),
+            runs_root=parent.run_dir / "pass_slot",
+            targets_root=parent.run_dir / "targets" / "rvv",
+            op=op, max_turns=pass_slot_turns)
     status = "error"
     parent_summary: dict | None = None
     try:
@@ -120,7 +138,7 @@ def run_instrumented_beam(
                        runs_root=parent.run_dir / "forks", out_root=str(parent.run_dir / "targets"),
                        width=width, depth=depth, top_k=top_k, target="rvv",
                        timestamp="beam", targets=targets, expert_cca=expert_cca,
-                       compare_fn=compare_fn,
+                       compare_fn=compare_fn, pass_slot_fn=pass_slot_fn,
                        max_workers=max_workers, certify_fn=certify_fn, sweep_fn=sweep_fn,
                        expert_wall_ns=expert_wall_ns, validate_fn=validate_fn,
                        noise_margin=noise_margin, proposer=proposer)
@@ -190,6 +208,13 @@ def main(argv: list[str] | None = None) -> int:
                          "divergence and is never forked -- measured on small_llama fp32, the matmul "
                          "teacher alone found 5 divergences to all-teachers' 9, missing the scalar "
                          "exp that is 16.48%% of that model's real work. Records teacher_audit.yaml.")
+    ap.add_argument("--pass-slot-turns", type=int, default=0,
+                    help="max agent turns per unforkable CODEGEN escalation (default 0 = OFF). The "
+                         "ladder's leaf: when the router escalates to a rung no knob or feature "
+                         "expresses, hand it to the pass slot, which proposes a compiler pass in a "
+                         "sandbox and gates it deterministically (cheat scan, frozen baseline, "
+                         "bit-exactness, inert check, promised facet). Costs an agent turn plus a "
+                         "build per attempt, so it is never entered implicitly.")
     ap.add_argument("--op", default="matmul")
     ap.add_argument("--dtype", default="f32")
     ap.add_argument("--shape-regime", default="square")
@@ -215,7 +240,8 @@ def main(argv: list[str] | None = None) -> int:
         op=args.op, dtype=args.dtype, shape_regime=args.shape_regime, targets=targets,
         width=args.width, depth=args.depth, top_k=args.top_k, max_workers=args.max_workers,
         expert_wall_ns=args.expert_wall_ns, validate_model_dir=args.validate_model_dir,
-        noise_margin=args.noise_margin, proposer=proposer, teachers=args.teachers)
+        noise_margin=args.noise_margin, proposer=proposer, teachers=args.teachers,
+        pass_slot_turns=args.pass_slot_turns)
     best = res.get("best") or {}
     print(f"parent_run={res.get('parent_run_dir')}")
     print(f"best: run_id={best.get('run_id')} lever={best.get('lever')} "

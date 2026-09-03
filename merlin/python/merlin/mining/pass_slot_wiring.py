@@ -381,3 +381,74 @@ def gate_kwargs(checks: dict[str, Callable]) -> dict[str, Callable]:
 def digest_source(source: str) -> str:
     """Digest of the proposal source itself, for the run record -- what was actually gated."""
     return hashlib.sha256(source.encode("utf-8")).hexdigest()[:16]
+
+
+def make_pass_slot_fn(*, frozen_pkg: Path, model_dir: Path, runs_root: Path,
+                      targets_root: Path, op: str = "matmul", max_turns: int = 2,
+                      targets: tuple[str, ...] = ("spike",), timeout: int = 3600,
+                      heldout_model_dirs: tuple[Path, ...] = (), model: str = "opus",
+                      agent_timeout: int = 2400, certify: Callable[..., dict] | None = None,
+                      propose_fn: Callable | None = None) -> Callable:
+    """A ``pass_slot_fn(action, parent_run_id=...)`` for :func:`mining.beam.run_beam`.
+
+    This is the join that closes the loop. The beam already walks the ladder: the CCA lifts the loss,
+    the router picks the cheapest action, the fork is built and measured, ``achieved_residual`` says
+    the promise went unmet, and ``route_escalated`` returns the next rung. When that rung is not
+    forkable the ladder used to stop and record a work-item, and a human carried it to the slot by
+    hand. Now the beam hands it over directly.
+
+    The work package is the FORK that produced the residual, not the frozen baseline. That is the only
+    correct choice: a feature-gated pass is never imported when its feature is off, so gating against
+    the baseline would measure a build that never ran the proposal (the guard in ``bit_exact_ok``
+    catches it, but as a refusal rather than a result).
+
+    Returns a serializable record for every escalation it is handed, INCLUDING the ones it cannot act
+    on -- "this rung needs a module that does not exist, and here is the declared reason" is the
+    honest outcome for four of the six blocked seams, and dropping it would make the ladder look
+    complete when it is not.
+    """
+    from ..common.paths import merlin_dir
+    from . import pass_agent
+    from .pass_slot import iterate_pass_slot
+
+    def _slot(action, *, parent_run_id: str | None = None) -> dict[str, Any]:
+        seam = getattr(action, "target_seam", "") or ""
+        rec: dict[str, Any] = {"seam": seam, "axis": getattr(action, "divergence_axis", None),
+                               "action_class": getattr(action, "action_class", None),
+                               "parent_run_id": parent_run_id}
+        try:
+            module = module_for_action(action)
+        except SeamNotActionable as e:
+            rec.update(actionable=False, reason=str(e))
+            return rec
+        work_pkg = Path(targets_root) / str(parent_run_id) if parent_run_id else Path(frozen_pkg)
+        if not work_pkg.is_dir():
+            rec.update(actionable=False,
+                       reason=f"the fork package {work_pkg} that produced this residual is not on "
+                              f"disk, so there is nothing to gate the proposal against")
+            return rec
+        src_path = merlin_dir() / "python" / module_to_relpath(module)
+        ws = Path(runs_root) / f"pass_slot_{parent_run_id or 'seed'}_{module.replace('.', '_')}"
+        propose = propose_fn
+        attempts: list = []
+        if propose is None:
+            propose, attempts = pass_agent.proposer_for(
+                action, current_source=src_path.read_text(), workspace=ws,
+                model=model, timeout=agent_timeout)
+        checks = production_gate_checks(
+            frozen_pkg=Path(frozen_pkg), work_pkg=work_pkg, model_dir=Path(model_dir),
+            runs_root=ws / "gate", heldout_model_dirs=heldout_model_dirs, op=op,
+            targets=targets, timeout=timeout, certify=certify)
+        turns = iterate_pass_slot(action, propose=propose, max_turns=max_turns,
+                                  **gate_kwargs(checks))
+        rec.update(
+            actionable=True, module=module, work_pkg=str(work_pkg), workspace=str(ws),
+            turns=[{"accepted": v.accepted, "stage": v.stage, "reason": v.reason,
+                    "residual": list(v.residual),
+                    "source_digest": (digest_source(p.source) if p else None)}
+                   for p, v in turns],
+            accepted=any(v.accepted for _p, v in turns),
+            agent=[a.to_dict() for a in attempts])
+        return rec
+
+    return _slot

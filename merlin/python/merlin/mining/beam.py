@@ -259,6 +259,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
              baseline_run_dir: str | Path | None = None,
              certify_fn: Callable = certify_rvv, proposer: Callable | None = None,
              expert_cca=None, compare_fn: Callable | None = None,
+             pass_slot_fn: Callable | None = None,
              loader: Callable = load_rvv_package, minter: Callable = mint_fork,
              max_workers: int | None = None, sweep_fn: Callable = run_sweep,
              expert_wall_ns: float | None = None, validate_fn: Callable | None = None,
@@ -544,6 +545,22 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                         for e in esc_props]
                     pending_escalations.extend(
                         (fork_pkg, e, fork_dir.name) for e in esc_props if e.forkable)
+                    # The rungs no knob or feature can express -- where the ladder used to stop and
+                    # record a work-item. When a slot is supplied, run it on each one whose seam names
+                    # a module it can overlay; everything else stays a recorded work-item, including
+                    # the reason it is not actionable. Off by default: a slot turn costs an agent and
+                    # a build, so it is never entered implicitly.
+                    if pass_slot_fn is not None:
+                        for e in esc_props:
+                            if e.forkable or getattr(e, "action", None) is None:
+                                continue
+                            try:
+                                outcome = pass_slot_fn(e.action, parent_run_id=fork_dir.name)
+                            except Exception as exc:  # noqa: BLE001 - a slot failure is recorded,
+                                # never fatal: the search's own results must survive it.
+                                outcome = {"error": f"{type(exc).__name__}: {exc}"}
+                            if outcome is not None:
+                                node.setdefault("pass_slot", []).append(outcome)
             gen_nodes.append(node)
             nodes.append(node)
         # P3: exclude INERT forks (byte-identical emitted code to the parent) from the survivor set --
