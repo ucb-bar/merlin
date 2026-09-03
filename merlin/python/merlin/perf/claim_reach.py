@@ -38,8 +38,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 __all__ = [
-    "CAPACITY_CONTRADICTS_DEMAND_EQUAL", "FamilyReach", "UNDECLARED_FIRING_QUANTITY",
-    "capacity_demand", "family_reach", "has_decision_procedure", "tokens",
+    "AnalyzerIdentity", "CAPACITY_CONTRADICTS_DEMAND_EQUAL", "FamilyReach",
+    "UNDECLARED_FIRING_QUANTITY", "analyzer_identity", "capacity_demand", "family_reach",
+    "has_decision_procedure", "tokens",
 ]
 
 #: The gate asks for at least two of a quantity the comparand's ``demand_equal`` holds fixed.
@@ -140,6 +141,56 @@ def has_decision_procedure(performance: Mapping) -> bool:
     """
     acceptance = performance.get("acceptance")
     return isinstance(acceptance, Mapping) and bool(acceptance.get("analyzer"))
+
+
+#: Characters a declared analyzer identifier may use.  Checked by MEMBERSHIP rather than by a
+#: pattern: the parts are Python module and function names, and a set test says exactly that without
+#: a regex whose narrowness would silently reject a valid-but-differently-spelled declaration.
+_IDENTIFIER_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+
+@dataclass(frozen=True)
+class AnalyzerIdentity:
+    """What a family's own ``acceptance.analyzer`` tells a dispatcher to import and call."""
+
+    #: The declaration verbatim, so a refusal can quote what the family actually wrote.
+    declared: str
+    module: str
+    function: str
+    version: str
+
+
+def analyzer_identity(performance: Mapping) -> AnalyzerIdentity | None:
+    """Split a family's own ``acceptance.analyzer`` into module, function and version.
+
+    The declared form is ``<module>.<function>/<version>``.  A caller resolves the decision
+    procedure from the DECLARATION rather than from a table of family names, so a newly declared
+    family is dispatched with no code edit, and a family that declares none is refused BY NAME
+    instead of falling through to some other family's analyzer.
+
+    Three states, deliberately distinct.  ``None`` means the family declares no analyzer -- a wiring
+    state, the same one :func:`has_decision_procedure` reports.  :class:`ValueError` means it
+    declares one that is not of that form, which is a malformed contract rather than an absent one.
+    Anything else is the resolved identity.
+    """
+    acceptance = performance.get("acceptance") if isinstance(performance, Mapping) else None
+    declared = acceptance.get("analyzer") if isinstance(acceptance, Mapping) else None
+    if declared is None or declared == "":
+        return None
+    if not isinstance(declared, str):
+        raise ValueError(
+            f"a declared acceptance.analyzer must be a string, not {type(declared).__name__}")
+    body, slash, version = declared.partition("/")
+    module, dot, function = body.rpartition(".")
+    if not slash or not dot:
+        raise ValueError(
+            f"declared analyzer {declared!r} is not <module>.<function>/<version>")
+    parts = module.split(".") + [function, version]
+    if any(not part or not set(part) <= _IDENTIFIER_CHARS for part in parts):
+        raise ValueError(
+            f"declared analyzer {declared!r} does not name a simple module, function and version")
+    return AnalyzerIdentity(declared=declared, module=module, function=function, version=version)
 
 
 @dataclass(frozen=True)

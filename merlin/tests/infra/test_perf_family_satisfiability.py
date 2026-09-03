@@ -17,6 +17,7 @@ re-listing the known-good names would only move the staleness.
 """
 from __future__ import annotations
 
+import pytest
 import yaml
 
 from merlin.common.paths import merlin_dir
@@ -226,3 +227,47 @@ def test_a_firing_condition_that_declares_nothing_is_out_of_the_rule_s_scope():
         _declaration(fires_when="the_two_costs_agree_within_the_noise_band"))
 
     assert verdict.satisfiable is True
+
+
+# --------------------------------------------------------------------------------------------
+# analyzer_identity: the parsing a claim dispatcher rests on.  A family names the module, function
+# and version that decide it, so a dispatcher resolves its decision procedure from the DECLARATION
+# instead of from a table of family names -- and a family that names none is refused rather than
+# handed some other family's arithmetic.
+# --------------------------------------------------------------------------------------------
+
+def test_a_declared_analyzer_splits_into_module_function_and_version():
+    identity = CR.analyzer_identity(
+        {"acceptance": {"analyzer": "pkg.sub.mod.analyze_x/v12"}})
+
+    assert (identity.module, identity.function, identity.version) == (
+        "pkg.sub.mod", "analyze_x", "v12")
+    assert identity.declared == "pkg.sub.mod.analyze_x/v12"
+
+
+@pytest.mark.parametrize("performance", [
+    {},
+    {"acceptance": {}},
+    {"acceptance": {"analyzer": ""}},
+    {"acceptance": "not a mapping"},
+])
+def test_a_family_that_declares_no_analyzer_reads_as_absent_not_as_broken(performance):
+    """``None`` is the same wiring state ``has_decision_procedure`` reports, not an error."""
+    assert CR.analyzer_identity(performance) is None
+    assert CR.has_decision_procedure(performance) is False
+
+
+@pytest.mark.parametrize("declared", [
+    "perf_pk_claim",                       # no function, no version
+    "perf_pk_claim/v1",                    # no function
+    "analyze/v1",                          # no module
+    "perf_pk_claim.analyze_pk_claim",      # no version
+    "perf_pk_claim.analyze pk/v1",         # not an identifier
+    "perf_pk_claim..analyze/v1",           # empty module segment
+    "perf_pk_claim.analyze/",              # empty version
+    17,                                    # not a string at all
+])
+def test_a_malformed_analyzer_raises_rather_than_reading_as_absent(declared):
+    """A malformed contract and an absent one are different states and must not collapse."""
+    with pytest.raises(ValueError):
+        CR.analyzer_identity({"acceptance": {"analyzer": declared}})
