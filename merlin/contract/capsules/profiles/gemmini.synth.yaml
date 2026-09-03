@@ -116,8 +116,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -182,8 +182,8 @@ capsules:
     the eligibility oracle as a false fallback
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   epilogue:
   - relu
@@ -240,8 +240,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -306,8 +306,8 @@ capsules:
     refused by the eligibility oracle as a false fallback
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   epilogue:
   - acc_scale

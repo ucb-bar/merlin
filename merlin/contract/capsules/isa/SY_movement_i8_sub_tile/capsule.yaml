@@ -9,7 +9,7 @@ inputs:
 - name: X
   role: input
   shape:
-  - 4
+  - 2
   - 4
   dtype: i8
 operation:

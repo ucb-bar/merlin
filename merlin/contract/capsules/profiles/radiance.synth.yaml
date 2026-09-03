@@ -120,8 +120,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -179,8 +179,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -238,8 +238,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -295,8 +295,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -351,8 +351,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -407,8 +407,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -463,8 +463,8 @@ capsules:
     'simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -519,8 +519,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -575,8 +575,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -631,8 +631,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -687,8 +687,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -743,8 +743,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -799,8 +799,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -857,8 +857,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -916,8 +916,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -975,8 +975,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -1032,8 +1032,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -1088,8 +1088,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -1144,8 +1144,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -1200,8 +1200,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -1256,8 +1256,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -1312,8 +1312,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   pass_requirements:
   - target-isa-lowering
@@ -1370,8 +1370,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -1429,8 +1429,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -1488,8 +1488,8 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -1547,8 +1547,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -1606,8 +1606,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -1665,8 +1665,8 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile/4
-  K: tile/2
+  M: tile/8
+  K: tile/4
   N: tile/4
   source: pytorch
   pass_requirements:
@@ -1732,7 +1732,7 @@ capsules:
   kind: layer
   name: SY_kdepth_certified
   op: matmul
-  operand_dtype: f32
+  operand_dtype: fp16
   lhs: A0
   weight: W
   out: Y0

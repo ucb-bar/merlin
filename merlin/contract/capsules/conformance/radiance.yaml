@@ -351,7 +351,7 @@ memory_mapping:
   why: '''radiance'' declares no operand-store capacity we can derive, so no regime is required of the
     corpus -- that is ''we do not know'', never ''nothing is required'''
   regime_extents: {}
-  regime_dtype: f32
+  regime_dtype: fp16
   reduction_depth:
     capacity_rows: null
     tile_dim: 16

@@ -436,9 +436,15 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     # A tile edge admits three occupancy classes, not two -- see `Cell.alignment`. `sub_tile` is
     # required only where the edge is wide enough for "barely occupied" to differ from "ragged by
     # one": at edge 2, `tile-1` and `tile//2` are the same extent and a third cell would be a repeat.
+    #
+    # The bar is 8 rather than 4 because the SHAPE has to exist as well as the class: the sub-tile
+    # extents are `tile/8` x `tile/4` (see `corpus_synth.extents_for`, which is spelled that way
+    # because the smaller square spellings make the deterministic stimulus degenerate), and below
+    # edge 8 that collapses to a zero extent. Demanding a cell no shape can express would be the
+    # uncoverable-by-construction failure this axis was added to fix.
     if not bnd.tile_edge:
         aligns: tuple[str | None, ...] = (None,)
-    elif int(bnd.tile_edge) >= 4:
+    elif int(bnd.tile_edge) >= 8:
         aligns = ("aligned", "partial", "sub_tile")
     else:
         aligns = ("aligned", "partial")
@@ -811,6 +817,37 @@ def _shape_axis(target: str) -> dict:
             "45 times and the derived corpus could not express at all. That is a genuinely distinct "
             "point, not a corner probe under another name"),
     }
+
+
+def classify_alignment(extents, tile_dim: int) -> "str | None":
+    """Which of the three occupancy classes a capsule's extents fall in. ``None`` with no tile edge.
+
+    THE ONE DEFINITION, because the requirement and the thing that measures it must not each carry
+    their own. `Cell.alignment` demands `aligned`/`partial`/`sub_tile`, and `cert_capsule_cover`
+    produced only the first two -- so the four `*_i8_sub_tile` cells were demanded by the requirement
+    and uncoverable by construction, which is precisely the "gap no capsule could close, reported
+    forever as debt" that the cover's own comment warns about two lines further down.
+
+    The classes are separated by how full the RAGGED tile is, which is what a tiling compiler actually
+    branches on:
+
+    * ``aligned``   every extent is a whole number of tiles; the tail path is never entered.
+    * ``partial``   the ragged tile is nearly full (`tile-1` leaves 15 of 16 lanes live).
+    * ``sub_tile``  the ragged tile is barely occupied -- at most half the edge.
+
+    Half the edge is the boundary rather than an invented constant: it is exactly what separates the
+    two shapes the synthesizer emits (`tile-1` for partial, `tile/4` and `tile/2` for sub_tile), so
+    the classifier and the generator cannot disagree about what they are naming.
+    """
+    if not tile_dim or tile_dim <= 0:
+        return None
+    sizes = [int(e) for e in extents if int(e) > 0]
+    if not sizes:
+        return None
+    remainders = [e % tile_dim for e in sizes]
+    if not any(remainders):
+        return "aligned"
+    return "sub_tile" if min(r for r in remainders if r) <= tile_dim // 2 else "partial"
 
 
 def _certified_depth(target: str, *, tile: int, budget_s: float | None):

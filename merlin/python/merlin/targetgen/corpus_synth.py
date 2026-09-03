@@ -400,7 +400,15 @@ def extents_for(alignment: str, probes: list[dict]) -> dict[str, str]:
         # stays at tile//2 rather than dropping to tile//4 so the capsule still asks for a real
         # reduction: a single-pass contraction would exercise accumulation not at all, and every other
         # capsule already carries one.
-        return {"M": "tile/4", "K": "tile/2", "N": "tile/4"}
+        # THE SHAPE IS CHOSEN AGAINST THE STIMULUS, not only against the tile. The deterministic
+        # operand generator is seeded by name and shape, and small square extents collide: measured,
+        # `tile/4` square gave `SY_movement_i8_sub_tile`'s X only 3 distinct rows of an achievable 4,
+        # so a row-addressing bug was invisible in it and the capsule could pass without the kernel
+        # reading its operand correctly -- the exact degeneracy `test_no_capsule_operand_of_the_
+        # graded_corpus_is_degenerate` exists to catch. Of the tile-relative spellings, this is the
+        # one where A0, W and X are all non-degenerate while every extent stays well inside the
+        # class (2 and 4 of a 16-wide edge, against the `tile/2` boundary).
+        return {"M": "tile/8", "K": "tile/4", "N": "tile/4"}
     return {"M": "tile", "K": "2*tile", "N": "tile"}
 
 

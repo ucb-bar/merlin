@@ -487,9 +487,13 @@ def cert_capsule_cover(corpus_roots, *, labels: set[str] | None = None,
             if tile_dim and tile_dim > 0:
                 extents = [int(x) for t in (cap.get("inputs") or [])
                            for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
-                # "partial" if ANY extent leaves a remainder: one ragged axis is enough to exercise the
-                # tile-edge path, and that is what we are trying to certify.
-                align = "partial" if any(e % tile_dim for e in extents) else "aligned"
+                # THE REQUIREMENT'S OWN CLASSIFIER, imported rather than restated. This computed
+                # `partial if any remainder else aligned`, which cannot name the third class
+                # `Cell.alignment` demands -- so every `*_sub_tile` cell was required and uncoverable,
+                # the exact debt the note below describes, and a capsule barely occupying its tile was
+                # counted as covering the nearly-full case it does not exercise.
+                from merlin.targetgen.conformance import classify_alignment
+                align = classify_alignment(extents, tile_dim)
             # A capsule covers its own family AND any family it FUSES. A target may declare a family
             # reachable only in composition (`composed_with: [contraction]`), which makes a standalone
             # capsule for it the wrong capsule -- the eligibility oracle refuses one as a false fallback.
