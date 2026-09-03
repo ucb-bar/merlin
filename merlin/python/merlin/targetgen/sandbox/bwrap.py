@@ -601,9 +601,47 @@ def full_argv(te: TargetExperiment, ws: Path, bundle: dict | None = None,
     return apply_answer_masks(argv, answer_surfaces(te))
 
 
+#: A single execve argument may not exceed MAX_ARG_STRLEN (32 pages = 128 KiB on Linux); exceeding it
+#: is E2BIG, and the caller sees "Argument list too long" naming `bash` rather than naming the string.
+#: The margin is deliberate: the caller appends its own text to what `wrap` returns.
+_MAX_ARG_BYTES = 96 * 1024
+
+
 def wrap(te: TargetExperiment, ws: Path, inner: str, bundle: dict | None = None,
          *, _policy_test_live_inputs: bool = False) -> str:
-    """A ready-to-run ``bash -c`` string: full argv + the sandbox env exports + the inner command."""
+    """A ready-to-run ``bash -c`` string: full argv + the sandbox env exports + the inner command.
+
+    THE BIND LIST DOES NOT SCALE INSIDE A COMMAND STRING, and every caller of this function passes the
+    result as ONE argument to ``bash -c``. One mask per answer surface is right -- a corpus with 1,098
+    goldens gets 1,098 ``--ro-bind /dev/null`` pairs -- but at that size the string reaches 159 KB and
+    execve refuses any single argument over 128 KiB. The failure is E2BIG naming ``bash``, which says
+    nothing about masks, and it would have hit the live agent path (the drivers run the whole agent
+    process inside this wrapper) exactly as hard as it hit the isolation test.
+    ``bwrap --args FD`` exists for this: the arguments are read NUL-separated from a file descriptor
+    instead of the command line. The masks are then bounded by the file, not by execve, and the string
+    this returns stays short however large the corpus grows. Below the threshold the inline form is
+    kept, so nothing changes for a small corpus and the two forms can be compared.
+    """
     from merlin.targetgen.sandbox import toolchain as TC
     argv = full_argv(te, ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
-    return " ".join(argv) + f" bash -c '{TC.sandbox_env(te, ws)} {inner}'"
+    tail = f" bash -c '{TC.sandbox_env(te, ws)} {inner}'"
+    inline = " ".join(argv) + tail
+    if len(inline.encode("utf-8")) <= _MAX_ARG_BYTES:
+        return inline
+    return _wrap_via_args_fd(argv, tail, ws)
+
+
+def _wrap_via_args_fd(argv: list[str], tail: str, ws: Path) -> str:
+    """The same sandbox, with every argument after ``bwrap`` moved into a NUL-separated file.
+
+    The file lives beside the workspace rather than in it: the agent must not be able to read or edit
+    the argument list that isolates it. ``exec {fd}<file`` opens it and ``--args $fd`` tells bwrap to
+    parse from there; the redirection is a shell builtin, so no extra process sees the arguments.
+    """
+    import shlex
+
+    payload = ws.parent / f".{ws.name}.bwrap-args"
+    payload.write_bytes(b"\0".join(a.encode("utf-8") for a in argv[1:]) + b"\0")
+    payload.chmod(0o600)
+    return (f"exec {{__bwargs}}<{shlex.quote(str(payload))} && "
+            f"{shlex.quote(argv[0])} --args $__bwargs" + tail)
