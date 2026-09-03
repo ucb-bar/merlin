@@ -56,6 +56,14 @@ def _sf():
     return semantic_families
 
 
+def _cs():
+    """:mod:`merlin.targetgen.corpus_spec`, imported lazily for the same reason as :func:`_sf`. It owns
+    the ONE definition of a dtype's numeric regime and of the shape granularity that regime imposes, so
+    the requirement and the synthesizer cannot disagree about which shapes exist."""
+    from merlin.targetgen import corpus_spec
+    return corpus_spec
+
+
 def capsule_dtype(token: str) -> str:
     """A manifest dtype token in the spelling a CAPSULE writes, via the one canonical mapping.
 
@@ -449,6 +457,27 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     else:
         aligns = ("aligned", "partial")
 
+    # AND THE DTYPE NARROWS IT AGAIN. The classes above are what the TILE EDGE admits; a block-scaled
+    # format imposes a granularity of its own on top (one E8M0 exponent per whole run of K, sub-byte
+    # codes addressed in nibble pairs), and on this target that granularity is >= the tile edge. Every
+    # extent the datapath can execute is then a whole multiple of it, so "ragged by one" and "barely
+    # occupied" name shapes that CANNOT EXIST -- the golden refuses them and the reference returns an
+    # all-zero result. Requiring them produced 11 capsules that failed to generate and 11 cells nothing
+    # could ever cover, which is the uncoverable-by-construction failure the sub_tile guard above exists
+    # to prevent, arriving through the dtype instead of through the edge.
+    scale_block = None
+    try:
+        from merlin.targetgen.target_experiment import load_capability_manifest
+        scale_block = _cs()._scale_block_elems(load_capability_manifest(target).contract)
+    except Exception:                                  # noqa: BLE001 — no manifest: no granularity known
+        scale_block = None
+
+    def _aligns_for(dt: str) -> tuple[str | None, ...]:
+        q = _cs().shape_quantum(dt, tile_dim=bnd.tile_edge, scale_block=scale_block)
+        if max(int(q.get("row") or 1), int(q.get("reduction") or 1)) <= 1:
+            return aligns
+        return tuple(a for a in aligns if a in (None, "aligned"))
+
     seen: Counter = Counter()
     seen_in: dict[str, list[str]] = {}
     unreadable: dict[str, str] = {}
@@ -481,6 +510,9 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
             seen_in[fam] = sorted({lb for p in prims for lb in seen_in.get(p, ())})
 
     cells: dict[Cell, CellOrigin] = {}
+    #: dtypes whose own format granularity removed alignment classes the tile edge would have admitted.
+    #: Recorded, never silent: an absent cell and a cell nobody could cover read the same downstream.
+    quantized_dtypes: dict[str, list] = {}
     for fam in sorted(set(seen) | set(declared or {})):
         is_declared = fam not in seen
         dtypes = tuple(adm.get(fam) or ())
@@ -496,8 +528,12 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
         else:
             basis = OBSERVED
         for dt in dtypes:
-            for al in aligns:
-                cell = Cell(fam, capsule_dtype(dt), al)
+            cdt = capsule_dtype(dt)
+            dt_aligns = _aligns_for(cdt)
+            if dt_aligns != aligns:
+                quantized_dtypes[cdt] = list(dt_aligns)
+            for al in dt_aligns:
+                cell = Cell(fam, cdt, al)
                 cells[cell] = CellOrigin(
                     basis=basis,
                     observed_in=tuple(sorted(seen_in.get(fam, ()))),
@@ -517,6 +553,10 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
         "families_needed_but_not_admitted": needed_not_admitted,
         "families_admitted_but_no_model_uses": admitted_not_needed,
         "alignment_axis": list(aligns),
+        # The per-dtype narrowing of that axis. EMPTY means "checked, no dtype narrows it" -- not
+        # "nobody looked": the key is always present once this derivation has run.
+        "alignment_axis_narrowed_by_dtype": {d: list(a) for d, a in sorted(quantized_dtypes.items())},
+        "scale_block_elements": scale_block,
         # Why the admitted side is what it is. Load-bearing when it is EMPTY: "no family intersects" is
         # an answer, "no contract to read" is a missing artifact, and a caller that cannot tell them
         # apart reports a target with no generated package as cleanly requiring nothing.
@@ -686,6 +726,279 @@ _SHAPE_AXIS_BASIS = (
     "for one has an untested claim")
 
 
+def _mkn(shape) -> "tuple[int, int, int] | None":
+    """``(M, K, N)`` for a contraction named by ITERATOR TYPE, or ``None``.
+
+    ``ContractionShape`` deliberately does not say M/N/K -- it says which extents iterate in parallel
+    and which reduce. The geometry taxonomy is written in M/N/K, so the two are joined HERE, once: the
+    innermost two parallel extents are ``(M, N)``, every LEADING parallel extent is a batch and
+    multiplies into M (a batched matmul writes ``B x M`` result rows, and that is what the cost of
+    draining it follows), and the reduction extents multiply into K.
+    """
+    par = tuple(int(x) for x in (getattr(shape, "parallel", ()) or ()))
+    red = tuple(int(x) for x in (getattr(shape, "reduction", ()) or ()))
+    if len(par) < 2 or not red:
+        return None
+    lead = 1
+    for x in par[:-2]:
+        lead *= x
+    m, n = par[-2] * lead, par[-1]
+    k = 1
+    for x in red:
+        k *= x
+    return (m, k, n) if m > 0 and k > 0 and n > 0 else None
+
+
+#: Largest written output a capsule may declare when the target's OWN operand store is not derivable.
+#: MEASURED, not chosen: it is the largest operand any capsule this corpus already materialises
+#: (`SY_regime_spills` on the one target with a derivable store, 262,144 elements behind a 2.4 MB
+#: golden), so it is the only size this repo has evidence it can actually build. It is a fallback, not
+#: a default -- a target whose store IS readable is bounded by that store, which is the physically
+#: meaningful number. Without it a geometry class drawn at its real extents emitted a 128 x 256,000
+#: capsule whose golden is 32.7 MILLION elements: the generator ran for 83 minutes on that one capsule
+#: and had produced no golden when it was killed.
+_MATERIALIZABLE_ELEMENTS_FALLBACK = 262144
+
+
+def _materialization_ceiling(target: str) -> "int | None":
+    """The largest written output a capsule of this target may declare, in elements, or ``None``.
+
+    DERIVED, not declared: it is the capacity of the target's own operand store, which is exactly the
+    size the memory-regime axis already sizes its largest capsule against. A capsule bigger than the
+    store it runs on tests nothing about residency that `SY_regime_spills` does not, and its golden --
+    written as text, one number per element -- stops being materializable long before it stops being
+    interesting. ``None`` where the store is not derivable: then nothing is scaled, and an oversized
+    class is reported by the caller rather than silently shrunk.
+    """
+    try:
+        from merlin.targetgen import memory_regime as MR
+        bnd = boundaries(target)
+        dtype = None
+        from merlin.targetgen.target_experiment import load_capability_manifest
+        units = (load_capability_manifest(target).contract.get("compute_units") or [{}])
+        for u in units:
+            for d in (u.get("dtypes") or ()):
+                dtype = capsule_dtype(str(d))
+                break
+            if dtype:
+                break
+        store, rows = MR.operand_store(target, dtype=dtype)
+        if store is None or not rows:
+            return _MATERIALIZABLE_ELEMENTS_FALLBACK
+        per_row = store.elems_per_row(dtype)
+        return int(rows) * int(per_row) if per_row else _MATERIALIZABLE_ELEMENTS_FALLBACK
+    except Exception:                                       # noqa: BLE001 — no store: the fallback
+        return _MATERIALIZABLE_ELEMENTS_FALLBACK
+
+
+def geometry_axis(captures: dict[str, str | Path], target: str) -> dict:
+    """Which GEOMETRY CLASSES real models present, with the representative shape of each.
+
+    The axis the cells cannot express, and the one that decides whether the corpus resembles the work.
+    A ``(family, dtype, alignment)`` cell says WHAT arithmetic runs and how it sits against the tile
+    edge; it says nothing about the aspect ratio of the problem, and aspect ratio is what a tiling
+    compiler mostly gets wrong. Measured on a real capture: every synthesized capsule in this corpus
+    is ``projection_like`` (M ~ N ~ tile), while the model it is derived from presents FIVE classes,
+    and the largest single block of its convolution work is ``tall_skinny`` at ``M=3584, K=14, N=8``
+    -- an aspect ratio of 448:1 that nothing in the corpus comes within two orders of magnitude of.
+
+    The representative of a class is its highest-MAC-mass shape, so the capsule tests the geometry at
+    the size the work actually occurs at rather than at an arbitrary small one. Every entry carries
+    ``out_elements`` because that is what decides its tier: a class whose representative writes more
+    than the target can certify inside the budget is a LOOP-tier capsule resting on a certified
+    sibling, and saying so here is what keeps the axis from demanding a cert nobody can run.
+    """
+    from merlin.dse_guidance import shape_taxonomy as ST
+    from merlin.kernels import shapes as KS
+
+    by_class: dict[str, dict] = {}
+    unreadable: dict[str, str] = {}
+    total_macs = 0
+    for label, path in sorted((captures or {}).items()):
+        try:
+            pairs = KS.observe_contractions(path)
+        except Exception as e:                              # noqa: BLE001 — reported, never skipped
+            unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
+            continue
+        for _op, shape in pairs:
+            mkn = _mkn(shape)
+            if mkn is None:
+                continue
+            m, k, n = mkn
+            macs = m * k * n
+            total_macs += macs
+            klass = ST.classify_geometry(M=m, N=n, K=k)
+            row = by_class.setdefault(klass, {"class": klass, "family": "contraction",
+                                              "n_regions": 0, "macs": 0, "observed_in": set(),
+                                              "M": m, "K": k, "N": n, "rep_macs": 0})
+            row["n_regions"] += 1
+            row["macs"] += macs
+            row["observed_in"].add(label)
+            if macs > row["rep_macs"]:                      # the representative is the heaviest shape
+                row["M"], row["K"], row["N"], row["rep_macs"] = m, k, n, macs
+
+    # A CLASS IS A RATIO, NOT A SIZE, and that is what makes this axis affordable. The heaviest real
+    # shape in `wide_skinny` carries a 590-MILLION-element weight -- a golden nothing in this repo can
+    # materialize, let alone simulate -- but the thing the capsule has to reproduce is the 1:2000
+    # aspect ratio, not the absolute extent. So the representative is scaled DOWN by a common factor on
+    # ALL THREE extents until its largest tensor fits what the target's own operand store holds, and
+    # the result is re-classified: a capsule is emitted only if the scaled shape is still in the class
+    # it was drawn from. Same minimal-but-representative rule the accumulation-depth axis uses, applied
+    # to aspect ratio.
+    #
+    # THE BOUND IS THE LARGEST TENSOR, NOT THE WRITTEN OUTPUT, and the difference is not academic.
+    # Certification cost tracks the output (measured, r2 0.92) and reduction depth is therefore nearly
+    # free to certify -- but the GOLDEN has to synthesize and write every operand element, and a skewed
+    # aspect ratio has a colossal operand behind a small output. Bounding the output alone admitted an
+    # 11 x 2304 by 2304 x 23272 capsule whose output is 255,992 elements and whose weight is 53.6
+    # MILLION: the generator held 14.7 GB and had produced nothing after 27 minutes of CPU.
+    # `cert_cost.MEASURED_MAX_OPERAND_ELEMENTS` already says this in as many words -- "treating output
+    # as the only bound there would price an enormous transfer at zero, so a caller must refuse rather
+    # than extrapolate" -- and this axis was the caller that did not.
+    ceiling = _materialization_ceiling(target)
+
+    def _largest(mm: int, kk: int, nn: int) -> int:
+        return max(mm * kk, kk * nn, mm * nn)
+
+    # A CEILING WITHOUT A FLOOR PRODUCES A CAPSULE THAT PROVES NOTHING. Searching only downward, the
+    # 1:2000 class scaled to `1 x 1 x 31` -- still `wide_skinny` by the taxonomy, and a contraction
+    # with no reduction and one output row, which is exactly the "too small to be representative"
+    # end of the trade this axis exists to sit inside. So an extent may shrink to the tile edge and no
+    # further -- EXCEPT one that was already smaller, because that is the class rather than a
+    # reduction of it: a GEMV's M is 1 in the application, and flooring it at the tile would make
+    # every gemv-like class unreachable by definition.
+    edge = int(boundaries(target).tile_edge or 0) or 1
+
+    def _floor(original: int) -> int:
+        return min(int(original), edge)
+
+    required = []
+    for klass, row in sorted(by_class.items()):
+        m, k, n = int(row["M"]), int(row["K"]), int(row["N"])
+        scaled_from = None
+        if ceiling and _largest(m, k, n) > ceiling:
+            # The SMALLEST factor that fits, searched over every integer rather than over powers of
+            # two: the class is a ratio, so any common divisor preserves it in principle, and the
+            # coarse ladder overshot far enough to push a shape out of its own class and lose the
+            # coverage entirely. The first factor that both fits and re-classifies to the same class
+            # wins; if none does, the class is genuinely unrepresentable at this store size.
+            fm, fk, fn = (_floor(row["M"]), _floor(row["K"]), _floor(row["N"]))
+            m = n = 0
+            for factor in range(2, 8193):
+                cm = max(1, int(row["M"]) // factor)
+                cn = max(1, int(row["N"]) // factor)
+                ck = max(1, int(row["K"]) // factor)
+                if cm < fm or ck < fk or cn < fn:
+                    break                               # past the floor: shrinking further is not a
+                if _largest(cm, ck, cn) > ceiling:      # smaller representative, it is a different
+                    continue                            # and degenerate problem
+                if ST.classify_geometry(M=cm, N=cn, K=ck) == klass:
+                    m, n, k = cm, cn, ck
+                    break
+            if not m or not n:
+                required.append({
+                    "class": klass, "family": row["family"],
+                    "M": None, "K": None, "N": None,
+                    "out_elements": int(row["M"]) * int(row["N"]),
+                    "n_regions": int(row["n_regions"]),
+                    "mac_fraction": round(row["macs"] / float(total_macs), 6) if total_macs else None,
+                    "observed_in": sorted(row["observed_in"]),
+                    "unreachable": (
+                        f"the heaviest shape in this class carries a "
+                        f"{_largest(int(row['M']), int(row['K']), int(row['N']))}-element tensor, more "
+                        f"than the {ceiling} this target's operand store holds, and no common divisor "
+                        f"of its extents fits while every extent stays at or above its floor "
+                        f"(min(original, tile edge {edge})) and the shape stays in its class -- so no "
+                        f"capsule of this aspect ratio is both representative and buildable here"),
+                })
+                continue
+            scaled_from = {"M": int(row["M"]), "K": int(row["K"]), "N": int(row["N"]),
+                           "factor": factor}
+        out_elems = m * n
+        required.append({
+            "class": klass,
+            "family": row["family"],
+            "M": m, "K": k, "N": n,
+            "out_elements": out_elems,
+            "n_regions": int(row["n_regions"]),
+            "mac_fraction": round(row["macs"] / float(total_macs), 6) if total_macs else None,
+            "observed_in": sorted(row["observed_in"]),
+            "scaled_from": scaled_from,
+        })
+    return {
+        "required": required,
+        "captures_unreadable": unreadable,
+        "materialization_ceiling_elements": ceiling,
+        "total_macs": total_macs,
+        "axis_basis": (
+            "the geometric classes (shape_taxonomy.classify_geometry) that real captured models "
+            "present, each with the highest-MAC-mass shape in the class. A (family, dtype, alignment) "
+            "cell cannot express aspect ratio at all, and aspect ratio is where a tiling compiler "
+            "fails: a 448:1 tall-skinny convolution and a square projection are the same cell. EMPTY "
+            "means the captures contain no readable contraction, never that geometry does not matter"),
+    }
+
+
+def _capsule_geometry(cap: dict) -> "str | None":
+    """The geometry class of a capsule's own contraction extents, or ``None`` when it has none.
+
+    Read off the DECLARED inputs, which is what the harness materialises -- the same source
+    ``cert_capsule_cover`` classifies alignment from. A capsule with two rank-2 inputs sharing an inner
+    extent is a contraction: ``A0[M, K]`` and ``W[K, N]``. Anything else (one input, a rank-4 image, a
+    broadcast row) is not a contraction and returns ``None`` rather than a class it does not have.
+    """
+    from merlin.dse_guidance import shape_taxonomy as ST
+
+    shapes = [[int(x) for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
+              for t in (cap.get("inputs") or [])]
+    twod = [sh for sh in shapes if len(sh) == 2 and all(d > 0 for d in sh)]
+    for i, a in enumerate(twod):
+        for j, b in enumerate(twod):
+            if i != j and a[1] == b[0]:
+                return ST.classify_geometry(M=a[0], N=b[1], K=a[1])
+    return None
+
+
+def _geometry_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
+    """Which required geometry classes no capsule in the corpus presents."""
+    import yaml
+
+    labels = set(labels or {"public"})
+    exclude = set(exclude or ())
+    have: dict[str, list[str]] = {}
+    roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
+    for root in roots:
+        for cy in sorted(Path(root).glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") not in labels:
+                continue
+            name = str(cap.get("name") or cy.parent.name)
+            if name in exclude:
+                continue
+            klass = _capsule_geometry(cap)
+            if klass:
+                have.setdefault(klass, []).append(name)
+    want = [str(r.get("class")) for r in (required or ()) if r.get("class")]
+    missing = sorted(set(want) - set(have))
+    by_class = {str(r.get("class")): r for r in (required or ()) if r.get("class")}
+    return {
+        "status": "ok",
+        "n_required": len(set(want)),
+        "n_covered": len(set(want) & set(have)),
+        "uncovered": missing,
+        "covered_by": {k: sorted(v) for k, v in sorted(have.items())},
+        "mac_fraction_uncovered": round(
+            sum(float(by_class[k].get("mac_fraction") or 0.0) for k in missing), 6),
+        "note": ("a geometry class real models present that no capsule reproduces means the corpus "
+                 "cannot tell a compiler that tiles that aspect ratio well from one that does not; "
+                 "`mac_fraction_uncovered` is the share of real contraction work sitting in classes "
+                 "nothing tests"),
+    }
+
+
 #: Epilogue stages the capsule builder can actually emit. Not a guess about hardware -- it is the
 #: writer's vocabulary, and a stage outside it could be required and never written.
 _BUILDER_EPILOGUE_STAGES = ("relu", "acc_scale", "bias_add", "maxpool")
@@ -841,7 +1154,13 @@ def classify_alignment(extents, tile_dim: int) -> "str | None":
     """
     if not tile_dim or tile_dim <= 0:
         return None
-    sizes = [int(e) for e in extents if int(e) > 0]
+    # A DEGENERATE AXIS IS NOT AN OCCUPANCY. An extent of 1 is a broadcast/parameter axis -- an rmsnorm's
+    # `1 x K` gain vector, a bias row -- and nothing tiles it, so there is no tile for it to partially
+    # occupy. Counting it dragged the WHOLE capsule into `sub_tile` on the strength of the parameter:
+    # measured, `SY_normalization_bf16_aligned` is a 16x32 problem with a 1x32 gain, and it classified
+    # `sub_tile`, so `normalization/bf16/aligned` was required, built, and reported uncovered while the
+    # capsule that covers it sat on disk under a class it does not exercise.
+    sizes = [int(e) for e in extents if int(e) > 1]
     if not sizes:
         return None
     remainders = [e % tile_dim for e in sizes]
@@ -889,6 +1208,27 @@ def _certified_depth(target: str, *, tile: int, budget_s: float | None):
     }, None
 
 
+def _declared_oracle_tiers(target: str) -> list:
+    """The oracle tiers ``target`` declares, cheapest first, or ``[]`` when none can be resolved.
+
+    Read from the same adapter registry the runner grades through, so the requirement cannot name a
+    tier the run does not have. ``[]`` is "we could not resolve them" and the caller must then leave a
+    capsule's tier alone rather than cap it onto a guess.
+    """
+    try:
+        from merlin.common.paths import repo_root
+        from merlin.targetgen import capsule_runner as CR
+        from merlin.targetgen.target_experiment import load_target_experiment
+        desc = (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / str(target)
+                / "target_experiment.yaml")
+        if not desc.is_file():
+            return []
+        te = load_target_experiment(desc)
+        return sorted(CR.oracle_adapters(target, te.sim_via) or {})
+    except Exception:                                  # noqa: BLE001 — unresolvable: report nothing
+        return []
+
+
 def _cert_affordability(target: str, *, budget_s: float | None) -> dict:
     """The largest WRITTEN OUTPUT this target can certify inside the budget. Never operand size.
 
@@ -915,10 +1255,42 @@ def _cert_affordability(target: str, *, budget_s: float | None) -> dict:
     from merlin.targetgen import cert_cost as CC
 
     budget = float(budget_s if budget_s else _DEFAULT_CERT_BUDGET_S)
+    why = ("the largest written output whose predicted certification fits the budget. A capsule above "
+           "it is graded at the loop tier and rests on a certified sibling -- not because it is "
+           "uninteresting, but because nobody can afford to run it cycle-accurately. Reduction depth "
+           "does NOT count against this: K moves the operands, not the result")
+
+    # THIS TARGET'S OWN CERTIFICATIONS FIRST. A simulation rate is a property of the DESIGN and the
+    # simulator, not of the corpus, so pricing one target's capsules with another's measurements is a
+    # claim with no evidence behind it -- and that is what happened: the ladder constants below were
+    # measured on one target and every target got them, so three targets' capsules were sized against
+    # a device none of them is. Where a target has its own history the two methods can be compared,
+    # and on the calibrated target they agree to within 2%, which is why the fallback is usable at all.
+    fit = None
+    try:
+        fit = CC.fit_for(target)
+    except Exception:                              # noqa: BLE001 -- unreadable run history is "none"
+        fit = None
+    if fit is not None and getattr(fit, "per_element_s", 0):
+        ceiling = int((budget - float(fit.intercept_s)) / float(fit.per_element_s))
+        if ceiling >= 1:
+            return {
+                "max_elements": ceiling,
+                "budget_s": budget,
+                "metric": "written_output_elements",
+                "law": f"seconds = {fit.intercept_s:.6g} + {fit.per_element_s:.6g} * output",
+                "calibrated_to_elements": int(fit.elements_max),
+                "extrapolated": bool(ceiling > int(fit.elements_max)),
+                "basis": (f"fitted on {fit.n_samples} cycle-accurate certification(s) of THIS target "
+                          f"(r2 {fit.r2:.3f}, {fit.elements_min}..{fit.elements_max} written elements)"),
+                "why": why,
+            }
+
     coeff = getattr(CC, "MEASURED_COEFFICIENT_S", None)
     exponent = getattr(CC, "MEASURED_EXPONENT", None)
     if not coeff or not exponent:
         return {"max_elements": None, "budget_s": budget, "metric": "written_output_elements",
+                "basis": "no measured certification history for this target and no fallback law",
                 "why": "no measured certification cost law is available in this checkout"}
     # Invert the power law: the output at which the predicted certification exactly spends the budget.
     ceiling = int((budget / float(coeff)) ** (1.0 / float(exponent)))
@@ -929,11 +1301,12 @@ def _cert_affordability(target: str, *, budget_s: float | None) -> dict:
         "metric": "written_output_elements",
         "law": f"seconds = {coeff} * output ** {exponent}",
         "calibrated_to_elements": calibrated_to,
-        "extrapolated": bool(calibrated_to and ceiling > calibrated_to),
-        "why": ("the largest written output whose predicted certification fits the budget. A capsule "
-                "above it is graded at the loop tier and rests on a certified sibling -- not because "
-                "it is uninteresting, but because nobody can afford to run it cycle-accurately. "
-                "Reduction depth does NOT count against this: K moves the operands, not the result"),
+        "extrapolated": True,
+        "basis": ("BORROWED: this target has certified nothing cycle-accurately, so the ceiling comes "
+                  "from the deliberate calibration ladder measured on another device. It bounds the "
+                  "budget rather than describing this device, and a capsule sized by it is sized by a "
+                  "rate nobody has measured here -- run one cert on this target to replace it"),
+        "why": why,
     }
 
 
@@ -1028,6 +1401,16 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # WHAT A CERTIFICATION COSTS HERE, so an axis can size against it instead of assuming every
         # capsule it derives is affordable at the deepest tier.
         "cert_affordability": _cert_affordability(target, budget_s=cert_budget_s),
+        # THE TIERS THIS TARGET ACTUALLY DECLARES. Published because a capsule too large to certify has
+        # to be capped to a tier that EXISTS here, and "L2" is not a universal name: one target in this
+        # repo declares `[L3]` alone, so capping to L2 there names a tier nothing can run. The
+        # synthesizer is pure and cannot ask the adapter registry, so the answer travels with the spec.
+        "oracle_tiers": _declared_oracle_tiers(target),
+        # THE ASPECT-RATIO AXIS. Emitted beside the cells rather than crossed with them, for the same
+        # reason the composition axis is: a cross product would demand geometries at dtypes no model
+        # presents. See `geometry_axis` for why a corpus that is entirely square proves nothing about
+        # the tall-skinny convolutions that carry a real vision model's work.
+        "shape_geometry": geometry_axis(captures, target),
         "memory_mapping": {
             "required": mem.get("by_regime") or {},
             "region_counts": mem.get("region_counts") or {},
@@ -1076,8 +1459,16 @@ def spec(target: str, captures: dict[str, str | Path], *,
         },
         "diagnostics": diag,
         "personas": personas or {},
+        # `shape_quantum` travels WITH the cell because the synthesizer is pure: it cannot ask a
+        # manifest what granularity this dtype's datapath imposes, and a capsule sized on the tile edge
+        # alone is a shape the golden refuses (sub-byte MX) or answers with zeros. Same channel, same
+        # reason, as `memory_mapping.regime_extents`.
         "cells": [{"cell": c.key(), "family": c.family, "dtype": c.dtype,
-                   "alignment": c.alignment, **o.to_dict()}
+                   "alignment": c.alignment,
+                   "shape_quantum": _cs().shape_quantum(
+                       c.dtype, tile_dim=bnd.tile_edge,
+                       scale_block=(diag.get("scale_block_elements"))),
+                   **o.to_dict()}
                   for c, o in sorted(cells.items(), key=lambda kv: kv[0].key())],
     }
 
@@ -1121,6 +1512,17 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
         gap["status"] = "ok"
         gap["covered_by"] = corpus["by_kind"]
         out["composition"] = gap
+
+    # THE GEOMETRY AXIS, measured by classifying each capsule's own contraction extents with the SAME
+    # taxonomy the requirement is written in. A stale spec carrying no block reads "not measured",
+    # never "no geometry is required".
+    geom_req = (spec_doc.get("shape_geometry") or {}).get("required")
+    if geom_req is None:
+        out["shape_geometry"] = {"status": "not_measured",
+                                 "detail": "this spec predates the geometry axis; regenerate it with "
+                                           "--write to derive the requirement"}
+    else:
+        out["shape_geometry"] = _geometry_gap(geom_req, corpus_roots, labels=labels, exclude=exclude)
 
     # THE NEGATIVE LANE, measured the same way and reported beside the others. A family the hardware
     # does not admit must be shown landing on the HOST -- and shown by a capsule built to prove it, not

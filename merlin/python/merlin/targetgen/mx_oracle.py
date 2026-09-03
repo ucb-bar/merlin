@@ -20,6 +20,61 @@ _FMT = {"fp8": 0, "mxfp8": 0, "fp8_e4m3": 0,
         "fp4": 2, "mxfp4": 2, "fp4_e2m1": 2}
 
 
+def mx_reference():
+    """The derived MX reference module (``mlc/validate/mx_ref.py``), or ``None`` when unavailable.
+
+    Loaded BY FILE PATH from ``MERLIN_MLC_DIR`` -- the same way the corpus generator loads it -- so
+    importing it does not execute ``mlc/validate/__init__.py``, which carries heavy concurrent work.
+    Falls back to the ordinary package import when no root is configured.
+    """
+    import importlib.util
+    import os
+    from pathlib import Path
+
+    root = os.environ.get("MERLIN_MLC_DIR")
+    if not root:
+        try:
+            from merlin.common.paths import repo_root
+            env = repo_root() / ".env"
+            if env.is_file():
+                for line in env.read_text(encoding="utf-8").splitlines():
+                    key, sep, val = line.partition("=")
+                    if sep and key.strip() == "MERLIN_MLC_DIR":
+                        root = val.strip()
+                        break
+        except Exception:                    # noqa: BLE001 — no repo root / unreadable .env
+            root = None
+    if root:
+        path = Path(root) / "mlc" / "validate" / "mx_ref.py"
+        if path.is_file():
+            try:
+                spec = importlib.util.spec_from_file_location("merlin_mx_ref", path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                return mod
+            except Exception:                # noqa: BLE001 — an unloadable reference is "unavailable"
+                return None
+    try:
+        from mlc.validate import mx_ref
+        return mx_ref
+    except Exception:                        # noqa: BLE001
+        return None
+
+
+def block_group() -> int | None:
+    """Elements per E8M0 block scale, as the DERIVED MX REFERENCE defines it, or ``None``.
+
+    The second-choice source for the block-scale group: a target's own manifest is asked first, and
+    this answers when the manifest declares a block-scaled unit without a group. It is not a default --
+    it is the number the golden generator ENFORCES, read from the same module, so a requirement derived
+    from it and a golden built against it cannot disagree. A target with a block-scaled unit whose
+    group nothing declares otherwise produced capsules the golden refuses outright.
+    """
+    mx = mx_reference()
+    g = getattr(mx, "GROUP", None) if mx is not None else None
+    return int(g) if isinstance(g, int) and g > 0 else None
+
+
 def mx_datapath_available() -> bool:
     """True when the derived MX reference (mlc) is importable in this environment."""
     try:

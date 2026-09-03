@@ -83,7 +83,7 @@ def _cost(op: str) -> tuple:
 #: generation died with "no SIMT golden for op 'attention_mx'" for six cells. Forcing MX geometry onto
 #: those cells would be the wrong repair twice over: their dtype is not block-scaled, and the block
 #: group (32) is not the tile edge (16), so the shapes would not fit either.
-_BLOCK_SCALED_GOLDEN_ONLY = frozenset({"attention_mx", "gemv_batched"})
+_BLOCK_SCALED_GOLDEN_ONLY = frozenset({"attention_mx"})
 
 
 def _is_ieee_float(dtype: str) -> bool:
@@ -110,7 +110,13 @@ def _is_ieee_float(dtype: str) -> bool:
 #: Mirrors the golden engine's own guard rather than restating a rule: the batched MX golden raises
 #: unless the operand canonicalizes to ``fp8_e4m3``, and a test asserts that this map and that guard
 #: agree, so the two cannot drift into two different claims about what is gradeable.
-_SINGLE_FORMAT_GOLDEN = {"gemv_batched": "fp8_e4m3"}
+#: An op whose golden grades exactly one operand format WITHIN A REGIME. `gemv_batched` now has a
+#: golden in the integer, specir and MX engines alike -- a batched contraction is B independent ones,
+#: and every engine already knows how to do one -- but the MX engine's batched reference reconstructs
+#: on the mx_ref datapath and takes mxfp8 only. So the restriction is real and it is scoped: it applies
+#: where the dtype is block-scaled, and nowhere else. Spelling it unscoped is what kept every integer
+#: and fp8 target from ever expressing a rank-3 region.
+_SINGLE_FORMAT_GOLDEN_WITHIN_MX = {"gemv_batched": "fp8_e4m3"}
 
 
 def _canonical(dtype: str) -> str | None:
@@ -148,9 +154,10 @@ def ops_gradeable_at(dtype: str, pool: set[str]) -> set[str]:
     # mx_ref datapath and refuses any format but mxfp8, so choosing it for an mxfp4 cell produced an
     # entry that built its interface and then failed at the golden, leaving a capsule directory with no
     # golden in it.
-    for op, want in _SINGLE_FORMAT_GOLDEN.items():
-        if op in keep and _canonical(dtype) != want:
-            keep.discard(op)
+    if is_block_scaled(dtype):
+        for op, want in _SINGLE_FORMAT_GOLDEN_WITHIN_MX.items():
+            if op in keep and _canonical(dtype) != want:
+                keep.discard(op)
     if not _is_ieee_float(dtype):
         keep = {op for op in keep if source_for_op(op) != "pytorch"}
     return keep
@@ -236,7 +243,7 @@ def op_for_shape(family: str, *, admitted_ops: set[str] | None = None, dtype: st
 
 
 def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
-                  dtype: str | None = None) -> str | None:
+                  dtype: str | None = None, writer: str | None = None) -> str | None:
     """The cheapest op that exercises ``family`` AND can actually be written at ``dtype``.
 
     WRITABILITY COMES FIRST, cost second. Ranking by cost alone picked the cheapest op in the abstract
@@ -246,9 +253,20 @@ def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
     representative all along and the ranking looked past it.
 
     ``dtype`` omitted keeps the old ordering, for callers asking the abstract question.
+
+    ``writer`` NARROWS TO ONE WRITER, and the host axes need it. A host-lane capsule must classify as
+    host work, and every op with a `merlin_iface` builder classifies as accelerator work by
+    construction -- so those axes need an op the interface dialect CANNOT express, which is exactly
+    `_writer_for(...) == "pytorch"`. Ranking without it picked `rmsnorm` (a builder) over `layernorm`
+    (no builder) for the same family, and the generator then dropped the capsule as an unprovable
+    forbid on three targets: the host-only lane was demanded, emitted, refused, and reported as an
+    uncovered family the whole way down, while an op that could have proven it sat in the same family.
     """
     pool = admitted_ops if admitted_ops is not None else available_ops()
     cands = [op for op, fam in _op_family_map().items() if fam == family and op in pool]
+    if writer is not None:
+        cands = [op for op in cands
+                 if _writer_for({"op": op, "operand_dtype": dtype}) == writer]
     if dtype is None:
         return sorted(cands, key=_cost)[0] if cands else None
     # False sorts before True, so a writable op outranks an unwritable one whatever it costs.
@@ -373,14 +391,26 @@ def cap_to_affordable(entry: dict, spec_doc: dict, *, extends: str = "") -> "str
     elements = dims["M"] * dims["N"]
     if elements <= int(ceiling):
         return None
-    entry["max_oracle_tier"] = "L2"
+    # THE LOOP TIER IS WHATEVER THIS TARGET HAS, not the name "L2". A target declaring `[L3]` alone has
+    # no cheaper tier to fall back to, and capping onto one it does not declare is refused downstream --
+    # correctly, because "a cap onto a tier that does not exist would silently leave the capsule
+    # demanding everything". Where there is no cheaper tier the honest outcome is to leave the tier
+    # alone and say the capsule is unaffordable, not to invent a tier for it.
+    tiers = [str(t) for t in (spec_doc.get("oracle_tiers") or ())]
+    loop_tier = tiers[0] if len(tiers) > 1 else None
+    if loop_tier is None:
+        return (f"{elements} written output elements exceeds the {int(ceiling)} a "
+                f"{aff.get('budget_s')}s certification budget affords, and this target declares no "
+                f"tier cheaper than its cert tier ({tiers or 'none resolved'}) to fall back to, so the "
+                f"capsule is emitted UNCAPPED and is expected to be expensive")
+    entry["max_oracle_tier"] = loop_tier
     if extends:
         entry["extends"] = extends
-    return (f"{elements} operand elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
-            f"certification budget affords on this target, so it is graded at the loop tier and "
+    return (f"{elements} written output elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
+            f"certification budget affords on this target, so it is graded at {loop_tier} and "
             f"rests on {extends!r}" if extends else
-            f"{elements} operand elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
-            f"certification budget affords on this target, so it is graded at the loop tier")
+            f"{elements} written output elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
+            f"certification budget affords on this target, so it is graded at {loop_tier}")
 
 
 def narrowest_admitted(admitted: "set[str] | frozenset[str]") -> str:
@@ -416,13 +446,49 @@ def narrowest_admitted(admitted: "set[str] | frozenset[str]") -> str:
     return sorted((str(d) for d in admitted), key=_rank)[0]
 
 
-def extents_for(alignment: str, probes: list[dict]) -> dict[str, str]:
+def quanta_by_dtype(spec_doc: dict) -> dict[str, dict]:
+    """``{dtype: {"row": int, "reduction": int}}`` read off the spec's own cell rows.
+
+    The granularity a dtype's datapath imposes is derived where the manifest is readable
+    (`conformance.spec`) and travels on the cell; this module is pure and reads it back as data. A spec
+    written before the field existed yields ``{}``, and every extent then keeps the tile-relative
+    spelling it had -- the pre-existing behaviour, not a guessed granularity.
+    """
+    out: dict[str, dict] = {}
+    for row in (spec_doc.get("cells") or ()):
+        q = (row or {}).get("shape_quantum")
+        dt = str((row or {}).get("dtype") or "")
+        if dt and isinstance(q, dict):
+            out[dt] = q
+    return out
+
+
+def _quantize(mult: int, quantum: int, tile: int) -> str:
+    """Spell ``mult * tile`` rounded UP to a whole multiple of ``quantum``, still tile-relative.
+
+    ``quantum`` is always a whole multiple of the tile edge where it constrains anything (a row quantum
+    is the edge times the codes packed per storage byte; a reduction quantum is the lcm of the target's
+    declared scale group and the edge), so the result stays spellable in tile units and the SAME entry
+    still describes the same shape on a target with a different edge.
+    """
+    if not quantum or not tile or quantum <= tile:
+        return "tile" if mult == 1 else f"{mult}*tile"
+    step = -(-int(quantum) // int(tile))               # the quantum, in tile units (ceil for safety)
+    m = -(-int(mult) // step) * step                   # round the multiplier up to a whole step
+    return "tile" if m == 1 else f"{m}*tile"
+
+
+def extents_for(alignment: str, probes: list[dict], quantum: dict | None = None) -> dict[str, str]:
     """Tile-relative extents for an alignment, spelled so the entry stays geometry-free.
 
-    ``aligned`` sits on the boundary; ``partial`` rags exactly one axis by one element.
-    ``cert_capsule_cover`` marks a capsule partial when ANY extent leaves a remainder, so ragging one
-    axis is sufficient and keeps the working set predictable -- ragging all three would multiply the
-    padding without covering anything more.
+    ``aligned`` sits on the boundary; ``partial`` rags by one element.
+
+    IT RAGS K AS WELL AS N, and the reason is measured. Ragging only the output column was enough for a
+    contraction and reached NOTHING ELSE: a unary op's operand is ``M x K``, so `SY_elementwise_map_
+    f32_partial` came out `tensor<16x32xf32>` -- exactly the aligned capsule under a partial name. Nine
+    cells across elementwise_map, normalization, reduction and softmax were required, emitted, built,
+    and classified `aligned` by the cover, so the class was uncoverable for every family that does not
+    contract. K is the one axis every family's primary operand carries.
 
     Spelled ``tile`` / ``tile-1`` rather than resolved integers so the SAME entry describes the same
     shape on a target with a different edge; ``generate_corpus.resolve_extent`` parses the tokens
@@ -433,8 +499,15 @@ def extents_for(alignment: str, probes: list[dict]) -> dict[str, str]:
             "no extent probe: this target's boundaries carry no tile edge, so an alignment-indexed "
             "requirement cannot be turned into a shape. Fix the boundary derivation rather than "
             "guessing an edge")
+    # The TILE-EDGE probe by name. `probes` also carries the block-scale-group boundary (edge 32 where
+    # the tile edge is 16), so taking the first probe -- or the widest -- would spell every extent
+    # against the wrong edge.
+    tile = next((int(pr.get("edge") or 0) for pr in probes
+                 if str((pr or {}).get("boundary") or "") == "tile_edge"), 0)
+    row_q = int((quantum or {}).get("row") or 1)
+    red_q = int((quantum or {}).get("reduction") or 1)
     if alignment == "partial":
-        return {"M": "tile", "K": "2*tile", "N": "tile-1"}
+        return {"M": "tile", "K": "2*tile-1", "N": "tile-1"}
     if alignment == "sub_tile":
         # BARELY OCCUPIED, which `partial` (ragged by one) cannot express. Spelled tile-relative like
         # every other extent, so a target with a 64-wide edge gets 16/32/16 from the same entry. K
@@ -450,7 +523,13 @@ def extents_for(alignment: str, probes: list[dict]) -> dict[str, str]:
         # one where A0, W and X are all non-degenerate while every extent stays well inside the
         # class (2 and 4 of a 16-wide edge, against the `tile/2` boundary).
         return {"M": "tile/8", "K": "tile/4", "N": "tile/4"}
-    return {"M": "tile", "K": "2*tile", "N": "tile"}
+    # THE DTYPE'S OWN GRANULARITY, not only the tile edge. A block-scaled datapath addresses rows in
+    # nibble pairs and scales K one whole group at a time; at the tile edge alone its reference computes
+    # zero tiles and returns an all-zero golden -- a golden any broken kernel matches, and the
+    # `UnfalsifiablePolicy` refusal that made 4 of these capsules fail to generate. Rounding UP keeps
+    # every non-quantized dtype at exactly the extents it had.
+    return {"M": _quantize(1, row_q, tile), "K": _quantize(2, red_q, tile),
+            "N": _quantize(1, row_q, tile)}
 
 
 def filtered_precision(preference: list[str], admitted: set[str]) -> tuple[list[str], list[str]]:
@@ -575,6 +654,10 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     except Exception:                              # noqa: BLE001 -- no map means no composed-with facts
         cap_map = {}
 
+    #: What granularity each dtype's own datapath imposes on an extent, published per cell by
+    #: `conformance.spec`. Empty on a spec written before that derivation existed.
+    _quanta = quanta_by_dtype(spec_doc)
+
     entries: list[dict] = []
     unexpressable: list[str] = []
     unwritable: list[str] = []
@@ -623,7 +706,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                    f"eligibility oracle as a false fallback" if fused else "")),
             "label": "public",
             "modes": {},
-            **extents_for(alignment, probes),
+            **extents_for(alignment, probes, quantum=_quanta.get(dtype)),
         }
         if epilogue:
             entry["epilogue"] = epilogue
@@ -736,7 +819,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         family, dtype = str(_pair.get("family") or ""), str(_pair.get("dtype") or "")
         if not family or not dtype or family in {str(f) for f in (host_block.get("families") or ())}:
             continue                               # the narrow axis below already carries this family
-        op = op_for_family(family, admitted_ops=pool, dtype=dtype)
+        # `writer="pytorch"` because this is a HOST axis: see `op_for_family`.
+        op = op_for_family(family, admitted_ops=pool, dtype=dtype, writer="pytorch")
         if op is None:
             unsized_host.append(f"{family}/{dtype} (no materializable op at this dtype)")
             continue
@@ -757,7 +841,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                          "not_asserted_reason": (
                              "the target admits no datapath for this family at this dtype; the capsule "
                              "exists to prove the compiler does NOT accelerate it")},
-            **extents_for("aligned", probes),
+            **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
         }
         # AN OP WITH A `merlin_iface` BUILDER CANNOT SERVE THIS AXIS, whatever dtype it declares.
         # `merlin_iface` is the ACCELERATOR's interface dialect -- every program expressible in it is
@@ -783,9 +867,13 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
 
     for family in sorted(str(f) for f in (host_block.get("families") or ())):
         dtype = host_dtypes.get(family)
-        op = op_for_family(family, admitted_ops=pool, dtype=dtype)
+        # `writer="pytorch"` because this is a HOST axis: see `op_for_family`.
+        op = op_for_family(family, admitted_ops=pool, dtype=dtype, writer="pytorch")
         if op is None or not dtype:
-            unsized_host.append(f"{family} ({'no materializable op' if op is None else 'no observed dtype'})")
+            _why = ("no dtype for it is observed in any capture" if not dtype else
+                    "no op of this family is one the interface dialect cannot express, so every "
+                    "candidate classifies as accelerator work and the forbid could never be proven")
+            unsized_host.append(f"{family} ({_why})")
             continue
         entry = {
             "cat": "model_slices", "kind": "model_slice",
@@ -806,7 +894,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                          "not_asserted_reason": (
                              "the target declares no capability for this family; the capsule exists to "
                              "prove the compiler does NOT accelerate it")},
-            **extents_for("aligned", probes),
+            **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
         }
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
@@ -941,9 +1029,86 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"reported covered by whichever single stage the cell axis happened to pick"),
             "label": "public", "modes": {},
             "semantic": {"generalization_axis": "epilogue"},
-            **extents_for("aligned", probes),
+            **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
         }
         declare_pool_window(entry)
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
+    # ---- the GEOMETRY axis --------------------------------------------------------------------------
+    # ASPECT RATIO, which no cell can state. A `(family, dtype, alignment)` cell puts a 448:1
+    # tall-skinny convolution and a square projection in the same box, and every capsule the other axes
+    # emit is square by construction (`M = tile`, `N = tile`). Measured on a real vision capture: five
+    # geometry classes carry its contraction work, the corpus covered ONE, and the heaviest block of it
+    # -- `M=3584, K=14, N=8`, repeated 48 times -- has an aspect ratio nothing in the corpus reaches
+    # within two orders of magnitude. A compiler that tiles that shape badly passes every existing
+    # capsule.
+    #
+    # The extents are the REAL ones, so the capsule tests the geometry at the size the work occurs at.
+    # That is affordable only because the tier follows the size: a class whose representative writes
+    # more than the certification budget affords becomes a loop-tier capsule that names the certified
+    # sibling it rests on, which is the same rule the memory-regime and accumulation-depth axes use.
+    geom_block = spec_doc.get("shape_geometry") or {}
+    unsized_geometry: list[str] = []
+    # THE SAME DTYPE THE MEMORY-REGIME AXIS USES, and for the same reason: these capsules rest on a
+    # certified `SY_contraction_<dtype>_aligned` sibling, so the dtype has to be one the CELL axis
+    # actually emitted. Taking the head of the precision preference instead named a sibling that does
+    # not exist on a target whose cells are float -- an L2-only capsule pointing at nothing, which is
+    # precisely the orphan the `extends` field exists to prevent.
+    geom_dtype = regime_dtype or (kept[0] if kept else narrowest_admitted(admitted_dtypes))
+    geom_op = op_for_family("contraction", admitted_ops=ops_gradeable_at(geom_dtype, pool),
+                            dtype=geom_dtype) if geom_dtype else None
+    _emitted = {str(e.get("name")) for e in entries}
+    for _req in (geom_block.get("required") or ()):
+        klass = str(_req.get("class") or "")
+        if not klass or klass == "unknown":
+            continue
+        if not geom_op or not geom_dtype:
+            unsized_geometry.append(f"{klass} (no contraction op gradeable at any admitted dtype)")
+            continue
+        m, k, n = _req.get("M"), _req.get("K"), _req.get("N")
+        if not (isinstance(m, int) and isinstance(k, int) and isinstance(n, int)):
+            unsized_geometry.append(
+                f"{klass} ({_req.get('unreachable') or 'the requirement carries no resolved M/K/N'})")
+            continue
+        _sib = f"{SYNTH_PREFIX}_contraction_{geom_dtype}_aligned"
+        if _sib not in _emitted:
+            # An L2-only capsule that names a sibling nothing emitted is an orphan: it rests on a
+            # functional guarantee that does not exist. Reported, never emitted.
+            unsized_geometry.append(
+                f"{klass} (no certified sibling {_sib!r} was emitted for this dtype, so a loop-tier "
+                f"capsule of this geometry would rest on nothing)")
+            continue
+        # The dtype's own datapath granularity applies to a REAL shape exactly as it does to a
+        # tile-relative one: a block-scaled format cannot execute a K that is not a whole group.
+        q = _quanta.get(geom_dtype) or {}
+        row_q, red_q = int(q.get("row") or 1), int(q.get("reduction") or 1)
+        up = lambda v, g: -(-int(v) // int(g)) * int(g)      # noqa: E731 -- local rounding helper
+        m, n, k = up(m, row_q), up(n, row_q), up(k, red_q)
+        entry = {
+            "cat": "isa", "kind": "isa",
+            "name": f"{SYNTH_PREFIX}_geometry_{klass}".replace("-", "_"),
+            "op": geom_op, "operand_dtype": geom_dtype,
+            "out": "Y0", "lhs": "A0", "weight": "W",
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for geometry class {klass!r}: real captures present "
+                f"{_req.get('n_regions')} contraction region(s) of this aspect ratio carrying "
+                f"{_req.get('mac_fraction')} of all contraction MAC work, and the heaviest of them is "
+                f"M={m} K={k} N={n}. Every other synthesized capsule is square, so without this the "
+                f"corpus cannot tell a compiler that tiles this ratio well from one that does not"),
+            "label": "public", "modes": {},
+            "semantic": {"generalization_axis": "shape_geometry"},
+            "M": m, "K": k, "N": n,
+        }
+        _why = cap_to_affordable(entry, spec_doc, extends=_sib)
+        if _why:
+            entry["source_reference"] += f". {_why}"
+        if _writer_for(entry) is None:
+            unsized_geometry.append(f"{klass} (op {geom_op!r} has no writer at dtype {geom_dtype!r})")
+            continue
+        if _writer_for(entry) == "pytorch":
+            entry["source"] = "pytorch"
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
@@ -1220,6 +1385,16 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 "a host-only family with no materializable op or no dtype observed in any capture. "
                 "Reported rather than dropped: a negative lane nobody demanded reads downstream exactly "
                 "like one nothing violates"),
+            # Geometry classes real captures present that no entry could be emitted for. A separate
+            # list because it licenses a separate action: not a builder and not a certification run,
+            # but a shape the writer refused -- and a class silently absent here reads downstream as a
+            # geometry the corpus covers.
+            "geometry_classes_unsynthesizable": unsized_geometry,
+            "geometry_note": (
+                "a geometric class (aspect ratio) real models present that the corpus could not emit a "
+                "capsule for. The classes that WERE emitted carry the real M/K/N of the heaviest region "
+                "in the class, and their tier follows that size: one too large to certify inside the "
+                "budget is graded at the loop tier and names the certified sibling it rests on"),
             "accumulation_depth_unsizable": unsized_depth,
             "accumulation_depth_note": (
                 "a reduction depth this target could not size. Kept separate from "
