@@ -28,11 +28,25 @@ operation:
     weight: W
     out: Y0
     epilogue:
-    - acc_scale
-    output_dtype: i8
+    - maxpool
+    output_dtype: i32
+    pool_in_dims:
+    - 4
+    - 4
+    pool_size:
+    - 2
+    - 2
+    pool_stride:
+    - 2
+    - 2
+    pool_padding:
+    - 0
+    - 0
+    - 0
+    - 0
 numeric_policy:
   compare: exact_int
-  dtype: i8
+  dtype: i32
 expected:
   instruction_classes:
   - FLUSH
@@ -57,7 +71,7 @@ semantic:
   must_accelerate: true
   eligible: auto
   composed_families:
-  - elementwise_map
+  - reduction
 pass_requirements:
 - target-isa-lowering
 - tile-schedule

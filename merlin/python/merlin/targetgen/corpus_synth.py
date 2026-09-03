@@ -257,6 +257,12 @@ def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
     return ranked[0] if ranked else None
 
 
+#: Epilogue stages a contraction builder can actually carry. Mirrors
+#: ``conformance._BUILDER_EPILOGUE_STAGES``; the family each one belongs to is DERIVED from the
+#: semantic taxonomy rather than listed here, so a new stage needs no second table.
+_EPILOGUE_STAGES = ("relu", "acc_scale", "bias_add", "maxpool")
+
+
 def _fused_carrier(family: str, composed_with: tuple, pool: set[str]) -> tuple[str, list[str]] | None:
     """``(op, epilogue)`` for a family the manifest admits only IN COMPOSITION.
 
@@ -264,14 +270,49 @@ def _fused_carrier(family: str, composed_with: tuple, pool: set[str]) -> tuple[s
     standalone capsule for it as a false fallback, so the only capsule that can ever evidence that cell
     is a contraction carrying it as an epilogue. Emitting the standalone op would produce a capsule that
     is *wrong* rather than merely weak -- this is the single case where the obvious choice is a defect.
+
+    THE STAGE MUST BELONG TO THE FAMILY IT IS COVERING, and a baked table got that wrong. This read
+    ``{"elementwise_map": "relu", "reduction": "acc_scale"}`` -- but ``acc_scale`` is an
+    ``elementwise_map``, so all three ``SY_reduction_i8_*`` capsules carried an elementwise stage,
+    credited ``composed_families: [elementwise_map]``, and covered the elementwise cells they were not
+    named for while the reduction cells they WERE named for stayed uncovered. Measured on gemmini:
+    ``reduction/i8/partial`` had no capsule at all, and the other two reduction cells were covered
+    incidentally by a maxpool epilogue capsule and two hand-authored pooling capsules.
+
+    So the stage is derived: ask the taxonomy which family each buildable stage belongs to and take one
+    that answers with this family. Same source the requirement's epilogue axis uses, so the two cannot
+    disagree about what a stage is.
     """
     if "contraction" not in {str(c) for c in composed_with}:
         return None
     carrier = op_for_family("contraction", admitted_ops=pool)
     if carrier is None:
         return None
-    stage = {"elementwise_map": "relu", "reduction": "acc_scale"}.get(family)
+    from merlin.targetgen import semantic_families as _sf
+    stage = next((st for st in _EPILOGUE_STAGES if _sf.from_op(st) == family), None)
     return (carrier, [stage]) if stage else None
+
+
+def declare_pool_window(entry: dict) -> dict:
+    """Give a pooling epilogue the geometry it needs, in place. Inert on every other entry.
+
+    A pooling stage commits FEWER rows than it reads, so the builder must know what the contraction's
+    rows mean spatially. Two things follow, and both belong here rather than in each axis:
+
+    * the WINDOW is declared (a 2x2 with stride 2 is the shape every pooling datapath has) while the
+      input geometry is left to the generator, which is the first place the tile edge is known -- the
+      extents here are still tile-relative tokens by design;
+    * ``M`` is pinned to one whole tile, because the generator factors those rows into ``H x W`` and a
+      non-square count has no such reading. That does NOT flatten the alignment axis: occupancy is
+      classified from the ragged extent, so ``K``/``N`` still carry aligned, partial and sub_tile
+      (16x32x16, 16x32x15 and 16x4x4 classify as all three).
+    """
+    if "maxpool" not in [str(x) for x in (entry.get("epilogue") or ())]:
+        return entry
+    entry["pool_size"] = [2, 2]
+    entry["pool_stride"] = [2, 2]
+    entry["M"] = "tile"
+    return entry
 
 
 def _tile_int(token, tile: int):
@@ -586,6 +627,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         }
         if epilogue:
             entry["epilogue"] = epilogue
+            declare_pool_window(entry)
         _writer = _writer_for(entry)
         if _writer is None:
             unwritable.append(
@@ -901,15 +943,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "semantic": {"generalization_axis": "epilogue"},
             **extents_for("aligned", probes),
         }
-        # A POOLING STAGE COMMITS FEWER ROWS THAN IT READS, so the builder needs the geometry: without
-        # `pool_in_dims` it cannot know what the contraction's rows mean spatially. It is NOT derived
-        # here -- the extents at this point are tile-relative TOKENS (`tile`, `2*tile`), because the
-        # whole reason synthesis writes them that way is that it does not know the target's edge. The
-        # generator resolves them against the edge and derives the geometry there, which is the only
-        # place both facts are in hand.
-        if stage == "maxpool":
-            entry["pool_size"] = [2, 2]
-            entry["pool_stride"] = [2, 2]
+        declare_pool_window(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 

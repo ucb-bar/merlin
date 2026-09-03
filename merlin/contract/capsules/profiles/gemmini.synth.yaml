@@ -264,7 +264,13 @@ capsules:
   K: 2*tile
   N: tile
   epilogue:
-  - acc_scale
+  - maxpool
+  pool_size:
+  - 2
+  - 2
+  pool_stride:
+  - 2
+  - 2
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -287,7 +293,13 @@ capsules:
   K: 2*tile
   N: tile-1
   epilogue:
-  - acc_scale
+  - maxpool
+  pool_size:
+  - 2
+  - 2
+  pool_stride:
+  - 2
+  - 2
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -306,11 +318,17 @@ capsules:
     refused by the eligibility oracle as a false fallback
   label: public
   modes: {}
-  M: tile/8
+  M: tile
   K: tile/4
   N: tile/4
   epilogue:
-  - acc_scale
+  - maxpool
+  pool_size:
+  - 2
+  - 2
+  pool_stride:
+  - 2
+  - 2
   pass_requirements:
   - target-isa-lowering
 - cat: isa
