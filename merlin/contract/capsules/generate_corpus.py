@@ -1194,7 +1194,14 @@ def _write_capsule(entry, binding, out_root):
 #:                      a fused implementation against the parts it replaces. The field has been declared
 #:                      on four capsules since they were written and consumed by nothing, which is the
 #:                      same thing as not existing.
-_DECLARED_BLOCKS = ("performance", "comparison_group")
+#:                      `max_oracle_tier` / `max_timing_tier` / `extends` ride here too: a
+#:                      per-capsule oracle-tier CEILING and the sibling whose deeper
+#:                      certification a capped capsule rests on are declared once in the
+#:                      profile and carried onto every member it derives, so the link between a
+#:                      derived sweep member and the functional capsule it extends is
+#:                      machine-readable instead of prose in `source_reference`.
+_DECLARED_BLOCKS = ("performance", "comparison_group",
+                    "max_oracle_tier", "max_timing_tier", "extends")
 
 
 def _carry_declared_blocks(entry: dict, cap: dict) -> bool:

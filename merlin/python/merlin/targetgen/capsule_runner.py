@@ -148,6 +148,17 @@ class TierResult:
                                       # Requested warmups are not silently promoted to observed cache
                                       # state; downstream calibration can audit this record.
 
+    oracle_ceiling: dict | None = None
+                                      # WHY THIS TIER WAS NOT BOUGHT, when a per-capsule oracle-tier
+                                      # ceiling declined it: the cap, where the cap came from
+                                      # (declared / derived from measured cost / unpriced), the budget
+                                      # that set it, the `extends` sibling the claim rests on, and the
+                                      # affordability calculation. A capped tier is ALWAYS recorded --
+                                      # `skipped` with this block -- never omitted: a tier with no
+                                      # record is not evidence, and an absent key is what made two
+                                      # model capsules read as though they had never been graded.
+                                      # See merlin.targetgen.tier_policy.oracle_ceiling.
+
     toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
                                       # scaled MX capsule is graded on the harness's own reference MX
                                       # kernel rather than the submission, so a pass there measures the
@@ -164,6 +175,8 @@ class TierResult:
             d["not_applicable"] = True
         if self.budget_deferred:
             d["budget_deferred"] = True
+        if self.oracle_ceiling:
+            d["oracle_ceiling"] = dict(self.oracle_ceiling)
         if self.fidelity:
             d["fidelity"] = self.fidelity
         # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
@@ -2669,11 +2682,21 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
         # must never do is read as a pass.
         _def = sorted(t for t, r in tiers.items() if getattr(r, "budget_deferred", False))
         status = "screened_only"
+        # WHY it was not purchased comes from the tier's OWN recorded reason, not from prose here.
+        # Two different mechanisms defer a tier -- the suite covering-set budget and a per-capsule
+        # oracle-tier ceiling -- and a fixed sentence naming only the first mislabels the second (and
+        # would report an UNKNOWN cost as an exhausted budget, which is a different fact).
+        _why = next((getattr(tiers[t], "reason", None) for t in _def if getattr(tiers[t], "reason", None)),
+                    None)
+        _ceil = next((getattr(tiers[t], "oracle_ceiling", None) for t in _def
+                      if getattr(tiers[t], "oracle_ceiling", None)), None)
         failure = {"plane": "budget", "category": "SCREENED_NOT_CERTIFIED",
                    "tier": _def[0] if _def else None,
-                   "detail": (f"passed the screen tier; certify tier(s) {', '.join(_def)} not purchased "
-                              f"(outside the derived covering set, certify budget exhausted). This is "
-                              f"NOT a verdict on this capsule.")}
+                   "detail": (f"passed the screen tier; certify tier(s) {', '.join(_def)} not purchased. "
+                              + (_why or "outside the derived covering set, certify budget exhausted.")
+                              + " This is NOT a verdict on this capsule.")}
+        if _ceil:
+            failure["oracle_ceiling"] = dict(_ceil)
     if status == "pass":
         for tier in required:
             tr = tiers.get(tier)
@@ -3146,6 +3169,27 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 if not _may:
                     tiers[tier] = TierResult(tier, "skipped", mand, reason=_why,
                                              budget_deferred=True,
+                                             derived_from_rtl=tier in cfg.rtl_tiers)
+                    continue
+                # PER-CAPSULE CEILING, distinct from the suite budget above. That budget stops buying
+                # once the RUN has spent its allowance; this one declines a tier THIS CAPSULE cannot
+                # afford, which is knowable from the capsule and from measured cost before the run.
+                # The screen tier is excluded by the enclosing branch on purpose -- "screened at the
+                # cheap tier" is the entire claim a capped capsule makes, so the screen is never capped.
+                # The cheap predictor: the screen tier already ran in THIS loop (it is _tier_seq[0]),
+                # so its cycle count is in hand and costs nothing to reuse.
+                _screen_res = tiers.get(_screen_tier) if _screen_tier else None
+                _ceiling = _tier_policy.oracle_ceiling(
+                    str(cfg.target or target or ""), capsule, tier,
+                    declared_tiers=_tier_seq,
+                    functional_cycles=getattr(_screen_res, "cycles", None))
+                if not _ceiling.allowed:
+                    # RECORDED, never absent. `budget_deferred` carries the existing "applied and
+                    # deliberately not paid for" semantics, so a mandatory capped tier still downgrades
+                    # the capsule to screened_only and can never read as a pass.
+                    tiers[tier] = TierResult(tier, "skipped", mand, reason=_ceiling.reason,
+                                             budget_deferred=True,
+                                             oracle_ceiling=_ceiling.record,
                                              derived_from_rtl=tier in cfg.rtl_tiers)
                     continue
             if tier in _inapplicable and not mand:

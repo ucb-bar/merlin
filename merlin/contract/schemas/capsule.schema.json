@@ -94,6 +94,21 @@
       "minItems": 1,
       "items": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", "L5"]}
     },
+    "max_oracle_tier": {
+      "type": "string",
+      "enum": ["L0", "L1", "L2", "L3", "L4", "L5"],
+      "description": "Deepest oracle tier this capsule will be graded at -- a per-capsule CEILING. Tiers deeper than this are recorded as `skipped` with a reason naming the ceiling and the budget behind it; the key is NEVER omitted, because a tier with no record is not evidence (not_run_is_not_pass) and an absent key reads as though the capsule was never graded. Exists because certification cost is measured and grows with a capsule's depth (merlin.targetgen.cert_cost fits it per target/tier/engine from the runs already on disk), so a capsule too expensive to certify is screened at the cheap tier instead of silently costing hours. A capped capsule SHOULD also declare `extends`, naming the sibling that carries the deeper certification; a ceiling without one is a strictly weaker claim and is recorded as such. Enforced at grade time by merlin.targetgen.tier_policy.oracle_ceiling."
+    },
+    "max_timing_tier": {
+      "type": "string",
+      "enum": ["L0", "L1", "L2", "L3", "L4", "L5"],
+      "description": "Deepest tier bought for this capsule's TIMING measurement -- an exclusion from the measurement matrix, deliberately a DIFFERENT field from `max_oracle_tier`. A tier is bought for one of two reasons and a ceiling on one must never silence the other: `max_oracle_tier` caps CORRECTNESS (the capsule is screened cheaply and its correctness rests on an `extends` sibling), while a performance claim NEEDS the cycle-accurate count on whatever rung the capsule's own acceptance block names in `performance.acceptance.evidence.timing_tier`. Capping correctness therefore does NOT decline the timing rung, or a cell that was measured would read back as though it never was. Declare this only to state that a member is genuinely not to be measured at that rung; the tier is then recorded as `skipped` with `measurement_excluded: true`, which is a statement about the measurement matrix and NOT a correctness verdict."
+    },
+    "extends": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the SIBLING capsule whose deeper oracle-tier certification this capsule rests on. The honesty mechanism for `max_oracle_tier`: a capped capsule is not 'uncertified', it is 'screened at the cap and resting on <this sibling>'s certification'. Declared on the capsule rather than inferred from a naming convention, so what the claim rests on is readable from the capsule itself and auditable after the fact."
+    },
     "pass_requirements": {
       "description": "Target-independent compiler requirement classes this capsule must exercise.",
       "type": "array",
