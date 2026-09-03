@@ -48,6 +48,7 @@ The regimes are not adjectives. Each one changes what the compiler is even allow
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 FITS_DOUBLE = "fits_double"
@@ -77,23 +78,61 @@ def classify(rows_live: int | None, rows_total: int | None, capacity_rows: int |
     return FITS_DOUBLE if rows_live * 2 <= capacity_rows else FITS_SINGLE
 
 
-def operand_store(target: str):
+def operand_store(target: str, *, dtype: str | None = None):
     """``(Store, capacity_rows)`` for the target's operand store, or ``(None, None)``.
 
     Picks the NARROWEST-row store, because that is the one operands live in: a separate accumulator
     space exists precisely because its row is wider (it holds the accumulate type). Choosing by name
     would bake a target's spelling into shared code.
+
+    ``dtype`` IS PART OF THE CAPACITY on a lane-granular store. A device with no compute array reaches
+    its store one warp at a time: the access width is a lane COUNT, so a row's size -- and therefore
+    how many rows the store holds -- depends on the element in it. Requiring a fixed byte row here
+    discarded such a store entirely and reported the target as declaring no operand store at all, so
+    its whole memory-mapping axis read `0 / 0 required regimes` over a 128 KiB shared memory.
     """
     try:
         from merlin.targetgen import address_space as AS
         space = AS.derive_address_space(target)
     except Exception:                                          # noqa: BLE001 — unresolvable target
         return None, None
-    stores = [s for s in (getattr(space, "stores", ()) or ()) if getattr(s, "row_bytes", None)]
+    stores = [s for s in (getattr(space, "stores", ()) or ())
+              if getattr(s, "row_bytes", None) or getattr(s, "row_elems", None)]
     if not stores:
         return None, None
-    store = min(stores, key=lambda s: int(s.row_bytes))
-    return store, getattr(store, "total_rows", None)
+
+    def _width(s):
+        """Row width in bits at this dtype -- the one scale on which a fixed-byte row and a
+        lane-granular one are comparable."""
+        if getattr(s, "row_bytes", None):
+            return int(s.row_bytes) * 8
+        per_row = s.elems_per_row(dtype)
+        from merlin.targetgen.address_space import element_bits
+        bits = element_bits(dtype) if dtype else s.element_bits
+        return per_row * bits if (per_row and bits) else float("inf")
+
+    store = min(stores, key=_width)
+    return store, store.capacity_rows(dtype)
+
+
+def _dominant_dtype(capsule_doc: dict) -> str | None:
+    """The element type a capsule's operands are in, or ``None`` when it declares none.
+
+    The first declared input's dtype: a capsule's inputs are one datapath's operands and share a type
+    in every capsule this corpus emits. When they do NOT, ``capsule_regime`` reports the disagreement
+    rather than averaging over it -- summing rows measured against two different row sizes is adding
+    two different units.
+    """
+    for t in (capsule_doc.get("inputs") or []):
+        if t.get("dtype"):
+            return str(t["dtype"])
+    return None
+
+
+@lru_cache(maxsize=None)
+def _store_for(target: str, dtype: str | None):
+    """``operand_store`` memoised per (target, dtype) -- the region walk asks per region."""
+    return operand_store(target, dtype=dtype)
 
 
 def _rows(store, shape, dtype) -> int | None:
@@ -111,8 +150,6 @@ def capsule_regime(capsule_dir: str | Path, target: str, *, store=None, capacity
     """
     import yaml
 
-    if store is None:
-        store, capacity = operand_store(target)
     cy = Path(capsule_dir) / "capsule.yaml"
     if not cy.is_file():
         return {"regime": UNKNOWN, "why": "no capsule.yaml"}
@@ -120,6 +157,11 @@ def capsule_regime(capsule_dir: str | Path, target: str, *, store=None, capacity
         doc = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as e:
         return {"regime": UNKNOWN, "why": f"unparseable capsule.yaml: {type(e).__name__}"}
+    # THE CAPSULE'S OWN DTYPE DECIDES HOW BIG A ROW IS on a lane-granular store (see `operand_store`),
+    # so the store has to be resolved AFTER the capsule is read, not before. Caller-supplied values are
+    # still honoured -- a caller that resolved for this dtype should not pay for it per capsule.
+    if store is None:
+        store, capacity = operand_store(target, dtype=_dominant_dtype(doc))
     if store is None or not capacity:
         return {"regime": UNKNOWN, "why": f"{target!r} declares no operand-store capacity we can derive"}
 
@@ -152,8 +194,10 @@ def corpus_regimes(corpus_roots, target: str, *, labels=None, exclude=None) -> d
 
     labels = set(labels or {"public"})
     exclude = set(exclude or ())
-    store, capacity = operand_store(target)
+    # NOT resolved once here: each capsule's row size depends on its own element type on a
+    # lane-granular store, so `capsule_regime` resolves it per capsule (memoised by dtype).
     roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
+    capacity = None
     by: dict[str, list[str]] = {}
     largest = {"name": None, "rows": 0, "fraction_of_capacity": 0.0}
     for root in roots:
@@ -167,8 +211,10 @@ def corpus_regimes(corpus_roots, target: str, *, labels=None, exclude=None) -> d
             name = cap.get("name") or cy.parent.name
             if name in exclude:
                 continue
-            got = capsule_regime(cy.parent, target, store=store, capacity=capacity)
+            got = capsule_regime(cy.parent, target)
             by.setdefault(got["regime"], []).append(name)
+            if got.get("capacity_rows") and capacity is None:
+                capacity = got["capacity_rows"]
             if got.get("rows", 0) > largest["rows"]:
                 largest = {"name": name, "rows": got["rows"],
                            "fraction_of_capacity": got.get("fraction_of_capacity", 0.0)}
@@ -214,11 +260,17 @@ def required_regimes(captures: dict, target: str) -> dict:
     """
     from merlin.targetgen import model_coverage as mc
 
-    store, capacity = operand_store(target)
+    # Resolved PER REGION below (`_store_for`), because a lane-granular store's row size follows the
+    # region's own element type. This probe only answers "is there a store at all".
+    # Resolved PER REGION below (`_store_for`), because a lane-granular store's row size follows the
+    # region's own element type -- so the CAPACITY from a dtype-less probe is legitimately None there
+    # and the guard asks only whether a store exists at all.
+    store, _probe_capacity = operand_store(target)
+    capacity = None
     by: dict[str, list[str]] = {}
     counts: dict[str, int] = {}
     unreadable: dict[str, str] = {}
-    if store is None or not capacity:
+    if store is None:
         return {"by_regime": {}, "region_counts": {}, "captures_unreadable": {},
                 "why": f"{target!r} declares no operand-store capacity we can derive, so no regime is "
                        f"required of the corpus -- that is 'we do not know', never 'nothing is required'"}
@@ -229,6 +281,9 @@ def required_regimes(captures: dict, target: str) -> dict:
             unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
             continue
         for _op, shapes, dtype in _operand_shapes(module):
+            store, capacity = _store_for(target, dtype)
+            if store is None or not capacity:
+                continue
             rows = 0
             sized = False
             for shape in shapes:
@@ -246,7 +301,7 @@ def required_regimes(captures: dict, target: str) -> dict:
                 by[reg].append(label)
     return {"by_regime": {k: sorted(v) for k, v in sorted(by.items())},
             "region_counts": dict(sorted(counts.items())),
-            "capacity_rows": int(capacity),
+            "capacity_rows": int(capacity) if capacity else None,
             "captures_unreadable": unreadable}
 
 
@@ -292,7 +347,7 @@ def extents_for_regime(target: str, regime: str, *, tile_dim: int, dtype: str | 
     reaches the regime. That is a reportable gap; it is never a quietly smaller capsule.
     """
     if store is None and capacity is None:
-        store, capacity = operand_store(target)
+        store, capacity = operand_store(target, dtype=dtype)
     if store is None or not capacity or not tile_dim:
         return None
     tile = int(tile_dim)
@@ -328,7 +383,7 @@ def required_regime_extents(target: str, regimes, *, tile_dim: int, dtype: str |
     Emitted into the conformance spec so :mod:`merlin.targetgen.corpus_synth` stays pure: the search
     needs the target's address space, which is exactly the I/O the synthesizer is not allowed to do.
     """
-    store, capacity = operand_store(target)
+    store, capacity = operand_store(target, dtype=dtype)
     out: dict = {}
     for regime in regimes:
         out[str(regime)] = extents_for_regime(target, str(regime), tile_dim=tile_dim, dtype=dtype,
@@ -391,7 +446,7 @@ def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: 
     regime is an answer, a silently missing one is not.
     """
     if store is None and capacity is None:
-        store, capacity = operand_store(target)
+        store, capacity = operand_store(target, dtype=dtype)
     wanted = [str(r) for r in (regimes if regimes is not None else ORDER)]
     tile = int(tile_dim or 0)
     out: dict = {"capacity_rows": int(capacity) if capacity else None, "tile_dim": tile or None,

@@ -157,9 +157,29 @@ class Store:
         """
         bits = element_bits(dtype) if dtype else self.element_bits
         if not self.row_bytes or not bits:
+            # A LANE-GRANULAR STORE HAS NO FIXED ROW IN BYTES, and that is not the same as having no
+            # row. Its access width is a LANE COUNT (`row_elems`) that holds whatever element the
+            # program puts in it, so the elements per access are the lanes themselves -- the byte width
+            # is what varies. Only when the store also declares no element count at all is the row
+            # genuinely unknown.
+            if self.row_bytes is None and self.element_bits is None and self.row_elems:
+                return int(self.row_elems)
             return None
         n = (self.row_bytes * 8) // bits
         return n or None
+
+    def capacity_rows(self, dtype: str | None = None) -> int | None:
+        """How many rows of ``dtype`` the store holds. ``total_rows`` where the row is a fixed byte
+        width; on a lane-granular store the row's SIZE depends on the element, so the capacity does
+        too, and answering with a single number would be answering a different question."""
+        if self.total_rows:
+            return int(self.total_rows)
+        per_row = self.elems_per_row(dtype)
+        bits = element_bits(dtype) if dtype else self.element_bits
+        if not per_row or not bits or not self.nbytes:
+            return None
+        row_bits = per_row * bits
+        return (int(self.nbytes) * 8) // row_bits or None
 
     def working_set_rows(self, shape: Sequence[int], dtype: str | None = None) -> int | None:
         """See :func:`working_set_rows`."""
@@ -378,7 +398,19 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                              "width was taken as the COLUMN edge -- corroborate() against the RTL SRAM "
                              "widths before trusting it"))
     elif mems:
-        unknowns.append(Unknown("row_elems", array_reason or "no array geometry"))
+        # NO ARRAY IS NOT NO ACCESS WIDTH. A SIMT device has no systolic array at all -- its facts
+        # carry a `simt` block instead -- and its store is reached one WARP at a time: a coalesced
+        # access moves `lanes_per_warp` elements, whatever their width, exactly the role the array's
+        # column edge plays on a spatial device. Reading only `arrays` reported "no row width" for a
+        # target whose own facts state the width in the units that fit it, and the whole memory-mapping
+        # axis then reported 0/0 required regimes on a 128 KiB store.
+        lanes = ((body.get("simt") or {}) if isinstance(body.get("simt"), dict) else {}).get(
+            "lanes_per_warp")
+        if isinstance(lanes, int) and lanes > 0:
+            space.array_cols = int(lanes)
+            space.sources["row_elems"] = f"simt.lanes_per_warp ({lanes}); this device has no array"
+        else:
+            unknowns.append(Unknown("row_elems", array_reason or "no array geometry"))
 
     datapaths = [d for d in (body.get("datapaths") or []) if isinstance(d, dict)]
     if mems and not datapaths:
@@ -432,9 +464,14 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                     unknowns.append(Unknown(
                         "banks", f"{total_rows} rows do not divide into banks of the declared depth "
                                  f"{depth} ({bank_residue} rows over)", name))
-        elif nbytes:
+        elif nbytes and not row_elems:
             unknowns.append(Unknown("total_rows", "no row width, so a byte capacity says nothing about "
                                                   "how many rows are addressable", name))
+        elif nbytes:
+            # row_elems without row_bytes: a lane-granular store. Its capacity IS derivable, per
+            # element type -- `Store.capacity_rows(dtype)` -- so this is not an unknown, and recording
+            # it as one would report a derivable quantity as missing.
+            pass
         srcs = {"bytes_depth": str(mem.get("source") or "facts.memories")}
         if how:
             srcs["element_dtype"] = how
