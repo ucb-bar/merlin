@@ -261,13 +261,35 @@ def perop_nr_cap(vlen: int | None) -> int:
 _PEROP_MR_CAP = 4
 
 
+#: Env override for the cap, so the search can explore it without a code edit. It exists because 4 was
+#: measured at 128^3 -- a shape where M is large and MR is purely a register-pressure question -- and
+#: that is NOT the regime every model is in. MEASURED on small_llama fp32: every contraction is
+#: [8,128]x[128,N], i.e. M=8, only 3.42 MMAC against 1.71 MB of weights streamed (2.0 MAC/byte). There
+#: the binding cost is weight TRAFFIC, not registers: at MR=4 an M=8 op takes two row-blocks and streams
+#: the whole B matrix once per block, so the cap doubles the traffic on a memory-bound workload. MR=8
+#: would read each weight exactly once. Whether the register pressure that buys is worth it is a
+#: measurement, which is the point of making it settable.
+_PEROP_MR_CAP_ENV = "MERLIN_PEROP_MR_CAP"
+
+
 def perop_mr_cap() -> int:
     """The M-tile cap offered to the per-op block policy.
 
     Deliberately takes no ``vlen``: MR is a register-file bound, not a vector-length one, so unlike
     :func:`perop_nr_cap` there is nothing about the board's width to scale by. See the measurements on
     :data:`_PEROP_MR_CAP`.
+
+    Overridable via ``MERLIN_PEROP_MR_CAP``. A non-positive or unparseable value is IGNORED rather
+    than allowed to disable blocking silently -- an env typo must not change what the compiler emits.
     """
+    raw = os.environ.get(_PEROP_MR_CAP_ENV)
+    if raw:
+        try:
+            v = int(raw)
+        except ValueError:
+            v = 0
+        if v > 0:
+            return v
     return _PEROP_MR_CAP
 
 
