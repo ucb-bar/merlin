@@ -35,7 +35,6 @@ needs no encoding table, and is why nothing here has to declare that zero means 
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -77,11 +76,17 @@ class FsmRegister:
 
 def kiss2_dir_for(target: str) -> Path | None:
     """Where this target's exported transition tables live, or None when none were exported."""
-    root = os.environ.get("MERLIN_FSM_DIR")
+    # Resolved through the shared helper, so the repo's gitignored ``.env`` counts as a real config
+    # source. Reading ``os.environ`` alone made the extraction look ABSENT -- "this design has no
+    # control FSMs" -- to every caller that had not exported the var by hand, which is the same
+    # unavailable-reads-as-empty failure this module's own docstring warns about one level up.
+    from merlin.common.paths import env as _env
+
+    root = _env("MERLIN_FSM_DIR")
     if root:
         d = Path(root) / target
         return d if d.is_dir() else None
-    mlc = os.environ.get("MERLIN_MLC_DIR")
+    mlc = _env("MERLIN_MLC_DIR")
     if not mlc:
         return None
     d = Path(mlc) / "runs" / "yosys-fsm" / target

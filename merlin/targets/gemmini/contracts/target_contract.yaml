@@ -91,6 +91,20 @@ compute_units:
     ops: [matmul]
     scaling: per_channel
     requant: {ref: gemmini.accumulator_scale}
+    # WHICH MODULE OF THIS DESIGN'S OWN ELABORATION SEQUENCES THIS UNIT — the one aliasing fact the
+    # engine derivation cannot derive, so it is declared here (a per-target data file) and
+    # CROSS-CHECKED, never trusted: merlin.perf.occupancy.engine_set looks this module up in the
+    # elaborated FIRRTL + the control-FSM inventory and records a MISMATCH if it is not there.
+    #
+    # It exists because the engine set an overlap term is defined over is NOT the compute-unit list.
+    # This contract names one arithmetic unit; the RTL carries three decoupled command controllers
+    # (load / store / execute), each with its own control-state FSM and its own `completed` channel,
+    # and their concurrency is the only interesting performance term the device has. The derivation
+    # widens the inventory with all three — and without this line it cannot know that the mesh and
+    # the controller that sequences it are ONE engine, so it would count the mesh twice and invent a
+    # pair whose "overlap" is a unit overlapping itself. The mesh datapath (MeshWithDelays) is driven
+    # by ExecuteController; naming it here folds the two into one engine.
+    rtl_module: ExecuteController
     # Semantic-family capability (ARR denominator): a GEMM accelerator — int8 contraction on the mesh
     # (matmul + conv2d via im2col), the fused relu/requant/bias epilogue (elementwise_map on readout),
     # mvin/mvout DMA (movement), and max pooling fused on the store path (reduction).

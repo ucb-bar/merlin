@@ -33,6 +33,15 @@ column belongs to is DECLARED, via ``unit_of``, and columns in different declare
 folded into each other. On a heterogeneous device -- a SIMT cluster containing a systolic array,
 say -- deriving it instead deletes the inner engine and reports zero overlap between the two.
 
+**A contract's compute units are not the engine set.** A capability contract declares what a compiler
+routes against — arithmetic units. The engines an overlap term is a property of include the command
+controllers that move the data, and on the interlocked target here the contract named one unit while
+the design carries three decoupled controllers, so the overlap term came out unidentifiable from the
+declaration alone. :func:`derived_engines` recovers them from the target's OWN RTL (a module owning a
+detected control FSM *and* exposing a completion channel), :func:`engine_set` unions that with the
+declaration, and the one fact neither can derive — whether a declared unit and a derived controller
+are the same engine seen twice — is DECLARED per unit and cross-checked, never guessed.
+
 Nothing here names a target, a unit, an opcode or a bit-width: every rule is a property of the
 measurement, and the two facts that are NOT properties of the measurement -- what kind a unit is,
 and which unit a column belongs to -- are declared by the producer rather than guessed. A column
@@ -44,7 +53,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 __all__ = [
-    "Occupancy", "align_offset", "calibrate_state_idle", "declared_engines", "joint_counts",
+    "COMPLETION_FIELD", "DERIVED_KIND", "ENGINE_RULE", "Occupancy", "align_offset",
+    "calibrate_state_idle", "declared_engines", "derived_engines", "engine_set", "joint_counts",
     "merge_engines", "subsumed_columns", "unit_bindings",
 ]
 
@@ -117,6 +127,230 @@ def declared_engines(contract: Mapping) -> dict[str, dict]:
 
     return {u.name: {"kind": u.kind, "contains": tuple(u.contains)}
             for u in compute_units(dict(contract))}
+
+
+#: The port field whose presence makes a module's work separately ATTRIBUTABLE. A completion channel
+#: carries the id of the command that finished, so a consumer can say WHICH work a unit ended -- the
+#: difference between an engine that can be scheduled against and a sub-unit that is merely active.
+#: It is a parameter, not a law: a target whose engines signal completion under another field name is
+#: served by passing a different one, which is why nothing downstream reads this constant.
+COMPLETION_FIELD = "completed"
+
+#: What a derived engine's ``kind`` says. NOT an archetype from the compute-unit vocabulary: the
+#: derivation establishes that a module sequences and completes its own work, and deliberately does
+#: NOT establish whether that work is arithmetic or data movement -- deciding that from the module's
+#: spelling is precisely the assumption this derivation exists to avoid. The role stays UNKNOWN and
+#: says so, rather than being defaulted to the kind the reader expects.
+DERIVED_KIND = "control"
+
+#: The bar a module must clear to count as an engine, stated once so a record can quote it.
+ENGINE_RULE = ("a module of the target's own elaboration that BOTH owns a control-state register the "
+               "FSM extraction detected (it sequences its own work) AND exposes a completion channel "
+               "in its elaborated port list (its work can be attributed to a command). Either half "
+               "alone is not an engine: an FSM with no completion port is a sub-sequencer nested "
+               "inside another engine's datapath, and a completion port with no FSM is a wrapper or "
+               "a command tracker")
+
+
+def derived_engines(target: str | None, *, fsm_registers=None, ports: Mapping | None = None,
+                    completion_field: str = COMPLETION_FIELD) -> tuple[dict[str, dict], dict]:
+    """Engines the target's OWN RTL evidences, for a contract that names only its compute units.
+
+    A capability contract declares COMPUTE units, because that is what a compiler routes against. The
+    engines whose *concurrency* an analytical model has to price are a different set and a larger one:
+    on the interlocked target here the contract declares a single arithmetic unit while the design
+    carries three decoupled command controllers, so an overlap term -- the only interesting
+    performance term the device has -- came out unidentifiable from the declaration alone. Restating
+    the three in code would fix that record and break the next target; they are derivable, from two
+    extractions this repo already runs, and :data:`ENGINE_RULE` is what the two together establish.
+
+    Both halves are needed and neither is a name match. Measured on that target: 14 modules own a
+    detected control FSM and 6 expose a completion channel; the intersection is exactly the three
+    controllers, while the FSM-only modules are loop sequencers and DMA sub-units living inside them.
+
+    ``fsm_registers`` / ``ports`` may be supplied (an :class:`~merlin.targetgen.rtl.fsm.FsmRegister`
+    sequence and a :func:`~merlin.targetgen.rtl.ports.port_facts` record) or left ``None`` to be read
+    for ``target``. An EMPTY ``fsm_registers`` is not the same as ``None``: it means the extraction
+    ran and found nothing, and both are reported as UNKNOWN rather than as "this design has no
+    further engines" -- the reading that flatters the result, since a machine nobody analysed then
+    looks like a machine with nothing in it.
+
+    Returns ``({name: {kind, contains, basis}}, basis)`` where the second is the derivation's own
+    account: its status, the rule, and every candidate it REFUSED with the reason it refused it.
+    """
+    basis: dict = {"rule": ENGINE_RULE, "target": target, "completion_field": completion_field,
+                   "status": "unknown", "engines": [], "refused": {}}
+    if not target:
+        basis["why"] = ("no target was named, so no RTL fact bundle could be opened. Whether this "
+                        "device has engines its contract does not name is UNKNOWN, not none")
+        return {}, basis
+
+    if fsm_registers is None:
+        try:
+            from merlin.targetgen.rtl.fsm import fsm_inventory
+            fsm_registers = list(fsm_inventory(target))
+        except (OSError, ImportError) as exc:
+            fsm_registers = None
+            basis["fsm_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+    if ports is None:
+        try:
+            from merlin.targetgen.rtl.ports import port_facts
+            ports = port_facts(target, fields=(completion_field,))
+        except Exception as exc:                                                   # noqa: BLE001
+            ports = {"status": "unavailable", "why": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+    by_module: dict[str, list[str]] = {}
+    for reg in fsm_registers or ():
+        module = str(getattr(reg, "module", "") or "")
+        if module:
+            by_module.setdefault(module, []).append(str(getattr(reg, "qualified", module)))
+    basis["fsm_modules"] = sorted(by_module)
+    basis["n_fsm_registers"] = sum(len(v) for v in by_module.values())
+
+    port_status = str((ports or {}).get("status") or "unavailable")
+    basis["ports_status"] = port_status
+    basis["ports_dialect"] = (ports or {}).get("dialect")
+    if port_status != "derived":
+        basis["why"] = (f"this target's elaboration could not be read "
+                        f"({(ports or {}).get('why', 'no port facts')}), so no module's ports could "
+                        f"be checked for a {completion_field!r} channel. Engines beyond the "
+                        f"contract's declaration are UNKNOWN here, which is NOT the same as the "
+                        f"design having none")
+        return {}, basis
+    if fsm_registers is None:
+        basis["why"] = ("the control-FSM extraction could not be read, so no module could be shown "
+                        "to sequence its own work. UNKNOWN, not none: this is a statement about the "
+                        "extraction and not about the design")
+        return {}, basis
+
+    field = ((ports.get("fields") or {}).get(completion_field)) or {}
+    completing = {str(m) for m in (field.get("modules") or ())}
+    handshaken = {str(m) for m in (field.get("decoupled") or ())}
+    basis["n_modules_read"] = ports.get("n_modules")
+    basis["modules_completing"] = sorted(completing)
+    basis["modules_completing_decoupled"] = sorted(handshaken)
+
+    if not by_module:
+        basis["why"] = ("no control-state register was found for this target, so no module could be "
+                        "shown to sequence its own work. An absent FSM extraction is a statement "
+                        "about the extraction and NOT about the design: this target's engines "
+                        "beyond its declaration stay UNKNOWN")
+        return {}, basis
+
+    engines: dict[str, dict] = {}
+    for module, regs in sorted(by_module.items()):
+        if module in completing:
+            engines[module] = {
+                "kind": DERIVED_KIND, "contains": (), "rtl_module": module,
+                "basis": (f"DERIVED from this target's own RTL, not declared: {module} owns "
+                          f"control-state register(s) {sorted(regs)} that the FSM extraction "
+                          f"detected, and its port list in the elaboration exposes a "
+                          f"{completion_field!r} channel"
+                          + (" as a ready/valid handshake, so a completion carries the id of the "
+                             "command it ends" if module in handshaken else
+                             " without a ready/valid handshake, so it signals completion but does "
+                             "not tag which command finished")
+                          + ". Its ROLE -- arithmetic or data movement -- is deliberately NOT "
+                            "established: deciding it would mean reading the module's name, which "
+                            "is the assumption this derivation exists to avoid")}
+            continue
+        basis["refused"][module] = (
+            f"owns control-state register(s) {sorted(regs)} but exposes no {completion_field!r} "
+            f"channel in the elaboration, so nothing can attribute its work to a command. On this "
+            f"evidence it is a sub-sequencer inside another engine rather than an engine of its "
+            f"own -- UNKNOWN either way, and NOT counted as one")
+    basis["status"] = "derived"
+    basis["engines"] = sorted(engines)
+    basis["why"] = (f"{len(engines)} engine(s) derived: of {len(by_module)} module(s) owning a "
+                    f"detected control FSM, {len(engines)} also expose a {completion_field!r} "
+                    f"channel in {ports.get('n_modules')} module(s) of the elaboration "
+                    f"({ports.get('dialect')} dialect)")
+    if not engines:
+        basis["why"] += (". No module clears both halves of the rule, so whether this design has "
+                         "engines its contract does not name stays UNKNOWN -- the extractions ran "
+                         "and disagree with neither reading")
+    return engines, basis
+
+
+def engine_set(contract: Mapping, *, target: str | None = None, fsm_registers=None,
+               ports: Mapping | None = None) -> tuple[dict[str, dict], dict]:
+    """The engine set an overlap term is defined over: what the contract DECLARES, widened by what
+    the RTL EVIDENCES.
+
+    The union is the point. A contract declares the compute units a compiler routes against; the RTL
+    carries the movement/control engines whose concurrency with those units is the measurement. Taking
+    either alone loses something real -- the declaration loses the controllers, and the derivation
+    loses the compute unit's archetype, its dtypes and its composition, which no port list carries.
+
+    ONE ALIASING QUESTION, ASKED RATHER THAN GUESSED. A declared compute unit and a derived controller
+    can be the same engine seen from two sides (the datapath, and the FSM that sequences it), and
+    unioning them blind counts one engine twice -- inventing a pair whose "overlap" is a unit
+    overlapping itself. Which module realises a declared unit cannot be derived (it is a name match,
+    and the containment in the data looks identical either way), so it is DECLARED, per unit, as
+    ``rtl_module`` in the contract -- and cross-checked here against the elaboration rather than
+    trusted: a module the elaboration does not contain is reported as a mismatch, and a unit that
+    declares nothing is reported as an unresolved alias rather than silently merged or silently
+    doubled.
+
+    Returns ``(engines, basis)`` in the shape :func:`declared_engines` returns, plus the derivation's
+    own account.
+    """
+    engines = {name: dict(spec) for name, spec in declared_engines(contract).items()}
+    target = target or str((contract or {}).get("name") or "") or None
+    derived, basis = derived_engines(target, fsm_registers=fsm_registers, ports=ports)
+
+    claimed: dict[str, str] = {}
+    for raw in ((contract or {}).get("compute_units") or ()):
+        unit, module = str(raw.get("name") or ""), str(raw.get("rtl_module") or "")
+        if unit in engines and module:
+            claimed[module] = unit
+    basis["declared_aliases"] = dict(sorted(claimed.items()))
+
+    known_modules = set(basis.get("fsm_modules") or ()) | set(basis.get("modules_completing") or ())
+    unresolved: list[str] = []
+    for unit, spec in engines.items():
+        module = next((m for m, u in claimed.items() if u == unit), "")
+        if module and module in derived:
+            spec["rtl_module"] = module
+            spec["basis"] = (f"DECLARED by the contract, and its ``rtl_module`` {module!r} "
+                             f"CROSS-CHECKED against this target's own elaboration: that module "
+                             f"clears the derived-engine rule, so this unit and it are one engine "
+                             f"and are counted once")
+        elif module and module in known_modules:
+            spec["rtl_module"] = module
+            spec["basis"] = (f"DECLARED by the contract; its ``rtl_module`` {module!r} IS in this "
+                             f"target's elaboration but does not clear the derived-engine rule "
+                             f"({basis['refused'].get(module, 'it owns no detected control FSM')}), "
+                             f"so the alias holds and no derived engine is folded into it")
+        elif module and basis.get("status") == "derived":
+            spec["rtl_module"] = module
+            spec["basis"] = (f"DECLARED by the contract, and its ``rtl_module`` {module!r} FAILS the "
+                             f"cross-check: this target's own elaboration was read and contains no "
+                             f"such module. The declaration is recorded and NOT corroborated")
+        elif module:
+            spec["rtl_module"] = module
+            spec["basis"] = (f"DECLARED by the contract; its ``rtl_module`` {module!r} could not be "
+                             f"cross-checked because the RTL derivation is UNKNOWN here "
+                             f"({basis.get('why', '')})")
+        elif derived:
+            unresolved.append(unit)
+            spec["basis"] = (f"DECLARED by the contract, which does not say which module of the "
+                             f"elaboration realises it. Whether one of the derived engine(s) "
+                             f"{sorted(derived)} IS this unit is UNKNOWN, so they are kept apart -- "
+                             f"which counts one engine twice if any of them is this one. Declaring "
+                             f"``rtl_module`` on this unit resolves it")
+        else:
+            spec["basis"] = ("DECLARED by the contract; no engine beyond the declaration was derived "
+                             f"({basis.get('why', '')})")
+    basis["unresolved_aliases"] = sorted(unresolved)
+
+    for name, spec in derived.items():
+        if name in claimed:
+            continue
+        engines[claimed.get(name, name)] = dict(spec)
+    basis["n_declared_units"] = len(declared_engines(contract))
+    basis["n_after_union"] = len(engines)
+    return engines, basis
 
 
 def unit_bindings(columns: Sequence[str], binding: Mapping[str, str],

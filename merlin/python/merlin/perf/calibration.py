@@ -268,10 +268,15 @@ class EngineObservability:
     observable: bool
     columns: tuple[str, ...]
     why: str
+    #: WHERE THIS ENGINE CAME FROM -- the contract's declaration, or a derivation over the target's
+    #: own RTL, with the evidence either way. An inventory that lists engines without saying which
+    #: ones the machine itself evidenced cannot be audited.
+    basis: str = ""
 
     def to_dict(self) -> dict:
         return {"engine": self.engine, "kind": self.kind, "contains": list(self.contains),
-                "observable": self.observable, "columns": list(self.columns), "why": self.why}
+                "observable": self.observable, "columns": list(self.columns), "why": self.why,
+                "basis": self.basis}
 
 
 @dataclass(frozen=True)
@@ -291,6 +296,9 @@ class EngineInventory:
     #: they cannot be attributed, so any engine-axis reading over the same vector is refused.
     unattributed_columns: tuple[str, ...] = ()
     binding_error: str | None = None
+    #: How the engine set was arrived at (:func:`merlin.perf.occupancy.engine_set`): the rule, what
+    #: the RTL evidenced, and every candidate the derivation REFUSED with its reason.
+    derivation: dict = field(default_factory=dict)
 
     @property
     def observable_engines(self) -> tuple[str, ...]:
@@ -309,6 +317,7 @@ class EngineInventory:
             "detected_undeclared": list(self.detected_undeclared),
             "unattributed_columns": list(self.unattributed_columns),
             "binding_error": self.binding_error,
+            "derivation": dict(self.derivation),
         }
 
 
@@ -329,9 +338,12 @@ def engine_inventory(contract: Mapping, traces: Sequence[MechanismTrace], idle: 
     ``StoreController.control_state`` / ``ExecuteController.control_state``, whose concurrency is the
     entire measurement, are among the ones the contract does not name.
     """
-    from merlin.perf.occupancy import declared_engines, unit_bindings
+    from merlin.perf.occupancy import engine_set, unit_bindings
 
-    engines = declared_engines(contract)
+    # The contract's compute units WIDENED by the engines the target's own RTL evidences: a
+    # declaration naming one arithmetic unit leaves an overlap term unidentifiable on a machine whose
+    # controllers plainly run at once (see occupancy.engine_set for the derivation and its refusals).
+    engines, derivation = engine_set(contract, fsm_registers=fsm_registers)
 
     readable_by_engine: dict[str, set[str]] = {}
     unreadable_by_engine: dict[str, dict[str, str]] = {}
@@ -376,7 +388,7 @@ def engine_inventory(contract: Mapping, traces: Sequence[MechanismTrace], idle: 
         declared[name] = EngineObservability(
             engine=name, kind=str(spec.get("kind") or ""),
             contains=tuple(spec.get("contains") or ()), observable=observable,
-            columns=cols, why=why)
+            columns=cols, why=why, basis=str(spec.get("basis") or ""))
 
     detected = tuple({"module": r.module, "register": r.register, "qualified": r.qualified,
                       "states": r.states, "exported": r.exported} for r in fsm_registers)
@@ -398,7 +410,7 @@ def engine_inventory(contract: Mapping, traces: Sequence[MechanismTrace], idle: 
     return EngineInventory(declared=declared, detected=detected, detected_basis=basis,
                            detected_undeclared=undeclared,
                            unattributed_columns=tuple(sorted(unattributed)),
-                           binding_error=binding_error)
+                           binding_error=binding_error, derivation=derivation)
 
 
 @dataclass(frozen=True)
