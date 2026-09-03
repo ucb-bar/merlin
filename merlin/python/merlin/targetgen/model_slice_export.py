@@ -67,6 +67,26 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
     # geometry and the row count are passed in (computed once by the corpus builder) rather than
     # recomputed here -- two copies of the same formula is exactly how a golden and an emitted module
     # come to describe different tensors.
+    #
+    # ⚠️ THE STAGE AND ITS GEOMETRY MUST ARRIVE TOGETHER, and each half alone is a different silent
+    # wrong answer. Geometry with no stage writes pool attributes onto a commit whose epilogue list
+    # says nothing is pooled: a backend reading the epilogue commits the raw matrix while the module
+    # looks pooled to anything reading the attributes. A stage with no geometry declares `maxpool` and
+    # supplies neither window nor pooled extent, so the epilogue is silently skipped and the committed
+    # type is M rows of unpooled accumulator. Neither raises anything downstream -- both just compute
+    # the wrong tensor and agree with themselves. When this function gained `pool_attrs` the mismatched
+    # call was a TypeError, which was at least loud; accepting the argument without checking the pair
+    # is what turned it quiet.
+    _pooled = "maxpool" in epilogue
+    if pool_attrs and not _pooled:
+        raise ValueError(
+            f"pool geometry {sorted(pool_attrs)} was given but the epilogue {epilogue} declares no "
+            f"'maxpool' stage: the commit would carry pool attributes while committing the raw matrix")
+    if _pooled and not (pool_attrs and commit_rows is not None):
+        raise ValueError(
+            "a 'maxpool' epilogue needs both pool_attrs (the window) and commit_rows (the pooled "
+            f"extent); got pool_attrs={pool_attrs!r}, commit_rows={commit_rows!r}, so the stage would "
+            "be silently skipped and M unpooled rows committed instead")
     for k, v in (pool_attrs or {}).items():
         commit_attrs += (f", {k} = [{', '.join(str(int(x)) for x in v)}]" if isinstance(v, list)
                          else f", {k} = {int(v)} : i64")
