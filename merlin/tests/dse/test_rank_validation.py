@@ -138,3 +138,35 @@ def test_the_verdict_always_carries_the_counts_it_was_based_on():
     out = _verdict(_perfect())
     assert out["overall"]["decided"] == 6
     assert out["thresholds"]["chance"] == RV.CHANCE
+
+
+# ------------------------------------------------------------------ one slice is not evidence
+
+def test_a_scorer_evidenced_by_only_one_slice_is_refused():
+    """Measured case: a heuristic scored 0.804 overall on 158 decided pairs, ALL from one family,
+    while a workload inside that same family scored 0.486 -- below chance. Every other slice decided
+    nothing, so a check that only fails slices with evidence would have called it exposable. Silence
+    from the other slices is missing evidence, not a pass."""
+    lone = RV.Agreement(pairs=200, decided=158, agreed=127, undecided=42)   # 0.804
+    silent = RV.Agreement(pairs=40, decided=0, agreed=0, undecided=40)
+    out = RV.verdict(lone, {"PK": lone, "PM": silent, "PR": silent},
+                     minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20)
+    assert out["exposable"] is False
+    assert any("below the required 2" in r for r in out["reasons"])
+    assert out["qualifying_slices"] == ["PK"]
+
+
+def test_two_qualifying_slices_that_both_pass_are_exposable():
+    good = RV.Agreement(pairs=200, decided=150, agreed=120, undecided=50)   # 0.80
+    out = RV.verdict(good, {"A": good, "B": good},
+                     minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20)
+    assert out["exposable"] is True
+
+
+def test_a_qualifying_slice_below_the_bar_still_refuses():
+    good = RV.Agreement(pairs=200, decided=150, agreed=120, undecided=50)
+    poor = RV.Agreement(pairs=200, decided=100, agreed=48, undecided=100)   # 0.48
+    out = RV.verdict(good, {"A": good, "B": poor},
+                     minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20)
+    assert out["exposable"] is False
+    assert any("fall below the bar" in r for r in out["reasons"])

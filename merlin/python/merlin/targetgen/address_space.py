@@ -136,6 +136,13 @@ class Store:
     banks: int | None
     row_residue_bytes: int | None = None
     bank_residue_rows: int | None = None
+    #: True only where the access width came from a LANE COUNT rather than from an array edge plus a
+    #: datapath element. The distinction is load-bearing and getting it wrong was a real defect: a
+    #: store whose element width simply could not be LINKED to a datapath also has no `element_bits`,
+    #: and treating that as lane-granular answered "16 elements per row" for a store whose row width is
+    #: genuinely unknown -- exactly the assumption-wearing-a-derivation's-clothes this module refuses
+    #: everywhere else. Only the SIMT path sets it.
+    lane_granular: bool = False
     sources: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -157,9 +164,29 @@ class Store:
         """
         bits = element_bits(dtype) if dtype else self.element_bits
         if not self.row_bytes or not bits:
+            # A LANE-GRANULAR STORE HAS NO FIXED ROW IN BYTES, and that is not the same as having no
+            # row. Its access width is a LANE COUNT (`row_elems`) that holds whatever element the
+            # program puts in it, so the elements per access are the lanes themselves -- the byte width
+            # is what varies. Gated on the store SAYING so: an array-derived store whose element width
+            # could not be linked to a datapath also has no `element_bits`, and its row is unknown.
+            if self.lane_granular and self.row_bytes is None and self.row_elems:
+                return int(self.row_elems)
             return None
         n = (self.row_bytes * 8) // bits
         return n or None
+
+    def capacity_rows(self, dtype: str | None = None) -> int | None:
+        """How many rows of ``dtype`` the store holds. ``total_rows`` where the row is a fixed byte
+        width; on a lane-granular store the row's SIZE depends on the element, so the capacity does
+        too, and answering with a single number would be answering a different question."""
+        if self.total_rows:
+            return int(self.total_rows)
+        per_row = self.elems_per_row(dtype)
+        bits = element_bits(dtype) if dtype else self.element_bits
+        if not per_row or not bits or not self.nbytes:
+            return None
+        row_bits = per_row * bits
+        return (int(self.nbytes) * 8) // row_bits or None
 
     def working_set_rows(self, shape: Sequence[int], dtype: str | None = None) -> int | None:
         """See :func:`working_set_rows`."""
@@ -173,6 +200,7 @@ class Store:
                 "bytes_per_depth_entry": self.bytes_per_depth_entry,
                 "row_residue_bytes": self.row_residue_bytes,
                 "bank_residue_rows": self.bank_residue_rows,
+                "lane_granular": self.lane_granular,
                 "sources": dict(self.sources)}
 
 
@@ -362,6 +390,7 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
     else:
         space.stores_status = DERIVED
 
+    lane_granular = False
     array, array_reason = _array_geometry(body)
     if array is not None:
         space.array_name = str(array.get("name")) if array.get("name") else None
@@ -378,7 +407,20 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                              "width was taken as the COLUMN edge -- corroborate() against the RTL SRAM "
                              "widths before trusting it"))
     elif mems:
-        unknowns.append(Unknown("row_elems", array_reason or "no array geometry"))
+        # NO ARRAY IS NOT NO ACCESS WIDTH. A SIMT device has no systolic array at all -- its facts
+        # carry a `simt` block instead -- and its store is reached one WARP at a time: a coalesced
+        # access moves `lanes_per_warp` elements, whatever their width, exactly the role the array's
+        # column edge plays on a spatial device. Reading only `arrays` reported "no row width" for a
+        # target whose own facts state the width in the units that fit it, and the whole memory-mapping
+        # axis then reported 0/0 required regimes on a 128 KiB store.
+        lanes = ((body.get("simt") or {}) if isinstance(body.get("simt"), dict) else {}).get(
+            "lanes_per_warp")
+        if isinstance(lanes, int) and lanes > 0:
+            space.array_cols = int(lanes)
+            lane_granular = True
+            space.sources["row_elems"] = f"simt.lanes_per_warp ({lanes}); this device has no array"
+        else:
+            unknowns.append(Unknown("row_elems", array_reason or "no array geometry"))
 
     datapaths = [d for d in (body.get("datapaths") or []) if isinstance(d, dict)]
     if mems and not datapaths:
@@ -432,9 +474,14 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                     unknowns.append(Unknown(
                         "banks", f"{total_rows} rows do not divide into banks of the declared depth "
                                  f"{depth} ({bank_residue} rows over)", name))
-        elif nbytes:
+        elif nbytes and not (row_elems and lane_granular):
             unknowns.append(Unknown("total_rows", "no row width, so a byte capacity says nothing about "
                                                   "how many rows are addressable", name))
+        elif nbytes:
+            # row_elems without row_bytes: a lane-granular store. Its capacity IS derivable, per
+            # element type -- `Store.capacity_rows(dtype)` -- so this is not an unknown, and recording
+            # it as one would report a derivable quantity as missing.
+            pass
         srcs = {"bytes_depth": str(mem.get("source") or "facts.memories")}
         if how:
             srcs["element_dtype"] = how
@@ -443,7 +490,7 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         stores.append(Store(name=name, nbytes=nbytes, depth=depth, row_elems=row_elems,
                             element_dtype=dtype, element_bits=bits, row_bytes=row_bytes,
                             total_rows=total_rows, banks=banks, row_residue_bytes=row_residue,
-                            bank_residue_rows=bank_residue, sources=srcs))
+                            bank_residue_rows=bank_residue, lane_granular=lane_granular, sources=srcs))
 
     space.stores = tuple(stores)
     sep, sep_reason = _separate_accumulator_space(space)

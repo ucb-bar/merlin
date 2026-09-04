@@ -62,8 +62,15 @@ def audit_capsule(capsule: dict, capsule_dir: str | Path | None = None) -> list[
     atol, rtol = float(policy.get("atol", 0.0)), float(policy.get("rtol", 0.0))
     found: list[dict[str, Any]] = []
     for name, values in (golden or {}).items():
-        exp = np.asarray(values, dtype=np.float64)
-        if exp.size == 0:
+        try:
+            exp = np.asarray(values, dtype=np.float64)
+        except (ValueError, TypeError):
+            # A RAGGED golden (per-output arrays of differing shape) is not one comparable tensor, so
+            # "the constant nearest every element" is not defined over it. Skip that output rather than
+            # crash: a checker that dies on one corpus shape takes the whole gate down with it, and a
+            # gate that cannot run is indistinguishable from one that found nothing.
+            continue
+        if exp.dtype == object or exp.size == 0:
             continue
         for answer, cand in degenerate_answers(exp).items():
             if _accepts(cand, exp, atol, rtol):
@@ -84,3 +91,60 @@ def max_falsifiable_atol(expected: np.ndarray, rtol: float = 0.0) -> float:
     mid = 0.5 * (exp.max() + exp.min())
     slack = np.abs(mid - exp) - rtol * np.abs(exp)
     return float(max(slack.max(), 0.0))
+
+
+class UnfalsifiablePolicy(ValueError):
+    """A capsule whose numeric policy no tolerance can make falsifiable, named so it can be fixed."""
+
+
+def falsifiable_policy(policy: dict, outputs, *, name: str = "?") -> tuple[dict, dict]:
+    """``(policy, provenance)`` with an absolute tolerance a constant answer cannot survive.
+
+    THE TOLERANCE IS A PROPERTY OF THE DATAPATH; THE CEILING IS A PROPERTY OF THE GOLDEN. A profile
+    declares ONE absolute tolerance for a whole target, which is the right shape for a datapath error
+    budget and the wrong shape for a small-magnitude output: measured, a softmax capsule whose golden
+    spans 0.0139..0.1523 was graded at ``atol: 0.25``, so zeros, the mean and the midrange all passed it.
+    The capsule reported a numeric pass and proved nothing.
+
+    When the declared absolute tolerance is at or above the ceiling, it is replaced by the profile's OWN
+    relative tolerance applied at the golden's scale (``rtol * max|golden|``). Nothing is invented: both
+    numbers are already declared, and the substitution only stops an absolute budget written for large
+    outputs from swallowing a small one. A capsule that is still unfalsifiable afterwards RAISES -- its
+    golden has no spread for any tolerance to sit inside, which is a defect in the capsule rather than in
+    the policy, and a silently loosened grade is how a corpus certifies constants.
+    """
+    pol = dict(policy or {})
+    atol = pol.get("atol")
+    if atol is None:
+        return pol, {"status": "not_applicable", "why": "policy declares no absolute tolerance"}
+    rtol = float(pol.get("rtol") or 0.0)
+    ceilings, scales = [], []
+    for values in (outputs or {}).values():
+        try:
+            exp = np.asarray(values, dtype=np.float64)
+        except (ValueError, TypeError):
+            continue                               # ragged golden: a ceiling is undefined, not zero
+        if exp.dtype == object or exp.size == 0:
+            continue
+        ceilings.append(max_falsifiable_atol(exp, rtol))
+        scales.append(float(np.abs(exp).max()))
+    if not ceilings:
+        return pol, {"status": "not_measured", "why": "no golden output could be sized"}
+    ceiling, scale = min(ceilings), max(scales)
+    prov = {"status": "ok", "declared_atol": float(atol), "ceiling_atol": ceiling,
+            "basis": "the largest atol under which the best constant answer still fails this golden"}
+    if float(atol) < ceiling:
+        prov["falsifiable"] = True
+        return pol, prov
+    derived = rtol * scale
+    if not (derived < ceiling):
+        raise UnfalsifiablePolicy(
+            f"{name}: no absolute tolerance is both falsifiable and derivable here — the declared "
+            f"atol {atol} and the relative tolerance at this golden's scale ({rtol} * {scale} = "
+            f"{derived}) both reach the falsifiability ceiling {ceiling}. The golden has too little "
+            f"spread to grade; change the capsule's shape or stimulus rather than its tolerance")
+    pol["atol"] = derived
+    prov.update(falsifiable=True, applied_atol=derived, golden_scale=scale, rtol=rtol,
+                why=("the declared absolute tolerance reached the falsifiability ceiling, so the "
+                     "profile's own relative tolerance was applied at the golden's scale instead"))
+    return pol, prov

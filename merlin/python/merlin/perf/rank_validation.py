@@ -122,7 +122,7 @@ def held_out(programs: Sequence[Program], score: Mapping[str, float], *,
 
 def verdict(overall: Agreement, slices: Mapping[str, Agreement], *,
             minimum_rate: float, minimum_decided: int,
-            minimum_slice_decided: int) -> dict[str, Any]:
+            minimum_slice_decided: int, minimum_slices: int = 2) -> dict[str, Any]:
     """Is this scorer fit to be shown to a search? Refuses by default, and says why.
 
     Three ways to fail, each reported rather than collapsed into a boolean: too little evidence,
@@ -142,13 +142,25 @@ def verdict(overall: Agreement, slices: Mapping[str, Agreement], *,
                            f"does not beat a coin will be followed and must not be shown")
         elif rate < minimum_rate:
             reasons.append(f"agreement {rate:.3f} is below the required {minimum_rate}")
-    weak = {name: a.rate for name, a in slices.items()
-            if a.decided >= minimum_slice_decided and (a.rate is None or a.rate < minimum_rate)}
+    # EVIDENCE FROM ONE SLICE IS NOT EVIDENCE THAT GENERALISES. A scorer whose every decided pair
+    # comes from a single workload family has been shown to work there and nowhere else; counting
+    # the silent slices as passes is the "the check could not run, so it passed" failure. Measured
+    # case: a tile-pressure heuristic scored 0.804 overall with 158 decided pairs, ALL of them from
+    # one family, while a workload inside that same family scored 0.486 -- below chance.
+    qualifying = {name: a for name, a in slices.items() if a.decided >= minimum_slice_decided}
+    if len(qualifying) < minimum_slices:
+        reasons.append(f"only {len(qualifying)} slice(s) carry at least {minimum_slice_decided} "
+                       f"decided pair(s), below the required {minimum_slices}; a rate measured on "
+                       f"one slice says nothing about the others, which decided too little to check")
+    weak = {name: a.rate for name, a in qualifying.items()
+            if a.rate is None or a.rate < minimum_rate}
     if weak:
         reasons.append(f"{len(weak)} slice(s) with enough evidence fall below the bar: "
                        + ", ".join(f"{n}={r:.3f}" if r is not None else f"{n}=undecided"
                                    for n, r in sorted(weak.items())))
     return {"exposable": not reasons, "reasons": reasons, "overall": overall.to_dict(),
             "slices": {n: a.to_dict() for n, a in slices.items()},
+            "qualifying_slices": sorted(qualifying),
             "thresholds": {"minimum_rate": minimum_rate, "minimum_decided": minimum_decided,
-                           "minimum_slice_decided": minimum_slice_decided, "chance": CHANCE}}
+                           "minimum_slice_decided": minimum_slice_decided,
+                           "minimum_slices": minimum_slices, "chance": CHANCE}}
