@@ -122,8 +122,11 @@ def datapath_formats(target: str, *, accum_dtype: str | None = None) -> tuple[st
             if src and acc:
                 combos.append((str(src), str(acc)))
     if not combos:
+        combos = _accumulate_from_rtl_datapaths(target)
+    if not combos:
         raise WorkloadError(
-            f"{target!r}: no compute unit in the capability manifest declares an accumulate datapath; "
+            f"{target!r}: no compute unit in the capability manifest declares an accumulate datapath, "
+            f"and its RTL facts evidence no operand/accumulator datapath pair either; "
             f"the operand and accumulate formats are not derivable and neither may be assumed")
     if accum_dtype is not None:
         for src, acc in combos:
@@ -133,6 +136,29 @@ def datapath_formats(target: str, *, accum_dtype: str | None = None) -> tuple[st
             f"{target!r}: no declared datapath accumulates in {accum_dtype!r}; declared: {combos}")
     return combos[0]
 
+
+
+def _accumulate_from_rtl_datapaths(target: str) -> list[tuple[str, str]]:
+    """The (operand, accumulate) pair a target's OWN RTL evidences, when its manifest declares none.
+
+    This is a DERIVATION, not a fallback default. A manifest may describe a unit's datapath as
+    ``dtypes: [int8]`` -- the operand format only -- while the elaborated RTL carries both halves with
+    the memory each was read from (gemmini: ``input i8`` from "scratchpad smem UInt<8>",
+    ``accumulator i32`` from "AccumulatorMem SInt<32>"). Reading the accumulator out of the RTL is
+    stronger evidence than a manifest line, not weaker, so it is consulted before refusing.
+
+    What stays refused is a target whose RTL evidences no such pair: nothing is assumed, because a
+    reference built on a guessed accumulator grades a correct device as broken.
+    """
+    try:
+        from merlin.targetgen.rtl import facts as _facts
+        body = (_facts.load_facts(target) or {}).get("facts") or {}
+    except Exception:  # noqa: BLE001 - no facts bundle is an absence of evidence, not an error here
+        return []
+    by_name = {str(d.get("name")): str(d.get("dtype") or "") for d in body.get("datapaths") or []
+               if isinstance(d, dict)}
+    operand, accumulate = by_name.get("input"), by_name.get("accumulator")
+    return [(operand, accumulate)] if operand and accumulate else []
 
 def dram_window_bytes(target: str) -> int | None:
     """The size of the FINITE DRAM window the target's program runner models, or ``None`` when the runner

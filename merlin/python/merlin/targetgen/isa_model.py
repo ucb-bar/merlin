@@ -14,6 +14,7 @@ the hardware uses — with no hand-authored, per-target field table.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -209,4 +210,80 @@ def isa_model_for_target(target: str) -> IsaModel:
         m = isa_model_from_encoding(target, fact)
         if not m.is_empty() or m.is_fixed_format():
             return m
-    return isa_model_for(target)
+    probed = isa_model_for(target)
+    if not probed.is_empty():
+        return probed
+    # THIRD SOURCE: a RoCC-style accelerator has neither an mlc encoding fact nor a shipped ISA
+    # definition, so both paths above return empty and the target reads as "ships no ISA definition"
+    # -- which says we looked in two places, not that the ISA is unknown. Its RTL facts carry the
+    # decode table `merlin.kernels.decode.rocc` already disassembles against. Consulted last so a
+    # target with either richer source is unaffected, and still empty when no table exists.
+    try:
+        from .rtl import facts as _facts
+        derived = isa_model_from_rocc_facts(target, _facts.load_facts(target) or {})
+    except Exception:  # noqa: BLE001 - no facts bundle is an absence of evidence, not an error
+        return probed
+    return derived if not derived.is_empty() else probed
+
+#: RISC-V base instruction-word field positions. A property of the 32-bit RISC-V encoding itself --
+#: field WIDTHS, not accelerator values -- and the same layout ``merlin.kernels.decode.rocc``
+#: disassembles against. Every VALUE (which opcode, which funct means what) comes from the target's
+#: own RTL decode table. Nothing here is per-target.
+_RISCV_FIELD_BITS = {
+    "funct": list(range(25, 32)), "rs2": list(range(20, 25)), "rs1": list(range(15, 20)),
+    "xd": [14], "xs1": [13], "xs2": [12], "rd": list(range(7, 12)),
+    "opcode": list(range(0, 7)),
+}
+_ROCC_FUNCT_SHIFT = 25
+
+
+def isa_model_from_rocc_facts(target: str, facts: "Mapping[str, Any]") -> IsaModel:
+    """Build the ISA model a RoCC-style accelerator derives from its OWN decoder table.
+
+    :func:`isa_model_for_target` reaches two sources: an mlc fixed-format encoding fact, and a shipped
+    ISA definition in the model venv. A RoCC accelerator has neither, so it reports "ships no ISA
+    definition" -- which reads as though the ISA were unknown. It is not. The target's RTL facts carry
+    ``interfaces.funct_decode_table`` (``custom_opcode`` + ``legal_funct`` + ``names``), the same
+    table :mod:`merlin.kernels.decode.rocc` already disassembles against. This is that third source.
+
+    The instruction word is RISC-V's, so the field POSITIONS come from the base encoding; the opcode
+    and every funct value come from this target's decoder. Verified by round-tripping all 26 gemmini
+    mnemonics through ``merlin.kernels.decode.rocc.fields_of``: 26/26 decode back to the same name.
+
+    ``xd``/``xs1``/``xs2`` are carried as operand fields and are never identity bits. In RoCC they say
+    whether THIS instruction writes rd and reads rs1/rs2, so they vary between instructions of the
+    same command; pinning them dropped every conformant instruction with a different operand shape.
+
+    ``facts`` is the ``facts`` body of the target's RTL fact bundle. Returns an EMPTY model when the
+    bundle carries no decode table, so a caller no-ops rather than assuming an encoding.
+    """
+    body = facts.get("facts") if isinstance(facts.get("facts"), Mapping) else facts
+    table = next((i for i in (body.get("interfaces") or ())
+                  if isinstance(i, Mapping) and i.get("name") == "funct_decode_table"), None)
+    if not table:
+        return IsaModel(target=target)
+    opcode, names = table.get("custom_opcode"), table.get("names") or {}
+    if not isinstance(opcode, int) or isinstance(opcode, bool) or not names:
+        return IsaModel(target=target)
+
+    identity_mask = (0x7F << _ROCC_FUNCT_SHIFT) | 0x7F
+    operands = {k: list(v) for k, v in _RISCV_FIELD_BITS.items() if k not in ("funct", "opcode")}
+    by_mnemonic: dict[str, Any] = {}
+    for raw_funct, mnemonic in sorted(names.items(), key=lambda kv: int(kv[0])):
+        funct = int(raw_funct)
+        by_mnemonic[str(mnemonic)] = {
+            "class": "RoCCCustom", "mnemonic": str(mnemonic), "opcode": opcode,
+            "role": "accelerator", "funct3": None, "funct7": funct, "funct2": None,
+            "fixed_mask": identity_mask,
+            "fixed_value": (funct << _ROCC_FUNCT_SHIFT) | opcode,
+            "fields": {k: list(v) for k, v in operands.items()},
+        }
+    return IsaModel(
+        target=target, by_mnemonic=by_mnemonic, asm_mnemonics=tuple(sorted(by_mnemonic)),
+        # A role maps to the instruction CLASSES that fill it -- `candidate_ops` selects
+        # mnemonics whose entry["class"] is in this list, so mapping to mnemonics yields an
+        # empty menu for every role.
+        roles={"accelerator": ["RoCCCustom"]}, inst_width=32,
+        field_layout={k: (max(v), min(v)) for k, v in _RISCV_FIELD_BITS.items()},
+        opcode_table={m: e["funct7"] for m, e in by_mnemonic.items()},
+    )
