@@ -175,7 +175,7 @@ across those shapes it generated 32 candidates of which **0 were correct**. Grou
 by message — rather than counting them — shows they are almost all one harness defect, not model
 incapacity. See the next section.
 
-### 27 of 29 compile failures were one missing sentence in the prompt
+### 21 of 29 compile failures were one missing sentence in the prompt
 
 The rule this repo keeps relearning is that **a compile-failure rate must be grouped by message
 before it is cited**: a genuinely weak model fails in varied ways, while identical failures are a
@@ -183,8 +183,9 @@ harness signature. Grouped:
 
 | class | n |
 |---|---|
-| implicit declaration / undefined reference to `mvin`, `preload`, `config_ld`, `compute_preloaded`, `mvout`, `config_st`, `config_ex`, `mvin2` | **27** |
-| the harness's own `uint64_t` timing bracket | 2 |
+| implicit declaration / undefined reference to `mvin`, `preload`, `config_ld`, `compute_preloaded`, `mvout`, `config_st`, `config_ex`, `mvin2` | **21** |
+| ordinary coding errors (undeclared variable, non-constant array size, syntax) | 8 |
+| the harness's own `uint64_t` timing bracket | **0** |
 
 Every symbol in that first row is a **real Gemmini macro with the `gemmini_` prefix stripped** —
 `gemmini_extended_mvin`, `gemmini_preload`, `gemmini_config_ld`, and so on, all present in
@@ -196,9 +197,20 @@ a single available primitive**, and the seed kernel it is asked to beat uses onl
 `tiled_matmul_auto` and `gemmini_fence`. So the arm was asked to out-optimise a library call by
 dropping to an ISA whose spelling it was never shown, and then scored on the result.
 
-That is not a measurement of AutoComp. It is a measurement of our prompt. The two `uint64_t` failures
-are also a repeat of a defect already recorded as fixed, which is its own lesson about verifying that
-a harness fix actually reached the running configuration.
+That is not a measurement of AutoComp — roughly three quarters of it is a measurement of our
+prompt. The remaining 8 are ordinary mistakes and are the arm's own.
+
+**A correction, because the first version of this section got it wrong.** It reported 27 bare-API
+failures and 2 caused by the harness's `uint64_t` timing bracket — a defect recorded as fixed in an
+earlier session — and concluded the fix had silently regressed. It had not. The classifier matched
+the string `uint64_t` anywhere in stderr, and `gemmini.h`'s own macro bodies contain it, so two
+candidates whose real errors were `'C' undeclared` and an undeclared `c_tile_row` were filed as
+harness failures. Classifying on the actual diagnostic gives 21 / 8 / **0**, and a peer session
+independently confirmed the fix holds by emitting a seed at HEAD and finding zero `uint64_t` in it.
+
+The irony is worth keeping: a section about grouping failures by message was itself wrong because it
+grouped on a substring instead of the diagnostic. Matching a spelling rather than parsing the
+structure is the same failure the repo's no-regex rule exists to prevent.
 
 ## The failure that would have been invisible
 
