@@ -499,8 +499,11 @@ The feedback document also carries a `stopping` block, and it is evidence about 
 than about the machine. Read it:
 
 - `stopping.status` is `stop` when the harness judges further search unlikely to pay, and `continue`
-  otherwise. `stopping.verdicts[]` gives each condition by `name`, whether it `fired`, and its
-  `reason`; `stopping.share_of_attainable` is how close the corpus total already sits to the
+  otherwise. `stopping.verdicts[]` gives each condition by `name`, whether it `fired`, its `reason`,
+  and whether it was `evaluable` at all. **A condition with `evaluable: false` could not be answered
+  in this configuration** -- it is not a check that keeps passing, it is a judge that cannot speak,
+  and `stopping.inapplicable` lists them. Do not read the count of conditions that did not fire as
+  agreement between that many independent checks; `stopping.share_of_attainable` is how close the corpus total already sits to the
   conservative attainable total, and `stopping.budget` is what your measurement budget has left.
 - When `status` is `stop`, finish: write your report on the evidence you already have, and do not
   open a new lever. A verdict that fired is a measurement, not a suggestion.

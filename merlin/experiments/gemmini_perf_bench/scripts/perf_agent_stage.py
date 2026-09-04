@@ -560,6 +560,10 @@ class DevelopmentGsimFeedback:
                                     else attainable / best_total),
             "budget": budget.to_dict(),
             "verdicts": [v.to_dict() for v in verdicts],
+            # WHICH CONDITIONS COULD NOT BE ANSWERED AT ALL. A condition that cannot contribute
+            # reports `fired: false` exactly like one that was checked and said no, so without this
+            # roll-up a reader counts four judges when one of them has never been able to speak.
+            "inapplicable": [v.name for v in verdicts if not v.evaluable],
         }
 
     def _refresh_achievable(self) -> None:

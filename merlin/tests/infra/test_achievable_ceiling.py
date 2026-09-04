@@ -90,3 +90,35 @@ def test_a_faster_baseline_raises_the_ceiling_and_says_where_it_came_from(tmp_pa
     assert "baseline arms only" in basis, (
         "the basis must let a reader rule out circularity without reading the code")
     assert "no candidate measurement contributes" in basis
+
+
+# ---------------------------------------------------------------------------------------------------
+# a stop condition that cannot be answered must not look like one that keeps passing
+# ---------------------------------------------------------------------------------------------------
+def test_a_condition_that_cannot_be_answered_says_so():
+    """`fired: False` means the same thing for "checked, no" and "could not check".
+
+    Measured on a recorded run: `predicted_remaining_below` returned the same `missing` on 8 of 8
+    calls, because in this configuration the AGENT is the candidate generator and the host never
+    enumerates an unevaluated candidate to price. That is correct behaviour, and it still has to be
+    visible -- otherwise a reader counts four judges when one of them has never been able to speak.
+    """
+    from merlin.perf import select as SELECT
+    from merlin.perf.budget import Budget, unpriced_channel
+
+    state = SELECT.SearchState(
+        baseline_cycles=1000, best_cycles=900.0,
+        budget=Budget(unit=unpriced_channel("q", missing="not priced in this test"),
+                      limit_items=100),
+        attainable_cycles=500.0, improvements=(0.5, 0.4, 0.3))
+    verdicts = {v.name: v for v in SELECT.check_stop(state)}
+
+    predicted = verdicts["predicted_remaining_below"]
+    assert predicted.fired is False
+    assert predicted.evaluable is False, (
+        "a condition with no candidate pool to price must report that it could not be answered")
+    assert predicted.to_dict()["evaluable"] is False
+
+    # the conditions that CAN be answered here must not be tarred with the same flag
+    for name in ("attainment_reached", "plateaued", "budget_exhausted"):
+        assert verdicts[name].evaluable is True, f"{name} is answerable and must say so"
