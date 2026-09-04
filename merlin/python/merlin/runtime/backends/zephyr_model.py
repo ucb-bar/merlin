@@ -569,13 +569,38 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # as applied while changing nothing. That is how the int8 datapath ran an 87-fork search over a
     # register-blocking family that could not touch it: the quant pass leaves 0 linalg.matmul.
     # Reported, not enforced: this is a diagnostic and a lever it cannot analyse must not be refused.
-    try:
-        from ...mining.lever_applicability import inapplicable_features as _inapplicable
-        for _name, _why in _inapplicable(features, _op_counts).items():
-            print(f"[lever] INAPPLICABLE {_name}: needs {list(_why['needs'])}, module has "
-                  f"{_why['present']} — this feature cannot fire and will measure as a no-op")
-    except Exception as _e:                      # a diagnostic must never break a build
-        print(f"[lever] applicability check unavailable: {type(_e).__name__}: {_e}")
+    # DEFERRED until the module handed to LOWERING exists. Sampling the pre-tagging module gives a
+    # false "inapplicable": the per-op block tagging below converts the int8 contraction generics
+    # back into named `linalg.matmul` (measured on small_llama int8: model.prepared.mlir matmul=0,
+    # model.perop_tagged.mlir matmul=15), so a matmul-keyed lever that WOULD fire was being named as
+    # one that could not. A check that reports the wrong answer is worse than no check.
+    _applicability_source = _op_counts
+
+    def _judge_levers_on(mod_path) -> None:
+        """Report inapplicable levers against the module LOWERING actually receives.
+
+        Not the earlier one: the per-op block tagging converts the int8 contraction generics back
+        into named `linalg.matmul` (measured on small_llama int8 -- model.prepared.mlir matmul=0,
+        model.perop_tagged.mlir matmul=15), so sampling before it named a matmul-keyed lever that
+        WOULD fire as one that could not. A check reporting the wrong answer is worse than none.
+        """
+        nonlocal _applicability_source
+        try:
+            from ...frontends.linalg_mlir import parse_mlir_file as _parse
+            from ...mining.lever_applicability import module_op_counts as _counts
+            _applicability_source = _counts(_parse(mod_path))
+        except Exception:        # unparseable here: keep the earlier census rather than no check
+            pass
+        _report_inapplicable_levers()
+
+    def _report_inapplicable_levers() -> None:
+        try:
+            from ...mining.lever_applicability import inapplicable_features as _inapplicable
+            for _name, _why in _inapplicable(features, _applicability_source).items():
+                print(f"[lever] INAPPLICABLE {_name}: needs {list(_why['needs'])}, module has "
+                      f"{_why['present']} — this feature cannot fire and will measure as a no-op")
+        except Exception as _e:                  # a diagnostic must never break a build
+            print(f"[lever] applicability check unavailable: {type(_e).__name__}: {_e}")
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
@@ -639,6 +664,7 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                   "compiler's default in place")
 
     if not blocking:
+        _judge_levers_on(prepared)
         return _strip_provenance(prepared, work, features), features
     from ...llvmlower import perop_blocks as _pb
     from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_NR_FILL_NAME,
@@ -683,6 +709,7 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
         else:
             features = features - {PEROP_BLOCK_NAME}
+    _judge_levers_on(prepared)
     return _strip_provenance(prepared, work, features), features
 
 

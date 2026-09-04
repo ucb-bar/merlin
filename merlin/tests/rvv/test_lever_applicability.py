@@ -194,3 +194,24 @@ def test_source_digest_changes_with_the_bytes_read(tmp_path):
     assert prov.source_digest([a]) != first
     a.write_text("x = 1\n")
     assert prov.source_digest([a]) == first    # and it is content-addressed, not time-based
+
+
+def test_levers_are_judged_against_the_module_lowering_receives():
+    """Sampling the pre-tagging module gives a FALSE "inapplicable".
+
+    The per-op block tagging converts the int8 contraction generics back into named linalg.matmul.
+    Measured on small_llama int8 in one prepare_for_lowering call:
+
+        model.prepared.mlir       matmul=0
+        model.perop_tagged.mlir   matmul=15    <- what lowering receives
+
+    So a matmul-keyed lever that WOULD fire was being named as one that could not. A check that
+    reports the wrong answer is worse than no check.
+    """
+    from merlin.common.paths import merlin_dir
+    src = (merlin_dir() / "python" / "merlin" / "runtime" / "backends" / "zephyr_model.py").read_text()
+    assert "_judge_levers_on" in src
+    # both return paths must judge, not just the main one
+    assert src.count("_judge_levers_on(prepared)") == 2
+    # and it must still never break a build
+    assert "keep the earlier census rather than no check" in src
