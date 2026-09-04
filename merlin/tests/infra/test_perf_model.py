@@ -519,12 +519,18 @@ def test_fill_depth_asks_each_circuit_for_its_own_modules():
     assert atlas.dim > 0 and atlas.measured_cycles > 0
     assert atlas.law_cycles == atlas.measured_cycles     # the systolic_2d law holds for this design
 
-    # Gemmini has no such delay line; the refusal must name ITS module, not atlas's.
-    with pytest.raises(HandshakeUnavailable) as refusal:
-        measure_fill_depth("gemmini")
-    message = str(refusal.value)
-    assert "SystolicArray" not in message, message
-    assert "Mesh" in message
+    # The other design carries no NAMED delay line -- its emitter left "valid" only on the signals
+    # each stage samples -- so the depth is recovered by walking the valid path instead. It must
+    # still be answered from ITS OWN modules: the evidence names the container its facts declare,
+    # never the other target's wrapper. (This asserted a REFUSAL until the walk was added; the
+    # property under test is unchanged, it is now satisfied by a measurement rather than an error.)
+    other = measure_fill_depth("gemmini", law="systolic_2d")
+    assert other.dim > 0 and other.measured_cycles > 0
+    assert "SystolicArray" not in other.source, other.source
+    assert "Mesh" in other.source, other.source
+    # And the two designs must not be forced to agree: the law that holds for atlas is refuted here.
+    assert other.law_agrees is False, (other.law_cycles, other.measured_cycles)
+    assert other.measured_cycles != atlas.measured_cycles
 
 
 def test_a_per_unit_analysis_is_asked_only_where_the_rtl_has_that_unit():
