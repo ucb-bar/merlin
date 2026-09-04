@@ -542,6 +542,110 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
     return sourced
 
 
+#: Elaborated FIRRTL a target's purgeable RTL cache holds, as a sibling of its facts artifact. Named by
+#: role, not by target: any target whose elaborations are dropped here is covered by the same walk.
+_FIRRTL_SUBDIR = "firrtl"
+
+
+def elaborated_firrtl(target: str) -> list[Path]:
+    """Every elaborated ``.fir`` in ``target``'s purgeable RTL cache, sorted.
+
+    A design whose memory is instantiated ABOVE the module a standalone elaboration can build is
+    invisible to a cmem/smem census of that elaboration -- but the module below it still declares the
+    store's geometry on its PORTS. These are the elaborations that carry those ports.
+    """
+    d = rtl_cache_dir(target) / _FIRRTL_SUBDIR
+    return sorted(p for p in d.glob("*.fir")) if d.is_dir() else []
+
+
+def memories_from_port_geometry(fir_paths: Iterable[Path | str]) -> list[dict[str, Any]]:
+    """Memory facts derived from BANKED WRITE PORTS, in the same shape a census emits.
+
+    ⚠️ THIS IS THE CENSUS'S BLIND SPOT, not a second opinion about the same memory. A ``cmem``/``smem``
+    census can only see an SRAM DECLARED inside a module the elaboration contains; a store instantiated
+    at a tile level a standalone repo cannot elaborate produces NO memories at all, and every
+    memory-regime question about that target then reports ``0 / 0`` cells -- unanswerable, while the
+    module below the store declares its geometry on its own ports in full.
+
+    ``source`` is ``firrtl_port_geometry`` so a reader can tell these apart from ``firrtl_census``
+    entries: the two are read from different evidence and a port-derived row is a WRITE-GRANULARITY
+    decomposition (the byte enable), not the SRAM's declared element type.
+
+    Ports that agree on geometry are folded into ONE store, because the same store seen from two ports
+    is far likelier than two distinct stores that happen to match -- and the other reading would publish
+    twice the capacity the device has, which is the direction in which a schedule silently overcommits.
+    """
+    from .ports import banked_store_ports
+
+    merged: dict[tuple, dict[str, Any]] = {}
+    for path in fir_paths:
+        p = Path(path)
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue                       # an unreadable elaboration contributes nothing; it lies about nothing
+        for rec in banked_store_ports(text):
+            key = (rec["row_bits"], rec["row_addr_bits"], rec["bank_id_bits"], rec["banks"])
+            seen = merged.setdefault(key, {"records": [], "files": []})
+            seen["records"].append(rec)
+            if p.name not in seen["files"]:
+                seen["files"].append(p.name)
+    out: list[dict[str, Any]] = []
+    for _key, seen in sorted(merged.items(), key=lambda kv: -(kv[0][0] or 0)):
+        recs = sorted(seen["records"], key=lambda r: (r["module"], r["field"]))
+        rec = recs[0]
+        sites = [f"{r['module']}.{r['port']}.{r['field']}" for r in recs]
+        mem: dict[str, Any] = {
+            "name": f"{rec['module']}.{rec['field']}".casefold(),
+            "banks": rec["banks"],
+            "depth": rec["rows_per_bank"],
+            # The byte enable proves the row is written in BYTE LANES. That is the store's write
+            # granularity and it is stated as such; it is NOT a claim about the datapath element the
+            # values in it belong to, which a port does not declare (hence no `datapaths` entry).
+            "row_elems": rec["row_bytes"],
+            "elem_bits": 8,
+            "row_bits_rtl": rec["row_bits"],
+            "bytes": rec["bytes"],
+            "source": "firrtl_port_geometry",
+            "modules": sorted({r["module"] for r in recs}),
+            "ports": sites,
+            "row_element_note": ("row_elems x elem_bits is the WRITE GRANULARITY the byte enable "
+                                 "declares (one lane per byte of the row), not a datapath element "
+                                 "width -- a port does not declare what type the stored value has"),
+            "evidence": f"{rec['evidence']} [{', '.join(seen['files'])}]",
+        }
+        if not rec["banks_exact"]:
+            # FAIL CLOSED. The geometry bounds the bank count and the bound is what gets published; a
+            # capacity is withheld rather than computed from a guessed bank count, because a capacity
+            # that is wrong by the bank factor reads as a fit and aborts three layers away.
+            mem["banks_min"], mem["banks_max"] = rec["banks_min"], rec["banks_max"]
+            mem["banks_unknown"] = rec.get("banks_unknown", "the bank count is bounded, not pinned")
+            mem["bytes_unknown"] = ("the bank count is not pinned by this elaboration, so a byte "
+                                    "capacity would be a guess multiplied by the bank factor")
+        if len(sites) > 1:
+            mem["ports_note"] = (f"{len(sites)} ports declare this geometry ({sites}); folded into one "
+                                 "store, since two distinct stores of identical geometry would publish "
+                                 "twice the capacity the device has")
+        out.append(mem)
+    return out
+
+
+def _memories_from_ports(target: str, facts: dict) -> list[str]:
+    """Fill ``facts['memories']`` from banked write ports when the census produced none. Mutates
+    ``facts``; returns the provenance names sourced.
+
+    A NO-OP for any target whose census (or mlc discovery) already produced memories: this is the gap
+    filler for the elaboration a census cannot see into, never a competing reading of one it can.
+    """
+    if facts.get("memories"):
+        return []
+    mems = memories_from_port_geometry(elaborated_firrtl(target))
+    if not mems:
+        return []
+    facts["memories"] = mems
+    return [f"memories({len(mems)} from port geometry)"]
+
+
 def _timing_from_discovery(target: str, facts: dict) -> list[str]:
     """Add RTL-DERIVED per-module pipeline depth (:mod:`.timing`). Mutates ``facts``; returns the
     provenance names sourced.
@@ -605,6 +709,10 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
 
     # PREFER mlc discovery (target-agnostic) for mesh + memory capacities.
     sourced = _facts_from_discovery(target, v1)
+    # Only where nothing above produced a memory list: a store the census cannot see (instantiated
+    # above the module a standalone elaboration builds) still declares its geometry on the ports below
+    # it, and without this the target's whole memory-mapping axis is unanswerable.
+    sourced += _memories_from_ports(target, v1)
     sourced += _timing_from_discovery(target, v1)
 
     # Funct decode table: PREFER the decoder-derived legal set (the ISA the silicon implements) over the

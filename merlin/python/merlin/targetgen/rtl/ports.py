@@ -48,6 +48,9 @@ class PortField:
     leaves: tuple[str, ...] = ()
     direction: str = ""
     port: str = ""
+    #: leaf name -> declared TYPE TEXT. The names alone answer "does this unit signal completion";
+    #: a memory's geometry is entirely in the types, so both halves are kept.
+    types: dict = field(default_factory=dict)
 
     def is_decoupled(self) -> bool:
         """A ready/valid handshake. ``bits`` is optional — a bare ready/valid pair is still decoupled."""
@@ -124,12 +127,30 @@ def _leaf_names(chunk: str) -> tuple[str, ...]:
     return tuple(n for n in (_field_name(c) for c in _split_top_level(inner)) if n)
 
 
+def _is_identifier(token: str) -> bool:
+    """Whether ``token`` could be a FIRRTL declaration name (so a statement is not read as a module)."""
+    return bool(token) and not token[0].isdigit() and all(c == "_" or c.isalnum() for c in token)
+
+
 def _module_name(line: str) -> str:
     """``module Foo :`` -> ``Foo``, for any of FIRRTL's module keywords; ``""`` when not a module line."""
     parts = line.strip().split()
-    if len(parts) >= 2 and parts[0] in _MODULE_KEYWORDS:
-        return parts[1].rstrip(":")
-    return ""
+    # FIRRTL 6.0 marks a circuit's entry point `public module Foo :`. Matching only on the FIRST token
+    # made every such module invisible: `parse_ports` returned an EMPTY dict for the whole design, so
+    # the completion/busy probes reported "this target exposes no such port" for a design that exposes
+    # it plainly. Skip a leading qualifier rather than enumerating the ones seen so far -- and then
+    # require the NAME to look like a declaration name, so a statement that merely happens to carry the
+    # word in its second position is not read as a module header.
+    for i, token in enumerate(parts[:2]):
+        if token in _MODULE_KEYWORDS:
+            parts = parts[i:]
+            break
+    else:
+        return ""
+    if len(parts) < 2:
+        return ""
+    name = parts[1].rstrip(":")
+    return name if _is_identifier(name) else ""
 
 
 def parse_ports(fir_text: str) -> dict:
@@ -177,7 +198,8 @@ def parse_ports(fir_text: str) -> dict:
             fname = _field_name(chunk)
             if fname:
                 mp.fields.append(PortField(name=fname, leaves=_leaf_names(chunk),
-                                           direction=direction, port=port_name))
+                                           direction=direction, port=port_name,
+                                           types=_leaf_types(chunk)))
     return out
 
 
@@ -491,4 +513,327 @@ def port_facts(target: str, *, fields=("completed", "busy"), fir=None) -> dict:
             "decoupled": sorted(m for m, f in found.items() if f.is_decoupled()),
             "leaves": {m: list(f.leaves) for m, f in sorted(found.items())},
         }
+    return out
+
+
+# ---------------------------------------------------------------- banked-store geometry (from ports)
+def _leaf_types(chunk: str) -> dict[str, str]:
+    """Immediate sub-field name -> its declared TYPE TEXT, for one bundle field.
+
+    :func:`_leaf_names` keeps the names and drops the types, which is all the completion/busy probes
+    need. A memory's GEOMETRY is entirely in the types, so this keeps the other half.
+    """
+    _, _, rest = chunk.partition(":")
+    rest = rest.strip()
+    open_i = rest.find("{")
+    if open_i == -1:
+        return {}
+    depth, close_i = 0, -1
+    for i in range(open_i, len(rest)):
+        if rest[i] == "{":
+            depth += 1
+        elif rest[i] == "}":
+            depth -= 1
+            if depth == 0:
+                close_i = i
+                break
+    if close_i == -1:
+        return {}
+    out: dict[str, str] = {}
+    for c in _split_top_level(rest[open_i + 1:close_i]):
+        name = _field_name(c)
+        if name:
+            out[name] = c.partition(":")[2].strip()
+    return out
+
+
+def _uint_width(type_text: str) -> int | None:
+    """``UInt<13>`` -> 13. ``None`` for any other type, including a vector or a nested bundle."""
+    t = type_text.strip()
+    if not t.startswith("UInt<") or not t.endswith(">"):
+        return None
+    inner = t[len("UInt<"):-1]
+    return int(inner) if inner.isdigit() else None
+
+
+def _uint_vec(type_text: str) -> tuple[int, int] | None:
+    """``UInt<1>[32]`` -> ``(1, 32)`` (element bits, length). ``None`` when not a UInt vector."""
+    t = type_text.strip()
+    if not t.endswith("]") or "[" not in t:
+        return None
+    head, _, tail = t.rpartition("[")
+    length = tail[:-1]
+    bits = _uint_width(head)
+    if bits is None or not length.isdigit():
+        return None
+    return bits, int(length)
+
+
+#: FIRRTL's ORDERING comparison primops. A bank count is pinned by a RANGE check ("is this line address
+#: inside the store?"), which is what these four spell. ``eq``/``neq`` are deliberately excluded: they
+#: test identity against one value, which is not a bound on a capacity.
+_ORDER_COMPARISONS = ("lt", "leq", "gt", "geq")
+#: Radix prefixes FIRRTL writes literals in. ``UInt<16>(0hc000)`` is the common one; the others are read
+#: rather than assumed absent, because a literal this reader cannot parse becomes a bound it cannot pin
+#: and would be reported as "the design compares against nothing", which is a claim about the RTL.
+_RADIX = {"h": 16, "o": 8, "b": 2}
+_IDENT_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+
+def _radix_int(token: str) -> int | None:
+    """``0hc000`` -> 49152, ``0o17`` -> 15, ``0b101`` -> 5, ``42`` -> 42; ``None`` when unreadable."""
+    t = token.strip()
+    negative = t.startswith("-")
+    if negative:
+        t = t[1:]
+    if len(t) > 2 and t[0] == "0" and t[1] in _RADIX:
+        try:
+            value = int(t[2:], _RADIX[t[1]])
+        except ValueError:
+            return None
+    elif t.isdigit():
+        value = int(t)
+    else:
+        return None
+    return -value if negative else value
+
+
+def _uint_literal(text: str) -> tuple[int, int | None] | None:
+    """``UInt<16>(0hc000)`` -> ``(49152, 16)``; ``UInt(0h5)`` -> ``(5, None)``; else ``None``.
+
+    The DECLARED width travels with the value because it is half the admissibility test: a literal wider
+    than the address it would bound cannot be that address's limit, whatever its value happens to be.
+    """
+    t = text.strip()
+    if not t.startswith("UInt"):
+        return None
+    rest = t[len("UInt"):]
+    width: int | None = None
+    if rest.startswith("<"):
+        close = rest.find(">")
+        if close == -1:
+            return None
+        inner = rest[1:close]
+        if not inner.isdigit():
+            return None
+        width = int(inner)
+        rest = rest[close + 1:]
+    if not (rest.startswith("(") and rest.endswith(")")):
+        return None
+    value = _radix_int(rest[1:-1])
+    return None if value is None else (value, width)
+
+
+def _split_call_args(body: str) -> list[str]:
+    """Split a primop's argument list on commas that sit at bracket depth 0."""
+    out, depth, cur = [], 0, []
+    for ch in body:
+        if ch in "(<[{":
+            depth += 1
+        elif ch in ")>]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    if "".join(cur).strip():
+        out.append("".join(cur))
+    return [a for a in (x.strip() for x in out) if a]
+
+
+def _primop_calls(line: str, names: tuple[str, ...]) -> list[list[str]]:
+    """Argument lists of every call to one of ``names`` on ``line``.
+
+    The callee is the WHOLE identifier before the paren, so a node called ``_my_lt`` is not read as an
+    ``lt``. Depth is tracked so a nested call's arguments stay inside their own list.
+    """
+    out: list[list[str]] = []
+    for i, ch in enumerate(line):
+        if ch != "(":
+            continue
+        start = i
+        while start > 0 and line[start - 1] in _IDENT_CHARS:
+            start -= 1
+        if line[start:i] not in names:
+            continue
+        depth, close = 0, -1
+        for k in range(i, len(line)):
+            if line[k] == "(":
+                depth += 1
+            elif line[k] == ")":
+                depth -= 1
+                if depth == 0:
+                    close = k
+                    break
+        if close == -1:
+            continue
+        out.append(_split_call_args(line[i + 1:close]))
+    return out
+
+
+def module_bodies(fir_text: str, modules) -> dict[str, list[str]]:
+    """``module -> its statement lines``, for the named modules only.
+
+    Restricted to the modules asked for because a whole-SoC elaboration is tens of megabytes and the
+    only statements that can pin one port's geometry are the ones in the module that declares it.
+    """
+    wanted = set(modules)
+    out: dict[str, list[str]] = {m: [] for m in wanted}
+    current = ""
+    for raw in fir_text.splitlines():
+        name = _module_name(raw)
+        if name:
+            current = name
+            continue
+        if current in wanted:
+            out[current].append(raw.strip())
+    return out
+
+
+def pin_bank_count(lines, *, rows_per_bank: int, addr_bits: int,
+                   max_banks: int) -> tuple[int | None, str]:
+    """``(banks, evidence)`` when the module's own statements pin the bank count, else ``(None, why)``.
+
+    A banked store's port geometry BOUNDS the bank count (the index is ``n`` bits, so at most ``2**n``
+    banks) but does not pin it: a design is free to elaborate fewer banks than the index can address.
+    The count is pinned where the design RANGE-CHECKS a line address against its own elaborated limit --
+    ``lt(<line address>, UInt<16>(0hc000))`` -- because that limit is the TOTAL row count, and total
+    rows over rows-per-bank is the bank count.
+
+    A literal is admissible only when it is a whole multiple of ``rows_per_bank``, when the multiple is
+    within the bound the index allows, and when it fits the line address it would bound (both its value
+    and its DECLARED width). Those three filters are what separate the line limit from every other
+    constant in a module -- measured on a real LSU, the sibling byte-capacity literal is a whole
+    multiple of the per-bank rows too, and is rejected on the other two.
+
+    Ambiguity FAILS CLOSED. Two admissible literals that disagree mean the module states two different
+    limits and this reader cannot tell which one is the store's; answering with either would be a guess
+    wearing a derivation's clothes, so the bound is reported instead.
+    """
+    if rows_per_bank <= 0 or max_banks <= 0:
+        return None, "the port geometry yields no per-bank row count, so no literal can be tested against it"
+    candidates: dict[int, str] = {}
+    for line in lines:
+        for args in _primop_calls(line, _ORDER_COMPARISONS):
+            for arg in args:
+                lit = _uint_literal(arg)
+                if lit is None:
+                    continue
+                value, width = lit
+                if value <= 0 or value % rows_per_bank:
+                    continue
+                banks = value // rows_per_bank
+                if banks < 1 or banks > max_banks:
+                    continue
+                if width is not None and width > addr_bits:
+                    continue
+                if value > (1 << addr_bits):
+                    continue
+                candidates.setdefault(banks, line)
+    if not candidates:
+        return None, ("no ordering comparison in this module tests an address against a whole multiple "
+                      f"of the {rows_per_bank} rows a bank holds that also fits the {addr_bits}-bit line "
+                      "address, so the bank count is BOUNDED by the index width and not pinned")
+    if len(candidates) > 1:
+        return None, (f"{len(candidates)} admissible line-address limits disagree on the bank count "
+                      f"({sorted(candidates)}), so which one bounds this store is UNKNOWN; the index "
+                      "width bound is reported instead of a guess")
+    banks, line = next(iter(candidates.items()))
+    return banks, line
+
+
+def banked_store_ports(fir_text: str) -> list[dict]:
+    """Every BANKED MEMORY WRITE PORT an elaborated design exposes, with the geometry it implies.
+
+    Identified with NO name matching, because a port name is a target's vocabulary and this must work
+    on any of them. The signature is a byte enable: a bundle carrying a ``UInt<W>`` data field AND a
+    ``UInt<1>[N]`` vector with ``N == W/8`` is a masked write to a memory whose row is W bits wide --
+    nothing else in a design has a Bool vector whose length is exactly the byte count of a sibling
+    field. The remaining plain ``UInt`` fields of that bundle are its address: the WIDEST is the
+    intra-bank row address (its width is ``log2(rows per bank)``) and a narrower one is the bank index.
+
+    This exists because a memory reached through PORTS is invisible to a ``cmem``/``smem`` census. The
+    atlas VMEM is instantiated at the tile level that the standalone elaboration cannot build, so the
+    census returned no memories at all and every memory-regime question about that target was
+    unanswerable -- while its LSU plainly declares the geometry in the elaboration we CAN build.
+    """
+    out: list[dict] = []
+    ports = parse_ports(fir_text)
+    for module, mp in ports.items():
+        for f in mp.fields:
+            if not f.leaves:
+                continue
+            top = dict(getattr(f, "types", None) or {})
+            if not top:
+                continue
+            # Descend through a handshake wrapper. A memory port is almost always carried inside a
+            # `Valid`/`Decoupled` bundle, so the data and its byte enable sit under `bits` rather than
+            # at this level; descending one level finds them without knowing the wrapper's name.
+            #
+            # Each level is its OWN namespace and they are never merged. Merging them lets a `data` in
+            # one sub-bundle pair with a `mask` in a SIBLING sub-bundle -- two fields that are not on
+            # the same port at all -- and invent a memory; it also drags the wrapper's own `valid` into
+            # the address candidates, where a wide one would be read as the row address.
+            levels = [top] + [sub for t in top.values() if (sub := _leaf_types(f":{t}"))]
+            row_bits = row_addr_bits = None
+            bank_id_bits = 0
+            for types in levels:
+                data = [(n, w) for n, t in types.items() if (w := _uint_width(t)) is not None]
+                masks = [(n, ev) for n, t in types.items() if (ev := _uint_vec(t)) is not None]
+                found = next((w for _, w in data
+                              for _, (mb, ml) in masks
+                              if mb == 1 and w == ml * 8), None)
+                if found is None:
+                    continue
+                addrs = sorted((w for n, w in data if w != found), reverse=True)
+                if not addrs:
+                    continue
+                row_bits, row_addr_bits = found, addrs[0]
+                bank_id_bits = addrs[1] if len(addrs) > 1 else 0
+                break
+            if row_bits is None or row_addr_bits is None:
+                continue
+            rows_per_bank = 1 << row_addr_bits
+            max_banks = (1 << bank_id_bits) if bank_id_bits else 1
+            rec = {
+                "module": module, "port": f.port, "field": f.name,
+                "row_bits": row_bits, "row_bytes": row_bits // 8,
+                "row_addr_bits": row_addr_bits, "rows_per_bank": rows_per_bank,
+                "bank_id_bits": bank_id_bits,
+                "line_addr_bits": row_addr_bits + bank_id_bits,
+                "max_banks": max_banks,
+                # The index width is a BOUND, and it travels whether or not the count gets pinned, so a
+                # reader of a pinned record can still see what the geometry alone allowed.
+                "banks_min": 1, "banks_max": max_banks,
+                "banks": None, "banks_exact": False, "total_rows": None, "bytes": None,
+                "evidence": f"{module}.{f.port}.{f.name}: {row_bits}-bit row with a {row_bits // 8}-lane "
+                            f"byte enable, {row_addr_bits}-bit row address"
+                            + (f", {bank_id_bits}-bit bank index" if bank_id_bits else ""),
+            }
+            out.append(rec)
+    if not out:
+        return out
+    # THE INDEX WIDTH BOUNDS THE BANK COUNT; the design's own range check PINS it. Statements are read
+    # only for the modules that declared a banked port, because a whole-SoC elaboration is tens of
+    # megabytes of statements and none of the rest can bound this store.
+    bodies = module_bodies(fir_text, {r["module"] for r in out})
+    for rec in out:
+        banks, why = pin_bank_count(bodies.get(rec["module"], ()),
+                                    rows_per_bank=rec["rows_per_bank"],
+                                    addr_bits=rec["line_addr_bits"],
+                                    max_banks=rec["max_banks"])
+        if banks is None:
+            # NOT a guess and NOT a silent drop: the record keeps the bound it did establish and says
+            # in its own words why the exact count is UNKNOWN.
+            rec["banks_unknown"] = why
+            continue
+        rec.update({
+            "banks": banks, "banks_exact": True,
+            "total_rows": banks * rec["rows_per_bank"],
+            "bytes": banks * rec["rows_per_bank"] * rec["row_bytes"],
+            "banks_evidence": why,
+        })
+        rec["evidence"] += (f"; the module range-checks a line address against {banks * rec['rows_per_bank']} "
+                            f"lines ({why}), which is {banks} banks of {rec['rows_per_bank']} rows")
     return out
