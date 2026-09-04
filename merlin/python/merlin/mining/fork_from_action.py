@@ -22,7 +22,7 @@ from typing import Any
 
 from ..kernels.action_catalog import CompilerAction, route
 from ..kernels.cca_compare import Divergence
-from ..kernels.knobs import ForkProposal, _wider_n_overrides
+from ..kernels.knobs import ForkProposal
 
 # HEURISTIC axes whose (schedule:) seam is IMPLEMENTED by a registered impr_features feature — the
 # router marks them forkable_now=True but the proposer had no builder, silently demoting them to
@@ -41,6 +41,10 @@ def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposa
     ev = list(action.evidence)
 
     # 1) an impr_features hook -> a compiler_features override (forkable iff the router says so).
+    #    `vector.lmul` arrives here too: its seam names the `lmul_register_group` SENTINEL, which
+    #    `zephyr_model.prepare_for_lowering` resolves against the prepared IR's element widths and the
+    #    board VLEN and swaps for the concrete `lmul_group_m<N>`. That is deliberate -- the proposer
+    #    has a knobs dict, the IR has the arithmetic, and only one of them actually knows.
     if seam.startswith("impr_features:"):
         feat = seam.split(":", 1)[1].split()[0]
         return ForkProposal(overrides={"compiler_features": [feat]}, lever="feature",
@@ -52,8 +56,6 @@ def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposa
         overrides: dict | None = None
         if "int8_w8a8" in seam or intended.get("compute.widening"):
             overrides = {"dtype_strategy": "int8_w8a8"}
-        elif axis == "vector.lmul":
-            overrides = _wider_n_overrides(knobs, 2)
         elif axis in _AXIS_FEATURE:
             # a HEURISTIC schedule-seam implemented by a registered feature (mtail / scalable NR).
             overrides = {"compiler_features": [_AXIS_FEATURE[axis]]}

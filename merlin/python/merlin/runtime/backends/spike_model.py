@@ -212,7 +212,12 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
         res = lower_model_file(prepared_path, work / "lower", targets=(), textual=True,
                                vectorize=vectorize, transform_schedule=rvv_schedule,
                                features=features)   # produce only the .ll
-    _run([clang, CLANG_TARGET, *clang_cflags, "-c", res.ll_path,
+    # BACKEND-level feature flags, on the MODEL OBJECT ONLY (the GCC-built harness units keep
+    # `gcc_cflags`): a feature like the register-group width is an LLVM backend query no tile size
+    # reaches. Empty features -> the flag list is unchanged, so model.o stays byte-identical.
+    from ...llvmlower.impr_features import apply_cflags as _apply_cflags
+    model_cflags = _apply_cflags(clang_cflags, frozenset(features or frozenset()))
+    _run([clang, CLANG_TARGET, *model_cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
     # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)

@@ -620,6 +620,24 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
               f"{len(moved.signatures)} signature(s)"
               + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else ""))
 
+    # The register-group-width REQUEST, resolved for the same reason the per-op block table is: the
+    # width is a property of the arithmetic this module actually contains, and the prepared IR is the
+    # first place that is readable. `vlen` bounds it so a group never holds more elements than the
+    # INNERMOST parallel extent it will be pointed at. Resolved ABOVE the `blocking` gate, because it is not a
+    # blocking decision and a sentinel that survives to `normalize` raises. Failing to derive a width
+    # DROPS the request (the build keeps the compiler's own default) rather than pinning a guess.
+    from ...llvmlower.impr_features import LMUL_GROUP_SENTINEL, lmul_group_feature
+    if LMUL_GROUP_SENTINEL in features:
+        from ...kernels.shapes import contraction_shapes as _cshapes0
+        from ...llvmlower.lmul_group import LmulDerivationError, group_lmul_for_shapes
+        features = features - {LMUL_GROUP_SENTINEL}
+        try:
+            features = features | {lmul_group_feature(
+                group_lmul_for_shapes(_cshapes0(prepared), vlen=vlen))}
+        except LmulDerivationError as exc:
+            print(f"[zephyr_model] register-group width not derivable ({exc}); leaving the "
+                  "compiler's default in place")
+
     if not blocking:
         return prepared, features
     from ...llvmlower import perop_blocks as _pb
@@ -1585,7 +1603,14 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     # region size below.
     alloc_total, alloc_dynamic = allocation_bytes(res.ll_path)
 
-    _run([clang, "--target=riscv64-unknown-elf", *cflags, "-c", res.ll_path,
+    # BACKEND-level feature flags, applied to the MODEL OBJECT ONLY (never to the C glue below):
+    # some codegen decisions are not expressible in the IR -- the width of the vector register group
+    # the auto-vectorizer asks for is a backend query, so no tile size reaches it. `features` here is
+    # the set `prepare_for_lowering` resolved, so a derived feature is honoured. Empty (the baseline
+    # and every IR-only feature set) leaves the flags untouched, so model.o stays byte-identical.
+    from ...llvmlower.impr_features import apply_cflags as _apply_cflags
+    model_cflags = _apply_cflags(cflags, frozenset(features or frozenset()))
+    _run([clang, "--target=riscv64-unknown-elf", *model_cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
     # 2. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).

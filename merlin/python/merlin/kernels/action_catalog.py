@@ -408,10 +408,21 @@ _RVV_ROUTES: list[_Route] = [
         # LMUL is not free width: at one VLEN, e64/m8 and e32/m4 hold the SAME element count while
         # the former costs twice the register file, so a group wider than the expert's buys no
         # elements and spills.
+        #
+        # THE SEAM IS THE GROUP WIDTH ITSELF, NOT THE N TILE. This route used to name
+        # `schedule:vector_sizes (retune N to reach the expert LMUL)`, which reaches LMUL only as a
+        # SIDE EFFECT of a wider tile -- and the side effect it shares the tile with is a cliff.
+        # MEASURED on small_llama_int8: mr1_nr32 -> mr1_nr64, chasing exactly this axis, went
+        # 5,180,908 ns -> 20,450,661 ns with `_mlir_ciface_forward` on a scalar fallback, because the
+        # wider tail transfer becomes a masked `vector.mask` LLVM 23 rejects and a transform-
+        # interpreter failure IS a whole-model scalar fallback (identical numerics, 4x the wall).
+        # `llvmlower.lmul_group` sets the register-group width directly and leaves every tile alone.
         axis="vector.lmul",
         when=lambda d: _is_higher(d) or _is_lower(d),
-        action_class="KNOB", target_seam="schedule:vector_sizes (retune N to reach the expert LMUL)",
-        change=lambda d: ("widen the N tile/vector so the emitted vector group uses a higher LMUL"
+        action_class="KNOB",
+        target_seam="impr_features:lmul_register_group (width derived from the prepared IR)",
+        change=lambda d: ("widen the vector register group so the emitted vsetvli carries a higher "
+                          "LMUL -- directly, leaving every tile and vector size unchanged"
                           if _is_higher(d) else
                           "narrow the vector group to the expert's LMUL so the same elements occupy "
                           "fewer registers and the accumulator stops spilling"),

@@ -43,6 +43,15 @@ class ImprFeature:
     config is a SINGLE feature with all the clamps inherent). Additive edits (``schedule_replace`` =
     False, e.g. ``lmul_widen_n``'s string substitution) layer freely on top of a replacement.
 
+    ``edit_cflags`` rewrites the clang flag list for the model object (KNOB at the BACKEND level).
+    It exists because some codegen decisions are not expressible in the IR at all: the width of the
+    vector register group the auto-vectorizer asks for is a backend query, not a type, so no tile
+    size or schedule edit reaches it directly -- the only way this registry could move it before was
+    to widen the N tile and let the group width follow, which changes the vectorized shapes as a side
+    effect and can push a transfer into a masked form the backend rejects (see ``lmul_group``). A
+    ``None`` hook leaves the flags untouched, so a build that names no cflag-editing feature compiles
+    byte-identically.
+
     ``implies`` names features this one CANNOT be measured without -- lowering hygiene that is a
     property of the recipe's SHAPE rather than a tuning choice. It exists because a default-off
     feature whose payoff is cancelled by a separate default-off fix is, in practice, an inert lever:
@@ -54,6 +63,7 @@ class ImprFeature:
     description: str
     edit_pipeline: Callable[[list[str]], list[str]] | None = None
     edit_schedule: Callable[[str], str] | None = None
+    edit_cflags: Callable[[list[str]], list[str]] | None = None
     schedule_replace: bool = False
     implies: frozenset[str] = frozenset()
 
@@ -186,6 +196,37 @@ def apply_schedule(schedule_text: str, features: frozenset[str]) -> str:
     return out
 
 
+def apply_cflags(cflags, features: frozenset[str]) -> list[str]:
+    """``cflags`` with every enabled feature's ``edit_cflags`` hook applied, in stable name order.
+
+    Empty ``features`` (the baseline, and every build that names only IR-level features) returns the
+    list unchanged, so the emitted object is byte-identical -- the same invariant
+    :func:`apply_pipeline` / :func:`apply_schedule` carry, extended to the backend flags.
+
+    Unlike a schedule replacement there is no composition hazard here: each hook appends its own
+    ``-mllvm`` option and the flags are independent, so two cflag features layer the way two additive
+    schedule edits do. A feature that wanted to CONTRADICT another on the same option would have to
+    be caught by whoever adds it; today the only such option is the register-group width, and the
+    registrar mints one feature per width so two of them cannot be named without saying so.
+
+    WHO CALLS THIS. Every builder that turns the lowered ``.ll`` into the model object must, or a
+    cflag feature is INERT on that path -- named, resolved, and emitting byte-identical code, which
+    is the failure mode hardest to notice from the outside. Wired today:
+    ``runtime.backends.zephyr_model.build_app`` and ``runtime.backends.spike_model.build``. NOT yet
+    wired: ``mining.k1.build_k1_binary`` (and its staged sibling), which assembles its model-object
+    flag list inline; a cflag feature therefore has no effect on that path until the same call is
+    added there.
+    """
+    out = list(cflags)
+    if not features:
+        return out
+    for name in sorted(features):
+        f = get(name)
+        if f.edit_cflags is not None:
+            out = list(f.edit_cflags(out))
+    return out
+
+
 # ---- registered features ------------------------------------------------------------
 # Keep this list small and evidence-justified. Each entry corresponds to a typed CompilerAction
 # (PASS/HEURISTIC/PATTERN) surfaced by the action catalog from a mined kernel divergence.
@@ -296,6 +337,92 @@ register(ImprFeature(
     edit_schedule=lambda t: t.replace("tile_sizes [4, 8, 1]", "tile_sizes [4, 16, 1]").replace(
         "vector_sizes [4, 8, 1]", "vector_sizes [4, 16, 1]"),
 ))
+
+
+#: Prefix of the DIRECT register-group-width features. ``lmul_widen_n`` above reaches LMUL the only
+#: way this registry could before: widen the N tile and let the backend's worst-case group sizing
+#: follow. That is an INDIRECT route and it moves two things at once -- MEASURED on
+#: small_llama_int8, taking the M-pad block from mr1_nr32 to mr1_nr64 to chase the expert's LMUL
+#: went 5,180,908 ns -> 20,450,661 ns and put `_mlir_ciface_forward` on a scalar fallback (the wider
+#: tail transfer becomes a masked multi-op `vector.mask` LLVM 23 rejects, so the transform
+#: interpreter raises and the whole model lowers scalar: identical numerics, 4x the wall).
+#:
+#: These features set the group width itself and touch no tile size, so the vectorized shapes -- and
+#: therefore the tail masking -- are exactly what they were. See :mod:`merlin.llvmlower.lmul_group`
+#: for the derivation and for the measurement that the emitted `vsetvli` actually moves.
+LMUL_GROUP_PREFIX = "lmul_group_m"
+
+#: The REQUEST for a derived register-group width, as a feature name. Deliberately NOT registered:
+#: like ``PEROP_BLOCK_NAME``, it is a sentinel that ``zephyr_model.prepare_for_lowering`` resolves
+#: against the PREPARED IR -- the element widths the pipeline will actually see, plus the board's
+#: VLEN -- and swaps for the concrete ``lmul_group_m<N>`` before lowering. Reaching ``normalize``
+#: unresolved SHOULD raise, because a request nobody resolved must not read as a width.
+#:
+#: This is the name the ``vector.lmul`` action-catalog seam points at: the route knows the axis, the
+#: IR knows the arithmetic, and neither of them should be writing down a number.
+LMUL_GROUP_SENTINEL = "lmul_register_group"
+
+
+def lmul_group_feature(lmul: int) -> str:
+    """The name of the default-off feature that pins the auto-vectorizer's register group to ``lmul``.
+
+    Every whole-register width is registered eagerly (there are four), so a name resolves in the
+    lowering SUBPROCESS as well as in the parent -- the same reproducibility requirement
+    :func:`_try_lazy_register` exists for.
+    """
+    from .lmul_group import LMUL_LADDER
+    if int(lmul) not in LMUL_LADDER:
+        from .lmul_group import LmulDerivationError
+        raise LmulDerivationError(f"LMUL={lmul!r} is not one of {LMUL_LADDER}")
+    return f"{LMUL_GROUP_PREFIX}{int(lmul)}"
+
+
+def ensure_lmul_group(*, operand_bits: int, acc_bits: int, vlen: int | None = None,
+                      max_group_elems: int | None = None) -> str:
+    """DERIVE the register-group width from the datapath and return the feature that pins it.
+
+    The width is ``lmul_group.group_lmul`` -- the smallest whole-register group at which the
+    narrowest operand's group stops being a fraction, capped by what the target's VLEN can usefully
+    hold. Nobody types a 4: an ``i8 x i8 -> i32`` contraction derives 4 (which is what the expert
+    XNNPACK qd8 kernel runs at), an ``f32`` one derives 1, a ``bf16 -> f32`` one derives 2.
+    """
+    from .lmul_group import group_lmul
+    return lmul_group_feature(group_lmul(operand_bits=operand_bits, acc_bits=acc_bits,
+                                         vlen=vlen, max_group_elems=max_group_elems))
+
+
+def ensure_lmul_group_for_elem_types(a: str, b: str, c: str, *, vlen: int | None = None,
+                                     max_group_elems: int | None = None) -> str:
+    """:func:`ensure_lmul_group` for a contraction named by its MLIR element types ``a x b -> c``."""
+    from .lmul_group import group_lmul_for_elem_types
+    return lmul_group_feature(group_lmul_for_elem_types(a, b, c, vlen=vlen,
+                                                        max_group_elems=max_group_elems))
+
+
+def _register_lmul_groups() -> list[str]:
+    from .lmul_group import LMUL_LADDER, lmul_cflags
+    names = []
+    for _lmul in LMUL_LADDER:
+        _name = f"{LMUL_GROUP_PREFIX}{_lmul}"
+        register(ImprFeature(
+            name=_name, action_class="KNOB",
+            description=(
+                f"Pin the vector REGISTER-GROUP WIDTH of auto-vectorized code to LMUL={_lmul}, "
+                f"directly (an -mllvm backend option), without changing any tile or vector size. "
+                f"This is the seam the `vector.lmul` divergence actually wants: the N-tile route to "
+                f"the same axis also widens the tail transfer, which is a whole-model scalar-fallback "
+                f"cliff. Derive the width with `ensure_lmul_group(...)` rather than naming a number "
+                f"-- it is acc_bits/operand_bits, capped by what the VLEN can hold. Default-off; a "
+                f"build that does not name it gets byte-identical flags."),
+            edit_cflags=(lambda c, _l=_lmul: [*c, *lmul_cflags(_l)]),
+        ))
+        names.append(_name)
+    return names
+
+
+#: The whole ladder, registered eagerly. Naming a width directly is legal (a search may want to
+#: bracket the derived one); ``ensure_lmul_group`` is how a caller gets the derived answer.
+LMUL_GROUP_NAMES: tuple[str, ...] = tuple(_register_lmul_groups())
 
 
 register(ImprFeature(

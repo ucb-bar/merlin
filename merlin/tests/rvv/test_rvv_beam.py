@@ -156,6 +156,11 @@ def test_instrumented_beam_emits_aet_parent_and_child_runs(tmp_path, monkeypatch
         (gen / "objdump.txt").write_text(ours_objd)          # -> ours CCA lifts -> divergences
         pkg = load_rvv_package(package_dir)
         n = pkg.op_match[0]["vector"][-2] if pkg.op_match else 8
+        # A fork earns its speedup by DIFFERING from the frozen seed, on either surface. Keyed on the
+        # feature set as well as the N tile because the `vector.lmul` axis no longer reaches LMUL by
+        # widening N -- it requests the register-group width directly (llvmlower.lmul_group), which
+        # leaves op_match untouched -- so an N-only reward makes every fork on that axis look inert.
+        n *= 2 ** len(pkg.compiler_features or ())
         return {"correctness": {"gate_ok": True},
                 "measurement": [{"target": "k1", "cycle_accurate": False,
                                  "cycles": 4_000_000 // n, "wall_ns": 900_000 // n}]}

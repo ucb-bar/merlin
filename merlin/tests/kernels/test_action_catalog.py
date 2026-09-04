@@ -332,11 +332,13 @@ class TestAnUnverifiableActionIsNotAnAchievedOne:
 # it also carried `forkable_now=False`, so the dead name was never exercised.
 # ---------------------------------------------------------------------------------------
 
-#: Names a seam may resolve to that are NOT registered ImprFeatures. `perop_register_block` is a
-#: SENTINEL: `zephyr_model.prepare_for_lowering` derives the per-op block table from the prepared IR
-#: and swaps the sentinel for the concrete `ensure_perop_block(...)` feature before lowering, so it is
-#: deliberately absent from the registry -- if it reached `normalize` it SHOULD raise.
-_SEAM_SENTINELS = {"perop_register_block"}
+#: Names a seam may resolve to that are NOT registered ImprFeatures. Both are SENTINELS resolved by
+#: `zephyr_model.prepare_for_lowering` against the PREPARED IR and swapped for a concrete feature
+#: before lowering, so both are deliberately absent from the registry -- if either reached
+#: `normalize` it SHOULD raise. `perop_register_block` becomes `ensure_perop_block(table)`;
+#: `lmul_register_group` becomes `lmul_group_m<N>` for the width the module's own element types and
+#: the board's VLEN derive (llvmlower.lmul_group).
+_SEAM_SENTINELS = {"perop_register_block", "lmul_register_group"}
 
 
 def _impr_seam_feature(seam: str) -> str | None:

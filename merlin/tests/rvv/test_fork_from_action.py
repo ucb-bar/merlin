@@ -27,12 +27,18 @@ def test_int8_widening_maps_to_dtype_strategy_knob():
     assert p.overrides == {"dtype_strategy": "int8_w8a8"}
 
 
-def test_lmul_maps_to_wider_n_knob():
+def test_lmul_maps_to_the_register_group_width_not_a_wider_n():
+    # This axis used to widen the N tile x2 and let the backend's group sizing follow. That route
+    # moves the tail transfer as well, which is a whole-model scalar-fallback cliff (MEASURED on
+    # small_llama_int8: mr1_nr32 -> mr1_nr64 went 5,180,908 ns -> 20,450,661 ns with
+    # `_mlir_ciface_forward` scalar). It now routes to the group width itself, requested as the
+    # `lmul_register_group` sentinel that prepare_for_lowering resolves from the prepared IR -- and
+    # touches no tile.
+    from merlin.llvmlower.impr_features import LMUL_GROUP_SENTINEL
     p = action_to_fork(route(_div("vector.lmul", 4.0, 2.0)), _KNOBS)
-    assert p.forkable is True and p.lever == "knob"
-    # N (the second-to-last tile dim) is widened x2; only KNOWN knob keys are emitted.
-    assert p.overrides["op_match"][0]["tile"] == [4, 16, 1]
-    assert set(p.overrides) <= {"op_match", "contraction_strategy", "lowering_patterns", "dtype_strategy"}
+    assert p.forkable is True and p.lever == "feature"
+    assert p.overrides == {"compiler_features": [LMUL_GROUP_SENTINEL]}
+    assert "op_match" not in p.overrides
 
 
 def test_register_block_routes_to_per_op_mr_feature():
