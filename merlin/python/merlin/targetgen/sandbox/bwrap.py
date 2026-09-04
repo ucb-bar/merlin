@@ -382,7 +382,26 @@ def materialize_bundle_inputs(ws: Path, bundle: dict, *, repo: Path | None = Non
 
 def _bundle_mount_args(ws: Path, bundle: dict, repo: Path,
                        *, _policy_test_live_inputs: bool = False) -> list[str]:
-    """Frozen allow mounts followed by deny-wins overlays."""
+    """Frozen allow mounts and deny overlays, ordered so the MOST SPECIFIC declaration wins.
+
+    bwrap applies mount operations in argv order, so whichever declaration is emitted LAST decides
+    what a path shows. Emitting every allow and then every deny made a deny win over an allow it
+    merely CONTAINED, which is not what a manifest means. An arm that grants the shared hardware
+    spec at ``merlin/experiments/.../isa_include/`` and separately denies ``merlin/`` ("internals")
+    had all three ISA grants tmpfs-wiped by that broad deny: inside the box the workspace's
+    ``isa_definition.py`` / ``atlas_isa_green_card.md`` / ``atlas`` symlinks dangled, and the agent
+    -- told by its own task file to "derive EVERY instruction's exact encoding from these files,
+    do NOT invent" -- found an empty room and invented one, which is the documented way to score 0
+    on a self-hosted ISA. Nothing reported a setup failure; it read as the agent being bad at atlas.
+
+    Order by destination DEPTH instead, deny last on a tie. That is longest-prefix-wins, the rule
+    the manifests were already written against:
+      * allow ``merlin/contract/`` + deny ``merlin/contract/capsules/<t>/hidden/`` -- the deny is
+        DEEPER, so goldens stay masked (the property "deny wins" existed to protect);
+      * allow ``merlin/experiments/.../isa_definition.py`` + deny ``merlin/`` -- the allow is
+        deeper, so the granted spec survives the broad deny.
+    A deny and an allow naming the SAME path still fails closed.
+    """
     out: list[str] = []
     if not bundle.get("allowed"):
         grants = []
@@ -392,16 +411,50 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path,
                   for entry in bundle.get("allowed", [])]
     else:
         _, grants = _snapshot_grants(ws, bundle, repo)
-    for _, destination, frozen in grants:
-        if path_kind(destination) != "missing" or not _policy_test_live_inputs:
-            out += ["--ro-bind", str(frozen), str(destination)]
+    # (depth, deny_wins_the_tie, args). sorted() is stable, so same-depth entries keep manifest order.
+    live = [(destination, frozen) for _, destination, frozen in grants
+            if path_kind(destination) != "missing" or not _policy_test_live_inputs]
+    allow_dests = [d.absolute() for d, _ in live]
+    deny_dests: list[tuple[Path, str]] = []
     for denied in bundle.get("denied", []):
-        p = resolve_grant(denied["path"], repo)
-        kind = path_kind(p)
+        d = resolve_grant(denied["path"], repo).absolute()
+        kind = path_kind(d)
+        if kind != "missing":
+            deny_dests.append((d, kind))
+
+    ops: list[tuple[int, int, list[str]]] = []
+    for destination, frozen in live:
+        destination = destination.absolute()
+        args: list[str] = []
+        mount_at = destination
+        # Binding a FILE needs its parent DIRECTORY to exist inside the box: bwrap builds the parent
+        # chain for a directory bind but not for a file one, and a broad deny's tmpfs removes it. Where
+        # to mount then depends on whether a DIRECTORY on the way is a symlink, and BOTH cases occur:
+        #   * gemmini grants `.../hwbringup_gemmini_v0` AND headers under its `isa_include`, which is a
+        #     symlink to the vendor checkout on /scratch2 -- tmpfs-masked by policy. The dir grant
+        #     reproduces the dangling link, so bwrap follows it to a path that does not exist and
+        #     refuses ("Can't create file at ...: No such file or directory"), killing the sandbox
+        #     before the agent runs a turn. Mount at the RESOLVED path; the symlink lands on the bytes.
+        #   * every target grants `targets/<t>/scripts/agent_selfcheck.py`, whose `scripts` is also a
+        #     symlink -- but nothing grants a directory that reproduces it. Here bwrap creates a real
+        #     chain at the SPELLED path, which is what makes the grant readable; resolving it instead
+        #     would hide the agent's own self-check.
+        # So resolve only when an ancestor grant actually reproduces the symlink.
+        if destination.is_file():
+            parent_real = os.path.realpath(destination.parent)
+            args += ["--dir", parent_real]
+            if parent_real != str(destination.parent) and any(
+                    a != destination and destination.parent.is_relative_to(a) for a in allow_dests):
+                mount_at = Path(parent_real) / destination.name
+        args += ["--ro-bind", str(frozen), str(mount_at)]
+        ops.append((len(destination.parts), 0, args))
+    for d, kind in deny_dests:
         if kind == "dir":
-            out += ["--tmpfs", str(p)]
-        elif kind == "file":
-            out += ["--ro-bind", _DEVNULL, str(p)]
+            ops.append((len(d.parts), 1, ["--tmpfs", str(d)]))
+        else:
+            ops.append((len(d.parts), 1, ["--ro-bind", _DEVNULL, str(d)]))
+    for _depth, _tie, args in sorted(ops, key=lambda op: (op[0], op[1])):
+        out += args
     return out
 
 

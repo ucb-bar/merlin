@@ -63,3 +63,33 @@ def test_denies_still_win_over_their_own_grants(no_snapshot, tmp_path):
     grant = max(i for i, a in enumerate(argv) if a == "--ro-bind" and argv[i + 2] == str(repo / "pkg"))
     deny = max(i for i, a in enumerate(argv) if a == "--tmpfs" and argv[i + 1] == str(repo / "pkg/secret"))
     assert deny > grant, "a denied subpath must still be applied after the grant it sits inside"
+
+
+def test_a_broad_deny_does_not_eat_a_more_specific_grant(no_snapshot, tmp_path):
+    """The same ordering bug, one level out: a deny must not swallow an allow it merely CONTAINS.
+
+    Measured on the atlas launch of 2026-09-04. The unassisted arm grants the shared hardware spec
+    (the contract dir, the ISA definition, the green card) under `merlin/experiments/...` and denies
+    `merlin/` as "internals". Emitting every allow and then every deny let that broad deny tmpfs-wipe
+    all three: inside the box the workspace symlinks for the ISA dangled, `find . -type f` returned
+    five files, and the agent -- whose task file says to derive every encoding from those files and
+    never invent one -- invented one instead, over 29 builds in 2h08m. No gate saw it: the grant
+    resolves perfectly on the host, which is the question the other checks ask.
+    """
+    repo = tmp_path
+    ws = repo / "ws"
+    ws.mkdir()
+    isa = repo / "merlin" / "experiments" / "spec" / "isa_definition.py"
+    isa.parent.mkdir(parents=True)
+    isa.write_text("opcode = 0b1110111\n", encoding="utf-8")
+    (repo / "merlin" / "python").mkdir(parents=True)
+    bundle = {"allowed": [{"path": "merlin/experiments/spec", "mode": "ro"}],
+              "denied": [{"path": "merlin", "reason": "internals"}]}
+    argv = bwrap.reapply_bundle_snapshot(["seed"], ws, bundle, repo=repo)
+    deny = max(i for i, a in enumerate(argv)
+               if a == "--tmpfs" and argv[i + 1] == str(repo / "merlin"))
+    grant = max(i for i, a in enumerate(argv)
+                if a == "--ro-bind" and argv[i + 2] == str(repo / "merlin" / "experiments" / "spec"))
+    assert grant > deny, (
+        "a grant DEEPER than a deny must be applied after it (longest-prefix-wins); "
+        "otherwise the broad deny silently withholds the spec the arm was promised")

@@ -598,6 +598,117 @@ def test_every_declared_grant_resolves():
         not missing, "; ".join(sorted(set(missing))[:4]) if missing else "")
 
 
+def test_every_grant_survives_the_assembled_sandbox():
+    """EVERY allowed grant must be READABLE INSIDE bwrap, and every denial must stay masked.
+
+    F3 resolves a grant on the HOST. That is not the question the agent asks: the agent reads its
+    grants through the assembled mount table, and a path can resolve perfectly on disk yet be absent
+    inside the box. Measured on the atlas launch of 2026-09-04: the baseline arm granted the shared
+    hardware spec (``.../hwbringup_atlas_v0``, ``isa_definition.py``, the green card) AND denied
+    ``merlin/``, which CONTAINS them. The mount table emitted every allow and then every deny, so the
+    broad deny tmpfs-wiped the three ISA grants. Readiness said 32/32 GO, preflight said
+    GO_FOR_PILOT, F3 said all grants resolve -- and inside the sandbox the workspace symlinks for the
+    ISA dangled. The agent, whose task file tells it to derive every encoding from those files and
+    never invent one, found an empty room, invented an encoding, and burned 2h08m over 29 builds.
+
+    Resolution is not visibility. This probes the real thing: assemble each launchable bundle's argv
+    and stat the paths from inside.
+    """
+    section("F4. every grant is readable inside the assembled sandbox (and denials stay masked)")
+    import shutil, subprocess, tempfile
+    from merlin.targetgen.sandbox import bwrap as _BW
+
+    if not shutil.which("bwrap"):
+        _ok("bwrap available to probe the mount table", False, "bwrap not on PATH")
+        return
+    bundles = sorted((EXP / "input_bundles").glob("*/input_bundle_manifest.yaml"))
+    if not bundles:
+        _ok("bundles present to check", False, f"no input_bundles under {EXP}")
+        return
+
+    findings: list[str] = []
+    n_allow = n_deny = 0
+    with tempfile.TemporaryDirectory(prefix="sandbox_view_") as tmp:
+        ws = Path(tmp) / "workspace"
+        ws.mkdir()
+        for man in bundles:
+            try:
+                doc = yaml.safe_load(man.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError as e:
+                findings.append(f"GRANT_INVISIBLE {man.parent.name}: unparseable ({type(e).__name__})")
+                continue
+            allows = []
+            for entry in (doc.get("allowed") or []):
+                rel = str((entry or {}).get("path") or "")
+                if not rel:
+                    continue
+                dest = _BW.resolve_grant(rel, REPO)
+                if _BW.path_kind(dest) != "missing":   # F3 owns the unresolvable case
+                    allows.append((rel, dest.absolute()))
+            lines: list[str] = []
+            for rel, dest in allows:
+                n_allow += 1
+                lines.append(f"[ -e '{dest}' ] || echo 'GRANT_INVISIBLE {rel}'")
+            for entry in (doc.get("denied") or []):
+                rel = str((entry or {}).get("path") or "")
+                if not rel:
+                    continue
+                dest = _BW.resolve_grant(rel, REPO).absolute()
+                kind = _BW.path_kind(dest)
+                if kind == "missing":
+                    continue
+                n_deny += 1
+                if kind != "dir":
+                    lines.append(
+                        f"[ \"$(stat -c%s '{dest}' 2>/dev/null || echo -1)\" -eq 0 ]"
+                        f" || echo 'DENY_LEAKED {rel}'")
+                    continue
+                # A deny of a DIR does not mean the dir is empty inside the box. Two things legitimately
+                # remain: the writable workspace (which may live under a denied tree -- an arm withheld
+                # from `merlin/` still runs out of `merlin/experiments/.../_qa_ws/`), and any allow that
+                # is DEEPER than this deny (longest-prefix-wins). Assert on what is actually withheld:
+                # the children carrying none of those, which must not be readable.
+                keep = [d for _r, d in allows if dest in d.parents or d == dest]
+                must_vanish = []
+                for child in sorted(dest.iterdir()):
+                    if child == ws or child in ws.parents or ws == child or ws.is_relative_to(child):
+                        continue
+                    if any(child == k or k.is_relative_to(child) for k in keep):
+                        continue
+                    must_vanish.append(child)
+                # Presence is not a leak: bwrap CREATES the parent chain of every mount destination,
+                # so denying `merlin/python/merlin/llvmlower/` leaves an empty `merlin/python/merlin/`
+                # scaffold behind, and a deeper allow does the same. What a deny actually promises is
+                # that no CONTENT of that tree is readable -- so look for a readable regular file.
+                for child in must_vanish[:40]:
+                    lines.append(
+                        f"[ -n \"$(find '{child}' -type f -print -quit 2>/dev/null)\" ]"
+                        f" && echo 'DENY_LEAKED {rel} ({child.name})' || true")
+            if not lines:
+                continue
+            argv = _BW.base_argv(ws, doc, repo=REPO, _policy_test_live_inputs=True)
+            r = subprocess.run(argv + ["/bin/bash", "-lc", "\n".join(lines)],
+                               capture_output=True, text=True, timeout=300)
+            for out in r.stdout.splitlines():
+                if out.strip():
+                    findings.append(f"{out.strip()}  [{man.parent.name}]")
+            if r.returncode != 0 and not r.stdout.strip():
+                findings.append(f"GRANT_INVISIBLE probe failed rc={r.returncode} [{man.parent.name}]")
+
+    # Report the INVISIBLE-GRANT class first: a withheld grant silently makes the task impossible,
+    # which is strictly worse than a leak the other gates also scan for.
+    uniq = sorted(set(findings))
+    invisible = [f for f in uniq if f.startswith("GRANT_INVISIBLE")]
+    leaked = [f for f in uniq if f.startswith("DENY_LEAKED")]
+    detail = ""
+    if invisible or leaked:
+        detail = (f"{len(invisible)} invisible grant(s), {len(leaked)} leaked denial(s) — "
+                  + "; ".join((invisible + leaked)[:4]))
+    _ok(f"{n_allow} grant(s) visible and {n_deny} denial(s) masked inside bwrap "
+        f"across {len(bundles)} bundle(s)",
+        not uniq, detail)
+
+
 def _oracle_sim_via() -> str:
     """The target's declared bespoke sim (``toolchain.sim_via``) — ``"chipyard"`` for gemmini, ``""``
     (arc-only / program oracle) for a self-hosted-ISA target like atlas. Routes section G, no literal."""
@@ -870,6 +981,8 @@ def main() -> int:
                test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
                test_graded_path_is_the_declared_one, test_contract_provenance, test_bundles,
                test_sandbox_authoring_tools,
+               test_every_declared_grant_resolves,
+               test_every_grant_survives_the_assembled_sandbox,
                test_semantic_coverage_measurable):
         try:
             fn()
