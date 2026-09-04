@@ -219,3 +219,23 @@ def test_the_measured_bytes_are_the_ones_the_document_names(tmp_path):
     assert (seen[0] / "compiler.py").read_text() == (candidate / "compiler.py").read_text(), (
         "the snapshot must be a faithful copy of what the agent submitted")
     assert document["candidate_sha256"]
+
+
+def test_a_member_may_beat_the_empirical_ceiling_but_not_the_structural_peak():
+    """Two ratios, two ceilings, and only one of them is a bound.
+
+    The structural peak is derived from the array's own geometry and nothing can exceed it, so a
+    utilization above 1 is a broken derivation. The achievable rate is the best any measured program
+    has been OBSERVED to reach, and a better program is exactly the thing that beats it. Refusing
+    that discarded a full 38-member sweep in which four members legitimately ran above a ceiling
+    harvested from a smaller corpus -- PC01_k128 at 99.79 MACs/cycle against 80.01.
+    """
+    beat_the_ceiling = _measured_cell()
+    beat_the_ceiling["baseline_share_of_achievable"] = 1.247
+    beat_the_ceiling["candidate_share_of_achievable"] = 1.310
+    PAS.validate_redacted_feedback(_document([beat_the_ceiling]))  # must not raise
+
+    broken = _measured_cell()
+    broken["candidate_utilization"] = 1.5
+    with pytest.raises(PAS.StageGateError, match="structural peak"):
+        PAS.validate_redacted_feedback(_document([broken]))

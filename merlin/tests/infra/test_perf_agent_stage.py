@@ -1078,10 +1078,14 @@ def test_declared_work_comes_from_the_capsule_spec_and_refuses_a_non_contracting
 
 
 def test_utilization_above_the_derived_peak_is_refused():
-    """A ratio over 1.0 means the derivation is broken, not that the program beat the hardware."""
+    """Against the STRUCTURAL peak a ratio over 1.0 is a broken derivation, not a fast program.
+
+    The sibling ratio against the empirical achievable rate is a different matter and is allowed to
+    exceed 1 -- see test_a_member_may_beat_the_empirical_ceiling_but_not_the_structural_peak.
+    """
     document = _feedback_document()
     document["cells"][0]["candidate_utilization"] = 1.5
-    with pytest.raises(PAS.StageGateError, match="above the derived peak"):
+    with pytest.raises(PAS.StageGateError, match="structural peak"):
         PAS.validate_redacted_feedback(document)
 
 

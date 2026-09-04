@@ -1908,9 +1908,25 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
                 raise StageGateError(
                     f"development feedback cell {index} has an invalid {field}")
-            if (field.endswith("_utilization") or field.endswith("_share_of_achievable")) and value > 1:
+            # TWO RATIOS, TWO DIFFERENT CEILINGS, AND ONLY ONE OF THEM IS A BOUND.
+            #
+            # `utilization` is taken against the STRUCTURAL peak, which the target's own RTL derives
+            # from its array geometry. Nothing can exceed it, so a value above 1 is a broken
+            # derivation and is still refused.
+            #
+            # `share_of_achievable` is taken against the best rate any MEASURED program has been
+            # observed to reach. That is an empirical best-so-far, not a bound, and a better program
+            # is exactly the thing that beats it. Refusing it here discarded an entire 38-member
+            # sweep: measured 2026-09-04, the ceiling harvested from the functional run was 80.01
+            # MACs/cycle while four members of the PERF corpus already ran above it -- PC01_k128 at
+            # 99.79 (share 1.247), PR01 at 94.06, PR03 at 88.33, PR02 at 87.96 -- because the perf
+            # corpus carries larger, more efficient shapes than the corpus the ceiling came from.
+            # An eighty-minute measurement in which every member ran and passed was thrown away for
+            # reporting the good news that the ceiling was too low.
+            if field.endswith("_utilization") and value > 1:
                 raise StageGateError(
-                    f"development feedback cell {index} reports {field} above the derived peak")
+                    f"development feedback cell {index} reports {field} above the derived "
+                    f"structural peak, which no program can exceed")
         if any(not isinstance(row.get(field), bool)
                for field in ("baseline_correct", "candidate_correct", "comparable")):
             raise StageGateError(f"development feedback cell {index} has invalid correctness")

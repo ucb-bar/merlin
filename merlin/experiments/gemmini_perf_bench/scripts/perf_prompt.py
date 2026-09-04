@@ -421,6 +421,14 @@ of different size. Each tuning verdict therefore also reports, per member:
   demonstrated headroom, because something on this machine ran that fast; a member near 1.0 has none
   left to find without moving the ceiling itself.
 
+  **This ratio may exceed 1.0, and that is a result rather than an error.** The achievable rate is
+  the best any measured program has been OBSERVED to reach, not a bound -- unlike the structural
+  peak, which the RTL derives and nothing can beat. A member above 1.0 is running faster than
+  anything previously seen on this machine and has just moved the ceiling. Do not treat it as
+  headroom to close, and do not chase the remaining members up to it as though 1.0 were the target:
+  the ceiling was harvested from a different corpus and is simply too low for that member's shape.
+  Say so in `iteration_notes.md` and spend your effort on the members far below it.
+
 **Optimise toward the ACHIEVABLE ceiling, and report both.** Quote utilization against the structural
 peak for context only.
 
