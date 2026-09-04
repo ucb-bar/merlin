@@ -466,6 +466,31 @@ while a fit improves is the signature of a change that traded the machine away f
 so and go back. Where a value is null, the host could not derive it -- treat that as missing evidence
 and report it, never as permission to assume.
 
+### `verdict` -- whether a member is finished, and the only honest way to give up on one
+
+Every cell carries `verdict` and `verdict_reason`. This is the per-member counterpart to the
+corpus-wide `stopping` block, and it is what tells you where the remaining work is:
+
+- `no_headroom` -- the member is at the achievable ceiling within that ceiling's own measured
+  dispersion. **This is the signal to stop working on this capsule.** It is not a judgement that the
+  member is fast in absolute terms; it means nothing on this machine has been shown to run this
+  shape faster, so further effort here has no demonstrated target to aim at.
+- `headroom_open` -- something on this machine reached a rate this member is not reaching. The gap
+  is real and measured, and this is where your effort belongs.
+- `improved` / `regressed` -- the candidate beat or lost to the baseline by more than the oracle's
+  own replicate dispersion. The oracle here is a deterministic cycle-accurate simulator, so that
+  dispersion is zero and **every cycle counts** -- a one-cycle regression is a regression.
+- `refused` -- an input needed to decide was not derivable. It is NOT a pass, and it is not a fail;
+  it means this member was not decided and you should say so rather than reading it either way.
+
+The tolerance for `no_headroom` is measured, not declared: it is the spread of the achievable rate
+across the points that established it, so a member is never called finished because of a constant
+someone picked.
+
+**Use it to allocate effort, not to justify stopping early.** A corpus of `no_headroom` members with
+three at `headroom_open` tells you exactly which three to work on. A member you cannot improve is
+worth recording as such, with what you tried, so the next run does not re-pay for the same lever.
+
 The feedback document also carries a `stopping` block, and it is evidence about YOUR SEARCH rather
 than about the machine. Read it:
 

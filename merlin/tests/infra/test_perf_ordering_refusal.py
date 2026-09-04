@@ -63,3 +63,19 @@ def test_the_prompt_documents_the_free_action_and_its_limit():
     assert "no oracle time" in source, "the agent must be told the screen is free, or it will not use it"
     assert "never certify" in source, (
         "the screen may eliminate and may never certify; the prompt has to carry the asymmetry")
+
+
+def test_every_verdict_the_harness_can_emit_is_explained_to_the_agent():
+    """A field the agent receives but is never told about is a field it cannot act on.
+
+    `verdict` is the per-member "is this one finished" signal -- the only principled basis for giving
+    up on a capsule -- and it reached the agent for a whole campaign with no mention anywhere in the
+    prompt. Pin every value the module can emit, so adding a sixth cannot silently go undocumented.
+    """
+    import perf_capsule_verdict as CV  # noqa: PLC0415
+
+    prompt_source = (_SCRIPTS / "perf_prompt.py").read_text(encoding="utf-8")
+    emitted = {CV.NO_HEADROOM, CV.IMPROVED, CV.HEADROOM_OPEN, CV.REGRESSED, CV.REFUSED}
+    missing = sorted(v for v in emitted if v not in prompt_source)
+    assert not missing, f"verdict value(s) the agent is never told about: {missing}"
+    assert "verdict_reason" in prompt_source
