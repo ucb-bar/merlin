@@ -9,7 +9,9 @@ DAG and greedy-colors non-overlapping buffers onto shared byte offsets, so the r
 
 Pure analysis over :class:`~.dispatch_program.DispatchProgram` (no IR mutation). NOT YET WIRED: no
 caller consumes the resulting :class:`MemoryPlan`, and ``merlin_program.c`` -- named as its consumer
-here and in two other docstrings -- does not exist in the tree. That is stated plainly because the
+here and in two other docstrings -- does not exist in the tree. What wiring it to the path we actually
+measure would take (a per-kernel emission path, that replay engine, a static-shape precondition) is
+written down in ``docs/design/static_arena_wiring.md``. The gap is stated plainly because the
 reverse impression is what makes a fail-open planner dangerous: every branch that cannot size a buffer
 now raises :class:`ArenaPlanError` rather than substituting a plausible number, and offsets are aligned
 to :data:`ARENA_ALIGN` (derived from the allocator the runtime actually uses), so whoever wires it gets
@@ -118,6 +120,43 @@ class MemoryPlan:
                 "sizes": dict(self.sizes), "stats": dict(self.stats)}
 
 
+def _assert_reads_are_complete(prog: DispatchProgram) -> None:
+    """Refuse a program whose nodes do not record everything they READ.
+
+    Liveness here is computed from ``node.inputs`` alone, and that is only the truth when ``inputs``
+    is the node's complete read set. It is NOT complete for a region-carrying op built from
+    ``op.operands``: an ``scf.for``'s operands are lb/ub/step/iter_args, so a tensor its body reads out
+    of the enclosing scope appears nowhere. Measured on a three-dispatch driver whose loop body reads
+    an earlier result: that buffer's last use was recorded as node 3 instead of node 6, and the planner
+    then seated the NEXT buffer at the same offset -- two live buffers sharing bytes, no error, wrong
+    numbers only when the sizes collide.
+
+    :func:`~.dispatch_program.build_dispatch_program` now folds the region captures into ``inputs`` and
+    records them in ``Node.captures``. ``captures is None`` means nobody established them (an older
+    writer, a hand-built or deserialized program), and a static planner genuinely cannot recover them
+    from the flat program -- the captured value IS defined earlier, it is simply never listed, so
+    nothing about the DAG looks wrong. Guessing there is the exact failure mode this module refuses
+    everywhere else, so it refuses here too.
+    """
+    for i, node in enumerate(prog.nodes):
+        regions = int(getattr(node, "regions", 0) or 0)
+        captures = getattr(node, "captures", None)
+        if regions and captures is None:
+            raise ArenaPlanError(
+                f"node {i} ({node.op}) carries {regions} region(s) but no capture set was computed "
+                "(Node.captures is None). Its region body may read buffers that node.inputs does not "
+                "list, which understates their live ranges and lets the plan hand those bytes to "
+                "another buffer while they are still being read. Rebuild the program with "
+                "build_dispatch_program (which walks the regions), or drop the region-carrying node.")
+        if captures:
+            missing = [b for b in captures if b not in node.inputs]
+            if missing:
+                raise ArenaPlanError(
+                    f"node {i} ({node.op}) records region captures {missing} that are absent from its "
+                    "inputs. Liveness is computed from inputs, so a capture kept out of them is a read "
+                    "the plan cannot see.")
+
+
 def _live_ranges(prog: DispatchProgram) -> tuple[dict[str, int], dict[str, int]]:
     """first-def node index and last-use node index per buffer.
 
@@ -126,6 +165,7 @@ def _live_ranges(prog: DispatchProgram) -> tuple[dict[str, int], dict[str, int]]
     survive the whole program (they are bound to the output buffer, not the arena, but we keep
     the conservative range so arena packing never reuses bytes that a result still needs).
     """
+    _assert_reads_are_complete(prog)
     n = len(prog.nodes)
     first_def: dict[str, int] = {}
     last_use: dict[str, int] = {}

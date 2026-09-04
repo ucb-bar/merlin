@@ -13,9 +13,12 @@ a LEAN runtime needs that the bare dispatch program lacks:
   opcode set, and per-program capability flags — the hooks that let custom-ISA / SIMT / research
   HW plug in via an adapter without changing the program format.
 
-The program is pure data (``to_dict``/``to_json``): the Python reference runtime
-(:mod:`merlin.runtime.dispatch_runtime` / :mod:`merlin.runtime.simulator`) and the C replay engine
-(``merlin/runtime/c/merlin_program.c``) both consume it; a target adapter lowers it to its encoding.
+The program is pure data (``to_dict``/``to_json``). The Python reference runtime
+(:mod:`merlin.runtime.dispatch_runtime` / :mod:`merlin.runtime.simulator`) is the only thing that
+consumes anything like it today: the C replay engine this docstring used to name as a co-consumer,
+``merlin/runtime/c/merlin_program.c``, DOES NOT EXIST in the tree, and :func:`build_program` itself has
+no caller outside its tests. Saying otherwise is what makes an unwired planner look wired. See
+``docs/design/static_arena_wiring.md`` for what the K1 path would need before it could call this.
 Default-off and additive — the existing monolithic/outlined paths are untouched.
 """
 from __future__ import annotations
