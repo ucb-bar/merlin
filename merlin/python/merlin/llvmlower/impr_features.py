@@ -1647,6 +1647,23 @@ def unclaimed_op_classes(feature: str) -> list[str]:
 #: layout, im2col gather, pad) falls through convert-linalg-to-loops to SCALAR code on one core. It is
 #: 86-89% of the linalg ops of every workload measured, which is why whole-model MAC/cycle sits at a
 #: few percent of the datapath's peak while the matmul kernel itself looks fine.
+NAMED_INT8_CONTRACTION_NAME = "named_int8_contraction"
+
+register(ImprFeature(
+    name=NAMED_INT8_CONTRACTION_NAME,
+    action_class="PASS",
+    description="Emit the canonical 2-D i8xi8->i32 contraction as a MIXED-TYPE linalg.matmul instead "
+                "of a linalg.generic, so the named-op transform schedules can see it. The int8 quant "
+                "pass otherwise leaves ZERO linalg.matmul in the module (measured: 15 -> 0 on "
+                "small_llama_int8), and transform.structured.match on a name nothing carries returns "
+                "an empty handle -- which makes every one of the 39 linalg.matmul/batch_matmul "
+                "matchers in this file a vacuous no-op on int8 while still reporting as applied. An "
+                "87-fork beam over those levers emitted only 21 distinct binaries. Batched, conv and "
+                "non-canonical indexing keep the generic form: a named op ASSERTS an indexing "
+                "convention, so claiming one the op does not have would be a correctness bug rather "
+                "than a missed optimization. Default-off; baseline byte-identical.",
+))
+
 VEC_NONCONTRACTION_NAME = "vectorize_non_contraction_generics"
 #: Default lane count for the bare feature name. The lane width is a KNOB SPACE, not a
 #: constant: `ensure_vec_noncontraction(lanes)` registers a point per width so a search can

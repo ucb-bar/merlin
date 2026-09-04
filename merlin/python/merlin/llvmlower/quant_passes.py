@@ -48,9 +48,25 @@ def known() -> tuple[str, ...]:
     return _ORDER
 
 
-def apply_quant(module: Any, passes: "list[str] | None" = None) -> dict[str, int]:
+def apply_quant(module: Any, passes: "list[str] | None" = None, *,
+                named_contraction: bool = False) -> dict[str, int]:
     """Run the selected int8 quant passes IN CANONICAL ORDER (mutating ``module``). ``passes=None`` runs
-    all six = the historical sequence (byte-identical datapath). Returns per-pass lowered-op counts."""
+    all six = the historical sequence (byte-identical datapath). Returns per-pass lowered-op counts.
+
+    ``named_contraction`` asks the contraction pass to emit a mixed-type ``linalg.matmul`` for the
+    canonical 2-D case instead of a ``linalg.generic``. Default False keeps the datapath
+    byte-identical; True is what makes the 39 named-op transform-schedule levers reachable on int8
+    at all (they match on the op NAME, and this pass otherwise leaves zero of them in the module).
+    """
     reg = registry()
     want = set(_ORDER) if passes is None else set(passes)
-    return {n: reg[n].fn(module) for n in _ORDER if n in want}
+    out: dict[str, int] = {}
+    for n in _ORDER:
+        if n not in want:
+            continue
+        fn = reg[n].fn
+        # Only the contraction pass takes the flag; passing it to the others would couple every
+        # quant pass to a decision that is not theirs to make.
+        out[n] = (fn(module, named_contraction=True)
+                  if (named_contraction and n == "contraction_int8") else fn(module))
+    return out

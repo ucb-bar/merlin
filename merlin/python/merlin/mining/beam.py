@@ -642,8 +642,26 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
                        "width_was_binding": _by_reason.get("over_width", 0) > 0,
                        "note": ("proposals deferred over_width were never built; a non-zero count "
                                 "means the result is bounded by --width, not by the search space")}
+    # DID THE FORKS ACTUALLY DIFFER? A lever that emits byte-identical code did nothing, and the
+    # node already records `inert` and `emitted_digest` -- but only per node, so a search where most
+    # levers are no-ops looks exactly like one where they all worked and none helped. On the run this
+    # was added for, 88 forks produced 21 distinct binaries and 34 nodes were flagged inert: the
+    # int8 quant pass had rewritten every linalg.matmul into a linalg.generic, so all 39 named-op
+    # schedule levers matched an empty handle and silently did nothing while reporting as applied.
+    _digests = [n.get("emitted_digest") for n in nodes if n.get("emitted_digest")]
+    _distinct = len(set(_digests))
+    _inert = sum(1 for n in nodes if n.get("inert") is True)
+    effectiveness_census = {
+        "nodes": len(nodes), "with_emitted_digest": len(_digests),
+        "distinct_emitted": _distinct,
+        "duplicate_emission_rate": (round(1.0 - _distinct / len(_digests), 3) if _digests else None),
+        "inert_nodes": _inert,
+        "note": ("a high duplicate_emission_rate or inert_nodes count means the levers were not "
+                 "reaching the IR -- the search space is not the constraint, the lever set is"),
+    }
     tree = {"target": target, "seed": str(seed_pkg), "op_key": op_key,
             "deferral_census": deferral_census,
+            "effectiveness_census": effectiveness_census,
             "baseline_frozen": {"digest": seed_digest_pre, "verified_unchanged": True},
             "repair_mode": repair_mode,
             "seed_correctness_residual": seed_node.get("correctness_residual"),
@@ -659,6 +677,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     write_yaml(tree_path, tree, header="RVV beam-search tree (mining.beam.run_beam)")
     return {"best": best, "nodes": nodes, "deferred": deferred, "tree_path": str(tree_path),
             "deferral_census": deferral_census,
+            "effectiveness_census": effectiveness_census,
             # Surfaced, not just written to the tree: a caller that cannot tell a repair run from a
             # speed run would read "no speedup" as a failed search rather than as the one honest
             # answer available from an incorrect baseline.

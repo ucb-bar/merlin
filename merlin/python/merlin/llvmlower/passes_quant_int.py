@@ -50,7 +50,22 @@ def _is_dequant(op) -> bool:
             and name.data == "quant_ext.dequantize_per_channel")
 
 
-def lower_contraction_int8(module) -> int:
+def _is_canonical_matmul(ndim: int, in_maps, out_dims, red_flags) -> bool:
+    """Is this exactly ``C[m,n] += A[m,k] * B[k,n]`` -- the convention ``linalg.matmul`` asserts?
+
+    Checked STRUCTURALLY against the contraction view, never assumed from the op's origin. A named
+    op is a promise about indexing: emitting one for a contraction whose maps differ (a transposed
+    B, a batched or reduced-rank form) would silently change what the op means, which is a
+    correctness bug rather than a missed optimization. Everything that does not match keeps the
+    generic form and simply stays out of reach of the named-op schedules.
+    """
+    return (ndim == 3
+            and list(red_flags) == [False, False, True]
+            and [list(m) for m in in_maps] == [[0, 2], [2, 1]]
+            and list(out_dims) == [0, 1])
+
+
+def lower_contraction_int8(module, *, named_contraction: bool = False) -> int:
     """Rewrite f32 contractions into i8×i8→i32 + dynamic act-quant + requant. Returns count."""
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
@@ -202,8 +217,29 @@ def lower_contraction_int8(module) -> int:
         ea = arith.ExtSIOp(av, i32); eb = arith.ExtSIOp(bv, i32)
         pm = arith.MuliOp(ea.result, eb.result); pa = arith.AddiOp(pm.result, acc)
         mb.add_ops([ea, eb, pm, pa, L.YieldOp(pa.result)])
-        i8mm = L.GenericOp(inputs=tuple(i8_inputs), outputs=(acc_f.results[0],), body=Region(mb),
-                           indexing_maps=mm_maps, iterator_types=mm_iters, result_types=(acc_t,))
+        # NAMED OP vs GENERIC — this choice decides whether the schedule levers exist at all.
+        #
+        # Building the contraction as a `linalg.generic` erases the named form the whole transform
+        # layer keys on: `impr_features` matches `linalg.matmul` / `linalg.batch_matmul` in 39
+        # places, and `transform.structured.match` on a name nothing carries yields an EMPTY handle,
+        # which makes every op downstream of it a vacuous no-op. Measured on small_llama_int8:
+        # 15 linalg.matmul before this pass, 0 after -- so the entire register-blocking /
+        # accumulator-resident family silently did nothing on int8, while still reporting as
+        # "applied". An 87-fork beam search over those levers emitted only 21 distinct binaries and
+        # could not improve on the two generic-level levers.
+        #
+        # A mixed-type `linalg.matmul` (ins i8, i8 / outs i32) is legal and carries exactly these
+        # semantics -- its region is the extsi/muli/addi body built above -- so for the CANONICAL
+        # 2-D contraction we emit the named op and the levers become reachable. Anything else
+        # (batch, conv, transposed or otherwise non-canonical maps) keeps the generic: a named op
+        # asserts an indexing convention, and claiming one the op does not have would be a
+        # correctness bug, not a missed optimization.
+        if named_contraction and _is_canonical_matmul(ndim, in_maps, out_dims, red_flags):
+            i8mm = L.MatmulOp(inputs=tuple(i8_inputs), outputs=(acc_f.results[0],),
+                              res=(acc_t,))
+        else:
+            i8mm = L.GenericOp(inputs=tuple(i8_inputs), outputs=(acc_f.results[0],), body=Region(mb),
+                               indexing_maps=mm_maps, iterator_types=mm_iters, result_types=(acc_t,))
 
         # requant: out_f32 = sitofp(acc) * scale_lhs * scale_rhs
         sc_inputs, sc_maps = [], [amap(P, d_par)]

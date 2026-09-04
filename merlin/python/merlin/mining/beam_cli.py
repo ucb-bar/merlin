@@ -159,6 +159,8 @@ def run_instrumented_beam(
                           "best_attainment_vs_expert": (best or {}).get("attainment_vs_expert"),
                           # Whether the budget, rather than the search space, bounded this result.
                           "deferral_census": res.get("deferral_census"),
+                          # Did the levers reach the IR at all?
+                          "effectiveness_census": res.get("effectiveness_census"),
                           "best_lever": (best or {}).get("lever"),
                           "n_forks": len(res.get("nodes", [])) - 1,
                           "n_deferred": len(res.get("deferred", [])),
