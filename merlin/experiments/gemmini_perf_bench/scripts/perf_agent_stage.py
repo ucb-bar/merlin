@@ -2391,6 +2391,8 @@ class _Broker:
                            rendered: dict[str, str], raw_argv: list[str], call_index: int,
                            timeout_s: int, started: float) -> dict[str, Any]:
         feedback_document: dict[str, Any] | None = None
+        # set when the search reports it has converged; distinct from `refusal`, which is a NO-GO
+        self.stop_verdict = getattr(self, "stop_verdict", None)
         if action_name == ANALYSIS_ACTION:
             try:
                 evaluator = self.feedback_evaluator
@@ -2415,6 +2417,16 @@ class _Broker:
                     self.candidate, round_index=self.feedback_round, call_index=call_index,
                     timeout_s=timeout_s))
                 stdout = _canonical_json(feedback_document).decode("utf-8")
+                # THE SEARCH'S OWN VERDICT, kept so the round loop can end on evidence. It was
+                # computed and recorded and read by nothing, so a converged search looked exactly
+                # like one that had merely run out of rounds.
+                stopping = feedback_document.get("stopping")
+                if isinstance(stopping, Mapping) and stopping.get("status") == "stop":
+                    fired = [str(v.get("name")) for v in (stopping.get("verdicts") or [])
+                             if isinstance(v, Mapping) and v.get("fired")]
+                    self.stop_verdict = {"conditions": fired,
+                                         "share_of_attainable": stopping.get("share_of_attainable"),
+                                         "queries": stopping.get("queries")}
                 result = {"returncode": 0, "stdout": stdout, "stderr": "",
                           "elapsed_s": round(time.monotonic() - started, 3)}
             except Exception as exc:  # noqa: BLE001 - receipt the refusal; never expose raw evaluator data
@@ -4358,6 +4370,7 @@ def run_stage(
     probe_results: list[dict[str, Any]] | None = None
     last_outer: AgentSandboxPolicy | None = None
     refusal: str | None = None
+    stopped_by: dict[str, Any] | None = None
     total_calls = 0
     receipt_records: list[dict[str, Any]] = []
     last_actions: tuple[BrokerAction, ...] = ()
@@ -4472,6 +4485,14 @@ def run_stage(
         if not audit["clean"]:
             refusal = f"Codex round {round_index} failed the answer/tool-access audit"
             break
+        # STOPPING ON EVIDENCE IS A SUCCESS, NOT A REFUSAL. `refusal` is the NO-GO channel: anything
+        # placed in it makes the run unconsumable and returns 2. A converged search must therefore
+        # end through its own variable, and the consumability tests below have to admit a run that
+        # ended early because it was finished rather than because it broke.
+        if getattr(broker, "stop_verdict", None) is not None:
+            stopped_by = dict(broker.stop_verdict)
+            stopped_by["round"] = round_index
+            break
 
     if (not round_records or not transcript_paths or last_outer is None or last_inner is None
             or probe_results is None or not last_actions):
@@ -4524,7 +4545,11 @@ def run_stage(
         refusal = "combined Codex transcript contains zero command evidence"
     elif not combined_audit["clean"]:
         refusal = "combined Codex transcript failed the answer/tool-access audit"
-    receipts_clean = (len(receipt_records) == rounds and all(
+    # A converged run has FEWER round records than `rounds`, by design. Requiring exact equality
+    # would mark the search unconsumable for having finished early, which is the outcome the stop
+    # rule exists to produce.
+    expected_rounds = len(round_records) if stopped_by is not None else rounds
+    receipts_clean = (len(receipt_records) == expected_rounds and all(
         row.get("all_required_succeeded") is True and row.get("feedback_successes", 0) >= 1
         for row in receipt_records))
     if not receipts_clean:
@@ -4547,7 +4572,8 @@ def run_stage(
             + (f": {', '.join(kinds)}" if kinds else "") + ")")
     functional_guard_clean = functional_guard.get("status") == "clean"
     consumable = (refusal is None and audits_clean and exits_clean and receipts_clean
-                  and functional_guard_clean and len(round_records) == rounds)
+                  and functional_guard_clean and len(round_records) == expected_rounds
+                  and len(round_records) >= 1)
     receipt_manifest = stage_root / "control" / "receipt_manifest.json"
     _write_json(receipt_manifest, {"schema_version": 1, "rounds": receipt_records})
     receipt_manifest.chmod(0o444)
@@ -4720,6 +4746,9 @@ def run_stage(
         "admission": {
             "consumable": consumable,
             "refusal": refusal,
+            # Distinct from `refusal` on purpose: this names a run that ended because the search
+            # reported it was finished, which must not be readable as a failure.
+            "stopped_by": stopped_by,
             "development_feedback_performed_by_stage": True,
             "evaluation_performed_by_stage": False,
             "success_declared_by_stage": False,

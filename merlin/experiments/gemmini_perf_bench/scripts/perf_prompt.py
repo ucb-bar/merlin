@@ -66,9 +66,9 @@ class PerfCell:
         _simple_name(self.family, label="cell family")
         _simple_name(self.capsule, label="cell capsule")
         _simple_name(self.replicate, label="cell replicate")
-        if self.simulator not in ("spike", "verilator"):
+        if self.simulator not in ("spike", "gsim", "verilator"):
             raise PerfPromptContractError(
-                f"cell simulator must be spike or verilator, got {self.simulator!r}")
+                f"cell simulator must be spike, gsim, or verilator, got {self.simulator!r}")
 
     @property
     def label(self) -> str:
@@ -232,8 +232,13 @@ def validate_prompt_inputs(inputs: PerfPromptInputs) -> None:
     for cell in cells:
         key = (cell.family, cell.capsule, cell.replicate)
         by_replica.setdefault(key, set()).add(cell.simulator)
+    timing_simulators = {cell.simulator for cell in cells if cell.simulator != "spike"}
+    if len(timing_simulators) != 1:
+        raise PerfPromptContractError(
+            "the exact completion matrix must select one elaborated-RTL timing engine")
+    timing_simulator = next(iter(timing_simulators))
     incomplete = sorted(key for key, simulators in by_replica.items()
-                        if simulators != {"spike", "verilator"})
+                        if simulators != {"spike", timing_simulator})
     if incomplete:
         raise PerfPromptContractError(
             f"every replica requires both the L2 and L3 cells; incomplete: {incomplete}")
@@ -325,6 +330,7 @@ def render_initial_prompt(inputs: PerfPromptInputs) -> str:
     """Render deterministic TASK.md bytes after validating every launch prerequisite."""
     validate_prompt_inputs(inputs)
     cells = tuple(sorted(inputs.expected_cells))
+    timing_simulator = next(cell.simulator for cell in cells if cell.simulator != "spike")
     capsules = {(cell.family, cell.capsule) for cell in cells}
     replicas = {(cell.family, cell.capsule, cell.replicate) for cell in cells}
     required_tools = [tool.name for tool in inputs.tools if tool.required]
@@ -350,6 +356,105 @@ its byte-exact copy; do not replace the package, change its interface, or import
 another compiler. Any permitted optimization belongs only in the Arm4 submission, must remain a general
 compiler transformation, and must preserve the complete functional grade.
 
+## What you are being asked to do
+
+**Make the emitted program execute in fewer cycles on the citable timing oracle, for identical work,
+without changing a single output byte and without losing a single functional capsule.**
+
+That is the objective. The declared family contract further down decides whether a *claim* can be
+promoted from your result; it is not itself your objective. Optimise for cycles; the family decides
+whether the number is allowed to mean anything. A candidate that satisfies its family while running
+SLOWER than the frozen baseline has not succeeded at this task, however well the fit reads.
+
+Three outcomes are acceptable, and they are not equal:
+
+1. **A measured improvement.** A compiler change that reduces cycles, preserves bit-exactness, and
+   survives the functional regrade. This is the goal.
+2. **A measured refutation.** You tried a lever, showed it changed the emitted code, measured it, and
+   it did not help -- or made things worse. Report the delta. A negative result with evidence is a
+   real contribution and will be read as one. If your best variant is slower than the baseline at some
+   points, say so plainly and report the baseline as the better program at those points.
+3. **An honest null.** You could not find a lever that both changed the emitted code and moved cycles.
+   Acceptable **only if** `REPORT.md` names each lever you tried, its change scope, the emitted-code
+   delta you observed, and the measured reason it was inert.
+
+**A candidate byte-identical to the baseline, with a report that says the contract still validates, is
+not a successful run.** It is a null with no evidence, and it is the failure mode this task is most
+likely to produce. If you find yourself about to declare ready without having changed the emitted code
+even once, stop and spend the remaining budget measuring something.
+
+### How you will know it worked
+
+- **Cycles** come from the citable timing oracle only (see "Two tiers"). The correctness simulator's
+  instruction count is not a cycle count and will not be read as one.
+- **Bit-exactness is a gate, not a trade.** A faster program with a different output byte is a failed
+  candidate, not a trade-off to discuss.
+- **A lever that does not change the emitted code is inert by definition.** Diff the emitted artifact
+  before spending an oracle cell on it.
+- **Report cycles against the frozen baseline, per member,** including every regression. Selecting a
+  variant on any criterion other than measured cycles is a choice you must state and justify in
+  `iteration_notes.md`.
+
+### Utilization: the scale-free form of the objective, with a ceiling this machine derives
+
+Cycles alone do not say how much of the machine you used, and they are not comparable across members
+of different size. Each tuning verdict therefore also reports, per member:
+
+- `declared_macs` -- the multiply-accumulates the capsule's OWN declaration requires, from its declared
+  operand shapes. It is the work you owe, not the work your program happens to perform, so emitting
+  redundant arithmetic cannot inflate it.
+- `peak_macs_per_cycle` (in `summary`) -- this target's structural MAC ceiling, derived from its own
+  RTL facts: the discovered array's geometry times the multipliers per element its `mac_idiom` states.
+  It is a hardware fact, not a budget, and it is never a literal.
+- `ideal_cycles_at_peak` = `declared_macs` / `peak_macs_per_cycle` -- the cycle count a perfectly
+  utilised machine would need for this member.
+- `baseline_utilization` and `candidate_utilization` = `ideal_cycles_at_peak` / measured cycles, in
+  (0, 1]. A value above 1 is refused as a broken derivation rather than reported as a fast program.
+
+- `achievable_macs_per_cycle` (in `summary`) -- the best rate any MEASURED program on this machine
+  actually reached, harvested from the functional run's own cycle counts. On this target it is a
+  small fraction of the structural peak, and the difference is a fact about the machine, not about
+  your compiler: no program reaches the peak, so optimising toward it is chasing a number that does
+  not exist.
+- `baseline_share_of_achievable` and `candidate_share_of_achievable` -- the same ratio taken against
+  that reachable ceiling. **This is the number to close.** A member at a small share of achievable has
+  demonstrated headroom, because something on this machine ran that fast; a member near 1.0 has none
+  left to find without moving the ceiling itself.
+
+**Optimise toward the ACHIEVABLE ceiling, and report both.** Quote utilization against the structural
+peak for context only.
+
+**Drive candidate utilization UP, and never below the baseline's, on every member.** Utilization falling
+while a fit improves is the signature of a change that traded the machine away for a nicer curve; say
+so and go back. Where a value is null, the host could not derive it -- treat that as missing evidence
+and report it, never as permission to assume.
+
+The feedback document also carries a `stopping` block, and it is evidence about YOUR SEARCH rather
+than about the machine. Read it:
+
+- `stopping.status` is `stop` when the harness judges further search unlikely to pay, and `continue`
+  otherwise. `stopping.verdicts[]` gives each condition by `name`, whether it `fired`, and its
+  `reason`; `stopping.share_of_attainable` is how close the corpus total already sits to the
+  conservative attainable total, and `stopping.budget` is what your measurement budget has left.
+- When `status` is `stop`, finish: write your report on the evidence you already have, and do not
+  open a new lever. A verdict that fired is a measurement, not a suggestion.
+- When `status` is `continue`, a plateau verdict that has NOT fired is not permission to keep
+  paying for the same lever -- your own abandonment condition still governs.
+- A `stop` on the very first queries means the search never had room, not that you succeeded. Say
+  so plainly rather than reporting a win.
+
+Low utilization is information about WHERE the cycles went. If utilization climbs with problem size,
+a fixed per-invocation cost dominates the small members and the lever is that overhead, not the inner
+loop. If it is flat and low, the machine is starved and the lever is the feed. Say which of these your
+measurements support before choosing a lever.
+
+### Choose the cheapest change that can express the improvement
+
+`Flag -> Knob -> Heuristic -> Pass -> Codegen`, cheapest first. A flag enables behaviour that exists; a
+knob changes a numeric choice; a heuristic changes selection among legal choices; a pass adds a
+transformation; codegen changes emitted instructions. **State which rung each change sits on** in
+`iteration_notes.md`, and prefer the lowest rung that can express the lever.
+
 ## Exact generated workload and completion set
 
 - Frozen generated corpus: `{inputs.workload_root}`
@@ -373,11 +478,12 @@ No aggregate count can hide a missing, duplicate, failed, or unexpected identity
 
 - **L2 / Spike is a correctness screen only.** It must establish correctness for its exact cell. Spike
   cycles must be recorded as `null`/absent and are never citable as performance.
-- **L3 / Verilator is performance certification.** Its exact cell must be correct and produce a positive
-  integer cycle count. Only L3 Verilator timing may enter a performance result.
+- **L3 / {timing_simulator.upper()} is performance certification.** It executes the same ELF on an
+  elaborated-RTL, cycle-accurate engine. Its exact cell must be correct and produce a positive integer
+  cycle count. Only the predeclared L3 `{timing_simulator}` timing may enter this performance result.
 
 A matching L2 and L3 cell must exist for every family/capsule/replicate. Passing L2 never substitutes for
-L3, and a Verilator number from an incorrect result is not a measurement.
+L3, and an elaborated-RTL cycle number from an incorrect result is not a measurement.
 
 ## Host/RVV/accelerator boundary: use the granted lane
 
@@ -423,6 +529,22 @@ mask enforcement, or its receipt channel is absent, stop with **NO-GO**. The com
 
 {_bullet_paths(inputs.allowed_paths)}
 
+- HOW TO VERIFY THOSE PATHS, so the transcript audit can clear you. Name each path LITERALLY, and keep
+  a broker invocation alone in its own command. Concretely: check paths with a read-only verb applied
+  to literal names (`ls -ld <path> <path> ...`, `stat`, `sha256sum`, `sed -n`, `cat`, `test -e`), and
+  put each `python3 {inputs.execution_broker_path} <action> ...` on its own line with no other command beside it.
+  Do NOT put the broker path into a shell variable or loop over it (`for p in ... ; do ... $p ...`),
+  and do not mix a broker call with other work in one command. The audit cannot tell `ls -ld $p` from
+  `python3 $p ...` without executing it, so it refuses the whole command -- a batch of broker calls one
+  per line is fine, but `for p in <paths incl. the broker>` is not, and neither is
+  `python3 {inputs.execution_broker_path} <action> ... ; <anything else>`. This is a shape requirement on how you
+  write the commands, not a restriction on what you may inspect.
+- The broker's own directory holds HARNESS-INTERNAL state beside the two declared entries
+  (`{inputs.execution_broker_path}` and `{inputs.broker_receipt_path}`). Nothing else in it is declared
+  to you, including dotfiles, and at least one of those files carries the broker's credential. Verify
+  the two declared entries by name; do NOT list, glob, `cat` or otherwise read the rest of that
+  directory. Reading it is a credential access even when it was accidental, and you would be right to
+  stop -- so do not go there and the question will not arise.
 - Do not access credentials, hidden/withheld capsules or goldens, prior run outputs, other submissions,
   undeclared files, `/proc` escape surfaces, or host state outside the mounts. Network availability does
   not relax the answer/oracle mask, declared-tool boundary, or evidence requirements.
@@ -450,16 +572,34 @@ machine.
 1. Read this file, the frozen performance manifest, the Arm4 submission manifest/report, the host-lane
    manifest, and all granted tool documentation. First write `submission/performance/PLAN.md`, covering
    the whole corpus, derived performance levers, invariants, negative controls, and cheapest-to-L3
-   validation order. Append each change, observed redacted verdict, and next hypothesis to
+   validation order. For each lever, PLAN.md must state: the change scope, the mechanism you expect
+   to exploit, the emitted-code delta that would show it reached codegen, the measurement that would
+   confirm or refute it, and **the observation that would make you abandon it.** A lever with no
+   stated abandonment condition is a lever you will keep paying for.
+   Append each change, observed redacted verdict, and next hypothesis to
    `submission/performance/iteration_notes.md`; fresh rounds must read both files before editing.
 2. Establish the exact functional fork and input digests before changing or measuring anything. If any
    digest, mount, tool, host lane, family declaration, expected identity, or sandbox guarantee is absent
    or mismatched, stop and report **NO-GO**. Do not improvise around a failed prerequisite.
-3. Use required tools through their declared commands. Iterate on the smallest affected generated member;
-   preserve generality and re-run the relevant correctness screen after every compiler change.
+3. Use required tools through their declared commands. For each lever in your PLAN, name its change
+   scope (Flag/Knob/Heuristic/Pass/Codegen), make the change, and **measure the emitted-code delta on
+   the smallest affected member before spending an oracle cell on it.** A lever you cannot show
+   changed the emitted code is INERT -- record it as such, with the diff you looked at, and move on.
+   Iterate on the smallest affected generated member; preserve generality and re-run the relevant
+   correctness screen after every compiler change. Keep the best measured candidate: if a later
+   variant is slower, say so and go back to the faster one.
 4. Before declaring ready, re-check the full functional contract, frozen-input digests, required tool
    receipts, and exact expected identity set. Summarize scope and honest limitations in
    `submission/performance/REPORT.md`. The harness then owns L2/L3 execution and final evidence.
+5. **CLOSING PROTOCOL — the last thing you do must be a tuning feedback call.** The harness requires
+   the mandatory tuning GSIM feedback to have evaluated the EXACT bytes you seal, and it verifies this
+   by digesting the whole submission tree. So finish all edits FIRST -- compiler sources, emitted
+   artifacts, `PLAN.md`, `iteration_notes.md`, and `REPORT.md` -- and only then invoke
+   `tuning-gsim-feedback` one final time. Anything you write afterwards, including a one-word fix to a
+   Markdown file or another `candidate-emit-command-buffer`, changes the candidate digest and
+   invalidates that measurement; the candidate is then refused with "mandatory tuning GSIM feedback
+   did not evaluate the final round candidate bytes" and the entire round is discarded. If you do edit
+   something after the final feedback, you MUST invoke `tuning-gsim-feedback` again as your last act.
 
 ## Completion and claims
 
