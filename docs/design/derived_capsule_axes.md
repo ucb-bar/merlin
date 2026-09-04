@@ -257,3 +257,171 @@ capacity it never measured.
 
 The remedy is always the same and it is never "add the number": make the derivation able to ask the
 question, and make the absence of an answer look different from the answer.
+
+## Reproducing all of it
+
+Everything below runs from the repo root with the project venv. Set the package path first — the
+shared venv resolves `merlin` from another checkout, so without this you will be testing a different
+tree than the one you are editing:
+
+```bash
+export PYTHONPATH=$PWD/merlin/python
+```
+
+### The derivation loop, end to end
+
+The corpus is derived in four stages and each is separately runnable. The order matters: the
+requirement is the input to the synthesizer, the profile is the input to the generator.
+
+```bash
+# 1. derive the requirement from the target's own facts + the captured models
+.venv/bin/python build_tools/scripts/check_conformance_coverage.py \
+    --target atlas --write merlin/contract/capsules/conformance/atlas.yaml
+
+# 2. turn the requirement into profile ENTRIES (pure; no torch, no oracle)
+.venv/bin/python build_tools/scripts/synth_capsule_corpus.py --target atlas --write
+
+# 3. build the capsules + goldens
+.venv/bin/python merlin/contract/capsules/generate_corpus.py --target atlas
+
+# 4. measure the corpus against the requirement
+.venv/bin/python build_tools/scripts/check_conformance_coverage.py --target atlas
+```
+
+Stage 1 takes ~15 minutes per target (it parses every capture); stage 3 ~25 minutes for a large
+target. Running all six targets in parallel is the normal thing to do. `--check` on stage 2 re-derives
+and diffs against the tracked profile without needing torch or an oracle, which is the cheap gate.
+
+### Looking at one axis on its own
+
+```bash
+# the geometry the captures actually present, with the scaling decision and its basis
+.venv/bin/python -c "
+import yaml; d = yaml.safe_load(open('merlin/contract/capsules/conformance/atlas.yaml'))
+g = d['shape_geometry']
+print('ceiling', g['materialization_ceiling_elements'])
+for r in g['required']:
+    print(r['class'], r['M'], r['K'], r['N'], 'scaled_from', r.get('scaled_from'), r.get('unreachable',''))"
+
+# what each dtype's datapath allows, and which alignment classes it can spell
+.venv/bin/python -c "
+from merlin.targetgen import corpus_spec as CS
+for t in ('mxfp4','mxfp8','i8','fp8_e4m3'):
+    print(t, CS.shape_quantum(t, tile_dim=16, scale_block=32))"
+
+# the operand store, per element type (capacity moves with the dtype on a lane-granular store)
+.venv/bin/python -c "
+from merlin.targetgen import memory_regime as MR
+for t in ('gemmini','radiance','atlas'):
+    st, cap = MR.operand_store(t, dtype='i8')
+    print(t, getattr(st,'name',None), 'lane_granular', getattr(st,'lane_granular',None), 'cap', cap)"
+```
+
+### The contraction census — where the geometry numbers come from
+
+This is the measurement behind the aspect-ratio axis, and it is worth running against any new model:
+
+```bash
+.venv/bin/python -c "
+from merlin.kernels import shapes as KS
+from merlin.dse_guidance import shape_taxonomy as ST
+import collections, dataclasses, math
+pairs = KS.observe_contractions('out/artifacts/recaptures/spectformer_int8_full/model.mlir')
+cnt = collections.Counter()
+for _op, sh in pairs:
+    d = dataclasses.asdict(sh); cnt[(d['op'], tuple(d['parallel']), tuple(d['reduction']))] += 1
+for key, c in sorted(cnt.items(), key=lambda x: -math.prod(x[0][1]) * math.prod(x[0][2]) * x[1]):
+    par, red = key[1], key[2]
+    m = math.prod(par[:-1]); n = par[-1]; k = math.prod(red)
+    print(f'{key[0]:20s} M={m:6d} K={k:6d} N={n:7d} x{c:3d}  {ST.classify_geometry(M=m,N=n,K=k)}')"
+```
+
+### The rank axis and its evidence rung
+
+```bash
+# does the target admit a batched (rank-3) contraction, and what does the evidence say?
+.venv/bin/python -c "
+from merlin.targetgen import capability_derive as CD, eligibility as EL
+from merlin.targetgen.target_registry import load_contract
+from merlin.targetgen.rtl.facts import load_facts
+import dataclasses
+R = [v for k,v in vars(EL).items() if dataclasses.is_dataclass(v)
+     and 'rank' in {f.name for f in dataclasses.fields(v)}][0]
+for t, dt in (('gemmini','int8'), ('atlas','fp8_e4m3')):
+    c = load_contract(t)
+    d = CD.derive(t, c, load_facts(t))
+    print(t, 'evidenced ranks', d.supported['contraction'].ranks, '|', d.supported['contraction'].source)
+    print('   eligible rank-3:', EL.is_eligible(R(family='contraction', in_dtype=dt, rank=3, batch=2),
+                                                EL.capability_map_for_target(t)).eligible)
+    for f in CD.reconcile(EL.capability_map_for_target(t), d):
+        if f.get('axis') == 'ranks': print('   ', f['kind'], ':', f['detail'][:110])"
+```
+
+### The operand-store decline probe
+
+This one RUNS the backend, so it costs real time (~35 minutes for five ladder points on the target it
+was written for) and needs the target's program oracle available:
+
+```bash
+.venv/bin/python -c "
+from merlin.targetgen import store_probe as SPB
+b = SPB.probe('atlas', dtype='fp8_e4m3', edge=32,
+              package_dir='out/artifacts/targets/atlas/agent_spec_v1_mlir_oot',
+              floor_elements=4096, ceiling_elements=6_000_000, timeout=2400)
+print(SPB.summarize(b, {'mrf_64KiB':  SPB.elements_for_bytes(1<<16, 'fp8_e4m3'),
+                        'vmem_1MiB':  SPB.elements_for_bytes(1<<20, 'fp8_e4m3'),
+                        'vmem_1.5MiB': SPB.elements_for_bytes(0x180000, 'fp8_e4m3')}))"
+```
+
+Read the verdict carefully: a `WRONG` point means the device ran the layer and miscomputed it, which
+brackets nothing about capacity. Only `DECL` is capacity evidence.
+
+### The gates, in the order they must pass
+
+```bash
+# 1. the tooling gate. NOTE: it is parameterized by MERLIN_TARGET_EXPERIMENT, NOT by --target;
+#    passing --target silently grades the default target instead.
+MERLIN_TARGET_EXPERIMENT=$PWD/merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml \
+  .venv/bin/python merlin/experiments/capsule_bench/harness/readiness_check.py
+
+# 2. the anti-cheat / moat gate
+MERLIN_TARGET_EXPERIMENT=$PWD/merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml \
+  .venv/bin/python merlin/experiments/capsule_bench/harness/verify_no_cheat.py
+
+# 3. the end-to-end oracle preflight (assembles a known-good program, runs it on the cosim,
+#    asserts BIT-EXACT against its shipped golden) -- required before any paid run
+MERLIN_TARGET_EXPERIMENT=$PWD/merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml \
+  .venv/bin/python merlin/experiments/capsule_bench/harness/preflight.py
+```
+
+A retired submission is excluded from gate 2 by a `SUPERSEDED.txt` beside it that STATES WHY — the
+finding stays on disk and in the report. Deleting the evidence or bypassing the gate are both worse.
+
+### The tests
+
+```bash
+.venv/bin/python -m pytest merlin/tests/targetgen merlin/tests/infra -q -n 16 --dist loadfile
+```
+
+~33 minutes. Two traps that cost real time here:
+
+* **`-x` with xdist stops workers early**, so a run with it is not a baseline — one such run reported
+  1,367 tests where the full suite collects 4,413, and the "4 pre-existing failures" read off it was
+  wrong.
+* **A git worktree has no goldens**, so checking out an older commit into one and running the suite
+  there does not give a baseline either: it reported 211 failures and 180 errors purely from the
+  missing answer keys. Attribute a failure by asking which commit last touched the module under test.
+
+### Costing a capsule before you run it
+
+```bash
+.venv/bin/python -c "
+a, b = 0.20509, 1.0782            # the measured ladder; a target with its own history overrides it
+for label, m, n in [('one tile', 16, 16), ('geometry tall_skinny', 1024, 128),
+                    ('ViT patch embed', 196, 768)]:
+    print(f'{label:22s} out={m*n:8d}  L3 ~ {a*(m*n)**b/3600:7.2f} h')"
+```
+
+Cost tracks **written output**, so reduction depth is nearly free to certify and a deep accumulation
+belongs at one output tile. It does not track operand size, which is why the materialization ceiling
+bounds the largest TENSOR instead.
