@@ -49,18 +49,40 @@ _EXPERT_OBJDUMP = {
     "int8": "merlin/tests/data/cca_asm/xnnpack_qd8_gemm_rvv.objdump",
     "fp16": "merlin/tests/data/cca_asm/xnnpack_f16_gemm_rvv.objdump",
 }
-_BUNDLE = {  # (dtype, model) -> recapture bundle
-    ("fp32", "bitvla"): "out/artifacts/recaptures/bitvla_fp32_consistent",
-    ("fp32", "openvla"): "out/artifacts/recaptures/openvla_fp32_consistent",
-    ("fp32", "rdt2"): "out/artifacts/recaptures/rdt2_fp32_consistent",
-    ("int8", "bitvla"): "out/artifacts/recaptures/bitvla_int8_consistent",
-    ("int8", "openvla"): "out/artifacts/recaptures/openvla_int8_consistent",
-    ("int8", "rdt2"): "out/artifacts/recaptures/rdt2_int8_consistent",
-    # fp16 consistent bundles (recaptured via capture_consistent, matching the fp32 layer depth).
-    # openvla fp16 is omitted: openvla is K1 RAM-infeasible whole-model (7B-class vs 3.8GB board).
-    ("fp16", "bitvla"): "out/artifacts/recaptures/bitvla_fp16_consistent",
-    ("fp16", "rdt2"): "out/artifacts/recaptures/rdt2_fp16_consistent",
-}
+#: Capture bundles are RESOLVED FROM DISK, never listed here.
+#:
+#: This was a hardcoded ``(dtype, model) -> path`` table, and every one of its eight entries pointed
+#: at a directory that does not exist. A stale entry does not fail: ``run_cell`` reads it, finds no
+#: bundle, and returns ``not_run`` with a blocker -- so the driver reported "no bundle" for every
+#: cell it was configured with, which reads as "these models are not captured yet" rather than as a
+#: broken map. Deriving from ``baselines.bundle.resolve`` also means one resolver decides which
+#: bundle a (model, variant) means, instead of this table and that resolver disagreeing silently --
+#: which matters because ``resolve`` deliberately prefers the full-fidelity ``_full`` capture over
+#: the truncated ``_consistent`` one, and a beam wall taken on the wrong one is not comparable to an
+#: ExecuTorch reference exported from the other.
+def _bundle_for(dtype: str, model: str) -> str | None:
+    """The capture bundle for this cell, or None when it is genuinely not on disk."""
+    from merlin.baselines import bundle as _bundle_mod
+    try:
+        b = _bundle_mod.resolve(model, dtype)
+    except ValueError:
+        return None            # unknown variant for this model
+    return str(b.root) if b.root.is_dir() else None
+
+
+def _bundle_audit(cells: "list[str]") -> dict:
+    """What each requested cell resolves to, checked BEFORE any board time is spent.
+
+    A missing bundle is reported up front, by name, with what was looked for -- so a typo or a
+    renamed capture is visible immediately instead of after a run that quietly did nothing.
+    """
+    audit = {}
+    for c in cells:
+        dtype, _, model = c.partition(":")
+        got = _bundle_for(dtype, model)
+        audit[c] = {"bundle": got, "present": bool(got),
+                    "looked_for": f"{model}_{dtype}_full or {model}_{dtype}_consistent"}
+    return audit
 
 
 def _xnnpack_kernels_wall_ns(model: str) -> float | None:
@@ -117,7 +139,7 @@ def run_cell(dtype: str, model: str, *, width: int, depth: int, top_k: int) -> d
     from merlin.mining.baseline import ExpertBaseline
     from merlin.mining.beam_cli import run_instrumented_beam
     from merlin.mining.wholemodel_proposer import propose_wholemodel_levers
-    bundle = _BUNDLE.get((dtype, model))
+    bundle = _bundle_for(dtype, model)
     obj = _EXPERT_OBJDUMP.get(dtype)
     root = repo_root()
     # The TRUE external ExecuTorch(+XNNPACK) whole-model column (board-free ingest; never re-run ET).
@@ -197,6 +219,15 @@ def main() -> int:
     cells = [c.strip() for c in a.cells.split(",") if c.strip()]
     out_path = Path(a.out) if a.out else (artifacts_dir() / "kernel-mining" / "rvv" / "bench"
                                           / "autonomous_beam_experiment.json")
+    # Fail LOUDLY on a bundle that is not there, before spending board time on cells that cannot run.
+    audit = _bundle_audit(cells)
+    for c, info in audit.items():
+        print(f"[bundle] {'OK  ' if info['present'] else 'MISS'} {c} -> "
+              f"{info['bundle'] or info['looked_for']}", flush=True)
+    if not any(i["present"] for i in audit.values()):
+        print("[bundle] no requested cell has a capture bundle on disk — refusing to run a search "
+              "that can only report not_run for every cell", flush=True)
+        return 2
     results = []
     for c in cells:
         dtype, model = c.split(":")

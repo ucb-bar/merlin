@@ -232,3 +232,44 @@ def test_the_census_counts_reasons_and_names_the_starved_families():
     assert by_reason["not_forkable"] == 1
     # families are DEDUPLICATED -- three deferrals, two distinct starved families
     assert starved == ["wholemodel:fuse_transpose_b", "wholemodel:promote_buffers_to_stack:cap"]
+
+
+def _beam_driver():
+    import importlib.util
+    from merlin.common.paths import repo_root
+    path = repo_root() / "build_tools" / "scripts" / "run_autonomous_beam_experiment.py"
+    spec = importlib.util.spec_from_file_location("_beam_driver", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_bundles_are_resolved_from_disk_not_listed_in_the_driver():
+    """The hardcoded (dtype, model) -> path table had all EIGHT entries pointing at directories
+    that do not exist, and a stale entry does not fail: run_cell reads it, finds nothing, and
+    returns not_run. The driver reported "no bundle" for every cell it shipped configured with,
+    which reads as "not captured yet" rather than as a broken map."""
+    mod = _beam_driver()
+    assert not hasattr(mod, "_BUNDLE"), "the hardcoded bundle table is back"
+    src = open(mod.__file__).read()
+    assert "_bundle_for(dtype, model)" in src
+    # one resolver decides what a (model, variant) means -- this driver must not be a second one
+    assert "from merlin.baselines import bundle as _bundle_mod" in src
+
+
+def test_a_missing_bundle_is_reported_by_name_with_what_was_looked_for():
+    mod = _beam_driver()
+    audit = mod._bundle_audit(["int8:small_llama", "int8:definitely_not_a_model"])
+    assert audit["int8:small_llama"]["present"] is True
+    assert audit["int8:small_llama"]["bundle"].endswith("small_llama_int8_consistent")
+    miss = audit["int8:definitely_not_a_model"]
+    assert miss["present"] is False and miss["bundle"] is None
+    # the miss says what it looked for, so a rename or typo is visible without reading the source
+    assert "definitely_not_a_model_int8_full" in miss["looked_for"]
+
+
+def test_the_driver_refuses_a_run_where_no_cell_has_a_bundle():
+    """Spending board time on a configuration that can only produce not_run is not a search."""
+    src = open(_beam_driver().__file__).read()
+    assert 'if not any(i["present"] for i in audit.values()):' in src
+    assert "refusing to run a search" in src
