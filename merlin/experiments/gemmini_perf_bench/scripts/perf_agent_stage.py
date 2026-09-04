@@ -321,6 +321,10 @@ class DevelopmentGsimFeedback:
     peak_basis: str = ""
     achievable_macs_per_cycle: float | None = None
     achievable_basis: str = ""
+    # Spread of the achievable rate across the points that established it. It is what "already at
+    # the ceiling" tolerates, and it is MEASURED so that judgement is not a constant anyone can
+    # turn until the answer changes. None when fewer than two points price, which refuses.
+    achievable_dispersion: float | None = None
     tuning_call_budget: int | None = None
     #: Total candidate cycles over the comparable members, one entry per feedback invocation. The
     #: stop conditions read the SHAPE of this history, not any single measurement.
@@ -571,6 +575,11 @@ class DevelopmentGsimFeedback:
                 "candidate_utilization": _utilization(ccycles),
                 "baseline_share_of_achievable": _share(bcycles),
                 "candidate_share_of_achievable": _share(ccycles),
+                **_capsule_verdict_fields(
+                    capsule=member.capsule, declared_macs=spec_macs,
+                    achievable_rate=self.achievable_macs_per_cycle,
+                    baseline_cycles=bcycles, candidate_cycles=ccycles if comparable else None,
+                    dispersion=self.achievable_dispersion),
             })
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
@@ -1541,6 +1550,17 @@ def build_action_registry(candidate: Path,
     return tuple(actions)
 
 
+def _capsule_verdict_fields(**kwargs: Any) -> dict[str, Any]:
+    """Decide one member, and never let a failure to decide read as a decision."""
+    try:
+        import perf_capsule_verdict as CV                                   # noqa: PLC0415
+        row = CV.capsule_verdict(**kwargs)
+        return {"verdict": row.get("verdict"), "verdict_reason": row.get("reason")}
+    except Exception as exc:  # noqa: BLE001 - an undecidable member is refused, never assumed
+        return {"verdict": "refused",
+                "verdict_reason": f"the verdict could not be computed: {type(exc).__name__}"}
+
+
 def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
     """Exact non-answer schema returned to the authoring agent."""
     required = {"schema_version", "kind", "round", "invocation", "tuning_corpus_sha256",
@@ -1566,7 +1586,12 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
                    "candidate_minus_baseline_cycles", "baseline_over_candidate", "comparable",
                    "declared_macs", "declared_work_basis", "ideal_cycles_at_peak",
                    "baseline_utilization", "candidate_utilization",
-                   "baseline_share_of_achievable", "candidate_share_of_achievable"}
+                   "baseline_share_of_achievable", "candidate_share_of_achievable",
+                   # Whether this member is FINISHED, better, or still owes cycles. Everything
+                   # above is a number the reader has to interpret; without this the cell records
+                   # a measurement and states no position on it, which is how a member at 3% of
+                   # the achievable rate and one at 100% came to read identically.
+                   "verdict", "verdict_reason"}
     identities: set[tuple[str, str]] = set()
     for index, row in enumerate(cells):
         if not isinstance(row, Mapping) or set(row) != cell_fields:
@@ -1835,12 +1860,19 @@ def prepare_development_feedback(
         # ceiling is the best rate anything on this machine actually reached, and it is what the
         # agent is asked to close on. Underivable -> None with a reason, never a substituted number.
         achievable_macs, achievable_basis = None, "no functional run was supplied to harvest"
+        achievable_dispersion: float | None = None
         if functional_run_dir is not None:
             try:
                 import perf_model as PMODEL  # noqa: PLC0415
                 points, _skipped = PMODEL.harvest_measured_points(Path(functional_run_dir))
                 ceiling = PMODEL.achievable_ceiling(
                     points, provenance=f"measured cycles harvested from {Path(functional_run_dir).name}")
+                try:
+                    import perf_capsule_verdict as CV                        # noqa: PLC0415
+                    achievable_dispersion = CV.ceiling_dispersion(
+                        [{"macs": p.macs, "cycles": p.cycles} for p in points])
+                except Exception:  # noqa: BLE001 - an underivable spread refuses, never defaults
+                    achievable_dispersion = None
                 if ceiling.known:
                     achievable_macs = float(ceiling.value)
                     achievable_basis = (f"best rate over {ceiling.n_samples} measured points in "
@@ -1872,6 +1904,7 @@ def prepare_development_feedback(
         rtl_identity, Path(work_root), decisions,
         peak_macs_per_cycle=peak_macs, peak_basis=peak_basis,
         achievable_macs_per_cycle=achievable_macs, achievable_basis=achievable_basis,
+        achievable_dispersion=achievable_dispersion,
         tuning_call_budget=tuning_call_budget)
 
 

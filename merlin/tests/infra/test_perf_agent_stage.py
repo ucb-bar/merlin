@@ -66,6 +66,9 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
             "candidate_utilization": 16.0 / 100,
             "baseline_share_of_achievable": 51.2 / 120,
             "candidate_share_of_achievable": 51.2 / 100,
+            # A cell states a position on its own measurement, not just the numbers behind it.
+            "verdict": "improved",
+            "verdict_reason": "20 cycles saved, closing 29.1% of the gap to the achievable rate",
         }],
         "stopping": {"status": "continue", "queries": 1, "baseline_total_cycles": 120.0,
                      "best_total_cycles": 100.0, "previous_best_total_cycles": None,
