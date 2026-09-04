@@ -125,12 +125,20 @@ the agent only as a field the host had already written.
 That made the measurement the sole judge, so a losing candidate cost exactly as much as a winning
 one. Measured: excursions of **+5.9%** and **+11.1%** burned ~220 s of oracle time.
 
-`analyze-command-buffers` prices the candidate's **own** emitted artifacts — work volume, both
-ceilings, and a differential verdict. It reads no oracle, no golden and no holdout, so it costs
-nothing and can leak nothing. In exchange it is ordering-only: it reports the differential basis
-(`EXACT`, `ORDERING_ONLY`, `REFUSED`) and never an absolute cycle count, which is the licence a
-corpus-calibrated model actually has. A candidate whose *work volume* differs is called out
-separately, because a cycle delta there is not a schedule comparison.
+`analyze-command-buffers` prices the candidate's **own** emitted artifacts — how much arithmetic
+each arm asks for, and what that costs at each derived ceiling. It reads no oracle, no golden and no
+holdout, so it costs nothing and can leak nothing. It never reports an absolute cycle count, which is
+the licence a corpus-calibrated model actually has, and a candidate whose *work volume* differs is
+called out separately, because a cycle delta there is not a schedule comparison.
+
+It compares **demand, not schedule**, and says so. An earlier version of it called
+`differential.compare` on the two summary dicts and reported the `basis`; that was dead code, since
+`compare` takes `envelope.Composed` and raised `AttributeError` on every call into a bare `except`
+that emitted a hardcoded `REFUSED` looking exactly like an analyzer verdict. The covering test
+asserted the basis against uppercase literals while the module's constants are lowercase, so it
+passed *only* because of the exception. A cycle-level differential needs a composed envelope and
+per-resource demands per arm; that belongs to the measurement path, which has the dependence graph
+this action does not.
 
 ## Two ceilings, and why the achievable one is the target
 

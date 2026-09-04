@@ -1467,14 +1467,30 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
         out["work_delta"] = {"candidate_over_baseline": c / b,
                              "note": ("the candidate does a DIFFERENT amount of arithmetic; a cycle "
                                       "comparison between these two is not a schedule comparison")}
-    try:
-        from merlin.perf import differential as DIFF                       # noqa: PLC0415
-        verdict = DIFF.compare(arms["baseline"], arms["candidate"])
-        out["differential"] = {"basis": str(getattr(verdict, "basis", "")),
-                               "reason": str(getattr(verdict, "reason", "") or "")}
-    except Exception as exc:  # noqa: BLE001 - the analyzer's own refusal is the answer here
-        out["differential"] = {"basis": "REFUSED",
-                               "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    # NO CYCLE-LEVEL DIFFERENTIAL HERE, DELIBERATELY.
+    #
+    # An earlier version of this function called `merlin.perf.differential.compare` on the two dicts
+    # above and reported its `basis`. That was dead code: `compare` takes `envelope.Composed`
+    # objects, so passing dicts raised `AttributeError: 'dict' object has no attribute 'operator'`
+    # on EVERY call, was swallowed by a bare `except`, and emitted a hardcoded "REFUSED" that read
+    # like an analyzer verdict. The covering test asserted the basis against uppercase literals while
+    # the module's constants are lowercase (`differential.EXACT == "exact"`), so it passed only
+    # because the exception branch produced the uppercase string -- had `compare` ever succeeded, the
+    # test would have failed. A refusal nobody can distinguish from a computation is the exact defect
+    # this harness exists to catch, so it is removed rather than repaired in place.
+    #
+    # Repairing it here would also not help on every target: a differential needs a composed envelope
+    # per arm, and where the engines overlap only partially the composition is PARTIAL, which
+    # `differential.comparable` refuses by construction. That refusal is correct and belongs to the
+    # measurement path, which HAS the dependence graph and the per-resource demands this action does
+    # not. What this action can honestly say is what it computes from the emitted bytes: how much
+    # arithmetic each arm asks for, and what that arithmetic costs at each derived ceiling.
+    out["differential"] = {
+        "basis": "not_attempted",
+        "reason": ("a cycle-level differential needs a composed envelope and per-resource demands "
+                   "per arm, which this action does not build; it compares DEMAND, not schedule. "
+                   "The measurement path is what carries a differential verdict."),
+    }
     return out
 
 
@@ -1520,9 +1536,9 @@ def build_action_registry(candidate: Path,
     actions.append(BrokerAction(
         ANALYSIS_ACTION, (_HOST_ANALYSIS_SENTINEL, "{baseline_json}", "{candidate_json}"),
         ("baseline_json", "candidate_json"),
-        "host-owned ORDERING-ONLY comparison of two emitted command buffers: work volume, the "
-        "derived ceilings, and a differential verdict. Costs no oracle time -- use it to screen a "
-        "candidate BEFORE spending a measurement on it",
+        "host-owned ORDERING-ONLY comparison of two emitted command buffers: how much arithmetic "
+        "each asks for, and what that costs at the derived structural and achievable ceilings. "
+        "Costs no oracle time -- use it to screen a candidate BEFORE spending a measurement on it",
         False))
     names = [action.name for action in actions]
     if len(names) != len(set(names)):
@@ -4320,10 +4336,15 @@ def run_stage(
         rtl_facts_path=rtl_facts, corpus=frozen_corpus, baseline=base,
         baseline_sha256=functional.digest, target_experiment=target_experiment,
         work_root=stage_root / "_development_feedback",
-        # Every tuning measurement spends one inner tool call, so the run's own call budget is the
-        # real bound on how many the search can take. Declaring it makes ``budget_exhausted`` report
-        # true remaining spend instead of "unbounded".
-        tuning_call_budget=max_tool_calls,
+        # UNITS MUST MATCH THE LEDGER. This budget is charged one item per TUNING MEASUREMENT
+        # (see ``_stopping``), so a cap denominated in TOTAL tool calls -- which also counts every
+        # compile and probe -- can never bind first, and ``budget_exhausted`` would sit at "0 of 400
+        # spent" while the real broker budget ran out underneath it. That is the same inert-lever
+        # shape as an untouched ledger, one level up. The bound is derived instead from what a
+        # measurement actually consumes: every tuning call spends one tool call AND the required
+        # per-round actions must still fit, so the measurements affordable in this run is the call
+        # budget less what the required actions reserve.
+        tuning_call_budget=max(1, max_tool_calls - minimum_calls),
         functional_run_dir=functional.run_dir)
     prompt_inputs = prepare_prompt_inputs(
         functional, frozen_functional, frozen_corpus, agent_inputs, target_experiment,

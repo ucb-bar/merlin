@@ -111,7 +111,32 @@ def test_it_never_claims_an_absolute_cycle_count(tmp_path):
                                         achievable_macs_per_cycle=80.0)
     flat = json.dumps(out)
     assert "predicted_cycles" not in flat and "cycles_estimate" not in flat
-    assert out["differential"]["basis"] in ("EXACT", "ORDERING_ONLY", "REFUSED")
+
+
+def test_it_does_not_pass_off_a_type_error_as_an_analyzer_verdict(tmp_path):
+    """The basis must be a value the differential module defines, or an explicit non-attempt.
+
+    The first version of this action called `differential.compare` on plain dicts. `compare` takes
+    `envelope.Composed`, so it raised `AttributeError: 'dict' object has no attribute 'operator'`
+    on every call; a bare `except` turned that into a hardcoded "REFUSED" that read like a verdict.
+    This test's ancestor asserted the basis against UPPERCASE literals while the module's constants
+    are lowercase -- so it passed only because the exception branch produced the uppercase string,
+    and would have failed the moment `compare` actually worked.
+
+    Asserting against the module's own constants is what makes that undetectable-by-construction
+    failure detectable: a literal cannot drift from a constant it never references.
+    """
+    from merlin.perf import differential as DIFF
+
+    stage = _stage()
+    a = _buffer(tmp_path, "a.json", (16, 16, 16))
+    out = stage.analyze_command_buffers(a, a, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0)
+    basis = out["differential"]["basis"]
+    assert basis in (DIFF.EXACT, DIFF.ORDERING_ONLY, DIFF.REFUSED, "not_attempted"), basis
+    # And whatever it says, it must not be an exception type leaking out as a reason.
+    assert "Error" not in out["differential"]["reason"], out["differential"]
+    assert out["differential"]["reason"], "a basis with no reason is indistinguishable from silence"
 
 
 def test_an_unreadable_buffer_refuses_rather_than_crashing(tmp_path):
