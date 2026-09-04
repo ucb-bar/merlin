@@ -553,3 +553,39 @@ def test_a_refinement_replaces_the_magnitude_it_retunes_rather_than_stacking_it(
     for fp in refinement_forks(["promote_buffers_to_stack"]):
         feats = fp.overrides["compiler_features"]
         assert sum(f.startswith(I.PROMOTE_STACK_NAME) for f in feats) == 1
+
+
+def test_the_named_op_enabler_is_a_base_lever_not_a_refinement():
+    """The named-op register block cannot fire until the contraction keeps its named form: the int8
+    quant pass rewrites every linalg.matmul into a linalg.generic, and a schedule matching on the op
+    NAME then finds an empty handle and does nothing.
+
+    But the enabler is a LEVER, not a magnitude, so it belongs in RANKED_LEVERS -- refinements must
+    cost the seed generation no width, and offering it there would widen generation 1 for every run.
+    """
+    from merlin.llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME as ENABLER
+    from merlin.mining.wholemodel_proposer import RANKED_LEVERS, refinement_forks
+
+    assert ENABLER in [name for name, _ in RANKED_LEVERS]
+    # it is NOT a full-schedule replacement -- it changes which op the quant pass emits, nothing else
+    assert dict(RANKED_LEVERS)[ENABLER] is False
+    # the seed generation stays free, and no tile is offered while the lever cannot fire
+    assert refinement_forks([]) == []
+    assert not [f for f in refinement_forks(["perop_register_block"]) if "tile" in f.targets]
+
+
+def test_tiles_are_offered_once_the_enabler_is_on_and_each_is_distinct():
+    from merlin.llvmlower.impr_features import MRPAD_INT8_TILES, NAMED_INT8_CONTRACTION_NAME
+    from merlin.mining.wholemodel_proposer import refinement_forks
+
+    forks = refinement_forks([NAMED_INT8_CONTRACTION_NAME, "promote_buffers_to_stack"])
+    tiles = [f for f in forks if "tile" in f.targets]
+    assert len(tiles) == len(MRPAD_INT8_TILES)
+    # each fork enables exactly ONE tile -- two full-schedule replacements cannot compose, and the
+    # composition guard rejects that pairing outright
+    for f in tiles:
+        feats = set(f.overrides["compiler_features"])
+        assert len(feats & set(MRPAD_INT8_TILES)) == 1
+        assert NAMED_INT8_CONTRACTION_NAME in feats
+    # and the proposals are distinct
+    assert len({tuple(sorted(f.overrides["compiler_features"])) for f in tiles}) == len(tiles)

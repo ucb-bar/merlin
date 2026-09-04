@@ -47,6 +47,16 @@ from ..kernels.knobs import ForkProposal
 # facet field — plus the additive passes as a teacher-idle fallback. The teacher (engine 1) supplies
 # the rest from real divergences.
 RANKED_LEVERS: list[tuple[str, bool]] = [
+    # KEEP THE CONTRACTION NAMED, first because it is an ENABLER: without it a whole family of levers
+    # below cannot fire at all. The int8 quant pass rewrites every `linalg.matmul` into a
+    # `linalg.generic` (measured: 15 -> 0 on small_llama int8), and a transform schedule matching on
+    # the op NAME then gets an empty handle from `transform.structured.match`, which makes every op
+    # downstream of it a no-op. The lever still builds, gates clean and reports as applied. An
+    # 87-fork search over exactly those levers emitted 20 distinct binaries and 34 inert nodes.
+    # It is not itself an optimization -- MEASURED on the K1, enabling it alone leaves the wall and
+    # the output bit-identical (4,140,253 vs 4,131,982 ns; cos 0.9999079, rel 0.0147963915 either
+    # way) -- so it earns its rank purely by what it makes reachable.
+    ("named_int8_contraction", False),
     # PER-CONTRACTION register blocking, first because it SUPERSEDES the two hand-picked class-wide
     # clamps below it rather than competing with them. `WHOLEMODEL_VF_NR_BMM = 8` and `MR_mm = 1` are
     # single numbers a human chose for a whole op CLASS, and a class is not shape-homogeneous: one
@@ -327,6 +337,27 @@ def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
                     evidence=["census:byte-traffic", f"refine:{I.PEROP_BLOCK_NAME}"],
                     forkable=True,
                     note=f"retune the per-op register-block MR cap to {mr}"))
+
+    # -- named-op M-pad register block: retune the TILE on the int8 datapath.
+    # This lever only exists once the contraction keeps its named form: the int8 quant pass rewrites
+    # every linalg.matmul into a linalg.generic, and a transform schedule matching on the op NAME
+    # then finds an empty handle and does nothing. So the tile refinements are proposed only
+    # ALONGSIDE that feature -- proposing them without it spends width on forks that cannot fire,
+    # which is exactly the failure this whole ladder exists to avoid.
+    tiles = getattr(I, "MRPAD_INT8_TILES", ())
+    if tiles and I.NAMED_INT8_CONTRACTION_NAME in have:
+        base = [f for f in parent_feats if f not in set(tiles)]
+        for name in tiles:
+            if name in have:
+                continue
+            merged = base + [name]
+            if _composes(merged):
+                out.append(ForkProposal(
+                    overrides={"compiler_features": merged}, lever="knob",
+                    targets=f"wholemodel:{I.MRPAD_NAME}:tile",
+                    evidence=["census:byte-traffic", f"refine:{I.MRPAD_NAME}"],
+                    forkable=True,
+                    note=f"retune the named-op register-block tile to {name.rsplit('_i32_', 1)[-1]}"))
     return out
 
 
