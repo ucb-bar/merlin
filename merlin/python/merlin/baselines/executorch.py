@@ -34,6 +34,7 @@ import json
 import os
 import shutil
 import subprocess
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -180,6 +181,47 @@ def resolve_bundle(model: str, variant: str = "fp32") -> _bundle.CaptureBundle:
     return b
 
 
+def capture_locations(model: str) -> dict[str, str]:
+    """Per-host LOCATION env the workload's own ``capture.toml`` declares for its loader.
+
+    A model2MLIR workload records the environment its capture ran under in
+    ``workloads/<model>/capture.toml``'s ``[env]`` block. Two kinds of entry live there and only
+    one of them may be replayed:
+
+    * **Locations** — where a weight cache or an upstream checkout sits ON THIS HOST
+      (``HF_HOME = "/…/hf_cache"``). These are load-bearing: without them a loader that reads a
+      gated or multi-GB checkpoint cannot see the copy already on disk and falls back to a network
+      fetch that fails outright (``OSError: You are trying to access a gated repo … 401``), so the
+      model reads as unexportable when its weights are sitting right there. They are also exactly
+      the values merlin must NOT carry itself — machine-specific absolute paths in a public repo.
+      Replaying them from the external workload's own config keeps them out of this tree.
+    * **Fidelity knobs** — a layer count, a session mode, a vocab size. In ``capture.toml`` these
+      hold the *smoke* setting (2 decoder layers where the shipped bundle holds 26), so replaying
+      one would export a smaller model than the golden and than merlin's own arm run. Dropped.
+
+    The split is structural, not a per-model list: a value that resolves to an existing directory
+    is a location; anything else is a knob. Knobs that DO matter for full fidelity come from
+    ``bundle.full_env`` instead, which is curated and wins over anything here.
+    """
+    path = _bundle.model2mlir_root() / "workloads" / model / "capture.toml"
+    if not path.is_file():
+        return {}
+    try:
+        data = tomllib.loads(path.read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    env = data.get("env")
+    if not isinstance(env, dict):
+        return {}
+    return {str(k): v for k, v in env.items()
+            if isinstance(v, str) and v and Path(v).is_dir()}
+
+
+def loader_env(model: str) -> dict[str, str]:
+    """Full loader environment for a full-fidelity export: capture locations, then curated knobs."""
+    return {**capture_locations(model), **_bundle.full_env(model)}
+
+
 # --- AOT export (in the ET venv) ----------------------------------------------------------------
 
 @dataclass
@@ -191,6 +233,33 @@ class ExportResult:
     delegated_nodes: int | None = None
     total_call_nodes: int | None = None
     summary: dict | None = None
+
+
+def _failure_summary(text: str, *, max_chars: int = 900) -> str:
+    """Condense an export subprocess's output down to WHAT WENT WRONG, final exception first.
+
+    A gap_reason must name the failure. Slicing raw output does not do that: a python traceback puts
+    the exception LAST, and every consumer downstream truncates a long reason from the FRONT, so a
+    raw slice reliably delivers a stack-frame fragment ("File …/_passes/__init__.py, line 112, in
+    transform") and drops the one line that says which recipe failed and why. Two models' int8 gaps
+    read that way — a diagnosis indistinguishable from noise.
+
+    So: drop the traceback scaffolding (indented frame bodies, ``File "…"`` lines, caret markers,
+    chaining banners), keep the remaining column-0 lines, and put the LAST of them first so a
+    head-truncation still preserves the error itself. Structural line handling, no pattern matching.
+    """
+    scaffold = ("Traceback (", 'File "', "The above exception", "During handling")
+    keep = [line.strip() for line in text.splitlines()
+            if line.strip() and not line[:1].isspace() and not line.startswith(scaffold)]
+    if not keep:
+        keep = [line.strip() for line in text.splitlines() if line.strip()]
+    tail = keep[-6:]
+    if not tail:
+        return "(no output)"
+    summary = tail[-1]
+    if len(tail) > 1:
+        summary += "  <- " + " | ".join(tail[:-1])
+    return summary[:max_chars]
 
 
 def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
@@ -251,8 +320,8 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
     proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
                           timeout=timeout, env=env, cwd=str(work))
     if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout)[-1200:]
-        raise ExecuTorchError(f"AOT export failed: {tail}")
+        raise ExecuTorchError(
+            f"AOT export failed: {_failure_summary(proc.stderr or proc.stdout)}")
     summary = None
     for line in proc.stdout.splitlines():
         if line.startswith("ET_EXPORT_JSON "):
@@ -682,8 +751,16 @@ def _cos_rel(out_bin: Path, golden: Path) -> tuple[float | None, float | None]:
 
 # LLM subset first (cleanest torch.export + XNNPACK partition), then attempt the rest. Whole-model
 # is FORCED for every model — ExecuTorch has no per-op opt-out here.
+#
+# The trailing three are NON-LLM architectures (a spectral ViT, a CNN+MiT+LSTM controller, a Gemma
+# decoder) carried here so an int8 comparison is not a single-model claim: the project's bar is a
+# MAJORITY of a diverse int8 set, and a set of one llama cannot show that either way. Each is
+# attempted like any other model and each records what actually happened — export failure included.
+# Deliberately no known-blocked list: a static gap string goes stale the moment ExecuTorch is bumped,
+# so the reason a cell carries is always the reason THIS run produced.
 DEFAULT_MODELS = ("tiny_llama", "small_llama", "bitvla", "rdt2", "rdt", "openvla",
-                  "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla")
+                  "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla",
+                  "spectformer", "lstmnetvit", "gemma2_2b")
 
 
 def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = None,
@@ -736,7 +813,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # Full-fidelity: load the model with the exact loader env the golden was captured on (so we
     # ingest the IDENTICAL architecture). Merged UNDER any explicit export_env override.
     if full_fidelity:
-        ff = _bundle.full_env(model)
+        ff = loader_env(model)
         if ff:
             export_env = {**ff, **(export_env or {})}
     cos_thr, rel_thr = _bundle.tolerance(model)

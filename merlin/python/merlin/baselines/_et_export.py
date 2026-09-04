@@ -105,6 +105,37 @@ def _load_loader(loader_path: Path):
     return mod
 
 
+def reconcile_input_arity(captured, keys, example, *, source: str = "inputs.npz"):
+    """Reconcile a capture bundle's input tuple with the loader's forward arity.
+
+    A capture bundle records the tensors the capture VARIED. A loader's forward may take more: a
+    stateful controller also takes its recurrent hidden/cell state, which the bundle does not store
+    because the capture starts it at the value the loader itself defines. Splatting the npz alone
+    then raises ``forward() missing N required positional arguments`` and the model reads as
+    unexportable when it was only under-fed.
+
+    So the captured tensors fill the leading slots and the loader's own example tuple supplies the
+    trailing ones it alone knows the initial value of. Never the reverse: MORE captured tensors than
+    the forward accepts is a real bundle/loader ABI disagreement, so fail closed and name it rather
+    than guessing which inputs to drop.
+
+    Returns ``(captured, keys, note)`` — ``note`` empty when the arities already matched.
+    """
+    if len(captured) > len(example):
+        raise RuntimeError(
+            f"input-arity mismatch: {source} holds {len(captured)} tensors {list(keys)} but the "
+            f"loader's forward takes {len(example)} — the bundle and the loader disagree about this "
+            "model's ABI (refusing to guess which inputs to drop)")
+    if len(captured) == len(example):
+        return tuple(captured), list(keys), ""
+    tail = tuple(example[len(captured):])
+    note = (f"input arity {len(captured)} captured + {len(tail)} loader-initial "
+            f"{[tuple(t.shape) for t in tail]}")
+    return (tuple(captured) + tail,
+            list(keys) + [f"loader_init{i}" for i in range(len(tail))],
+            note)
+
+
 def _linear_subgraph(model):
     """Extract the model's REAL linear-heavy subgraph for the int8 path.
 
@@ -337,10 +368,28 @@ def main() -> int:
         for _p in model.parameters():
             if float(_p.detach().abs().max()) == 0.0:
                 _p.copy_(torch.randn_like(_p) * 0.02)
+    # This is an INFERENCE export: nothing downstream differentiates. Leaving ``requires_grad`` on
+    # the parameters is not merely wasteful, it makes some models unexportable — ExecuTorch's
+    # ``replace_view_ops_with_view_copy_ops_pass`` re-executes each view op eagerly on the real
+    # parameter, and a view op whose *output dtype is complex* (``view_as_complex`` -> its
+    # ``_copy`` form, used by any spectral/Fourier-filter block that stores a real-valued
+    # (..., 2) weight and reinterprets it as complex) has no autograd formula for a complex
+    # output: torch raises "does not support automatic differentiation for outputs with complex
+    # dtype" and the whole lowering dies. Dropping grad on an eval-mode model removes the
+    # autograd path without touching a single number.
+    for _p in model.parameters():
+        _p.requires_grad_(False)
+    for _b in model.buffers():
+        if _b.is_floating_point() or _b.is_complex():
+            _b.requires_grad_(False)
 
     npz = np.load(args.inputs_npz)
     keys = list(npz.keys())
     captured = tuple(torch.from_numpy(npz[k]) for k in keys)
+    captured, keys, _arity_note = reconcile_input_arity(captured, keys, _example,
+                                                        source=args.inputs_npz)
+    if _arity_note:
+        print(f"[{args.model_name}] {_arity_note}", file=sys.stderr)
 
     subgraph_note = ""
     if args.int8_subgraph:
