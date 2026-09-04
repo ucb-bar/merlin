@@ -550,8 +550,15 @@ def check_oracle_available() -> dict:
     # Our OWN emit path must also produce a runnable artifact — not just the oracle's compiler. For a
     # self-hosted fixed-format backend this drives the full fork-free build->sim the live run uses, so a
     # broken codegen path is caught pre-spend rather than tool-crashing on every capsule (n/a otherwise).
+    # `codegen_smoke` IS THREE-VALUED and its contract says so: False is a broken backend, True is a
+    # verified one, and None is "this smoke does not cover this target's emit path" -- the module's own
+    # comment reads "None must never be spelled True ... the caller gates on `is False` so an n/a still
+    # launches". Gating on TRUTHINESS instead made None blocking, so a self-hosted-ISA target was
+    # refused for having an emit path this fixed-format re-encode smoke was never written to cover.
+    # That is the same conflation the readiness gate had, in the other direction: there an honest
+    # decline read as a crash, here it reads as a broken backend.
     cg_ok, cg_why = CR.codegen_smoke(TARGET)
-    if ok and csmoke_ok and not cg_ok:
+    if ok and csmoke_ok and cg_ok is False:
         reason = f"grading oracle ready but our codegen backend is broken: {cg_why}"
     # For a self-hosted-ISA (external_backend) target, the pieces being present is STILL not proof the
     # oracle grades to a CORRECT verdict end-to-end. Run a KNOWN-GOOD self-contained model program all the
@@ -560,10 +567,15 @@ def check_oracle_available() -> dict:
     # a run that can only ever emit unavailable/false verdicts is refused before a paid pilot. n/a for a
     # non-external_backend target (its command_buffer/chipyard oracle is covered above). Contract-routed,
     # no target-name branch — the concrete known-good program is DECLARED in the descriptor.
-    prog_smoke = _program_oracle_smoke(sim_okay=ok and csmoke_ok and cg_ok, desc=desc)
+    # An n/a codegen smoke must NOT suppress this one. The end-to-end program smoke is the check that
+    # actually matters for a program-oracle target -- it assembles a known-good program, runs it on the
+    # cosim and demands a BIT-EXACT match -- and skipping it because an inapplicable smoke returned None
+    # would leave the target with no end-to-end evidence at all while reporting the reason as a broken
+    # backend. It is skipped only when a piece is genuinely broken.
+    prog_smoke = _program_oracle_smoke(sim_okay=ok and csmoke_ok and cg_ok is not False, desc=desc)
     if prog_smoke.get("ok") is False:
         reason = f"grading oracle pieces present but the end-to-end smoke failed: {prog_smoke.get('reason')}"
-    return {"available": ok and csmoke_ok and cg_ok and prog_smoke["ok"], "reason": reason,
+    return {"available": ok and csmoke_ok and cg_ok is not False and prog_smoke["ok"], "reason": reason,
             "sim_via": sim_via, "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why},
             "codegen_smoke": {"ok": cg_ok, "reason": cg_why}, "program_smoke": prog_smoke}
 
@@ -659,8 +671,9 @@ def main() -> int:
         ("input-bundle tree hashes reproduce + bundle_lock.yaml written", bundle_ok),
         ("token usage captured on a REAL agent event stream (not synthetic)", tokens_ok),
         (f"numeric oracle runnable for a gradeable run ({R['oracle'].get('reason')})", oracle_ok),
+        # `is not False` for the same reason the composition above uses it: None is "did not apply".
         (f"our codegen backend emits a runnable kernel ({R['oracle'].get('codegen_smoke', {}).get('reason')})",
-         R["oracle"].get("codegen_smoke", {}).get("ok", True)),
+         R["oracle"].get("codegen_smoke", {}).get("ok", True) is not False),
         (f"known-good program grades bit-exact end-to-end through the oracle "
          f"({R['oracle'].get('program_smoke', {}).get('reason')})",
          R["oracle"].get("program_smoke", {}).get("ok", True)),
