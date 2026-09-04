@@ -635,7 +635,10 @@ def test_a_pad_value_carries_the_type_of_the_operand_it_pads():
     txt = sched(4, 16, 16, NR_bmm=8, elem_types=("i8", "i8", "i32"))
     assert "padding_values = [0 : i8, 0 : i8, 0 : i32]" in txt
     name = ensure_mrpad_for_elem_types("i8", "i8", "i32")
-    assert name == "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32"
+    # the TILE is part of the identity: MR=4/NR=16 is the f32 shape, and an i8 lane holds 4x the
+    # elements at one VLEN, so a variant that hid its tile behind the dtype would pin the wrong one
+    assert name == "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32_mr4_nr16_nb8"
+    assert ensure_mrpad_for_elem_types("i8", "i8", "i32", MR=8, NR=64, NR_bmm=16) != name
     assert "padding_values = [0 : i8, 0 : i8, 0 : i32]" in get(name).edit_schedule("")
     # idempotent registration
     assert ensure_mrpad_for_elem_types("i8", "i8", "i32") == name
@@ -656,3 +659,30 @@ def test_a_zero_literal_is_derived_and_refuses_what_it_cannot_derive():
     # and the refusal happens at REGISTRATION, not inside the transform interpreter
     with pytest.raises(ValueError):
         ensure_mrpad_for_elem_types("i8", "i8", "nonsense")
+
+
+def test_the_int8_register_block_tile_is_searchable_not_inherited_from_f32():
+    """MEASURED: at MR=4/NR=16 -- the f32 tile -- the named-op M-pad block runs small_llama int8 in
+    21,049,211 ns against a no-register-block control of 180,909,415 ns (8.6x faster, so the lever
+    works) but against 4,131,982 ns for the generic-level block (5.1x behind). An untuned shape, not
+    a broken lever: at one VLEN an i8 lane holds four times the elements of an f32 lane, so the N
+    strip has no reason to match. The tile must be something the search can move."""
+    from merlin.llvmlower.impr_features import MRPAD_INT8_TILES, get, known
+    assert len(MRPAD_INT8_TILES) >= 5
+    assert len(set(MRPAD_INT8_TILES)) == len(MRPAD_INT8_TILES)
+    assert all(n in known() for n in MRPAD_INT8_TILES)
+    # the tiles really differ in the emitted schedule, not just in their names
+    pads = {get(n).edit_schedule("").split("pad_to_multiple_of")[1].split("]")[0]
+            for n in MRPAD_INT8_TILES}
+    assert len(pads) > 1, "every tile emitted the same M pad -- the parameter is not reaching the schedule"
+    # and every one of them still pads with INTEGER zeros
+    for n in MRPAD_INT8_TILES:
+        assert "padding_values = [0 : i8, 0 : i8, 0 : i32]" in get(n).edit_schedule("")
+
+
+def test_a_tile_must_be_positive():
+    import pytest
+    from merlin.llvmlower.impr_features import ensure_mrpad_for_elem_types
+    for bad in ({"MR": 0}, {"NR": -4}, {"NR_bmm": 0}):
+        with pytest.raises(ValueError):
+            ensure_mrpad_for_elem_types("i8", "i8", "i32", **bad)

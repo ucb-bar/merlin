@@ -2356,7 +2356,8 @@ ACCUM_RESIDENT_V3_NAMES: list[str] = _register_accumulator_resident_v3()
 MRPAD_NAME = "accumulator_resident_wholemodel_vf_mrpad"
 
 
-def ensure_mrpad_for_elem_types(a: str, b: str, c: str) -> str:
+def ensure_mrpad_for_elem_types(a: str, b: str, c: str, MR: int = 4, NR: int = 16,
+                                NR_bmm: int = 8) -> str:
     """Register (once) an M-pad register block whose padding values match the OPERAND TYPES.
 
     The default ``accumulator_resident_wholemodel_vf_mrpad`` pads with an f32 zero for all three
@@ -2369,21 +2370,28 @@ def ensure_mrpad_for_elem_types(a: str, b: str, c: str) -> str:
     Returns the feature name to put in a feature set.
     """
     types = (str(a), str(b), str(c))
-    name = f"{MRPAD_NAME}_" + "_".join(types)
+    MR, NR, NR_bmm = int(MR), int(NR), int(NR_bmm)
+    if min(MR, NR, NR_bmm) <= 0:
+        raise ValueError(f"MR/NR/NR_bmm must be positive, got {(MR, NR, NR_bmm)}")
+    # The TILE is part of the identity. MR=4/NR=16 were chosen against f32; at one VLEN an i8 lane
+    # holds four times the elements, so the f32 tile is not the int8 tile and a variant that hides
+    # its shape behind the dtype name would silently pin the wrong one.
+    name = f"{MRPAD_NAME}_" + "_".join(types) + f"_mr{MR}_nr{NR}_nb{NR_bmm}"
     if name in known():
         return name
     for t in types:                    # fail closed at REGISTRATION, not inside the interpreter
         _zero_attr(t)
     register(ImprFeature(
         name=name, action_class="PASS",
-        description=(f"{MRPAD_NAME} with padding values typed for a {types[0]}x{types[1]}->{types[2]} "
+        description=(f"{MRPAD_NAME} at MR={MR}/NR={NR}/NR_bmm={NR_bmm} with padding values typed "
+                     f"for a {types[0]}x{types[1]}->{types[2]} "
                      "contraction. Same recipe and same tail rule; only the pad literals differ, "
                      "because a wrongly-typed pad value is a transform-interpreter error and "
                      "therefore a silent whole-model scalar fallback."),
         edit_pipeline=_accumulator_resident_v3_mrpad_pipeline,
         implies=_tile_epilogue_hygiene(4),
-        edit_schedule=(lambda _t, _ty=types:
-                       _accumulator_resident_v3_mrpad_pre_schedule(4, 16, 16, NR_bmm=8,
+        edit_schedule=(lambda _t, _ty=types, _mr=MR, _nr=NR, _nb=NR_bmm:
+                       _accumulator_resident_v3_mrpad_pre_schedule(_mr, _nr, 16, NR_bmm=_nb,
                                                                    elem_types=_ty)),
         schedule_replace=True,
     ))
@@ -2394,6 +2402,16 @@ def ensure_mrpad_for_elem_types(a: str, b: str, c: str) -> str:
 #: reachable from Python but not from a `--features` list or a search proposal, which is where it
 #: has to be selectable from. Registration is default-off, so the frozen baseline is unaffected.
 MRPAD_INT8_NAME = ensure_mrpad_for_elem_types("i8", "i8", "i32")
+
+#: Tiles the SEARCH may try for the int8 named-op register block. MR=4/NR=16 is the f32 tile and it
+#: is 5.1x behind the generic-level block on int8 -- an untuned shape, not a broken lever: against
+#: its own control (no register block at all) it is 8.6x faster. An i8 lane holds 4x the elements of
+#: an f32 lane at one VLEN, so the N strip in particular has no reason to match. Registered so the
+#: proposer can refine along both axes instead of inheriting a constant chosen for another dtype.
+MRPAD_INT8_TILES: tuple[str, ...] = tuple(
+    ensure_mrpad_for_elem_types("i8", "i8", "i32", MR=_mr, NR=_nr, NR_bmm=_nb)
+    for _mr, _nr, _nb in ((2, 16, 8), (4, 16, 8), (8, 16, 8),
+                          (4, 32, 8), (4, 64, 16), (8, 32, 16), (8, 64, 16)))
 
 
 
