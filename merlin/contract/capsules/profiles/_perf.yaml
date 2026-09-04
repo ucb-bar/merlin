@@ -945,6 +945,122 @@ sweeps:
     four tiles on each parallel extent; the aligned counterpart of the held-out PKG landmark tails. Four
     points per axis rather than two because this family fits a law over M and N, and a two-point fit cannot
     be refuted. Extents stay symbolic multiples of the derived mesh dimension, never literals.
+- id: PV
+  fit_axes:
+  - ci
+  comparison_roles:
+  - prediction
+  - measurement
+  base:
+    cat: _perf
+    kind: model_slice
+    op: conv2d
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    Himg: 8
+    Wimg: 8
+    kh: 3
+    kw: 3
+    performance:
+      level: L2_intra_layer
+      family: PV
+      lever: window_reuse_amplification
+      claim: PREDICTS
+      comparand:
+        kind: fitted_prediction
+        against: measured_cycles_same_member
+        cancels:
+        - identical_kernel_window
+        - identical_stride
+        - identical_datapath
+        - identical_image_size
+        demand_equal:
+        - operation
+        - kh
+        - kw
+        - N
+        - operand_dtype
+        - accum_dtype
+      falsifier:
+        observation: residual_cycles_by_contraction_depth
+        fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+        negative_control: fixed_window_image_size_and_output_channels_across_all_points
+      gate:
+        traits:
+        - structural_pipeline_depth
+        - managed_scratchpad
+        instrument: cycle_count
+        capacity: four_distinct_contraction_depths_at_one_spatial_extent
+        on_missing: skip_with_evidence
+      regime:
+        separation: input_channel_count_is_the_only_varied_axis
+        layout: target_native_direct_corpus_builder
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs:
+          operation: conv2d
+          varied_axes:
+          - ci
+      cost:
+        tier: 1
+        runs: 4
+        projected_cycles: derived_at_preflight
+        basis: four_distinct_channel_depths_before_repetition
+      acceptance:
+        schema_version: 1
+        analyzer: perf_affine_claim.analyze_affine_claim/v1
+        fit:
+          form: affine
+          method: ordinary_least_squares_all_L3_replicates
+          independent_variable: input_channels
+          variable_source:
+            kind: input_dim
+            input: IFM
+            axis: 3
+          dependent_metric: gsim_L3_cycles
+        cohort:
+          operation: conv2d
+          fixed_fields:
+          - operation
+          - operand_dtype
+          - accum_dtype
+          exact_points: 4
+          note: input channel count read from the declared IFM shape, at a fixed window and image size.
+            The four points are multiples of the array's own tile dimension, so the cohort scales with
+            a wider array instead of pinning it to one width
+        replicates:
+          exact_count: 3
+          identities:
+          - r000
+          - r001
+          - r002
+        evidence:
+          correctness_simulator: spike
+          correctness_tier: L2
+          timing_simulator: gsim
+          timing_tier: L3
+          spike_cycles_citable: false
+        thresholds:
+          slope_min_exclusive: 0.0
+          r_squared_min_inclusive: 0.95
+          residual_bound:
+            predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+            absolute_floor_cycles: 64
+            observed_cycle_fraction: 0.1
+  axes:
+    ci:
+    - tile
+    - 2*tile
+    - 3*tile
+    - 4*tile
+  name: '{id}{i:02d}_c{ci}'
+  source_reference: 'window-reuse amplification: convolution at a fixed 3x3 window and 8x8 image over
+    four input channel depths. Conv is the family with headroom on this machine -- measured at 3.3% of
+    the achievable ceiling against deep-K matmul''s ~100% -- so it is where a schedule change has room
+    to show. Channel depth is varied and everything else held fixed, so the fitted rate is cycles per
+    unit of contraction depth and nothing else moves under it.'
 blocked_unimplemented:
 - family: PB
   status: blocked_unimplemented
@@ -1164,103 +1280,3 @@ blocked_unimplemented:
       runs: three_per_shape
       projected_cycles: derived_at_preflight
       basis: one_fused_member_and_two_parts
-- family: PV
-  status: blocked_unimplemented
-  reason: 'the integer reference engine has no convolution definition, so no member of this family can
-    be captured: the equivalence capture refuses with UnmodeledOp, "models [''BIAS_ADD'',''COMMIT'',''MATMUL'',''MATMUL_RESIDENT'',''RES_PACK'',''VECTOR_MAP'',''VREDUCE'']
-    and has no definition for [''CONV2D'']". Measured 2026-09-04 on all four members. Restoring the family
-    needs a convolution in the reference engine -- until then a conv perf claim would rest on an oracle
-    that cannot evaluate conv at all. Two declaration defects must also be repaired before it returns:
-    its extents are absolute integers where every other family uses derived tile multiples, so the cohort
-    pins the array to one fixed width and degrades to a false refutation on a wider one; and it offers
-    only two distinct fitted points, which cannot refute a law.'
-  fit_axes:
-  - ci
-  comparison_roles:
-  - prediction
-  - measurement
-  performance:
-    level: L2_intra_layer
-    family: PV
-    lever: window_reuse_amplification
-    claim: PREDICTS
-    comparand:
-      kind: fitted_prediction
-      against: measured_cycles_same_member
-      cancels:
-      - identical_kernel_window
-      - identical_stride
-      - identical_datapath
-      demand_equal:
-      - operation
-      - kh
-      - kw
-      - N
-      - operand_dtype
-      - accum_dtype
-    falsifier:
-      observation: residual_cycles_by_contraction_depth
-      fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
-      negative_control: fixed_window_and_output_channels_across_all_points
-    gate:
-      traits:
-      - structural_pipeline_depth
-      - managed_scratchpad
-      instrument: cycle_count
-      capacity: two_distinct_contraction_depths_and_two_spatial_extents
-      on_missing: skip_with_evidence
-    regime:
-      separation: contraction_depth_and_spatial_extent_are_the_only_varied_axes
-      layout: target_native_direct_corpus_builder
-    emitter:
-      status: existing
-      entry: merlin.targetgen.corpus_spec.build
-      knobs:
-        operation: conv2d
-        varied_axes:
-        - ci
-        - Himg
-    cost:
-      tier: 1
-      runs: 4
-      projected_cycles: derived_at_preflight
-      basis: four_members_before_repetition
-    acceptance:
-      schema_version: 1
-      analyzer: perf_affine_claim.analyze_affine_claim/v1
-      fit:
-        form: affine
-        method: ordinary_least_squares_all_L3_replicates
-        independent_variable: input_channels
-        variable_source:
-          kind: input_dim
-          input: IFM
-          axis: 3
-        dependent_metric: gsim_L3_cycles
-      cohort:
-        operation: conv2d
-        fixed_fields:
-        - operation
-        - operand_dtype
-        - accum_dtype
-        exact_points: 4
-        note: input channel count read from the declared IFM shape, at a fixed window and image size
-      replicates:
-        exact_count: 3
-        identities:
-        - r000
-        - r001
-        - r002
-      evidence:
-        correctness_simulator: spike
-        correctness_tier: L2
-        timing_simulator: gsim
-        timing_tier: L3
-        spike_cycles_citable: false
-      thresholds:
-        slope_min_exclusive: 0.0
-        r_squared_min_inclusive: 0.95
-        residual_bound:
-          predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
-          absolute_floor_cycles: 64
-          observed_cycle_fraction: 0.1
