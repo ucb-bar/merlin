@@ -193,8 +193,11 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
         origin = f"tracked spec {spec_path}"
     else:
+        # The corpus is handed in as a SECOND evidence source for the negative lane: it is what the
+        # grader will run, and it can present work the captures never do (a bf16 contraction on an
+        # int8-only array). See `conformance.corpus_presented_pairs`.
         doc = CF.spec(contract_target, caps, applications=_applications(te),
-                      cert_budget_s=_cert_budget_s(te))
+                      corpus_roots=roots, cert_budget_s=_cert_budget_s(te))
         origin = ("derived now" if contract_target == target
                   else f"derived now against contract target {contract_target!r}")
     if not doc.get("cells"):
@@ -288,8 +291,13 @@ def main(argv=None) -> int:
         from merlin.targetgen.target_experiment import load_target_experiment
 
         _te = load_target_experiment(descriptor_path(targets[0]))
+        # SAME EVIDENCE AS `audit`, corpus included. `--write` is the path that creates the tracked
+        # requirement, and omitting the corpus here produced a spec that named fewer negative-lane
+        # pairs than the one `audit` derives from the very same tree -- the two disagreeing about the
+        # requirement is worse than either being wrong.
         doc = CF.spec(_contract_target(targets[0]), _captures(),
-                      applications=_applications(_te), cert_budget_s=_cert_budget_s(_te))
+                      applications=_applications(_te), corpus_roots=list(_te.graded_roots()),
+                      cert_budget_s=_cert_budget_s(_te))
         a.write.parent.mkdir(parents=True, exist_ok=True)
         a.write.write_text(
             "# DERIVED — regenerate with:\n"

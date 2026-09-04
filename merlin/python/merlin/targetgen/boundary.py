@@ -291,25 +291,6 @@ def _unbuildable_seam(target: str) -> str | None:
         return None
 
 
-def _placement_is_derivable(target: str) -> bool:
-    """Whether this target's operand placement is derived, so a seam it cannot LINK it can still HONOUR.
-
-    Reads the one derivation that owns the question (``system.derive.link_for``). A transport that
-    stages operands at a base before launch has a boundary the harness enforces with addresses rather
-    than with a call, and every region's side of it is decided by the eligibility this module already
-    computes. ``False`` -- and therefore the original UNKNOWN -- whenever the placement itself is not
-    derivable, because then nothing says where the operands are, let alone the work.
-    """
-    try:
-        from merlin.system.derive import link_for
-        from merlin.targetgen.target_experiment import load_capability_manifest
-        endpoint = getattr(load_capability_manifest(target), "endpoint_kind", None)
-        link = link_for(target, endpoint)
-    except Exception:                                          # noqa: BLE001 — unresolvable: no claim
-        return False
-    return str(getattr(link, "operand_placement", "") or "") in ("preload_at_base", "pointer_args")
-
-
 def profile_iface_text(text: str) -> BoundaryProfile:
     """Classify a ``merlin_iface`` capsule from its text.
 
@@ -385,20 +366,14 @@ def profile_path(path: str | Path, target: str) -> BoundaryProfile:
     # replaces.
     n_eligible = sum(1 for x in seq if x == ACCEL)
     unbuildable = _unbuildable_seam(target) if n_eligible else None
-    # AN UNBUILDABLE SEAM IS NOT AN UNDETERMINABLE ONE, and conflating them cost this axis every
-    # verdict on two targets: 54 capsules on one and 16 on the other reported UNDETERMINABLE, which
-    # reads as "we cannot tell where this work runs" when what is true is "we cannot emit a LINKABLE
-    # CALL for it". Those license different actions -- one needs a transport built, the other needs
-    # nothing -- and the second was never the case here. This module's own comment says so twelve
-    # lines up: on such a target the boundary is a DRAM address contract HONOURED BY THE HARNESS, and
-    # a contract the harness honours at run time is a real seam whose crossings are decided by the
-    # same eligibility this function already computed.
-    #
-    # So the refusal now asks the second question too. The placement is derivable when the transport
-    # stages operands before launch (`operand_placement`), which is exactly the harness-honoured form;
-    # where it is not derivable the verdict stays UNKNOWN with the original reason.
-    if unbuildable and _placement_is_derivable(target):
-        unbuildable = None
+    # WHY THIS IS NOT RELAXED WHEN THE PLACEMENT IS DERIVABLE. It is tempting to say that a
+    # `device_native` boundary is a DRAM address contract the harness honours, so the crossings are
+    # decided by the eligibility already computed here and the verdict could be a shape rather than
+    # UNKNOWN. That was tried and it is wrong: being able to CLASSIFY which side a region falls on is
+    # not evidence that the seam is EXERCISED. This axis exists to say whether the corpus can prove a
+    # compiler assembles work correctly ACROSS the boundary, and on a target whose seam no path here
+    # can emit, a capsule labelled `H->A->H` is a claim nothing verified -- the composition numbers
+    # would improve by argument alone. UNKNOWN until the transport is built.
     if unbuildable:
         return BoundaryProfile(
             kind=UNKNOWN, grammar="linalg", n_unresolved=unresolved, n_unbuildable=n_eligible,

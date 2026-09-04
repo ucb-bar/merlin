@@ -236,8 +236,17 @@ def op_for_shape(family: str, *, admitted_ops: set[str] | None = None, dtype: st
         # which the generator would then have rejected downstream -- turning a reportable capability gap
         # into a capsule that silently disappears. `ops_gradeable_at` is the same predicate the cell
         # axis uses, so the two cannot disagree about what a dtype can grade.
+        # THE BATCHED OP MUST BE OF THE FAMILY BEING ASKED FOR. This returned the first batched op in
+        # the pool whatever family the probe named, so a batched CONTRACTION was emitted to evidence
+        # `elementwise_map.batched`, `movement.batched` and `reduction.batched` alike -- three cells
+        # covered by a capsule that computes something else. It was invisible while the only batched
+        # golden was block-scaled (every such probe was a reported hole); giving the op a golden in
+        # every engine turned the hole into a wrong capsule, which is worse. A family with no batched
+        # op of its own is a hole again, and says so.
         pool = admitted_ops if admitted_ops is not None else available_ops()
-        batched = sorted(_BATCHED_OPS & ops_gradeable_at(str(dtype or ""), set(pool)))
+        fam_map = _op_family_map()
+        batched = sorted(op for op in (_BATCHED_OPS & ops_gradeable_at(str(dtype or ""), set(pool)))
+                         if fam_map.get(op) == family)
         return batched[0] if batched else None
     return op
 

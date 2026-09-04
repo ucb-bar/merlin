@@ -297,7 +297,42 @@ def observed_pairs(capture: str | Path, target: str) -> Counter:
     return out
 
 
-def host_lane_cells(captures: dict, target: str) -> dict:
+def corpus_presented_pairs(corpus_roots, *, labels=None) -> "Counter":
+    """``(family, dtype) -> n`` for the work the CORPUS ITSELF presents, from its capsules' declarations.
+
+    A second evidence source for the negative lane, and on one target the only one that sees a real
+    gap. The captures are one model zoo; the corpus is what the grader will actually run, and it
+    already contains capsules the manifest does not admit -- a bf16 contraction on an int8-only array,
+    for instance. Those must land on the host, nothing declares that they must, and so a compiler that
+    quietly accelerated one and a compiler that correctly declined would score identically.
+
+    Read off each capsule's own ``semantic.semantic_family`` and declared input dtypes, which is the
+    same resolution `cert_capsule_cover` classifies at -- so a pair this reports is a pair the cover
+    can see, rather than one derived at a resolution nothing else uses.
+    """
+    import yaml
+
+    labels = set(labels or {"public"})
+    out: Counter = Counter()
+    roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots or ())
+    for root in roots:
+        for cy in sorted(Path(root).glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") not in labels:
+                continue
+            fam = ((cap.get("semantic") or {}).get("semantic_family"))
+            if not fam:
+                continue
+            for t in (cap.get("inputs") or []):
+                if t.get("dtype") and t.get("role") in ("input", "weight"):
+                    out[(str(fam), str(t["dtype"]))] += 1
+    return out
+
+
+def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
     """The ``(family, dtype)`` work real models contain that ``target`` may NOT accelerate.
 
     The negative lane, at full width. The existing ``host_only`` block carries only families with no
@@ -327,7 +362,19 @@ def host_lane_cells(captures: dict, target: str) -> dict:
         except Exception as e:                     # noqa: BLE001 -- reported, never skipped silently
             unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
 
-    required = [{"family": f, "dtype": d, "n_regions": n}
+    # THE CORPUS IS EVIDENCE TOO, and on an int8-only target it is the only source that sees the gap:
+    # its captures are int8 models, so no bf16 contraction is ever OBSERVED, while the corpus ships
+    # bf16 contraction capsules that the array cannot take. Those sit on the host lane by necessity and
+    # nothing asserted that they must, so accelerating one -- a real type-contract miss -- cost nothing.
+    from_corpus = corpus_presented_pairs(corpus_roots) if corpus_roots else Counter()
+    from_captures = set(seen)                      # recorded BEFORE the merge, so the two sources stay
+    for pair, n in from_corpus.items():            # distinguishable in what each pair says it rests on
+        seen[pair] = max(int(seen.get(pair, 0)), int(n))
+
+    required = [{"family": f, "dtype": d, "n_regions": n,
+                 "evidenced_by": ("captures_and_corpus"
+                                  if (f, d) in from_corpus and (f, d) in from_captures
+                                  else "corpus" if (f, d) in from_corpus else "captures")}
                 for (f, d), n in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
                 if (f, d) not in admitted_pairs]
     return {
@@ -1075,6 +1122,16 @@ def _epilogue_axis(target: str) -> dict:
     }
 
 
+def _capsule_dtype_or(token):
+    """``capsule_dtype(token)`` where the registry knows the token, else the token unchanged."""
+    if not token:
+        return token
+    try:
+        return capsule_dtype(str(token))
+    except Exception:                              # noqa: BLE001 — an unmappable token is not a dtype
+        return token
+
+
 def _shape_axis(target: str) -> dict:
     """The rank and layout regions ``target``'s own manifest declares it handles.
 
@@ -1112,7 +1169,11 @@ def _shape_axis(target: str) -> dict:
             "probe": pr.name,
             "axis": "rank" if rank >= 3 else "layout",
             "family": d.family,
-            "dtype": d.in_dtype,
+            # THE CAPSULE SPELLING, like every other axis in this spec. `capability_probes` reads the
+            # MANIFEST's vocabulary (`int8`) and the cells carry the capsule's (`i8`); emitting the
+            # manifest spelling here put an `int8` entry into a corpus whose admitted set is `{i8}`,
+            # so the entry read as using a dtype the requirement does not admit.
+            "dtype": _capsule_dtype_or(d.in_dtype),
             "rank": rank,
             "layout": layout,
             "m": d.m, "k": d.k, "n": d.n,
@@ -1314,6 +1375,7 @@ def spec(target: str, captures: dict[str, str | Path], *,
          declared: dict[str, dict] | None = None,
          personas: dict[str, dict] | None = None,
          applications: dict[str, str | Path] | None = None,
+         corpus_roots=None,
          cert_budget_s: float | None = None) -> dict:
     """The full derived conformance spec, ready to serialize.
 
@@ -1331,7 +1393,7 @@ def spec(target: str, captures: dict[str, str | Path], *,
     # keeps the synthesizer pure and keeps one definition of what a regime costs.
     _dtypes = [c.dtype for c in cells]
     _regime_dtype = max(set(_dtypes), key=_dtypes.count) if _dtypes else None
-    HL = host_lane_cells(captures, target)
+    HL = host_lane_cells(captures, target, corpus_roots=corpus_roots)
     try:
         _reduction_depth = MR.reduction_depth_regimes(
             target, sorted((mem.get("by_regime") or {}).keys()),
