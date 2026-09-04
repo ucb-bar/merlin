@@ -32,7 +32,7 @@ void merlin_prof_dump(void);
 #define MERLIN_WEIGHTS_BASE_ADDR 0x200000000ULL
 #endif
 
-static float OUT[MERLIN_OUT_ELEMS];
+#define OUT ((float *)MERLIN_OUTPUT_PTR[0])
 static merlin_descriptor_t DESCS[MERLIN_N_ARGS];
 
 int main(int hart) {
@@ -46,8 +46,17 @@ int main(int hart) {
   uint64_t c0;
   __asm__ volatile("csrr %0, mcycle" : "=r"(c0));
 
-  merlin_run(MERLIN_ARGS, MERLIN_N_ARGS, (const void *)MERLIN_WEIGHTS_BASE_ADDR,
-             MERLIN_INPUT_PTR, OUT, DESCS);
+  merlin_reset_session();
+  merlin_prepare_step(0);
+  merlin_run_multi(MERLIN_ARGS, MERLIN_N_ARGS, (const void *)MERLIN_WEIGHTS_BASE_ADDR,
+                   MERLIN_INPUT_PTR, MERLIN_OUTPUT_PTR, DESCS);
+#if MERLIN_N_STATE_PAIRS > 0
+  if (merlin_commit_state(MERLIN_ARGS, MERLIN_N_ARGS, MERLIN_INPUT_PTR,
+                          MERLIN_OUTPUT_PTR, MERLIN_N_STATE_PAIRS,
+                          MERLIN_STATE_INPUT_ARGS, MERLIN_STATE_OUTPUT_INDICES) != 0) {
+    htif_puts("FAIL state ABI mismatch\n"); htif_exit(1);
+  }
+#endif
 
   uint64_t c1;
   __asm__ volatile("csrr %0, mcycle" : "=r"(c1));

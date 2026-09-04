@@ -6,15 +6,18 @@ bare-metal harness -> run on an oracle:
 
   - ``spike --extension=gemmini``   : functional model, **bootstrap only** (derived_from_rtl=False)
   - the prebuilt Verilator RTL sim  : **certification** (derived_from_rtl=True)
+  - the prebuilt GSIM emulator      : **certification** (derived_from_rtl=True) — the same elaborated
+    design compiled FIRRTL->C++ instead of Verilog->C++, so it answers at the same fidelity and is
+    chosen over Verilator by :mod:`merlin.targetgen.rtl_engine_policy` purely on cost.
 
 -> parse OUT/METRIC/DONE -> gate the outputs against
 :func:`merlin.runtime.reference.reference_outputs` (the same oracle the Python simulator
-backend is held to). Spike and Verilator run the *exact same ELF*.
+backend is held to). All three oracles run the *exact same ELF*.
 
 Toolchain resolution mirrors ``build_tools/scripts/probe_gemmini_oracle.py``:
 ``MERLIN_CHIPYARD`` (default ``/path/to/chipyard``), plus optional
 ``MERLIN_RISCV_GCC`` / ``MERLIN_GEMMINI_SPIKE`` / ``MERLIN_GEMMINI_VERILATOR`` /
-``MERLIN_GEMMINI_HARNESS_DIR`` overrides.
+``MERLIN_GEMMINI_GSIM_EMU`` / ``MERLIN_GEMMINI_HARNESS_DIR`` overrides.
 """
 from __future__ import annotations
 
@@ -38,9 +41,20 @@ register(BackendInfo("gemmini", TargetClass.NPU, BackendKind.KERNEL, __name__))
 DEFAULT_CHIPYARD = "/path/to/chipyard"
 VERILATOR_CONFIG = "GemminiRocketConfig"
 
+#: Wall-cycle budget for the GSIM emulator: the cap IS the hang bound, since a kernel that never reaches
+#: its stop condition otherwise runs until the caller's wall timeout. NOT derived from a measurement on
+#: this harness — it is a starting bound, raised or lowered per run with MERLIN_GEMMINI_GSIM_MAXCYCLES
+#: rather than edited here (for scale, the SIMT target's GSIM oracle defaults to 2M).
+GSIM_MAX_CYCLES = 20_000_000
+
 ORACLE = {
     "spike": {"kind": "spike_gemmini_functional", "derived_from_rtl": False},
     "verilator": {"kind": "rtl_verilator", "derived_from_rtl": True},
+    # Same elaborated design, different lowering of it (FIRRTL->C++). `derived_from_rtl` is the claim
+    # the grade cites, and it is true of GSIM for exactly the reason it is true of Verilator; a missing
+    # entry here is not "no oracle metadata" but a KeyError in `contract.compile.run_on_oracle`, i.e. the
+    # engine would be selectable and then crash at grade time.
+    "gsim": {"kind": "rtl_gsim", "derived_from_rtl": True},
 }
 
 
@@ -113,6 +127,21 @@ def verilator_path() -> Path:
             / f"simulator-chipyard.harness-{_rtl_sim_config()}")
 
 
+def gsim_path() -> Path:
+    """The prebuilt GSIM emulator binary for this target's RTL, or where one would live.
+
+    Env-first like every other tool here, but the env override is the ONLY realistic source: GSIM emits a
+    standalone C++ model of the elaborated design and that model is built out of tree (chipyard has no
+    ``sims/gsim`` rule), so the derived path below exists to keep the resolution shape identical to
+    :func:`verilator_path` and to fail closed — an absent binary makes ``available('gsim')`` False, never
+    an exception. Same variable spelling as the SIMT target's ``MERLIN_MUON_GSIM_EMU``.
+    """
+    env = os.environ.get("MERLIN_GEMMINI_GSIM_EMU", "").strip()
+    if env:
+        return Path(env)
+    return chipyard_root() / "sims/gsim" / f"emu-chipyard.harness-{_rtl_sim_config()}"
+
+
 def rocc_tests_dir() -> Path:
     env = os.environ.get("MERLIN_GEMMINI_HARNESS_DIR")
     if env:
@@ -140,12 +169,24 @@ def _test_ld() -> Path:
 
 
 def available(simulator: str = "verilator") -> bool:
-    """True when gcc + the harness + the requested simulator are all present."""
+    """True when gcc + the harness + the requested simulator are all present.
+
+    An engine this backend KNOWS but cannot find answers False; an engine it does not know still RAISES.
+    The distinction is load-bearing for :func:`merlin.targetgen.capsule_runner.chipyard_l3_selection`,
+    which probes every engine in the priority list: a raise is recorded as "this target has no such
+    engine", a False as "it has one and the binary is absent" — two different things to fix.
+    """
     base = gcc_path().is_file() and _test_ld().is_file() and _common_dir().is_dir()
     if simulator == "spike":
         return base and spike_path().is_file()
     if simulator == "verilator":
         return base and verilator_path().is_file()
+    if simulator == "gsim":
+        # Executability is checked as well as existence, unlike the Verilator path: that binary is a
+        # build product of a chipyard rule that leaves it executable, whereas the GSIM emu arrives via an
+        # env var a caller points anywhere — at a copied-without-mode artifact, or at the emitted .cpp.
+        emu = gsim_path()
+        return base and emu.is_file() and os.access(emu, os.X_OK)
     raise GemminiError(f"unknown simulator {simulator!r}")
 
 
@@ -192,6 +233,25 @@ def compile_command_buffer(cb: dict[str, Any], workdir: str | Path,
     return elf
 
 
+def _unlimited_stack() -> None:  # pragma: no cover - runs in the child process
+    """Lift RLIMIT_STACK for a simulator child.
+
+    The Verilator model needs a large stack; the default (e.g. 12500 kb) makes it warn ("%Warning: System
+    has stack size ...") onto the console, corrupting output capture. The GSIM-emitted model holds the
+    whole design state in one C++ object and is driven from the same harness, so it is raised the same way.
+    """
+    try:
+        resource.setrlimit(resource.RLIMIT_STACK,
+                           (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+    except (ValueError, OSError):
+        pass
+
+
+def gsim_max_cycles() -> str:
+    """The GSIM wall-cycle cap, as the plusarg value. Env override wins; see :data:`GSIM_MAX_CYCLES`."""
+    return os.environ.get("MERLIN_GEMMINI_GSIM_MAXCYCLES", "").strip() or str(GSIM_MAX_CYCLES)
+
+
 def run_elf(elf: str | Path, simulator: str = "verilator", timeout: int = 600) -> str:
     """Run the ELF on the chosen oracle; return raw console output."""
     preexec = None
@@ -202,21 +262,26 @@ def run_elf(elf: str | Path, simulator: str = "verilator", timeout: int = 600) -
     elif simulator == "verilator":
         env = dict(os.environ)
         cmd = [str(verilator_path()), str(elf)]
-        # The Verilator model needs a large stack; the default (e.g. 12500 kb) makes it warn
-        # ("%Warning: System has stack size ...") onto the console, corrupting output capture.
-        # Raise RLIMIT_STACK for the child so the warning never fires.
-        def preexec():  # pragma: no cover - child process
-            try:
-                resource.setrlimit(resource.RLIMIT_STACK,
-                                   (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
-            except (ValueError, OSError):
-                pass
-        preexec = preexec
+        preexec = _unlimited_stack
+    elif simulator == "gsim":
+        env = dict(os.environ)
+        # The SAME ELF the Verilator path runs, so the console it prints is the same OUT/METRIC/DONE text
+        # and `parse_output` is unchanged. GSIM re-roots the circuit at ChipTop and so has no SimTSI to
+        # load the image: `+loadmem` is the backdoor that writes it into the backing store, and it is
+        # passed BESIDE the positional argument rather than instead of it (the emitted harness reads the
+        # symbol table from the positional path). `+max-cycles` is the hang bound, not a perf knob.
+        cmd = [str(gsim_path()), str(elf), f"+max-cycles={gsim_max_cycles()}", f"+loadmem={elf}"]
+        preexec = _unlimited_stack
+        # NB the console is buffered in this process, like every other oracle here. That is fine for the
+        # OUT/METRIC/DONE protocol but NOT for a model built with a per-instruction commit trace: on the
+        # SIMT target such a console reached 72 GB in one run and had to be spooled to disk. If a gemmini
+        # GSIM model is ever emitted with tracing on, this branch needs that same treatment.
     else:
         raise GemminiError(f"unknown simulator {simulator!r}")
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env,
                           preexec_fn=preexec)
-    # The Verilator harness exits 0 on $finish; spike exits 0 on htif_exit(0).
+    # The Verilator harness exits 0 on $finish; spike exits 0 on htif_exit(0); the GSIM-emitted model
+    # exits 0 when the design's own stop condition fires before +max-cycles.
     if proc.returncode != 0:
         raise GemminiError(
             f"{simulator} exited {proc.returncode}:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")

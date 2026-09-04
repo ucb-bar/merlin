@@ -340,20 +340,22 @@ def test_full_model_sentinel_is_a_candidate_l2_l3_admission_not_a_timing_row(
     monkeypatch.setattr(runner.PC, "boxed_entrypoints",
                         lambda _policy: contextlib.nullcontext())
     monkeypatch.setattr(runner.CR, "load_capsule",
-                        lambda source, contract: {"name": "M2", "kind": "model"})
+                        lambda source, contract: {"name": "M2", "kind": "model",
+                                                  "required_oracle_tiers": ["L0", "L1", "L2", "L3"]})
 
     def fake_grade(capsule, candidate, **kwargs):
         observed.update(capsule=capsule, candidate=candidate, kwargs=kwargs)
+        # A whole model emits exactly ONE execution tier -- the target's citable RTL tier.  The
+        # fixture used to hand back an L2 entry as well, which no model path can produce.
         return {"status": "pass", "numeric": {"status": "pass"},
-                "tiers": {"L2": {"status": "pass", "cycles": 7},
-                          "L3": {"status": "pass", "cycles": 11}}}
+                "tiers": {"L3": {"status": "pass", "cycles": 11}}}
 
     monkeypatch.setattr(runner.CR, "run_capsule", fake_grade)
     monkeypatch.setattr(runner, "_verify_frozen_contract", lambda *_args: None)
     evidence = runner.run_full_model_admission(
         package, sentinel, workspace, 90, target, contract, "b" * 64)
     assert observed["candidate"] == str(package)
-    assert observed["capsule"]["required_oracle_tiers"] == ["L2", "L3"]
+    assert observed["capsule"]["required_oracle_tiers"] == ["L3"]
     assert observed["kwargs"]["contract"] == str(contract)
     assert evidence["passed"] is True
     assert evidence["cycles_recorded"] is False
@@ -376,7 +378,7 @@ def test_frozen_contract_drift_is_refused_before_a_measurement_cell(tmp_path: Pa
 
 def test_claim_bearing_launch_requires_ready_preflight_and_smoke_is_explicit() -> None:
     runner = _load_runner()
-    with pytest.raises(runner.PC.CampaignGateError, match="PK preflight refused"):
+    with pytest.raises(runner.PC.CampaignGateError, match="preflight refused"):
         runner.measurement_mode("claim")
     assert runner.measurement_mode("measurement-smoke") == {
         "experiment_mode": "measurement_smoke_only",
@@ -652,6 +654,58 @@ def test_pk_discovery_requires_the_frozen_quantitative_acceptance_contract(
     descriptor_path.write_text(yaml.safe_dump(descriptor))
     with pytest.raises(PC.CampaignGateError, match="acceptance"):
         PC.discover_performance_corpus(target)
+
+
+def test_a_differential_family_is_canonical_without_an_acceptance_contract() -> None:
+    """An acceptance block freezes the decision rule for a FIT, and a differential fits nothing.
+
+    Its verdict is its falsifier over an A/B on identical work; there is no coefficient for a
+    threshold to bound. Demanding one of every family refused the whole corpus on the first
+    differential capsule, and the only way to satisfy that demand would have been to invent six
+    thresholds nobody measured -- which is precisely what the frozen-contract discipline forbids.
+    """
+    block = _performance_block(family="PC")
+    block["claim"] = "DIFFERENTIAL"
+    block.pop("acceptance")
+
+    assert PC._validate_performance_block(block, owner="fixture") is block
+
+
+def test_a_predicts_family_without_an_acceptance_contract_is_still_refused() -> None:
+    block = _performance_block()
+    block.pop("acceptance")
+
+    with pytest.raises(PC.CampaignGateError, match="acceptance"):
+        PC._validate_performance_block(block, owner="fixture")
+
+
+def test_an_acceptance_that_is_not_a_mapping_is_refused_whatever_the_claim() -> None:
+    """Absent is canonical; present-and-malformed never is, or the contract is unreadable."""
+    block = _performance_block(family="PC")
+    block["claim"] = "DIFFERENTIAL"
+    block["acceptance"] = "frozen"
+
+    with pytest.raises(PC.CampaignGateError, match="frozen mapping"):
+        PC._validate_performance_block(block, owner="fixture")
+
+
+def test_every_family_the_shipped_template_declares_passes_this_gate() -> None:
+    """The regression itself: the gate refused declarations the generator is allowed to write.
+
+    Read from the one shared template rather than from a fixture, because the disagreement was
+    between two real ends of the chain -- `generate_corpus` has never required `acceptance`, and this
+    consumer did -- and only the real declarations can show whether they still agree.
+    """
+    from merlin.common.paths import merlin_dir
+
+    template = merlin_dir() / "contract" / "capsules" / "profiles" / "_perf.yaml"
+    document = yaml.safe_load(template.read_text(encoding="utf-8")) or {}
+    blocks = [sweep["base"]["performance"] for sweep in (document.get("sweeps") or [])]
+    blocks += [row["performance"] for row in (document.get("blocked_unimplemented") or [])]
+    assert blocks, "the shared performance template declares no families"
+
+    for block in blocks:
+        PC._validate_performance_block(block, owner=str(block.get("family")))
 
 
 def test_results_are_canonical_read_only_and_digest_verified(tmp_path: Path) -> None:

@@ -169,6 +169,11 @@ class ChiaRun:
     def run_dir(self) -> Path:
         return self.handle.run_dir
 
+    @property
+    def run_id(self) -> str:
+        """Canonical AET run identity used by every subordinate artifact path."""
+        return str(self.handle.run_id)
+
 
 @contextmanager
 def chia_run(

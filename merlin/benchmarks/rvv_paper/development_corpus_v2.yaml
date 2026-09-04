@@ -1,0 +1,70 @@
+version: 2
+status: frozen_definition
+label: generic_rvv_cpu_compiler_development_v2
+purpose: mine target-wide compiler and runtime improvements before the paper compiler is frozen
+
+partition:
+  algorithm: sha256_mod
+  identity_fields: [family, operation, dtype, shape, layout, state, core_count]
+  modulus: 5
+  train: [0, 1, 2]
+  validation: [3]
+  heldout: [4]
+
+paper_model_exclusion:
+  forbidden_workloads: [gemma2_2b, tinyllama_1_1b, smolvla, resnet50_v1_5, lstmnetvit]
+  forbidden_sources: [paper_captures, paper_checkpoints, paper_profiles, paper_results]
+  rule: no paper-model artifact, layer census, name, or measured shape frequency enters selection
+
+families:
+  - name: contraction
+    operations: [matmul, batch_matmul, convolution_im2col]
+    dtypes: [w8a8_i32, fp32]
+    axes:
+      M: [1, 2, 7, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127]
+      N: [1, 3, 8, 15, 16, 17, 31, 32, 33, 64, 96, 127]
+      K: [1, 3, 7, 16, 31, 32, 33, 64, 65, 128, 257, 1024]
+    layouts: [row_row, row_packed_rhs, transposed_rhs]
+  - name: elementwise_map
+    operations: [add, multiply, relu, silu, gelu, clamp, requant]
+    dtypes: [int8, int32, fp32]
+    lengths: [1, 3, 7, 8, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 256, 1025]
+  - name: reduction
+    operations: [sum, max, softmax_components, layernorm_components]
+    dtypes: [int8_i32, fp32]
+    lengths: [1, 3, 7, 16, 31, 32, 33, 64, 65, 127, 256, 1025]
+  - name: movement_layout
+    operations: [copy, transpose2d, pack_rhs, unpack, strided_slice, concatenate]
+    dtypes: [int8, fp32]
+    # Generic vector-boundary probes. For copy, 2052/2056/2060 bytes create
+    # fp32 and int8 tails, and their content-stable partitions cover all splits.
+    # They derive solely from VLEN=256 and do not use paper-model shapes.
+    working_set_bytes: [64, 256, 1024, 2052, 2056, 2060, 32768, 262144, 1048576, 2097152]
+  - name: fusion_epilogue
+    operations: [matmul_bias, matmul_bias_relu, matmul_requant, residual_norm]
+    dtypes: [w8a8_i32, fp32]
+    axes:
+      M: [1, 16, 31, 64]
+      N: [1, 16, 31, 64]
+      K: [1, 16, 31, 64]
+  - name: runtime_parallel
+    operations: [single_hart, static_partition, producer_consumer, barrier, persistent_weight_reuse]
+    core_counts: [1, 2, 4, 8]
+    reuse_counts: [1, 2, 8, 32]
+
+candidate_classes: [pass, heuristic, flag, knob]
+selection:
+  correctness_required: true
+  emitted_code_change_required: true
+  minimum_families: 3
+  train_median_speedup_min: 1.02
+  validation_median_speedup_min: 1.02
+  maximum_validation_regression: 0.02
+  heldout_visible_during_selection: false
+  required_consecutive_empty_sweeps: 2
+
+materialization:
+  generator: merlin/experiments/cpu_host_compiler_v0/materialize_corpus.py
+  capsule_root: out/artifacts/rvv-development-corpus/k1_cpu/v2/latest
+  manifest_sha256: recorded_in_corpus_lock
+  note: definition is frozen; scored capsules and their digest must be materialized before any agent run

@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=none
+title: Holdout-Safe Compiler Freeze
+purpose: >-
+  Immutable record of a compiler-improvement campaign trained on generic capsules. Records the
+  partition policy, excluded paper models, accepted generic levers, convergence evidence, and the
+  content hashes of the compiler policy and runtime that are later consumed by the paper study.
+required_top_level_fields:
+  - version
+  - status
+  - frozen_at
+  - development_corpus_sha256
+  - partition
+  - excluded_models
+  - accepted_candidates
+  - rejected_candidates
+  - convergence
+  - policy_sha256
+  - runtime_sha256
+example: |
+  version: 1
+  status: frozen
+  frozen_at: 20260830T000000Z
+  development_corpus_sha256: abc
+  partition: {algorithm: sha256_mod, modulus: 5, train: [0, 1, 2], validation: [3], heldout: [4]}
+  excluded_models: [paper_model]
+  accepted_candidates: []
+  rejected_candidates: []
+  convergence: {required_empty_sweeps: 2, observed_empty_sweeps: 2}
+  policy_sha256: def
+  runtime_sha256: ghi

@@ -1,0 +1,352 @@
+version: 2
+label: rvv_mlir_k1_frozen_compiler
+status: draft
+target: k1
+primary_precision: w8a8
+control_precision: fp32
+core_counts: [1, 8]
+
+development_corpus:
+  capsules:
+    - contraction
+    - tiling_dataflow
+    - fusion_layout
+    - register_residency
+    - instruction_selection
+    - runtime_synchronization
+  synthetic_shape_split: hash_mod_5
+  training_partitions: [0, 1, 2]
+  validation_partition: 3
+  heldout_partition: 4
+  convergence_sweeps: 2
+  excluded_models:
+    - gemma2_2b
+    - tinyllama_1_1b
+    - smolvla
+    - resnet50_v1_5
+    - lstmnetvit
+
+paper_inputs:
+  path: out/artifacts/paper-inputs/k1/v1/paper-inputs_k1_v1_20260831T052616Z_300f41c
+  sha256: 66bd68ad6b6adf8bb2c77e7860a6b7ca052f30a4d13a75c043325c04cf06d37e
+
+holdout_models:
+  - gemma2_2b
+  - tinyllama_1_1b
+  - smolvla
+  - resnet50_v1_5
+  - lstmnetvit
+
+freeze:
+  policy_sha256: unresolved
+  runtime_sha256: unresolved
+  compiler_git_sha: unresolved
+  compiler_source_sha256: unresolved
+  toolchain_authority_path: unresolved
+  toolchain_authority_sha256: unresolved
+  frozen_at: unresolved
+  forbid_model_name_dispatch: true
+  forbid_post_freeze_tuning: true
+
+models:
+  - name: gemma2_2b
+    capture: gemma2_2b
+    checkpoint: google/gemma-2-2b-it
+    artifacts:
+      w8a8: {variant: int8, sha256: unresolved}
+      fp32: {variant: fp32, sha256: unresolved}
+    fidelity: full
+    precisions: [w8a8, fp32]
+    session:
+      kind: autoregressive_decode
+      warmups: 2
+      observations: 32
+      measurement_repeats: 5
+      stages: [prefill, decode]
+      carried_state: [kv_cache, position]
+      parameters:
+        prefill_tokens: 128
+        decode_tokens: 32
+        batch: 1
+        prefill_policy: compiled_in_continuous_session
+        timed_stages: [prefill, decode]
+        diagnostic_timed_stages: [decode]
+        paper_primary_scope: end_to_end
+    expected_provenance:
+      checkpoint: google/gemma-2-2b-it
+      full_checkpoint: true
+      token_source: "Salesforce/wikitext@b08601e04326c79dfdd32d625aee71d232d685c3:wikitext-2-raw-v1/test"
+      token_sha256: 3bee81fdc1905270331b022e5d1372b0abff9089098fc4e3edcf01676ad954e0
+      synthetic_tokens: false
+    quality: {reference: eager_fp32, metric: logit_cosine, cosine_min: 0.99, noninferiority_margin: 0.01}
+    memory: {policies: [resident, mmap], immutable_weights: true}
+
+  - name: tinyllama_1_1b
+    capture: tiny_llama
+    checkpoint: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+    artifacts:
+      w8a8: {variant: int8, sha256: unresolved}
+      fp32: {variant: fp32, sha256: unresolved}
+    fidelity: full
+    precisions: [w8a8, fp32]
+    session:
+      kind: autoregressive_decode
+      warmups: 2
+      observations: 32
+      measurement_repeats: 5
+      stages: [prefill, decode]
+      carried_state: [kv_cache, position]
+      parameters:
+        prefill_tokens: 128
+        decode_tokens: 32
+        batch: 1
+        prefill_policy: compiled_in_continuous_session
+        timed_stages: [prefill, decode]
+        diagnostic_timed_stages: [decode]
+        paper_primary_scope: end_to_end
+    expected_provenance:
+      checkpoint: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+      full_checkpoint: true
+      token_source: "Salesforce/wikitext@b08601e04326c79dfdd32d625aee71d232d685c3:wikitext-2-raw-v1/test"
+      token_sha256: 7e3e37ccdd0e0ded9f07c9025ecaed4699d580d7d952add55712608b61386275
+      synthetic_tokens: false
+    quality: {reference: eager_fp32, metric: logit_cosine, cosine_min: 0.99, noninferiority_margin: 0.01}
+    memory: {policies: [resident, mmap], immutable_weights: true}
+
+  - name: smolvla
+    capture: smolvla
+    checkpoint: lerobot/smolvla_base
+    artifacts:
+      w8a8: {variant: int8, sha256: unresolved}
+      fp32: {variant: fp32, sha256: unresolved}
+    fidelity: full
+    precisions: [w8a8, fp32]
+    session:
+      kind: action_chunk
+      warmups: 2
+      observations: 10
+      measurement_repeats: 5
+      stages: [prefix_encode, flow_denoise, action_decode]
+      carried_state: [prefix_kv_cache, flow_state, timestep]
+      parameters:
+        denoise_steps: 10
+        action_horizon: 50
+        batch: 1
+        prefix_policy: compiled_in_continuous_session
+        timed_stages: [prefix_encode, flow_denoise, action_decode]
+        diagnostic_timed_stages: [flow_denoise]
+        paper_primary_scope: end_to_end
+    expected_provenance:
+      checkpoint: lerobot/smolvla_base
+      checkpoint_revision: c83c3163b8ca9b7e67c509fffd9121e66cb96205
+      full_checkpoint: true
+      input_source: "lerobot/aloha_sim_insertion_human@cc571a3c661df81b566dbfde3d5c1e85fcdf7884:episode_index=0,frame_index=0"
+      input_sha256: 98fe690fdb0f86a418f47b6718e0a32bf0f63f48d722954eeaab6ece0cbad9d2
+      synthetic_inputs: false
+    quality: {reference: eager_fp32, metric: action_cosine, cosine_min: 0.99, noninferiority_margin: 0.01}
+    memory: {policies: [resident, mmap], immutable_weights: true}
+
+  - name: resnet50_v1_5
+    capture: resnet50_v1_5
+    checkpoint: torchvision/resnet50/IMAGENET1K_V2
+    artifacts:
+      w8a8: {variant: int8, sha256: unresolved}
+      fp32: {variant: fp32, sha256: unresolved}
+    fidelity: full
+    precisions: [w8a8, fp32]
+    session:
+      kind: image_stream
+      warmups: 10
+      observations: 256
+      measurement_repeats: 5
+      stages: [classify]
+      carried_state: []
+      parameters: {batch: 1, height: 224, width: 224, channels: 3,
+                   timed_stages: [classify], paper_primary_scope: end_to_end}
+    expected_provenance:
+      checkpoint: torchvision/resnet50/IMAGENET1K_V2
+      checkpoint_sha256: 8bea63dc89b0700f2acbc5b170ed0b4637daed4ab748949eefe50ebe95149ac0
+      full_checkpoint: true
+      input_source: "COCO_2017_validation_images@sha256:4f7e2ccb2866ec5041993c9cf2a952bbed69647b115d0f74da7ce8f4bef82f05"
+      input_sha256: 4094f75084a0f7e21a0c0082335c81bfe81f834a6c124ea59f537c2dfa51dd00
+      preprocessing: IMAGENET1K_V2
+      synthetic_inputs: false
+    quality: {reference: eager_fp32, metric: top1_agreement, cosine_min: 0.99, noninferiority_margin: 0.01}
+    memory: {policies: [resident], immutable_weights: true}
+
+  - name: lstmnetvit
+    capture: lstmnetvit
+    checkpoint: vitfly/LSTMNetVIT/published_pretrained
+    artifacts:
+      w8a8: {variant: int8, sha256: unresolved}
+      fp32: {variant: fp32, sha256: unresolved}
+    fidelity: full
+    precisions: [w8a8, fp32]
+    session:
+      kind: recurrent_frames
+      warmups: 10
+      observations: 256
+      measurement_repeats: 5
+      stages: [visual_encode, recurrent_step, predict]
+      carried_state: [hidden_state, cell_state]
+      parameters: {batch: 1, sequence_length: 256,
+                   timed_stages: [visual_encode, recurrent_step, predict],
+                   paper_primary_scope: end_to_end}
+    expected_provenance:
+      checkpoint: vitfly/LSTMNetVIT/published_pretrained
+      checkpoint_sha256: 1027ddcfef9094c05d9ec40f4e0a012470d4ce7e8e13419719f6676194665b27
+      full_checkpoint: true
+      session_source: "VitFly data.zip@sha1:4b7cac5e3807286909b53245e9b360fe65304591:trajectory=170725253257:first_256_upstream_valid_aligned_frames"
+      session_sha256: 74f2cdac1b44ccfc64c4b78ae495321eff68aab550a90072af2dc77d298193cf
+      synthetic_session: false
+    quality: {reference: eager_fp32, metric: output_cosine, cosine_min: 0.99, noninferiority_margin: 0.01}
+    memory: {policies: [resident], immutable_weights: true}
+
+backends:
+  - name: hand_v0_int8
+    kind: frozen_baseline
+    runtime: merlin
+    precisions: [w8a8]
+    quantization: static_w8a8
+    kernel_scope: compiled_model
+    adapter: merlin_compile
+    options:
+      package: out/artifacts/targets/rvv/hand_v0_int8
+      package_sha256: unresolved
+      timeout: 14400
+      source_paths: [out/artifacts/targets/rvv/hand_v0_int8]
+      kernel_source_sha256: unresolved
+  - name: merlin_frozen
+    kind: compiler
+    runtime: merlin
+    precisions: [w8a8, fp32]
+    quantization: declared_by_precision
+    kernel_scope: compiled_model
+    adapter: merlin_compile
+    options: {package: unresolved, package_sha256: unresolved, timeout: 14400}
+  - name: merlin_xnnpack
+    kind: kernel_swap
+    runtime: merlin
+    precisions: [fp32]
+    quantization: none
+    kernel_scope: routable_ops_only
+    adapter: merlin_compile
+    options:
+      package: out/artifacts/targets/rvv/hand_v0
+      package_sha256: unresolved
+      kernel_backend: xnnpack
+      timeout: 14400
+      source_paths: [tmp/kernels/XNNPACK, merlin/python/merlin/runtime/backends/xnnpack_board]
+      kernel_source_sha256: unresolved
+  - name: merlin_openblas
+    kind: kernel_swap
+    runtime: merlin
+    precisions: [fp32]
+    quantization: none
+    kernel_scope: routable_ops_only
+    adapter: merlin_compile
+    options:
+      package: out/artifacts/targets/rvv/hand_v0
+      package_sha256: unresolved
+      kernel_backend: openblas
+      timeout: 14400
+      source_paths: [tmp/kernels/OpenBLAS, merlin/python/merlin/runtime/backends/openblas_board]
+      kernel_source_sha256: unresolved
+  - name: executorch_xnnpack
+    kind: external_runtime
+    runtime: executorch
+    precisions: [fp32]
+    quantization: none
+    kernel_scope: full_system
+    adapter: executorch
+    options:
+      xnnpack: true
+      timeout: 14400
+      # Local adapter identity is frozen just like framework/package bytes.  Never resolve a bare
+      # `python` through ambient PATH for a paper measurement.
+      python_executable: /home/agustin/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/bin/python3.12
+      python_executable_sha256: 9ed008e5a8685235361f0c53771b520ab082dd99a877ad2fd796a93fa4c0b488
+      # Nonexistent argv[0] preserves .venv/pyvenv.cfg semantics while exec uses a private fd-bound
+      # copy of the pinned regular file; no symlink/path lookup selects executable bytes.
+      python_venv_argv0: .venv/bin/python-paper-adapter
+      command:
+        - "{python_executable}"
+        - -m
+        - merlin.baselines.executorch_session
+        - run
+        - --package
+        - "{framework_package}"
+        - --package-sha256
+        - "{framework_package_sha256}"
+        - --model
+        - "{model}"
+        - --variant
+        - "{variant}"
+        - --cores
+        - "{cores}"
+        - --warmups
+        - "{warmups}"
+        - --observations
+        - "{observations}"
+        - --measurement-repeats
+        - "{measurement_repeats}"
+        - --quality-metric
+        - "{quality_metric}"
+        - --quality-min
+        - "{quality_min}"
+        - --framework-source-sha256
+        - "{framework_source_sha256}"
+      source_paths:
+        - third_party/baselines/executorch
+        - merlin/python/merlin
+      framework_source_sha256: unresolved
+      external_model_sources:
+        lstmnetvit:
+          environment_key: VITFLY_DIR
+          source_root: models
+          source_file: models/model.py
+          git_sha: f11386f90d0265152f7776a2e89555456a5011dc
+          source_file_sha256: 574f026fdace4c18bd8e42f6266ab73e55dbfeb49fa589a2e7176884d12e0fa8
+      packages:
+        gemma2_2b:
+          fp32: {path: unresolved, sha256: unresolved}
+        tinyllama_1_1b:
+          fp32: {path: unresolved, sha256: unresolved}
+        smolvla:
+          fp32: {path: unresolved, sha256: unresolved}
+        resnet50_v1_5:
+          fp32: {path: unresolved, sha256: unresolved}
+        lstmnetvit:
+          fp32: {path: unresolved, sha256: unresolved}
+
+reporting:
+  unsupported_comparisons:
+    - backend: executorch_xnnpack
+      precision: w8a8
+      status: not_implemented
+      reason: >-
+        Full-system ExecuTorch/XNNPACK W8A8 continuous-session export and runtime ABI are not yet
+        implemented. No quantized external-runtime result may be inferred from the FP32 arm.
+  primary_statistic: median
+  secondary_statistics: [p05, p95]
+  execution_order:
+    policy: deterministic_block_randomized
+    seed_sha256: 2a68c9dab32c2ff43063e9e6d4f61b25a01e6f934b2f4c5ada0ff4fbabf75799
+    block_fields: [model, precision, core_count]
+    randomized_field: backend
+  performance_claims:
+    parity_median_ratio_band: [0.95, 1.05]
+    win_median_ratio_max: 0.95
+    win_requires_nonoverlapping_observed_ranges: true
+    win_requires_causal_attribution: true
+    language: descriptive_ratio_not_statistical_significance
+  report_build_and_run_separately: true
+  report_peak_rss: true
+  report_attribution: true
+  performance_scope_policy:
+    primary_table: end_to_end_continuous_sessions
+    diagnostic_table: exact_declared_stage_subsets
+    e2e_claim_requires_all_stages_timed: true
+    e2e_win_requires_attribution: true
+  same_buffer_repeat_is_diagnostic_only: true
+  deferred_models: [bitvla, rdt2, openvla]

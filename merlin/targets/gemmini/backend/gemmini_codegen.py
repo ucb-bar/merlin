@@ -24,6 +24,14 @@ DIM = 16
 # requant is an integer round-half-up shift on i32. See docs/gemmini_requant_reconciliation.md.
 SUPPORTED_EPILOGUE = {"relu"}
 
+# How many completion barriers this emitter inserts. `RETIRE_ONCE` is the production setting: one
+# retire for the whole kernel. `RETIRE_PER_JOB` reproduces what this emitter did before the hoist --
+# a barrier at the end of every job -- and exists ONLY so the barrier lever can be measured against
+# the arm it replaced. Both arms are bit-exact; they differ in cycles, which is the whole point.
+RETIRE_ONCE = "once"
+RETIRE_PER_JOB = "per_job"
+RETIRE_SETTINGS = frozenset({RETIRE_ONCE, RETIRE_PER_JOB})
+
 
 class CodegenError(RuntimeError):
     pass
@@ -121,10 +129,20 @@ def _counter_bracket() -> tuple[list[str], list[str], list[str]]:
             ['#include "include/gemmini_counter.h"'])
 
 
-def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
-    """Return the C source of the bare-metal Gemmini driver for ``cb``."""
+def generate_driver(cb: dict[str, Any], *, mode: str = "explicit",
+                    retire: str = RETIRE_ONCE) -> str:
+    """Return the C source of the bare-metal Gemmini driver for ``cb``.
+
+    ``retire`` selects how many completion barriers this emitter inserts. The default is the
+    production setting and the only one a graded run uses; ``RETIRE_PER_JOB`` exists so the barrier
+    lever has a SECOND arm to be measured against (see the call site below and
+    :mod:`merlin.perf.barrier_arms`). A lever nobody can emit the other side of is not measurable,
+    and the two arms differ by nothing but the inserted barrier statement.
+    """
     if mode != "explicit":
         raise CodegenError("only mode='explicit' is supported (no tiled_matmul_auto)")
+    if retire not in RETIRE_SETTINGS:
+        raise CodegenError(f"unknown retire={retire!r}; supported: {sorted(RETIRE_SETTINGS)}")
     weight, jobs, k, n = _parse(cb)
     leaves = materialize_inputs(cb)
     kp, np_ = _ceil_dim(k), _ceil_dim(n)
@@ -175,7 +193,7 @@ def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
     lines += _cpro
     lines.append("  c0 = read_cycles();")
 
-    for lhs, out, epi, m, mp, shift in job_meta:
+    for job_index, (lhs, out, epi, m, mp, shift) in enumerate(job_meta):
         Mt = mp // DIM
         acc_act = "RELU" if "relu" in epi else "NO_ACTIVATION"
         acc_scale = f"(1.0 / {1 << shift})" if "requant" in epi else "ACC_SCALE_IDENTITY"
@@ -195,12 +213,35 @@ def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
                     ]
                 c_off = (mi * DIM) * np_ + nj * DIM
                 lines.append(f"  gemmini_mvout((void*)&T_{out}[{c_off}], acc_ovw);")
+        # The measured arm, not the shipped one: the trailing retire below already covers the LAST
+        # job, so a barrier here for every job but the last gives exactly one barrier per job.
+        if retire == RETIRE_PER_JOB and job_index < len(job_meta) - 1:
+            lines.append("  gemmini_fence();")
     # ONE retire for the whole kernel, not one per job. Every job stages its activation through the
     # same scratchpad rows, so a second job's mvin is a write-after-read on rows the previous job's
-    # compute consumed -- which is why this used to fence after each. MEASURED on both elaborated-RTL
-    # engines: the reservation station tracks that hazard, and the barrier only cost time. On the one
-    # capsule in the corpus with two jobs, 434 -> 334 cycles on the citable engine (1.299x) and
-    # 427 -> 331 on the fast one, with every output byte-identical and both arms gating correct.
+    # compute consumed -- which is why this used to fence after each. The reservation station tracks
+    # that hazard, so the barrier bought nothing and cost time.
+    #
+    # ⚠️ THE SAVING IS PER BARRIER REMOVED, NOT PER KERNEL, and the two-job capsule that first showed
+    # this could not tell those apart -- it removes exactly one. Swept over job count at one tile of
+    # work per job on the citable engine (`rtl_verilator`), on gemmini_rtl 8c3f9923 plus these bytes
+    # (both gemmini pins verify False; nothing here is "pinned"):
+    #
+    #   jobs   1     2     3     4     6     8
+    #   once   215   327   441   560   790   1012
+    #   per-job 215  421   644   864   1276  1700
+    #   saving 0     94    203   304   486   688      -> 97.76 x (jobs - 1) + 3.07, R^2 = 0.99928
+    #
+    # A constant-saving explanation has a residual sum of squares of 221876 against 159 for that fit.
+    # So the 1.299x a two-job kernel sees is the ONE-BARRIER case and a floor: the ratio grows with the
+    # job count (1.29x, 1.46x, 1.54x, 1.62x, 1.68x at 2/3/4/6/8 jobs). The cost is a fixed
+    # serialisation, not a drain -- across a 4x reduction depth the one removed barrier costs 94/79/97
+    # cycles while the kernel around it grows from 327 to 801. Every output was byte-identical and
+    # every arm gated correct; both replicates of every point agreed exactly. The one-job kernel has no
+    # redundant barrier and both settings emit the identical program (215 vs 215), which is the
+    # negative control. Declared as family `PQ` in merlin/contract/capsules/profiles/_perf.yaml; rows
+    # and provenance under out/artifacts/perf-bench/gemmini/.
+    #
     # The remaining fence is not optional: it retires the last job before `read_cycles` bounds the
     # measured window and before the readback reads the output rows.
     lines.append("  gemmini_fence();")

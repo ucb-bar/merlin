@@ -37,6 +37,32 @@ cheap to find.
 `dump_addr` is the output buffer's address from the ELF's symbol table; the run prints its bytes as
 `DUMP <addr> <len>` followed by hex, which is the whole result-extraction path.
 
+## Fast numeric Gemmini smoke without TSI
+
+The general whole-model path below still needs a coherent host boundary. A small self-checking
+kernel does not: `gemmini_selfcheck.c` compares Gemmini's mvout buffer against an independently
+computed CPU golden, then calls one of two noinline marker functions. `selfcheck_run_harness.cpp`
+loads the ELF through the AXI backing store and stops when Rocket commits the pass or fail marker PC.
+The result never has to leave the cache through a backdoor, and no console or TSI handshake is used.
+
+Run it against an explicit emitted GSIM model and compiler-produced kernel object:
+
+    python merlin/experiments/gsim_wholemodel/run_gemmini_selfcheck.py \
+      --kernel-object "$KERNEL_OBJECT" \
+      --gsim-model-dir "$GEMMINI_GSIM_MODEL_DIR" \
+      --workdir out/artifacts/cache/gsim-gemmini-selfcheck/smoke \
+      --cross-check-verilator
+
+The completion contract is fail-closed: a pass requires the kernel entry, the pass marker, nonzero
+Gemmini busy cycles, and both AXI read and write traffic. The report seals the ELF, compiler object,
+emitted FIRRTL/model object, runner, and (when requested) Verilator binary. The exact same ELF is
+used for the Verilator corroboration.
+
+This is intentionally labeled `smoke_only`. GSIM is RTL-derived, but the current prebuilt emitted
+model has no sealed source-revision stamp. It must not replace the L3 Verilator certification gate
+until that revision and the GSIM cycle contract are pinned and reviewed. The runner does not alter
+network policy and makes no network-isolation claim.
+
 ## Where this currently stops, and why it is not the memory path
 
 The image loads and runs. It stops inside `htif_puts`: `sd` to `tohost`, then a poll of `fromhost`

@@ -287,9 +287,22 @@ def _perf_capsules_exist() -> tuple[bool, str]:
     """
     import yaml
 
-    root = REPO / "merlin" / "contract" / "capsules"
+    # SCOPED TO THE ACTIVE TARGET'S GRADED ROOTS, and glob RECURSIVELY. The first version did neither
+    # and was wrong twice over: `*/*/capsule.yaml` missed a nesting level, so it under-reported; and
+    # scanning the whole tree would have found ANOTHER target's performance capsules and let this run
+    # proceed on them. Measured: 14 capsules declare `performance:` here and every one belongs to a
+    # different target, whose fusion groups say nothing about the one being launched. Counting them
+    # would have started a performance run with nothing to grade -- the failure this gate exists to stop,
+    # arrived at through the gate itself.
+    try:
+        from merlin.targetgen.target_experiment import load_target_experiment
+        desc = (REPO / "merlin" / "experiments" / "capsule_bench" / "targets" / C.TARGET
+                / "target_experiment.yaml")
+        roots = [Path(r) for r in load_target_experiment(desc).graded_roots()]
+    except Exception as e:                                     # noqa: BLE001
+        return False, f"cannot resolve the graded roots for {C.TARGET!r}: {type(e).__name__}: {e}"
     groups: dict[str, int] = {}
-    for cy in sorted(root.glob("*/*/capsule.yaml")):
+    for cy in sorted(c for r in roots for c in r.rglob("capsule.yaml")):
         try:
             doc = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError:
@@ -301,7 +314,8 @@ def _perf_capsules_exist() -> tuple[bool, str]:
     usable = {g: n for g, n in groups.items() if n >= 2}
     if usable:
         return True, f"{len(usable)} comparison group(s) with >= 2 members: {sorted(usable)}"
-    return False, (f"no comparison group has two members (groups seen: {sorted(groups) or 'none'}); a "
+    return False, (f"no comparison group in {C.TARGET}'s graded roots has two members (groups seen: "
+                   f"{sorted(groups) or 'none'}); a "
                    f"performance capsule is an A/B on identical work, so a group of one cannot be "
                    f"compared to anything")
 

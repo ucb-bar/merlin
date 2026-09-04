@@ -9,10 +9,19 @@ from __future__ import annotations
 import ast
 import inspect
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from merlin.benchharness import chia_bridge
+
+
+def test_chia_run_exposes_the_aet_handle_run_id(tmp_path):
+    """The CPU-host runner uses the canonical AET identity to name all subordinate evidence."""
+    run = chia_bridge.ChiaRun(
+        handle=SimpleNamespace(run_id="campaign__arm1__r00__seed001", run_dir=tmp_path),
+        metrics=object(), profile_path=tmp_path / "profile.jsonl")
+    assert run.run_id == "campaign__arm1__r00__seed001"
 
 
 def _module_level_imports(path: Path) -> set[str]:

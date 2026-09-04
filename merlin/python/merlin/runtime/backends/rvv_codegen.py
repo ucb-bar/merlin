@@ -161,6 +161,20 @@ def generate_driver(cb: dict[str, Any], nharts: int = 4) -> str:
                         stmts.append(f"x = (x + (1 << ({shift} - 1))) >> {shift};")
                 elif stage == "relu":
                     stmts.append("if (x < 0) x = 0;")
+                elif stage == "maxpool":
+                    # DECLARED AND REFUSED BY NAME, not implemented. The commit this emitter generates
+                    # is a per-element loop that writes B_dst[i*n+j] from B_src[i*n+j]; a pooling stage
+                    # is a windowed reduction whose output has FEWER rows than the accumulator, so it
+                    # cannot be expressed as a statement inside that loop -- emitting one would produce
+                    # a kernel whose output buffer and declared shape disagree. Naming the refusal here
+                    # rather than letting it fall through the generic message below is the point: the
+                    # runtime engines DO implement this stage, so a reader hitting the generic
+                    # "unknown epilogue stage" would reasonably conclude the ABI had never defined it.
+                    raise CodegenError(
+                        "epilogue stage 'maxpool' is defined by the command-buffer ABI but this "
+                        "vector-lane emitter cannot generate it: its commit is an elementwise loop "
+                        "over the accumulator, and pooling reduces the row count. Emit the pooled "
+                        "store as its own nest instead of as a commit stage")
                 else:
                     raise CodegenError(f"unknown epilogue stage '{stage}'")
             if attrs.get("output_dtype", "i8") == "i8":

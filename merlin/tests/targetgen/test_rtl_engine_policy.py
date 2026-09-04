@@ -71,3 +71,17 @@ def test_an_engine_the_policy_has_not_ranked_is_used_not_dropped():
     """A newly registered engine must still be selectable before anyone declares its priority."""
     sel = P.select("t", {"newsim": _UP("registered")})
     assert sel["engine"] == "newsim"
+
+
+def test_an_engine_that_reports_available_with_no_reason_is_refused():
+    """Peer review point, and the shape of several defects hit the same day: a tier that resolved to a
+    different engine than the capsule asked for, with the reason living only in a log line, produces
+    correct-looking numbers that cannot be audited. Absent reason must be a hard failure, not a default."""
+    with pytest.raises(P.UnrecordedSelection):
+        P.select("t", {"gsim": lambda: (True, "   ")})
+
+
+def test_the_reason_survives_on_the_result_not_just_in_a_log():
+    sel = P.select("t", {"vcs": _DOWN("no license"), "gsim": _UP("emu built at <path>")})
+    assert sel["reason"] == "emu built at <path>"
+    assert {c["engine"]: c["reason"] for c in sel["considered"]}["vcs"] == "no license"

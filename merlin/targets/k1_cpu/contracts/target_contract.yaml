@@ -1,0 +1,109 @@
+# SpacemiT K1/X60 CPU-host target.  ISA/hart/cache facts were observed on the paper board through
+# /proc/cpuinfo and lscpu on 2026-08-30; VLEN is independently checked by examples/probe.c before a
+# scored run.  This is a Linux CPU contract, not an RTL certification claim.
+name: k1_cpu
+version: 0.1
+features:
+  - scalar_fallback
+  - rvv
+  - scalable_vl
+  - fixed_vlen_specialization
+  - multicore
+  - resident_packed_tensor
+  - metrics
+ops: [pack, matmul, commit, release, vector_map, vector_reduce, scalar_map, scalar_reduce, parallel_for]
+types: [packed_tensor, accumulator]
+runtime:
+  backends: [linux_k1, spike]
+  default_backend: linux_k1
+capabilities:
+  ops: [matmul, bias_add, requant, relu, elementwise, reduction]
+  layouts: [packed_rhs]
+  harts: 8
+  resident_storage_bytes: 1048576
+  cache:
+    l1d_bytes_per_hart: 32768
+    l1i_bytes_per_hart: 32768
+    l2_bytes_per_cluster: 524288
+    clusters: 2
+vector:
+  isa: rv64imafdcv_zfh_zvfh
+  specification: "1.0"
+  elen: 64
+  vlen_observed: 256
+  vl_policy: scalable_vl
+  fixed_vlen_policy: runtime_verified_only
+  tail_policy: undisturbed_or_explicitly_masked
+  lmul_policy: selected_from_register_pressure
+compute_units:
+  - name: scalar_integer
+    kind: scalar
+    dtypes: [int8, int16, int32]
+    ops: [matmul, elementwise, reduction]
+    scaling: none
+    requant: {ref: none}
+    accumulate:
+      - {in: int8, weight: int8, acc: i32}
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8]}
+      - {family: elementwise_map, dtypes: [int8, int16, int32]}
+      - {family: reduction, dtypes: [int8, int16, int32]}
+      - {family: movement, dtypes: [int8, int16, int32]}
+  - name: rvv_lanes
+    kind: vector
+    dtypes: [int8, int16, int32, fp16, fp32]
+    ops: [matmul, elementwise, reduction]
+    scaling: none
+    requant: {ref: none}
+    accumulate:
+      - {in: int8, weight: int8, acc: i32}
+      - {in: fp16, weight: fp16, acc: f32}
+      - {in: fp32, weight: fp32, acc: f32}
+    semantic_capabilities:
+      - {family: contraction, dtypes: [int8, int16, int32, fp16, fp32]}
+      - {family: elementwise_map, dtypes: [int8, int16, int32, fp16, fp32]}
+      - {family: reduction, dtypes: [int8, int16, int32, fp16, fp32]}
+      - {family: movement, dtypes: [int8, int16, int32, fp16, fp32]}
+measurement:
+  wall_from: k1
+  cycles_from: unavailable_on_bianbu_linux
+  timebase_from: rdtime
+  timebase_hz: 24000000
+  wall_tier: silicon
+  cycle_accurate: false
+  required_controls: [cpu_affinity, governor, temperature, warmup, repetition, peak_rss]
+memory_model:
+  resident: true
+  accumulators: true
+  notes: packed weights are ordinary immutable memory/cache residents, not dedicated accelerator SRAM
+compiler_obligations:
+  - must_emit_scalar_reference_path
+  - must_report_requested_and_actual_execution_mode
+  - must_not_fallback_in_scored_runs
+  - must_query_vl_or_verify_fixed_vlen_before_execution
+  - must_handle_vector_tails_without_out_of_bounds_access
+  - must_partition_work_across_harts_deterministically
+  - must_keep_paper_model_identity_out_of_dispatch
+hardware_promises:
+  - eight_linux_visible_harts
+  - rvv_1_0_vector_extension
+  - scalar_and_vector_fp16
+  - per_hart_time_counter
+runtime_promises:
+  - linux_process
+  - pthreads
+  - openmp_when_cross_runtime_is_linked
+  - wall_clock_metrics
+  - peak_rss_metrics
+legality:
+  - fixed VLEN lowering requires the silicon probe to report VLEN=256 in the same run environment
+  - a scalar execution is a diagnostic unless the requested mode is scalar
+  - a multicore result is valid only when the reported core count equals the requested core count
+  - packed RHS residency requires immutable weights
+confidence: medium
+requires_human_review: false
+notes: >-
+  CPU, cache, and ISA facts were observed on the SpacemiT X60 paper board running Bianbu Linux
+  6.6.63.  This contract deliberately makes no microarchitectural throughput or cycle-accuracy claim:
+  the kernel exposes rdtime but not rdcycle to userspace.  Paper performance therefore cites wall time,
+  with exact execution mode, core count, VLEN source, memory policy, and peak RSS recorded per run.

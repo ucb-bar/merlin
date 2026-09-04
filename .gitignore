@@ -51,6 +51,11 @@ selfcheck_out/
 # placeholders describing content that isn't there. out/build/generated/{AGENT,README}.md already
 # document the dir's purpose. Re-ignore the whole per-target subtree.
 /out/build/generated/*/**
+# CPU-host campaign workspaces contain agent-authored README files.  They are generated treatment
+# output, not repository source; re-ignore the whole per-cell build tree after the depth-unbounded
+# README/AGENT skeleton exceptions above.  Otherwise creating cell 0 changes the frozen Git identity
+# and invalidates the remaining randomized cells.
+/out/build/cpu-host-compiler/*/**
 
 # GUARD (regenerable concern subtrees): recaptures/ (per-model captures), measurements/ (per-run
 # substrate dumps), selfcheck/ and cache/ each grow one fully-regenerable/purgeable subtree per

@@ -380,7 +380,7 @@ def test_the_generated_worker_enables_vector_state_before_running_the_model():
         # 0x600 = mstatus.VS bits[10:9], 0x6000 = mstatus.FS bits[14:13].
         assert "0x00000600UL | 0x00006000UL" in src
         # Ordering is the whole point: after the banner is fine, before the model is mandatory.
-        assert src.index("csrw mstatus") < src.index("merlin_run("), \
+        assert src.index("csrw mstatus") < src.index("merlin_run_multi("), \
             f"n_harts={n_harts}: vector state enabled after the model already ran"
 
 

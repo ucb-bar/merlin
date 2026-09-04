@@ -161,6 +161,28 @@ class CaptureBundle:
 
     def require(self) -> "CaptureBundle":
         """Raise if the essential inputs (mlir + golden) are missing — fail-closed."""
+        session_contract = self.root / "session_contract.yaml"
+        if session_contract.is_file():
+            from merlin.common.yaml import load_yaml
+
+            session = load_yaml(session_contract)
+            if isinstance(session, dict) and int(session.get("version", 0)) == 2:
+                programs = session.get("programs", ()) or ()
+                missing_programs = []
+                if not isinstance(programs, list):
+                    missing_programs.append("<invalid-program-list>")
+                for program in programs if isinstance(programs, list) else ():
+                    if not isinstance(program, dict):
+                        missing_programs.append("<invalid-program-record>")
+                        continue
+                    child = self.root / str(program.get("bundle", ""))
+                    if not (child / "model.mlir").is_file() or not (child / "golden.npy").is_file():
+                        missing_programs.append(str(program.get("name", "<unnamed>")))
+                if not programs or missing_programs:
+                    raise FileNotFoundError(
+                        f"multi-program capture bundle {self.model}/{self.variant} at {self.root} "
+                        f"has missing program artifacts {missing_programs or ['<no-programs>']}")
+                return self
         missing = [p.name for p in (self.mlir, self.golden) if not p.is_file()]
         if missing:
             raise FileNotFoundError(

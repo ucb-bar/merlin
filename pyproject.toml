@@ -94,6 +94,14 @@ merlin-cca-route = "merlin.mining.route_report:main"
 merlin-bundle-pretranspose = "merlin.baselines.pretranspose_cli:main"
 merlin-compile = "merlin.compile_cli:main"
 merlin-compare = "merlin.compare.cli:main"
+merlin-paper-capture = "merlin.compare.capture_workflow:main"
+merlin-paper-k1-matrix = "merlin.compare.paper_k1_orchestrator:main"
+merlin-cpu-host-figures = "merlin.plotting.cpu_host_experiment_figures:main"
+merlin-cpu-host-beam-figures = "merlin.plotting.cpu_host_beam_figures:main"
+merlin-paper-executorch-packages = "merlin.compare.executorch_packages:main"
+merlin-paper-merlin-packages = "merlin.compare.paper_merlin_packages:main"
+merlin-paper-merlin-producers = "merlin.compare.paper_merlin_producers:main"
+merlin-paper-figures = "merlin.plotting.rvv_paper_figures:main"
 merlin-liveness = "merlin.liveness.cli:main"
 merlin-compile-kernel = "merlin.triton.cli:main"
 
@@ -150,4 +158,3 @@ default-groups = []
 [tool.uv.sources]
 # `aet` (the telemetry extra) is a local sibling checkout, installed editable — not published.
 aet = { path = "../aet", editable = true }
-
