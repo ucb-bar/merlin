@@ -36,7 +36,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -325,6 +325,11 @@ class DevelopmentGsimFeedback:
     # the ceiling" tolerates, and it is MEASURED so that judgement is not a constant anyone can
     # turn until the answer changes. None when fewer than two points price, which refuses.
     achievable_dispersion: float | None = None
+    #: Median measured simulation seconds per capsule, and how the ordering was arrived at. Used to
+    #: sweep cheapest-first, so a losing candidate is refuted before the corpus's slowest members
+    #: are paid for. Empty means no history: the declared order stands and the basis says so.
+    member_cost: Mapping[str, float] = field(default_factory=dict)
+    member_cost_basis: str = ""
     tuning_call_budget: int | None = None
     #: Total candidate cycles over the comparable members, one entry per feedback invocation. The
     #: stop conditions read the SHAPE of this history, not any single measurement.
@@ -419,6 +424,34 @@ class DevelopmentGsimFeedback:
         return {"correct": correct, "gsim_cycles": cycles}
 
 
+    #: A losing prefix must be this long before it may stop the sweep. One member is an anecdote --
+    #: the cheapest member is also the one most dominated by fixed per-invocation cost, where a
+    #: schedule change shows least -- so a single loss is not allowed to end a measurement.
+    MINIMUM_REFUTING_PREFIX = 3
+
+    def _refuted_so_far(self, cells: "Sequence[Mapping[str, Any]]", index: int, total: int) -> bool:
+        """Is this candidate already behind on every comparable member measured so far?
+
+        ONE-DIRECTIONAL BY CONSTRUCTION. True only when every comparable cell measured has the
+        candidate strictly slower than the baseline. It never returns True on a tie, never on an
+        incomparable cell, and never before the minimum prefix -- so the sweep can be cut short only
+        for a candidate that has lost everywhere it has been asked, which is the one conclusion no
+        further member can overturn.
+
+        Returns False whenever it cannot tell: too few comparable cells, any cell not comparable, or
+        the last member (where stopping saves nothing). Absence of evidence never stops a sweep.
+        """
+        if index + 1 >= total:
+            return False                      # nothing left to save
+        comparable = [c for c in cells if c.get("comparable")]
+        if len(comparable) < self.MINIMUM_REFUTING_PREFIX or len(comparable) != len(cells):
+            return False                      # an incomparable member means the picture is partial
+        for cell in comparable:
+            delta = cell.get("candidate_minus_baseline_cycles")
+            if not isinstance(delta, (int, float)) or isinstance(delta, bool) or delta <= 0:
+                return False                  # a tie or a win anywhere: keep measuring
+        return True
+
     def _stopping(self, cells: Sequence[Mapping[str, Any]], *,
                   label: str, elapsed_s: float) -> dict[str, Any]:
         """Should the search stop? Every condition's answer, fired or not.
@@ -508,6 +541,11 @@ class DevelopmentGsimFeedback:
             raise StageGateError("development GSIM feedback has zero frozen tuning members")
         cells: list[dict[str, Any]] = []
         started = time.monotonic()
+        # CHEAPEST MEASURED MEMBER FIRST. A candidate behind on every member measured so far is
+        # behind; paying for the corpus's slowest members to confirm it spends the budget on a
+        # conclusion already reached.
+        members, order_basis = order_members_by_cost(members, self.member_cost)
+        stopped_after: int | None = None
         for index, member in enumerate(members):
             key = (member.family, member.capsule)
             decision = self.decisions.get(key)
@@ -580,7 +618,23 @@ class DevelopmentGsimFeedback:
                     achievable_rate=self.achievable_macs_per_cycle,
                     baseline_cycles=bcycles, candidate_cycles=ccycles if comparable else None,
                     dispersion=self.achievable_dispersion),
+                "measured": True, "skip_reason": None,
             })
+            # STOP ONLY A LOSING CANDIDATE, NEVER PROMOTE A WINNING ONE. The rule is one-directional
+            # on purpose: a candidate behind on every comparable member measured so far cannot be
+            # rescued by a member it has not reached, because the objective is fewer cycles on the
+            # SAME work and it is already behind on all of it. The converse is false -- a candidate
+            # ahead on the cheap prefix may still lose on a member it has not paid for -- so a
+            # winning prefix buys nothing and the full sweep is measured.
+            if self._refuted_so_far(cells, index, len(members)):
+                stopped_after = index + 1
+                break
+        for member in members[stopped_after:] if stopped_after is not None else ():
+            # RECORDED, not omitted. A missing cell and an unmeasured one are different claims.
+            cells.append(_unmeasured_cell(
+                member, reason=("the sweep is ordered cheapest-measured-first and this candidate "
+                                "was already behind on every comparable member measured before "
+                                "this one; the remaining members were not paid for")))
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
             raise StageGateError("development GSIM evaluation mutated the candidate compiler")
@@ -1726,7 +1780,10 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
                    # above is a number the reader has to interpret; without this the cell records
                    # a measurement and states no position on it, which is how a member at 3% of
                    # the achievable rate and one at 100% came to read identically.
-                   "verdict", "verdict_reason"}
+                   "verdict", "verdict_reason",
+                   # A cell the sweep did not pay for says so, rather than being omitted. Omitting
+                   # it would let a short sweep read as a complete one.
+                   "measured", "skip_reason"}
     identities: set[tuple[str, str]] = set()
     for index, row in enumerate(cells):
         if not isinstance(row, Mapping) or set(row) != cell_fields:
@@ -1969,6 +2026,74 @@ def functional_emission_guard(baseline: Path, candidate: Path,
             "offenders": offenders, "rows": rows}
 
 
+#: Fields an unmeasured cell carries. It is the same shape as a measured one so the redacted
+#: schema stays exact, with every measurement-valued field null -- an absent number is never a zero.
+def _unmeasured_cell(member: Any, *, reason: str) -> dict[str, Any]:
+    return {
+        "family": member.family, "capsule": member.capsule,
+        "baseline_correct": None, "candidate_correct": None,
+        "baseline_gsim_cycles": None, "candidate_gsim_cycles": None,
+        "candidate_minus_baseline_cycles": None, "baseline_over_candidate": None,
+        "comparable": False,
+        "declared_macs": None, "declared_work_basis": None, "ideal_cycles_at_peak": None,
+        "baseline_utilization": None, "candidate_utilization": None,
+        "baseline_share_of_achievable": None, "candidate_share_of_achievable": None,
+        "verdict": "refused", "verdict_reason": reason,
+        "measured": False, "skip_reason": reason,
+    }
+
+
+def harvest_member_cost(roots: "Sequence[Path]") -> dict[str, float]:
+    """Median measured simulation seconds per capsule, from runs already on disk.
+
+    ORDER THE SWEEP BY WHAT IT COSTS, and derive that from measurement rather than from a proxy.
+    Declared MACs are the obvious proxy and they are WRONG here: measured on this corpus, a
+    262144-MAC deep-K member simulates in 74.9 s while a 65536-MAC wide-M/N member takes 178.5 s --
+    the proxy inverts on exactly the pair it would need to get right. Simulation cost tracks the
+    shape of the program, not the size of its arithmetic, so it is read from prior runs.
+
+    Absent history yields an empty table and the caller keeps the declared order, saying so. An
+    empty table is never a claim that every member costs the same.
+    """
+    seconds: dict[str, list[float]] = {}
+    for root in roots:
+        if not root or not Path(root).is_dir():
+            continue
+        for path in Path(root).rglob("capsule_result.json"):
+            try:
+                document = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001 - an unreadable result contributes no cost, not a zero
+                continue
+            capsule = str(document.get("capsule") or "")
+            tier = ((document.get("tiers") or {}).get("L3") or {})
+            active = ((tier.get("timing") or {}).get("sim_active_s"))
+            if capsule and isinstance(active, (int, float)) and not isinstance(active, bool) and active > 0:
+                seconds.setdefault(capsule, []).append(float(active))
+    table: dict[str, float] = {}
+    for capsule, values in seconds.items():
+        values.sort()
+        middle = len(values) // 2
+        table[capsule] = (values[middle] if len(values) % 2
+                          else 0.5 * (values[middle - 1] + values[middle]))
+    return table
+
+
+def order_members_by_cost(members: "Sequence[Any]", cost: Mapping[str, float]) -> tuple[tuple, str]:
+    """Cheapest measured member first; unpriced members last, so absence never looks cheap.
+
+    Returns the ordering and the basis, because an ordering nobody can account for is one nobody
+    can check. A member with no recorded cost sorts AFTER every priced one: it might be the most
+    expensive in the corpus, and guessing it is cheap would put the slowest member first.
+    """
+    if not cost:
+        return tuple(members), "declared order; no measured simulation cost is on record"
+    ordered = sorted(members, key=lambda m: (cost.get(m.capsule) is None,
+                                             cost.get(m.capsule, 0.0), m.family, m.capsule))
+    priced = sum(1 for m in members if m.capsule in cost)
+    return tuple(ordered), (f"ascending median measured simulation seconds "
+                            f"({priced}/{len(members)} members priced; unpriced sort last)")
+
+
 def prepare_development_feedback(
         *, certificate_path: Path | None, certificate_sha256: str | None,
         rtl_facts_path: Path | None, corpus: FrozenPerformanceCorpus, baseline: Path,
@@ -1994,6 +2119,11 @@ def prepare_development_feedback(
         # gemmini), so optimising toward it is chasing a number that does not exist. The achievable
         # ceiling is the best rate anything on this machine actually reached, and it is what the
         # agent is asked to close on. Underivable -> None with a reason, never a substituted number.
+        # Ordering the sweep by measured cost needs history; absent it the declared order stands
+        # and the basis says so, rather than a proxy silently standing in for a measurement.
+        member_cost: dict[str, float] = harvest_member_cost(
+            [Path(functional_run_dir).parent] if functional_run_dir is not None else [])
+        _, member_cost_basis = order_members_by_cost((), member_cost)
         achievable_macs, achievable_basis = None, "no functional run was supplied to harvest"
         achievable_dispersion: float | None = None
         if functional_run_dir is not None:
@@ -2040,6 +2170,7 @@ def prepare_development_feedback(
         peak_macs_per_cycle=peak_macs, peak_basis=peak_basis,
         achievable_macs_per_cycle=achievable_macs, achievable_basis=achievable_basis,
         achievable_dispersion=achievable_dispersion,
+        member_cost=member_cost, member_cost_basis=member_cost_basis,
         tuning_call_budget=tuning_call_budget)
 
 
