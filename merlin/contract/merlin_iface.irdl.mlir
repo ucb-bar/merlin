@@ -1,9 +1,12 @@
 module {
   irdl.dialect @merlin_iface {
-    irdl.type @"!acc" 
-    irdl.type @"!resident" 
+    irdl.type @"acc" {
+      %param0 = irdl.any
+      irdl.parameters(elemtype: %param0)
+    }
+    irdl.type @"resident" 
     irdl.operation @commit {
-      %0 = irdl.base @merlin_iface::@"!acc" 
+      %0 = irdl.base @merlin_iface::@"acc" 
       %1 = irdl.c_pred "(::llvm::isa<::mlir::RankedTensorType>($_self))" 
       %2 = irdl.all_of(%1) 
       %3 = irdl.c_pred "[](::mlir::Type elementType) { return !((::llvm::isa<::mlir::TokenType>(elementType))); }(::llvm::cast<::mlir::ShapedType>($_self).getElementType())" 
@@ -22,7 +25,7 @@ module {
       %1 = irdl.all_of(%0) 
       %2 = irdl.c_pred "[](::mlir::Type elementType) { return !((::llvm::isa<::mlir::TokenType>(elementType))); }(::llvm::cast<::mlir::ShapedType>($_self).getElementType())" 
       %3 = irdl.all_of(%1, %2) 
-      %4 = irdl.base @merlin_iface::@"!resident" 
+      %4 = irdl.base @merlin_iface::@"resident" 
       %5 = irdl.c_pred "(::llvm::isa<::mlir::RankedTensorType>($_self))" 
       %6 = irdl.all_of(%5) 
       %7 = irdl.c_pred "[](::mlir::Type elementType) { return !((::llvm::isa<::mlir::TokenType>(elementType))); }(::llvm::cast<::mlir::ShapedType>($_self).getElementType())" 
@@ -50,7 +53,7 @@ module {
       irdl.attributes {"kernel" = %11, "stride" = %14, "padding" = %17, "dilation" = %20, "name" = %21, "epilogue" = %24, "output_dtype" = %25, "layout" = %26}
     }
     irdl.operation @evict {
-      %0 = irdl.base @merlin_iface::@"!resident" 
+      %0 = irdl.base @merlin_iface::@"resident" 
       irdl.operands(handle: %0)
     }
     irdl.operation @matmul {
@@ -58,8 +61,8 @@ module {
       %1 = irdl.all_of(%0) 
       %2 = irdl.c_pred "[](::mlir::Type elementType) { return !((::llvm::isa<::mlir::TokenType>(elementType))); }(::llvm::cast<::mlir::ShapedType>($_self).getElementType())" 
       %3 = irdl.all_of(%1, %2) 
-      %4 = irdl.base @merlin_iface::@"!resident" 
-      %5 = irdl.base @merlin_iface::@"!acc" 
+      %4 = irdl.base @merlin_iface::@"resident" 
+      %5 = irdl.base @merlin_iface::@"acc" 
       irdl.operands(lhs: %3, rhs: %4)
       irdl.results(result: %5)
     }
@@ -82,7 +85,7 @@ module {
       %1 = irdl.all_of(%0) 
       %2 = irdl.c_pred "[](::mlir::Type elementType) { return !((::llvm::isa<::mlir::TokenType>(elementType))); }(::llvm::cast<::mlir::ShapedType>($_self).getElementType())" 
       %3 = irdl.all_of(%1, %2) 
-      %4 = irdl.base @merlin_iface::@"!resident" 
+      %4 = irdl.base @merlin_iface::@"resident" 
       %5 = irdl.any
       irdl.operands(src: %3)
       irdl.results(result: %4)
