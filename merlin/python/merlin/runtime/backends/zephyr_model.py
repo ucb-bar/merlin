@@ -404,6 +404,7 @@ def _ram_for_weights(weights_bytes: int, activation_bytes: int | None = None,
 def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                         tag_vec_ranks: bool = False,
                         named_contraction: bool = False,
+                        op_counts_out: "dict[str, int] | None" = None,
                         vec_lanes: int = _VEC_RANK_LANES) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
     prepared module to ``work/model.prepared.mlir``. These make quantized / bf16 /
@@ -485,6 +486,12 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
         print(f"[vec_rank] tagged {n_tag} all-parallel generics for bounded vectorize "
               f"(skipped {skip_gather} gathers, {skip_math} with a transcendental body, "
               f"{skip_extent} on a non-multiple innermost extent)")
+    if op_counts_out is not None:
+        # What the PREPARED module actually contains, for the caller to check its levers against.
+        # A transform lever finds its work by op NAME; one whose ops are all absent still builds,
+        # gates clean and reports as applied.
+        from ...mining.lever_applicability import module_op_counts
+        op_counts_out.update(module_op_counts(module))
     out = work / "model.prepared.mlir"
     out.write_text(to_text(module))
     return out
@@ -550,10 +557,25 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     features = frozenset(features or frozenset())
     _lanes = _vec_lanes(features)
     from ...llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME
+    _op_counts: dict[str, int] = {}
     prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    named_contraction=NAMED_INT8_CONTRACTION_NAME in features,
+                                   op_counts_out=_op_counts,
                                    vec_lanes=_lanes or _VEC_RANK_LANES)
+    # SAY SO when a requested lever cannot fire on this module. A transform schedule matches by op
+    # name, and `transform.structured.match` on a name nothing carries yields an empty handle, so
+    # every op downstream of it is a vacuous no-op -- the feature builds, gates clean, and reports
+    # as applied while changing nothing. That is how the int8 datapath ran an 87-fork search over a
+    # register-blocking family that could not touch it: the quant pass leaves 0 linalg.matmul.
+    # Reported, not enforced: this is a diagnostic and a lever it cannot analyse must not be refused.
+    try:
+        from ...mining.lever_applicability import inapplicable_features as _inapplicable
+        for _name, _why in _inapplicable(features, _op_counts).items():
+            print(f"[lever] INAPPLICABLE {_name}: needs {list(_why['needs'])}, module has "
+                  f"{_why['present']} — this feature cannot fire and will measure as a no-op")
+    except Exception as _e:                      # a diagnostic must never break a build
+        print(f"[lever] applicability check unavailable: {type(_e).__name__}: {_e}")
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.

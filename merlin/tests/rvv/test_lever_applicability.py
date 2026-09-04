@@ -70,3 +70,34 @@ def test_the_real_mrpad_schedule_is_judged_on_its_payload_ops():
     assert applicability(txt, {"func.func": 1, "linalg.generic": 280})["status"] == "inapplicable"
     # with named_int8_contraction on: applicable
     assert applicability(txt, {"func.func": 1, "linalg.matmul": 15})["status"] == "applicable"
+
+
+def test_the_check_has_a_caller_at_the_seam_that_knows_both_things():
+    """A detector nobody calls is the defect it was written to catch.
+
+    prepare_for_lowering is the one place that holds BOTH the requested features and the prepared
+    module, so that is where a lever which cannot fire has to be named.
+    """
+    from merlin.common.paths import merlin_dir
+    src = (merlin_dir() / "python" / "merlin" / "runtime" / "backends" / "zephyr_model.py").read_text()
+    assert "inapplicable_features as _inapplicable" in src
+    assert "op_counts_out=_op_counts" in src
+    assert "[lever] INAPPLICABLE" in src
+    # and it must never break a build: a diagnostic that can fail a compile is worse than none
+    assert "a diagnostic must never break a build" in src
+
+
+def test_named_features_resolve_their_own_schedules():
+    """No table of its own: the check reads each lever's schedule through impr_features, so it stays
+    correct as levers are added."""
+    from merlin.llvmlower.impr_features import MRPAD_INT8_NAME
+    from merlin.mining.lever_applicability import inapplicable_features
+    feats = {MRPAD_INT8_NAME, "promote_buffers_to_stack", "named_int8_contraction"}
+    # int8 as it lowers by DEFAULT: the register block cannot fire
+    bad = inapplicable_features(feats, {"func.func": 1, "linalg.generic": 280})
+    assert MRPAD_INT8_NAME in bad
+    assert bad[MRPAD_INT8_NAME]["present"] == {"linalg.batch_matmul": 0, "linalg.matmul": 0}
+    # with the named contraction restored, nothing is inapplicable
+    assert inapplicable_features(feats, {"func.func": 1, "linalg.matmul": 15}) == {}
+    # unknown names are skipped rather than guessed at
+    assert inapplicable_features({"no_such_feature"}, {"func.func": 1}) == {}

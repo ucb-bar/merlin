@@ -118,3 +118,30 @@ def applicability(schedule_text: str, op_counts: dict[str, int]) -> dict:
             "reason": (f"the module contains none of {list(needs)}, so every "
                        f"transform.structured.match on them yields an empty handle and the lever "
                        f"is a no-op; it would still build, gate clean and report as applied")}
+
+
+def inapplicable_features(features, op_counts: dict[str, int]) -> dict[str, dict]:
+    """``{feature name -> applicability}`` for every named feature that CANNOT fire on this module.
+
+    Resolves each feature's own schedule text through :mod:`merlin.llvmlower.impr_features`, so it
+    stays correct as levers are added and needs no table of its own. Features with no schedule, or
+    whose schedule matches by interface rather than by name, are omitted -- this reports only what it
+    can actually establish, on the same terms as :func:`applicability`.
+    """
+    from merlin.llvmlower.impr_features import get, known
+
+    out: dict[str, dict] = {}
+    for name in sorted(set(features or ())):
+        if name not in known():
+            continue
+        edit = getattr(get(name), "edit_schedule", None)
+        if edit is None:
+            continue
+        try:
+            text = edit("")
+        except Exception:                        # a schedule we cannot render, we cannot judge
+            continue
+        verdict = applicability(text, op_counts)
+        if verdict["status"] == "inapplicable":
+            out[name] = verdict
+    return out

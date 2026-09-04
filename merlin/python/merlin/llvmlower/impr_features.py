@@ -2389,6 +2389,13 @@ def ensure_mrpad_for_elem_types(a: str, b: str, c: str) -> str:
     ))
     return name
 
+#: The canonical int8 contraction operand types. Registered eagerly so the typed M-pad variant is
+#: NAMEABLE as a feature string and visible to the proposer -- an on-demand-only registration is
+#: reachable from Python but not from a `--features` list or a search proposal, which is where it
+#: has to be selectable from. Registration is default-off, so the frozen baseline is unaffected.
+MRPAD_INT8_NAME = ensure_mrpad_for_elem_types("i8", "i8", "i32")
+
+
 
 # ---- compiler-emitted register-blocked RVV intrinsic micro-kernel -------------------
 # THE scalable-gap winner (output/kernels/ceiling/scalable_gap_result.md). The upstream
