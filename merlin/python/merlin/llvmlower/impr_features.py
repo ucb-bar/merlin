@@ -1944,10 +1944,16 @@ def ensure_vec_noncontraction(lanes: int) -> str:
 #: buffers are scattered, so every intermediate is written and re-read through cache misses, while a
 #: stack frame is one contiguous, hot region. That is structurally what ExecuTorch buys with its
 #: memory-planning pass, which places EVERY activation of this model into a single 32,512-byte arena
-#: (measured from its own AOT profile) -- small enough to stay in L1. We have no such planner wired
-#: (`arena_plan.plan_arena` is only reachable from the self-contained C harness, and the lean runtime
-#: that would consume it whole-model does not exist), and this upstream pass gets a large part of the
-#: same effect for free.
+#: (measured from its own AOT profile) -- small enough to stay in L1. We have no such planner wired:
+#: `arena_plan.plan_arena` has exactly one caller, `runtime/program.py:97` (`build_program`), and the
+#: replay engine that would consume its plan whole-model does not exist in the tree at all
+#: (`merlin_program.c` is named by three docstrings and absent; `merlin_bump_linux.c` is a
+#: measurement proxy). It was previously recorded here as "only reachable from the self-contained C
+#: harness" -- that is a NAME COLLISION, not a reachability claim: `selfcontained_c_harness` defines
+#: its own unrelated `build_program` and references no arena at all. What wiring it actually costs is
+#: written up in docs/design/static_arena_wiring.md. Sized on the model we measure (small_llama
+#: int8): 433 intermediate buffers, 3,114,112 B naive vs 265,536 B planned, 11.73x reuse.
+#: Meanwhile this upstream pass gets a large part of the same effect for free.
 #:
 #: The size cap is the safety property, not a tuning knob: a promoted buffer lives on the stack for
 #: the whole frame, so an uncapped promotion of a big intermediate overruns it. Zephyr's master stack
