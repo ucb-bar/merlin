@@ -170,9 +170,35 @@ out of 176**. AutoComp arm: 0 of 26 complete. On the three shapes where both arm
 
 Geomean 0.975× — AutoComp marginally ahead on absolute cycles, on three shapes, from a better start.
 
-**AutoComp's 1.00× is a floor, not a verdict**, and citing it as a verdict would be dishonest: across
-those shapes it generated 32 candidates of which **0 were correct** (29 failed to compile, 3 compiled
-but were numerically wrong), and its code tier was silently broken for part of the run — see below.
+**AutoComp's 1.00× is a floor, not a verdict**, and citing it as a verdict would be dishonest:
+across those shapes it generated 32 candidates of which **0 were correct**. Grouping those failures
+by message — rather than counting them — shows they are almost all one harness defect, not model
+incapacity. See the next section.
+
+### 27 of 29 compile failures were one missing sentence in the prompt
+
+The rule this repo keeps relearning is that **a compile-failure rate must be grouped by message
+before it is cited**: a genuinely weak model fails in varied ways, while identical failures are a
+harness signature. Grouped:
+
+| class | n |
+|---|---|
+| implicit declaration / undefined reference to `mvin`, `preload`, `config_ld`, `compute_preloaded`, `mvout`, `config_st`, `config_ex`, `mvin2` | **27** |
+| the harness's own `uint64_t` timing bracket | 2 |
+
+Every symbol in that first row is a **real Gemmini macro with the `gemmini_` prefix stripped** —
+`gemmini_extended_mvin`, `gemmini_preload`, `gemmini_config_ld`, and so on, all present in
+`gemmini.h`. The model had the ISA essentially right and only the naming convention wrong.
+
+Why it had the convention wrong is the defect: `get_backend_specific_rules()` states the shapes, the
+bit-exactness requirement, the no-FPU constraint and the timing-bracket contract — but **never names
+a single available primitive**, and the seed kernel it is asked to beat uses only the high-level
+`tiled_matmul_auto` and `gemmini_fence`. So the arm was asked to out-optimise a library call by
+dropping to an ISA whose spelling it was never shown, and then scored on the result.
+
+That is not a measurement of AutoComp. It is a measurement of our prompt. The two `uint64_t` failures
+are also a repeat of a defect already recorded as fixed, which is its own lesson about verifying that
+a harness fix actually reached the running configuration.
 
 ## The failure that would have been invisible
 

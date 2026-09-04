@@ -105,6 +105,23 @@ class GsimGemminiEvalBackend:
             "count is not the objective -- overlapped transfers can be free while a barrier "
             "cannot.",
             "The host Rocket core has no FPU: any floating-point operation traps on real RTL.",
+            # ⚠️ WITHOUT THIS RULE THE ARM CANNOT COMPILE. Measured 2026-09-03: 27 of 29 compile
+            # failures across three shapes were implicit-declaration/undefined-reference on `mvin`,
+            # `preload`, `config_ld`, `compute_preloaded`, `mvout`, `config_st`, `config_ex`,
+            # `mvin2` -- every one a REAL macro in gemmini.h with the `gemmini_` prefix stripped.
+            # The model had the ISA right and the spelling wrong, because the rules named no
+            # primitive at all and the seed it is asked to beat uses only `tiled_matmul_auto`.
+            # Scoring an arm on an API we never showed it measures our prompt, not the model.
+            "The low-level ISA is available as MACROS from \"include/gemmini.h\", and every name "
+            "carries a `gemmini_` prefix -- there are no bare `mvin`/`preload`/`config_ld` "
+            "functions and calling them will not link. The ones that matter here are: "
+            "gemmini_config_ex, gemmini_config_ld, gemmini_config_st, gemmini_extended_config_ex, "
+            "gemmini_extended_config_ld, gemmini_extended_config_st, gemmini_extended_mvin, "
+            "gemmini_extended_mvin2, gemmini_extended_mvout, gemmini_block_mvin, gemmini_preload, "
+            "gemmini_preload_zeros, gemmini_compute_preloaded, gemmini_compute_accumulated, "
+            "gemmini_extended_compute_preloaded, gemmini_extended_compute_accumulated, "
+            "gemmini_fence. The high-level tiled_matmul_auto() in the seed is also available; "
+            "beating it is the point, so dropping to the macros above is expected.",
             "The timing bracket uses 'unsigned long', not 'uint64_t', so it does not depend on "
             "<stdint.h>. Keep it that way if you restructure the includes.",
             "You MUST keep the read_cycles() timing bracket and the printf of "
