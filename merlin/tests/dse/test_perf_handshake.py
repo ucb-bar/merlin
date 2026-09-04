@@ -64,3 +64,42 @@ def test_an_unreadable_circuit_is_unknown_not_a_free_pipeline() -> None:
         measure_fill_depth("a-target-with-no-circuit", hw_mlir=None) \
             if mlc_bridge.core_hw_mlir("a-target-with-no-circuit") is None \
             else (_ for _ in ()).throw(HandshakeUnavailable("simulated"))
+
+
+def test_a_delay_line_the_emitter_did_not_name_is_still_walked() -> None:
+    """A conformant design must not read as an unreadable circuit because of a naming convention.
+
+    The upstream pass finds the depth by matching registers whose OWN NAME contains "valid". One
+    design's emitter named that chain ``%r_256_0 ... %r_1115_0`` and put "valid" only on the signals
+    each stage samples, so the pass reported "no output-valid delay-line found in @Mesh" -- for a
+    circuit holding 257 registers of exactly that delay line. The path is walked instead, and the
+    walk must agree with the named chain wherever one exists.
+    """
+    _needs_circuit()
+    for target in ("gemmini", "atlas"):
+        d = measure_fill_depth(target, law=None)
+        assert d.measured_cycles > 0, f"{target} still reports no measurable depth"
+        assert d.dim > 0
+        # The depth is a pipeline through the array, so it is bounded by the array's own geometry:
+        # at least one stage per dimension crossed, and never more than a stage per PE.
+        assert d.dim <= d.measured_cycles <= d.dim * d.dim, (target, d.dim, d.measured_cycles)
+
+
+def test_the_walked_depth_names_the_evidence_it_walked() -> None:
+    """An intercept with no traceable source is the kind of number that gets cited wrongly."""
+    _needs_circuit()
+    d = measure_fill_depth("gemmini", law=None)
+    assert "valid path" in d.source and "@" in d.source, d.source
+
+
+def test_a_law_is_reported_against_each_targets_own_circuit() -> None:
+    """The same law cannot be right for two different microarchitectures, and saying so is the point.
+
+    ``systolic_2d`` holds on one array and is refuted on the other; a model that swept with it
+    everywhere would carry a 76% intercept error into every small-tile estimate on the design it
+    does not describe.
+    """
+    _needs_circuit()
+    verdicts = {t: measure_fill_depth(t, law="systolic_2d").law_agrees
+                for t in ("gemmini", "atlas")}
+    assert set(verdicts.values()) == {True, False}, verdicts

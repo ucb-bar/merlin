@@ -158,6 +158,69 @@ def test_suite_acceleratable_coverage():
     assert full["acceleratable_coverage"]["false_fallback"] == ["A7"]
 
 
+def test_a_declined_offload_is_reported_rather_than_silently_permitted():
+    """The state ``must_accelerate`` structurally cannot express, on a real target's real capsules.
+
+    The gate reads ``must and eligible and not accelerated``, and the ``eligible`` conjunct disarms it
+    exactly where fallback happens: a region is ineligible BECAUSE the hardware cannot run it, which
+    is the same region that quietly drops to the host. Measured on an int8-only array: all twelve
+    bf16 capsules declare ``must_accelerate: true`` and are ineligible on dtype, so no violation can
+    ever be raised for them and a bf16 matmul running scalar on the CPU is reported by nothing.
+
+    It must NOT become a violation -- with 8-bit operands there is nowhere for a bf16 operand to live,
+    so the fallback is correct and failing it would punish a conformant submission. It is recorded.
+    """
+    import yaml
+    from merlin.common.paths import repo_root
+
+    root = repo_root() / "merlin" / "contract" / "capsules"
+    wanted = [("model_slices", "GC5_fused_matmul_bias_bf16_pt"),   # bf16 contraction, declared family
+              ("model_slices", "GF2_attn_full_bf16_pt"),           # attention: family NOT declared
+              ("layers", "B3_conv2d_im2col_i8")]                   # int8, accelerates normally
+    caps = []
+    for sub, name in wanted:
+        path = root / sub / name / "capsule.yaml"
+        if not path.exists():
+            import pytest
+            pytest.skip(f"capsule {name} is not in this checkout")
+        caps.append(yaml.safe_load(path.read_text()))
+
+    results = [{"capsule": c["name"], "kind": "model_slice", "label": "dev",
+                "tiers": {"L2": {"status": "pass" if c["name"].endswith("_i8") else "fail"}}}
+               for c in caps]
+    ac = cov._acceleratable_coverage(results, {c["name"]: c for c in caps}, target="gemmini")
+
+    declined = {d["capsule"]: d for d in ac["declined_offload"]}
+    assert "GC5_fused_matmul_bias_bf16_pt" in declined, ac["declined_offload"]
+    assert declined["GC5_fused_matmul_bias_bf16_pt"]["semantic_family"] == "contraction"
+    assert "bf16" in declined["GC5_fused_matmul_bias_bf16_pt"]["reason"]
+    # A family the target does not declare AT ALL is a different report (declared_unexercised /
+    # unclassified), not a declined offload -- otherwise every unsupported op would land here.
+    assert "GF2_attn_full_bf16_pt" not in declined
+    # And nothing that passed before starts failing: this state is reported, never scored.
+    assert ac["must_accelerate_violations"] == []
+    assert ac["must_accelerate_pass"] is True
+
+
+def test_the_declined_offload_is_visible_in_the_rendered_report():
+    """A finding that exists only in JSON is one nobody reads; it must reach the markdown."""
+    import yaml
+    import pytest
+    from merlin.common.paths import repo_root
+
+    path = (repo_root() / "merlin" / "contract" / "capsules" / "model_slices"
+            / "GC5_fused_matmul_bias_bf16_pt" / "capsule.yaml")
+    if not path.exists():
+        pytest.skip("the bf16 contraction capsule is not in this checkout")
+    caps = [yaml.safe_load(path.read_text())]
+    results = [{"capsule": caps[0]["name"], "kind": "model_slice", "label": "dev",
+                "status": "fail", "tiers": {"L2": {"status": "fail"}}}]
+    arr = cov.aggregate(results, capsules=caps, target="gemmini")
+    assert arr["acceleratable_coverage"]["n_declined_offload"] == 1
+    text = cov.render_markdown(arr, results)
+    assert "declined offload" in text.lower(), text[:600]
+
+
 # --- C1: generalization-axis (G0-G5) breakdown --------------------------------------------------
 
 def test_generalization_axis_breakdown():

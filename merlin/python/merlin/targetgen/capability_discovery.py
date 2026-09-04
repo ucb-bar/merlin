@@ -1816,7 +1816,14 @@ def elaborated_config(target: str, facts: dict[str, Any]) -> ElaboratedConfig | 
         return ElaboratedConfig(name=cfg_name, chain=tuple(chain), unresolved=("no named-argument "
                                 "instantiation reachable from the configuration",),
                                 sources_read=len(sources), truncated=truncated)
-    calls.sort(key=lambda c: (c[0], -len(c[2])))
+    # TOTAL ordering. Ranking by (depth, -argcount) alone leaves ties broken by list order, and
+    # that order comes from set iteration upstream -- so the winner moved with PYTHONHASHSEED.
+    # Measured 2026-09-03: this reported has_max_pool at Configs.scala line 20 or 21 depending
+    # on the process, which made the frozen RTL fact bundle differ from a live replay about half
+    # the time and refused the campaign with "live CIRCT extraction differs". The ambiguity
+    # report above only covers DIFFERENT callees, so a same-callee tie was resolved silently and
+    # at random. Sorting by the locator as well makes the choice a property of the sources.
+    calls.sort(key=lambda c: (c[0], -len(c[2]), c[1], c[3], c[4]))
     best = calls[0]
     ambiguous = tuple(sorted({c[1] for c in calls
                               if c[0] == best[0] and len(c[2]) == len(best[2]) and c[1] != best[1]}))
