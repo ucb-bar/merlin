@@ -182,7 +182,19 @@ class SymbolCoverage:
 
     @property
     def is_scalar_fallback(self) -> bool:
-        """A compute-bearing symbol with zero vector instructions = a scalar fallback."""
+        """A compute-bearing symbol with zero vector instructions = a scalar fallback.
+
+        TRUE AT SYMBOL SCOPE, AND A FALSE ALARM AT MODEL SCOPE. Plenty of symbols have no
+        vectorizable work to begin with: ``_mlir_ciface_forward`` unpacks memref descriptors and
+        calls ``forward``, so it is always ``vector == 0`` and always flagged -- in a build that
+        vectorized perfectly as well as one that did not. Reading a model-level "we fell back to
+        scalar" off this predicate is wrong, and it produced exactly that misreading today: a
+        devectorization of ``forward`` (coverage 0.399 -> 0.256) was reported as a whole-model
+        scalar fallback because the wrapper appeared in the list either way.
+
+        For a model-level verdict, compare the COVERAGE of the compute-bearing symbol against the
+        same symbol in a reference build. :meth:`AuditReport.compute_symbol` finds it.
+        """
         return self.vector == 0 and self.scalar_compute > 0
 
 
@@ -253,6 +265,27 @@ class AuditReport:
                     "scalar_int_frac": si / total, "scalar_float_frac": sf / total,
                     "other_frac": other / total}
         return out
+
+    def compute_symbol(self) -> "tuple[str, SymbolCoverage] | None":
+        """The symbol carrying the most compute — the one a model-level verdict belongs to.
+
+        Chosen by measured weight rather than by name, so it keeps working when the emitted entry
+        point is renamed or a target emits a differently-shaped wrapper. Returns None for a report
+        with no compute at all, which is itself the honest answer rather than a zero.
+        """
+        best = None
+        for name, sym in self.by_symbol.items():
+            # Skip ASSEMBLER-LOCAL labels. `.Lpcrel_hiN` and friends are not functions, they are
+            # local anchors the assembler emits, and they absorb the bulk of the instruction stream
+            # -- picking by raw weight selects one of those and gives an answer that moves in the
+            # WRONG direction (0.464 on a build measured 4x slower vs 0.440 on the fast one). The
+            # rule is structural, not a name guess: a leading "." marks a local label in ELF asm.
+            if name.startswith("."):
+                continue
+            weight = sym.vector + sym.scalar_compute
+            if weight and (best is None or weight > best[1].vector + best[1].scalar_compute):
+                best = (name, sym)
+        return best
 
     @property
     def coverage_overall(self) -> float | None:

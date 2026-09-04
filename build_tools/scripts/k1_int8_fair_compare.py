@@ -104,9 +104,18 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
                 if obj.is_file():
                     try:
                         rep = _rvv_audit.audit_binary(obj)
+                        # The MODEL-level verdict belongs to the compute-bearing symbol, not to a
+                        # list of zero-vector symbols: `_mlir_ciface_forward` only unpacks memref
+                        # descriptors, so it is always vector==0 and is flagged in a build that
+                        # vectorized perfectly as well as in one that did not. Reading a fallback
+                        # off that list misattributed a devectorization of `forward` (0.399 ->
+                        # 0.256) as a whole-model scalar fallback earlier today.
+                        _cs = rep.compute_symbol()
                         rvv_cov = {"coverage_overall": rep.coverage_overall,
                                    "vector": rep.vector, "scalar_compute": rep.scalar_compute,
-                                   "scalar_fallback_symbols": sorted(
+                                   "compute_symbol": (_cs[0] if _cs else None),
+                                   "compute_symbol_coverage": (_cs[1].coverage if _cs else None),
+                                   "zero_vector_symbols": sorted(
                                        n for n, sym in rep.by_symbol.items()
                                        if sym.is_scalar_fallback)[:12]}
                     except Exception as _e:      # never let a diagnostic break a measurement

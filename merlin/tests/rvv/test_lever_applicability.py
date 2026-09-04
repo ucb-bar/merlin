@@ -117,9 +117,47 @@ def test_the_harness_records_vector_coverage_and_isolates_its_build_tree():
     # coverage is recorded beside the wall
     assert "_rvv_audit.audit_binary(obj)" in src
     assert '"coverage_overall": rep.coverage_overall' in src
-    assert '"scalar_fallback_symbols"' in src
+    assert '"zero_vector_symbols"' in src   # renamed: the old name invited a model-level reading
     # and it can never break a measurement
     assert "never let a diagnostic break a measurement" in src
     # the build tree is keyed by the feature set, not just the bundle
     assert '"fair_compare" / md.name / _feat_key' in src
     assert 'FEATURES.txt' in src
+
+
+def test_the_model_verdict_comes_from_the_compute_symbol_not_a_zero_vector_list():
+    """`is_scalar_fallback` is true at SYMBOL scope and a false alarm at MODEL scope.
+
+    `_mlir_ciface_forward` only unpacks memref descriptors, so it is always vector==0 and is listed
+    in a build that vectorized perfectly as well as one that did not. Reading a whole-model verdict
+    off that list misattributed a real devectorization of `forward` (coverage 0.399 -> 0.256 on a
+    build measured 4x slower) as a scalar fallback.
+
+    Selecting the busiest symbol is ALSO wrong: assembler-local `.Lpcrel_hiN` labels are not
+    functions and absorb the bulk of the stream, and picking one moved the metric the wrong way
+    (0.464 on the slow build vs 0.440 on the fast one).
+    """
+    from merlin.baselines.rvv_audit import AuditReport, SymbolCoverage
+
+    rep = AuditReport(by_symbol={
+        ".Lpcrel_hi4": SymbolCoverage(symbol=".Lpcrel_hi4", vector=9000,
+                                      scalar_int=10000, scalar_compute=10000),
+        "forward": SymbolCoverage(symbol="forward", vector=1080,
+                                  scalar_int=3137, scalar_compute=3137),
+        "_mlir_ciface_forward": SymbolCoverage(symbol="_mlir_ciface_forward", vector=0,
+                                               scalar_int=165, scalar_compute=165),
+    })
+    name, sym = rep.compute_symbol()
+    assert name == "forward", "picked a local label or the descriptor wrapper"
+    assert sym.coverage is not None
+    # the wrapper is still honestly reported as zero-vector at symbol scope
+    assert rep.by_symbol["_mlir_ciface_forward"].is_scalar_fallback is True
+    # a report with no compute at all answers None rather than inventing a zero
+    assert AuditReport(by_symbol={}).compute_symbol() is None
+
+
+def test_the_harness_records_the_compute_symbol_coverage():
+    from merlin.common.paths import repo_root
+    src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
+    assert '"compute_symbol_coverage"' in src
+    assert '"zero_vector_symbols"' in src, "the misleading key name is back"
