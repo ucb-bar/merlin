@@ -171,6 +171,13 @@ sweeps:
         runs: 60
         projected_cycles: derived_at_preflight
         basis: three_classes_by_five_levels_by_four_salts
+      settle_range:
+        kind: derived_from_structural_pipeline_depth
+        declared_constant: null
+        lower_bound: the_smallest_settle_the_contract_admits
+        upper_bound: the_structural_pipeline_depth_derived_from_rtl_facts
+        predicate: bit_exactness_must_hold_at_every_settle_in_the_range_and_fail_below_the_lower_bound
+        on_underivable: skip_with_evidence
   axes:
     M:
     - tile
@@ -212,7 +219,6 @@ sweeps:
         - M
         - N
         - K
-        - separation_regime
       falsifier:
         observation: paired_cycle_delta
         fires_when: hoisting_does_not_improve_any_declared_separation_regime
@@ -307,6 +313,11 @@ sweeps:
         runs: derived_after_tier_one_promotion
         projected_cycles: derived_at_preflight
         basis: only_passing_tier_one_members_are_promoted
+      noise_band:
+        kind: measured_replicate_dispersion
+        declared_constant: null
+        minimum_replicate_count: 2
+        predicate: a_saving_counts_iff_it_exceeds_the_measured_replicate_dispersion_of_its_own_pair
   variants:
   - matmuls:
     - lhs: A0
