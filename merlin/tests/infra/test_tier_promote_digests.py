@@ -138,14 +138,19 @@ def test_a_component_outside_the_vocabulary_is_rejected_and_reported(tmp_path):
 
 
 def test_an_all_rejected_components_block_is_still_reported(tmp_path):
-    """"every name was a typo" must not read as "no components declared" -- the fallback is the same
-    whole-submission digest either way, but only one of them is a mistake somebody has to see."""
+    """"every name was a typo" must not read as "no components declared" -- both fall through to the
+    harness-derived decomposition, but only one of them is a mistake somebody has to see."""
     B = _mod()
     files = dict(FILES)
     head, _, _ = MANIFEST.partition("components:")
     files["manifest.yaml"] = head + "components:\n  tiling_pass: [mlir_oot/lowering/]\n"
-    _, comps, rejected = B.submission_digests(_ws(tmp_path, files))
-    assert rejected == ["tiling_pass"] and comps == {}
+    ws = _ws(tmp_path, files)
+    _, comps, rejected = B.submission_digests(ws)
+    assert rejected == ["tiling_pass"]
+    assert "tiling_pass" not in comps
+    # the block bought nothing, so the DERIVED decomposition takes over -- never a silent fall back to
+    # the whole-submission digest, which is what made the rejection invisible in the first place
+    assert B.decomposition(ws)["source"] == "derived"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -160,7 +165,11 @@ def test_the_whole_digest_is_unchanged_by_adding_components(tmp_path):
     without = _ws(tmp_path, plain, name="b")
     # the manifests differ, so compare the LEGACY entry point against the new one on the same tree
     assert B._submission_digest(with_comps) == B.submission_digests(with_comps)[0]
-    assert B.submission_digests(without)[1] == {}
+    # and the tree WITHOUT a declared block is decomposed by the harness rather than left whole -- the
+    # declared names are gone, so the components are the derived ones
+    d = B.decomposition(without)
+    assert d["source"] == "derived"
+    assert set(B.submission_digests(without)[1]) >= set(CMDS)
 
 
 def test_every_declared_component_and_the_residual_get_a_digest(tmp_path):

@@ -528,6 +528,23 @@ submission/
 
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
+
+### Also declare `components:` — it is what keeps your passing capsules passing
+Add a top-level `components:` block mapping **each command you declared** to the submission-relative
+files that implement it. A capsule certified on the expensive RTL tier keeps that certificate across any
+edit that touches no component it rides on; without the block the harness has to work the mapping out
+from your imports, and anything it cannot place invalidates every certificate you have earned.
+```yaml
+components:
+  parse: [mlir_oot/frontend/]                  # only the files this command actually uses
+  lower_interface_to_target: [mlir_oot/lowering/]
+  emit_command_buffer: [mlir_oot/cmdbuf.py]
+  emit_target_artifact: [mlir_oot/codegen/, mlir_oot/tables/]
+```
+Rules: keys must be command names you declared (anything else is rejected and reported); paths are
+submission-relative files or directories; the longest matching path wins, so a nested entry is not
+swallowed by its parent. Keep it accurate rather than narrow — an under-declared component is how a
+certificate outlives the code it was earned on.
 {dram_contract}{termination_contract}
 ## Plan before you build (FIRST round only)
 If `qa/verdict.json` does not exist yet, this is the first round: **before writing any code, write
@@ -787,6 +804,25 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
         L.append(f"{n}. RTL-checks arm: DERIVE the ISA / mesh / datapath from the granted RTL-extracted facts "
                  "(`targetgen/rtl/` + the RTL facts pin) — do not hand-invent them — and run the CIRCT RTL "
                  "checks on your lowering. Your backend must be a compilation FROM those RTL-derived facts.")
+        n += 1
+        # NAME the APIs. This arm is scored on whether these four calls actually happened, and a prompt
+        # that says only "derive from the granted RTL facts" leaves `sed -n '1,320p' rtl_facts/facts.json`
+        # as the obvious reading -- which gets the facts and scores zero on all four checks. Measured on a
+        # live arm-4 round: TASK.md contained none of these names, and four of the five failing
+        # conformance checks were exactly these. Same failure as an earlier run that faked an ISA because
+        # the prompt never named the shipped ISA files: name the surface or it is not used.
+        L.append(f"{n}. Run these four — reading the files instead of CALLING them does not count:\n"
+                 "   - `from rtl import facts; facts.load_facts(\"" + target + "\")` — the RTL fact bundle "
+                 "(arrays / memories / datapaths / interfaces); every ISA, mesh and datapath number comes "
+                 "from this dict.\n"
+                 "   - `from rtl_backend import target_profile, derived_levers; "
+                 "derived_levers(target_profile(\"" + target + "\"))` — the compiler levers this hardware "
+                 "implies; build to the list it returns.\n"
+                 "   - `from generate import mlir_scaffold; mlir_scaffold.generate(<dialect plan>)` — "
+                 "scaffold the dialect/pass skeleton from the derived plan instead of hand-writing it "
+                 "(`llvm_plan.generate` / `target_repo.generate_skeleton` count too).\n"
+                 "   - read the `rtl_checks` block of `qa/verdict.json` each round — that is where this "
+                 "arm's RTL feedback on YOUR lowering arrives; fix what it reports.")
         n += 1
     return "\n".join(L) + "\n\n"
 

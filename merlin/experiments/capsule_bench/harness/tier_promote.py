@@ -16,6 +16,26 @@ invalidates every certificate on every edit -- fine while a round is proving fun
 ruinous for an optimization phase that edits the compiler continuously and would re-buy the minutes-per-
 capsule cert tier for the whole corpus each time. The component vocabulary is DERIVED from the
 submission's own manifest, never listed here; see `component_vocabulary`.
+
+The decomposition has TWO sources, in this order -- declare, else derive:
+
+  1. the submission's own `components:` block (`component_paths`), validated against that vocabulary;
+  2. failing that, a decomposition the harness DERIVES from the submission's declared surface
+     (`derived_components`) -- each command's entrypoint script, its transitive intra-submission imports,
+     the paths it names as literals, and everything the manifest itself points at.
+
+Only when BOTH refuse does the whole-submission digest come back. That fallback used to be the FIRST
+answer, and it was: measured on a live arm-4 round, 19 capsules cleared the loop tier and 3 held a cert,
+with the log dominated by `invalidated by <whole-submission> (changed)` -- while 17% of that round's
+submission-mutating operations touched only the agent's notes, its report, and a scratch assembly file no
+declared command can open. Nothing survives an edit it should have survived, and the cert tier is minutes
+per capsule.
+
+The reconciliation rule the whole scheme rests on is unchanged and must stay that way: a certificate
+belongs to the BYTES that earned it. `record_cert` resolves a pending entry against the digest recorded
+when the job was enqueued and never re-hashes, so a result that cannot be attributed is not recorded
+rather than credited to bytes edited since. The derivation only ever narrows WHICH bytes a capsule rides
+on; it never lets a verdict be re-read against different ones.
 """
 from __future__ import annotations
 
@@ -210,19 +230,366 @@ def _owner(rel: str, prefixes: dict) -> str | None:
     return None if tied else best
 
 
+# ---------------------------------------------------------------------------------------------------
+# The DERIVED decomposition: what a command's process can read, worked out from the submission's own
+# declared surface. Reached only when the submission declares no usable `components:` block.
+# ---------------------------------------------------------------------------------------------------
+#
+# "Declare, else derive". A submission that says which files implement which command gets exactly that
+# (`component_paths`). One that says nothing used to get the whole-submission digest, which is the bug
+# this file exists to remove: measured on a live arm-4 round, every certificate died on every edit, and
+# the edits were dominated by files no command can even open (the agent's own notes, its report, a
+# scratch `.S` it hand-assembled through a brokered tool). 17% of that run's submission-mutating
+# operations touched ONLY such files.
+#
+# What "can read" means is fixed by the experiment ABI, not guessed: `oot_runner.run_entrypoint` invokes
+# a declared command as a SUBPROCESS with `cwd=<package root>` and an argv in which the only non-literal
+# tokens are the absolute `{input_mlir}` / `{output_json}` the runner substitutes. So the submission bytes
+# that can change a verdict are the bytes that process reaches:
+#
+#   * the files the command's own argv names (its entrypoint script), and
+#   * everything those transitively import from inside the submission, and
+#   * everything they name by a resolvable path literal (a data file read at a fixed path), and
+#   * everything the manifest itself names (build inputs, a second tool) -- charged to EVERY command,
+#     since the manifest is what declares the commands in the first place.
+#
+# Three buckets come out, and the difference between the last two is the whole safety argument:
+#
+#   attributed   -- reached as above; feeds its component's digest.
+#   UNATTRIBUTED -- NOT reached, but the same KIND of thing as reached code (its suffix is one the
+#                   closure already has, one a dynamic loader in the closure names, or one the runner's
+#                   integrity scan reads). A dead module and a plugin loaded by a path we could not
+#                   resolve look identical from here, so this bucket is a dependency of every capsule.
+#   inert        -- NOT reached and not that kind of thing. Nothing depends on it.
+#
+# The derivation REFUSES rather than guesses. A submission in a language whose imports this cannot trace,
+# a command whose argv names no submission file, a closure file that will not parse -- any of those and
+# `derived_components` returns None, and the caller falls back to the whole-submission digest exactly as
+# before. The one judgement it does make is stated plainly: a read whose path expression contains no
+# string literal is taken to be a read of a path handed in from outside the process, because under the
+# ABI above that is what the runner passes it. A submission that computes an intra-package path out of
+# data with no literal anywhere in the expression would defeat that, and would keep a certificate it
+# should have lost; declaring `components:` is the answer for a package built that way.
+#
+# "Inert" means "cannot change a capsule's verdict" -- NOT "unimportant". The agent's REPORT.md is a
+# required deliverable and is inert by this definition, because no graded command opens it.
+INERT = "<inert>"
+
+_DERIVED_CACHE: dict = {}
+
+
+def _manifest_strings(node):
+    """Every string anywhere in the manifest, however nested. Structural walk, no pattern matching."""
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _manifest_strings(v)
+    elif isinstance(node, (list, tuple)):
+        for v in node:
+            yield from _manifest_strings(v)
+
+
+def _under(sub: Path, token: str):
+    """``token`` resolved to an existing path under the submission root, or None.
+
+    Tokens arrive from the manifest, so they may be doubly rooted (``submission/mlir_oot/opt``) exactly as
+    ``oot_runner._resolve_argv`` already documents; that prefix is stripped when, and only when, the
+    remainder resolves. Anything absolute, empty, escaping the root, or containing whitespace is not a
+    package-relative path and is skipped.
+    """
+    s = str(token).strip().replace("\\", "/")
+    if not s or s.startswith("/") or any(c.isspace() for c in s):
+        return None
+    for pfx in ("./submission/", "submission/", "./"):
+        if s.startswith(pfx) and not (sub / s).exists():
+            s = s[len(pfx):]
+    s = s.strip("/")
+    if not s or s in (".", ".."):
+        return None
+    try:
+        p = (sub / s).resolve()
+        if not p.exists() or p == sub.resolve() or sub.resolve() not in p.parents:
+            return None
+    except OSError:                      # a "path" long enough to be prose, not a path
+        return None
+    return p
+
+
+def _files_at(p: Path, token: str = "/"):
+    """The file(s) a resolved token stands for. A DIRECTORY counts only when the token was written as a
+    path (it contains a separator): a bare single-segment string that happens to match a directory name is
+    almost always a module or an identifier, not a data directory, and treating `"xdsl"` as a grant over
+    the whole vendored package pulls that package's READMEs into the executable surface -- which then
+    makes every other `.md` in the submission look like the same kind of thing as reached code."""
+    if p.is_dir():
+        return [x for x in p.rglob("*") if x.is_file() and "__pycache__" not in x.parts] \
+            if "/" in str(token) else []
+    return [p] if "__pycache__" not in p.parts else []
+
+
+def _command_roots(sub: Path, m: dict):
+    """``{command: [entrypoint file, ...]}`` -- the submission files each declared command's argv names.
+
+    ``{tool}`` is substituted from ``entrypoints.tool`` the way the runner substitutes it, so a package
+    that references its tool through the placeholder and one that spells the path out both resolve. A
+    command whose argv names NO submission file is the refusal case: we do not know what it runs.
+    """
+    cmds = m.get("commands")
+    if not isinstance(cmds, dict) or not cmds:
+        return None
+    tool = ((m.get("entrypoints") or {}) if isinstance(m.get("entrypoints"), dict) else {}).get("tool")
+    out = {}
+    for name, spec in cmds.items():
+        argv = (spec or {}).get("argv") if isinstance(spec, dict) else None
+        if not isinstance(argv, (list, tuple)):
+            return None
+        roots = []
+        for tok in argv:
+            tok = str(tok)
+            if "{tool}" in tok and tool:
+                tok = tok.replace("{tool}", str(tool))
+            if "{" in tok:                     # an unsubstituted I/O placeholder: not a submission file
+                continue
+            p = _under(sub, tok)
+            if p is not None and p.is_file():
+                roots.append(p)
+        if not roots:
+            return None
+        out[str(name)] = roots
+    return out
+
+
+# Constructs that can pull a module in from outside the static import graph. Their presence does not
+# abandon the derivation -- it WIDENS what counts as "the same kind of thing as reached code", so an
+# unreached file a loader could still pick up lands in UNATTRIBUTED rather than in inert.
+_DYNAMIC_IMPORT = frozenset({"__import__", "import_module", "load_module", "exec_module",
+                             "spec_from_file_location", "module_from_spec", "iter_modules"})
+
+
+def _py_module_file(sub: Path, dotted: str):
+    p = sub.joinpath(*dotted.split("."))
+    for cand in (p.with_suffix(".py"), p / "__init__.py"):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def _py_imports(tree, rel_parts) -> set:
+    """Dotted module names a parsed file imports, with relative imports resolved against its package."""
+    pkg = list(rel_parts[:-1])
+    out = set()
+    for n in _ast().walk(tree):
+        if isinstance(n, _ast().Import):
+            for a in n.names:
+                out.add(a.name)
+        elif isinstance(n, _ast().ImportFrom):
+            base = n.module or ""
+            if n.level:
+                up = pkg[:len(pkg) - (n.level - 1)] if n.level > 1 else pkg
+                base = ".".join(up + ([base] if base else []))
+            if base:
+                out.add(base)
+            for a in n.names:
+                out.add(f"{base}.{a.name}" if base else a.name)
+    return out
+
+
+def _ast():
+    import ast
+    return ast
+
+
+def _scan(f: Path, memo=None):
+    """``(tree, string_literals, has_dynamic_import)`` for one Python source file, or None if it will not
+    parse. Unparseable means unknown content, and unknown content is the refusal case."""
+    if memo is not None and f in memo:
+        return memo[f]
+    ast = _ast()
+    try:
+        tree = ast.parse(f.read_text(encoding="utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001 -- not Python, or broken Python: we cannot say what it reads
+        if memo is not None:
+            memo[f] = None
+        return None
+    lits, dyn = set(), False
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            lits.add(n.value)
+        elif isinstance(n, ast.Call):
+            fn = n.func
+            nm = fn.id if isinstance(fn, ast.Name) else (fn.attr if isinstance(fn, ast.Attribute) else None)
+            if nm in _DYNAMIC_IMPORT:
+                dyn = True
+    out = (tree, lits, dyn)
+    if memo is not None:
+        memo[f] = out
+    return out
+
+
+def _closure(sub: Path, roots, memo=None):
+    """``(files, literals, dynamic_suffixes)`` reachable from ``roots``, or None on any unparseable file.
+
+    Follows intra-submission imports only: a name that resolves to no file under the submission root is a
+    stdlib/third-party import the package does not carry, and cannot be edited by the agent.
+    """
+    seen, lits, dyn_sufs = set(), set(), set()
+    stack = list(roots)
+    while stack:
+        f = stack.pop()
+        if f in seen:
+            continue
+        seen.add(f)
+        got = _scan(f, memo)
+        if got is None:
+            return None
+        tree, flits, dyn = got
+        lits |= flits
+        if dyn:
+            # Bounded by what the loader ITSELF names: a suffix-shaped literal in the file that does the
+            # dynamic import. Widening on every literal in the closure drags in noise ('.text', '.word')
+            # from unrelated code and would make the whole tree "the same kind of thing".
+            dyn_sufs |= {s for s in flits
+                         if s.startswith(".") and 2 <= len(s) <= 6 and s[1:].isalnum()}
+        for mod in _py_imports(tree, f.relative_to(sub).parts):
+            parts = mod.split(".")
+            for i in range(1, len(parts) + 1):
+                g = _py_module_file(sub, ".".join(parts[:i]))
+                if g is not None and g not in seen:
+                    stack.append(g)
+    return seen, lits, dyn_sufs
+
+
+def _src_suffixes() -> frozenset:
+    """Suffixes the runner's own integrity scan READS. A violation in one of these fails the run even
+    when nothing imports the file, so such a file is never inert. Taken from the runner, not restated."""
+    try:
+        from merlin.targetgen.oot_runner import _SRC_SUFFIXES
+        return frozenset(_SRC_SUFFIXES)
+    except Exception:  # noqa: BLE001 -- runner not importable here: the closure's own suffixes still apply
+        return frozenset()
+
+
+def derived_components(ws):
+    """``({component: frozenset(rel)}, frozenset(unattributed), frozenset(inert))`` or None to refuse.
+
+    Paths are submission-relative. See the block comment above for what each bucket means and for the one
+    judgement this makes. ``None`` is "no derivation" and the caller must then use the whole-submission
+    digest -- never a partial answer.
+    """
+    m = _manifest(ws)
+    sub = Path(ws, "submission")
+    if m is None or not sub.is_dir():
+        return None
+    if str(m.get("language") or "").strip().lower() != "python":
+        # Only Python's import graph is traceable from here. Refusing is the honest answer for a package
+        # whose surface is a compiled binary: we cannot see what it opens.
+        return None
+    roots = _command_roots(sub, m)
+    if roots is None:
+        return None
+    key = (str(sub), tuple(sorted((f.relative_to(sub).as_posix(), f.stat().st_mtime_ns, f.stat().st_size)
+                                  for f in sub.rglob("*") if f.is_file() and "__pycache__" not in f.parts)))
+    hit = _DERIVED_CACHE.get(key)
+    if hit is not None:
+        return hit
+    every = [f for f in sub.rglob("*") if f.is_file() and "__pycache__" not in f.parts]
+
+    # Files the MANIFEST names OUTSIDE the per-command sections are charged to every component -- a build
+    # input, a second tool, anything the package points at globally: a change to one of those, or to the
+    # manifest itself, can change what every command does. `commands` and `entrypoints` are deliberately
+    # excluded, because those ARE the per-command attribution (`_command_roots` resolves them); folding
+    # them in here would charge each command's own script to all the others and collapse the whole
+    # decomposition back to one bucket.
+    _global = {k: v for k, v in m.items() if k not in ("commands", "entrypoints")}
+    shared = {sub / "manifest.yaml"} if (sub / "manifest.yaml").is_file() else set()
+    for s in _manifest_strings(_global):
+        p = _under(sub, s)
+        if p is not None:
+            shared.update(_files_at(p, s))
+
+    comps, kind_sufs, memo = {}, set(_src_suffixes()), {}
+    for name, rs in roots.items():
+        got = _closure(sub, rs, memo)
+        if got is None:
+            return None                      # a file in the surface we cannot read: refuse, do not guess
+        files, lits, dyn_sufs = got
+        for s in lits:                       # a data file opened at a fixed, resolvable path
+            p = _under(sub, s)
+            if p is not None:
+                files.update(_files_at(p, s))
+        files |= shared
+        comps[name] = frozenset(f.relative_to(sub).as_posix() for f in files)
+        kind_sufs |= {f.suffix for f in files} | dyn_sufs
+
+    claimed = set().union(*comps.values()) if comps else set()
+    unattributed, inert = set(), set()
+    for f in every:
+        rel = f.relative_to(sub).as_posix()
+        if rel in claimed:
+            continue
+        (unattributed if f.suffix in kind_sufs else inert).add(rel)
+    out = (comps, frozenset(unattributed), frozenset(inert))
+    # Bounded: a broker lives for the whole run and the agent edits continuously, so an unbounded map
+    # keyed by submission state grows one entry per edit for hours. Only the current state is ever a hit.
+    if len(_DERIVED_CACHE) > 4:
+        _DERIVED_CACHE.clear()
+    _DERIVED_CACHE[key] = out
+    return out
+
+
+def decomposition(ws) -> dict:
+    """How this submission's bytes decompose, and WHERE that decomposition came from.
+
+    ``{"owners": {rel: {component, ...}}, "names": {component, ...}, "rejected": [...],
+      "source": "declared"|"derived"|None, "inert": frozenset(rel)}``
+
+    "Declare, else derive": an agent-declared ``components:`` block wins, and is used even when some of
+    its names were rejected -- but a block whose names were ALL rejected leaves nothing to decompose with,
+    so it falls through to the derivation rather than to the whole submission. Either way the rejected
+    names are carried out for the caller to report; a typo that quietly costs the saving is the failure
+    mode this exists to make visible.
+    """
+    from merlin.targetgen.oracle_schedule import UNATTRIBUTED
+    sub = Path(ws, "submission")
+    rels = [f.relative_to(sub).as_posix() for f in sub.rglob("*")
+            if f.is_file() and "__pycache__" not in f.parts] if sub.is_dir() else []
+    decl = component_paths(ws)
+    prefixes, rejected = decl if decl else ({}, [])
+    if prefixes:
+        owners = {rel: {_owner(rel, prefixes) or UNATTRIBUTED} for rel in rels}
+        return {"owners": owners, "names": set(prefixes) | {UNATTRIBUTED}, "rejected": rejected,
+                "source": "declared", "inert": frozenset()}
+    der = derived_components(ws)
+    if der is None:
+        return {"owners": {}, "names": set(), "rejected": rejected, "source": None,
+                "inert": frozenset()}
+    comps, unattributed, inert = der
+    owners = {}
+    for name, files in comps.items():
+        for rel in files:
+            owners.setdefault(rel, set()).add(name)
+    for rel in unattributed:
+        owners.setdefault(rel, set()).add(UNATTRIBUTED)
+    names = set(comps) | ({UNATTRIBUTED} if unattributed else set())
+    return {"owners": owners, "names": names, "rejected": rejected, "source": "derived", "inert": inert}
+
+
 def submission_digests(ws) -> tuple:
     """``(whole_digest, {component: digest}, rejected_names)`` for the submission on disk.
 
     The whole digest is byte-for-byte what it always was -- one pass, sorted paths, path bytes then file
     bytes -- so turning components on never invalidates a certificate by itself. Each file additionally
-    feeds its owning component's hasher; a file no component claims feeds ``UNATTRIBUTED``, which every
-    capsule depends on. The component map is ``{}`` when nothing is declared, and the scheduler reads that
-    as "compare the whole submission" (see ``CapsuleState._dep_components``).
+    feeds the hasher of EVERY component that owns it (a shared helper genuinely belongs to each command
+    that imports it, and a change to it must move all of their digests). A file the decomposition cannot
+    place feeds ``UNATTRIBUTED``, which every capsule depends on; a file it places OUTSIDE every command's
+    reach feeds nothing, which is where the saving comes from. The component map is ``{}`` when there is
+    no decomposition at all, and the scheduler reads that as "compare the whole submission"
+    (see ``CapsuleState._dep_components``).
     """
     import hashlib
-    from merlin.targetgen.oracle_schedule import UNATTRIBUTED
-    decl = component_paths(ws)
-    prefixes, rejected = decl if decl else ({}, [])
+    d = decomposition(ws)
+    owners, names = d["owners"], d["names"]
     h = hashlib.sha256()
     parts = {}
     sub = Path(ws, "submission")
@@ -232,24 +599,18 @@ def submission_digests(ws) -> tuple:
         key, body = f.relative_to(ws).as_posix().encode(), f.read_bytes()
         h.update(key)
         h.update(body)
-        if not prefixes:
-            continue
-        owner = _owner(f.relative_to(sub).as_posix(), prefixes) or UNATTRIBUTED
-        ph = parts.get(owner)
-        if ph is None:
-            ph = parts[owner] = hashlib.sha256()
-        ph.update(key)
-        ph.update(body)
-    comps = {}
-    if prefixes:
-        # A declared component with no files on disk still gets an entry -- an EMPTY digest, not a missing
-        # one. Missing would read as undeterminable and re-run forever; empty is a real, comparable state
-        # that changes the moment the component gains a file.
-        for name in prefixes:
-            comps[name] = parts[name].hexdigest()[:16] if name in parts else hashlib.sha256().hexdigest()[:16]
-        comps[UNATTRIBUTED] = (parts[UNATTRIBUTED].hexdigest()[:16] if UNATTRIBUTED in parts
-                               else hashlib.sha256().hexdigest()[:16])
-    return h.hexdigest()[:16], comps, rejected
+        for owner in owners.get(f.relative_to(sub).as_posix(), ()):
+            ph = parts.get(owner)
+            if ph is None:
+                ph = parts[owner] = hashlib.sha256()
+            ph.update(key)
+            ph.update(body)
+    # A declared component with no files on disk still gets an entry -- an EMPTY digest, not a missing
+    # one. Missing would read as undeterminable and re-run forever; empty is a real, comparable state
+    # that changes the moment the component gains a file.
+    comps = {name: (parts[name].hexdigest()[:16] if name in parts
+                    else hashlib.sha256().hexdigest()[:16]) for name in names}
+    return h.hexdigest()[:16], comps, d["rejected"]
 
 
 def capsule_dependencies(roots) -> dict:
@@ -384,6 +745,7 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     from merlin.targetgen.oracle_schedule import CapsuleState, Verdict, schedule
 
     digest, comps, rejected = submission_digests(ws)
+    d = decomposition(ws)
     deps = capsule_dependencies(_graded_roots())
     st = _tier_state(ws)
     if rejected:
@@ -391,6 +753,15 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
         # falls back to the whole submission and quietly loses the saving it was written to get.
         print(f"[promote] manifest components outside the declared command vocabulary, ignored: "
               f"{sorted(rejected)}", file=log, flush=True)
+    print(f"[promote] components: {d['source'] or 'none (whole-submission digest)'}"
+          + (f" -- {len(comps)} component(s), {len(d['inert'])} file(s) outside every command's reach"
+             if d["source"] else ""), file=log, flush=True)
+
+    # What a capsule that declared nothing rides on. `depends_on` absent has always meant "everything",
+    # and it still does -- but "everything" is now expressed as the set of components rather than as the
+    # whole digest, and the two differ by exactly the bytes the decomposition PROVED no command can read.
+    # With no decomposition the fallback is `None`, which is the whole digest, i.e. today's behaviour.
+    default_deps = tuple(sorted(comps)) or None
 
     # Record what the loop tier just learned, keyed by the bytes that earned it -- BOTH the whole digest
     # and the per-component decomposition, because a verdict that carries only the whole digest cannot be
@@ -411,7 +782,7 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
                            verdicts={t: Verdict(v.get("status"), v.get("digest"),
                                                 dict(v.get("components") or {}))
                                      for t, v in (e or {}).items() if isinstance(v, dict)},
-                           components=dict(comps), depends_on=deps.get(n))
+                           components=dict(comps), depends_on=deps.get(n) or default_deps)
               for n, e in st.items()]
     want = [w for w in schedule(states, tier_order=[loop_tier, cert_tier], cert_tiers=(cert_tier,),
                                 cert_cover=cover)
