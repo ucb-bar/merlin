@@ -530,7 +530,10 @@ def test_refinements_cost_the_seed_generation_no_width():
     assert refinement_forks([]) == []
     assert refinement_forks(["erase_self_copy"]) == []
 
-    mr = refinement_forks(["perop_register_block"])
+    # Scoped to the MR-cap family: a register-blocking parent also opens the NAMED-OP tile axis
+    # (a different lever that REPLACES the block rather than retuning its magnitude), so the
+    # invariant is asserted about the family it is actually about.
+    mr = [f for f in refinement_forks(["perop_register_block"]) if f.targets.endswith(":mr_cap")]
     assert mr, "per-op blocking in the parent must open the MR-cap axis"
     assert all(f.targets.endswith(":mr_cap") for f in mr)
 
@@ -545,6 +548,8 @@ def test_a_refinement_replaces_the_magnitude_it_retunes_rather_than_stacking_it(
     from merlin.mining.wholemodel_proposer import refinement_forks
 
     for fp in refinement_forks(["perop_register_block", "erase_self_copy"]):
+        if not fp.targets.endswith(":mr_cap"):
+            continue            # the named-op tile axis replaces the block; it is not an MR cap
         feats = fp.overrides["compiler_features"]
         assert I.PEROP_BLOCK_NAME not in feats, "the unpinned sentinel must be replaced, not kept"
         assert sum(I.parse_perop_mr_sentinel(f) is not None for f in feats) == 1
@@ -555,37 +560,49 @@ def test_a_refinement_replaces_the_magnitude_it_retunes_rather_than_stacking_it(
         assert sum(f.startswith(I.PROMOTE_STACK_NAME) for f in feats) == 1
 
 
-def test_the_named_op_enabler_is_a_base_lever_not_a_refinement():
-    """The named-op register block cannot fire until the contraction keeps its named form: the int8
-    quant pass rewrites every linalg.matmul into a linalg.generic, and a schedule matching on the op
-    NAME then finds an empty handle and does nothing.
+def test_an_enabler_is_never_proposed_alone():
+    """An ENABLER does nothing by itself and only pays off in combination -- and `run_beam` EXCLUDES
+    inert forks from the survivor set, so a lever that is inert alone can never become the parent
+    its refinements need.
 
-    But the enabler is a LEVER, not a magnitude, so it belongs in RANKED_LEVERS -- refinements must
-    cost the seed generation no width, and offering it there would widen generation 1 for every run.
+    Measured: listed as a base lever, `named_int8_contraction` was built 10 times in one 136-fork
+    search, was inert every time, never survived, and 0 of those 136 forks carried it together with
+    a tile. The combination that would have done something was structurally unreachable.
     """
-    from merlin.llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME as ENABLER
+    from merlin.llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME as EN
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS, refinement_forks
 
-    assert ENABLER in [name for name, _ in RANKED_LEVERS]
-    # it is NOT a full-schedule replacement -- it changes which op the quant pass emits, nothing else
-    assert dict(RANKED_LEVERS)[ENABLER] is False
-    # the seed generation stays free, and no tile is offered while the lever cannot fire
+    assert EN not in [name for name, _ in RANKED_LEVERS], "the enabler is proposable alone again"
+    # every tile fork carries the enabler WITH it
+    forks = [f for f in refinement_forks(["perop_register_block"]) if "tile" in f.targets]
+    assert forks
+    for f in forks:
+        feats = set(f.overrides["compiler_features"])
+        assert EN in feats, "a tile was proposed without the enabler it needs"
+    # and the seed generation still costs nothing
     assert refinement_forks([]) == []
-    assert not [f for f in refinement_forks(["perop_register_block"]) if "tile" in f.targets]
 
 
-def test_tiles_are_offered_once_the_enabler_is_on_and_each_is_distinct():
-    from merlin.llvmlower.impr_features import MRPAD_INT8_TILES, NAMED_INT8_CONTRACTION_NAME
+def test_a_tile_replaces_the_register_block_it_conflicts_with():
+    """Both emit a complete transform schedule and two of those cannot compose -- the feature layer
+    refuses the pair outright, which yields a CompositionError and no measurement at all."""
+    from merlin.llvmlower.impr_features import MRPAD_INT8_TILES, PEROP_BLOCK_NAME
     from merlin.mining.wholemodel_proposer import refinement_forks
 
-    forks = refinement_forks([NAMED_INT8_CONTRACTION_NAME, "promote_buffers_to_stack"])
-    tiles = [f for f in forks if "tile" in f.targets]
-    assert len(tiles) == len(MRPAD_INT8_TILES)
-    # each fork enables exactly ONE tile -- two full-schedule replacements cannot compose, and the
-    # composition guard rejects that pairing outright
-    for f in tiles:
+    forks = [f for f in refinement_forks(["perop_register_block", "promote_buffers_to_stack"])
+             if "tile" in f.targets]
+    assert forks
+    for f in forks:
         feats = set(f.overrides["compiler_features"])
+        assert PEROP_BLOCK_NAME not in feats, "stacked two full-schedule replacements"
         assert len(feats & set(MRPAD_INT8_TILES)) == 1
-        assert NAMED_INT8_CONTRACTION_NAME in feats
-    # and the proposals are distinct
-    assert len({tuple(sorted(f.overrides["compiler_features"])) for f in tiles}) == len(tiles)
+        # unrelated levers on the parent are PRESERVED -- the tile replaces only what it conflicts with
+        assert "promote_buffers_to_stack" in feats
+
+
+def test_the_experts_own_tile_is_among_the_proposals():
+    """XNNPACK's int8 ukernel is 1x4v. A ladder that cannot express MR=1 cannot converge on it."""
+    from merlin.mining.wholemodel_proposer import refinement_forks
+    forks = [f for f in refinement_forks(["perop_register_block"]) if "tile" in f.targets]
+    tiles = {t for f in forks for t in f.overrides["compiler_features"] if "mrpad_i8" in t}
+    assert any("_mr1_" in t for t in tiles), "the expert's MR=1 is not proposed"

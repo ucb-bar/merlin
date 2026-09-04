@@ -235,10 +235,27 @@ class TestPromisesAreDerivedFromTheExpert:
 
     def test_direction_is_declared_not_inferred_from_the_value_type(self):
         """A bigger register block is better; a bigger vector.sew is worse (wider elements, fewer
-        lanes). Both are ints, so type cannot decide the comparison."""
-        from merlin.kernels.action_catalog import _RVV_ROUTES
-        by_axis = {r.axis: r for r in _RVV_ROUTES}
-        assert by_axis["compute.register_block"].promise_comparison == "at_least"
+        lanes). Both are ints, so type cannot decide the comparison.
+
+        The promise is per ROUTE, not per axis: an axis can carry both a widening and a narrowing
+        route, and collapsing them into `{r.axis: r}` hides whichever is declared second. That is
+        not hypothetical -- `compute.register_block` now has both, because XNNPACK's int8 ukernel is
+        1x4v (MR=1) while its f32 kernel is 7x4v, so "more blocking is better" holds in one
+        direction and is exactly backwards in the other.
+        """
+        from merlin.kernels.action_catalog import _RVV_ROUTES, route
+
+        def _rb(expert_mr, ours_mr):
+            return route(self._div("compute.register_block",
+                                   (expert_mr, ("vsetvlmax", 4.0)), (ours_mr, ("vsetvlmax", 4.0))))
+
+        # RAISING toward an expert above us keeps the promise by exceeding it.
+        up = _rb(7, 1)
+        assert up.promise_comparison == "at_least" and "raise" in up.change
+        # LOWERING toward an expert below us does not: overshooting downward IS the regression, and
+        # `at_least` would certify our slower config as a kept promise.
+        down = _rb(1, 4)
+        assert down.promise_comparison == "exact" and "lower" in down.change
         assert all(r.promise_comparison == "exact"
                    for r in _RVV_ROUTES if r.axis == "vector.sew")
 

@@ -348,24 +348,30 @@ _RVV_ROUTES: list[_Route] = [
         # promise. The note below cites XNNPACK 7x4v, which is the F32 kernel; the INT8 ukernel
         # is `..._1x4v__rvv` -- MR=1 -- and our MR=4 variant measured 1.61x SLOWER than the
         # default. The narrowing case is a separate route carrying an `exact` promise.
-        promise_comparison="at_least",
+        # DIRECTION-DEPENDENT. Exceeding an expert that blocks HIGHER than us keeps the promise;
+        # exceeding one that deliberately blocks LOWER is the regression, not a kept promise, and
+        # `at_least` would certify it as kept. XNNPACK's int8 ukernel is `..._1x4v__rvv` -- MR=1 --
+        # while the note below cites 7x4v, which is the F32 kernel; our MR=4 variant measured 1.61x
+        # SLOWER than the default.
+        promise_comparison=lambda d: (
+            "exact" if (_mr_of(d.expert) is not None and _mr_of(d.ours) is not None
+                        and _mr_of(d.expert) < _mr_of(d.ours)) else "at_least"),
         # The #1 GEMM data-movement decision and the one the policy-built expert CCA used to hide
         # (register_block=null). The experts ship register blocking up to MR=7 (XNNPACK 7x4v) / MR=16
         # (OpenBLAS 16x8) and SELECT the high MR; our baseline is unblocked (MR=1, one accumulator,
         # 2.0 loads/useful-FMA). Raising MR reuses one loaded B-row across MR broadcast-FMA
         # accumulators (loads/FMA -> 1+1/MR) AND gives MR independent accumulator chains to hide the
         # vfmacc latency. Now a LEARNED divergence (expert MR > ours MR), not a hand-known knob.
-        when=lambda d: bool(d.expert) and not (
-            _mr_of(d.expert) is not None and _mr_of(d.ours) is not None
-            and _mr_of(d.expert) < _mr_of(d.ours)),
+        when=lambda d: bool(d.expert),
         action_class="PASS",
         target_seam="impr_features:accumulator_resident_wholemodel_vf_mrpad (per-op MR + M-pad tail)",
-        change="raise the matmul register-block MR toward the expert MR so one streamed B-row feeds "
-               "MR resident accumulators (the OpenBLAS/XNNPACK A-row-reuse lever), instead of the "
-               "unblocked MR=1 baseline. Realized WHOLE-MODEL-SAFELY by the per-op MR feature: each "
-               "matmul's M is padded up to a multiple of MR before the register-blocked vfmacc.vf tile, "
-               "so a matmul with M%MR==0 gets the MR block and one with M<MR (M=1 decode) or M%MR!=0 "
-               "pads cleanly (no masked transfer_write PipelineError / scalar fallback) — no hand kernel.",
+        change=lambda d: (
+            "raise the matmul register-block MR toward the expert MR so one streamed B-row "
+            "feeds MR resident accumulators (A-operand reuse)"
+            if not (_mr_of(d.expert) is not None and _mr_of(d.ours) is not None
+                    and _mr_of(d.expert) < _mr_of(d.ours)) else
+            "lower the matmul register-block MR to the expert's, taking reuse from the "
+            "VLEN-scaled N tile instead of from M"),
         forkable_now=True,
         # MEASURED. The #1 GEMM data-movement lever, now realized whole-model:
         #  - DIAGNOSTIC CEILING (ours_board hand microkernel, MR-configurable, k1_kernel_speedup_*.json):
@@ -392,44 +398,29 @@ _RVV_ROUTES: list[_Route] = [
         # which optimization the beam PROPOSES for a shape.)
         shape_regimes=("square_large", "square_medium", "rectangular")),
     _Route(
-        # THE NARROWING DIRECTION. `vector.lmul` had only a widening route, so an expert sitting
-        # BELOW us routed to nothing and the clearest number the teacher produces was compared,
-        # recorded and discarded on every generation.
+        # BOTH DIRECTIONS ON ONE RUNG. Multiple routes per axis are an ESCALATION LADDER and must
+        # carry distinct action classes, so "narrow" cannot be a second KNOB beside "widen" --
+        # direction is a property of the DIVERGENCE, not a rung. This route previously fired only
+        # when the expert was above us (`_is_higher`), so an expert BELOW us routed to nothing and
+        # the clearest number the teacher produces was compared, recorded and discarded every
+        # generation: the lifted XNNPACK qd8 CCA says `vector.lmul expert=4.0` against our `8.0`.
         #
         # LMUL is not free width: at one VLEN, e64/m8 and e32/m4 hold the SAME element count while
-        # the former costs twice the register file. A group wider than the expert's buys no
-        # elements and spills, which is exactly our shape against XNNPACK's qd8 kernel.
+        # the former costs twice the register file, so a group wider than the expert's buys no
+        # elements and spills.
         axis="vector.lmul",
-        when=_is_lower,
-        action_class="KNOB", target_seam="schedule:lmul_grouping_policy (register-group width)",
-        change="narrow the vector group to the expert's LMUL so the same elements occupy fewer "
-               "registers and the accumulator stops spilling",
+        when=lambda d: _is_higher(d) or _is_lower(d),
+        action_class="KNOB", target_seam="schedule:vector_sizes (retune N to reach the expert LMUL)",
+        change=lambda d: ("widen the N tile/vector so the emitted vector group uses a higher LMUL"
+                          if _is_higher(d) else
+                          "narrow the vector group to the expert's LMUL so the same elements occupy "
+                          "fewer registers and the accumulator stops spilling"),
+        # Reaching the expert exactly is the target in BOTH directions: overshooting downward is
+        # the regression, not a kept promise.
         promise_comparison="exact",
         forkable_now=True,
         expected_effect="the emitted vsetvli carries the expert's LMUL; a group wider than the "
                         "expert's holds no more elements per VLEN and costs register pressure"),
-    _Route(
-        # MR BELOW OURS -- the int8 case the "at_least" promise cannot express. Reaching MORE
-        # blocking than an expert that deliberately chose MR=1 does not keep the promise, it is the
-        # thing making us slower: our MR=4 variant measured 1.61x SLOWER than the default.
-        axis="compute.register_block",
-        when=lambda d: (_mr_of(d.expert) is not None and _mr_of(d.ours) is not None
-                        and _mr_of(d.expert) < _mr_of(d.ours)),
-        action_class="PASS",
-        target_seam="impr_features:accumulator_resident_wholemodel_vf_mrpad (per-op MR + M-pad tail)",
-        change="lower the matmul register-block MR to the expert's, taking reuse from the "
-               "VLEN-scaled N tile instead of from M",
-        promise_comparison="exact",
-        forkable_now=True,
-        expected_effect="MR matches the expert's 1x4v shape; a taller M block on int8 costs "
-                        "register pressure without buying B-row reuse"),
-    _Route(
-        axis="vector.lmul",
-        when=_is_higher,
-        action_class="KNOB", target_seam="schedule:vector_sizes (widen N to raise LMUL)",
-        change="widen the N tile/vector so the emitted vector group uses a higher LMUL",
-        forkable_now=True,
-        expected_effect="larger vector groups -> fewer vset/loop iterations per output tile"),
     _Route(
         axis="vector.vl_strategy",
         when=lambda d: d.expert == "vsetvl_loop" and d.ours == "vsetivli_fixed",
@@ -778,16 +769,25 @@ def _action_from_route(r: _Route, divergence: Divergence) -> CompilerAction:
         target = _promised_value(divergence.expert)
         if target is not None:
             intended = {divergence.axis: target}
+    # A route may express a field as a function of the DIVERGENCE. Direction is the case that needs
+    # it: an axis carries one rung per action class (multiple routes on an axis are an escalation
+    # ladder and must differ in class), so "narrow toward the expert" cannot be a second route
+    # beside "widen toward the expert" -- it is the same rung answering a divergence with the other
+    # sign. Anything not callable is used as-is, so every existing route is unaffected.
+    def _resolve(value):
+        return value(divergence) if callable(value) else value
+
     return CompilerAction(
         divergence_axis=divergence.axis, action_class=r.action_class,
-        target_seam=r.target_seam, change=r.change, forkable_now=r.forkable_now,
+        target_seam=r.target_seam, change=_resolve(r.change), forkable_now=r.forkable_now,
         expected_effect=r.expected_effect, backend=divergence.backend,
         evidence=list(divergence.evidence), intended_facet=intended,
         shape_regimes=r.shape_regimes,
         preconditions=r.preconditions, requires=r.requires,
         conflicts=r.conflicts, rebuild_scope=r.rebuild_scope,
         parameter_domain=r.parameter_domain, action_family=r.action_family,
-        evidence_prior=r.evidence_prior, promise_comparison=r.promise_comparison,
+        evidence_prior=r.evidence_prior,
+        promise_comparison=_resolve(r.promise_comparison),
         shape_agnostic=r.shape_agnostic)
 
 

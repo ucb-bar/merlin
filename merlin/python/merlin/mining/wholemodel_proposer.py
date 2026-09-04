@@ -47,6 +47,14 @@ from ..kernels.knobs import ForkProposal
 # facet field — plus the additive passes as a teacher-idle fallback. The teacher (engine 1) supplies
 # the rest from real divergences.
 RANKED_LEVERS: list[tuple[str, bool]] = [
+    # NOTE: `named_int8_contraction` is deliberately NOT listed here. It is an ENABLER -- inert on
+    # its own by construction, since keeping the contraction named changes no emitted code until a
+    # schedule acts on the named form -- and `run_beam` EXCLUDES inert forks from the survivor set.
+    # Listed as a base lever it was built 10 times in one search, was inert every time, never
+    # survived to become a parent, and so the tile refinements that need it as a parent were never
+    # proposed: 0 forks in 136 carried the enabler together with a tile. It is offered instead as
+    # part of a COMBINED proposal in `refinement_forks`, so it is only ever measured with something
+    # that can act on it.
     # KEEP THE CONTRACTION NAMED, first because it is an ENABLER: without it a whole family of levers
     # below cannot fire at all. The int8 quant pass rewrites every `linalg.matmul` into a
     # `linalg.generic` (measured: 15 -> 0 on small_llama int8), and a transform schedule matching on
@@ -56,7 +64,6 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # It is not itself an optimization -- MEASURED on the K1, enabling it alone leaves the wall and
     # the output bit-identical (4,140,253 vs 4,131,982 ns; cos 0.9999079, rel 0.0147963915 either
     # way) -- so it earns its rank purely by what it makes reachable.
-    ("named_int8_contraction", False),
     # PER-CONTRACTION register blocking, first because it SUPERSEDES the two hand-picked class-wide
     # clamps below it rather than competing with them. `WHOLEMODEL_VF_NR_BMM = 8` and `MR_mm = 1` are
     # single numbers a human chose for a whole op CLASS, and a class is not shape-homogeneous: one
@@ -344,13 +351,26 @@ def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
     # then finds an empty handle and does nothing. So the tile refinements are proposed only
     # ALONGSIDE that feature -- proposing them without it spends width on forks that cannot fire,
     # which is exactly the failure this whole ladder exists to avoid.
+    # -- named-op M-pad register block: the ENABLER AND A TILE, always together.
+    # Proposing them separately cannot work. The enabler alone emits identical code, so the beam
+    # excludes it as inert and it never becomes a parent; the tile alone matches `linalg.matmul`,
+    # of which the int8 datapath has none, so it is a no-op the applicability check now names. Only
+    # the pair does anything, so the pair is the proposal.
     tiles = getattr(I, "MRPAD_INT8_TILES", ())
-    if tiles and I.NAMED_INT8_CONTRACTION_NAME in have:
-        base = [f for f in parent_feats if f not in set(tiles)]
+    enabler = I.NAMED_INT8_CONTRACTION_NAME
+    if tiles and (I.PEROP_BLOCK_NAME in have
+                  or any(I.parse_perop_mr_sentinel(f) is not None for f in have)
+                  or enabler in have):
+        # The tile REPLACES whatever register block the parent carries -- both emit a complete
+        # transform schedule, and two of those cannot compose (the feature layer refuses the pair
+        # outright). Stacking them produced a CompositionError and no measurement at all.
+        base = [f for f in parent_feats
+                if f not in set(tiles) and f != enabler and f != I.PEROP_BLOCK_NAME
+                and I.parse_perop_mr_sentinel(f) is None]
         for name in tiles:
             if name in have:
                 continue
-            merged = base + [name]
+            merged = base + [enabler, name]
             if _composes(merged):
                 out.append(ForkProposal(
                     overrides={"compiler_features": merged}, lever="knob",
