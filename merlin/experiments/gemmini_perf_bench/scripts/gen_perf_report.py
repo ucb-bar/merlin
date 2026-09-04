@@ -1,175 +1,185 @@
 #!/usr/bin/env python3
-"""Render the cross-approach Gemmini comparison from a run's perf_results.json.
-
-Two distinct axes, kept rigorously separate because conflating them is misleading:
-
-  * PERFORMANCE = **verilator (L3) cycle-accurate RTL** ONLY. spike is a FUNCTIONAL simulator: it does
-    NOT model Gemmini's systolic-array timing — the RoCC matmul retires in ~0 modeled cycles, so spike
-    "cycles" plateau (~120) regardless of kernel size and yield util > 100% (physically impossible).
-    We therefore NEVER report spike cycles as performance. Verilator is feasible only for small kernels
-    (≤ ~32K MACs here); larger kernels need FireSim (L5), tracked separately.
-  * CORRECTNESS + CAPABILITY = **spike (L2)**: does each approach PRODUCE A CORRECT result for each
-    kernel (exact-int == shared capsule golden / runner reference). This is where the approaches differ
-    in COVERAGE (e.g. which backend can compile conv2d at all).
-
-Outputs reports/perf_comparison.md.  Usage: gen_perf_report.py [--run-id perf_full_0001]
-"""
+"""Render a sealed, attributable Arm4 performance-measurement report."""
 from __future__ import annotations
 
 import argparse
-import json
-import math
 from pathlib import Path
 
 import _pbcommon as PB
-
-APPROACH_ORDER = ["golden", "baseline", "merlin_targetgen", "iree_dialect", "merlin_native"]
-APPROACH_LABEL = {"golden": "1.golden (C lib)", "baseline": "2.baseline-gen (v0)",
-                  "merlin_targetgen": "3.merlin-gen (v1)",
-                  "iree_dialect": "4.depr-merlin handwritten (IREE)",
-                  "merlin_native": "(extra) merlin-native ref"}
+import perf_reporting as PR
 
 
-def _ps(ar: dict, sim: str) -> dict | None:
-    return (ar.get("per_sim") or {}).get(sim)
+def _cells(rows: list[dict], simulator: str) -> list[dict]:
+    return [row for row in rows if row["identity"]["simulator"] == simulator]
 
 
-def _rtl(ar: dict):
-    """Cycle-accurate result for an approach: verilator (L3) if present else FireSim (L5).
-    Returns (cycles, util, correct, tier) or (None, None, None, None)."""
-    for sim, tier in (("verilator", "L3"), ("firesim", "L5")):
-        ps = _ps(ar, sim)
-        if ps and ps.get("cycles"):
-            return ps["cycles"], ps.get("util_pct"), ps.get("correct"), tier
-    return None, None, None, None
-
-
-def _veri_cell(ar: dict) -> str:
-    """Cycle-accurate cell: cycles[tier] (✗ if wrong) (util%). Prefers verilator, falls back to FireSim."""
-    cyc, util, corr, tier = _rtl(ar)
-    if cyc is None:
-        if (_ps(ar, "verilator") or {}).get("error"):
-            return "to/err"
-        return "err" if ar.get("error") else "·"
-    mark = "" if corr else "✗"
-    u = f" ({util}%)" if util is not None else ""
-    return f"{cyc}{mark} `{tier}`{u}"
-
-
-def _correct_cell(ar: dict) -> str:
-    """Correctness/capability cell from spike (functional). ✓ / ✗ / · (not run) / err."""
-    if ar.get("error"):
-        return "·"  # arm not attempted / golden template deferred
-    ps = _ps(ar, "spike")
-    if not ps:
-        return "·"
-    if ps.get("error"):
-        return "to/err"
-    c = ps.get("correct")
-    if c is True:
-        return "✓"
-    if c is False:
-        return "✗ (no compile)" if ps.get("cycles") is None else "✗ (wrong)"
-    return "·"
-
-
-def _geomean(xs: list[float]) -> float | None:
-    xs = [x for x in xs if x and x > 0]
-    return round(math.exp(sum(math.log(x) for x in xs) / len(xs)), 1) if xs else None
+def render_report(run_id: str, campaign: dict, rows: list[dict], counts: dict) -> str:
+    """Render gated measurements without turning measurement completion into a claim verdict."""
+    verilator = _cells(rows, "verilator")
+    spike = _cells(rows, "spike")
+    results = campaign["results"]
+    decision = campaign["decision_boundary"]
+    candidate = campaign["candidate_stage"]
+    host_lane = campaign["model_host_lane_snapshot"]
+    sentinel = campaign["full_model_admission"]
+    formal = campaign["experiment_mode"] == "formal_claim"
+    claim_status = campaign["claim_status"]
+    if formal:
+        headline = f"PK CLAIM {claim_status}"
+        claim_summary = (
+            "The predeclared PK affine K-to-cycle prediction satisfied every fixed quantitative "
+            "bound and is promoted for this frozen cohort."
+            if claim_status == "ESTABLISHED" else
+            "The completed PK experiment violated one or more predeclared quantitative bounds. "
+            "The claim is refuted and is not promoted.")
+        title = f"# Arm4 PK performance claim ({run_id})"
+    else:
+        headline = "CLAIM NOT ESTABLISHED"
+        claim_summary = (
+            "The measurement-only smoke campaign is complete. This is not a completed performance "
+            "experiment and it does not establish or promote a performance claim.")
+        title = f"# Arm4 performance tooling smoke ({run_id})"
+    claim_evidence: list[str] = []
+    if formal:
+        claim = campaign["claim_decision"]
+        fit = claim["fit"]
+        claim_evidence = [
+            "",
+            "## PK quantitative decision",
+            "",
+            f"- Decision: **{claim['status']}**",
+            f"- Fit: `{fit['equation']}` over **{fit['n_observations']}** Verilator L3 rows",
+            f"- Rate: `{fit['rate_cycles_per_K_element']}` cycles/K; intercept: "
+            f"`{fit['intercept_cycles']}` cycles",
+            f"- R²: `{fit['r_squared']}`; RMSE: `{fit['rmse_cycles']}` cycles; maximum absolute "
+            f"residual: `{fit['max_absolute_residual_cycles']}` cycles",
+            f"- Evidence separation: `{claim['evidence']['l3_positive_cycle_rows_consumed']}` "
+            "L3 timing rows consumed; `0` Spike L2 cycles consumed",
+        ]
+    lines = [
+        title,
+        "",
+        f"## {headline}",
+        "",
+        claim_summary,
+        "",
+        f"Decision boundary: `{decision['module']}` via `{decision['identity_bridge']}`; "
+        f"promotion integration is `{decision['promotion_integration']}` and the promotion status "
+        f"is `{decision['promotion_status']}`. "
+        f"Recorded reason: {decision['reason']}",
+        "",
+        ("This is one Arm4 compiler lane, not a cross-approach comparison, speedup claim, or "
+         "generalization claim. The formal verdict combines the predeclared fixed-cohort fit with "
+         "Verilator L3 measurements; no individual cycle row proves the claim."
+         if formal else
+         "This is one Arm4 compiler lane, not a cross-approach comparison, speedup claim, or "
+         "generalization claim. Verilator L3 cycles below are citable measurements, not proof of "
+         "the declared capsule hypothesis."),
+        "",
+        "## Attribution and enforcement",
+        "",
+        f"- Functional run ID: `{campaign['functional_run_id']}`",
+        f"- Functional submission SHA-256: `{campaign['functional_submission_sha256']}`",
+        f"- Sealed performance candidate SHA-256: `{candidate['candidate_sha256']}`",
+        f"- Candidate record: `{candidate['record_path']}`",
+        f"- Candidate record SHA-256: `{candidate['record_sha256']}`",
+        f"- Performance prompt SHA-256: `{candidate['prompt_sha256']}`",
+        f"- Prompt facts SHA-256: `{candidate['prompt_facts_sha256']}`",
+        f"- Formal replicate identities: "
+        f"`{', '.join(candidate['formal_replicate_identities'])}`",
+        f"- Sealed smoke replicate count: `{candidate['smoke_replicates']}`",
+        f"- Candidate-stage formal PK preflight: "
+        f"`{candidate['formal_claim']['status']}`",
+        f"- Target descriptor SHA-256: `{candidate['target_descriptor_sha256']}`",
+        f"- Candidate audit: clean; transcript SHA-256: "
+        f"`{candidate['transcript_sha256']}`",
+        f"- Candidate authoring tool evidence: "
+        f"**{len(candidate['required_actions'])}** required broker action(s), "
+        f"**{len(candidate['tool_evidence']['tool_probe_results'])}** probes passed and rechecked",
+        f"- Frozen host lane: `{host_lane['package']}`",
+        f"- Frozen host-lane package SHA-256: `{host_lane['package_sha256']}`",
+        f"- Functional bundle-input snapshot SHA-256: "
+        f"`{host_lane['run_snapshot']['content_sha256']}`",
+        f"- Frozen measurement contract SHA-256: `{campaign['frozen_contract']['sha256']}`",
+        f"- Full-model admission sentinel: `{sentinel['capsule']}`; frozen source SHA-256 "
+        f"`{sentinel['source_sha256']}`; L2/L3 pass across mesh + scalar RVV lanes",
+        "- Full-model sentinel role: correctness admission only; its cycles are not recorded or "
+        "included in performance rows",
+        f"- Frozen workload manifest SHA-256: `{campaign['workload_manifest_sha256']}`",
+        f"- Frozen workload capsule-tree SHA-256: `{campaign['workload_sha256']}`",
+        f"- Sealed perf_results.json SHA-256: `{results['sha256']}`",
+        f"- perf_results digest-record SHA-256: `{results['digest_record_sha256']}`",
+        f"- Functional fork: `{campaign['fork_before']['state']}` before and "
+        f"`{campaign['fork_after']['state']}` after measurement",
+        "- Sandbox: bwrap with the sealed candidate source read-only, each C++/Python execution "
+        "using its own writable build copy, answer surfaces closed, and every declared tool probe "
+        "enforced",
+        "- Network: available; network isolation is not part of this experiment's validity claim",
+        f"- Exact-cell completion: **{counts['reported']}/{counts['expected']}**; "
+        f"Spike L2 screens **{counts['screen_passed']}/{counts['screen_expected']}**; "
+        f"Verilator L3 citable measurements "
+        f"**{counts['citable_passed']}/{counts['citable_expected']}**",
+        *claim_evidence,
+        "",
+        "## Citable timing — Verilator L3 only",
+        "",
+        "Only Verilator L3 timing is shown. Spike is a correctness screen and its cycles are "
+        "omitted "
+        "at the sealed-results boundary.",
+        "",
+        "| family | capsule | replicate | L3 cycles | correct |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for row in verilator:
+        identity = row["identity"]
+        lines.append(
+            f"| {identity['family']} | {identity['capsule']} | {identity['replicate']} | "
+            f"{row['cycles']} | yes |")
+    lines += [
+        "",
+        "## Correctness corroboration — Spike L2",
+        "",
+        "| family | capsule | replicate | L2 correctness | cycles |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for row in spike:
+        identity = row["identity"]
+        lines.append(
+            f"| {identity['family']} | {identity['capsule']} | {identity['replicate']} | "
+            "pass | deliberately omitted |")
+    lines += [
+        "",
+        "## Explicit non-claims",
+        "",
+        "- Measurement GO means every predeclared exact cell completed under its simulator policy.",
+        ("- Formal PK status applies only to the frozen fixed-M/N K cohort and its predeclared "
+         "affine residual bounds."
+         if formal else
+         "- Measurement smoke does not promote a prediction, recovery, or differential claim."),
+        "- It does not compare Arm4 with a golden, hand-tuned, prior-agent, or alternate compiler.",
+        "- Spike L2 provides no citable hardware-cycle result.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--run-id", default="perf_full_0001")
-    a = ap.parse_args(argv)
-    rj = PB.RUNS / a.run_id / "perf_results.json"
-    if not rj.is_file():
-        print(f"no results at {rj}")
-        return 2
-    rows = json.loads(rj.read_text())
-    approaches = [x for x in APPROACH_ORDER if any(x in r.get("approaches", {}) for r in rows)]
-
-    L = [f"# Gemmini cross-approach comparison ({a.run_id})", "",
-         "The SAME kernels driven through each Gemmini code-gen approach on one "
-         "ELF→spike/verilator harness. **Two axes, deliberately separated:**", "",
-         "1. **Performance = verilator (L3), cycle-accurate RTL — the only valid timing.** "
-         "spike is *functional*: it does not model the systolic array, so its \"cycles\" plateau "
-         "(~120 from 4K→2M MACs) and give util > 100% — meaningless as performance. Verilator is "
-         "feasible only for small kernels (≤ ~32K MACs); bigger kernels need FireSim (L5), pending.",
-         "2. **Correctness & capability = spike (L2):** does each approach produce a correct result "
-         "at all (exact-int == golden)? This is where COVERAGE differs (e.g. who can compile conv2d).",
-         "",
-         "Approaches: **1** golden hand-tuned C lib (`tiled_matmul_auto`); **2** baseline-generated MLIR "
-         "(agent_spec_v0); **3** merlin-generated MLIR (agent_spec_v1); **4** the deprecated-merlin "
-         "hand-written C++ Gemmini dialect via IREE (`/path/to/merlin-iree`); plus an extra "
-         "merlin native RoCC emitter for reference.", ""]
-
-    # ---- PERFORMANCE: cycle-accurate = verilator (L3) + FireSim (L5) ----
-    veri_rows = [r for r in rows if any(_rtl(r["approaches"].get(x, {}))[0] for x in approaches)]
-    L += ["## 1. Performance — cycle-accurate RTL (verilator L3 + FireSim L5)", "",
-          "Cells = **cycles** `tier` (✗ = wrong output) **(util% = MACs/(cycles·256), 16×16 PE array)**. "
-          "Both tiers simulate the SAME RTL: `L3` verilator covers small kernels (≤32K MACs); `L5` "
-          "FireSim (Alveo U250 FPGA) covers the larger 64³+/model/attention shapes verilator can't reach "
-          f"in its time budget. {len(veri_rows)} kernels have cycle-accurate data.", "",
-          "| kernel | shape | macs | " + " | ".join(APPROACH_LABEL[x] for x in approaches) + " |",
-          "|---|---|---|" + "---|" * len(approaches)]
-    for r in veri_rows:
-        L.append(f"| {r['kernel']} | {r['shape']} | {r['macs']:,} | "
-                 + " | ".join(_veri_cell(r["approaches"].get(x, {})) for x in approaches) + " |")
-    cyc_by = {x: [c for r in veri_rows
-                  for c, _u, corr, _t in [_rtl(r["approaches"].get(x, {}))] if c and corr]
-              for x in approaches}
-    L += ["", f"**Geomean cycles over the {len(veri_rows)} cycle-accurate kernels** (lower = faster; "
-          "golden is the hand-tuned reference): "
-          + ", ".join(f"{APPROACH_LABEL[x]} = {_geomean(cyc_by[x])}"
-                      for x in approaches if _geomean(cyc_by[x])) + ".", ""]
-
-    # ---- CORRECTNESS / CAPABILITY: spike ----
-    L += ["## 2. Correctness & capability — spike L2 (functional)", "",
-          "Does each approach produce a correct result for each kernel? ✓ pass · not attempted "
-          "(golden conv template deferred) `✗ (no compile)` backend cannot lower this op. "
-          "**This is the coverage story** — not a timing comparison.", "",
-          "| kernel | op | shape | macs | " + " | ".join(APPROACH_LABEL[x] for x in approaches) + " |",
-          "|---|---|---|---|" + "---|" * len(approaches)]
-    for r in rows:
-        src = r["source"].split(":")[0]
-        L.append(f"| {r['kernel']} | {src} | {r['shape']} | {r['macs']:,} | "
-                 + " | ".join(_correct_cell(r["approaches"].get(x, {})) for x in approaches) + " |")
-    # capability counts
-    L += ["", "**Correct-kernel count per approach (spike):** "
-          + ", ".join(f"{APPROACH_LABEL[x]} = "
-                      f"{sum(1 for r in rows if (_ps(r['approaches'].get(x, {}), 'spike') or {}).get('correct'))}"
-                      f"/{len(rows)}" for x in approaches) + ".", ""]
-
-    L += ["## Notes", "",
-          "- **Why spike cycles are omitted from §1:** spike models RoCC functionally — the matmul "
-          "retires in ~0 cycles, so spike cycle counts (~120 across all sizes) reflect only scalar "
-          "issue overhead, not the systolic compute. Reporting them as performance would imply util "
-          "> 100%. Verilator (and FireSim) are the timing oracles.",
-          "- **IREE arm (4) — read its cells carefully:** the deprecated-merlin C++ Gemmini dialect now "
-          "has cycle-accurate L5 (FireSim) numbers, but it is ~10–40× slower than the generated/golden "
-          "arms (e.g. 93184 vs 7439 cyc on 64³) AND it is verified by the IREE runner's OWN all-ones "
-          "self-check (rc=0; each output == K), NOT against the exact-int shared golden the other arms use. "
-          "So its cells are shown WITHOUT ✗ (it is not producing wrong answers) but its correctness is "
-          "self-checked-on-all-ones, a weaker guarantee than the others — do not read IREE cycles as a "
-          "like-for-like comparison.",
-          "- **'Identical RoCC' is only *almost* true (corrected by the L5 data):** baseline (v0) and the "
-          "native emitter are **bit-identical in cycles** on every kernel; **merlin-gen (v1) differs by a "
-          "few cycles** on epilogue/model kernels (e.g. G06/G07 acc_scale/relu +2, M00 +17, M01 +8, "
-          "M03 +10) — v1's epilogue codegen is not byte-identical to v0/native. Small, but real.",
-          "- **Capability finding:** only **merlin-gen (v1)** compiles conv2d and movement among the "
-          "generated backends; baseline (v0) and the native emitter cannot lower those ops. All four "
-          "handle matmul and attention.",
-          "- **FireSim L5: COMPLETE** — 46/46 ELFs ran (100%); all 24 kernels are cycle-accurate "
-          "(verilator ≤32K MACs, FireSim for the rest). Util-crossover holds at scale: golden 49–64% on "
-          "the big/model shapes vs generated ~14–17%.",
-          "- `to/err` = verilator timeout (>900s) or runner error; `·` = not run / backend can't compile."]
-
-    out = PB.REPORTS / "perf_comparison.md"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args(argv)
+    if not args.run_id or Path(args.run_id).name != args.run_id or args.run_id in (".", ".."):
+        raise PR.ReportingGateError("performance run ID must be an explicit simple directory name")
+    run = PB.RUNS / args.run_id
+    campaign, rows, counts = PR.load_reportable_run(run)
+    report = render_report(args.run_id, campaign, rows, counts)
+    out = args.output or (PB.REPORTS / f"{args.run_id}_arm4_performance.md")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("\n".join(L) + "\n")
-    print(f"wrote {out} ({len(rows)} kernels, {len(veri_rows)} cycle-accurate, "
-          f"{len(approaches)} approaches)")
+    out.write_text(report, encoding="utf-8")
+    claim_label = (f"PK CLAIM {campaign['claim_status']}"
+                   if campaign["experiment_mode"] == "formal_claim"
+                   else "CLAIM NOT ESTABLISHED")
+    print(f"wrote {out} ({counts['expected']} exact Arm4 cells; {claim_label})")
     return 0
 
 

@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 
 import _pbcommon as PB
+import perf_reporting as PR
 
 CREAM = "#F6F1E7"; INK = "#2B2B2B"
 COL = {"golden": "#6E93B0", "baseline": "#D98C84", "merlin_targetgen": "#E6B84C",
@@ -39,6 +40,7 @@ def main(argv=None):
     ap.add_argument("--run-id", default="perf_full_0001")
     a = ap.parse_args(argv)
     run = PB.RUNS / a.run_id
+    PR.refuse_legacy_cross_approach(run, "build_artifact.py")
     rows = json.loads((run / "perf_results.json").read_text())
     R = PB.REPORTS
 
