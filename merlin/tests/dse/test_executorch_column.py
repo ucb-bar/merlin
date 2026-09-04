@@ -313,3 +313,35 @@ def test_an_unknown_recipe_is_still_refused_even_against_an_equivalent_one():
     from merlin.compare.executorch_column import quant_recipe_mismatch_reason
     assert "UNKNOWN" in (quant_recipe_mismatch_reason("", "pt2e_qd8") or "")
     assert "UNKNOWN" in (quant_recipe_mismatch_reason("merlin_int8_w8a8", "") or "")
+
+
+def test_accuracy_scored_against_different_references_is_refused_not_ranked():
+    """int8-vs-host-int8 and int8-vs-fp32 answer different questions.
+
+    merlin's gate reports the W8A8 tier's score (does our int8 arithmetic match a correct int8
+    computation); ExecuTorch's int8 path forces compute_golden and scores int8 against fp32, which
+    includes the quantization error itself. Ranking 0.0148 against 0.0076 across that boundary
+    produced a false 'ExecuTorch is more accurate than us' in this workstream. Refuse instead.
+    """
+    from merlin.compare.executorch_column import accuracy_reference_mismatch_reason as why
+    m = why("capture_golden_w8a8", "recomputed_fp32")
+    assert m and "MISMATCH" in m
+    assert "cannot be ordered" in m
+    # the same reference on both sides IS comparable
+    assert why("capture_golden_fp32", "capture_golden_fp32") is None
+    # and UNKNOWN is refused as firmly as a mismatch, like the other two guards
+    for pair in (("", "recomputed_fp32"), ("capture_golden_fp32", "")):
+        assert "UNKNOWN" in (why(*pair) or "")
+
+
+def test_the_harness_keeps_every_tier_score_not_the_collapsed_pair():
+    """_gate collapses out['rel'] to the W8A8 tier when present; fp32_rel must survive to the
+    artifact, since it is the only number comparable with an fp32-scored reference."""
+    src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
+    assert "accuracy_reference_by_tier" in src
+    assert 'OURS_ACCURACY_REFERENCE = "capture_golden_fp32"' in src
+    assert "accuracy_reference_mismatch_reason(OURS_ACCURACY_REFERENCE, ref_acc)" in src
+    # load_ns must be carried: it decides whether our offline weight-transpose hoisting mirrors
+    # XNNPACK's delegate-init prepacking or is an advantage we granted ourselves.
+    assert '"load_ns": getattr(r, "load_ns", None)' in src
+    assert '"executorch_load_ns": load' in src

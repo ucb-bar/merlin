@@ -174,6 +174,42 @@ QUANT_RECIPE_EQUIVALENT: tuple[frozenset[str], ...] = (
 )
 
 
+#: How an accuracy score identifies WHAT IT WAS SCORED AGAINST. A cos/rel is meaningless without
+#: it: merlin's gate reports the W8A8 tier's score (int8 output vs a HOST INT8 reference -- "is our
+#: int8 arithmetic right"), while ExecuTorch's int8 path forces ``compute_golden`` and scores against
+#: an fp32 reference RECOMPUTED from the model it loaded ("how far is int8 from fp32", which includes
+#: the quantization error itself). Those answer different questions and cannot be ordered. Ranking
+#: them anyway produced a false "ExecuTorch is more accurate than us" inside this very workstream,
+#: an hour after the same error class was fixed on the recipe axis.
+ACCURACY_REFERENCE_LABELS = {
+    "capture_golden_fp32": "the capture bundle's golden.npy (fp32)",
+    "capture_golden_w8a8": "the capture bundle's golden_w8a8.npy (host int8 reference)",
+    "recomputed_fp32": "an fp32 reference recomputed from the model the runner loaded",
+}
+
+
+def accuracy_reference_mismatch_reason(ours_ref: str, ref_ref: str) -> str | None:
+    """Why these two accuracy scores may not be compared, or None if they may.
+
+    Third guard of the same fail-closed shape as :func:`bundle_mismatch_reason` and
+    :func:`quant_recipe_mismatch_reason`, on the reference axis. UNKNOWN is refused as firmly as a
+    mismatch -- a score whose reference was not recorded cannot be shown to match.
+    """
+    if not ours_ref or not ref_ref:
+        missing = [n for n, v in (("ours", ours_ref), ("reference", ref_ref)) if not v]
+        return (f"accuracy reference UNKNOWN for {' and '.join(missing)}: a cos/rel does not say "
+                "what it was scored against, and int8-vs-host-int8 and int8-vs-fp32 are different "
+                "questions (the latter includes quantization error). Record the reference on both "
+                "sides and re-score.")
+    if ours_ref != ref_ref:
+        return (f"accuracy reference MISMATCH: ours scored against {ours_ref!r} "
+                f"({ACCURACY_REFERENCE_LABELS.get(ours_ref, 'unknown reference')}), the reference "
+                f"against {ref_ref!r} ({ACCURACY_REFERENCE_LABELS.get(ref_ref, 'unknown reference')}). "
+                "These measure different things and cannot be ordered -- neither side is 'more "
+                "accurate' than the other on these numbers.")
+    return None
+
+
 def quant_recipe_mismatch_reason(ours_recipe: str, ref_recipe: str) -> str | None:
     """Why these two int8 measurements are not comparable ARITHMETIC, or None if they are.
 

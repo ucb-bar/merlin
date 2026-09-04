@@ -74,6 +74,7 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
     walls, gated, blocker = [], 0, None
     conds = []
     last_tiers = last_tier_ok = last_cos = last_rel = None
+    last_gate = None
     for i in range(n):
         conds.append(_conditions())
         try:
@@ -81,6 +82,7 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
                                op_profile=False, iters=iters, warmup=warmup)
             g = zm._gate(res["prefix"], golden_refs)
             cos, rel, ok = g.get("cos"), g.get("rel"), g.get("ok")
+            last_gate = {k: v for k, v in g.items() if isinstance(v, (int, float, bool))}
             last_tiers, last_tier_ok = g.get("tiers"), g.get("tier_ok")
             last_cos, last_rel = cos, rel
             if not ok:
@@ -99,7 +101,16 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
     conds.append(_conditions())
     return {"ok": gated > 0, "n_gated": gated, "walls": walls,
             "min_wall_ns": min(walls) if walls else None,
-            "gate": {"tiers": last_tiers, "tier_ok": last_tier_ok, "cos": last_cos, "rel": last_rel},
+            # The FULL gate record, not the collapsed pair. `_gate` sets out["rel"] to the W8A8
+            # tier's score when that tier is present, so keeping only ("cos","rel") silently drops
+            # fp32_rel -- the one number comparable with a reference that scored against fp32. That
+            # omission produced a false "ExecuTorch is more accurate" from this very artifact.
+            "gate": dict(last_gate or {},
+                         tiers=last_tiers, tier_ok=last_tier_ok, cos=last_cos, rel=last_rel),
+            # WHICH reference each of our tiers was scored against, so a consumer can tell whether
+            # it may be compared with the other side's number at all.
+            "accuracy_reference_by_tier": {"fp32": "capture_golden_fp32",
+                                           "w8a8": "capture_golden_w8a8"},
             "protocol": {"warmup": warmup, "iters": iters, "launches": n, "pick": "min-of-n"},
             "board_conditions": conds, "blocker": blocker}
 
@@ -122,6 +133,16 @@ def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int) -> dict:
             rec = {"n": n, "status": r.status(), "per_inference_ns": per_inf,
                    "total_ns": (per_inf * n) if per_inf else None,
                    "cos": r.cos, "rel": r.rel,
+                   # ExecuTorch's ahead-of-time work lands HERE, not in the execute line every ratio
+                   # in this repo is taken against: the XNNPACK delegate prepacks weights into its
+                   # blocked layout at delegate init. Whether our offline weight-transpose hoisting
+                   # is the honest mirror of that, or an advantage we granted ourselves, is decided
+                   # by this number -- which is why it is no longer dropped.
+                   "load_ns": getattr(r, "load_ns", None),
+                   # int8 forces compute_golden (executorch.py:221-224), so the score is against an
+                   # fp32 reference RECOMPUTED from the loaded model -- not our captured golden and
+                   # not a host int8 reference.
+                   "accuracy_reference": "recomputed_fp32",
                    "quant_recipe": getattr(r, "quant_recipe", ""),
                    "bundle_id": getattr(r, "bundle_id", ""),
                    "gap_reason": r.gap_reason,
@@ -150,10 +171,15 @@ def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int) -> dict:
 #: What OUR arm computes, always. Not a function of the reference.
 OURS_QUANT_RECIPE = "merlin_int8_w8a8"
 
+#: The tier of ours that is comparable IN KIND with a reference scored against fp32. Our W8A8 tier
+#: answers a different (tighter) question and must not be ranked against an fp32-scored number.
+OURS_ACCURACY_REFERENCE = "capture_golden_fp32"
+
 
 def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
     """The ratio, or a concrete refusal. Never a number whose basis cannot be shown."""
-    from merlin.compare.executorch_column import (bundle_mismatch_reason,
+    from merlin.compare.executorch_column import (accuracy_reference_mismatch_reason,
+                                                  bundle_mismatch_reason,
                                                   quant_recipe_mismatch_reason)
     ours_w = ours.get("min_wall_ns")
     et_w = arm.get("warm_ns")
@@ -172,10 +198,35 @@ def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
                 quant_recipe_mismatch_reason(OURS_QUANT_RECIPE, ref_recipe)):
         if why:
             return {"status": "not_comparable", "reason": why}
+    # A speed number without its accuracy is not a result on a quantized datapath -- but an
+    # accuracy number scored against a different reference is not a comparison either. Report the
+    # pair, or refuse it, on the same fail-closed terms as the ratio itself.
+    ref_acc = next((r.get("accuracy_reference", "") for r in arm["runs"]
+                    if r.get("accuracy_reference")), "")
+    why_acc = accuracy_reference_mismatch_reason(OURS_ACCURACY_REFERENCE, ref_acc)
+    if why_acc:
+        accuracy = {"status": "not_comparable", "reason": why_acc,
+                    "ours": {"reference": OURS_ACCURACY_REFERENCE,
+                             "cos": ours.get("gate", {}).get("fp32_cos"),
+                             "rel": ours.get("gate", {}).get("fp32_rel")},
+                    "executorch": {"reference": ref_acc,
+                                   "cos": next((r.get("cos") for r in arm["runs"] if r.get("cos")), None),
+                                   "rel": next((r.get("rel") for r in arm["runs"] if r.get("rel")), None)}}
+    else:
+        accuracy = {"status": "measured", "reference": ref_acc,
+                    "ours_cos": ours.get("gate", {}).get("fp32_cos"),
+                    "ours_rel": ours.get("gate", {}).get("fp32_rel"),
+                    "executorch_cos": next((r.get("cos") for r in arm["runs"] if r.get("cos")), None),
+                    "executorch_rel": next((r.get("rel") for r in arm["runs"] if r.get("rel")), None)}
+    # ExecuTorch's weight prepacking happens at delegate init, OUTSIDE the execute line this ratio
+    # divides. Surfaced beside the ratio so the reader can see what each side did not pay for.
+    load = next((r.get("load_ns") for r in arm["runs"] if r.get("load_ns")), None)
     return {"status": "measured", "ours_ns": ours_w, "executorch_warm_ns": et_w,
             "ours_over_executorch": ours_w / et_w,
             "speedup_vs_executorch": et_w / ours_w,
-            "beats_executorch": et_w > ours_w}
+            "beats_executorch": et_w > ours_w,
+            "executorch_load_ns": load,
+            "accuracy": accuracy}
 
 
 def main() -> None:
