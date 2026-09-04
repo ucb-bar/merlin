@@ -684,8 +684,18 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # that needs -O0/-O1 builds of the model while everything else (harness, runtime, flags) is held
     # fixed. Diagnostic only -- never set it for a measurement, since it changes the emitted kernel.
     model_opt = os.environ.get("MERLIN_K1_MODEL_OPT", "-O2").split()
-    _run([clang23, "--target=riscv64-unknown-linux-gnu", f"-march={codegen_march()}", f"-mabi={K1_MABI}",
-          *model_opt, "-Wno-override-module", "-c", res.ll_path, "-o", model_o])
+    # CFLAGS-CLASS FEATURES apply to the MODEL OBJECT ONLY. Some levers are not expressible in the
+    # IR or the transform schedule at all: the vector register-group width comes from clang's own
+    # RISC-V vectorizer (`-riscv-v-register-bit-width-lmul`, default 2), so a feature that resolves
+    # and is never handed to the compiler emits byte-identical code while reporting as applied --
+    # the inert-lever failure this file's own comments warn about. Only the model object gets these;
+    # the harness and runtime stay on fixed flags so a measurement changes one thing.
+    from ..llvmlower.impr_features import apply_cflags as _apply_cflags
+    _model_flags = _apply_cflags(
+        [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt, "-Wno-override-module"],
+        feats or frozenset())
+    _run([clang23, "--target=riscv64-unknown-linux-gnu", *_model_flags,
+          "-c", res.ll_path, "-o", model_o])
 
     # 3. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).
     cgen = work / "cgen"
