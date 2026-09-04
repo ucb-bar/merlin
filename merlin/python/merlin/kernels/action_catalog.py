@@ -107,6 +107,35 @@ def _is_higher(d: Divergence) -> bool:
         return False
 
 
+def _is_lower(d: Divergence) -> bool:
+    """The expert does LESS of this than we do.
+
+    Every magnitude route here was written assuming the expert is the upper bound and we climb
+    toward it, so an expert that sits BELOW us fell through every guard and routed to nothing. That
+    is not a corner case: XNNPACK's int8 ukernel is `..._ukernel_1x4v__rvv` -- MR=1 -- while the
+    catalog's register-block note cites "XNNPACK 7x4v" and concludes MR should be raised. 7x4v is
+    the F32 kernel. On int8 the reuse comes from the 4-group N tile, not from M, and the lifted CCA
+    says so on every generation: `compute.register_block expert=(1, ...)` against our (4, ...) and
+    `vector.lmul expert=4.0` against our 8.0. Both were discarded for having the wrong sign.
+    """
+    try:
+        return float(d.expert) < float(d.ours)
+    except (TypeError, ValueError):
+        return False
+
+
+def _mr_of(value) -> float | None:
+    """The MR out of a register_block facet, which is ``(MR, (n_strategy, n_magnitude))``."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, (tuple, list)) and value:
+        try:
+            return float(value[0])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 # RVV routes. Keyed implicitly by backend "rvv" (see route()). Each maps a mined divergence to the
 # concrete compiler lever — and whether an impr_ fork can do it today.
 _RVV_ROUTES: list[_Route] = [
@@ -313,7 +342,12 @@ _RVV_ROUTES: list[_Route] = [
         shape_regimes=("vector", "square_small", "skinny")),   # small-/skinny-M decode matmuls
     _Route(
         axis="compute.register_block",
-        # MR is a magnitude: reaching MORE blocking than the expert keeps the promise.
+        # MR is a magnitude: reaching MORE blocking than the expert keeps the promise -- BUT
+        # ONLY WHERE THE EXPERT IS ABOVE US. An expert that deliberately chose a LOWER MR is not
+        # an upper bound to climb toward, and `at_least` would call our slower config a kept
+        # promise. The note below cites XNNPACK 7x4v, which is the F32 kernel; the INT8 ukernel
+        # is `..._1x4v__rvv` -- MR=1 -- and our MR=4 variant measured 1.61x SLOWER than the
+        # default. The narrowing case is a separate route carrying an `exact` promise.
         promise_comparison="at_least",
         # The #1 GEMM data-movement decision and the one the policy-built expert CCA used to hide
         # (register_block=null). The experts ship register blocking up to MR=7 (XNNPACK 7x4v) / MR=16
@@ -321,7 +355,9 @@ _RVV_ROUTES: list[_Route] = [
         # 2.0 loads/useful-FMA). Raising MR reuses one loaded B-row across MR broadcast-FMA
         # accumulators (loads/FMA -> 1+1/MR) AND gives MR independent accumulator chains to hide the
         # vfmacc latency. Now a LEARNED divergence (expert MR > ours MR), not a hand-known knob.
-        when=lambda d: bool(d.expert),
+        when=lambda d: bool(d.expert) and not (
+            _mr_of(d.expert) is not None and _mr_of(d.ours) is not None
+            and _mr_of(d.expert) < _mr_of(d.ours)),
         action_class="PASS",
         target_seam="impr_features:accumulator_resident_wholemodel_vf_mrpad (per-op MR + M-pad tail)",
         change="raise the matmul register-block MR toward the expert MR so one streamed B-row feeds "
@@ -355,6 +391,38 @@ _RVV_ROUTES: list[_Route] = [
         # mrpad feature still safely handles any M=1 matmuls PRESENT in a model it lowers; this is only
         # which optimization the beam PROPOSES for a shape.)
         shape_regimes=("square_large", "square_medium", "rectangular")),
+    _Route(
+        # THE NARROWING DIRECTION. `vector.lmul` had only a widening route, so an expert sitting
+        # BELOW us routed to nothing and the clearest number the teacher produces was compared,
+        # recorded and discarded on every generation.
+        #
+        # LMUL is not free width: at one VLEN, e64/m8 and e32/m4 hold the SAME element count while
+        # the former costs twice the register file. A group wider than the expert's buys no
+        # elements and spills, which is exactly our shape against XNNPACK's qd8 kernel.
+        axis="vector.lmul",
+        when=_is_lower,
+        action_class="KNOB", target_seam="schedule:lmul_grouping_policy (register-group width)",
+        change="narrow the vector group to the expert's LMUL so the same elements occupy fewer "
+               "registers and the accumulator stops spilling",
+        promise_comparison="exact",
+        forkable_now=True,
+        expected_effect="the emitted vsetvli carries the expert's LMUL; a group wider than the "
+                        "expert's holds no more elements per VLEN and costs register pressure"),
+    _Route(
+        # MR BELOW OURS -- the int8 case the "at_least" promise cannot express. Reaching MORE
+        # blocking than an expert that deliberately chose MR=1 does not keep the promise, it is the
+        # thing making us slower: our MR=4 variant measured 1.61x SLOWER than the default.
+        axis="compute.register_block",
+        when=lambda d: (_mr_of(d.expert) is not None and _mr_of(d.ours) is not None
+                        and _mr_of(d.expert) < _mr_of(d.ours)),
+        action_class="PASS",
+        target_seam="impr_features:accumulator_resident_wholemodel_vf_mrpad (per-op MR + M-pad tail)",
+        change="lower the matmul register-block MR to the expert's, taking reuse from the "
+               "VLEN-scaled N tile instead of from M",
+        promise_comparison="exact",
+        forkable_now=True,
+        expected_effect="MR matches the expert's 1x4v shape; a taller M block on int8 costs "
+                        "register pressure without buying B-row reuse"),
     _Route(
         axis="vector.lmul",
         when=_is_higher,

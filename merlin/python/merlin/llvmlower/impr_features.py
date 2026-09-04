@@ -2408,9 +2408,18 @@ MRPAD_INT8_NAME = ensure_mrpad_for_elem_types("i8", "i8", "i32")
 #: its own control (no register block at all) it is 8.6x faster. An i8 lane holds 4x the elements of
 #: an f32 lane at one VLEN, so the N strip in particular has no reason to match. Registered so the
 #: proposer can refine along both axes instead of inheriting a constant chosen for another dtype.
+#:
+#: MR=1 IS IN THE LADDER BECAUSE THE EXPERT USES IT. XNNPACK's kernel is
+#: `xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv` -- 1x4v, i.e. MR=1 with a VLEN-scaled 4-group N
+#: tile -- and the lifted CCA agrees: `compute.register_block expert=(1, ('vsetvlmax', 4.0))` against
+#: our (4, ('vsetvlmax', 8.0)). The ladder started at MR=2 and the routed action's own text says
+#: "RAISE the matmul register-block MR toward the expert MR", which is backwards here: the expert's
+#: MR is BELOW ours, and its number was not in the search space at all. Our MR=4 variant measured
+#: 1.61x SLOWER than the default, which is what that looks like from the outside.
 MRPAD_INT8_TILES: tuple[str, ...] = tuple(
     ensure_mrpad_for_elem_types("i8", "i8", "i32", MR=_mr, NR=_nr, NR_bmm=_nb)
-    for _mr, _nr, _nb in ((2, 16, 8), (4, 16, 8), (8, 16, 8),
+    for _mr, _nr, _nb in ((1, 16, 8), (1, 32, 8), (1, 64, 16),      # the EXPERT's MR
+                          (2, 16, 8), (4, 16, 8), (8, 16, 8),
                           (4, 32, 8), (4, 64, 16), (8, 32, 16), (8, 64, 16)))
 
 
