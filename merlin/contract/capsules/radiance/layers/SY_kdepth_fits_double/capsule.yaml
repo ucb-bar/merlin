@@ -1,0 +1,64 @@
+name: SY_kdepth_fits_double
+kind: layer
+source_role: derived_sweep
+source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction
+  the ''fits_double'' residency regime admits (64 accumulation passes, 0.5 of the
+  operand store). The reduction moves the operands and not the result, so this certifies
+  at one output tile'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 1024
+  - 16
+  dtype: bf16
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 1024
+  dtype: bf16
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+    semantic:
+      generalization_axis: accumulation_depth
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 3.4968040832708547e-14
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 1.117698428883526e-12
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
+  applied_atol: 3.4968040832708547e-14
+  golden_scale: 2.237954613293347e-12
+  rtol: 0.015625
+  why: the declared absolute tolerance reached the falsifiability ceiling, so the
+    profile's own relative tolerance was applied at the golden's scale instead

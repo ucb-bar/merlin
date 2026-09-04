@@ -9,14 +9,14 @@ inputs:
 - name: W
   role: weight
   shape:
-  - 64
+  - 63
   - 31
   dtype: bf16
 - name: A0
   role: input
   shape:
   - 32
-  - 64
+  - 63
   dtype: bf16
 operation:
   op: matmul
@@ -56,6 +56,6 @@ pass_requirements:
 numeric_falsifiability:
   status: ok
   declared_atol: 0.25
-  ceiling_atol: 136.4780630493164
+  ceiling_atol: 136.4780764770508
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true

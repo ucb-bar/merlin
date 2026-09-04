@@ -12,32 +12,32 @@ inputs:
 - name: W
   role: weight
   shape:
-  - 32
+  - 64
   - 32
   dtype: fp8_e4m3
 - name: A0
   role: input
   shape:
   - 32
-  - 32
+  - 64
   dtype: fp8_e4m3
 - name: A1
   role: input
   shape:
   - 32
-  - 32
+  - 64
   dtype: fp8_e4m3
 - name: A2
   role: input
   shape:
   - 32
-  - 32
+  - 64
   dtype: fp8_e4m3
 - name: A3
   role: input
   shape:
   - 32
-  - 32
+  - 64
   dtype: fp8_e4m3
 operation:
   op: resident_reuse

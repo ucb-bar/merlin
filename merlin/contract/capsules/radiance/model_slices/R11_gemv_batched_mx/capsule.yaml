@@ -45,9 +45,9 @@ operation:
     weight: W
     out: Y0
     batch: 2
-    block_scale: e8m0
     semantic: gemv_batched
     output_dtype: bf16
+    block_scale: e8m0
 numeric_policy:
   compare: tolerance_float
   dtype: bf16

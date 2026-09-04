@@ -9,14 +9,14 @@ inputs:
 - name: W
   role: weight
   shape:
-  - 64
+  - 63
   - 31
   dtype: i8
 - name: A0
   role: input
   shape:
   - 32
-  - 64
+  - 63
   dtype: i8
 operation:
   op: matmul

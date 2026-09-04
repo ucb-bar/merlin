@@ -6,8 +6,8 @@
 provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: radiance
-  n_required_cells: 84
-  n_entries: 92
+  n_required_cells: 72
+  n_entries: 88
   budget: 160
   precision_preference_kept:
   - i8
@@ -21,17 +21,19 @@ provenance:
   shape_regions_no_writer_can_express:
   - 'attention.transpose (layout axis, family ''attention'', dtype ''fp16''): no builder materializes
     a transposed-layout region for this family at this dtype'
-  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''fp32''): no builder materializes
+  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''f32''): no builder materializes
     a transposed-layout region for this family at this dtype'
-  - 'elementwise_map.batched (rank axis, family ''elementwise_map'', dtype ''fp32''): no builder materializes
-    a rank-3 region for this family at this dtype'
-  - 'movement.batched (rank axis, family ''movement'', dtype ''fp32''): no builder materializes a rank-3
+  - 'attention.batched (rank axis, family ''attention'', dtype ''fp16''): no builder materializes a rank-3
     region for this family at this dtype'
-  - 'normalization.batched (rank axis, family ''normalization'', dtype ''fp32''): no builder materializes
+  - 'elementwise_map.batched (rank axis, family ''elementwise_map'', dtype ''f32''): no builder materializes
     a rank-3 region for this family at this dtype'
-  - 'reduction.batched (rank axis, family ''reduction'', dtype ''fp32''): no builder materializes a rank-3
+  - 'movement.batched (rank axis, family ''movement'', dtype ''f32''): no builder materializes a rank-3
     region for this family at this dtype'
-  - 'softmax.batched (rank axis, family ''softmax'', dtype ''fp32''): no builder materializes a rank-3
+  - 'normalization.batched (rank axis, family ''normalization'', dtype ''f32''): no builder materializes
+    a rank-3 region for this family at this dtype'
+  - 'reduction.batched (rank axis, family ''reduction'', dtype ''f32''): no builder materializes a rank-3
+    region for this family at this dtype'
+  - 'softmax.batched (rank axis, family ''softmax'', dtype ''f32''): no builder materializes a rank-3
     region for this family at this dtype'
   - 'synchronization.batched (rank axis, family ''synchronization'', dtype ''''): no builder materializes
     a rank-3 region for this family at this dtype'
@@ -48,11 +50,19 @@ provenance:
     the derived inventory produces. A shape listed here that the micro model does not reach is not covered
     by synthesis -- emitting a capsule per shape would mean inventing inventories no capture supports
   host_only_unsynthesizable:
-  - movement/i8 (op 'movement' has a merlin_iface builder, so its capsule carries an accelerator-dialect
-    interface and classifies as accelerator work whatever dtype it declares; this axis needs an op of
-    this family the interface dialect cannot express)
+  - movement/i8 (no materializable op at this dtype)
+  - contraction/i64 (no materializable op at this dtype)
   host_only_note: 'a host-only family with no materializable op or no dtype observed in any capture. Reported
     rather than dropped: a negative lane nobody demanded reads downstream exactly like one nothing violates'
+  geometry_classes_unsynthesizable:
+  - wide_skinny (the heaviest shape in this class carries a 589824000-element tensor, more than the 32768
+    this target's operand store holds, and no common divisor of its extents fits while every extent stays
+    at or above its floor (min(original, tile edge 16)) and the shape stays in its class -- so no capsule
+    of this aspect ratio is both representative and buildable here)
+  geometry_note: 'a geometric class (aspect ratio) real models present that the corpus could not emit
+    a capsule for. The classes that WERE emitted carry the real M/K/N of the heaviest region in the class,
+    and their tier follows that size: one too large to certify inside the budget is graded at the loop
+    tier and names the certified sibling it rests on'
   accumulation_depth_unsizable: []
   accumulation_depth_note: 'a reduction depth this target could not size. Kept separate from `cells_no_writer_can_express`
     because the two license different actions: a cell with no writer needs a builder, while an unsized
@@ -101,7 +111,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -160,7 +170,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -219,7 +229,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -257,49 +267,12 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile
+  M: 2*tile
   K: 2*tile
-  N: tile
+  N: 2*tile
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_attention_mxfp4_partial
-  op: attention_mx
-  operand_dtype: mxfp4
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell attention/mxfp4/partial (basis=observed_via_primitives,
-    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile
-  K: 2*tile
-  N: tile-1
-  pass_requirements:
-  - target-isa-lowering
-  - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_attention_mxfp4_sub_tile
-  op: attention_mx
-  operand_dtype: mxfp4
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell attention/mxfp4/sub_tile (basis=observed_via_primitives,
-    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile/8
-  K: tile/4
-  N: tile/4
-  pass_requirements:
-  - target-isa-lowering
 - cat: isa
   kind: isa
   name: SY_attention_mxfp6_aligned
@@ -313,49 +286,12 @@ capsules:
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile
+  M: 2*tile
   K: 2*tile
-  N: tile
+  N: 2*tile
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_attention_mxfp6_partial
-  op: attention_mx
-  operand_dtype: mxfp6
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell attention/mxfp6/partial (basis=observed_via_primitives,
-    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile
-  K: 2*tile
-  N: tile-1
-  pass_requirements:
-  - target-isa-lowering
-  - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_attention_mxfp6_sub_tile
-  op: attention_mx
-  operand_dtype: mxfp6
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell attention/mxfp6/sub_tile (basis=observed_via_primitives,
-    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile/8
-  K: tile/4
-  N: tile/4
-  pass_requirements:
-  - target-isa-lowering
 - cat: isa
   kind: isa
   name: SY_attention_mxfp8_aligned
@@ -375,43 +311,6 @@ capsules:
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_attention_mxfp8_partial
-  op: attention_mx
-  operand_dtype: mxfp8
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell attention/mxfp8/partial (basis=observed_via_primitives,
-    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile
-  K: 2*tile
-  N: tile-1
-  pass_requirements:
-  - target-isa-lowering
-  - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_attention_mxfp8_sub_tile
-  op: attention_mx
-  operand_dtype: mxfp8
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell attention/mxfp8/sub_tile (basis=observed_via_primitives,
-    admitted_by=['simt_cluster']); extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile/8
-  K: tile/4
-  N: tile/4
-  pass_requirements:
-  - target-isa-lowering
 - cat: isa
   kind: isa
   name: SY_contraction_bf16_aligned
@@ -445,7 +344,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -501,7 +400,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -557,7 +456,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -613,7 +512,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -649,49 +548,12 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile
+  M: 2*tile
   K: 2*tile
-  N: tile
+  N: 2*tile
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_contraction_mxfp4_partial
-  op: matmul
-  operand_dtype: mxfp4
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell contraction/mxfp4/partial (basis=observed, admitted_by=['mx_pe']);
-    extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile
-  K: 2*tile
-  N: tile-1
-  pass_requirements:
-  - target-isa-lowering
-  - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_contraction_mxfp4_sub_tile
-  op: matmul
-  operand_dtype: mxfp4
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell contraction/mxfp4/sub_tile (basis=observed, admitted_by=['mx_pe']);
-    extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile/8
-  K: tile/4
-  N: tile/4
-  pass_requirements:
-  - target-isa-lowering
 - cat: isa
   kind: isa
   name: SY_contraction_mxfp6_aligned
@@ -705,49 +567,12 @@ capsules:
     extents from boundaries.extent_probes
   label: public
   modes: {}
-  M: tile
+  M: 2*tile
   K: 2*tile
-  N: tile
+  N: 2*tile
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_contraction_mxfp6_partial
-  op: matmul
-  operand_dtype: mxfp6
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell contraction/mxfp6/partial (basis=observed, admitted_by=['mx_pe']);
-    extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile
-  K: 2*tile
-  N: tile-1
-  pass_requirements:
-  - target-isa-lowering
-  - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_contraction_mxfp6_sub_tile
-  op: matmul
-  operand_dtype: mxfp6
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell contraction/mxfp6/sub_tile (basis=observed, admitted_by=['mx_pe']);
-    extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile/8
-  K: tile/4
-  N: tile/4
-  pass_requirements:
-  - target-isa-lowering
 - cat: isa
   kind: isa
   name: SY_contraction_mxfp8_aligned
@@ -767,43 +592,6 @@ capsules:
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_contraction_mxfp8_partial
-  op: matmul
-  operand_dtype: mxfp8
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell contraction/mxfp8/partial (basis=observed, admitted_by=['mx_pe']);
-    extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile
-  K: 2*tile
-  N: tile-1
-  pass_requirements:
-  - target-isa-lowering
-  - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_contraction_mxfp8_sub_tile
-  op: matmul
-  operand_dtype: mxfp8
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: synthesized for conformance cell contraction/mxfp8/sub_tile (basis=observed, admitted_by=['mx_pe']);
-    extents from boundaries.extent_probes
-  label: public
-  modes: {}
-  M: tile/8
-  K: tile/4
-  N: tile/4
-  pass_requirements:
-  - target-isa-lowering
 - cat: isa
   kind: isa
   name: SY_elementwise_map_bf16_aligned
@@ -838,7 +626,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -897,7 +685,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -956,7 +744,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -1014,7 +802,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -1070,7 +858,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -1126,7 +914,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -1182,7 +970,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -1238,7 +1026,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -1294,7 +1082,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -1351,7 +1139,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -1410,7 +1198,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -1469,7 +1257,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -1528,7 +1316,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -1587,7 +1375,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -1646,7 +1434,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   source: pytorch
   pass_requirements:
@@ -1671,6 +1459,71 @@ capsules:
   source: pytorch
   pass_requirements:
   - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_regime_fits_double
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for memory regime ''fits_double'': the declared inputs occupy 32 of 4096
+    operand-store rows (0.007812 of capacity), which is what puts this capsule in that regime. Extents
+    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with'
+  label: public
+  modes: {}
+  M: tile
+  K: tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_regime_fits_single
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for memory regime ''fits_single'': the declared inputs occupy 2064 of
+    4096 operand-store rows (0.503906 of capacity), which is what puts this capsule in that regime. Extents
+    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with.
+    32768 written output elements exceeds the 742 a 300.0s certification budget affords on this target,
+    so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
+  label: public
+  modes: {}
+  M: 128*tile
+  K: tile
+  N: tile
+  max_oracle_tier: L2
+  extends: SY_contraction_bf16_aligned
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_regime_spills
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for memory regime ''spills'': the declared inputs occupy 4112 of 4096
+    operand-store rows (1.003906 of capacity), which is what puts this capsule in that regime. Extents
+    resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with.
+    65536 written output elements exceeds the 742 a 300.0s certification budget affords on this target,
+    so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
+  label: public
+  modes: {}
+  M: 256*tile
+  K: tile
+  N: tile
+  max_oracle_tier: L2
+  extends: SY_contraction_bf16_aligned
+  pass_requirements:
+  - target-isa-lowering
 - cat: model
   kind: model
   name: SY_micro_model
@@ -1692,28 +1545,9 @@ capsules:
   - target-isa-lowering
 - cat: model_slices
   kind: model_slice
-  name: SY_rank_attention_batched
-  op: gemv_batched
-  operand_dtype: mxfp8
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: 'synthesized for the rank axis: this target''s capability manifest declares ''attention''
-    handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
-    come from capability_probes'
-  label: public
-  modes: {}
-  semantic:
-    generalization_axis: rank
-  B: 2
-  pass_requirements:
-  - target-isa-lowering
-- cat: model_slices
-  kind: model_slice
   name: SY_rank_contraction_batched
   op: gemv_batched
-  operand_dtype: mxfp8
+  operand_dtype: f32
   out: Y0
   lhs: A0
   weight: W
@@ -1728,30 +1562,170 @@ capsules:
   B: 2
   pass_requirements:
   - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_geometry_gemv_like
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''gemv_like'': real captures present 2 contraction
+    region(s) of this aspect ratio carrying 0.0 of all contraction MAC work, and the heaviest of them
+    is M=1 K=85 N=333. Every other synthesized capsule is square, so without this the corpus cannot tell
+    a compiler that tiles this ratio well from one that does not'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: shape_geometry
+  M: 1
+  K: 85
+  N: 333
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_odd_tail_heavy
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''odd_tail_heavy'': real captures present 16 contraction
+    region(s) of this aspect ratio carrying 0.000413 of all contraction MAC work, and the heaviest of
+    them is M=65 K=85 N=256. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 16640 written output elements exceeds
+    the 742 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: shape_geometry
+  M: 65
+  K: 85
+  N: 256
+  max_oracle_tier: L2
+  extends: SY_contraction_bf16_aligned
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_squareish_gemm
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''squareish_gemm'': real captures present 58 contraction
+    region(s) of this aspect ratio carrying 0.001016 of all contraction MAC work, and the heaviest of
+    them is M=65 K=341 N=85. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 5525 written output elements exceeds
+    the 742 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: shape_geometry
+  M: 65
+  K: 341
+  N: 85
+  max_oracle_tier: L2
+  extends: SY_contraction_bf16_aligned
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_tall_skinny
+  op: matmul
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''tall_skinny'': real captures present 441 contraction
+    region(s) of this aspect ratio carrying 0.004431 of all contraction MAC work, and the heaviest of
+    them is M=341 K=85 N=42. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 14322 written output elements exceeds
+    the 742 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: shape_geometry
+  M: 341
+  K: 85
+  N: 42
+  max_oracle_tier: L2
+  extends: SY_contraction_bf16_aligned
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
 - cat: layers
   kind: layer
-  name: SY_kdepth_certified
+  name: SY_kdepth_fits_double
   op: matmul
-  operand_dtype: fp16
+  operand_dtype: bf16
   lhs: A0
   weight: W
   out: Y0
   M: tile
-  K: 2*tile
+  K: 64*tile
   N: tile
   source_role: derived_sweep
-  source_reference: 'synthesized for the accumulation-depth axis: 2 accumulation passes, the shallowest
-    reduction that writes the accumulator more than once. Emitted only because this target''s residency
-    regimes yield no depth of their own; where they do, they produce deeper capsules and this would duplicate
-    one. Costs 81.0s against a 300.0s budget -- priced on the OUTPUT tile, which the reduction depth does
-    not move'
+  source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction the ''fits_double''
+    residency regime admits (64 accumulation passes, 0.5 of the operand store). The reduction moves the
+    operands and not the result, so this certifies at one output tile'
   label: public
   modes: {}
   semantic:
     generalization_axis: accumulation_depth
   pass_requirements:
   - target-isa-lowering
-  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_kdepth_fits_single
+  op: matmul
+  operand_dtype: bf16
+  lhs: A0
+  weight: W
+  out: Y0
+  M: tile
+  K: 128*tile
+  N: tile
+  source_role: derived_sweep
+  source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction the ''fits_single''
+    residency regime admits (128 accumulation passes, 1.0 of the operand store). The reduction moves the
+    operands and not the result, so this certifies at one output tile'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: accumulation_depth
+  pass_requirements:
+  - target-isa-lowering
+- cat: layers
+  kind: layer
+  name: SY_kdepth_spills
+  op: matmul
+  operand_dtype: bf16
+  lhs: A0
+  weight: W
+  out: Y0
+  M: tile
+  K: 256*tile
+  N: tile
+  source_role: derived_sweep
+  source_reference: 'synthesized for the accumulation-depth axis: the deepest reduction the ''spills''
+    residency regime admits (256 accumulation passes, 2.0 of the operand store). The reduction moves the
+    operands and not the result, so this certifies at one output tile'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: accumulation_depth
+  pass_requirements:
+  - target-isa-lowering
 - cat: model
   kind: model
   op: model

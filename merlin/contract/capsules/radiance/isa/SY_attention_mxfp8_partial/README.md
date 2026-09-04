@@ -1,5 +1,0 @@
-# SY_attention_mxfp8_partial
-
-SY_attention_mxfp8_partial: attention_mx over Q[16, 32]:mxfp8, K[32, 32]:mxfp8, V[32, 16]:mxfp8, Q_scale[1, 16]:e8m0, K_scale[1, 32]:e8m0, V_scale[1, 16]:e8m0, P_scale[1, 16]:e8m0, authored from synthesized for conformance cell attention/mxfp8/partial (basis=observed_via_primitives, admitted_by=['simt_cluster']); extents from boundaries.extent_probes.
-
-kind=isa label=public op=attention_mx modes={}

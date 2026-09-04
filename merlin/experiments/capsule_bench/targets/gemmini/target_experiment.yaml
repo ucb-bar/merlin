@@ -88,7 +88,20 @@ grading:
   #     crossed. It is not one of the bf16 rows named below, and it is in no exclude list;
   #   * it is `kind: model`, so readiness's capability split never reaches it (that split runs over the
   #     non-model rows), and it lands in admitted by subtraction.
-  # The arithmetic the descriptor parser enforces holds: 75 == 61 + 14.
+  # The arithmetic the descriptor parser enforces holds: 87 == 73 + 14.
+  #
+  # RE-SEALED 2026-09-03 from 75/61 to 87/73. The exclusion list is UNCHANGED at 14 rows -- every added
+  # capsule is eligible on the frozen contract -- so the whole delta is +12 on both sides, and it is
+  # enumerated rather than asserted:
+  #   * 5 shape-geometry rows (gemv_like, tall_skinny, wide_skinny, squareish_gemm, odd_tail_heavy) --
+  #     the aspect-ratio axis. Every previously synthesized capsule was square while the captures
+  #     present five classes, so a compiler that tiles a 448:1 convolution badly passed everything;
+  #   * 4 rank rows -- the batched (rank-3) regions, which became expressible when the batched
+  #     contraction got a golden in the integer engine rather than only the block-scaled one;
+  #   * 2 host-lane rows and 1 host-only row -- negative-lane pairs the corpus itself presents that the
+  #     manifest does not admit, which nothing previously asserted must stay off the mesh.
+  # None of the twelve is a hand-added row: each carries the axis that asked for it in
+  # `source_reference`, and `synth_capsule_corpus.py --check` re-derives the set from the requirement.
   #
   # KNOWN BLIND SPOT, recorded rather than papered over: this seal is CARDINALITIES ONLY, deliberately,
   # so that the hidden names stay unpublished -- and a cardinality cannot see a swap. The episode above
@@ -96,8 +109,8 @@ grading:
   # `.cohort_admission.json`'s `admitted_name_set_sha256`, recomputed at materialization; read that, not
   # these integers, when the question is whether the cohort is the SAME cohort.
   expected_cohort:
-    source_capsules: 75
-    admitted_capsules: 61
+    source_capsules: 87
+    admitted_capsules: 73
   hidden_capability_admission:
     source_capsules: 15
     admitted_capsules: 14

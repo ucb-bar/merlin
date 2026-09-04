@@ -11,12 +11,12 @@ inputs:
   shape:
   - 32
   - 31
-  dtype: bf16
+  dtype: fp8_e4m3
 - name: B
   role: bias
   shape:
   - 31
-  dtype: bf16
+  dtype: fp8_e4m3
 operation:
   op: bias_add
   attributes:
@@ -25,10 +25,10 @@ operation:
     out: Y0
     epilogue:
     - bias_add
-    output_dtype: bf16
+    output_dtype: fp8_e4m3
 numeric_policy:
   compare: tolerance_float
-  dtype: bf16
+  dtype: fp8_e4m3
   atol: 0.25
   rtol: 0.02
 expected:

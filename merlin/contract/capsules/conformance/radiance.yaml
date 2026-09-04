@@ -62,7 +62,10 @@ composition:
     - small_llama
     - small_llama_fp8
     - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
     - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
     A->H->A:
     - gemma2_2b_int8
     - gemma2_2b_int8_full
@@ -132,7 +135,10 @@ composition:
     small_llama: A->A
     small_llama_fp8: A->A
     small_llama_int8: routing
+    small_llama_int8_pretransposed: A->A
+    small_llama_pretransposed: A->A
     spectformer_int8_full: routing
+    spectformer_int8_full_pretransposed: A->A
   captures_unreadable: {}
   axis_basis: "the composition shapes the real captures CONTAIN \u2014 not just the shape each capture\
     \ has as a whole. A model classifies as `routing` end to end, yet it contains isolated dispatches,\
@@ -158,7 +164,7 @@ shape_generalization:
   - probe: contraction.transpose
     axis: layout
     family: contraction
-    dtype: fp32
+    dtype: f32
     rank: 2
     layout: transposed
     m: 16
@@ -178,7 +184,7 @@ shape_generalization:
   - probe: contraction.batched
     axis: rank
     family: contraction
-    dtype: fp32
+    dtype: f32
     rank: 3
     layout: null
     m: 16
@@ -188,7 +194,7 @@ shape_generalization:
   - probe: elementwise_map.batched
     axis: rank
     family: elementwise_map
-    dtype: fp32
+    dtype: f32
     rank: 3
     layout: null
     m: 16
@@ -198,7 +204,7 @@ shape_generalization:
   - probe: movement.batched
     axis: rank
     family: movement
-    dtype: fp32
+    dtype: f32
     rank: 3
     layout: null
     m: 16
@@ -208,7 +214,7 @@ shape_generalization:
   - probe: normalization.batched
     axis: rank
     family: normalization
-    dtype: fp32
+    dtype: f32
     rank: 3
     layout: null
     m: 16
@@ -218,7 +224,7 @@ shape_generalization:
   - probe: reduction.batched
     axis: rank
     family: reduction
-    dtype: fp32
+    dtype: f32
     rank: 3
     layout: null
     m: 16
@@ -228,7 +234,7 @@ shape_generalization:
   - probe: softmax.batched
     axis: rank
     family: softmax
-    dtype: fp32
+    dtype: f32
     rank: 3
     layout: null
     m: 16
@@ -262,6 +268,11 @@ host_lane:
   - family: movement
     dtype: i8
     n_regions: 1140
+    evidenced_by: captures_and_corpus
+  - family: contraction
+    dtype: i64
+    n_regions: 4
+    evidenced_by: corpus
   admitted_pairs:
   - attention/bf16
   - attention/f32
@@ -333,31 +344,318 @@ application_shapes:
   cert_budget_s: 300.0
   budget_source: default
 cert_affordability:
-  max_elements: 862
+  max_elements: 742
   budget_s: 300.0
   metric: written_output_elements
-  law: seconds = 0.20509 * output ** 1.0782
-  calibrated_to_elements: 4096
+  law: seconds = -49.6047 + 0.470772 * output
+  calibrated_to_elements: 1024
   extrapolated: false
+  basis: fitted on 32 cycle-accurate certification(s) of THIS target (r2 0.870, 32..1024 written elements)
   why: 'the largest written output whose predicted certification fits the budget. A capsule above it is
     graded at the loop tier and rests on a certified sibling -- not because it is uninteresting, but because
     nobody can afford to run it cycle-accurately. Reduction depth does NOT count against this: K moves
     the operands, not the result'
-memory_mapping:
-  required: {}
-  region_counts: {}
-  capacity_rows: null
+oracle_tiers:
+- L2
+- L3
+shape_geometry:
+  required:
+  - class: gemv_like
+    family: contraction
+    M: 1
+    K: 85
+    N: 333
+    out_elements: 333
+    n_regions: 2
+    mac_fraction: 0.0
+    observed_in:
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from:
+      M: 1
+      K: 256
+      N: 1000
+      factor: 3
+  - class: odd_tail_heavy
+    family: contraction
+    M: 65
+    K: 85
+    N: 256
+    out_elements: 16640
+    n_regions: 16
+    mac_fraction: 0.000413
+    observed_in:
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from:
+      M: 196
+      K: 256
+      N: 768
+      factor: 3
+  - class: squareish_gemm
+    family: contraction
+    M: 65
+    K: 341
+    N: 85
+    out_elements: 5525
+    n_regions: 58
+    mac_fraction: 0.001016
+    observed_in:
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from:
+      M: 196
+      K: 1024
+      N: 256
+      factor: 3
+  - class: tall_skinny
+    family: contraction
+    M: 341
+    K: 85
+    N: 42
+    out_elements: 14322
+    n_regions: 441
+    mac_fraction: 0.004431
+    observed_in:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from:
+      M: 1024
+      K: 256
+      N: 128
+      factor: 3
+  - class: wide_skinny
+    family: contraction
+    M: null
+    K: null
+    N: null
+    out_elements: 32768000
+    n_regions: 1674
+    mac_fraction: 0.994138
+    observed_in:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    unreachable: the heaviest shape in this class carries a 589824000-element tensor, more than the 32768
+      this target's operand store holds, and no common divisor of its extents fits while every extent
+      stays at or above its floor (min(original, tile edge 16)) and the shape stays in its class -- so
+      no capsule of this aspect ratio is both representative and buildable here
   captures_unreadable: {}
-  why: '''radiance'' declares no operand-store capacity we can derive, so no regime is required of the
-    corpus -- that is ''we do not know'', never ''nothing is required'''
-  regime_extents: {}
-  regime_dtype: fp16
+  materialization_ceiling_elements: 32768
+  total_macs: 1491342404608
+  axis_basis: 'the geometric classes (shape_taxonomy.classify_geometry) that real captured models present,
+    each with the highest-MAC-mass shape in the class. A (family, dtype, alignment) cell cannot express
+    aspect ratio at all, and aspect ratio is where a tiling compiler fails: a 448:1 tall-skinny convolution
+    and a square projection are the same cell. EMPTY means the captures contain no readable contraction,
+    never that geometry does not matter'
+memory_mapping:
+  required:
+    fits_double:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    fits_single:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    spills:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+  region_counts:
+    fits_double: 5911
+    fits_single: 1739
+    spills: 11817
+  capacity_rows: 2048
+  captures_unreadable: {}
+  why: ''
+  regime_extents:
+    fits_double:
+      M: tile
+      K: tile
+      N: tile
+      rows: 32
+      capacity_rows: 4096
+      fraction_of_capacity: 0.007812
+    fits_single:
+      M: 128*tile
+      K: tile
+      N: tile
+      rows: 2064
+      capacity_rows: 4096
+      fraction_of_capacity: 0.503906
+    spills:
+      M: 256*tile
+      K: tile
+      N: tile
+      rows: 4112
+      capacity_rows: 4096
+      fraction_of_capacity: 1.003906
+  regime_dtype: bf16
   reduction_depth:
-    capacity_rows: null
+    capacity_rows: 4096
     tile_dim: 16
     m_tiles: 1
     n_tiles: 1
-    by_regime: {}
+    by_regime:
+      fits_double:
+        points:
+        - K: 16
+          K_tiles: 1
+          M: 16
+          N: 16
+          rows: 32
+          capacity_rows: 4096
+          fraction_of_capacity: 0.007812
+        - K: 1024
+          K_tiles: 64
+          M: 16
+          N: 16
+          rows: 2048
+          capacity_rows: 4096
+          fraction_of_capacity: 0.5
+        unreachable: null
+        band_tile_multiples:
+        - 1
+        - 64
+      fits_single:
+        points:
+        - K: 1040
+          K_tiles: 65
+          M: 16
+          N: 16
+          rows: 2080
+          capacity_rows: 4096
+          fraction_of_capacity: 0.507812
+        - K: 2048
+          K_tiles: 128
+          M: 16
+          N: 16
+          rows: 4096
+          capacity_rows: 4096
+          fraction_of_capacity: 1.0
+        unreachable: null
+        band_tile_multiples:
+        - 65
+        - 128
+      spills:
+        points:
+        - K: 2064
+          K_tiles: 129
+          M: 16
+          N: 16
+          rows: 4128
+          capacity_rows: 4096
+          fraction_of_capacity: 1.007812
+        - K: 4096
+          K_tiles: 256
+          M: 16
+          N: 16
+          rows: 8192
+          capacity_rows: 4096
+          fraction_of_capacity: 2.0
+        unreachable: null
+        band_tile_multiples:
+        - 129
+        - 256
+    m_extent: 16
+    n_extent: 16
     certified:
       M: 16
       K: 32
@@ -385,7 +683,7 @@ host_only:
     captures contain is admitted -- and never that none is needed: a target with an empty complement simply
     cannot be asked this question, which is a different fact from passing it'
 diagnostics:
-  n_cells: 84
+  n_cells: 72
   captures_read:
   - gemma2_2b_int8
   - gemma2_2b_int8_full
@@ -403,16 +701,19 @@ diagnostics:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   captures_unreadable: {}
   families_observed:
-    attention: 2049
-    contraction: 2049
-    elementwise_map: 8739
-    movement: 5504
-    normalization: 876
-    reduction: 2166
-    softmax: 2166
+    attention: 2195
+    contraction: 2195
+    elementwise_map: 9061
+    movement: 5746
+    normalization: 1137
+    reduction: 2262
+    softmax: 2262
   families_observed_via_primitives:
     attention:
     - contraction
@@ -428,6 +729,14 @@ diagnostics:
   - aligned
   - partial
   - sub_tile
+  alignment_axis_narrowed_by_dtype:
+    mxfp4:
+    - aligned
+    mxfp6:
+    - aligned
+    mxfp8:
+    - aligned
+  scale_block_elements: 32
   admitted_status: resolved
   notes:
   - 2 composite family/families (attention, softmax) appear in NO capture as a region of their own because
@@ -447,6 +756,9 @@ cells:
   family: attention
   dtype: bf16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -465,18 +777,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/bf16/partial
   family: attention
   dtype: bf16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -495,18 +813,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/bf16/sub_tile
   family: attention
   dtype: bf16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -525,18 +849,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/f32/aligned
   family: attention
   dtype: f32
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -555,18 +885,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/f32/partial
   family: attention
   dtype: f32
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -585,18 +921,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/f32/sub_tile
   family: attention
   dtype: f32
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -615,18 +957,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/fp16/aligned
   family: attention
   dtype: fp16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -645,18 +993,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/fp16/partial
   family: attention
   dtype: fp16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -675,18 +1029,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/fp16/sub_tile
   family: attention
   dtype: fp16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -705,18 +1065,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/mxfp4/aligned
   family: attention
   dtype: mxfp4
   alignment: aligned
+  shape_quantum:
+    row: 32
+    reduction: 32
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -735,78 +1101,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
-- cell: attention/mxfp4/partial
-  family: attention
-  dtype: mxfp4
-  alignment: partial
-  basis: observed_via_primitives
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - simt_cluster
-  via_primitives:
-  - contraction
-  - reduction
-  - elementwise_map
-  n_regions: 2049
-- cell: attention/mxfp4/sub_tile
-  family: attention
-  dtype: mxfp4
-  alignment: sub_tile
-  basis: observed_via_primitives
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - simt_cluster
-  via_primitives:
-  - contraction
-  - reduction
-  - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/mxfp6/aligned
   family: attention
   dtype: mxfp6
   alignment: aligned
+  shape_quantum:
+    row: 32
+    reduction: 32
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -825,78 +1137,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
-- cell: attention/mxfp6/partial
-  family: attention
-  dtype: mxfp6
-  alignment: partial
-  basis: observed_via_primitives
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - simt_cluster
-  via_primitives:
-  - contraction
-  - reduction
-  - elementwise_map
-  n_regions: 2049
-- cell: attention/mxfp6/sub_tile
-  family: attention
-  dtype: mxfp6
-  alignment: sub_tile
-  basis: observed_via_primitives
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - simt_cluster
-  via_primitives:
-  - contraction
-  - reduction
-  - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: attention/mxfp8/aligned
   family: attention
   dtype: mxfp8
   alignment: aligned
+  shape_quantum:
+    row: 16
+    reduction: 32
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -915,78 +1173,24 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - contraction
   - reduction
   - elementwise_map
-  n_regions: 2049
-- cell: attention/mxfp8/partial
-  family: attention
-  dtype: mxfp8
-  alignment: partial
-  basis: observed_via_primitives
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - simt_cluster
-  via_primitives:
-  - contraction
-  - reduction
-  - elementwise_map
-  n_regions: 2049
-- cell: attention/mxfp8/sub_tile
-  family: attention
-  dtype: mxfp8
-  alignment: sub_tile
-  basis: observed_via_primitives
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - simt_cluster
-  via_primitives:
-  - contraction
-  - reduction
-  - elementwise_map
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/bf16/aligned
   family: contraction
   dtype: bf16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1005,15 +1209,21 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/bf16/partial
   family: contraction
   dtype: bf16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1032,15 +1242,21 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/bf16/sub_tile
   family: contraction
   dtype: bf16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1059,15 +1275,21 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/f32/aligned
   family: contraction
   dtype: f32
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1086,14 +1308,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/f32/partial
   family: contraction
   dtype: f32
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1112,14 +1340,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/f32/sub_tile
   family: contraction
   dtype: f32
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1138,14 +1372,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/fp16/aligned
   family: contraction
   dtype: fp16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1164,14 +1404,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/fp16/partial
   family: contraction
   dtype: fp16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1190,14 +1436,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/fp16/sub_tile
   family: contraction
   dtype: fp16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1216,14 +1468,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/i8/aligned
   family: contraction
   dtype: i8
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1242,14 +1500,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/i8/partial
   family: contraction
   dtype: i8
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1268,14 +1532,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/i8/sub_tile
   family: contraction
   dtype: i8
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1294,14 +1564,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/mxfp4/aligned
   family: contraction
   dtype: mxfp4
   alignment: aligned
+  shape_quantum:
+    row: 32
+    reduction: 32
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1320,66 +1596,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
-  n_regions: 2049
-- cell: contraction/mxfp4/partial
-  family: contraction
-  dtype: mxfp4
-  alignment: partial
-  basis: observed
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - mx_pe
-  n_regions: 2049
-- cell: contraction/mxfp4/sub_tile
-  family: contraction
-  dtype: mxfp4
-  alignment: sub_tile
-  basis: observed
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - mx_pe
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/mxfp6/aligned
   family: contraction
   dtype: mxfp6
   alignment: aligned
+  shape_quantum:
+    row: 32
+    reduction: 32
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1398,66 +1628,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
-  n_regions: 2049
-- cell: contraction/mxfp6/partial
-  family: contraction
-  dtype: mxfp6
-  alignment: partial
-  basis: observed
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - mx_pe
-  n_regions: 2049
-- cell: contraction/mxfp6/sub_tile
-  family: contraction
-  dtype: mxfp6
-  alignment: sub_tile
-  basis: observed
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - mx_pe
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/mxfp8/aligned
   family: contraction
   dtype: mxfp8
   alignment: aligned
+  shape_quantum:
+    row: 16
+    reduction: 32
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1476,66 +1660,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - mx_pe
-  n_regions: 2049
-- cell: contraction/mxfp8/partial
-  family: contraction
-  dtype: mxfp8
-  alignment: partial
-  basis: observed
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - mx_pe
-  n_regions: 2049
-- cell: contraction/mxfp8/sub_tile
-  family: contraction
-  dtype: mxfp8
-  alignment: sub_tile
-  basis: observed
-  observed_in:
-  - gemma2_2b_int8
-  - gemma2_2b_int8_full
-  - gemma2_2b_int8_full_seq8
-  - gemma2_2b_int8_full_seq8_pretransposed
-  - gemma2_2b_int8_full_seq8_sliced
-  - gemma2_2b_int8_full_seq8_sliced_tiledhead
-  - gemma2_2b_int8_full_spec
-  - gemma2_2b_int8_full_spec_pretransposed
-  - gemma2_2b_int8_section1
-  - gemma2_2b_int8_section12
-  - gemma2_2b_int8_section2
-  - gemma2_2b_int8_spec
-  - gemma2_2b_int8_spec_pretransposed
-  - small_llama
-  - small_llama_fp8
-  - small_llama_int8
-  - spectformer_int8_full
-  admitted_by:
-  - mx_pe
-  n_regions: 2049
+  n_regions: 2195
 - cell: elementwise_map/bf16/aligned
   family: elementwise_map
   dtype: bf16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1554,14 +1692,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: elementwise_map/bf16/partial
   family: elementwise_map
   dtype: bf16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1580,14 +1724,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: elementwise_map/bf16/sub_tile
   family: elementwise_map
   dtype: bf16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1606,14 +1756,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: elementwise_map/f32/aligned
   family: elementwise_map
   dtype: f32
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1632,14 +1788,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: elementwise_map/f32/partial
   family: elementwise_map
   dtype: f32
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1658,14 +1820,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: elementwise_map/f32/sub_tile
   family: elementwise_map
   dtype: f32
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1684,14 +1852,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: elementwise_map/fp16/aligned
   family: elementwise_map
   dtype: fp16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1710,14 +1884,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: elementwise_map/fp16/partial
   family: elementwise_map
   dtype: fp16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1736,14 +1916,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: elementwise_map/fp16/sub_tile
   family: elementwise_map
   dtype: fp16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1762,14 +1948,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 8739
+  n_regions: 9061
 - cell: movement/bf16/aligned
   family: movement
   dtype: bf16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1788,14 +1980,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: movement/bf16/partial
   family: movement
   dtype: bf16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1814,14 +2012,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: movement/bf16/sub_tile
   family: movement
   dtype: bf16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1840,14 +2044,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: movement/f32/aligned
   family: movement
   dtype: f32
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1866,14 +2076,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: movement/f32/partial
   family: movement
   dtype: f32
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1892,14 +2108,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: movement/f32/sub_tile
   family: movement
   dtype: f32
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1918,14 +2140,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: movement/fp16/aligned
   family: movement
   dtype: fp16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1944,14 +2172,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: movement/fp16/partial
   family: movement
   dtype: fp16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1970,14 +2204,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: movement/fp16/sub_tile
   family: movement
   dtype: fp16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -1996,14 +2236,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 5504
+  n_regions: 5746
 - cell: normalization/bf16/aligned
   family: normalization
   dtype: bf16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2022,14 +2268,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: normalization/bf16/partial
   family: normalization
   dtype: bf16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2048,14 +2300,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: normalization/bf16/sub_tile
   family: normalization
   dtype: bf16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2074,14 +2332,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: normalization/f32/aligned
   family: normalization
   dtype: f32
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2100,14 +2364,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: normalization/f32/partial
   family: normalization
   dtype: f32
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2126,14 +2396,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: normalization/f32/sub_tile
   family: normalization
   dtype: f32
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2152,14 +2428,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: normalization/fp16/aligned
   family: normalization
   dtype: fp16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2178,14 +2460,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: normalization/fp16/partial
   family: normalization
   dtype: fp16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2204,14 +2492,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: normalization/fp16/sub_tile
   family: normalization
   dtype: fp16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2230,14 +2524,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 876
+  n_regions: 1137
 - cell: reduction/bf16/aligned
   family: reduction
   dtype: bf16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2256,14 +2556,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: reduction/bf16/partial
   family: reduction
   dtype: bf16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2282,14 +2588,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: reduction/bf16/sub_tile
   family: reduction
   dtype: bf16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2308,14 +2620,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: reduction/f32/aligned
   family: reduction
   dtype: f32
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2334,14 +2652,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: reduction/f32/partial
   family: reduction
   dtype: f32
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2360,14 +2684,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: reduction/f32/sub_tile
   family: reduction
   dtype: f32
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2386,14 +2716,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: reduction/fp16/aligned
   family: reduction
   dtype: fp16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2412,14 +2748,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: reduction/fp16/partial
   family: reduction
   dtype: fp16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2438,14 +2780,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: reduction/fp16/sub_tile
   family: reduction
   dtype: fp16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -2464,14 +2812,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/bf16/aligned
   family: softmax
   dtype: bf16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2490,17 +2844,23 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/bf16/partial
   family: softmax
   dtype: bf16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2519,17 +2879,23 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/bf16/sub_tile
   family: softmax
   dtype: bf16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2548,17 +2914,23 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/f32/aligned
   family: softmax
   dtype: f32
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2577,17 +2949,23 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/f32/partial
   family: softmax
   dtype: f32
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2606,17 +2984,23 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/f32/sub_tile
   family: softmax
   dtype: f32
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2635,17 +3019,23 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/fp16/aligned
   family: softmax
   dtype: fp16
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2664,17 +3054,23 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/fp16/partial
   family: softmax
   dtype: fp16
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2693,17 +3089,23 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262
 - cell: softmax/fp16/sub_tile
   family: softmax
   dtype: fp16
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed_via_primitives
   observed_in:
   - gemma2_2b_int8
@@ -2722,10 +3124,13 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - simt_cluster
   via_primitives:
   - reduction
   - elementwise_map
-  n_regions: 2166
+  n_regions: 2262

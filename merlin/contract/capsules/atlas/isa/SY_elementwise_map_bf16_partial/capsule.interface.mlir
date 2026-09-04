@@ -1,7 +1,7 @@
 builtin.module attributes {prov.level = "linalg-on-tensors"} {
-  func.func @forward(%0: tensor<32x64xbf16>) -> tensor<32x64xbf16> {
-    %1 = tensor.empty() : tensor<32x64xbf16>
-    %2 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%0 : tensor<32x64xbf16>) outs(%1 : tensor<32x64xbf16>) attrs =  {prov.region_id = "gelu_0", prov._pattern_hint = "gelu", prov.op = "gelu", prov.family = "elementwise", prov.aten = "aten.gelu.default", prov.orig_dtype = "bfloat16"} {
+  func.func @forward(%0: tensor<32x63xbf16>) -> tensor<32x63xbf16> {
+    %1 = tensor.empty() : tensor<32x63xbf16>
+    %2 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%0 : tensor<32x63xbf16>) outs(%1 : tensor<32x63xbf16>) attrs =  {prov.region_id = "gelu_0", prov._pattern_hint = "gelu", prov.op = "gelu", prov.family = "elementwise", prov.aten = "aten.gelu.default", prov.orig_dtype = "bfloat16"} {
     ^bb0(%3: bf16, %4: bf16):
       %5 = arith.constant 5.000000e-01 : bf16
       %6 = arith.constant 1.000000e+00 : bf16
@@ -12,7 +12,7 @@ builtin.module attributes {prov.level = "linalg-on-tensors"} {
       %11 = arith.mulf %5, %3 : bf16
       %12 = arith.mulf %11, %10 : bf16
       linalg.yield %12 : bf16
-    } -> tensor<32x64xbf16>
-    func.return %2 : tensor<32x64xbf16>
+    } -> tensor<32x63xbf16>
+    func.return %2 : tensor<32x63xbf16>
   }
 }

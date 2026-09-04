@@ -17,4 +17,4 @@ class Model(nn.Module):
     def forward(self, x):
         return x.softmax(-1)
 def get_model_and_inputs():
-    return Model(), (_r(16, 32),)
+    return Model(), (_r(16, 31),)

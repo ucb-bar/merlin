@@ -46,7 +46,7 @@ linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: reduction
   generalization_axis: composition
-  must_accelerate: true
+  must_accelerate: false
   eligible: auto
 pass_requirements:
 - host-seam

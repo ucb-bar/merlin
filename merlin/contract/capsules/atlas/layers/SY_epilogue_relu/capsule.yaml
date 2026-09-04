@@ -1,0 +1,67 @@
+name: SY_epilogue_relu
+kind: layer
+source_role: derived_sweep
+source_reference: 'synthesized for the epilogue axis: this target can fuse a ''relu''
+  stage onto a contraction (evidenced by [''isa_instruction_class'']), and a (family,
+  dtype, alignment) cell cannot demand a particular stage -- so without this the capability
+  is reported covered by whichever single stage the cell axis happened to pick'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 64
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 64
+  dtype: fp8_e4m3
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue:
+    - relu
+    output_dtype: bf16
+    semantic:
+      generalization_axis: epilogue
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  - TensorComputeUnary
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 436.0
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true
