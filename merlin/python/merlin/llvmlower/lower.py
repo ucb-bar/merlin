@@ -20,8 +20,12 @@ from .pipeline import lower_to_llvm_ir
 # whole-model backend imports to lower, so by the time a feature set is normalized for a lowering the
 # entry exists. Idempotent, so a second import is a no-op.
 from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
+from .transpose_maps import ensure_registered as _register_fold_weight_transpose
+from .prov_cse import ensure_registered as _register_cse_through_provenance
 
 _register_epilogue_fusion()
+_register_fold_weight_transpose()
+_register_cse_through_provenance()
 
 
 @dataclass

@@ -50,6 +50,7 @@ from __future__ import annotations
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
+from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 
 # Sentinel pass name spliced into the pipeline string by the feature's edit_pipeline to mark where
 # the A-scalarization rewrite runs (after contract->vector.fma lowering, before one-shot-bufferize).
@@ -393,6 +394,7 @@ def run_source() -> str:
         "from torch_mlir.dialects import llvm\n"
         + _SELFCOPY_PRELUDE
         + _COPY_EXPAND_PRELUDE
+        + _TRANSPOSE_MAPS_PRELUDE
         + _REWRITER_SRC
         + _MID_STAGE_SRC +
         f"\nMARKER = {SCALARIZE_MARKER!r}\n"
@@ -407,6 +409,10 @@ def run_source() -> str:
         "ctx = ir.Context()\n"
         "with open(src_path) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
+        # Every runner variant runs the SAME pre-pipeline rewrites. A variant that quietly skips one
+        # is how erase_self_copy came to read as an inert lever for seven beam rounds.
+        "if _FOLD_WEIGHT_TRANSPOSE:\n"
+        "    print('OK fold_weight_transpose folded', _fold_weight_transposes(module, ctx)[0])\n"
         "if stage1:\n"
         "    PassManager.parse('builtin.module(' + stage1 + ')', ctx).run(module.operation)\n"
         "with ctx, ir.Location.unknown():\n"

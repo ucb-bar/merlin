@@ -407,6 +407,7 @@ from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
+from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 
 # How a runner emits its result. The in-process torch-mlir bridge
 # (`translate_module_to_llvmir`) is the default and produces .ll directly; it SEGFAULTS on
@@ -425,7 +426,7 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _COPY_EXPAND_PRELUDE + _MID_STAGE_SRC + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _MID_STAGE_SRC + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -435,6 +436,15 @@ with open(src_path) as f:
 # and the frozen RVV schedule tiles+vectorizes it while the scalar weight transpose disappears.
 if _FUSE_TRANSPOSE_B:
     print("OK fuse_transpose_b", _fuse_transpose_b(module, ctx))
+# fold_weight_transpose (default-off): the general form of the fold above -- a loop-invariant weight
+# transpose sinks into the indexing_maps of EVERY linalg consumer, not just a linalg.matmul's B
+# operand. The quantized datapath emits its contraction as a linalg.generic, so the matmul-only fold
+# fires zero times on an int8 model; this one folds all 15 of small_llama's weight transposes.
+if _FOLD_WEIGHT_TRANSPOSE:
+    _fwt_n, _fwt_report = _fold_weight_transposes(module, ctx)
+    for _fwt_kind, _fwt_detail in _fwt_report:
+        print("OK fold_weight_transpose", _fwt_kind, _fwt_detail)
+    print("OK fold_weight_transpose folded", _fwt_n)
 _run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES)
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
@@ -459,7 +469,9 @@ from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
 '''
 
-_RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _COPY_EXPAND_PRELUDE + _MID_STAGE_SRC + r'''
+_RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE
+                         + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE
+                         + _MID_STAGE_SRC + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -473,6 +485,15 @@ with open(src_path) as f:
 # act_poly by default, that is every beam fork -- and the erase read as an inert lever.
 if _FUSE_TRANSPOSE_B:
     print("OK fuse_transpose_b", _fuse_transpose_b(module, ctx))
+# fold_weight_transpose (default-off): the general form of the fold above -- a loop-invariant weight
+# transpose sinks into the indexing_maps of EVERY linalg consumer, not just a linalg.matmul's B
+# operand. The quantized datapath emits its contraction as a linalg.generic, so the matmul-only fold
+# fires zero times on an int8 model; this one folds all 15 of small_llama's weight transposes.
+if _FOLD_WEIGHT_TRANSPOSE:
+    _fwt_n, _fwt_report = _fold_weight_transposes(module, ctx)
+    for _fwt_kind, _fwt_detail in _fwt_report:
+        print("OK fold_weight_transpose", _fwt_kind, _fwt_detail)
+    print("OK fold_weight_transpose folded", _fwt_n)
 with ctx, ir.Location.unknown():
     _n = apply_activation_polynomial(module, ctx)
 _run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES)
@@ -557,6 +578,13 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="merlin_lower_"))
     work.mkdir(parents=True, exist_ok=True)
     from .impr_features import apply_schedule, normalize
+    # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
+    # import this module without importing `llvmlower.lower` (where the runner-gated features are
+    # registered). Registering here, before the set is validated, is what keeps a feature the caller
+    # legitimately asked for from failing as "unknown impr feature" in one process and working in
+    # another. Idempotent.
+    from .transpose_maps import ensure_registered as _register_fold_weight_transpose
+    _register_fold_weight_transpose()
     feats = normalize(features)
     if parallel_harts is not None and not vectorize:
         raise PipelineError(
@@ -611,13 +639,17 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # memcpy call. Runs at the same split point as the erase; see llvmlower/copy_expand.py.
     from .copy_expand import FEATURE as _EXPAND_COPY_FEATURE
     _expand_copy = "1" if _EXPAND_COPY_FEATURE in feats else "0"
+    # argv[7] gates fold_weight_transpose (default-off): sink a loop-invariant weight transpose into
+    # its consumers' indexing_maps. See llvmlower/transpose_maps.py.
+    from .transpose_maps import FEATURE as _FOLD_WEIGHT_TRANSPOSE_FEATURE
+    _fold_wt = "1" if _FOLD_WEIGHT_TRANSPOSE_FEATURE in feats else "0"
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
     stage_out = (work / "model.llvmdialect.mlir") if omp else out
     proc = subprocess.run(
         [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb,
-         _expand_copy],
+         _expand_copy, _fold_wt],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")

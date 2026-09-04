@@ -30,6 +30,14 @@ same ``vector.fma`` chain. Net effect: the scalar weight transposes DISAPPEAR (n
 and B is read ``(n, k)`` -- contiguous along k in the row-major ``[N, K]`` weight, i.e. a
 cache-friendly access, exactly what a transpose-b BLAS kernel does.
 
+WHERE IT DOES NOT APPLY. The match is ``linalg.matmul``. A QUANTIZED model has none: the integer
+datapath (:mod:`~merlin.llvmlower.passes_quant_int`) emits its contraction as a ``linalg.generic``
+with an ``i8 x i8 -> i32`` body, so on the small_llama int8 capture -- 25 ``linalg.transpose``, 0
+``linalg.matmul``, 280 ``linalg.generic`` -- this fold fires zero times while transpose is 45.9% of
+the board profile. :mod:`~merlin.llvmlower.transpose_maps` (``fold_weight_transpose``) is the
+generalization that covers it: any linalg consumer stating a per-operand indexing map, all uses of
+the transpose rewritten or none.
+
 CORRECTNESS. The rewrite is value-identical by construction: ``B[k, n]`` on the transposed weight
 equals ``W[n, k]`` on the source, and the map change encodes precisely that. It is nonetheless a
 default-off compiler feature (``fuse_transpose_b``) so the frozen ``hand_v0`` control keeps a

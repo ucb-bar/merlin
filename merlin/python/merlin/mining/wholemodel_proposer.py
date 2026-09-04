@@ -40,6 +40,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..kernels.knobs import ForkProposal
+# `_composes` resolves every lever name through `impr_features`, and an UNREGISTERED name is
+# swallowed there as "does not compose" -- so a lever registered lazily elsewhere would be
+# silently never proposed rather than rejected. Register it here, where the list lives.
+from ..llvmlower.transpose_maps import ensure_registered as _register_fold_weight_transpose
+
+_register_fold_weight_transpose()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
@@ -91,6 +97,15 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     ("promote_buffers_to_stack", False),
     ("perop_nr_fill_register", False),
     ("fuse_transpose_b", False),                          # transpose: 38% byte-traffic, measured -6.5% openvla
+    # The general form of the fold above, and the reason the matmul-only one measured inert on the
+    # int8 models. `fuse_transpose_b` matches `linalg.matmul`; the integer datapath emits its
+    # contraction as a `linalg.generic`, so on small_llama int8 it fuses ZERO of the 25 transposes
+    # while the per-op board profile puts transpose at 45.9% of the attributed op time. This lever
+    # folds a loop-invariant weight transpose into EVERY linalg consumer's indexing_maps: MEASURED
+    # 25 -> 10 transposes (the same 15 an offline pre-transposed bundle hoists, which is 1.61x on the
+    # K1), host object 241,872 -> 221,392 bytes, output BIT-IDENTICAL. Board runtime UNMEASURED --
+    # which is what the beam is for.
+    ("fold_weight_transpose", False),                     # transpose: 45.9% of the int8 op profile
     ("accumulator_resident_wholemodel_vf_mrpad", True),   # matmul MR register block: 1.49x rdt2 matmul bucket
     ("vectorize_reduction", True),                        # reduce/softmax: 2nd byte-traffic family, was unvectorized
     ("erase_self_copy", False),                           # envelope: per-tile memrefCopy elimination
