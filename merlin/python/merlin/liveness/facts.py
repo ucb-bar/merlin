@@ -51,17 +51,34 @@ def _memory(f: dict, name: str) -> dict | None:
 
 
 def _dtype_bits(dtype: str | None) -> int | None:
-    """Bit width of a datapath dtype string (``i8``→8, ``i32``→32, ``bf16``→16, ``fp8``→8). Structural —
-    the trailing digits are the width; no regex, no per-target literal."""
+    """Bit width of a datapath dtype token (``i8``->8, ``i32``->32, ``bf16``->16, ``fp8_e4m3``->8).
+
+    RESOLVED THROUGH THE FORMAT REGISTRY FIRST, and only then by the token's own digits. A registered
+    format's name is not a width with letters around it: ``fp8_e4m3`` carries three separate digit runs
+    and the digit reading returns 843, which then sizes a row 105x too wide and reports every capacity
+    check as a fit. The digit fallback stays for the plain machine spellings a registry does not carry
+    (an ``i32`` accumulator is a machine type, not a way of encoding a quantized value), and a token
+    neither path recognises is UNKNOWN rather than a number.
+    """
     if not isinstance(dtype, str):
         return None
+    try:
+        from merlin.common import quant_formats as qf
+        return qf.get(dtype).element_bits
+    except Exception:  # noqa: BLE001 -- not a registered format: fall through to the machine spelling
+        pass
     digits = "".join(c for c in dtype if c.isdigit())
     return int(digits) if digits else None
 
 
 def _datapath_bits(f: dict, name: str) -> int | None:
     dp = next((d for d in f.get("datapaths", []) if d.get("name") == name), None)
-    return _dtype_bits(dp.get("dtype")) if dp else None
+    if not dp:
+        return None
+    # A derived datapath states its width as a NUMBER beside the dtype, because the width is what was
+    # measured and the dtype is the name the design put on it. Prefer the measurement.
+    bits = dp.get("elem_bits")
+    return int(bits) if isinstance(bits, int) and bits > 0 else _dtype_bits(dp.get("dtype"))
 
 
 def _rows_from_bytes(total_bytes: int | None, cols: int | None, elem_bits: int | None) -> int | None:

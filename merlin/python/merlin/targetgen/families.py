@@ -57,6 +57,17 @@ class FamilyProfile:
                                         # bundle + the generic no-arc fallback), "simt_config" (the SIMT
                                         # config+FIRRTL introspect), or "opu" (the spatial tensor-tile
                                         # state-manifest introspect). Never a target *name* — a routing key.
+    #: HOW this kind's COMPUTE ELEMENT is located in an elaborated design — the routing axis the
+    #: datapath reader (:mod:`merlin.targetgen.rtl.datapaths`) uses instead of a per-target branch:
+    #:
+    #:   ``array_element``    the replicated cell of a discovered compute array (``arrays[*].element``);
+    #:   ``lane_replication`` the module replicated once per declared lane;
+    #:   ``none``             this kind has no replicated compute element, so a cell-geometry read
+    #:                        cannot reach its datapath and says so rather than guessing.
+    #:
+    #: The default is deliberately the honest one: a kind added without stating this reports "not
+    #: locatable" rather than being handed the wrong module and publishing its widths as a datapath.
+    compute_element: str = "none"
 
 
 # Fork-free ``.insn`` on stock LLVM is the default wherever the accelerator exposes a command ISA
@@ -64,11 +75,16 @@ class FamilyProfile:
 # vector/scalar lower through UPSTREAM LLVM targets (RVV/base RISC-V), so no per-target encoding.
 _PROFILES: dict[str, FamilyProfile] = {
     "systolic": FamilyProfile("systolic", "inline_asm_insn", True, "rocc_insn", ("L3", "L4", "L5"), (),
-                              "circt_static"),
+                              "circt_static", compute_element="array_element"),
     "simt":     FamilyProfile("simt", "inline_asm_insn", False, None, ("L3",),
-                              ("flops", "gflops", "pct_fp_peak"), "simt_config"),
-    "vector":   FamilyProfile("vector", "upstream_target", False, None, (), (), "circt_static"),
+                              ("flops", "gflops", "pct_fp_peak"), "simt_config",
+                              compute_element="lane_replication"),
+    "vector":   FamilyProfile("vector", "upstream_target", False, None, (), (), "circt_static",
+                              compute_element="lane_replication"),
     "scalar":   FamilyProfile("scalar", "upstream_target", False, None, (), (), "circt_static"),
+    # A scalar pipe has no replicated compute element: its datapath is the register file's width, which
+    # a cell-geometry read cannot reach -- so `compute_element` stays the default "none" and the reader
+    # reports that instead of naming whichever module happens to be widest.
     # Spatial tensor tile (Saturn OuterProductUnit family): a grid of accumulator cells driven by a
     # COMMAND BUFFER over one-hot op ports (macc/mvin/shift) — NOT a RoCC command ISA. So there is no
     # op->``.insn`` encoding to derive (encoding_required=False) and no rocc_insn trace gate; the 4th
@@ -76,7 +92,8 @@ _PROFILES: dict[str, FamilyProfile] = {
     # state-manifest geometry (cluster x cell tile, MRF depth, int8/fp8 datapaths) via the "opu" fact
     # extractor. Perf is tensor-tile MAC throughput. (See memory: opu-endpoint-is-command-buffer-not-rocc.)
     "spatial":  FamilyProfile("spatial", "command_buffer", False, None, ("L3", "L4", "L5"),
-                              ("macs", "mac_per_cycle", "pct_mac_peak"), "opu"),
+                              ("macs", "mac_per_cycle", "pct_mac_peak"), "opu",
+                              compute_element="array_element"),
 }
 
 

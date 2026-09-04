@@ -1188,6 +1188,15 @@ def _resolve_kinds(target: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys([_primary_kind(units)] + [u.kind for u in units]))
 
 
+def compute_unit_kinds(target: str) -> tuple[str, ...]:
+    """EVERY compute-unit kind ``target`` declares, primary first — the public reading of the kind set.
+
+    The routing axis for anything that must serve a hybrid honestly (fact extraction, the compute-element
+    read): a caller given only the PRIMARY kind extracts facts for half the silicon. Empty when no kind
+    resolves, which is a caller's cue to say so rather than to assume one."""
+    return _resolve_kinds(target)
+
+
 def _extractors_for(target: str) -> tuple[str, ...]:
     """The fact extractors this target needs, in kind order, deduped."""
     from ..families import family_profile, known_kinds

@@ -132,16 +132,39 @@ def test_a_target_with_no_facts_reports_unknown_and_never_zero():
     assert 0 not in (d["separate_accumulator_space"], d["array"]), "an unread quantity is not a zero"
 
 
-@pytest.mark.parametrize("target,expect", [("muon", ABSENT), ("atlas", UNKNOWN)])
-def test_the_two_real_targets_that_show_both_states(target, expect):
-    """Both states occur in this repo's own artifacts: one target's extractor emits ``memories: []`` while
-    another's carries no ``memories`` key at all (mlc discovers 39 SRAMs for it and declines to classify
-    any of them, so the capacity obligation is undecidable there -- correctly)."""
-    if not rtl_facts.rtl_facts_path(target).is_file():
-        pytest.skip(f"no RTL-facts artifact for {target!r} in this checkout")
-    sp = derive_address_space(target)
-    assert sp.stores_status == expect, [u.to_dict() for u in sp.unknowns]
-    assert sp.stores == () and sp.separate_accumulator_space is None
+def test_the_states_the_shipped_artifacts_actually_show():
+    """Corroborate the synthetic cases above against whatever this checkout really ships.
+
+    This used to pin two targets BY NAME as the examples -- muon for ABSENT, atlas for UNKNOWN -- which
+    made it a test of a deficiency rather than of the deriver. Both were fixed on 2026-09-04 (muon gained
+    a committed facts pin, atlas gained a port-derived VMEM), and the test failed for the reason we most
+    wanted to be true: the extractor now derives a store for both. A test that names a target as the
+    example of a gap breaks the moment the gap is closed, and its failure reads as a regression.
+
+    So derive the examples. UNKNOWN must still occur somewhere in the shipped set -- it is the honest
+    answer for a target whose facts cannot state a capacity, and if nothing shows it any more, the
+    interesting fact is that the state became unreachable on real inputs, not that this file is stale.
+    ABSENT is asserted synthetically above; it is not required of any shipped target.
+    """
+    seen: dict = {}
+    for target in ("gemmini", "atlas", "radiance", "muon", "mx_gemmini", "saturn_opu"):
+        if not rtl_facts.rtl_facts_path(target).is_file():
+            continue
+        sp = derive_address_space(target)
+        seen.setdefault(sp.stores_status, []).append(target)
+    assert seen, "no shipped target has a facts artifact; this assertion would pass vacuously"
+    # A derived store must carry its stores; an undecidable one must carry none and never a zero.
+    for status, targets in seen.items():
+        for target in targets:
+            sp = derive_address_space(target)
+            if status == "derived":
+                assert sp.stores, f"{target} reports derived with no store"
+            else:
+                assert sp.stores == (), f"{target} reports {status} yet lists stores"
+                assert 0 not in (sp.to_dict()["separate_accumulator_space"],), "an unread quantity is not a zero"
+    assert UNKNOWN in seen, (
+        "no shipped target reports UNKNOWN any more. That may be good news -- but this corroboration is "
+        f"now vacuous, so re-point or retire it deliberately. States seen: { {k: v for k, v in seen.items()} }")
 
 
 def test_an_unlinkable_element_width_leaves_the_row_unknown_not_assumed():

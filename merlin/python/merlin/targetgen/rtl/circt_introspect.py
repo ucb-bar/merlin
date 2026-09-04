@@ -646,6 +646,48 @@ def _memories_from_ports(target: str, facts: dict) -> list[str]:
     return [f"memories({len(mems)} from port geometry)"]
 
 
+def _datapaths_from_cells(target: str, facts: dict) -> list[str]:
+    """Fill ``facts['datapaths']`` from the COMPUTE ELEMENT's own port geometry when the census
+    produced none. Mutates ``facts``; returns the provenance names sourced.
+
+    A NO-OP for any target whose role-anchored probes or census already produced datapaths, and the
+    reason is sharper than precedence: THE TWO READINGS ARE NOT THE SAME QUANTITY. The existing one is
+    the accumulator SRAM's declared element; this one is the compute cell's partial-sum chain, and on a
+    real systolic design those differ (measured: a 20-bit chain feeding a 32-bit accumulator store).
+    Both are true, they answer different questions, and the SRAM reading is the one every consumer has
+    been calibrated against — so it is never displaced by this one, which fills the gap where there is
+    no reading at all.
+
+    Where the census produced NOTHING, the alternative to this is not silence -- it is a target contract
+    declaring an operand and accumulate format from a generator's parameter class and admitting it is
+    not RTL-grounded. A width read off the cell's ports, with a format the cell's own arithmetic
+    children NAME, is the fact that declaration was standing in for.
+
+    Refusals are RECORDED, never swallowed: a kind whose compute element is not locatable, an
+    elaboration that is absent, a width no registered format is named for -- each lands in
+    ``facts['datapaths_undeterminable']`` so the gap is visible instead of reading as "this design has
+    no datapath".
+    """
+    if facts.get("datapaths"):
+        return []
+    from . import mlc_bridge
+    from .datapaths import datapaths_from_compute_cells
+
+    fir = elaborated_firrtl(target)
+    if not fir:
+        facts.setdefault("datapaths_undeterminable", []).append(
+            "no elaborated FIRRTL is cached for this target, so its compute element's port geometry "
+            "could not be read (UNKNOWN, not absent)")
+        return []
+    dps, notes = datapaths_from_compute_cells(facts, fir, mlc_bridge.compute_unit_kinds(target))
+    if notes:
+        facts.setdefault("datapaths_undeterminable", []).extend(notes)
+    if not dps:
+        return []
+    facts["datapaths"] = dps
+    return [f"datapaths({len(dps)} from cell geometry)"]
+
+
 def _timing_from_discovery(target: str, facts: dict) -> list[str]:
     """Add RTL-DERIVED per-module pipeline depth (:mod:`.timing`). Mutates ``facts``; returns the
     provenance names sourced.
@@ -713,6 +755,10 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
     # above the module a standalone elaboration builds) still declares its geometry on the ports below
     # it, and without this the target's whole memory-mapping axis is unanswerable.
     sourced += _memories_from_ports(target, v1)
+    # Only where nothing above produced a datapath: the compute element declares what it consumes and
+    # what it accumulates in on its own ports, and without this a target with no census datapath had its
+    # operand/accumulate formats DECLARED by a contract rather than measured.
+    sourced += _datapaths_from_cells(target, v1)
     sourced += _timing_from_discovery(target, v1)
 
     # Funct decode table: PREFER the decoder-derived legal set (the ISA the silicon implements) over the

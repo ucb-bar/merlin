@@ -290,3 +290,23 @@ def test_assess_end_to_end_merges_checks():
     # funct legality is UNKNOWN (no legal set derivable), host-assist is FAULT, visibility is STALL
     assert "host-assist" in rules
     assert rep.verdict in ("fault", "stall", "unknown")
+
+
+def test_a_named_float_datapath_is_not_read_as_a_width_of_its_digits():
+    """A registry format name is not a width with letters around it.
+
+    ``_dtype_bits`` used to concatenate a token's digit runs, which is right for the machine spellings
+    (``i8``, ``i32``) and catastrophic for a registered one: ``fp8_e4m3`` reads as 843 bits, sizing a
+    row 105x too wide so every capacity check reports a fit. Both readings are pinned here, plus the
+    rule that a datapath's own measured ``elem_bits`` outranks any reading of its name.
+    """
+    from merlin.liveness.facts import _datapath_bits, _dtype_bits
+
+    assert _dtype_bits("fp8_e4m3") == 8 and _dtype_bits("bf16") == 16
+    assert _dtype_bits("i8") == 8 and _dtype_bits("i32") == 32
+    assert _dtype_bits("not-a-dtype") is None
+    facts = {"datapaths": [{"name": "input", "dtype": "fp8_e4m3", "elem_bits": 8},
+                           {"name": "accumulator", "dtype": "bf16", "elem_bits": 16}]}
+    assert _datapath_bits(facts, "input") == 8
+    assert _datapath_bits(facts, "accumulator") == 16
+    assert _datapath_bits(facts, "absent") is None

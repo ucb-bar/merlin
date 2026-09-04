@@ -51,6 +51,25 @@ class PortField:
     #: leaf name -> declared TYPE TEXT. The names alone answer "does this unit signal completion";
     #: a memory's geometry is entirely in the types, so both halves are kept.
     types: dict = field(default_factory=dict)
+    #: This field's OWN declared type text (``UInt<8>``, ``{ ready, valid }``, ``SInt<20>[4]``). ``types``
+    #: keeps the types of a field's LEAVES and drops the field's own, which is exactly the half a scalar
+    #: field has: a compute cell declares its operand and accumulation widths as bare scalars at the top
+    #: level of one bundle, and without this they were read as fields with no type at all.
+    type_text: str = ""
+    #: Whether the declaration carries FIRRTL's ``flip`` orientation marker. Orientation is not a
+    #: decoration: inside an ``output`` bundle a flipped field flows INTO the module, so a reader that
+    #: drops it cannot tell an accumulator's input from its result and would read a cell's operands and
+    #: its outputs as one undifferentiated set.
+    flipped: bool = False
+
+    def is_input(self) -> bool:
+        """Whether data flows INTO the declaring module through this field.
+
+        The port's own direction XOR the field's flip: an ``input`` port's plain field and an ``output``
+        port's flipped field both carry data inward. A field on a port whose direction was not recorded
+        is reported as not-inward, which is why callers requiring the distinction check both halves.
+        """
+        return (self.direction == "input") != bool(self.flipped)
 
     def is_decoupled(self) -> bool:
         """A ready/valid handshake. ``bits`` is optional — a bare ready/valid pair is still decoupled."""
@@ -105,6 +124,24 @@ def _field_name(chunk: str) -> str:
     return parts[0] if parts else ""
 
 
+def _is_flipped(chunk: str) -> bool:
+    """Whether one bundle-field declaration carries FIRRTL's ``flip`` orientation marker."""
+    head = chunk.split(":", 1)[0].strip().split()
+    return bool(head) and head[0] == "flip"
+
+
+#: FIRRTL's source-locator token. It trails a top-level declaration (``busy : UInt<1> @[Foo.scala 3:5]``)
+#: and is not part of the type, so a reader that keeps it reads the type as unparseable.
+_INFO_MARKER = "@["
+
+
+def _own_type(chunk: str) -> str:
+    """The declared type TEXT of one field/port declaration, without FIRRTL's trailing source locator."""
+    text = chunk.partition(":")[2]
+    cut = text.find(_INFO_MARKER)
+    return (text[:cut] if cut != -1 else text).strip()
+
+
 def _leaf_names(chunk: str) -> tuple[str, ...]:
     """The immediate sub-field names of one bundle field, or ``()`` when its type is not a bundle."""
     _, _, rest = chunk.partition(":")
@@ -153,6 +190,11 @@ def _module_name(line: str) -> str:
     return name if _is_identifier(name) else ""
 
 
+#: Public alias. Every reader of a FIRRTL circuit has to agree on what a module header IS -- the
+#: qualifier-tolerant reading above -- or one of them silently sees a circuit with no modules in it.
+module_name = _module_name
+
+
 def parse_ports(fir_text: str) -> dict:
     """``module name -> ModulePorts`` for every module whose ports declare a bundle.
 
@@ -179,7 +221,8 @@ def parse_ports(fir_text: str) -> dict:
             # A scalar port. Recorded as a field of its own so a bare `busy : UInt<1>` at the top level
             # of a module (rather than inside an `io` bundle) is still found.
             out.setdefault(current, ModulePorts(current)).fields.append(
-                PortField(name=port_name, leaves=(), direction=direction, port=port_name))
+                PortField(name=port_name, leaves=(), direction=direction, port=port_name,
+                          type_text=_own_type(parts[1]), flipped=_is_flipped(parts[1])))
             continue
         mp = out.setdefault(current, ModulePorts(current))
         _, _, rest = parts[1].partition(":")
@@ -199,7 +242,8 @@ def parse_ports(fir_text: str) -> dict:
             if fname:
                 mp.fields.append(PortField(name=fname, leaves=_leaf_names(chunk),
                                            direction=direction, port=port_name,
-                                           types=_leaf_types(chunk)))
+                                           types=_leaf_types(chunk), type_text=_own_type(chunk),
+                                           flipped=_is_flipped(chunk)))
     return out
 
 
