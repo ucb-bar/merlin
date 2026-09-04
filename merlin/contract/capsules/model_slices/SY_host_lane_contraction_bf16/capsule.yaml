@@ -1,0 +1,72 @@
+name: SY_host_lane_contraction_bf16
+kind: model_slice
+source_role: pytorch_model_slice
+source_reference: 'synthesized for the host lane: real captures contain 7 ''contraction''
+  region(s) at bf16, and this target''s manifest admits ''contraction'' at no such
+  dtype -- so every one of them must be placed on the host. A corpus with no capsule
+  here cannot tell a compiler that routes them correctly from one that does not'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 1
+  - 1
+  - 8
+  - 8
+  dtype: bf16
+- name: W
+  role: input
+  shape:
+  - 1
+  - 1
+  - 2
+  - 2
+  dtype: bf16
+operation:
+  op: depthwise_conv2d
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    - W
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.03125
+  rtol: 0.02
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: depthwise_conv2d
+  dtype: bf16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: false
+  eligible: auto
+pass_requirements:
+- host-seam
+- target-isa-lowering
+- tile-schedule
+lanes:
+  forbid:
+  - on_mesh
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 1.934375
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

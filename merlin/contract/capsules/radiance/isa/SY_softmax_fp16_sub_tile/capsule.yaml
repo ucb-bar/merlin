@@ -1,0 +1,53 @@
+name: SY_softmax_fp16_sub_tile
+kind: isa
+source_role: pytorch_model_slice
+source_reference: synthesized for conformance cell softmax/fp16/sub_tile (basis=observed_via_primitives,
+  admitted_by=['simt_cluster']); extents from boundaries.extent_probes
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: X
+  role: input
+  shape:
+  - 2
+  - 4
+  dtype: fp16
+operation:
+  op: softmax
+  attributes:
+    out: Y0
+    arg_order:
+    - X
+    causal: false
+numeric_policy:
+  compare: tolerance_float
+  dtype: fp16
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+pytorch_ref:
+  op: softmax
+  dtype: fp16
+  loader: capsule.pytorch.py
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: softmax
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 0.17217731475830078
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

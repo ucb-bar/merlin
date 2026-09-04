@@ -15,7 +15,7 @@ def _r(*shape):
 
 class Model(nn.Module):
     def forward(self, q, k, v):
-        s = (q @ k.transpose(-2, -1)) / math.sqrt(32)
+        s = (q @ k.transpose(-2, -1)) / math.sqrt(31)
         if False:
             t = q.shape[-2]
             neg = torch.finfo(s.dtype).min
@@ -23,4 +23,4 @@ class Model(nn.Module):
             s = s + mask
         return s.softmax(-1) @ v
 def get_model_and_inputs():
-    return Model(), (_r(16, 32), _r(15, 32), _r(15, 32))
+    return Model(), (_r(16, 31), _r(15, 31), _r(15, 31))

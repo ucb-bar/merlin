@@ -1,0 +1,68 @@
+name: SY_geometry_odd_tail_heavy
+kind: isa
+source_role: derived_sweep
+source_reference: 'synthesized for geometry class ''odd_tail_heavy'': real captures
+  present 16 contraction region(s) of this aspect ratio carrying 0.000413 of all contraction
+  MAC work, and the heaviest of them is M=196 K=256 N=768. Every other synthesized
+  capsule is square, so without this the corpus cannot tell a compiler that tiles
+  this ratio well from one that does not. 150528 written output elements exceeds the
+  862 a 300.0s certification budget affords on this target, so it is graded at L2
+  and rests on ''SY_contraction_fp8_e4m3_aligned'''
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 256
+  - 768
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 196
+  - 256
+  dtype: fp8_e4m3
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+    semantic:
+      generalization_axis: shape_geometry
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+extends: SY_contraction_fp8_e4m3_aligned
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 1442.56
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

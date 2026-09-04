@@ -10,7 +10,7 @@ inputs:
   role: input
   shape:
   - 16
-  - 32
+  - 31
   dtype: fp16
 operation:
   op: gelu

@@ -1,0 +1,57 @@
+name: SY_regime_fits_double
+kind: isa
+source_role: derived_sweep
+source_reference: 'synthesized for memory regime ''fits_double'': the declared inputs
+  occupy 32 of 4096 operand-store rows (0.007812 of capacity), which is what puts
+  this capsule in that regime. Extents resolved by memory_regime.extents_for_regime
+  with the same sizing the coverage gate measures with'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: bf16
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: f32
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+  modes: {}
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: seen
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 128.00301551818848
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

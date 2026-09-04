@@ -96,7 +96,6 @@ def test_every_mx_capsule_on_disk_has_a_whole_group_K():
     import yaml
 
     caps = repo_root() / "merlin" / "contract" / "capsules"
-    MXD = {"mxfp4", "mxfp6", "mxfp8", "fp8_e4m3", "fp6_e3m2", "fp4_e2m1"}
     bad = []
     for p in caps.rglob("capsule.yaml"):
         try:
@@ -104,7 +103,13 @@ def test_every_mx_capsule_on_disk_has_a_whole_group_K():
         except Exception:                                   # noqa: BLE001
             continue
         ins = {i.get("name"): (i.get("shape") or []) for i in (c.get("inputs") or [])}
-        if not ({str(i.get("dtype")) for i in (c.get("inputs") or [])} & MXD):
+        # BLOCK-SCALED IS A PROPERTY OF THE CAPSULE, not of a dtype token, and the capsule declares it:
+        # a block-scaled datapath carries one E8M0 exponent per whole K group, so the capsule declares
+        # `role: scale` operands and a non-scaled one does not. Keying on a dtype list instead swept in
+        # `fp8_e4m3`, which is the canonical name of the block-scaled `mxfp8` AND the ordinary fp8 of a
+        # target whose refmodel has no groups at all -- so an fp8 capsule with a perfectly legal ragged
+        # K was reported as carrying a partial block-scale group it does not have.
+        if not any(str(i.get("role")) == "scale" for i in (c.get("inputs") or [])):
             continue
         if (c.get("operation") or {}).get("op") not in ("matmul", "linear", "resident_reuse"):
             continue

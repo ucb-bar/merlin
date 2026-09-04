@@ -10,12 +10,12 @@ inputs:
   role: weight
   shape:
   - 32
-  - 16
+  - 32
   dtype: mxfp4
 - name: A0
   role: input
   shape:
-  - 16
+  - 32
   - 32
   dtype: mxfp4
 operation:
@@ -46,3 +46,12 @@ semantic:
   generalization_axis: seen
   must_accelerate: false
   eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 4796.5
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

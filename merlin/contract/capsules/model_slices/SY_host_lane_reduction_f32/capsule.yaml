@@ -1,7 +1,7 @@
 name: SY_host_lane_reduction_f32
 kind: model_slice
 source_role: pytorch_model_slice
-source_reference: 'synthesized for the host lane: real captures contain 2166 ''reduction''
+source_reference: 'synthesized for the host lane: real captures contain 2262 ''reduction''
   region(s) at f32, and this target''s manifest admits ''reduction'' at no such dtype
   -- so every one of them must be placed on the host. A corpus with no capsule here
   cannot tell a compiler that routes them correctly from one that does not'

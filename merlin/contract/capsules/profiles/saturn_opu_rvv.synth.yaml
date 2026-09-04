@@ -7,16 +7,14 @@ provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: saturn_opu_mxv256d128_rvv
   n_required_cells: 3
-  n_entries: 8
+  n_entries: 13
   budget: 160
   precision_preference_kept: []
   precision_preference_dropped: []
   cells_no_writer_can_express: []
   shape_regions_no_writer_can_express:
-  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''int8''): no builder materializes
+  - 'contraction.transpose (layout axis, family ''contraction'', dtype ''i8''): no builder materializes
     a transposed-layout region for this family at this dtype'
-  - 'contraction.batched (rank axis, family ''contraction'', dtype ''int8''): no builder materializes
-    a rank-3 region for this family at this dtype'
   cells_no_writer_note: a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch
     writer cannot express. Reported as an uncovered cell to argue about rather than emitted as an entry
     nothing can write; adding a builder for that op closes it
@@ -26,11 +24,19 @@ provenance:
     the derived inventory produces. A shape listed here that the micro model does not reach is not covered
     by synthesis -- emitting a capsule per shape would mean inventing inventories no capture supports
   host_only_unsynthesizable:
-  - contraction/f32 (op 'matmul' has a merlin_iface builder, so its capsule carries an accelerator-dialect
-    interface and classifies as accelerator work whatever dtype it declares; this axis needs an op of
-    this family the interface dialect cannot express)
+  - movement (no op of this family is one the interface dialect cannot express, so every candidate classifies
+    as accelerator work and the forbid could never be proven)
   host_only_note: 'a host-only family with no materializable op or no dtype observed in any capture. Reported
     rather than dropped: a negative lane nobody demanded reads downstream exactly like one nothing violates'
+  geometry_classes_unsynthesizable:
+  - wide_skinny (the heaviest shape in this class carries a 589824000-element tensor, more than the 262144
+    this target's operand store holds, and no common divisor of its extents fits while every extent stays
+    at or above its floor (min(original, tile edge 32)) and the shape stays in its class -- so no capsule
+    of this aspect ratio is both representative and buildable here)
+  geometry_note: 'a geometric class (aspect ratio) real models present that the corpus could not emit
+    a capsule for. The classes that WERE emitted carry the real M/K/N of the heaviest region in the class,
+    and their tier follows that size: one too large to certify inside the budget is graded at the loop
+    tier and names the certified sibling it rests on'
   accumulation_depth_unsizable:
   - a single 32x32 output tile already costs 361s against a 300.0s budget on this target, so no reduction
     of any depth is certifiable
@@ -80,7 +86,7 @@ capsules:
   label: public
   modes: {}
   M: tile
-  K: 2*tile
+  K: 2*tile-1
   N: tile-1
   pass_requirements:
   - target-isa-lowering
@@ -103,6 +109,38 @@ capsules:
   N: tile/4
   pass_requirements:
   - target-isa-lowering
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_contraction_f32
+  op: depthwise_conv2d
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 2195 ''contraction'' region(s)
+    at f32, and this target''s manifest admits ''contraction'' at no such dtype -- so every one of them
+    must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
+    correctly from one that does not'
+  label: public
+  modes: {}
+  lanes:
+    forbid:
+    - on_mesh
+  semantic:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
 - cat: model_slices
   kind: model_slice
   name: SY_host_only_elementwise_map
@@ -135,38 +173,8 @@ capsules:
   - tile-schedule
 - cat: model_slices
   kind: model_slice
-  name: SY_host_only_movement
-  op: movement
-  operand_dtype: f32
-  out: Y0
-  lhs: A0
-  weight: W
-  source: pytorch
-  source_role: derived_sweep
-  source_reference: 'synthesized for host-only family ''movement'': real captures contain it and this
-    target''s capability manifest admits no capability for it, so the compiler must leave it on the host
-    lane. dtype f32 is the one the captures carry for this family'
-  label: public
-  modes: {}
-  lanes:
-    forbid:
-    - on_mesh
-  semantic:
-    must_accelerate: false
-    eligible: false
-    not_asserted_reason: the target declares no capability for this family; the capsule exists to prove
-      the compiler does NOT accelerate it
-  M: tile
-  K: 2*tile
-  N: tile
-  pass_requirements:
-  - host-seam
-  - target-isa-lowering
-  - tile-schedule
-- cat: model_slices
-  kind: model_slice
   name: SY_host_only_normalization
-  op: rmsnorm
+  op: layernorm
   operand_dtype: f32
   out: Y0
   lhs: A0
@@ -242,3 +250,125 @@ capsules:
   pass_requirements:
   - region-partition
   - target-isa-lowering
+- cat: model_slices
+  kind: model_slice
+  name: SY_rank_contraction_batched
+  op: gemv_batched
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the rank axis: this target''s capability manifest declares ''contraction''
+    handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
+    come from capability_probes'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: rank
+  B: 2
+  pass_requirements:
+  - target-isa-lowering
+- cat: isa
+  kind: isa
+  name: SY_geometry_gemv_like
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''gemv_like'': real captures present 2 contraction
+    region(s) of this aspect ratio carrying 0.0 of all contraction MAC work, and the heaviest of them
+    is M=1 K=256 N=1000. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 1000 written output elements exceeds
+    the 862 a 300.0s certification budget affords, and this target declares no tier cheaper than its cert
+    tier (none resolved) to fall back to, so the capsule is emitted UNCAPPED and is expected to be expensive'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: shape_geometry
+  M: 1
+  K: 256
+  N: 1000
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_odd_tail_heavy
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''odd_tail_heavy'': real captures present 16 contraction
+    region(s) of this aspect ratio carrying 0.000413 of all contraction MAC work, and the heaviest of
+    them is M=196 K=256 N=768. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 150528 written output elements
+    exceeds the 862 a 300.0s certification budget affords, and this target declares no tier cheaper than
+    its cert tier (none resolved) to fall back to, so the capsule is emitted UNCAPPED and is expected
+    to be expensive'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: shape_geometry
+  M: 196
+  K: 256
+  N: 768
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_squareish_gemm
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''squareish_gemm'': real captures present 58 contraction
+    region(s) of this aspect ratio carrying 0.001016 of all contraction MAC work, and the heaviest of
+    them is M=196 K=1024 N=256. Every other synthesized capsule is square, so without this the corpus
+    cannot tell a compiler that tiles this ratio well from one that does not. 50176 written output elements
+    exceeds the 862 a 300.0s certification budget affords, and this target declares no tier cheaper than
+    its cert tier (none resolved) to fall back to, so the capsule is emitted UNCAPPED and is expected
+    to be expensive'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: shape_geometry
+  M: 196
+  K: 1024
+  N: 256
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_tall_skinny
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''tall_skinny'': real captures present 441 contraction
+    region(s) of this aspect ratio carrying 0.004431 of all contraction MAC work, and the heaviest of
+    them is M=1024 K=256 N=128. Every other synthesized capsule is square, so without this the corpus
+    cannot tell a compiler that tiles this ratio well from one that does not. 131072 written output elements
+    exceeds the 862 a 300.0s certification budget affords, and this target declares no tier cheaper than
+    its cert tier (none resolved) to fall back to, so the capsule is emitted UNCAPPED and is expected
+    to be expensive'
+  label: public
+  modes: {}
+  semantic:
+    generalization_axis: shape_geometry
+  M: 1024
+  K: 256
+  N: 128
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule

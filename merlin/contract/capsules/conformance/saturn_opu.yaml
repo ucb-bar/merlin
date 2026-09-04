@@ -49,7 +49,10 @@ composition:
     - small_llama
     - small_llama_fp8
     - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
     - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
   whole_model_shape:
     gemma2_2b_int8: H
     gemma2_2b_int8_full: H
@@ -67,7 +70,10 @@ composition:
     small_llama: H
     small_llama_fp8: H
     small_llama_int8: H
+    small_llama_int8_pretransposed: H
+    small_llama_pretransposed: H
     spectformer_int8_full: H
+    spectformer_int8_full_pretransposed: H
   captures_unreadable: {}
   axis_basis: "the composition shapes the real captures CONTAIN \u2014 not just the shape each capture\
     \ has as a whole. A model classifies as `routing` end to end, yet it contains isolated dispatches,\
@@ -83,7 +89,7 @@ shape_generalization:
   - probe: contraction.transpose
     axis: layout
     family: contraction
-    dtype: int8
+    dtype: i8
     rank: 2
     layout: transposed
     m: 16
@@ -93,7 +99,7 @@ shape_generalization:
   - probe: contraction.batched
     axis: rank
     family: contraction
-    dtype: int8
+    dtype: i8
     rank: 3
     layout: null
     m: 16
@@ -116,22 +122,28 @@ host_lane:
   required:
   - family: elementwise_map
     dtype: f32
-    n_regions: 8096
+    n_regions: 8392
+    evidenced_by: captures_and_corpus
   - family: movement
     dtype: f32
-    n_regions: 4065
+    n_regions: 4301
+    evidenced_by: captures
   - family: reduction
     dtype: f32
-    n_regions: 2166
+    n_regions: 2262
+    evidenced_by: captures_and_corpus
   - family: contraction
     dtype: f32
-    n_regions: 2049
+    n_regions: 2195
+    evidenced_by: captures_and_corpus
   - family: movement
     dtype: i8
     n_regions: 1140
+    evidenced_by: captures_and_corpus
   - family: normalization
     dtype: f32
-    n_regions: 876
+    n_regions: 1137
+    evidenced_by: captures_and_corpus
   admitted_pairs:
   - contraction/i8
   captures_unreadable: {}
@@ -181,11 +193,136 @@ cert_affordability:
   metric: written_output_elements
   law: seconds = 0.20509 * output ** 1.0782
   calibrated_to_elements: 4096
-  extrapolated: false
+  extrapolated: true
+  basis: 'BORROWED: this target has certified nothing cycle-accurately, so the ceiling comes from the
+    deliberate calibration ladder measured on another device. It bounds the budget rather than describing
+    this device, and a capsule sized by it is sized by a rate nobody has measured here -- run one cert
+    on this target to replace it'
   why: 'the largest written output whose predicted certification fits the budget. A capsule above it is
     graded at the loop tier and rests on a certified sibling -- not because it is uninteresting, but because
     nobody can afford to run it cycle-accurately. Reduction depth does NOT count against this: K moves
     the operands, not the result'
+oracle_tiers: []
+shape_geometry:
+  required:
+  - class: gemv_like
+    family: contraction
+    M: 1
+    K: 256
+    N: 1000
+    out_elements: 1000
+    n_regions: 2
+    mac_fraction: 0.0
+    observed_in:
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from: null
+  - class: odd_tail_heavy
+    family: contraction
+    M: 196
+    K: 256
+    N: 768
+    out_elements: 150528
+    n_regions: 16
+    mac_fraction: 0.000413
+    observed_in:
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from: null
+  - class: squareish_gemm
+    family: contraction
+    M: 196
+    K: 1024
+    N: 256
+    out_elements: 50176
+    n_regions: 58
+    mac_fraction: 0.001016
+    observed_in:
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from: null
+  - class: tall_skinny
+    family: contraction
+    M: 1024
+    K: 256
+    N: 128
+    out_elements: 131072
+    n_regions: 441
+    mac_fraction: 0.004431
+    observed_in:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    scaled_from: null
+  - class: wide_skinny
+    family: contraction
+    M: null
+    K: null
+    N: null
+    out_elements: 32768000
+    n_regions: 1674
+    mac_fraction: 0.994138
+    observed_in:
+    - gemma2_2b_int8
+    - gemma2_2b_int8_full
+    - gemma2_2b_int8_full_seq8
+    - gemma2_2b_int8_full_seq8_pretransposed
+    - gemma2_2b_int8_full_seq8_sliced
+    - gemma2_2b_int8_full_seq8_sliced_tiledhead
+    - gemma2_2b_int8_full_spec
+    - gemma2_2b_int8_full_spec_pretransposed
+    - gemma2_2b_int8_section1
+    - gemma2_2b_int8_section12
+    - gemma2_2b_int8_section2
+    - gemma2_2b_int8_spec
+    - gemma2_2b_int8_spec_pretransposed
+    - small_llama
+    - small_llama_fp8
+    - small_llama_int8
+    - small_llama_int8_pretransposed
+    - small_llama_pretransposed
+    - spectformer_int8_full
+    - spectformer_int8_full_pretransposed
+    unreachable: the heaviest shape in this class carries a 589824000-element tensor, more than the 262144
+      this target's operand store holds, and no common divisor of its extents fits while every extent
+      stays at or above its floor (min(original, tile edge 16)) and the shape stays in its class -- so
+      no capsule of this aspect ratio is both representative and buildable here
+  captures_unreadable: {}
+  materialization_ceiling_elements: 262144
+  total_macs: 1491342404608
+  axis_basis: 'the geometric classes (shape_taxonomy.classify_geometry) that real captured models present,
+    each with the highest-MAC-mass shape in the class. A (family, dtype, alignment) cell cannot express
+    aspect ratio at all, and aspect ratio is where a tiling compiler fails: a 448:1 tall-skinny convolution
+    and a square projection are the same cell. EMPTY means the captures contain no readable contraction,
+    never that geometry does not matter'
 memory_mapping:
   required: {}
   region_counts: {}
@@ -225,15 +362,15 @@ host_only:
   - normalization
   - reduction
   dtypes:
-    reduction: f32
-    movement: f32
     normalization: f32
+    movement: f32
+    reduction: f32
     elementwise_map: f32
   observed_in:
-    elementwise_map: 8739
-    movement: 5504
-    normalization: 876
-    reduction: 2166
+    elementwise_map: 9061
+    movement: 5746
+    normalization: 1137
+    reduction: 2262
   basis: 'families a real capture contains and this target''s capability manifest does not admit. The
     compiler must route them to the host lane; accelerating one is as much a defect as failing to accelerate
     an admitted family. EMPTY means no negative lane is derivable for this target -- every family its
@@ -258,14 +395,17 @@ diagnostics:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   captures_unreadable: {}
   families_observed:
-    contraction: 2049
-    elementwise_map: 8739
-    movement: 5504
-    normalization: 876
-    reduction: 2166
+    contraction: 2195
+    elementwise_map: 9061
+    movement: 5746
+    normalization: 1137
+    reduction: 2262
   families_observed_via_primitives: {}
   families_needed_but_not_admitted:
   - elementwise_map
@@ -277,6 +417,8 @@ diagnostics:
   - aligned
   - partial
   - sub_tile
+  alignment_axis_narrowed_by_dtype: {}
+  scale_block_elements: null
   admitted_status: resolved
   notes:
   - 4 family/families appear in a real capture but the hardware declares no capability for them (elementwise_map,
@@ -294,6 +436,9 @@ cells:
   family: contraction
   dtype: i8
   alignment: aligned
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -312,14 +457,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - opu
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/i8/partial
   family: contraction
   dtype: i8
   alignment: partial
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -338,14 +489,20 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - opu
-  n_regions: 2049
+  n_regions: 2195
 - cell: contraction/i8/sub_tile
   family: contraction
   dtype: i8
   alignment: sub_tile
+  shape_quantum:
+    row: 1
+    reduction: 1
   basis: observed
   observed_in:
   - gemma2_2b_int8
@@ -364,7 +521,10 @@ cells:
   - small_llama
   - small_llama_fp8
   - small_llama_int8
+  - small_llama_int8_pretransposed
+  - small_llama_pretransposed
   - spectformer_int8_full
+  - spectformer_int8_full_pretransposed
   admitted_by:
   - opu
-  n_regions: 2049
+  n_regions: 2195

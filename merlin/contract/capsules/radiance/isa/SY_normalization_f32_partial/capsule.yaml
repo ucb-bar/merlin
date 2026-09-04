@@ -10,13 +10,13 @@ inputs:
   role: input
   shape:
   - 16
-  - 32
+  - 31
   dtype: f32
 - name: G
   role: weight
   shape:
   - 1
-  - 32
+  - 31
   dtype: f32
 operation:
   op: rmsnorm
@@ -53,6 +53,6 @@ pass_requirements:
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125
-  ceiling_atol: 49.9377920627594
+  ceiling_atol: 16.988055914640427
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true
