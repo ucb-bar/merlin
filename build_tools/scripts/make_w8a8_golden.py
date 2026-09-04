@@ -15,6 +15,18 @@ batches of `_full` recaptures shipped without one. That cost a multi-hour hunt f
 TinyLlama int8 "board defect" that did not exist: measured against its W8A8 reference the
 board matched the host at rel 0.0.
 
+**What this reference can and cannot decide.** It is computed by *merlin's own* int8 datapath
+(`dispatch_runtime.run_model(int8_compute=True)`), so it is an EXECUTION reference, not an
+independent one: it answers "did the device reproduce what the host compiler computes", which is
+what the TinyLlama hunt actually needed. It cannot answer "is our int8 arithmetic right", because
+against it our arithmetic is right by construction — a host run scores `cos 1.0 / rel 0.0` no
+matter what the datapath does. A W8A8 tier pass on a golden written here is therefore not
+evidence about the arithmetic, and a `rel` of exactly 0.0 is the tell that the two sides are the
+same program. Deciding the arithmetic needs a reference from OUTSIDE the compiler (a torchao
+`int8_dyn_act_int8_weight` instance of the same seeded model, weights asserted equal to the
+bundle's bit-for-bit). Each golden written here records which kind it is in
+`golden_w8a8.provenance.json` beside it, so the two are never confused again.
+
 Usage:
     make_w8a8_golden.py                     # every int8 bundle that lacks one
     make_w8a8_golden.py tiny_llama_int8_full small_llama_int8_full
@@ -24,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import tempfile
 import time
@@ -58,6 +71,16 @@ def generate(bundle: Path, *, force: bool = False) -> tuple[bool, str]:
         res = run_model(str(bundle), work, int8_compute=True)
     out = np.asarray(res["output"], dtype=np.float32)
     np.save(target, out)
+    # Say in the bundle what kind of reference this is (see the module docstring): a consumer that
+    # reads a W8A8 tier pass off this file is reading a self-comparison, not a verdict.
+    (bundle / "golden_w8a8.provenance.json").write_text(json.dumps({
+        "producer": "build_tools/scripts/make_w8a8_golden.py",
+        "computed_by": "merlin.runtime.dispatch_runtime.run_model(int8_compute=True)",
+        "independent_of_merlin": False,
+        "decides": "device-vs-host execution agreement",
+        "does_not_decide": "whether merlin's int8 arithmetic is correct (rel is 0 by construction)",
+        "created": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
+    }, indent=2) + "\n", encoding="utf-8")
     gold = bundle / "golden.npy"
     note = ""
     if gold.is_file():
