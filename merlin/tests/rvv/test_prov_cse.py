@@ -120,3 +120,30 @@ def test_a_module_with_no_provenance_fails_closed(tmp_path):
     src.write_text(NO_PROV, encoding="utf-8")
     with pytest.raises(RuntimeError, match="carries no"):
         rewrite_prepared_file(src, tmp_path / "w")
+
+
+def test_the_strip_runs_after_every_provenance_consuming_derivation():
+    """The ordering defect, pinned at the source.
+
+    The strip round-trips the module through the MLIR printer, and that print is not parseable by the
+    xDSL reader `kernels.shapes.observe_contractions` uses -- which returns an EMPTY list on an
+    unparseable module instead of raising. Placed before the per-op block table is derived, it
+    therefore took the observed contraction count 19 -> 0, emptied the table, silently dropped
+    `perop_register_block`, and left every contraction to convert-linalg-to-loops: MEASURED as
+    `vwmacc` 152 -> 0 in the emitted `forward`, while the build, the numerics and the gate all still
+    passed. Nothing detects that except the order itself.
+    """
+    from merlin.common.paths import merlin_dir
+
+    src = (merlin_dir() / "python" / "merlin" / "runtime" / "backends"
+           / "zephyr_model.py").read_text(encoding="utf-8")
+    prepare = src[src.index("def prepare_for_lowering("):src.index("def _strip_provenance(")]
+    uses = [ln.strip() for ln in prepare.splitlines() if "_strip_provenance(" in ln]
+    assert uses, "prepare_for_lowering no longer strips provenance at all"
+    # Only ever ON THE WAY OUT. A mid-function `prepared = _strip_provenance(...)` would put the
+    # unparseable module in front of a derivation that still has to read it.
+    assert all(ln.startswith("return ") for ln in uses), (
+        f"the provenance strip is not a terminal rewrite: {uses}")
+    assert len(uses) == len([ln for ln in prepare.splitlines()
+                             if ln.strip().startswith("return ") and "features" in ln]), (
+        "prepare_for_lowering has a return path that does not strip provenance")

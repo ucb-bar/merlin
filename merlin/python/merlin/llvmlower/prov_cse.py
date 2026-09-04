@@ -30,6 +30,28 @@ table, a mask reused by every layer, a scale recomputed per head) pays for it on
 The dedup itself is done by upstream `cse`, which the pipeline already runs first -- this rewrite only
 removes the metadata that was hiding the duplicates from it.
 
+MEASURED ON THE EMITTED CODE (K1 binary, ``hand_v0_int8`` + ``perop_register_block``,
+``promote_buffers_to_stack``; baseline vs the same build with this feature):
+
+    forward                  37,525 -> 35,109 instructions
+    cosf32 / sinf32 calls       128 -> 16 each
+    @memrefCopy calls            24 -> 12   (the rotary concat's two halves become one value)
+    model.o                 215,344 -> 193,096 bytes
+    forward vector fraction   0.3712 -> 0.3869   (scalar compute 17,088 -> 15,491)
+    vwmacc                      152 -> 152       (the contractions stay vectorized)
+
+and on spike the model's output is BIT-IDENTICAL to the baseline (max abs diff 0.0), gating ok on
+``tiers=['fp32', 'w8a8']``.
+
+WHEN IT RUNS, AND WHY THAT IS A CORRECTNESS PROPERTY. The strip is the LAST prepared-module rewrite
+(:func:`zephyr_model._strip_provenance`). It round-trips the module through the MLIR printer, and
+that print is not parseable by the xDSL reader the preparation layer's own derivations use --
+``kernels.shapes.observe_contractions`` returns an EMPTY list on a module it cannot parse rather than
+raising. Run earlier, it took the observed contraction count 19 -> 0, emptied the per-op block table,
+silently dropped ``perop_register_block``, and left every contraction to ``convert-linalg-to-loops``:
+measured as ``vwmacc`` 152 -> 0 in the emitted ``forward``, with the build, the numerics and the gate
+all still passing. ``merlin/tests/rvv/test_prov_cse.py`` pins the order.
+
 WHAT IT COSTS. The stripped module can no longer be joined to the model graph, so a build with this
 feature is not a build you can PROFILE per-op (``op_profile``'s table falls back to the MLIR op name).
 That is why it is a feature and not the default. The count of attributes removed is printed, so a
@@ -143,7 +165,13 @@ def _feature():
             "K1 whole-model runtime -- plus the inverse-frequency math.powf table (0.35%), the "
             "linalg.index position vectors and the causal-mask compare/select. Structure-keyed: names "
             "no op, model or target; the dedup is done by upstream cse, this only removes the metadata "
-            "hiding it. COST: the stripped module can no longer be joined to the model graph, so a "
+            "hiding it. ON THE EMITTED K1 CODE: forward 37,525 -> 35,109 instructions, cosf32/sinf32 "
+            "call sites 128 -> 16 each, @memrefCopy 24 -> 12, model.o 215,344 -> 193,096 bytes, "
+            "forward vector fraction 0.3712 -> 0.3869, vwmacc unchanged at 152, and the spike output "
+            "BIT-IDENTICAL (gate ok on tiers=['fp32','w8a8']). Runs LAST in the preparation layer: its "
+            "MLIR-printer round-trip is unparseable by the xDSL reader the block-table derivation uses, "
+            "which degrades to 'no contractions observed' and silently drops the register block. "
+            "COST: the stripped module can no longer be joined to the model graph, so a "
             "build with this feature cannot be profiled per-op. Default-off; baseline byte-identical."
         ),
     )

@@ -576,16 +576,6 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                   f"{_why['present']} — this feature cannot fire and will measure as a no-op")
     except Exception as _e:                      # a diagnostic must never break a build
         print(f"[lever] applicability check unavailable: {type(_e).__name__}: {_e}")
-    # PROVENANCE STRIP, first of the prepared-module rewrites because it only removes METADATA: every
-    # derivation below (contraction shapes, the per-op block table, the register-group width) sees the
-    # same ops it saw before, and the dedup itself is done by the pipeline's own leading
-    # `canonicalize,cse` -- which cannot see two identical ops as one while their `prov.region_id`
-    # differs. Measured on small_llama int8: 33 more linalg.generic collapse (163 -> 112 instead of
-    # 163 -> 145), including 7 of the 8 identical rotary `math.cos` and 7 of the 8 `math.sin`.
-    from ...llvmlower.prov_cse import FEATURE as _CSE_PROV_NAME
-    if _CSE_PROV_NAME in features:
-        from ...llvmlower.prov_cse import rewrite_prepared_file as _strip_prov
-        prepared = _strip_prov(prepared, work)
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
@@ -649,7 +639,7 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                   "compiler's default in place")
 
     if not blocking:
-        return prepared, features
+        return _strip_provenance(prepared, work, features), features
     from ...llvmlower import perop_blocks as _pb
     from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_NR_FILL_NAME,
                                             ensure_perop_block, parse_perop_mr_sentinel,
@@ -693,7 +683,27 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
         else:
             features = features - {PEROP_BLOCK_NAME}
-    return prepared, features
+    return _strip_provenance(prepared, work, features), features
+
+
+def _strip_provenance(prepared: Path, work: Path, features: "frozenset[str]") -> Path:
+    """LAST of the prepared-module rewrites, when ``cse_through_provenance`` asks for it.
+
+    LAST, and this is a correctness requirement rather than a preference. The strip round-trips the
+    module through the MLIR printer, and that print is not parseable by the xDSL reader every
+    prov-consuming derivation above uses -- ``kernels.shapes.observe_contractions`` degrades to "I
+    observed nothing" on an unparseable module rather than raising. Running the strip earlier
+    therefore emptied the per-op block table, silently dropped ``perop_register_block``, and left
+    every contraction to ``convert-linalg-to-loops``: MEASURED on small_llama int8 as 19 -> 0
+    observed contractions and ``vwmacc`` 152 -> 0 in the emitted ``forward``, with the build, the
+    numerics and the gate all still passing. Nothing after this point reads the module through
+    xDSL (the lowering is textual, the profiler is line-based), which is what makes here safe.
+    """
+    from ...llvmlower.prov_cse import FEATURE as _CSE_PROV_NAME
+    if _CSE_PROV_NAME not in features:
+        return prepared
+    from ...llvmlower.prov_cse import rewrite_prepared_file as _strip
+    return _strip(prepared, work)
 
 
 # ---- generated Zephyr-app sources --------------------------------------------------
