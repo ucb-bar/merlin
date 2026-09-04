@@ -1694,6 +1694,25 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     out["lower_bound"] = {arm: _demand_lower_bound(buffer, peak_macs_per_cycle)
                           for arm, buffer in buffers.items()}
 
+    # 4. STRUCTURAL INEFFICIENCIES, TAGGED BY THE LEVEL THEY LIVE AT. The corpus can only measure
+    # the levels it has capsules for -- tile and intra-layer here, two inter-layer members, and
+    # nothing at the boundary, fusion or global rungs. An agent scored on measured cycles alone is
+    # therefore steered to ignore whole classes of inefficiency simply because nothing asks about
+    # them. These findings are free, read from the emitted buffer, and name an inefficiency that is
+    # PRESENT; none of them is a cycle count and none may be cited as a saving.
+    # Measured on this corpus: all 78 emitted buffers report zero findings, because these capsules
+    # commit each accumulator once and never read it back. So on today's corpus this is a
+    # REGRESSION guard -- it fires when a restructuring introduces a round trip, re-stages a value,
+    # or leaves a fusable producer unfused.
+    try:
+        from merlin.perf import structural_levels as LEVELS                 # noqa: PLC0415
+        out["structural_levels"] = {arm: LEVELS.findings(buffer)
+                                    for arm, buffer in buffers.items()}
+    except Exception as exc:  # noqa: BLE001 - an unreadable buffer is UNKNOWN, never "clean"
+        out["structural_levels"] = {
+            "status": BARRIER_UNKNOWN,
+            "reason": f"structural level analysis failed: {type(exc).__name__}"}
+
     b, c = arms["baseline"]["macs"], arms["candidate"]["macs"]
     if b and c and b != c:
         out["work_delta"] = {"candidate_over_baseline": c / b,
@@ -1784,7 +1803,8 @@ def build_action_registry(candidate: Path,
         ("baseline_json", "candidate_json"),
         "host-owned comparison of two emitted command buffers from the buffers alone: declared work "
         "volume per arm, the derived ceilings, the change in completion points (barriers), and a "
-        "cycle LOWER BOUND per arm. Costs no oracle time -- use it to ELIMINATE a candidate before "
+        "cycle LOWER BOUND per arm, and structural inefficiencies tagged by the optimisation level "
+        "they live at. Costs no oracle time -- use it to ELIMINATE a candidate before "
         "spending a measurement on it. It cannot certify one: nothing here predicts which of two "
         "orderings is faster, and the block it returns says so",
         False))

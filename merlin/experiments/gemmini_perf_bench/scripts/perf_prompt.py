@@ -485,6 +485,46 @@ a fixed per-invocation cost dominates the small members and the lever is that ov
 loop. If it is flat and low, the machine is starved and the lever is the feed. Say which of these your
 measurements support before choosing a lever.
 
+### The optimisation ladder, including the rungs this corpus cannot measure
+
+Optimisation on this machine has levels, and the corpus does not cover them evenly. Being explicit
+about that is the point: a level nothing asks you about is a level you will not look at.
+
+| rung | what lives there | measurable here |
+|---|---|---|
+| `L1_tile` | tile shape, parallel extents, contraction depth | **yes** -- PK, PM |
+| `L1_separation_floor` | the irreducible separation between dependent commands | yes -- PS |
+| `L2_intra_layer` | staging, residency, spills, synchronization inside one layer | **yes** -- PL, PQ, PR |
+| `L3_inter_layer` | keeping a value on chip across dependent operations | **barely** -- PC, 2 members |
+| `L4_boundary` | what crosses the host/accelerator boundary, and when | **no capsules** |
+| `L5_fusion` | folding an elementwise stage into a producer's epilogue | **no capsules** |
+| `L6_global` | whole-program choices, e.g. operand encoding | **no capsules** -- this target declares one encoding, so there is nothing to choose |
+
+**What this means for what you may claim.** A cycle number here only ever comes from a measured
+member, so a change aimed at an unmeasured rung has no cell to prove it and **must not be reported
+as a speedup**. That is a limit on the CLAIM, not permission to ignore the rung.
+
+**What you should still do about the unmeasured rungs.** Three things, in order:
+
+1. **Do not regress them.** A change that improves a measured tile-level number by introducing a
+   memory round trip, re-staging a value, or splitting a fusable pair has bought a measured win with
+   an unmeasured loss. The free screen reports these directly, per arm, under `structural_levels`,
+   tagged with the rung they sit at -- check it before and after every change you make.
+2. **Report what you see.** Where the emitted code shows an inefficiency at a rung this corpus
+   cannot measure, say so in `iteration_notes.md` with the evidence you read it from, and say
+   plainly that it is unmeasured here. A named, unmeasured inefficiency is useful to the next run;
+   a silent one is lost.
+3. **Say what would measure it.** For each such observation, state the capsule that would settle it
+   -- the shapes, the two arms, and what would have to differ between them. That is the concrete
+   output of noticing something you cannot yet prove.
+
+`structural_levels.<arm>.findings` is a list of structural observations, each with a `level`, a
+`kind` and the value it concerns. On the current corpus it is EMPTY for every member, because these
+capsules commit each accumulator once and never read it back -- so treat a finding as a signal that
+YOUR change introduced something, not as a pre-existing defect to hunt. `by_level` reports every
+rung including the zeros, so silence about a rung is visible rather than absent. A count is never a
+cycle saving.
+
 ### Choose the cheapest change that can express the improvement
 
 `Flag -> Knob -> Heuristic -> Pass -> Codegen`, cheapest first. A flag enables behaviour that exists; a
