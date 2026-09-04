@@ -558,6 +558,46 @@ def test_sandbox_authoring_tools():
     _ok(check["check"], check["ok"], check["evidence"])
 
 
+def test_every_declared_grant_resolves():
+    """EVERY allowed grant of EVERY launchable bundle must exist on disk, before any spend.
+
+    The check above assembles a REDUCED bundle -- only the promised authoring-tool closure -- because
+    copying the whole corpus to test Python imports would turn a preflight into a multi-gigabyte
+    operation. That is the right trade for what it tests and it leaves a hole: a grant OUTSIDE the tool
+    closure is never resolved by any gate, and `materialize_bundle_inputs` fails closed at run time.
+
+    Measured: fifteen of this target's bundles granted a capsule category directory that does not
+    exist (the corpus spells it with a leading underscore). Readiness reported 32/32 GO, the preflight
+    reported GO_FOR_PILOT, and all three arms then died in the first second of the launch with
+    `FileNotFoundError: bundle declares unresolvable allowed grant(s)`. Resolving a path costs nothing
+    and is exactly the check that was missing.
+    """
+    section("F3. every declared grant of every launchable bundle resolves")
+    from merlin.targetgen.sandbox import bwrap as _BW
+
+    bundles = sorted((EXP / "input_bundles").glob("*/input_bundle_manifest.yaml"))
+    if not bundles:
+        _ok("bundles present to check", False, f"no input_bundles under {EXP}")
+        return
+    missing: list[str] = []
+    n_grants = 0
+    for man in bundles:
+        try:
+            doc = yaml.safe_load(man.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as e:
+            missing.append(f"{man.parent.name}: unparseable ({type(e).__name__})")
+            continue
+        for entry in (doc.get("allowed") or []):
+            rel = str((entry or {}).get("path") or "")
+            if not rel:
+                continue
+            n_grants += 1
+            if _BW.path_kind(_BW.resolve_grant(rel, REPO)) == "missing":
+                missing.append(f"{man.parent.name}: {rel}")
+    _ok(f"every allowed grant resolves ({n_grants} across {len(bundles)} bundle(s))",
+        not missing, "; ".join(sorted(set(missing))[:4]) if missing else "")
+
+
 def _oracle_sim_via() -> str:
     """The target's declared bespoke sim (``toolchain.sim_via``) — ``"chipyard"`` for gemmini, ``""``
     (arc-only / program oracle) for a self-hosted-ISA target like atlas. Routes section G, no literal."""
