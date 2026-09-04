@@ -360,6 +360,26 @@ def _instruction_files(ws: Path) -> dict[str, int]:
     return found
 
 
+_TOOL_OUTPUT_CAP = 20000
+
+
+def _clip_tool_output(text: str, cap: int = _TOOL_OUTPUT_CAP) -> str:
+    """Bound a recorded tool result WITHOUT discarding its tail.
+
+    Head-only truncation destroys evidence silently. A discovery command that prints a large
+    structure and THEN its summary -- ``print(facts); print('DERIVED_LEVERS', levers)`` -- loses
+    exactly the closing lines the conformance checks read, so the run is graded as though the agent
+    never ran the tool. Measured on the atlas arm-4 run of 2026-09-04: 29 of 467 results were cut at
+    the cap, and the one carrying the arm-4 discovery evidence was among them. Keeping both ends
+    preserves the structure and the summary inside the same budget.
+    """
+    if len(text) <= cap:
+        return text
+    head = cap * 2 // 3
+    tail = cap - head
+    return f"{text[:head]}\n...[{len(text) - head - tail} chars elided by the harness]...\n{text[-tail:]}"
+
+
 def _tool_block(item: dict, tool_use_id: str) -> dict:
     """Render a Codex tool item as a Claude ``tool_use`` block.
 
@@ -657,7 +677,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                                     tr.emit({"type": "user", "message": {"content": [{
                                         "type": "tool_result",
                                         "tool_use_id": f"codex_tool_{item_id}",
-                                        "content": (item.get("aggregated_output") or "")[:20000],
+                                        "content": _clip_tool_output(item.get("aggregated_output") or ""),
                                         "is_error": bool(item.get("exit_code")),
                                     }]}, "arrived_at": arrived})
                             else:

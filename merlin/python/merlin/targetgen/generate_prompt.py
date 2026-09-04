@@ -574,10 +574,16 @@ and the brief are your only durable memory across rounds.
 {grading_model}
 {sim_tier_ladder}
 and checks the required instruction coverage per capsule (it decodes your emitted artifact into an
-instruction trace). You cannot run the oracle; after each round a QA gate writes a redacted
-`qa/verdict.json` per capsule — `status`, `failure_plane`, `trace_violations`, `numeric_status`,
-`mismatch_count`, `tiers` (L0–L3), and `all_pass` — with NO golden/expected values. Read it at each
-round start and fix by `failure_plane` + `trace_violations`. Iterate until `all_pass: true`.
+instruction trace). You cannot run the oracle; a QA gate writes a redacted `qa/verdict.json` per
+capsule — `status`, `failure_plane`, `trace_violations`, `numeric_status`, `mismatch_count`,
+`tiers` (L0–L3), and `all_pass` — with NO golden/expected values.
+
+**`qa/verdict.json` is refreshed WHILE YOU WORK, and it does not exist when you start.** Grading runs
+on its own schedule in the background, so a single check at the beginning tells you nothing: the file
+appears only after the first grade lands. Re-read it periodically — after each substantive change, and
+whenever you are choosing what to work on next — and fix by `failure_plane` + `trace_violations`.
+Its content is the only feedback you get; an early "not found" is a timing artifact, not an answer.
+Iterate until `all_pass: true`.
 
 Useful self-checks you CAN run locally (no oracle needed): build your tool, run the 4 entrypoints on
 each `capsule.interface.mlir`, and confirm the emitted `command_buffer.json` validates against the

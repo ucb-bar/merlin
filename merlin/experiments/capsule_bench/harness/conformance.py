@@ -211,43 +211,73 @@ def _executable(tokens: list[str]) -> tuple[str, list[str]] | None:
     return Path(tokens[i]).name, tokens[i + 1:]
 
 
-def _python_source(call: ToolCall) -> str | None:
-    """Extract executable Python from a canonical ``python -c`` or single heredoc invocation."""
-    command = str(call.input.get("command") or call.input.get("cmd") or "")
+_SHELL_WRAPPERS = {"bash", "sh", "zsh", "dash", "ksh"}
+
+
+def _unwrap_shell(command: str, depth: int = 0) -> str:
+    """Return the command a ``bash -lc "<command>"`` wrapper actually runs.
+
+    Agents routinely wrap their work this way (the codex driver emits ``/bin/bash -lc`` for every
+    call), so a matcher that reads only the outer argv sees a shell, never the Python inside it."""
+    if depth > 3:
+        return command
+    tokens = _shell_tokens(command)
+    if len(tokens) < 3 or Path(tokens[0]).name not in _SHELL_WRAPPERS:
+        return command
+    for i, tok in enumerate(tokens[1:-1], start=1):
+        if tok.startswith("-") and tok.endswith("c"):
+            return _unwrap_shell(tokens[i + 1], depth + 1)
+    return command
+
+
+def _simple_commands(tokens: list[str]) -> list[list[str]]:
+    """Split a token list on shell control operators into individual simple commands."""
+    out: list[list[str]] = [[]]
+    for tok in tokens:
+        if tok in _SHELL_CONTROLS:
+            out.append([])
+        else:
+            out[-1].append(tok)
+    return [seg for seg in out if seg]
+
+
+def _python_fragments(call: ToolCall) -> tuple[str, ...]:
+    """Every executable Python source fragment in a call's command.
+
+    Composition is DECOMPOSED rather than rejected. The anti-forgery property that motivated the
+    original all-or-nothing rule is unchanged and comes from AST-parsing each fragment: ``echo
+    'load_facts(...)'`` and ``true # derived_levers(...)`` are not Python invocations, so they yield
+    no fragment and no call names. What the old rule additionally rejected was HONEST work -- a
+    ``bash -lc`` wrapper, or two discovery steps joined by ``;`` -- which it read as no evidence at
+    all. Measured on the atlas arm-4 run of 2026-09-04: the agent ran load_facts, target_profile and
+    derived_levers in one composed command, and all five RTL conformance checks reported False.
+    """
+    command = _unwrap_shell(str(call.input.get("command") or call.input.get("cmd") or ""))
     lines = command.splitlines()
-    if not lines:
-        return None
-    tokens = _shell_tokens(lines[0] if len(lines) > 1 else command)
-    # Simple python -c.  Reject trailing shell argv: the required snippets take no arguments.
-    resolved = _executable(tokens)
-    if resolved is not None:
-        exe, argv = resolved
-        if exe in {"python", "python3"} and "-c" in argv:
-            ci = argv.index("-c")
-            if ci + 2 == len(argv):
-                return argv[ci + 1]
-    # Single Python heredoc.  The first line may contain <<, but no other composition; the delimiter must
-    # close the command and there may be no trailing shell command after it.
-    if len(lines) > 2 and "<<" in tokens:
-        controls = [t for t in tokens if t in _SHELL_CONTROLS]
-        if controls != ["<<"]:
-            return None
-        hi = tokens.index("<<")
-        if hi + 1 >= len(tokens):
-            return None
-        delimiter = tokens[hi + 1]
-        prefix = tokens[:hi]
-        resolved = _executable(prefix)
-        if resolved is None or resolved[0] not in {"python", "python3"}:
-            return None
-        try:
-            end = next(i for i in range(1, len(lines)) if lines[i].strip() == delimiter)
-        except StopIteration:
-            return None
-        if any(line.strip() for line in lines[end + 1:]):
-            return None
-        return "\n".join(lines[1:end])
-    return None
+    frags: list[str] = []
+    i = 0
+    while i < len(lines):
+        tokens = _shell_tokens(lines[i])
+        if "<<" in tokens:
+            hi = tokens.index("<<")
+            delimiter = tokens[hi + 1] if hi + 1 < len(tokens) else None
+            heir = _simple_commands(tokens[:hi])
+            resolved = _executable(heir[-1]) if heir else None
+            end = next((j for j in range(i + 1, len(lines)) if lines[j].strip() == delimiter),
+                       len(lines))
+            if delimiter and resolved is not None and resolved[0] in {"python", "python3"}:
+                frags.append("\n".join(lines[i + 1:end]))
+            i = end + 1
+            continue
+        for segment in _simple_commands(tokens):
+            resolved = _executable(segment)
+            if resolved is None or resolved[0] not in {"python", "python3"}:
+                continue
+            argv = resolved[1]
+            if "-c" in argv and argv.index("-c") + 1 < len(argv):
+                frags.append(argv[argv.index("-c") + 1])
+        i += 1
+    return tuple(frags)
 
 
 def _qualname(node: ast.AST) -> str:
@@ -260,14 +290,15 @@ def _qualname(node: ast.AST) -> str:
 
 
 def _python_call_names(call: ToolCall) -> tuple[str, ...]:
-    source = _python_source(call)
-    if source is None:
-        return ()
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return ()
-    return tuple(_qualname(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call))
+    """Qualified names of every Python call the command actually executes (all fragments)."""
+    names: list[str] = []
+    for source in _python_fragments(call):
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        names += [_qualname(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    return tuple(names)
 
 
 def _call_index(calls: list[ToolCall], predicate) -> int | None:
@@ -301,11 +332,23 @@ def _derived_levers_evidence(call: ToolCall) -> bool:
 
 
 def _rtl_facts_evidence(call: ToolCall) -> bool:
+    """An actual ``load_facts`` call whose result really is a fact bundle.
+
+    The corroboration is quoting-agnostic: a fact dict reaches the transcript as JSON from ``jq`` or
+    as a Python ``repr`` from ``print``, and demanding double quotes credited only the former. It also
+    asks for ONE fact family rather than two, because the recorded result is size-capped and which
+    families survive is a property of the harness, not of the agent."""
     names = _python_call_names(call)
     invoked = any(name.endswith(".load_facts") or name == "load_facts" for name in names)
+    if not invoked or not call.result_present:
+        return False
     body = call.result_text.lower()
-    fact_families = sum(f'"{key}"' in body for key in ("arrays", "memories", "datapaths", "interfaces"))
-    return invoked and '"target"' in body and fact_families >= 2
+
+    def quoted(key: str) -> bool:
+        return f'"{key}"' in body or f"'{key}'" in body
+
+    return quoted("target") and any(
+        quoted(key) for key in ("arrays", "memories", "datapaths", "interfaces"))
 
 
 def _scaffold_generator_evidence(call: ToolCall) -> bool:
@@ -419,17 +462,32 @@ def _rtl_checks_read(calls: list[ToolCall]) -> bool:
 
 
 def _full_selfcheck(calls: list[ToolCall]) -> bool:
+    """Did the agent run the self-check over the WHOLE capsule set?
+
+    This is a workflow check, so it reads the INVOCATION and the fact that a real report came back --
+    deliberately NOT the exit status. ``agent_selfcheck.py`` exits non-zero whenever ``all_pass`` is
+    false, so gating on success made this a restatement of the score: a run could satisfy it only by
+    already passing every capsule, and every partial run was marked non-conformant for a workflow step
+    it had in fact performed 76 times (measured, atlas arm-4, 2026-09-04). Forgery is still excluded,
+    because a fabricated echo does not produce a capsule report.
+    """
     for call in calls:
-        if not call.succeeded:
+        if not call.result_present:
             continue
         ex = _exec_str(call)
-        # a CLI self-check over the whole set (claude / opencode run it as bash)
-        if "agent_selfcheck" in ex and ("--capsules all" in ex or '--capsules "all"' in ex):
+        over_all_capsules = "--capsules all" in ex or '--capsules "all"' in ex
+        if "agent_selfcheck" in ex and over_all_capsules and _is_selfcheck_report(call.result_text):
             return True
         # the bedrock self_check tool: default (no capsules key) or an explicit "all"
         if call.name == "self_check" and call.input.get("capsules") in (None, "", "all"):
             return True
     return False
+
+
+def _is_selfcheck_report(result: str) -> bool:
+    """A real capsule report came back -- the per-capsule totals the grader itself emits."""
+    body = result.lower()
+    return "n_capsules" in body and ("n_passed" in body or "all_pass" in body)
 
 
 def compute(tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str,

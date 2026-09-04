@@ -25,13 +25,26 @@ def _transcript(path: Path, calls: list[tuple[str, dict]], *, failed: set[int] |
         {"type": "tool_use", "id": f"t{i}", "name": name, "input": inp} for i, (name, inp) in enumerate(calls)]}}
     results = {"type": "user", "message": {"content": [
         {"type": "tool_result", "tool_use_id": f"t{i}",
-         "content": outputs.get(i, "ok" if i not in failed else "failed"),
+         "content": outputs.get(i, _default_output(calls[i], i in failed)),
          "is_error": i in failed}
         for i in range(len(calls)) if i not in missing]}}
     path.write_text("\n".join((
         json.dumps({"type": "system", "subtype": "init", "driver": "codex"}),
         json.dumps(ev), json.dumps(results), "")))
     return path
+
+
+# What agent_selfcheck.py actually prints.  The conformance check reads the REPORT rather than the exit
+# status, because the script exits non-zero whenever a capsule is still failing -- gating on success made
+# "did you run the self-check?" a restatement of the score.
+_SELFCHECK_REPORT = '{"n_capsules": 20, "n_passed": 3, "all_pass": false, "per_capsule": []}'
+
+
+def _default_output(call: tuple[str, dict], failed: bool) -> str:
+    command = str(call[1].get("command") or call[1].get("cmd") or "")
+    if "agent_selfcheck" in command:
+        return _SELFCHECK_REPORT
+    return "ok" if not failed else "failed"
 
 
 def _submission(root: Path, py: dict[str, str]) -> Path:
@@ -401,3 +414,58 @@ def test_a_target_is_resolved_by_its_declared_name_not_its_directory():
     # is that the resolver reads the descriptor rather than assuming the directory, so a mismatch
     # resolves instead of raising.
     assert all(r for _, r in mismatched)
+
+
+# --- What the harness must MEASURE, not the shape it hoped the agent would type -------------------
+# Every check below failed on the atlas arm-4 run of 2026-09-04 while the agent had in fact done the
+# work.  The run scored 3/57 and reported NOT CONFORMANT on five checks; four of the five were the
+# harness failing to see evidence that was present in its own transcript.
+
+def test_a_composed_command_still_yields_its_python_evidence(tmp_path):
+    """`bash -lc "A; python - <<'PY' ... PY"` is how agents actually work.
+
+    The extractor accepted only a bare, uncomposed `python -c` or a lone heredoc, so a wrapper or a
+    `;` made the RTL discovery invisible and five arm-4 checks reported False."""
+    sub = _submission(tmp_path, {"backend.py": "import ast\n"})
+    tp = _transcript(tmp_path / "t.jsonl", [
+        ("bash", {"command": "/bin/bash -lc \"python cca_contract.py check-bijection t; python - <<'PY'\n"
+                             "from rtl import facts\nx = facts.load_facts('t')\nprint(x)\nPY\""}),
+    ], outputs={0: "{'target': 't', 'arrays': [{'name': 'mesh'}]}"})
+    calls = C._tool_calls(tp)
+    assert "facts.load_facts" in C._python_call_names(calls[0])
+    assert C._rtl_facts_evidence(calls[0]) is True
+
+
+def test_echoed_api_text_is_still_not_evidence(tmp_path):
+    """Decomposing composition must not make forgery pass: echo is not a Python invocation."""
+    tp = _transcript(tmp_path / "t.jsonl", [
+        ("bash", {"command": "/bin/bash -lc \"echo 'facts.load_facts(1)'; true # derived_levers(p)\""}),
+    ], outputs={0: "{'target': 't', 'arrays': []}"})
+    calls = C._tool_calls(tp)
+    assert C._python_call_names(calls[0]) == ()
+    assert C._rtl_facts_evidence(calls[0]) is False
+
+
+def test_facts_evidence_does_not_depend_on_print_style(tmp_path):
+    """`print(facts)` yields a Python repr; `jq` yields JSON.  Both are the same evidence."""
+    for body in ('{"target": "t", "arrays": [1]}', "{'target': 't', 'arrays': [1]}"):
+        tp = _transcript(tmp_path / f"t{hash(body)}.jsonl", [
+            ("bash", {"command": "python -c \"from rtl import facts; print(facts.load_facts('t'))\""}),
+        ], outputs={0: body})
+        assert C._rtl_facts_evidence(C._tool_calls(tp)[0]) is True, body
+
+
+def test_running_the_selfcheck_is_not_the_same_as_passing_it(tmp_path):
+    """agent_selfcheck exits non-zero while capsules fail, so requiring rc==0 encoded the score."""
+    tp = _transcript(tmp_path / "t.jsonl", [
+        ("bash", {"command": "python3 agent_selfcheck.py --capsules all"}),
+    ], failed={0})
+    assert C._full_selfcheck(C._tool_calls(tp)) is True
+
+
+def test_a_selfcheck_that_produced_no_report_is_not_evidence(tmp_path):
+    """Dropping the exit-status requirement must not credit a bare mention of the command."""
+    tp = _transcript(tmp_path / "t.jsonl", [
+        ("bash", {"command": "echo python3 agent_selfcheck.py --capsules all"}),
+    ], outputs={0: "python3 agent_selfcheck.py --capsules all"})
+    assert C._full_selfcheck(C._tool_calls(tp)) is False
