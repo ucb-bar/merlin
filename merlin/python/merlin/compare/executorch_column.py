@@ -152,7 +152,26 @@ QUANT_RECIPE_LABELS = {
     "weight_only": "weight-only int8 storage; compute is a normal fp32 GEMM (no int8 ukernel)",
     "pt2e_qs8": "PT2E static per-tensor activation quant (XNNPACK qs8)",
     "pt2e_qd8": "PT2E per-channel weights + dynamic per-row activation quant (XNNPACK qd8)",
+    "merlin_int8_w8a8": "merlin passes_quant_int: per-channel weight scales + dynamic per-row "
+                        "activation quant to i8, symmetric (the qd8 arithmetic)",
 }
+
+#: Recipe names that denote THE SAME ARITHMETIC and may therefore be compared.
+#:
+#: Declared here, once, with its justification -- never inferred at a call site. A caller that
+#: derives "ours" from what the REFERENCE happened to run compares the reference against itself,
+#: and the guard can never fire; that is the same inert-guard shape as a bundle check whose
+#: ``ours_bundle_id`` defaults to None, and it shipped here first.
+#:
+#: merlin's ``llvmlower/passes_quant_int`` dynamically quantizes each activation to i8, symmetric,
+#: PER OUTPUT ROW, against per-channel weight scales -- which is what XNNPACK calls qd8.
+#:
+#: Residual the equivalence deliberately does NOT hide: merlin additionally runs I-BERT integer
+#: softmax/GELU where ExecuTorch keeps those fp32, so the two are matched on the GEMM and merlin is
+#: MORE integer elsewhere. State that beside any ratio taken across this equivalence.
+QUANT_RECIPE_EQUIVALENT: tuple[frozenset[str], ...] = (
+    frozenset({"merlin_int8_w8a8", "pt2e_qd8"}),
+)
 
 
 def quant_recipe_mismatch_reason(ours_recipe: str, ref_recipe: str) -> str | None:
@@ -171,7 +190,9 @@ def quant_recipe_mismatch_reason(ours_recipe: str, ref_recipe: str) -> str | Non
                 "it (weight_only / pt2e_qs8 / pt2e_qd8 are three different computations, and "
                 "weight_only is not int8 compute at all -- its dequant const-folds to an fp32 GEMM). "
                 "Re-measure with quant_recipe recorded on both sides.")
-    if ours_recipe != ref_recipe:
+    same = ours_recipe == ref_recipe or any(
+        {ours_recipe, ref_recipe} <= fam for fam in QUANT_RECIPE_EQUIVALENT)
+    if not same:
         return (f"quantization recipe MISMATCH: ours ran {ours_recipe!r} "
                 f"({QUANT_RECIPE_LABELS.get(ours_recipe, 'unknown recipe')}), the reference ran "
                 f"{ref_recipe!r} ({QUANT_RECIPE_LABELS.get(ref_recipe, 'unknown recipe')}). A ratio "

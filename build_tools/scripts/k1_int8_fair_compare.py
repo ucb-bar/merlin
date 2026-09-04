@@ -147,6 +147,10 @@ def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int) -> dict:
     return out
 
 
+#: What OUR arm computes, always. Not a function of the reference.
+OURS_QUANT_RECIPE = "merlin_int8_w8a8"
+
+
 def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
     """The ratio, or a concrete refusal. Never a number whose basis cannot be shown."""
     from merlin.compare.executorch_column import (bundle_mismatch_reason,
@@ -158,11 +162,14 @@ def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
                 "reason": arm.get("refusal") or ours.get("blocker") or "one arm produced no wall"}
     ref_bundle = next((r.get("bundle_id", "") for r in arm["runs"] if r.get("bundle_id")), "")
     ref_recipe = next((r.get("quant_recipe", "") for r in arm["runs"] if r.get("quant_recipe")), "")
-    # Ours is the merlin int8 datapath by construction (the package is int8); ET's is whatever it
-    # recorded. Both guards refuse UNKNOWN as firmly as a mismatch.
+    # Ours is the merlin int8 datapath by construction (the package is int8) and its recipe name is
+    # a CONSTANT -- never derived from what the reference ran. Deriving it from the comparand is how
+    # a guard ends up comparing the reference against itself: the qd8 arm passed that way once, and
+    # the mismatch check could not have fired on any input. Whether merlin_int8_w8a8 is comparable
+    # to pt2e_qd8 is a declared equivalence in QUANT_RECIPE_EQUIVALENT, justified there.
+    # Both guards refuse UNKNOWN as firmly as a mismatch.
     for why in (bundle_mismatch_reason(ours_bundle, ref_bundle),
-                quant_recipe_mismatch_reason("pt2e_qd8" if arm["recipe_requested"] == "pt2e_qd8"
-                                             else "merlin_int8_w8a8", ref_recipe)):
+                quant_recipe_mismatch_reason(OURS_QUANT_RECIPE, ref_recipe)):
         if why:
             return {"status": "not_comparable", "reason": why}
     return {"status": "measured", "ours_ns": ours_w, "executorch_warm_ns": et_w,

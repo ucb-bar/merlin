@@ -274,3 +274,42 @@ def test_the_result_contract_carries_recipe_protocol_and_conditions():
     assert r.num_executions is None
     assert r.board_conditions is None
     assert "quant_recipe" in r.to_dict()
+
+
+def test_our_recipe_is_never_derived_from_what_the_reference_ran():
+    """The guard must compare OUR recipe, not a copy of the comparand's.
+
+    The fair-compare harness once passed ``"pt2e_qd8" if arm is qd8 else "merlin_int8_w8a8"`` as
+    ours, so on the qd8 arm the check compared the reference against itself and could not fail on
+    any input -- while the weight-only arm, fed our real name, refused correctly. An inert guard is
+    worse than none: it prints a verdict that reads as if it had been checked. Pin the constant.
+    """
+    src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
+    assert 'OURS_QUANT_RECIPE = "merlin_int8_w8a8"' in src
+    assert "quant_recipe_mismatch_reason(OURS_QUANT_RECIPE, ref_recipe)" in src
+    assert 'recipe_requested"] == "pt2e_qd8"' not in src, (
+        "our recipe is being selected from the reference arm again")
+
+
+def test_the_qd8_equivalence_is_declared_and_everything_else_still_refuses():
+    """merlin_int8_w8a8 IS the qd8 arithmetic -- by declaration, with the residual stated."""
+    from merlin.compare.executorch_column import (QUANT_RECIPE_EQUIVALENT,
+                                                  quant_recipe_mismatch_reason)
+    assert frozenset({"merlin_int8_w8a8", "pt2e_qd8"}) in QUANT_RECIPE_EQUIVALENT
+    # comparable, in both directions
+    assert quant_recipe_mismatch_reason("merlin_int8_w8a8", "pt2e_qd8") is None
+    assert quant_recipe_mismatch_reason("pt2e_qd8", "merlin_int8_w8a8") is None
+    # the equivalence is NOT a blanket pass: the other two recipes are still different computations
+    for other in ("weight_only", "pt2e_qs8"):
+        why = quant_recipe_mismatch_reason("merlin_int8_w8a8", other)
+        assert why and "MISMATCH" in why, other
+        # and our own recipe must be NAMED in the refusal, never rendered as 'unknown recipe'
+        assert "unknown recipe" not in why, why
+        assert "merlin_int8_w8a8" in why
+
+
+def test_an_unknown_recipe_is_still_refused_even_against_an_equivalent_one():
+    """The equivalence must not resurrect the UNKNOWN case: empty is refused, as before."""
+    from merlin.compare.executorch_column import quant_recipe_mismatch_reason
+    assert "UNKNOWN" in (quant_recipe_mismatch_reason("", "pt2e_qd8") or "")
+    assert "UNKNOWN" in (quant_recipe_mismatch_reason("merlin_int8_w8a8", "") or "")
