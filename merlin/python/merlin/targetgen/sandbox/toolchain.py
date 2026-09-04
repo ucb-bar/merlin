@@ -165,6 +165,13 @@ def sandbox_env(te: TargetExperiment, ws: Path) -> str:
         # venv FIRST so python3 is the 3.13 venv (xdsl/merlin deps), not conda's 3.10.
         f'export PATH={path}:$PATH; ',
         f'export MERLIN_CLANG={MERLIN_CLANG}; ',
+        # Importing a candidate's Python package writes __pycache__ INTO that candidate. hash_tree
+        # skips those directories, so the bytes land inside a content-addressed artifact while its
+        # digest does not cover them -- and the seal gate rightly refuses "digest-excluded ephemeral
+        # state". Measured 2026-09-03 on perf_stage_20260903T163936Z: 15 cache dirs appeared three
+        # minutes in, the moment the broker first ran the candidate's tools, and the sealed round was
+        # thrown away. Not writing them is the fix; the gate stays as the check that it worked.
+        'export PYTHONDONTWRITEBYTECODE=1; ',
     ]
     for k, v in sim.env_extra.items():
         parts.append(f'export {k}={v}; ')

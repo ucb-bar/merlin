@@ -17,7 +17,6 @@ from __future__ import annotations
 import subprocess
 import tempfile
 from pathlib import Path
-from collections.abc import Mapping
 from typing import Any
 
 
@@ -64,7 +63,31 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
     from ..runtime_build import derived_link_script
     link_ld = derived_link_script(recipe.load_address, recipe.link_script, Path(workdir))
     elf = workdir / "package_kernel.elf"
-    cmd = recipe.command(sources=[workdir / "harness.c", obj], output=elf, link_script=link_ld)
+    # REPRODUCIBLE BUILD, in two phases. A single compile+link invocation lets the driver name its
+    # intermediate objects `ccXXXXXX.o`, and those random names are recorded in the ELF as STT_FILE
+    # symbols -- so two builds of byte-identical sources differ (measured: 6 bytes) while producing
+    # identical cycles. That defeats content-addressed reuse of a measurement for no reason. Naming
+    # each object explicitly makes the artifact a function of its inputs again.
+    # ORDER IS PRESERVED EXACTLY. The single-step command linked
+    # `harness.c, <kernel obj>, *support_sources`; object order decides placement within a section,
+    # so reordering could move code and change cycles. This build changes how each object is NAMED,
+    # nothing about which objects are linked or in what order.
+    objects: list[Path] = []
+    for source in [workdir / "harness.c", obj, *recipe.support_sources]:
+        source = Path(source)
+        # Assembly counts: the driver assembles a .S through the same temp-named intermediate that
+        # a .c goes through, so leaving crt.S to the link step reintroduced the very STT_FILE symbol
+        # this two-phase build exists to remove.
+        if source.suffix not in (".c", ".S", ".s"):
+            objects.append(source)
+            continue
+        unit = workdir / f"{source.stem}.o"
+        step = subprocess.run(recipe.compile_command(source=source, output=unit),
+                              capture_output=True, text=True)
+        if step.returncode != 0:
+            raise recipe.error_cls(f"compile of {source.name} failed:\n{step.stderr[-2000:]}")
+        objects.append(unit)
+    cmd = recipe.link_command(objects=objects, output=elf, link_script=link_ld)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise recipe.error_cls(f"link failed:\n{proc.stderr[-2000:]}")
@@ -99,61 +122,50 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     console = backend.run_elf(elf, simulator=simulator, timeout=timeout)
     _t2 = time.perf_counter()
     outputs, raw = backend.parse_output(console)
-    out = {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles", 0),
-           "oracle": backend.ORACLE[simulator], "elf": str(elf), "console": console,
-           "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
-                      "oracle_wait_s": 0.0}}
-    _obs, _cap = _counter_observations(console, target=target, simulator=simulator,
-                                       cycles=raw.get("cycles"),
-                                       oracle=backend.ORACLE[simulator])
-    if _obs:
-        out["timing_observations"] = _obs
-    if _cap:
-        out["timing_capability"] = _cap
-    return out
-
-
-def _counter_observations(console: str, *, target: str, simulator: str, cycles: Any,
-                          oracle: Any = None) -> "tuple[list[dict] | None, dict | None]":
-    """The per-unit activity block a bracketed run's hardware counters carry — or ``(None, None)``.
-
-    A target whose RTL counts the cycles each COMBINATION of engines was busy already measures joint
-    occupancy; the harness has been able to bracket a kernel with those counters for some time, and the
-    readings then reached the console and stopped there. Every consumer of an activity vector
-    (``headroom.composition_operator``, ``falsifier``'s eta, the envelope's operator) was refusing with
-    "at least one activity source" while the source was being printed and discarded.
-
-    Silent and byte-identical for a target with no counter header, and for a run that was not bracketed
-    (the bracket is opt-in precisely so a graded round's verdicts stay comparable to the rounds before
-    it). Derivation failures are swallowed rather than propagated: this is additive evidence beside a
-    correctness verdict, and it may never be the reason a capsule fails to grade.
-
-    **Refused unless the oracle is RTL-derived**, on exactly the basis its CYCLE count is. A functional
-    model executes the program correctly without modelling the engines, so its counter CSRs are not an
-    occupancy reading of anything: measured on one, a 52-cycle window came back with per-engine busy
-    totals in the thousands. Those numbers are not imprecise, they are about a different machine, and
-    a composition operator derived from them would be a fabrication wearing a measurement's provenance.
-    """
-    from merlin.perf import hw_counters as _HC
-    from merlin.perf import observations as _OBS
-    if not (isinstance(oracle, Mapping) and oracle.get("derived_from_rtl") is True):
-        return None, None                          # functional model: not an occupancy instrument
-    try:
-        values = _HC.parse_counter_output(console or "")
-        if not values:
-            return None, None                      # not bracketed: no capability claimed, no zeros
-        found = _HC.counters_for_target(target)
-        if found.get("status") != "derived":
-            return None, None
-        counters = _HC.derive_occupancy_counters(Path(found["header"]).read_text(encoding="utf-8"))
-        total = int(cycles) if isinstance(cycles, int) or (isinstance(cycles, str)
-                                                           and str(cycles).isdigit()) else None
-        block = _HC.observations_from_counters(
-            values, counters, total_cycles=total,
-            source=f"{target} {counters.prefix}_* combination counters ({simulator})")
-        validated = _OBS.validate_block(block)
-        if validated is None:
-            return None, None
-        return ([dict(o) for o in validated.observations] or None), validated.to_dict()
-    except Exception:                              # noqa: BLE001 — never fail a graded run for evidence
-        return None, None
+    result = {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles", 0),
+              "oracle": backend.ORACLE[simulator], "elf": str(elf), "console": console,
+              "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
+                         "oracle_wait_s": 0.0}}
+    # Counter markers are a target-independent wire protocol.  The event names/codes remain the
+    # target's own: this boundary merely preserves readings the runner already paid to collect.  If
+    # they exactly cover a structurally derived joint-occupancy block, compute eta; otherwise retain
+    # the raw named readings without guessing what they mean.
+    from merlin.perf import hw_counters
+    readings = hw_counters.parse_counter_output(console)
+    if readings:
+        discovery = hw_counters.counters_for_target(target)
+        measured_schema = hw_counters.parse_counter_schema(console)
+        report: dict[str, Any] = {"status": "measured", "readings": readings,
+                                  "discovery": discovery,
+                                  "measured_header_sha256": measured_schema}
+        if (discovery.get("status") == "derived"
+                and measured_schema == discovery.get("header_sha256")):
+            header = Path(discovery["header"]).read_text(encoding="utf-8", errors="replace")
+            occupancy = hw_counters.derive_occupancy_counters(header)
+            required = set(occupancy.by_combination.values())
+            if required and required <= set(readings):
+                report["occupancy"] = occupancy.to_dict()
+                partition_reader = getattr(backend, "counter_partition_inputs", None)
+                partition = partition_reader() if callable(partition_reader) else {
+                    "status": "unknown",
+                    "why": "the target backend exposes no CIRCT counter-partition artifact",
+                }
+                if partition.get("status") == "available":
+                    report["overlap"] = hw_counters.eta_from_counters(
+                        readings, occupancy, hw_text=partition["hw_text"],
+                        codes=hw_counters.event_codes(header), module=partition["module"],
+                        counter_module=partition["counter_module"],
+                        measurement_cycles=raw.get("cycles"), source=partition["source"])
+                else:
+                    report["overlap"] = {
+                        "state": "unknown", "eta": None,
+                        "why": partition.get("why", "CIRCT counter-partition proof is unavailable"),
+                    }
+        elif discovery.get("status") == "derived":
+            report["status"] = "unknown"
+            report["overlap"] = {
+                "state": "unknown", "eta": None,
+                "why": "the measured ELF counter-schema digest does not match current discovery",
+            }
+        result["counters"] = report
+    return result
