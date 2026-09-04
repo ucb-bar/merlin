@@ -177,9 +177,16 @@ FIELD_REGISTRY: dict[str, FieldSpec] = {
     "simt.smem_resident": FieldSpec("simt.smem_resident", BACKEND_STUB, ("simt",),
                                     "operand tile staged in shared memory across the reduction "
                                     "-> residency lever (routes pending)"),
-    "simt.barriers_in_loop": FieldSpec("simt.barriers_in_loop", BACKEND_STUB, ("simt",),
+    # PROMOTED out of BACKEND_STUB on the condition stated just above ("until the lifter that fills them
+    # and the routes that expose them land"): the role lifter populates SimtFacet.barriers_in_loop from
+    # the sync role it counts in the emitted stream, and targetgen/rtl_backend DERIVES the route + its
+    # CODEGEN ladder for any endpoint whose own instruction table binds a sync role on a simt engine.
+    # Both halves exist, so leaving it a stub made the derived route an ORPHAN and the bijection dirty
+    # for every SIMT target -- the check reporting a gap in its own bookkeeping, not in the compiler.
+    # Family-indirect like spatial.*: it counts as a lever only for a target that actually routes it.
+    "simt.barriers_in_loop": FieldSpec("simt.barriers_in_loop", LEVER, ("simt",),
                                        "barriers inside the reduction loop -> hw-sync placement "
-                                       "(the region with no cca_axes today)"),
+                                       "(an endpoint that binds a sync role implies this lever)"),
     "simt.divergence": FieldSpec("simt.divergence", BACKEND_STUB, ("simt",),
                                  "uniform vs divergent control flow -> predication/partition lever"),
     # --- dispatch: HOW the endpoint is driven (engine-AGNOSTIC: everything is driven by something) ---

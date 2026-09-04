@@ -203,8 +203,49 @@ def _tool_only_bundle(te, arm: str, bundle: dict) -> dict:
     }
 
 
+#: The instruction the ISA round-trip asks the broker to assemble when the target's own derived model
+#: cannot name one. Kept as the previous behaviour for every endpoint that already answered it.
+_ASM_PROBE_FALLBACK = "FENCE"
+
+
+def _asm_probe_mnemonic(target: str) -> str:
+    """An instruction name the ARM the broker will actually take can assemble for THIS target.
+
+    The probe used to ask for one fixed RISC-V mnemonic. That is an assumed ISA constant, and it is not
+    true of every endpoint: an ISA derived from a core's own RTL decoder names instruction CLASSES, so
+    the round-trip asked for an instruction the target does not have and the gate reported the promised
+    ISA tools BROKEN for correctly refusing to invent one.
+
+    Routed exactly as ``isa_tools_broker`` routes the request, so the probe and the broker cannot
+    disagree: a RoCC/``inline_asm_insn`` endpoint is answered by ``rocc_asm`` (which knows nothing of the
+    IsaModel), so the fallback is kept for it unchanged; every other endpoint is answered from the derived
+    :class:`~merlin.targetgen.isa_model.IsaModel`, so the mnemonic comes from that model — the fallback
+    when it defines it, otherwise the model's own first opcode. Any failure to resolve leaves the
+    fallback, so the broker (not this helper) reports a target whose tools are genuinely dead.
+    """
+    try:
+        import isa_tools_broker as _IB
+        from merlin.targetgen import capsule_runner as _CR
+        if _IB.is_rocc_endpoint(_CR._endpoint_of(target)[0]):
+            return _ASM_PROBE_FALLBACK
+        from merlin.targetgen.isa_model import isa_model_for_target
+        model = isa_model_for_target(target)
+    except Exception:  # noqa: BLE001 -- unresolvable endpoint/model: the broker reports it, not this helper
+        return _ASM_PROBE_FALLBACK
+    if model.resolve(_ASM_PROBE_FALLBACK) is not None:
+        return _ASM_PROBE_FALLBACK
+    if model.is_fixed_format():
+        if _ASM_PROBE_FALLBACK in model.opcode_table:
+            return _ASM_PROBE_FALLBACK
+        names = sorted(model.opcode_table)
+        if names:
+            return names[0]
+    return _ASM_PROBE_FALLBACK
+
+
 def _authoring_probe(target: str) -> str:
     """Python body run inside the real bwrap after immutable materialization."""
+    asm_probe = _asm_probe_mnemonic(target)
     return textwrap.dedent(f"""
         from merlin.targetgen.evidence.store import Evidence
         from merlin.targetgen import rtl_backend as RB
@@ -283,7 +324,7 @@ def _authoring_probe(target: str) -> str:
         print("AUTHORING_IMPORTS_AND_OUTPUTS_OK")
 
         isa = subprocess.run(
-            [sys.executable, "isa_tools.py", "asm", "FENCE"],
+            [sys.executable, "isa_tools.py", "asm", {asm_probe!r}],
             capture_output=True, text=True, timeout=30)
         assert isa.returncode == 0, (isa.stdout, isa.stderr)
         isa_result = json.loads(isa.stdout)

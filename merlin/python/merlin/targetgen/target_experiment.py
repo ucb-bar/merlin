@@ -11,6 +11,7 @@ and registers its RTL with mlc; no per-target code.
 from __future__ import annotations
 
 import hashlib
+import os
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -526,6 +527,60 @@ class TargetExperiment:
         """
         h = self.hidden_corpus()
         return [repo_root() / h] if h else []
+
+
+#: The descriptor's file NAME is the invariant; which tree it hangs off is not. Globbing for it (rather
+#: than typing one experiment layout) keeps this resolver working for a target whose descriptor lives
+#: somewhere else, and means a descriptor that MOVES is still discovered.
+_DESCRIPTOR_FILE = "target_experiment.yaml"
+_DESCRIPTOR_GLOBS = ("*/*/targets/{t}/{f}", "*/targets/{t}/{f}", "targets/{t}/{f}")
+
+
+def _declared_target(descriptor: Path) -> str | None:
+    """The ``target`` a descriptor declares, or None when it is unreadable/not a descriptor.
+
+    Deliberately a cheap YAML read rather than :func:`load_target_experiment`: this is used to SCAN, and
+    a validation error in one target's descriptor must not hide another target's descriptor.
+    """
+    try:
+        doc = yaml.safe_load(descriptor.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    name = doc.get("target") if isinstance(doc, dict) else None
+    return str(name) if name else None
+
+
+def descriptor_for(target: str) -> Path | None:
+    """The ``target_experiment.yaml`` that DECLARES ``target``, or None when the target ships none.
+
+    Resolution: ``$MERLIN_TARGET_EXPERIMENT`` when it names THIS target (so a run pointed at one
+    descriptor is never served another), then the ``targets/<target>/`` convention, then a scan of every
+    discoverable descriptor for one whose ``target:`` matches — because A DIRECTORY NAME IS NOT ALWAYS
+    THE TARGET NAME (see :func:`~merlin.targetgen.target_registry.declared_target_for`).
+
+    Returns None rather than raising: a caller that cannot find a descriptor must degrade to the naming
+    convention, not fail.
+    """
+    from merlin.common.paths import merlin_dir
+
+    env = os.environ.get("MERLIN_TARGET_EXPERIMENT")
+    if env:
+        p = Path(env)
+        # `is_file()` is the load-bearing half: an agent sandbox inherits this variable from the launcher
+        # while the path it names is masked, and a descriptor that cannot be READ must fall through to the
+        # conventions below rather than be treated as found.
+        if p.is_file() and _declared_target(p) == target:
+            return p
+    root = merlin_dir()
+    for pattern in _DESCRIPTOR_GLOBS:
+        for cand in sorted(root.glob(pattern.format(t=target, f=_DESCRIPTOR_FILE))):
+            if cand.is_file() and _declared_target(cand) == target:
+                return cand
+    for pattern in _DESCRIPTOR_GLOBS:
+        for cand in sorted(root.glob(pattern.format(t="*", f=_DESCRIPTOR_FILE))):
+            if cand.is_file() and _declared_target(cand) == target:
+                return cand
+    return None
 
 
 def load_target_experiment(descriptor: str | Path) -> TargetExperiment:

@@ -206,7 +206,12 @@ def _handle(req: dict, ctx: BrokerCtx | None = None) -> dict:
             words = isa_asm.assemble_text(model, req.get("text", ""))
         except isa_asm.AssembleError as e:
             return {"error": str(e)}
-        return {"words": [f"0x{w:08x}" for w in words], "word_lines": isa_asm.to_word_lines(words),
+        # Rendered at the target's OWN instruction width. A 64-bit wide-word core assembled through a
+        # 32-bit `.word` would hand the agent a TRUNCATED instruction that still looks like a result;
+        # `to_data_lines` emits `.quad` above 32 bits and is byte-identical at 32.
+        nibbles = max(8, (int(getattr(model, "inst_width", 32)) + 3) // 4)
+        return {"words": [f"0x{w:0{nibbles}x}" for w in words],
+                "word_lines": isa_asm.to_data_lines(words, getattr(model, "inst_width", 32)),
                 "n": len(words)}
 
     if cmd in ("disasm", "lint"):

@@ -79,12 +79,27 @@ def _parse_operands(rest: str) -> dict[str, int]:
     return ops
 
 
+def _assemble_one(model: IsaModel, mnemonic: str, operands: dict[str, int]) -> int:
+    """One instruction, through whichever encoding the DERIVED model actually carries.
+
+    A FIXED-FORMAT model (one opcode-selected field layout, from the mlc ``isa_encoding`` derivation)
+    keeps its ops in ``opcode_table`` and leaves ``by_mnemonic`` empty, so the per-op signature path
+    cannot see a single one of them. ``assemble_text`` only ever took that path, so a target whose whole
+    ISA is derived from its RTL decoder got "ships no ISA definition" from an assembler holding its
+    complete encoding — the promised ISA-dev tool was dead for exactly the targets whose ISA we derive
+    best. Route by what the model HAS, not by which derivation produced it.
+    """
+    if model.is_fixed_format() and model.resolve(mnemonic) is None:
+        return assemble_fixed(model, mnemonic, operands)
+    return assemble_line(model, mnemonic, operands)
+
+
 def assemble_text(model: IsaModel, text: str) -> list[int]:
     """Assemble a small mnemonic listing → the list of 32-bit words. One instruction per line:
     ``MNEMONIC field=value, field=value``. Also accepts ``.word 0x..`` / ``.word 123`` literal passthrough
     (for encodings the agent wants to hand-place) and skips blank lines and ``#`` / ``//`` / ``;`` comments.
     Raises :class:`AssembleError` (with the 1-based line number) on any line it cannot encode faithfully."""
-    if model.is_empty():
+    if model.is_empty() and not model.is_fixed_format():
         raise AssembleError("this target ships no ISA definition; the derived assembler is unavailable")
     words: list[int] = []
     for lineno, raw in enumerate(text.splitlines(), start=1):
@@ -96,7 +111,7 @@ def assemble_text(model: IsaModel, text: str) -> list[int]:
             if head == ".word":
                 words.append(int(rest.strip(), 0) & 0xFFFFFFFF)
             else:
-                words.append(assemble_line(model, head, _parse_operands(rest)))
+                words.append(_assemble_one(model, head, _parse_operands(rest)))
         except AssembleError as e:
             raise AssembleError(f"line {lineno}: {e}") from None
     return words

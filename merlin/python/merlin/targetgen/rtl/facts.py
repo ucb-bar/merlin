@@ -1,11 +1,15 @@
 """Target-agnostic resolution of RTL-derived facts and the introspect run/cache location.
 
 RTL facts are a **generated artifact**: they are what our CIRCT/firtool tooling EXTRACTS from the
-target's RTL (``circt_introspect`` -> the HW-dialect decoder/op graph), never a hand-committed file.
-There is no committed ``facts.json`` pin any more — the artifact lives in the **purgeable** cache
-(``out/artifacts/cache/rtl_introspect/<target>/facts.json``, gitignored) and is REGENERATED on demand
-by :func:`ensure_facts` when the cache is cold. A target's only tracked definition is its reviewed
-yaml (``target_contract.yaml`` + the human-owned ``dialect_plan.yaml``).
+target's RTL (``circt_introspect`` -> the HW-dialect decoder/op graph), never a hand-written file. The
+working copy lives in the **purgeable** cache (``out/artifacts/cache/rtl_introspect/<target>/facts.json``,
+gitignored) and is REGENERATED on demand by :func:`ensure_facts` when the cache is cold.
+
+A target MAY also ship a REVIEWED pin of that extraction in its backend package
+(``<package>/contracts/rtl_facts/facts.json``). That pin is what makes the artifact reachable where the
+RTL is not — above all inside the agent sandbox, which grants the pin and masks both the external RTL
+checkout and the purgeable cache. :func:`_committed_facts_path` resolves it; see that function for why
+the package is not always named after the target.
 
 This module is the single place that maps a target name -> its facts artifact and its purgeable
 scratch dir, so no consumer hardcodes the gemmini path (they used to, with three different
@@ -50,17 +54,108 @@ def rtl_facts_path(target: str, *, explicit: str | Path | None = None) -> Path:
         return Path(env)
     return rtl_cache_dir(target) / "facts.json"
 
+def _facts_declares(path: Path) -> str | None:
+    """The target a committed facts artifact says it is ABOUT (``facts.target``), or None when it says
+    nothing / cannot be read. Pure content — this is how a pin is matched to a target without trusting
+    the directory it happens to sit in."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    body = doc.get("facts") if isinstance(doc, dict) else None
+    name = body.get("target") if isinstance(body, dict) else None
+    return str(name) if name else None
+
+
+def _committed_facts_candidates(target: str):
+    """Every place ``target``'s reviewed pin could live, best first. All DERIVED, no per-target literal.
+
+    1. Where the target's OWN DESCRIPTOR says its contracts live (``backend_package_dir`` ->
+       :attr:`~merlin.targetgen.target_experiment.TargetExperiment.rtl_facts_pin`). This is the same
+       string the BUNDLE GENERATOR grants, so the accessor looks exactly where the sandbox mounts.
+    2. The naming convention ``merlin/targets/<target>/contracts/rtl_facts/`` — true whenever the
+       experiment target and the package that serves it share a name.
+    3. The package the TARGET REGISTRY resolves (an out-of-tree package's ``contracts/rtl_facts/``),
+       the same "the manifest says WHAT, the registry says WHERE" split
+       :func:`merlin.targetgen.sandbox.bwrap._resolve_target_package_grant` already uses for the mount.
+    4. Any committed package pin that DECLARES this target. A TARGET'S PACKAGE DOES NOT ALWAYS SHARE ITS
+       NAME (a SoC served by its core's package), and inside the agent sandbox neither the descriptor nor
+       the target contract is mounted — the granted pin itself is the only thing that can say who it is
+       for, so it is asked.
+    """
+    from merlin.common.paths import repo_root, targets_dir
+
+    seen: set[Path] = set()
+
+    def _emit(cand):
+        if cand is None:
+            return None
+        cand = Path(cand)
+        if cand in seen:
+            return None
+        seen.add(cand)
+        return cand
+
+    try:
+        from merlin.targetgen.target_experiment import descriptor_for, load_target_experiment
+        desc = descriptor_for(target)
+        if desc is not None:
+            got = _emit(repo_root() / load_target_experiment(desc).rtl_facts_pin / "facts.json")
+            if got is not None:
+                yield got
+    except Exception:  # noqa: BLE001 - no/unreadable descriptor: fall through to the conventions below
+        pass
+
+    try:
+        root = targets_dir()
+    except Exception:  # noqa: BLE001 - no targets root here means no committed artifact
+        root = None
+    if root is not None:
+        got = _emit(root / target / "contracts" / "rtl_facts" / "facts.json")
+        if got is not None:
+            yield got
+
+    try:
+        from merlin.targetgen import target_registry
+        resolved = Path(target_registry.resolve(target).facts_path)
+    except Exception:  # noqa: BLE001 - unresolvable target: nothing to add
+        resolved = None
+    # The registry hands a REFERENCE target the purgeable cache path, which `ensure_facts` has already
+    # tried and which is not a committed artifact in any case; only a package-owned pin is a candidate.
+    if resolved is not None and resolved != rtl_facts_path(target):
+        got = _emit(resolved)
+        if got is not None:
+            yield got
+
+    if root is not None and root.is_dir():
+        for cand in sorted(root.glob("*/contracts/rtl_facts/facts.json")):
+            got = _emit(cand)
+            if got is not None and _facts_declares(got) == target:
+                yield got
+
+
 def _committed_facts_path(target: str):
     """The reviewed, in-tree RTL-facts artifact for ``target``, or None when it ships none.
 
-    Derived from the targets root -- no per-target literal -- so a new target is covered by dropping its
-    facts file in the same place."""
-    from merlin.common.paths import targets_dir
-    try:
-        p = targets_dir() / target / "contracts" / "rtl_facts" / "facts.json"
-    except Exception:  # noqa: BLE001 - no targets root here means no committed artifact
-        return None
-    return p if p.is_file() else None
+    Candidates come from :func:`_committed_facts_candidates` (derived — no per-target literal) and are
+    accepted only when the artifact does not claim to be about a DIFFERENT target. That content check is
+    what lets one package hold the pin of the SoC it serves without that pin being handed back for the
+    package's own name: a pin is matched to a target by what it SAYS, never by where it sits.
+
+    What this closes: an experiment target served by a differently-named core package looked for its pin
+    under its own name, where nothing can ever exist. The cache is not granted in the agent sandbox, so
+    both lookups missed, regeneration produced ``facts: {}`` (the external RTL is deliberately not
+    exposed), and every RTL-derived authoring tool the arm is granted raised ``FactsEmpty`` — measured on
+    the SIMT target as an all-``None`` ``rtl_backend.target_profile`` and a launch NO-GO, while the bundle
+    it was handed mounted a perfectly good artifact.
+    """
+    for cand in _committed_facts_candidates(target):
+        if not cand.is_file():
+            continue
+        declared = _facts_declares(cand)
+        if declared is None or declared == target:
+            return cand
+    return None
 
 
 
