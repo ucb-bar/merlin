@@ -31,6 +31,7 @@ string, not a number.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -71,7 +72,9 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
     the "fp32" key grades int8 output by fp32 rules and, worse, hides that the w8a8 tier was never in
     play. `_gate` reports `tiers` / `tier_ok` for exactly that reason.
     """
+    from merlin.baselines import rvv_audit as _rvv_audit
     walls, gated, blocker = [], 0, None
+    rvv_cov = None
     conds = []
     last_tiers = last_tier_ok = last_cos = last_rel = None
     last_gate = None
@@ -92,6 +95,22 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
                 continue
             walls.append(res["metrics"]["wall_ns"])
             gated += 1
+            # IS THIS EVEN VECTORIZED? A transform failure is caught as a whole-model scalar
+            # fallback, which is CORRECT and much slower -- bit-identical numerics with a 5x wall.
+            # Without this the two are indistinguishable from the outside, and the regression gets
+            # attributed to the lever's tiling choice instead of to the lever not surviving lowering.
+            if rvv_cov is None:
+                obj = work_root / f"ours_{i}" / "rvv" / "model.o"
+                if obj.is_file():
+                    try:
+                        rep = _rvv_audit.audit_binary(obj)
+                        rvv_cov = {"coverage_overall": rep.coverage_overall,
+                                   "vector": rep.vector, "scalar_compute": rep.scalar_compute,
+                                   "scalar_fallback_symbols": sorted(
+                                       n for n, sym in rep.by_symbol.items()
+                                       if sym.is_scalar_fallback)[:12]}
+                    except Exception as _e:      # never let a diagnostic break a measurement
+                        rvv_cov = {"error": f"{type(_e).__name__}: {_e}"}
             print(f"  [ours {i}] wall_ns={res['metrics']['wall_ns']} cos={cos:.7f} rel={rel} "
                   f"tier_ok={g.get('tier_ok')} tiers={g.get('tiers')}", flush=True)
         except Exception as e:  # noqa: BLE001
@@ -112,7 +131,10 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
             "accuracy_reference_by_tier": {"fp32": "capture_golden_fp32",
                                            "w8a8": "capture_golden_w8a8"},
             "protocol": {"warmup": warmup, "iters": iters, "launches": n, "pick": "min-of-n"},
-            "board_conditions": conds, "blocker": blocker}
+            "board_conditions": conds, "blocker": blocker,
+            # Vector coverage of the code that produced these walls. A wall without it cannot
+            # distinguish "this lever is slow" from "this lever did not survive lowering".
+            "rvv": rvv_cov}
 
 
 def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int) -> dict:
@@ -281,8 +303,17 @@ def main() -> None:
         raise SystemExit(f"{md} ships no golden to gate against")
     print(f"[golden] tiers={sorted(refs)}  [bundle] {md.name}", flush=True)
 
-    work = Path(repo_root()) / "out" / "build" / "fair_compare" / md.name
+    # Key the build tree by the FEATURE SET as well as the bundle. One directory per bundle means
+    # the next run overwrites the emitted object of the last one, and the emitted object is the only
+    # thing that can explain a result: a 5.1x regression whose numerics were bit-identical -- the
+    # signature of a silent scalar fallback -- became un-diagnosable because the control run
+    # launched to attribute it had already replaced the binary that produced it.
+    _feat_key = hashlib.sha256(",".join(sorted(feats or ())).encode()).hexdigest()[:10] if feats \
+        else "nofeatures"
+    work = Path(repo_root()) / "out" / "build" / "fair_compare" / md.name / _feat_key
     work.mkdir(parents=True, exist_ok=True)
+    (work / "FEATURES.txt").write_text("\n".join(sorted(feats or ())) + "\n", encoding="utf-8")
+    print(f"[work] {work}", flush=True)
 
     rec: dict = {"model": a.model, "ours_bundle": md.name, "package": Path(a.baseline).name,
                  "golden_tiers": sorted(refs), "started": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())}

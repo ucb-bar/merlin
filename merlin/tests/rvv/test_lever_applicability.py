@@ -101,3 +101,25 @@ def test_named_features_resolve_their_own_schedules():
     assert inapplicable_features(feats, {"func.func": 1, "linalg.matmul": 15}) == {}
     # unknown names are skipped rather than guessed at
     assert inapplicable_features({"no_such_feature"}, {"func.func": 1}) == {}
+
+
+def test_the_harness_records_vector_coverage_and_isolates_its_build_tree():
+    """Two failures of evidence, both hit while diagnosing a 5.1x regression whose numerics were
+    BIT-IDENTICAL -- the signature of a silent scalar fallback:
+
+      * nothing recorded whether the emitted code was vectorized at all, so "this lever is slow" and
+        "this lever did not survive lowering" were indistinguishable from the outside;
+      * the build tree was keyed by bundle alone, so the control run launched to attribute the
+        regression overwrote the binary that produced it.
+    """
+    from merlin.common.paths import repo_root
+    src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
+    # coverage is recorded beside the wall
+    assert "_rvv_audit.audit_binary(obj)" in src
+    assert '"coverage_overall": rep.coverage_overall' in src
+    assert '"scalar_fallback_symbols"' in src
+    # and it can never break a measurement
+    assert "never let a diagnostic break a measurement" in src
+    # the build tree is keyed by the feature set, not just the bundle
+    assert '"fair_compare" / md.name / _feat_key' in src
+    assert 'FEATURES.txt' in src
