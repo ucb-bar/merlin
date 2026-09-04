@@ -576,6 +576,16 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                   f"{_why['present']} — this feature cannot fire and will measure as a no-op")
     except Exception as _e:                      # a diagnostic must never break a build
         print(f"[lever] applicability check unavailable: {type(_e).__name__}: {_e}")
+    # PROVENANCE STRIP, first of the prepared-module rewrites because it only removes METADATA: every
+    # derivation below (contraction shapes, the per-op block table, the register-group width) sees the
+    # same ops it saw before, and the dedup itself is done by the pipeline's own leading
+    # `canonicalize,cse` -- which cannot see two identical ops as one while their `prov.region_id`
+    # differs. Measured on small_llama int8: 33 more linalg.generic collapse (163 -> 112 instead of
+    # 163 -> 145), including 7 of the 8 identical rotary `math.cos` and 7 of the 8 `math.sin`.
+    from ...llvmlower.prov_cse import FEATURE as _CSE_PROV_NAME
+    if _CSE_PROV_NAME in features:
+        from ...llvmlower.prov_cse import rewrite_prepared_file as _strip_prov
+        prepared = _strip_prov(prepared, work)
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
