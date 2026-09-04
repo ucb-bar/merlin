@@ -26,6 +26,7 @@ from ..common.yaml import load_yaml, write_yaml
 from ..llvmlower import custom_isa, pipeline
 from ..runtime.backends import zephyr_model as zm
 from . import k1 as k1mod
+from ..llvmlower import codegen_env as _codegen_env
 from .apply import apply_rvv_package
 from .registry import RvvPackage, load_rvv_package
 
@@ -226,7 +227,17 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
                                            # an EXTERNAL wall and absorbed the whole factor
                                            # (0.634 -> 1.287 on the same winner). Nothing in the
                                            # artifact could catch it because nothing recorded this.
-                                           "board_conditions": kr.get("board_conditions")})
+                                           "board_conditions": kr.get("board_conditions"),
+                                           # What the COMPILER ran under. knobs.yaml does not
+                                           # determine the binary on its own: the lowering path
+                                           # reads a couple of dozen MERLIN_* variables and several
+                                           # steer codegen (the per-op block cap, vectorize-rank
+                                           # tagging, OPU packing and alignment, worker stack). Two
+                                           # runs with identical recorded configuration emitted
+                                           # different binaries and ran 1.61x apart with nothing
+                                           # able to say why.
+                                           "codegen_env": _codegen_env.snapshot(),
+                                           "codegen_env_digest": _codegen_env.digest()})
                 # K1 correctness gate: when spike did NOT gate (absent / not a target), the K1 output
                 # vs golden IS a real-silicon correctness signal — gate on it (same zm._gate the spike
                 # path uses) so the beam can rank forks on measured K1 speedup WITHOUT spike. K6 speedup

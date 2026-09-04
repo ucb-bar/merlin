@@ -185,6 +185,7 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict,
     # the schedule at all -- measured across several models, 86-89% of linalg ops never reached the
     # vectorized path. None when either factor is unknown, because an unknown factor is not 1.0, and
     # None for a fast wrong answer rather than a number with a caveat attached.
+    from merlin.llvmlower import codegen_env as _codegen_env
     cov = (result.get("coverage") or {})
     objective = _meas.whole_model_objective(cov.get("claimed_mac_fraction"),
                                             cov.get("attainment"), numerics_ok=gate_ok)
@@ -209,6 +210,12 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict,
            # Which substrate each number came from, so a reader never has to infer it. A number whose
            # provenance is inferred is a number that gets attributed to the wrong device.
            "cycles_from": _cyc_from, "wall_from": _wall_from,
+           # The ENVIRONMENT the compiler ran under. A configuration that does not determine the
+           # binary is not a configuration: two nodes with byte-identical knobs.yaml emitted
+           # different binaries (210dbfe9a01c44aa vs 2efd837676ff75cd) and ran 1.61x apart, and
+           # nothing recorded could explain it because nothing recorded this.
+           "codegen_env": _codegen_env.snapshot(),
+           "codegen_env_digest": _codegen_env.digest(),
            # Under WHAT the wall was measured. Two runs of the byte-identical frozen seed measured
            # 1.9915x apart with nothing in either artifact able to show it; a wall without its
            # conditions cannot be compared to a wall measured at another time.
