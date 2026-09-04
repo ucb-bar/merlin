@@ -16,6 +16,8 @@ Exit 0 = GO. Non-zero = NO-GO.  Usage: readiness_check.py
 """
 from __future__ import annotations
 import importlib
+import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -709,6 +711,53 @@ def test_every_grant_survives_the_assembled_sandbox():
         not uniq, detail)
 
 
+def _kill_our_simulators(token: str = "simulator-chipyard") -> None:
+    """Kill the simulators THIS check started, and nothing else.
+
+    This used to be `pkill -9 -f simulator-chipyard`, which matches by command line across the whole
+    machine. On a shared host that is somebody else's run: this repo has a standing rule against a broad
+    pkill for exactly that reason, and a gemmini perf-bench sim from another worktree matches the same
+    token. A readiness probe cleaning up after itself must not be able to end an unrelated experiment.
+
+    Walk /proc instead and keep only processes whose ancestry leads back to THIS pid, so the blast radius
+    is the subtree we created. Anything unreadable or already gone is skipped -- cleanup is best-effort by
+    nature and must never raise into the caller's `finally`.
+    """
+    me = os.getpid()
+    try:
+        pids = [int(d) for d in os.listdir("/proc") if d.isdigit()]
+    except OSError:
+        return
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                cmd = fh.read().replace(b"\x00", b" ").decode("utf-8", "replace")
+        except OSError:
+            continue
+        if token not in cmd:
+            continue
+        # Ours only: climb PPid to see whether this process descends from this checker.
+        cur, ours = pid, False
+        for _ in range(64):                      # bounded: a cycle or a reparent must not spin
+            if cur == me:
+                ours = True
+                break
+            if cur <= 1:
+                break
+            try:
+                with open(f"/proc/{cur}/status", encoding="utf-8") as fh:
+                    ppid = next((int(ln.split()[1]) for ln in fh if ln.startswith("PPid:")), 0)
+            except (OSError, StopIteration, ValueError):
+                break
+            cur = ppid
+        if not ours:
+            continue
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
 def _oracle_sim_via() -> str:
     """The target's declared bespoke sim (``toolchain.sim_via``) — ``"chipyard"`` for gemmini, ``""``
     (arc-only / program oracle) for a self-hosted-ISA target like atlas. Routes section G, no literal."""
@@ -915,7 +964,7 @@ def test_oracles_endtoend():
         _ok("empty submission -> NO-GO signal (0 capsules / error)",
             ne.get("n_capsules", 0) == 0 or "error" in ne, str(ne.get("error", ""))[:50])
     finally:
-        subprocess.run(["pkill", "-9", "-f", "simulator-chipyard"], capture_output=True)
+        _kill_our_simulators()
 
 
 # ---- K. semantic coverage is MEASURABLE (not: is the score good) ----------------------------------
