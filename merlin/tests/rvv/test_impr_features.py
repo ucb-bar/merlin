@@ -548,3 +548,68 @@ def test_the_promotion_cap_is_env_overridable_and_fails_closed():
             os.environ.pop(F.PROMOTE_STACK_BYTES_ENV, None)
         else:
             os.environ[F.PROMOTE_STACK_BYTES_ENV] = old
+
+
+def test_a_sized_promotion_variant_names_its_cap_in_the_emitted_pass():
+    """The cap must reach the emitted pass, because that is the whole point of the sized variant.
+
+    The cap was reachable ONLY through MERLIN_PROMOTE_STACK_BYTES, and no fork can vary an
+    environment variable -- so the beam always built at the 16 KB default (measured 1.03x) and ranked
+    the lever below levers it should beat, while the same feature at 256 KB is 1.34x on that model.
+    """
+    from merlin.llvmlower import impr_features as F, pipeline as pl
+    base = list(pl._UPSTREAM_PASSES)
+
+    sized = F.apply_pipeline(base, frozenset({F.ensure_promote_stack(262144)}))
+    assert [p for p in sized if "promote-buffers" in p] == [
+        "func.func(promote-buffers-to-stack{max-alloc-size-in-bytes=262144})"]
+
+    # the variant AT the default value must emit exactly what the unsized feature emits -- if those
+    # two ever diverge, the ladder's bottom rung stops being a control arm for the plain feature.
+    at_default = F.apply_pipeline(base, frozenset({F.ensure_promote_stack(
+        F._PROMOTE_STACK_DEFAULT_BYTES)}))
+    plain = F.apply_pipeline(base, frozenset({F.PROMOTE_STACK_NAME}))
+    assert ([p for p in at_default if "promote-buffers" in p]
+            == [p for p in plain if "promote-buffers" in p])
+
+
+def test_sized_variants_leave_the_frozen_baseline_byte_identical():
+    """Registering on-demand variants must not perturb the empty-feature pipeline."""
+    from merlin.llvmlower import impr_features as F, pipeline as pl
+    base = list(pl._UPSTREAM_PASSES)
+    F.ensure_promote_stack(1048576)
+    F.perop_mr_sentinel(16)
+    assert F.apply_pipeline(base, frozenset()) == base
+
+
+def test_a_nonpositive_cap_is_refused_rather_than_silently_defaulted():
+    import pytest
+    from merlin.llvmlower import impr_features as F
+    for bad in (0, -1):
+        with pytest.raises(ValueError):
+            F.ensure_promote_stack(bad)
+        with pytest.raises(ValueError):
+            F.perop_mr_sentinel(bad)
+
+
+def test_the_mr_sentinel_parser_does_not_swallow_a_resolved_block_feature():
+    """`ensure_perop_block` mints names in the SAME `perop_register_block_*` namespace, so a
+    prefix-only test would read a RESOLVED feature as an unresolved sentinel and re-derive the block
+    table underneath it. The suffix must be all digits."""
+    from merlin.llvmlower import impr_features as F
+    assert F.parse_perop_mr_sentinel(F.perop_mr_sentinel(8)) == 8
+    assert F.parse_perop_mr_sentinel("perop_register_block") is None
+    assert F.parse_perop_mr_sentinel("perop_register_block_3b_128_deadbeef12") is None
+    assert F.parse_perop_mr_sentinel("perop_register_block_mr") is None
+    assert F.parse_perop_mr_sentinel("perop_register_block_mrx") is None
+
+
+def test_an_unresolved_mr_sentinel_raises_instead_of_lowering_untagged():
+    """Same contract as the plain sentinel: reaching lowering means nothing tagged the IR, every
+    contraction falls to convert-linalg-to-loops, and the build still reports success with correct
+    numbers -- the measured deepjscc '2.56x regression that is actually an untagged build'."""
+    import pytest
+    from merlin.llvmlower import impr_features as F
+    feat = F._REGISTRY[F.perop_mr_sentinel(8)]
+    with pytest.raises(RuntimeError, match="unresolved"):
+        feat.edit_pipeline(["canonicalize"])

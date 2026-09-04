@@ -73,11 +73,20 @@ def test_mr_defaults_to_one_but_the_cap_is_a_cap_not_a_pin():
 
 def test_the_whole_model_backend_offers_the_measured_mr_cap():
     """The cap is only a lever if the whole-model path actually passes it -- a default-off knob nobody
-    passes is the failure mode this whole line of work is about."""
+    passes is the failure mode this whole line of work is about.
+
+    The call site used to read `mr_cap=perop_mr_cap()` literally. It now passes a RESOLVED `mr_cap`,
+    because the cap can also be named by a `perop_register_block_mr<N>` feature so the beam can search
+    it (an env var is unreachable from a fork). What must still hold is unchanged: the env default is
+    4, and block_table is called with a cap rather than defaulted underneath.
+    """
+    import inspect
+
     from merlin.runtime.backends import zephyr_model as zm
     assert zm.perop_mr_cap() == 4
-    src = (repo_root() / "merlin/python/merlin/runtime/backends/zephyr_model.py").read_text()
-    assert "mr_cap=perop_mr_cap()" in src, "block_table must be called with the MR cap"
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    assert "mr_cap=mr_cap" in prep, "block_table must be called with the MR cap"
+    assert "else perop_mr_cap()" in prep, "the env default must remain the unnamed fallback"
 
 
 def test_the_tag_names_the_op_class():
@@ -361,3 +370,43 @@ def test_the_n_fill_measurement_is_recorded_with_BOTH_signs():
     assert "1.160x faster" in desc and "1.196x slower" in desc
     assert "m4" in desc and "m8" in desc          # the mechanism, not just the numbers
     assert "search knob, not a default" in desc
+
+
+def test_the_named_mr_cap_reaches_the_block_table_and_beats_the_env():
+    """A cap accepted and dropped is the exact failure this seam has shipped before.
+
+    The MR cap was reachable only through MERLIN_PEROP_MR_CAP, and no fork can vary an environment
+    variable -- so the beam could never search it. `perop_register_block_mr<N>` names it in the
+    feature, which is the channel feature names already travel. Two properties must hold: the named
+    cap must reach `block_table`, and it must WIN over the ambient env so a fork's measurement
+    describes the fork rather than the shell it ran in.
+    """
+    import inspect
+
+    from merlin.runtime.backends import zephyr_model as zm
+
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    assert "mr_cap=mr_cap" in prep, "block_table must receive the resolved cap, not perop_mr_cap()"
+    # resolved from the sentinel when named, from the env only as a fallback
+    assert "mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()" in prep
+    # and the sentinel is swapped for the plain request so it can never reach lowering
+    assert "| {PEROP_BLOCK_NAME})" in prep
+
+
+def test_two_named_mr_caps_are_refused_rather_than_resolved_by_sort_order():
+    """Two caps in one feature set describe two different builds. Picking one by sorted order would
+    silently measure a config nobody asked for."""
+    import inspect
+
+    from merlin.runtime.backends import zephyr_model as zm
+
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    assert "conflicting per-op MR caps" in prep
+    assert "raise ValueError" in prep
+
+
+def test_an_unnamed_cap_still_reads_the_env_default():
+    """The fallback must be untouched: every existing caller passes no sentinel."""
+    from merlin.runtime.backends import zephyr_model as zm
+
+    assert zm.perop_mr_cap() == zm._PEROP_MR_CAP

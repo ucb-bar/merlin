@@ -515,3 +515,41 @@ def test_the_locality_lever_is_searched_not_defaulted():
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS
     assert "promote_buffers_to_stack" in [n for n, _ in RANKED_LEVERS]
     assert F._REGISTRY["promote_buffers_to_stack"].edit_pipeline is not None
+
+
+def test_refinements_cost_the_seed_generation_no_width():
+    """A magnitude is only meaningful once the lever it belongs to is enabled.
+
+    Putting every (lever, magnitude) pair in RANKED_LEVERS would multiply generation 1's width by the
+    ladder length -- and the run that motivated these knobs already deferred 11 of its 12 proposals
+    with `reason: over_width`. So refinements must be EMPTY at the seed and appear only once the
+    parent already carries the lever they retune.
+    """
+    from merlin.mining.wholemodel_proposer import refinement_forks
+
+    assert refinement_forks([]) == []
+    assert refinement_forks(["erase_self_copy"]) == []
+
+    mr = refinement_forks(["perop_register_block"])
+    assert mr, "per-op blocking in the parent must open the MR-cap axis"
+    assert all(f.targets.endswith(":mr_cap") for f in mr)
+
+    stack = refinement_forks(["promote_buffers_to_stack"])
+    assert stack, "stack promotion in the parent must open the cap axis"
+    assert all(f.targets.endswith(":cap") for f in stack)
+
+
+def test_a_refinement_replaces_the_magnitude_it_retunes_rather_than_stacking_it():
+    """Two caps for one lever describe two different builds; a fork must carry exactly one."""
+    from merlin.llvmlower import impr_features as I
+    from merlin.mining.wholemodel_proposer import refinement_forks
+
+    for fp in refinement_forks(["perop_register_block", "erase_self_copy"]):
+        feats = fp.overrides["compiler_features"]
+        assert I.PEROP_BLOCK_NAME not in feats, "the unpinned sentinel must be replaced, not kept"
+        assert sum(I.parse_perop_mr_sentinel(f) is not None for f in feats) == 1
+        assert "erase_self_copy" in feats, "unrelated parent features must survive"
+
+    for fp in refinement_forks(["promote_buffers_to_stack"]):
+        feats = fp.overrides["compiler_features"]
+        assert sum(f.startswith(I.PROMOTE_STACK_NAME) for f in feats) == 1

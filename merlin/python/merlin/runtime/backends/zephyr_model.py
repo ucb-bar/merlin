@@ -599,7 +599,8 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         return prepared, features
     from ...llvmlower import perop_blocks as _pb
     from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_NR_FILL_NAME,
-                                            ensure_perop_block)
+                                            ensure_perop_block, parse_perop_mr_sentinel,
+                                            PEROP_MR_SENTINEL_PREFIX)
     # The N-fill request is a SEARCH KNOB, off by default, because its sign is model-dependent: on the
     # K1 it measured 1.160x FASTER on spectformer int8 and 1.196x SLOWER on small_llama int8, both far
     # outside the 2.6% band. The accumulator is i32, not i8, so at VLEN=256 an NR=16 tile is already
@@ -607,6 +608,22 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # Passing vlen here is the ONLY thing that turns it on, so the default path is byte-identical.
     nr_fill_vlen = vlen if PEROP_NR_FILL_NAME in features else None
     features = features - {PEROP_NR_FILL_NAME}
+    # A `perop_register_block_mr<N>` sentinel is the same REQUEST with the MR cap named, so the beam
+    # can search a cap that was otherwise reachable only through MERLIN_PEROP_MR_CAP -- and no fork can
+    # vary an environment variable. Resolve it to the plain sentinel plus an explicit cap; the named
+    # cap WINS over the ambient env so a fork's measurement describes the fork, not the shell it ran
+    # in. Two different caps in one feature set is a contradiction with no correct answer, so refuse
+    # rather than let sorted-order pick one.
+    _mr_named = sorted({n for f in features if (n := parse_perop_mr_sentinel(f)) is not None})
+    if len(_mr_named) > 1:
+        raise ValueError(
+            f"conflicting per-op MR caps requested in one feature set: {_mr_named}. Each "
+            f"{PEROP_MR_SENTINEL_PREFIX}<N> pins the cap block_table derives under, so two of them "
+            f"describe two different builds; name exactly one.")
+    mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()
+    if _mr_named:
+        features = ({f for f in features if parse_perop_mr_sentinel(f) is None}
+                    | {PEROP_BLOCK_NAME})
     if PEROP_BLOCK_NAME in features:
         from ...kernels.shapes import contraction_shapes as _cshapes
         # The N-tile cap follows the board's vector length: a fixed element count on a wider unit
@@ -616,7 +633,7 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # each contraction's N cap is widened for ITS OWN narrowest element width; measured effect on
         # the block tables of the models on disk is MAC-weighted NR 16.00 -> 32.00 on every int8 model
         # and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
-        table = _pb.block_table(_cshapes(prepared), mr_cap=perop_mr_cap(),
+        table = _pb.block_table(_cshapes(prepared), mr_cap=mr_cap,
                                 nr_cap=perop_nr_cap(vlen), harts=harts, vlen=nr_fill_vlen)
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)

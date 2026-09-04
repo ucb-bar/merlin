@@ -263,6 +263,73 @@ def _feature_fork(feat: str, parent_feats: list[str], *, targets: str, evidence:
                         evidence=list(evidence), forkable=True, note=note, action=action)
 
 
+#: Search ladders for the two levers whose MAGNITUDE was reachable only through an environment
+#: variable, so no fork could vary it. Geometric rather than hand-picked: each rung doubles (MR) or
+#: quadruples (stack cap), which brackets the measured knees without asserting where they are --
+#: the knee is a per-model fact (stack promotion saturates past 256 KB on small_llama int8, MR gains
+#: nothing past 8 on small_llama fp32) and locating it is the search's job, not this list's.
+_MR_CAP_LADDER: tuple[int, ...] = (2, 4, 8, 16)
+_STACK_CAP_LADDER: tuple[int, ...] = (16384, 65536, 262144, 1048576)
+
+
+def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
+    """Forks that RETUNE a lever the parent already carries, rather than adding a new one.
+
+    Why these are separate from ``RANKED_LEVERS``: a magnitude is only meaningful once the lever it
+    belongs to is enabled, and putting every (lever, magnitude) pair in the flat list would multiply
+    generation 1's width by the ladder length. The run that motivated this already deferred 11 of 12
+    proposals with ``reason: over_width``, so spending width on caps for a lever that is not even in
+    the parent is exactly the wrong trade. Proposing them as REFINEMENTS keeps generation 1 the same
+    size and spends depth-N width on the axis the parent has already shown is worth having.
+
+    This is also the fix for a measured mis-ranking. Stack promotion was searched only at its 16 KB
+    default (env-only cap), measured 1.03x, and its fork came out slower than its own parent -- while
+    the same feature at 256 KB is 1.34x on that model. The lever was not weak; the magnitude was
+    unreachable.
+    """
+    from ..llvmlower import impr_features as I
+
+    out: list[ForkProposal] = []
+    have = set(parent_feats)
+
+    # -- stack promotion: retune the per-buffer cap the parent is already promoting under.
+    if I.PROMOTE_STACK_NAME in have or any(
+            f.startswith(f"{I.PROMOTE_STACK_NAME}_") for f in have):
+        base = [f for f in parent_feats
+                if f != I.PROMOTE_STACK_NAME and not f.startswith(f"{I.PROMOTE_STACK_NAME}_")]
+        for nbytes in _STACK_CAP_LADDER:
+            name = I.ensure_promote_stack(nbytes)
+            if name in have:
+                continue
+            merged = base + [name]
+            if _composes(merged):
+                out.append(ForkProposal(
+                    overrides={"compiler_features": merged}, lever="knob",
+                    targets=f"wholemodel:{I.PROMOTE_STACK_NAME}:cap",
+                    evidence=["census:byte-traffic", f"refine:{I.PROMOTE_STACK_NAME}"],
+                    forkable=True,
+                    note=f"retune the stack-promotion per-buffer cap to {nbytes} bytes"))
+
+    # -- per-op blocking: retune the MR cap the block table is derived under.
+    if I.PEROP_BLOCK_NAME in have or any(
+            I.parse_perop_mr_sentinel(f) is not None for f in have):
+        base = [f for f in parent_feats
+                if f != I.PEROP_BLOCK_NAME and I.parse_perop_mr_sentinel(f) is None]
+        for mr in _MR_CAP_LADDER:
+            name = I.perop_mr_sentinel(mr)
+            if name in have:
+                continue
+            merged = base + [name]
+            if _composes(merged):
+                out.append(ForkProposal(
+                    overrides={"compiler_features": merged}, lever="knob",
+                    targets=f"wholemodel:{I.PEROP_BLOCK_NAME}:mr_cap",
+                    evidence=["census:byte-traffic", f"refine:{I.PEROP_BLOCK_NAME}"],
+                    forkable=True,
+                    note=f"retune the per-op register-block MR cap to {mr}"))
+    return out
+
+
 def _fork_key(fp: ForkProposal) -> tuple:
     """Dedup key. Feature forks collide iff they enable the SAME feature set (teacher & hardcode for
     one feature merge to the identical stack); other forks key on (lever, targets)."""
@@ -346,7 +413,9 @@ def propose_wholemodel_levers(divergences: Any, knobs: dict[str, Any]) -> list[F
     parent_feats = list(knobs.get("compiler_features") or [])
     teacher = route_divergence_forks(divergences, knobs)
     hardcodes = census_hardcode_forks(parent_feats)
-    return _union(teacher, hardcodes)
+    # Refinements last: they retune a magnitude on a lever the parent ALREADY carries, so they are
+    # empty at the seed and cost generation 1 no width at all.
+    return _union(_union(teacher, hardcodes), refinement_forks(parent_feats))
 
 
 # ---------------------------------------------------------------------------------------------------

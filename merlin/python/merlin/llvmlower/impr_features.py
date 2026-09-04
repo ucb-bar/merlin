@@ -1859,12 +1859,15 @@ def _promote_stack_bytes() -> int:
     return _PROMOTE_STACK_DEFAULT_BYTES
 
 
-def _promote_buffers_to_stack(passes: list[str]) -> list[str]:
+def _promote_buffers_to_stack(passes: list[str], cap: int | None = None) -> list[str]:
     """Insert ``promote-buffers-to-stack`` right after the buffer hoisting.
 
     After hoisting (so a buffer already lifted out of a loop is promoted once, not per iteration) and
     before the loop lowering. Deallocation runs earlier in this pipeline (``__DEALLOC__``), and a
     stack buffer needs none -- promoting after it is what keeps the two consistent.
+
+    ``cap`` names the per-buffer byte cap explicitly (the sized variants minted by
+    :func:`ensure_promote_stack`); ``None`` keeps the env-or-default behaviour.
     """
     out = list(passes)
     anchor = "func.func(buffer-hoisting,buffer-loop-hoisting)"
@@ -1874,8 +1877,9 @@ def _promote_buffers_to_stack(passes: list[str]) -> list[str]:
         raise ValueError(
             f"{PROMOTE_STACK_NAME}: anchor {anchor!r} not in the pipeline; refusing to guess where "
             f"promote-buffers-to-stack belongs") from None
+    nbytes = _promote_stack_bytes() if cap is None else int(cap)
     out.insert(i + 1,
-               f"func.func(promote-buffers-to-stack{{max-alloc-size-in-bytes={_promote_stack_bytes()}}})")
+               f"func.func(promote-buffers-to-stack{{max-alloc-size-in-bytes={nbytes}}})")
     return out
 
 
@@ -1893,6 +1897,48 @@ register(ImprFeature(
                 "byte-identical.",
     edit_pipeline=_promote_buffers_to_stack,
 ))
+
+
+def ensure_promote_stack(nbytes: int) -> str:
+    """Register (on demand) a stack-promotion variant whose per-buffer cap is ``nbytes``.
+
+    The cap is a LEVER, not just an overflow guard, and the difference is measured. On small_llama
+    int8 (K1, sustained, cos identical on every arm) the SAME feature pays back very differently
+    depending only on this number:
+
+        <=  4 KB  4,904,957 ns  1.00x      <= 256 KB  3,649,518 ns  1.34x
+        <= 16 KB  4,795,823 ns  1.03x      <=   1 MB  3,579,566 ns  saturated
+        <= 64 KB  4,678,494 ns  1.05x
+
+    Monotonic in the cap and flat past 256 KB, which locates the largest intermediate worth promoting
+    between 64 KB and 256 KB -- a per-MODEL fact about intermediate sizes, not a constant.
+
+    Why this function exists: the cap was reachable ONLY through ``MERLIN_PROMOTE_STACK_BYTES``, and
+    no fork can vary an environment variable. So the beam always built at the 16 KB default, measured
+    1.03x, and ranked the lever below levers it should beat -- in the run that prompted this, the
+    stack-promotion fork came out SLOWER than its own parent and the search concluded the lever was
+    not worth its width. The lever was never weak; the search could not reach the part of it that
+    works. Naming the cap in the FEATURE puts it on the channel feature names already travel
+    (proposer -> knobs.yaml ``compiler_features`` -> ``normalize`` -> build), so it needs no new
+    plumbing and cannot silently disagree with the build the way an ambient env var can.
+    """
+    n = int(nbytes)
+    if n <= 0:
+        raise ValueError(f"{PROMOTE_STACK_NAME}: per-buffer cap must be positive, got {nbytes!r}")
+    name = f"{PROMOTE_STACK_NAME}_{n}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"promote small bufferization allocs to the stack, per-buffer cap {n} bytes. "
+                     f"Same pass as {PROMOTE_STACK_NAME}, with the cap NAMED so the search can vary "
+                     f"it: the cap is model-dependent (measured 1.03x at 16 KB vs 1.34x at 256 KB on "
+                     f"the same model and the same feature), and as an env var it was unreachable by "
+                     f"any fork. Default-off; baseline byte-identical."),
+        edit_pipeline=lambda passes, _n=n: _promote_buffers_to_stack(passes, cap=_n),
+    ))
+    return name
 
 
 PEROP_BLOCK_NAME = "perop_register_block"
@@ -1983,6 +2029,64 @@ register(ImprFeature(
     edit_pipeline=_perop_sentinel_unresolved,
     schedule_replace=True,
 ))
+
+
+#: Sentinel family that names the per-op MR cap. ``perop_register_block_mr<N>`` behaves exactly like
+#: :data:`PEROP_BLOCK_NAME` except that it pins the cap ``block_table`` derives blocks under, instead
+#: of reading the ambient ``MERLIN_PEROP_MR_CAP``.
+PEROP_MR_SENTINEL_PREFIX = f"{PEROP_BLOCK_NAME}_mr"
+
+
+def parse_perop_mr_sentinel(name: str) -> int | None:
+    """The MR cap a ``perop_register_block_mr<N>`` sentinel names, or None if ``name`` is not one.
+
+    Deliberately strict: the suffix must be ALL DIGITS. ``ensure_perop_block`` mints names in the same
+    ``perop_register_block_*`` namespace (``..._3b_128_<hash>``), so a prefix-only test would read a
+    RESOLVED feature as an unresolved sentinel and re-derive the table underneath it.
+    """
+    if not name.startswith(PEROP_MR_SENTINEL_PREFIX):
+        return None
+    suffix = name[len(PEROP_MR_SENTINEL_PREFIX):]
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
+
+
+def perop_mr_sentinel(mr_cap: int) -> str:
+    """Register (on demand) a per-op blocking request that PINS the MR cap to ``mr_cap``.
+
+    Same contract as :data:`PEROP_BLOCK_NAME` -- a request consumed by
+    ``zephyr_model.prepare_for_lowering``, never a lowering edit -- so it raises identically if it
+    reaches the pipeline unresolved.
+
+    The cap decides how much A-operand reuse each contraction can buy, and the right value is a
+    property of the MODEL's shapes: the default 4 was measured at 128^3, where M is large and MR is a
+    pure register-pressure question. On small_llama fp32 every contraction is M=8 with 2.0 MAC per
+    byte, so the binding cost is weight TRAFFIC and a cap of 4 makes an M=8 op take two row-blocks,
+    streaming the whole B matrix twice (measured K1, n=3, cos 0.9999999 on every arm: cap 4 ->
+    5,762,513 ns, cap 8 -> 5,121,007 ns = 1.125x, cap 16 -> 5,153,090 ns, i.e. no further gain).
+    Opposite regimes want opposite numbers, which is what makes it a search axis rather than a
+    constant -- and as an env var no fork could vary it.
+    """
+    n = int(mr_cap)
+    if n <= 0:
+        raise ValueError(f"{PEROP_BLOCK_NAME}: MR cap must be positive, got {mr_cap!r}")
+    name = f"{PEROP_MR_SENTINEL_PREFIX}{n}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"request PER-CONTRACTION register blocking with the MR cap pinned to {n}. "
+                     f"Identical to {PEROP_BLOCK_NAME} except the cap is NAMED rather than read from "
+                     f"MERLIN_PEROP_MR_CAP, so the beam can search it: the best cap is a property of "
+                     f"the model's shapes (measured 1.125x from 4 -> 8 on an M=8, traffic-bound "
+                     f"model; no further gain at 16). A sentinel, resolved by prepare_for_lowering. "
+                     f"Default-off; baseline byte-identical."),
+        edit_pipeline=_perop_sentinel_unresolved,
+        schedule_replace=True,
+    ))
+    return name
 
 
 def ensure_perop_block(table, kc: int) -> str:
