@@ -1318,7 +1318,7 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
     monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _te: [])
     actions = PAS.build_action_registry(candidate, SimpleNamespace())
     assert [action.name for action in actions] == [
-        "candidate-parse", PAS.DEVELOPMENT_FEEDBACK_ACTION]
+        "candidate-parse", PAS.DEVELOPMENT_FEEDBACK_ACTION, PAS.ANALYSIS_ACTION]
     assert actions[0].argv_template == (str(tool), "parse", "{input_mlir}")
     feedback = actions[1]
     assert feedback.argv_template == (PAS._HOST_FEEDBACK_SENTINEL,)
@@ -1326,6 +1326,14 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
     assert feedback.required is True
     assert "host-owned frozen-tuning" in feedback.purpose
     assert "certified GSIM" in feedback.purpose
+    # The free ordering-only analysis is OPTIONAL: making it required would force a call the agent
+    # may not need, and its whole point is that it costs nothing to skip or to repeat.
+    analysis = actions[2]
+    assert analysis.argv_template == (
+        PAS._HOST_ANALYSIS_SENTINEL, "{baseline_json}", "{candidate_json}")
+    assert analysis.placeholders == ("baseline_json", "candidate_json")
+    assert analysis.required is False
+    assert "ORDERING-ONLY" in analysis.purpose and "no oracle time" in analysis.purpose
     contract = PAS.action_registry_contract(actions, candidate)
     assert contract[0]["argv_template"] == ["{candidate}/target-opt", "parse", "{input_mlir}"]
     assert contract[1] == {

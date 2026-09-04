@@ -64,6 +64,13 @@ BROKER_NAME = "/perf-control/perf_tool.py"
 BROKER_RECEIPT_MOUNT = Path("/perf-control/receipts.jsonl")
 DEVELOPMENT_FEEDBACK_ACTION = "tuning-gsim-feedback"
 _HOST_FEEDBACK_SENTINEL = "__host_owned_tuning_gsim_feedback__"
+#: A FREE, ORDERING-ONLY analysis of two emitted command buffers. The measured feedback above costs
+#: ~110 s a call and was the ONLY way to judge a candidate, so every dead end was paid for at full
+#: price -- measured across three trials, two excursions of +5.9% and +11.1% cost ~220 s of oracle
+#: time to discover. This prices the agent's own emitted artifacts instead: no oracle, no goldens,
+#: no holdout, so it can be called as often as the agent likes and can leak nothing.
+ANALYSIS_ACTION = "analyze-command-buffers"
+_HOST_ANALYSIS_SENTINEL = "__host_owned_command_buffer_analysis__"
 _HEX = frozenset("0123456789abcdef")
 _HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 TELEMETRY_TREATMENT_SOURCES = frozenset({
@@ -1407,6 +1414,70 @@ def select_e2e_sentinel(functional: StageFunctionalRun, frozen: FrozenFunctional
 _PLACEHOLDER = re.compile(r"\{([A-Za-z][A-Za-z0-9_]*)\}")
 
 
+
+def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
+                            peak_macs_per_cycle: int | None,
+                            achievable_macs_per_cycle: float | None) -> dict[str, Any]:
+    """Price two emitted command buffers against each other -- ORDERING ONLY, and free.
+
+    WHY THIS EXISTS. The measured feedback is the only judge the agent had, and it costs ~110 s a
+    call, so a candidate that turns out 11% WORSE cost the same as one that wins. Across three
+    trials two such excursions burned ~220 s of oracle time to learn something the emitted buffers
+    already implied.
+
+    WHAT IT MAY AND MAY NOT SAY. It reads the candidate's OWN artifacts -- no oracle, no goldens, no
+    holdout -- so it cannot leak and needs no budget. In exchange it never claims a cycle count:
+    ``merlin.perf.differential`` decides whether two demands are even comparable and returns EXACT,
+    ORDERING_ONLY or REFUSED with its reason. An absolute magnitude for an unmeasured shape is
+    exactly the over-claim the corpus-calibrated model is not licensed to make.
+    """
+    from merlin.perf.work_volume import work_from_command_buffer          # noqa: PLC0415
+
+    def _load(path: Path) -> Mapping[str, Any]:
+        resolved = Path(path)
+        if resolved.is_symlink() or not resolved.is_file():
+            raise StageGateError(f"command buffer is absent or linked: {resolved}")
+        return json.loads(resolved.read_text(encoding="utf-8"))
+
+    out: dict[str, Any] = {"schema_version": 1, "kind": "host_owned_command_buffer_analysis",
+                           "basis": "emitted artifacts only; no oracle, no golden, no holdout"}
+    arms: dict[str, Any] = {}
+    for arm, path in (("baseline", baseline_json), ("candidate", candidate_json)):
+        work = work_from_command_buffer(_load(path))
+        macs = int(getattr(work, "known_macs", 0) or 0)
+        # A LOWER BOUND IS NOT A TOTAL. `work_volume` prices each command it can and records a
+        # refusal for each it cannot, so `is_lower_bound` means "there is unpriced work here".
+        # Reporting that as a total would understate the candidate's demand and silently flatter it.
+        row: dict[str, Any] = {
+            "macs": macs,
+            "exact": not bool(getattr(work, "is_lower_bound", False)),
+            "unpriced_commands": [str(r) for r in (getattr(work, "refusals", ()) or ())][:8],
+        }
+        if peak_macs_per_cycle:
+            row["ideal_cycles_at_peak"] = macs / float(peak_macs_per_cycle)
+        if achievable_macs_per_cycle:
+            row["ideal_cycles_at_achievable"] = macs / float(achievable_macs_per_cycle)
+        arms[arm] = row
+    out["arms"] = arms
+    out["peak_macs_per_cycle"] = peak_macs_per_cycle
+    out["achievable_macs_per_cycle"] = achievable_macs_per_cycle
+
+    b, c = arms["baseline"]["macs"], arms["candidate"]["macs"]
+    if b and c and b != c:
+        out["work_delta"] = {"candidate_over_baseline": c / b,
+                             "note": ("the candidate does a DIFFERENT amount of arithmetic; a cycle "
+                                      "comparison between these two is not a schedule comparison")}
+    try:
+        from merlin.perf import differential as DIFF                       # noqa: PLC0415
+        verdict = DIFF.compare(arms["baseline"], arms["candidate"])
+        out["differential"] = {"basis": str(getattr(verdict, "basis", "")),
+                               "reason": str(getattr(verdict, "reason", "") or "")}
+    except Exception as exc:  # noqa: BLE001 - the analyzer's own refusal is the answer here
+        out["differential"] = {"basis": "REFUSED",
+                               "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    return out
+
+
 def build_action_registry(candidate: Path,
                           target_experiment: TargetExperiment) -> tuple[BrokerAction, ...]:
     """Create named candidate-manifest actions; no caller-selected executable is accepted."""
@@ -1446,6 +1517,13 @@ def build_action_registry(candidate: Path,
         DEVELOPMENT_FEEDBACK_ACTION, (_HOST_FEEDBACK_SENTINEL,), (),
         "host-owned frozen-tuning correctness and certified GSIM cycle deltas; invoke after edits",
         True))
+    actions.append(BrokerAction(
+        ANALYSIS_ACTION, (_HOST_ANALYSIS_SENTINEL, "{baseline_json}", "{candidate_json}"),
+        ("baseline_json", "candidate_json"),
+        "host-owned ORDERING-ONLY comparison of two emitted command buffers: work volume, the "
+        "derived ceilings, and a differential verdict. Costs no oracle time -- use it to screen a "
+        "candidate BEFORE spending a measurement on it",
+        False))
     names = [action.name for action in actions]
     if len(names) != len(set(names)):
         raise StageGateError("broker action registry contains duplicate names")
@@ -2302,7 +2380,23 @@ class _Broker:
                            rendered: dict[str, str], raw_argv: list[str], call_index: int,
                            timeout_s: int, started: float) -> dict[str, Any]:
         feedback_document: dict[str, Any] | None = None
-        if action_name == DEVELOPMENT_FEEDBACK_ACTION:
+        if action_name == ANALYSIS_ACTION:
+            try:
+                evaluator = self.feedback_evaluator
+                document = analyze_command_buffers(
+                    Path(rendered["baseline_json"]), Path(rendered["candidate_json"]),
+                    peak_macs_per_cycle=getattr(evaluator, "peak_macs_per_cycle", None),
+                    achievable_macs_per_cycle=getattr(
+                        evaluator, "achievable_macs_per_cycle", None))
+                result = {"returncode": 0,
+                          "stdout": _canonical_json(document).decode("utf-8"), "stderr": "",
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+            except Exception as exc:  # noqa: BLE001 - an unreadable buffer is a refusal, not a crash
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": f"command-buffer analysis refused ({type(exc).__name__}: "
+                                    f"{str(exc)[:200]})",
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+        elif action_name == DEVELOPMENT_FEEDBACK_ACTION:
             try:
                 if self.feedback_evaluator is None or self.feedback_round is None:
                     raise StageGateError("development GSIM feedback certificate is unavailable")
