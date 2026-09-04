@@ -20,6 +20,18 @@ on ``small_llama_int8_consistent`` at the post-bufferization split point:
     memref.copy  diff-type  24   (prologue)          6144 elements  -> @memrefCopy, ~485K instrs
     memref.copy  same-type  40   (prologue)         21360 elements  -> memcpy
 
+WHAT THOSE 24 COPIES ARE, AND WHAT THEY COST ON SILICON. They are the model's ``tensor.concat``
+ops -- all twelve of them, two ``@memrefCopy`` calls each, and nothing else in ``@forward`` reaches
+the helper. Bufferizing a concat gives each operand a ``memref.subview`` of the result buffer, whose
+strided layout is exactly the case ``finalize-memref-to-llvm`` declines to emit code for. The K1
+per-op profile of that model (``perop_register_block,promote_buffers_to_stack``, aggregated by
+``mlir_op``) prices ``tensor.concat`` at **8.41% of whole-model runtime** -- 60,805 of 722,604
+attributed ticks over 12 ops -- second only to ``linalg.transpose`` and ``linalg.matmul``, for
+6,144 elements of pure data movement with no arithmetic. With this feature the count of
+``@memrefCopy`` call sites inside the emitted ``forward`` goes 24 -> 0 (measured on the built K1
+binary), and the model's spike output stays BIT-IDENTICAL (max abs diff 0.0, gate ok on
+``tiers=['fp32','w8a8']``).
+
 So the runtime-call set stays ``{memrefCopy, memcpy, ...}`` no matter how many self-copies are
 erased. This feature closes the axis by construction rather than by luck: every ``memref.copy``
 with ranked, statically shaped operands becomes a ``linalg.copy``, which the
