@@ -622,7 +622,10 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
     (ws / "submission").mkdir(exist_ok=True)
     drop_dirs = {"hidden"}  # capsules/hidden = answers, never staged
     report = {"copied": [], "symlinked": [], "copied_minus": [], "answer_files_dropped": 0,
-              "tool_subpaths_excluded": []}
+              "tool_subpaths_excluded": [],
+              # A grant the resolver cannot place is RECORDED, never silently dropped: a missing tool
+              # reads to the agent as a tool that does not exist, and it will not ask.
+              "unresolvable_grants": []}
 
     def _is_answer_name(n: str) -> bool:
         # Any golden (golden.yaml/json/mlir, any nesting) or example expected-output, matched by pattern
@@ -641,9 +644,23 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
                     report["answer_files_dropped"] += 1
         return skip
 
+    from merlin.targetgen.sandbox.bwrap import resolve_grant as _resolve_grant
+
     for entry in bundle.get("allowed", []):
-        src = C.REPO / entry["path"]
+        # THROUGH THE SHARED RESOLVER, like every other consumer of a manifest. A target's package does
+        # not always live under `merlin/targets/`: the registry resolves a `contracts/rtl_facts` grant to
+        # wherever that target's facts actually are, which for a generated package is the build root.
+        # Computing `<repo>/<declared path>` here instead meant the atlas RTL-facts grant -- a path the
+        # registry deliberately redirects -- did not exist, hit the `continue`, and was dropped with no
+        # workspace entry and no warning. The bwrap mount resolved it correctly and bound the bytes, so
+        # they WERE in the sandbox; nothing named them. The agent was told by both TASK.md and
+        # ALLOWED_MERLIN_TOOLS.md to derive from `merlin/targets/<t>/contracts/rtl_facts/`, looked there,
+        # found nothing, and shipped a backend that used no RTL facts at all -- which is the whole point
+        # of the RTL-checks arm. Measured on merlincirct_atlasp1arm4: 503 tool calls, one of which
+        # touched that surface, and all five RTL-workflow conformance checks failed.
+        src = _resolve_grant(entry["path"], C.REPO)
         if not src.exists():
+            report["unresolvable_grants"].append(entry["path"])
             continue
         rel = entry["path"].rstrip("/")
         # Optional `as:` = explicit workspace destination (needed for out-of-repo absolute paths like the
