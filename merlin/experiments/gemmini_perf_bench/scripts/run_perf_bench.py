@@ -151,9 +151,18 @@ def _measurement_identity(*, package_before: str, package_after: str,
     return identity, refusals
 
 
-def _counter_report(pass_result: Mapping) -> Mapping | None:
+def _rtl_counter_row(pass_result: Mapping) -> Mapping | None:
     per_sim = pass_result.get("per_sim")
-    rtl = per_sim.get("verilator") if isinstance(per_sim, Mapping) else None
+    if not isinstance(per_sim, Mapping):
+        return None
+    rtl = per_sim.get("gsim")
+    if not isinstance(rtl, Mapping):
+        rtl = per_sim.get("verilator")
+    return rtl if isinstance(rtl, Mapping) else None
+
+
+def _counter_report(pass_result: Mapping) -> Mapping | None:
+    rtl = _rtl_counter_row(pass_result)
     counters = rtl.get("counters") if isinstance(rtl, Mapping) else None
     return counters if isinstance(counters, Mapping) else None
 
@@ -262,10 +271,9 @@ def _link_counter_passes(occupancy_pass: Mapping, byte_pass: Mapping, *,
 
     rtl_rows: list[Mapping] = []
     for label, result in (("occupancy", occupancy_pass), ("physical-byte", byte_pass)):
-        per_sim = result.get("per_sim")
-        rtl = per_sim.get("verilator") if isinstance(per_sim, Mapping) else None
+        rtl = _rtl_counter_row(result)
         if not isinstance(rtl, Mapping):
-            refusals.append(f"{label} pass has no Verilator result")
+            refusals.append(f"{label} pass has no RTL simulator result")
             rtl_rows.append({})
             continue
         rtl_rows.append(rtl)
@@ -549,6 +557,10 @@ def _probe_counter_byte_bindings(rtl_identity: Mapping) -> dict:
     return dict(artifact)
 
 
+#: The loop tier runs every kernel; the cert tier is the expensive one this policy rations.
+_LOOP_SIM, _CERT_SIM, _CERT_TIER = "spike", "verilator", "L3"
+
+
 def _selected_corpus(selection: str, kernels_root: Path = PB.KERNELS) -> list[dict]:
     doc = yaml.safe_load((kernels_root / "kernel_corpus.yaml").read_text(encoding="utf-8"))
     if not isinstance(doc, dict):
@@ -571,11 +583,116 @@ def _selected_corpus(selection: str, kernels_root: Path = PB.KERNELS) -> list[di
     return corpus
 
 
+#: What one kernel's cert tier is expected to cost, and the reason when it cannot be priced.
+_CERT_PLAN: "dict[str, tuple[bool, str]]" = {}
+
+
+def _kernel_output_elements(kernel: Mapping) -> int | None:
+    """The kernel's output element count, which is what the cert cost is measured against."""
+    for key in ("output_elements", "out_elements"):
+        value = kernel.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+    # ACCEPT BOTH SPELLINGS. The tracked corpus writes the extents as `M`/`N`; reading only the
+    # lowercase pair made every kernel price as UNKNOWN, which this function reports as "declares no
+    # output shape" and the planner then honours by withholding the cert tier. Measured 2026-09-04
+    # against kernel_corpus.yaml: 0 of 27 kernels admitted to CERT where the previous `sim_hint`
+    # rule admitted 9 -- a silent, total loss of L3 timing that fails cheap and so reads as policy.
+    for rows, cols in (("m", "n"), ("M", "N")):
+        m, n = kernel.get(rows), kernel.get(cols)
+        if isinstance(m, int) and isinstance(n, int) and m > 0 and n > 0:
+            return m * n
+    # Several kernels carry their extents in a `shape` STRING instead of named axes. Reading only
+    # the named ones left them unpriceable, and an unpriceable kernel is held at the loop tier --
+    # so the whole attention and movement cohort lost the cert tier for a spelling, not a decision.
+    # Parsed structurally with str.split (the repo forbids regex line-matching, which would drop a
+    # validly-spelled variant silently). Only the unambiguous forms are read; anything else stays
+    # None so the caller still fails cheap rather than acting on a guess.
+    shape = kernel.get("shape")
+    if isinstance(shape, str) and "_" not in shape:          # conv spells a kernel spec after "_"
+        parts = shape.split("x")
+        if all(part.isdigit() for part in parts) and parts:
+            extents = [int(part) for part in parts]
+            if all(extent > 0 for extent in extents):
+                if len(extents) == 2:                        # movement: rows x cols
+                    return extents[0] * extents[1]
+                if len(extents) == 3:                        # contraction: M x K x N -> M*N
+                    return extents[0] * extents[2]
+    return None
+
+
+def plan_cert_tier(corpus: "list[dict]", *, target: str,
+                   budget_s: float | None) -> "dict[str, tuple[bool, str]]":
+    """Decide which kernels earn the CERT tier, priced from what certification actually cost.
+
+    THE LOOP TIER IS NOT THE QUESTION -- every kernel runs there. The expensive cycle-accurate tier
+    is, and it used to be chosen by a string a generator wrote down: ``sim_hint`` set from the
+    constant ``"L2+L3" if macs <= 2_000_000 else "L2_only"``, with the paired bench defaulting an
+    unlabelled kernel to ``"L2+L3"``. So an unpriced kernel took the MOST expensive path by default,
+    which is the wrong direction to fail in when a single deep member can cost more than the rest of
+    the corpus put together.
+
+    The whole point of the analytical tooling is that most performance work does NOT need the cert
+    tier: the loop tier plus a derived model orders candidates, and certification is spent on a
+    representative few. So the tier is DERIVED here from :mod:`merlin.targetgen.cert_cost`, whose fit
+    is measured on this target's own certified runs and which refuses rather than guessing.
+
+    FAIL CHEAP, NOT EXPENSIVE. A kernel that cannot be priced -- no fit for this target, or no
+    declared output shape -- is held at the loop tier and the reason is recorded. That is the
+    opposite of the old default and the only safe direction: a wrongly-cheap plan under-certifies
+    and says so, a wrongly-expensive one silently spends the budget the corpus needed.
+    """
+    from merlin.targetgen import cert_cost                              # noqa: PLC0415
+
+    try:
+        fit = cert_cost.fit_for(target)
+    except Exception:  # noqa: BLE001 - an unreadable history prices nothing; it is not an error here
+        fit = None
+
+    priced: list[tuple[float, str]] = []
+    plan: dict[str, tuple[bool, str]] = {}
+    for kernel in corpus:
+        kid = str(kernel.get("id") or "")
+        ceiling = str(kernel.get("max_oracle_tier") or "").strip()
+        if ceiling and ceiling != _CERT_TIER:
+            plan[kid] = (False, f"the kernel caps its oracle tier at {ceiling!r}")
+            continue
+        elements = _kernel_output_elements(kernel)
+        if fit is None:
+            plan[kid] = (False, f"no certified run on {target!r} prices the cert tier yet")
+            continue
+        if elements is None:
+            plan[kid] = (False, "the kernel declares no output shape, so its cert cost is UNKNOWN")
+            continue
+        seconds = cert_cost.predict_seconds(fit, elements)
+        if seconds is None:
+            plan[kid] = (False, f"the cost fit cannot price {elements} output element(s)")
+            continue
+        priced.append((float(seconds), kid))
+
+    if budget_s is None:
+        for _, kid in priced:
+            plan[kid] = (True, "no cert budget declared, so every priced kernel is certified")
+        return plan
+    # Cheapest first: the most cert cover the declared budget buys.
+    spent = 0.0
+    for seconds, kid in sorted(priced):
+        if spent + seconds <= float(budget_s):
+            spent += seconds
+            plan[kid] = (True, f"predicted {seconds:.0f}s fits the remaining cert budget")
+        else:
+            plan[kid] = (False, f"predicted {seconds:.0f}s exceeds the remaining cert budget "
+                                f"({float(budget_s) - spent:.0f}s of {float(budget_s):.0f}s left)")
+    return plan
+
+
 def _sims_for(kernel: dict, requested: str) -> tuple[str, ...]:
     if requested == "auto":
-        return ("spike", "verilator") if kernel.get("sim_hint") == "L2+L3" else ("spike",)
+        kid = str(kernel.get("id") or "")
+        admitted, _why = _CERT_PLAN.get(kid, (False, "no cert plan was computed for this kernel"))
+        return (_LOOP_SIM, _CERT_SIM) if admitted else (_LOOP_SIM,)
     sims = tuple(value.strip() for value in requested.split(",") if value.strip())
-    if not sims or len(sims) != len(set(sims)) or any(s not in ("spike", "verilator") for s in sims):
+    if not sims or len(sims) != len(set(sims)) or any(s not in (_LOOP_SIM, _CERT_SIM) for s in sims):
         raise PC.CampaignGateError("--sims must be auto, spike, or a unique spike,verilator list")
     return sims
 
@@ -729,11 +846,22 @@ def main(argv: list[str] | None = None) -> int:
                         help="exact completed Arm-4 functional run directory name")
     parser.add_argument("--functional-submission-sha256", required=True,
                         help="exact frozen functional submission SHA-256")
+    parser.add_argument("--waive-functional-gate", action="append", default=[], metavar="PREDICATE",
+                        help="accept a NAMED completeness gap in the functional baseline instead of "
+                             "refusing (repeatable). Integrity predicates -- sandbox, answer mask, "
+                             "answer-access audit, cohort-admission accounting, public/hidden "
+                             "identity separation -- cannot be waived and asking is an error. Every "
+                             "accepted waiver is recorded in the campaign record and every result it "
+                             "produces is marked functional_gate_clean=false.")
     parser.add_argument("--rtl-facts",
                         help="exact CIRCT-extracted RTL facts JSON for performance provenance")
     parser.add_argument("--kernels", default="all")
     parser.add_argument("--approach", choices=("arm4",), default="arm4",
                         help="only the Arm-4 compiler lane is admitted in this campaign")
+    parser.add_argument("--cert-budget-seconds", type=float, default=None,
+                        help="seconds of cycle-accurate certification this run may spend; kernels "
+                             "are admitted cheapest-first from the measured cost fit and the rest "
+                             "stay at the loop tier with a recorded reason (default: no budget cap)")
     parser.add_argument("--sims", default="auto",
                         help="auto (per-kernel hint), spike, verilator, or spike,verilator")
     parser.add_argument("--timeout", type=int, default=900)
@@ -763,7 +891,8 @@ def main(argv: list[str] | None = None) -> int:
     counter_binding = _probe_counter_byte_bindings(rtl_identity)
 
     functional = PC.inspect_functional_run(
-        _FUNCTIONAL_RUNS, args.functional_run_id, args.functional_submission_sha256)
+        _FUNCTIONAL_RUNS, args.functional_run_id, args.functional_submission_sha256,
+        waive=frozenset(args.waive_functional_gate or ()))
     _selected_corpus(args.kernels)  # validate the requested IDs before allocating the fresh run dir
     out_dir = PB.RUNS / args.run_id
     if out_dir.exists() or out_dir.is_symlink():
@@ -774,6 +903,13 @@ def main(argv: list[str] | None = None) -> int:
     workload_root = out_dir / "_frozen_workload" / "kernels"
     workload_digest = PC.materialize_readonly_tree(PB.KERNELS, workload_root)
     corpus = _selected_corpus(args.kernels, workload_root)
+    # Ration the cert tier BEFORE expanding cells, so the expected-cell set and the run agree on
+    # which kernels were certified and every hold-back carries its reason into the record.
+    _CERT_PLAN.clear()
+    _CERT_PLAN.update(plan_cert_tier(corpus, target=PB.TARGET,
+                                     budget_s=args.cert_budget_seconds))
+    for _kid, (_admitted, _why) in sorted(_CERT_PLAN.items()):
+        print(f"[tier] {_kid:34} {'CERT' if _admitted else 'loop-only'}: {_why}")
     sims_by_capsule = {str(kernel["id"]): _sims_for(kernel, args.sims) for kernel in corpus}
     expected = _expected_cells(corpus, args.sims)
     fork = PC.functional_fork(functional)
@@ -797,6 +933,12 @@ def main(argv: list[str] | None = None) -> int:
         "functional_submission_sha256": functional.digest,
         "functional_public_capsules": functional.public_capsules,
         "functional_hidden_capsules": functional.hidden_capsules,
+        # A campaign launched over a waived gate is still a real measurement, but it is NOT the same
+        # claim as one whose baseline was fully established. Both facts ride in the record so a reader
+        # never has to reconstruct which it was: `false` here means the numbers below are conditional
+        # on the named gaps, and any write-up must say so.
+        "functional_gate_clean": functional.gate_clean,
+        "functional_gate_deviations": [d.to_dict() for d in functional.deviations],
         "snapshot": str(snapshot),
         "snapshot_sha256": functional.digest,
         "workload_snapshot": str(workload_root),
