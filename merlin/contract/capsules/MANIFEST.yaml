@@ -29,6 +29,10 @@ generated:
 - _perf/PL01_k16
 - _perf/PL02_k32
 - _perf/PL03_k32
+- _perf/PM00_m16n16
+- _perf/PM01_m16n32
+- _perf/PM02_m32n16
+- _perf/PM03_m32n32
 - _perf/PQ00_j1_k16
 - _perf/PQ01_j2_k16
 - _perf/PQ02_j4_k16
@@ -44,6 +48,10 @@ generated:
 - _perf/PR06_spills_k8208
 - _perf/PR07_spills_k12288
 - _perf/PR08_spills_k16384
+- _perf/PV00_h8c4
+- _perf/PV01_h16c4
+- _perf/PV02_h8c8
+- _perf/PV03_h16c8
 - isa/A0_config_smoke
 - isa/A2_single_tile_matmul
 - isa/A3_k_accumulation
@@ -134,12 +142,12 @@ hand_authored:
 - layers/B4_conv2d_relu_i8
 held_out:
   n_generated: 0
-  n_hand_authored: 15
+  n_hand_authored: 0
 performance_generation:
   gemmini:
     shared_template:
       path: merlin/contract/capsules/profiles/_perf.yaml
-      sha256: 3ac45d0567bbcf20dee9d6c1506ff3cc56a0299d40b4b0349021b81ed7f1fb9c
+      sha256: 28ddd80c21c1b6e1a0072e50f2e5ccceb41a4dcbcb0a40556f4ee52bbde84503
     facts:
       target: gemmini
       sha256: 5f892671d3dc46fe5ad03460fce6bc7b040439da7216906f521aa7339ff390b9
@@ -205,6 +213,21 @@ performance_generation:
       comparison_roles:
       - barrier_after_every_job
       - minimum_barriers
+    - family: PV
+      claim: PREDICTS
+      fit_axes:
+      - ci
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PM
+      claim: PREDICTS
+      fit_axes:
+      - M
+      - N
+      comparison_roles:
+      - measurement
+      - prediction
     - family: PB
       claim: DIFFERENTIAL
       fit_axes:
@@ -220,9 +243,9 @@ performance_generation:
       - prediction
       - measurement
     counts:
-      declared_families: 10
-      generated_families: 6
-      generated_members: 31
+      declared_families: 12
+      generated_families: 8
+      generated_members: 39
       by_family:
         PK:
           admitted_members: 4
@@ -248,6 +271,12 @@ performance_generation:
         PQ:
           admitted_members: 6
           written_members: 6
+        PV:
+          admitted_members: 4
+          written_members: 4
+        PM:
+          admitted_members: 4
+          written_members: 4
         PB:
           admitted_members: 0
           written_members: 0
@@ -2335,10 +2364,7 @@ lane_generation:
     forbid_not_provable: []
 superseded_generation:
   gemmini:
-    removed:
-    - SY_rank_elementwise_map_batched
-    - SY_rank_movement_batched
-    - SY_rank_reduction_batched
+    removed: []
   radiance:
     removed:
     - SY_rank_attention_batched

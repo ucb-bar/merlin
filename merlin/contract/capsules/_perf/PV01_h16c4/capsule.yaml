@@ -1,0 +1,127 @@
+name: PV01_h16c4
+kind: model_slice
+source_role: derived_sweep
+source_reference: im2col convolution at two contraction depths and two spatial extents;
+  the regime phase 1 measures at 3.3% of the achievable ceiling and no other performance
+  family exercises (tile=16; Himg=16, ci=4)
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 36
+  - 8
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 16
+  - 8
+  - 4
+  dtype: i8
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 4
+    kh: 3
+    kw: 3
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue: []
+    output_dtype: i32
+    semantic: conv2d_im2col
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L2_intra_layer
+  family: PV
+  lever: window_reuse_amplification
+  claim: PREDICTS
+  comparand:
+    kind: fitted_prediction
+    against: measured_cycles_same_member
+    cancels:
+    - identical_kernel_window
+    - identical_stride
+    - identical_datapath
+    demand_equal:
+    - operation
+    - kh
+    - kw
+    - N
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: residual_cycles_by_contraction_depth
+    fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+    negative_control: fixed_window_and_output_channels_across_all_points
+  gate:
+    traits:
+    - structural_pipeline_depth
+    - managed_scratchpad
+    instrument: cycle_count
+    capacity: two_distinct_contraction_depths_and_two_spatial_extents
+    on_missing: skip_with_evidence
+  regime:
+    separation: contraction_depth_and_spatial_extent_are_the_only_varied_axes
+    layout: target_native_direct_corpus_builder
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      operation: conv2d
+      varied_axes:
+      - ci
+      - Himg
+    resolved:
+      source: direct
+      operand_dtype: int8
+      accum_dtype: i32
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: 4
+    projected_cycles: derived_at_preflight
+    basis: four_members_before_repetition

@@ -350,16 +350,27 @@ def derive_domain(rtl_facts_path: Path, perf_profile_path: Path, *, target: str)
     maximum_accumulator_bytes = m * n * accum_bytes
 
     # These are structural landmarks, not target-specific shapes.  For every
-    # mesh boundary admitted by the public coordinate envelope, test the exact
-    # boundary and its two tails.  The upper bound is itself taken from the
-    # largest public axis extent.  This catches both tiling and remainder bugs
-    # without embedding a Gemmini dimension or consulting timing results.
+    # mesh boundary admitted by the public coordinate envelope, test the two
+    # TAILS around it.  The upper bound is itself taken from the largest public
+    # axis extent.  This catches both tiling and remainder bugs without
+    # embedding a Gemmini dimension or consulting timing results.
+    #
+    # THE EXACT BOUNDARY IS DELIBERATELY EXCLUDED, and that exclusion is what
+    # keeps this cohort a generalization test.  A tuning family now sweeps the
+    # parallel extents over exact mesh multiples, so leaving the multiples here
+    # too would hand the holdout shapes the search had already been trained on
+    # -- the cohort would still measure something, but not the thing its name
+    # claims.  The tails are the half that was never trained, and misalignment
+    # is where tiling and remainder bugs actually live, so the cohort keeps the
+    # more discriminating half rather than the easier one.  Disjointness is
+    # asserted by test, not trusted to this comment.
     maximum_extent = max(m, n, maximum_k)
-    landmarks = sorted({value
-                        for boundary in range(rows, maximum_extent + 1, rows)
-                        for value in (boundary - 1, boundary, boundary + 1)
-                        if 1 <= value <= maximum_extent}
-                       | {1, maximum_extent})
+    aligned = {boundary for boundary in range(rows, maximum_extent + 1, rows)}
+    landmarks = sorted(({value
+                         for boundary in range(rows, maximum_extent + 1, rows)
+                         for value in (boundary - 1, boundary + 1)
+                         if 1 <= value <= maximum_extent}
+                        | {1, maximum_extent}) - aligned)
     public_shapes = {(m, n, k) for k in dev_k}
     legal_shapes = []
     for gm in landmarks:

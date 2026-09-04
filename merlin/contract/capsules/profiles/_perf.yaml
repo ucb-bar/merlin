@@ -744,6 +744,134 @@ sweeps:
     depths, where each member's A/B is that one capsule emitted at two settings of the target emitter's
     retire knob
 
+# The regime the corpus was missing. MEASURED on the frozen phase-1 run: convolution runs at 2.67
+# mac/cycle -- 3.3% of the achievable ceiling, 29.9x of headroom -- while the deep-K matmul the rest
+# of this corpus sweeps already SITS at that ceiling (80.01 mac/cycle, 100%). Every other family here
+# therefore optimises the one operation with nothing left to give and never measures the one with the
+# most. It is also cheap: phase-1 conv members measure 3,877-6,665 cycles, ~83-93 s to certify under
+# the measured cost fit, against ~70 s for a matmul member.
+#
+# The lever is im2col amplification: a conv reads each input pixel into many contraction rows, so the
+# operand traffic it asks of the scratchpad grows with the window while the arithmetic does not. That
+# is a movement-vs-compute question, which is why the gate names the scratchpad as well as the
+# pipeline depth.
+- id: PV
+  fit_axes: [ci]
+  comparison_roles: [prediction, measurement]
+  base:
+    cat: _perf
+    kind: model_slice
+    op: conv2d
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    Wimg: 8
+    kh: 3
+    kw: 3
+    N: 8
+    performance:
+      level: L2_intra_layer
+      family: PV
+      lever: window_reuse_amplification
+      claim: PREDICTS
+      comparand:
+        kind: fitted_prediction
+        against: measured_cycles_same_member
+        cancels: [identical_kernel_window, identical_stride, identical_datapath]
+        demand_equal: [operation, kh, kw, N, operand_dtype, accum_dtype]
+      falsifier:
+        observation: residual_cycles_by_contraction_depth
+        fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+        negative_control: fixed_window_and_output_channels_across_all_points
+      # NO `acceptance` BLOCK, DELIBERATELY -- the same posture PQ takes and for the same reason: an
+      # `acceptance.analyzer` is EXECUTED by perf_reporting, so naming one that does not exist would
+      # turn a missing analyzer into a passing claim. The members measure; the claim is adjudicated
+      # once an analyzer for the amplification fit is written.
+      gate:
+        traits: [structural_pipeline_depth, managed_scratchpad]
+        instrument: cycle_count
+        capacity: two_distinct_contraction_depths_and_two_spatial_extents
+        on_missing: skip_with_evidence
+      regime:
+        separation: contraction_depth_and_spatial_extent_are_the_only_varied_axes
+        layout: target_native_direct_corpus_builder
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs: {operation: conv2d, varied_axes: [ci, Himg]}
+      cost:
+        tier: 1
+        runs: 4
+        projected_cycles: derived_at_preflight
+        basis: four_members_before_repetition
+  axes:
+    ci: [4, 8]
+    Himg: [8, 16]
+  name: '{id}{i:02d}_h{Himg}c{ci}'
+  source_reference: >-
+    im2col convolution at two contraction depths and two spatial extents; the regime phase 1 measures
+    at 3.3% of the achievable ceiling and no other performance family exercises
+
+# The parallel extents. Every other family in this corpus pins M and N to one mesh tile and varies
+# only the reduction depth, so nothing here can say whether a schedule that wins at one tile still
+# wins when the output spans several. This sweeps M and N over EXACT mesh multiples.
+#
+# DISJOINT FROM THE HELD-OUT COHORT BY CONSTRUCTION. `perf_holdout_corpus` builds its PKG
+# generalization cohort from mesh-boundary landmarks, and its tails (boundary +/- 1) are what test
+# whether a schedule survives misalignment. This family takes the ALIGNED multiples and the holdout
+# keeps the tails, so training on M/N does not leak the thing the holdout measures. The split is
+# enforced by test, not by comment.
+- id: PM
+  fit_axes: [M, N]
+  comparison_roles: [prediction, measurement]
+  base:
+    cat: _perf
+    kind: model_slice
+    op: matmul
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    K: tile
+    performance:
+      level: L1_tile
+      family: PM
+      lever: parallel_extents
+      claim: PREDICTS
+      comparand:
+        kind: fitted_prediction
+        against: measured_cycles_same_member
+        cancels: [identical_K, identical_datapath, identical_numeric_policy]
+        demand_equal: [operation, K, operand_dtype, accum_dtype]
+      falsifier:
+        observation: residual_cycles_by_output_tile_count
+        fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+        negative_control: fixed_K_across_all_M_and_N_points
+      # NO `acceptance` BLOCK, DELIBERATELY -- see the note on PV above.
+      gate:
+        traits: [structural_pipeline_depth]
+        instrument: cycle_count
+        capacity: two_distinct_parallel_extents_on_each_of_M_and_N
+        on_missing: skip_with_evidence
+      regime:
+        separation: M_and_N_are_the_only_varied_shape_axes
+        layout: target_native_direct_corpus_builder
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs: {operation: matmul, varied_axes: [M, N]}
+      cost:
+        tier: 1
+        runs: 4
+        projected_cycles: derived_at_preflight
+        basis: four_members_before_repetition
+  axes:
+    M: [tile, 2*tile]
+    N: [tile, 2*tile]
+  name: '{id}{i:02d}_m{M}n{N}'
+  source_reference: >-
+    output-tile sweep at a fixed reduction depth, over exact mesh multiples; the aligned counterpart
+    of the held-out PKG landmark tails
+
 blocked_unimplemented:
 # L4_boundary -- the host/accelerator SEAM, priced. Declared rather than omitted, because an absent
 # rung and an unaffordable one read the same in a ladder and only one of them is true.
