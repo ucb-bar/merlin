@@ -97,13 +97,21 @@ def assemble_workspace(bundle: dict, ws: Path, *,
         _BW.materialize_bundle_inputs(ws, bundle, repo=C.REPO)
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "submission").mkdir(exist_ok=True)
+    skipped: list[str] = []
     for entry in bundle.get("allowed", []):
-        # Grants are repo-root-relative with the documented ``experiments/... resolves under merlin/``
-        # shorthand — resolve exactly as the sandbox binder does so both stay in lockstep.
-        src = C.REPO / entry["path"]
+        # THROUGH the shared resolver, which is the only thing that keeps this in lockstep with the
+        # sandbox binder. Restating two of its three cases here and omitting the third -- the grant whose
+        # home the TARGET REGISTRY owns, because a target's package does not always live under
+        # merlin/targets/ -- silently dropped exactly one kind of input. Measured on
+        # merlincirct_atlasp1arm4: the RTL-checks arm is granted `merlin/targets/atlas/contracts/
+        # rtl_facts/`, TASK.md tells it to derive the ISA/mesh/datapath from that path and
+        # ALLOWED_MERLIN_TOOLS.md lists it by name; the binder resolved it and bound the bytes, this
+        # loop did not and exposed no link, so the arm whose whole purpose is compiling FROM RTL facts
+        # had no way to find them. 503 tool calls, one touched that surface, five RTL-workflow
+        # conformance checks failed, and it read as an agent ignoring its tooling.
+        src = _BW.resolve_grant(entry["path"], C.REPO)
         if not src.exists():
-            src = C.REPO / "merlin" / entry["path"]
-        if not src.exists():
+            skipped.append(entry["path"])
             continue
         # Honor an explicit ``as:`` alias (e.g. hwbringup set mounted as ``<target>/``) so the workspace
         # entry matches the name the prompt tells the agent to read; else fall back to the basename.
@@ -114,6 +122,11 @@ def assemble_workspace(bundle: dict, ws: Path, *,
             _link_filtered(src, dst)          # answer surfaces omitted from the materialized tree
         except FileExistsError:
             pass
+    if skipped:
+        # Never silent: a granted tool that is not in the workspace is indistinguishable, to the agent,
+        # from a tool it was never granted -- and it will not ask.
+        print(f"[workspace] {len(skipped)} granted path(s) could not be placed: {sorted(skipped)}",
+              flush=True)
     return [Path(d["path"]).name for d in bundle.get("denied", [])]
 
 

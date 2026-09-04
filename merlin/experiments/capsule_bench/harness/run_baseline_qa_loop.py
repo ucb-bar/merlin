@@ -683,14 +683,19 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
             excl = set(_denied_subpaths_under(rel, bundle))
             excl_names = {Path(e.rstrip("/")).name for e in excl}
 
-            def _tool_ignore(dirpath, names, _excl=excl, _excl_names=excl_names, _rel=rel):
+            # Root the walk at the RESOLVED source, not at `<repo>/<declared path>`. They are the same
+            # only when the registry does not redirect the grant; when it does, every dirpath the walk
+            # yields lies under the resolved home and `relative_to` on the declared one raises
+            # ValueError mid-copy -- which is how a redirected grant went from "silently skipped" to
+            # "aborts the whole workspace assembly" the moment the resolver was wired in.
+            def _tool_ignore(dirpath, names, _excl=excl, _excl_names=excl_names, _root=src):
                 skip = {"__pycache__"}
-                relroot = Path(dirpath).resolve().relative_to((C.REPO / _rel).resolve())
+                relroot = Path(dirpath).resolve().relative_to(Path(_root).resolve())
                 for n in names:
                     cand = (relroot / n).as_posix()
                     if n in _excl_names or cand in _excl or any(cand == e.rstrip("/") for e in _excl):
                         skip.add(n)
-                        report["tool_subpaths_excluded"].append(f"{_rel}/{cand}")
+                        report["tool_subpaths_excluded"].append(f"{cand}")
                 return skip
 
             dst.parent.mkdir(parents=True, exist_ok=True)
