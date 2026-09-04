@@ -75,20 +75,55 @@ grading:
   # admitted while readiness proved it excludable.
   #
   # THE COST OF THE ADMITTED SET WAS MEASURED, not assumed, because a bigger denominator is only honest
-  # if it still runs: 0.6 h of predicted L3 wall-clock across the shape-resolvable admitted capsules,
-  # no single capsule over 30 minutes. The two store-filling SY_regime_* rows that would have cost 39.6
-  # h and 18.8 h alone are now `max_oracle_tier: L2` resting on a certified sibling.
+  # if it still runs. The instrument is merlin.targetgen.cert_cost's calibrated law
+  # (seconds = 0.20509 * written_output^1.0782, fitted on four cycle-accurate runs at 512/1024/2048/4096
+  # written elements, log-log r2 0.9976), read through build_tools/scripts/check_cert_affordability.py --
+  # the same tool the corpus's own affordability ratchet is written from. The admitted set costs 1.74 h
+  # of predicted L3 wall-clock across its 66 shape-resolvable L3-demanding rows, and its most expensive
+  # single capsule is 361 s. The two store-filling SY_regime_* rows that would have cost 39.6 h and 18.8
+  # h alone stop at L2 and carry `extends: SY_contraction_i8_aligned`, resting on a certified sibling.
   #
-  # WHY SY_model_tiny_llama IS INSIDE THE BOUNDARY rather than a row that should have been excluded:
+  # WHY SY_model_tiny_llama IS RESOURCE-EXCLUDED, and why the capability argument that used to keep it
+  # inside the boundary is left standing rather than deleted. Everything the earlier note said about the
+  # CAPABILITY boundary is still true and still independently checked:
   #   * it is `label: public` under merlin/contract/capsules/model/, which is what puts it in the source
   #     pool at all;
   #   * its operands are i8/i8, precisely the datapath the frozen Gemmini capability contract declares.
   #     Run through the hardware predicate directly it comes back eligible, so the boundary this block
   #     guards -- "no row whose operand dtype is absent from every declared capability" -- is not
-  #     crossed. It is not one of the bf16 rows named below, and it is in no exclude list;
+  #     crossed. It is NOT one of the bf16 rows named below and must never be listed among them:
+  #     excluding it there would be a false hardware claim about a datapath this target has;
   #   * it is `kind: model`, so readiness's capability split never reaches it (that split runs over the
-  #     non-model rows), and it lands in admitted by subtraction.
-  # The arithmetic the descriptor parser enforces holds: 87 == 73 + 14.
+  #     non-model rows), and it landed in admitted by subtraction.
+  # What that argument never established is that anyone can AFFORD to certify it -- and everything
+  # admitted after this boundary must reach the formal L3 tier. Measured on the law above, it cannot:
+  #   * it writes 256,000 elements (the 1x8x32000 logits), 62.5x past the largest calibrated run,
+  #     priced at 139,030 s = 38.6 h for that one capsule. The whole remaining admitted cohort is
+  #     1.74 h, so this single row would be 96% of the bill;
+  #   * and 38.6 h is only the OUTPUT side. Its largest single operand is the 32000x2048 embedding --
+  #     65,536,000 elements, exactly 1000x cert_cost.MEASURED_MAX_OPERAND_ELEMENTS -- with 1.10 billion
+  #     operand elements in total behind a 1.3 GB weights file. The law is explicitly silent about
+  #     moving that, so 38.6 h is a floor with an unpriced term on top, not an estimate;
+  #   * build_tools/scripts/cert_affordability_ratchet.txt already carries `model/SY_model_tiny_llama`
+  #     as the single largest piece of unaffordable L3 debt in the entire corpus. The corpus gate had
+  #     been saying this; the graded denominator had simply never been reconciled with it.
+  # That is the same shape as M0/M1/GX0 below, only larger by two orders of magnitude: a full-size
+  # capstone that is eligible on the frozen contract, kept in the source pool, and held out of the
+  # formal denominator by a declared resource policy rather than by a hardware claim. `resource_bound`
+  # is the per-target instrument for exactly that, so that is where it goes.
+  #
+  # AND WHY SY_micro_model IS NOT EXCLUDED WITH IT, though both are SY_ model rows that arrived by
+  # synthesis rather than by hand. It writes 1,024 elements and its largest operand is 1,024 -- both
+  # well inside the calibrated range -- for 361 s, which is under the 30-minute per-capsule bar this
+  # policy has always applied. Three model_slice rows already admitted (C0_mlp_linear1,
+  # C1_mlp_activation_linear2, SY_rank_contraction_batched) cost that same 361 s, so holding it out
+  # would be a resource exclusion with no resource behind it. It is the composition-axis capstone --
+  # one layer per admitted family, one per family a real capture contains that the manifest does not
+  # admit, host layers interleaved into the interior -- so it is named a REQUIRED admitted model rather
+  # than merely tolerated. The formal model cohort is therefore three (full-model representative,
+  # host/accelerator seam, composition), which is MORE model coverage than the policy declared before,
+  # for +361 s.
+  # The arithmetic the descriptor parser enforces holds: 87 == 72 + 15.
   #
   # RE-SEALED 2026-09-03 from 75/61 to 87/73. The exclusion list is UNCHANGED at 14 rows -- every added
   # capsule is eligible on the frozen contract -- so the whole delta is +12 on both sides, and it is
@@ -103,6 +138,17 @@ grading:
   # None of the twelve is a hand-added row: each carries the axis that asked for it in
   # `source_reference`, and `synth_capsule_corpus.py --check` re-derives the set from the requirement.
   #
+  # RE-SEALED 2026-09-04 from 87/73 to 87/72, on the measured certification cost recorded above. The
+  # SOURCE POOL IS UNCHANGED at 87 -- no capsule was added, deleted or renamed -- and the whole delta is
+  # one row crossing from admitted to excluded, enumerated rather than inferred from the count:
+  #   * SY_model_tiny_llama moves into `resource_bound.exclude_capsules`, taking the exclusion list from
+  #     14 rows to 15. Capability exclusions are still exactly the eleven bf16 rows named below and did
+  #     not move; resource exclusions go from three to four.
+  # `required_admitted_models` also gains SY_micro_model, which changes no count at all -- it was
+  # already admitted -- but it is now DECLARED, and that is the point: the descriptor and the corpus had
+  # disagreed about which model capsules are graded (the corpus admitted four, the descriptor named
+  # two), and readiness proves that equality independently rather than taking either side's word.
+  #
   # KNOWN BLIND SPOT, recorded rather than papered over: this seal is CARDINALITIES ONLY, deliberately,
   # so that the hidden names stay unpublished -- and a cardinality cannot see a swap. The episode above
   # is exactly that shape: one row in, one row out, same count, different cohort. What does catch it is
@@ -110,7 +156,7 @@ grading:
   # these integers, when the question is whether the cohort is the SAME cohort.
   expected_cohort:
     source_capsules: 87
-    admitted_capsules: 73
+    admitted_capsules: 72
   hidden_capability_admission:
     source_capsules: 15
     admitted_capsules: 14
@@ -129,17 +175,23 @@ grading:
     - GF4_add_bf16_pt
     - GF5_gelu_bf16_pt
   resource_bound:
-    # Legacy full-size capstones are retained in the source pool but excluded by an explicit resource
-    # policy, not by the hardware predicate. M2 is the L3-affordable full-model representative and M3
-    # is the focused accelerator->host->accelerator seam; both run without a model time ceiling.
+    # Full-size capstones are retained in the source pool but excluded by an explicit resource policy,
+    # not by the hardware predicate: every one of them is eligible on the frozen contract and is priced
+    # out of the cycle-accurate tier. The three representatives that ARE certified, with their predicted
+    # L3 cost on the law cited above: M2 the full-model representative (4 s), M3 the focused
+    # accelerator->host->accelerator seam (171 s), and SY_micro_model the composition capstone (361 s).
+    # All three run without a model time ceiling. SY_model_tiny_llama is the fourth exclusion, at 38.6 h
+    # predicted for that one capsule and an unpriced 1.10-billion-element operand side.
     policy: representative_l3_capstones_v1
     exclude_capsules:
       - GX0_interop_rvv_lane
       - M0_small_llama_gemmini
       - M1_lstmnetvit_gemmini
+      - SY_model_tiny_llama
     required_admitted_models:
       - M2_microvit_gemmini
       - M3_host_island_seam_gemmini
+      - SY_micro_model
 
 # Prior backends / reference exemplars the agent must NOT read or copy (denied answer surfaces). This is
 # an experiment CHOICE (which finished backends to hide), so it is declared here rather than derived.
