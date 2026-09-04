@@ -623,10 +623,21 @@ def _iface_prelude(target: str, comment: str) -> list[str]:
 
 
 def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """One resident weight reused across two matmuls (op == resident_reuse)."""
+    """One resident weight reused across two matmuls (op == resident_reuse).
+
+    AN EXTENT MAY BE DECLARED EITHER WAY, and reading only the ``_tiles`` spelling silently drops the
+    other. ``expand_sweeps`` resolves an ``axes:`` entry to the BARE name (``K``, ``N``), so a sweep
+    declaring ``K: ["4*tile", "8*tile"]`` lands in ``entry["K"]`` while this builder read
+    ``entry["K_tiles"]``, defaulted to 1, and emitted the tile edge for BOTH points. Reproduced
+    2026-09-04: PC00_k64 and PC01_k128 both came out ``W[16,16]`` -- byte-identical interfaces
+    differing only in a name and a prose string. The family's own gate demands two separation
+    regimes; it would have had one regime with two labels, and a paired differential over them would
+    have measured the same program twice. Same failure shape as holdout sets that turned out to be
+    renames -- see the memory `holdout-sets-were-renames`.
+    """
     D = binding.tile_dim
-    K = entry.get("K_tiles", 1) * D
-    N = entry.get("N_tiles", 1) * D
+    K = entry.get("K", entry.get("K_tiles", 1) * D)
+    N = entry.get("N", entry.get("N_tiles", 1) * D)
     weight = entry.get("weight", "W")
     idt, adt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
     midt, madt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
@@ -699,10 +710,15 @@ def build_movement(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 
 def build_attention_qk(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """Q @ K^T attention scores (op == attention_qk): the device does the transpose internally."""
+    """Q @ K^T attention scores (op == attention_qk): the device does the transpose internally.
+
+    Reads both extent spellings, for the reason given on :func:`build_resident_reuse`: a sweep axis
+    resolves to the bare name, and taking only the ``_tiles`` form collapses every point onto the
+    tile edge without failing.
+    """
     D = binding.tile_dim
-    M = entry.get("M_tiles", 1) * D
-    Kd = entry.get("K_tiles", 1) * D
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    Kd = entry.get("K", entry.get("K_tiles", 1) * D)
     q, k, out = entry.get("q", "Q"), entry.get("k", "K"), entry.get("out", "Y0")
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
