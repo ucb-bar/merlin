@@ -287,7 +287,12 @@ def _cycle_accurate_seconds(timing: dict) -> tuple[float | None, str]:
             if isinstance(secs, (int, float)) and secs > 0:
                 # Deepest reported wins if several qualify; a longer one is the binding cost.
                 if best is None or secs > best[0]:
-                    best = (float(secs), f"{_CYCLE_ACCURATE_ONLY}:{name}")
+                    # The engine rides in the BASIS, which is the string every caller already keeps
+                    # beside the number. A fit whose samples came from two engines that differ by 26x
+                    # is then readable off its own sources instead of being a silent average.
+                    eng = str(rec.get("engine") or "").strip()
+                    basis = f"{_CYCLE_ACCURATE_ONLY}:{name}"
+                    best = (float(secs), f"{basis}@{eng}" if eng else basis)
         if best:
             return best
         return None, "no cycle-accurate tier ran for this capsule"
@@ -324,6 +329,13 @@ def _per_tier_from_result(doc: dict) -> dict:
                           "oracle_wait_s": tm.get("oracle_wait_s"),
                           "cycle_accurate": rec.get("cycle_accurate"),
                           "derived_from_rtl": rec.get("derived_from_rtl"),
+                          # WHICH ENGINE PRODUCED THIS SECOND. Two elaborated-RTL engines answer the same
+                          # capsule at the same fidelity and are NOT interchangeable as cost samples:
+                          # measured on gemmini against the identical ELF, GSIM answers in 3.31 s where
+                          # Verilator takes 86.83 s. A fit over a mixture of the two prices a capsule at
+                          # neither engine's cost, and until this field was carried the mixture was
+                          # invisible -- the record had the engine and this reshaping dropped it.
+                          "engine": rec.get("engine"),
                           "evidence": rec.get("evidence")}
     return out
 

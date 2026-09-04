@@ -149,3 +149,40 @@ def test_the_fit_predicts_capsules_it_has_never_seen():
         f"{statistics.median(errors):.0%}); sizing against it would be guessing")
     assert sum(1 for e in errors if e <= 0.5) >= 0.8 * len(errors), (
         "fewer than four in five held-out capsules land within 50% of prediction")
+
+
+# --- which ENGINE produced the second ---------------------------------------------------------------
+#
+# Two elaborated-RTL engines answer the same capsule at the same fidelity and are NOT interchangeable as
+# cost samples: measured on gemmini against the identical ELF, GSIM answers in 3.31 s where Verilator
+# takes 86.83 s (hardware_pins.yaml, `gsim_compiler`). A fit over a mixture prices a capsule at neither
+# engine's cost. The per-capsule record carries `engine`; the reshaping into `by_tier` used to drop it,
+# so the mixture was not merely unhandled, it was invisible.
+
+def test_the_engine_survives_the_reshaping_into_a_by_tier_block():
+    doc = {"tiers": {"L3": {"cycle_accurate": True, "engine": "gsim",
+                            "timing": {"sim_active_s": 3.31}}}}
+    assert CC._per_tier_from_result(doc)["L3"]["engine"] == "gsim"
+
+
+def test_the_engine_rides_in_the_basis_so_a_mixed_fit_is_visible():
+    """The basis is the string every caller already keeps beside the number, which makes this readable
+    off the fit's own sources rather than requiring a new channel."""
+    fast = {"by_tier": {"L3": {"cycle_accurate": True, "engine": "gsim",
+                               "sim_active_s": 3.31}}}
+    slow = {"by_tier": {"L3": {"cycle_accurate": True, "engine": "verilator",
+                               "sim_active_s": 86.83}}}
+    _s_fast, basis_fast = CC._cycle_accurate_seconds(fast)
+    _s_slow, basis_slow = CC._cycle_accurate_seconds(slow)
+    assert basis_fast.endswith("@gsim")
+    assert basis_slow.endswith("@verilator")
+    assert basis_fast != basis_slow
+
+
+def test_a_sample_with_no_recorded_engine_still_yields_a_basis():
+    """Older records predate the field. They must keep contributing rather than start being dropped --
+    the point is to make the mixture visible, not to discard history."""
+    old = {"by_tier": {"L3": {"cycle_accurate": True, "sim_active_s": 12.0}}}
+    seconds, basis = CC._cycle_accurate_seconds(old)
+    assert seconds == 12.0
+    assert basis and "@" not in basis
