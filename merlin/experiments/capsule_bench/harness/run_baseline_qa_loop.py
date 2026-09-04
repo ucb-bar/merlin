@@ -2307,6 +2307,31 @@ def main(argv: list[str] | None = None) -> int:
                            "rl_waits_used": rl_waits_used, "started_at": started_at},
             "last_updated": datetime.now(timezone.utc).isoformat()}, sort_keys=False))
 
+    def _sink_telemetry_so_far(transcript: Path) -> None:
+        """Refresh the aet record from the transcript SO FAR, mid-run.
+
+        The end-of-run sink is authoritative but it is also the ONLY one, so a run that dies before it
+        records nothing at all: the atlas run of 2026-09-04 lost 2h08m of agent telemetry that way --
+        Ray's memory monitor killed the task and `aet runs` showed no model, turns, tokens or cost while
+        the transcript sat on disk the whole time.
+
+        Callable from BOTH schedules. The first version of this lived inside the ``a.continuous`` block,
+        which is the LEGACY path this repo forbids -- so on ``--schedule continuous``, the certified path
+        every real run uses, it never executed. A mid-run sink that only runs on the path nobody takes is
+        the same silent no-op it was written to prevent.
+
+        Soft-failing by construction: telemetry must never be able to end a run.
+        """
+        try:
+            from merlin.targetgen import aet_bridge as AB
+            if not AB.aet_sink_enabled() or not Path(transcript).exists():
+                return
+            AB.emit_to_aet(run_dir=run_dir, run_id=a.run_id, method=arm, model=a.model,
+                           target=_te().target, suite="capsule-bench",
+                           transcript_paths=[Path(transcript)], billing_mode=_billing_mode(a.model))
+        except Exception as e:                # noqa: BLE001 — a telemetry sink may never gate the run
+            print(f"[telemetry] aet sink skipped: {type(e).__name__}: {e}", flush=True)
+
     if a.continuous:
         # CONTINUOUS MODE — one session, no round barrier.
         #
@@ -2321,30 +2346,6 @@ def main(argv: list[str] | None = None) -> int:
         stop = threading.Event()
         state = {"tick": 0, "verdict": verdict}
 
-        def _sink_partial_telemetry() -> None:
-            """Refresh the aet record from the transcript SO FAR, on the grader's own cadence.
-
-            The end-of-run sink is the authoritative one, but it is also the only one: a continuous
-            session is a single round, so a session that dies mid-flight records nothing at all. The
-            atlas run of 2026-09-04 lost 2h08m of agent telemetry that way -- the node's memory monitor
-            killed the task, and because `emit_to_aet` had never been reached, `aet runs` showed the run
-            with no model, turns, tokens or cost. The bytes were on disk the whole time.
-
-            Soft-failing by construction: telemetry must never be able to end a run.
-            """
-            from merlin.targetgen import aet_bridge as AB
-            if not AB.aet_sink_enabled():
-                return
-            partial = run_dir / "rounds" / "round_00.transcript.jsonl"
-            if not partial.exists():
-                return
-            try:
-                AB.emit_to_aet(run_dir=run_dir, run_id=a.run_id, method=arm, model=a.model,
-                               target=_te().target, suite="capsule-bench",
-                               transcript_paths=[partial], billing_mode=_billing_mode(a.model))
-            except Exception as e:            # noqa: BLE001 — a telemetry sink may never gate the run
-                print(f"[continuous] aet sink skipped: {type(e).__name__}: {e}", flush=True)
-
         def _grader() -> None:
             while not stop.wait(max(30, int(a.grade_interval))):
                 t = state["tick"] + 1
@@ -2357,7 +2358,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[continuous] grade {t}: {v.get('n_passed')}/{v.get('n_capsules')} "
                       f"all_pass={v.get('all_pass')}", flush=True)
                 _checkpoint(t)
-                _sink_partial_telemetry()
+                _sink_telemetry_so_far(run_dir / "rounds" / "round_00.transcript.jsonl")
                 if v.get("all_pass"):
                     stop.set()                     # converged: stop grading; the session is torn down below
                     return
@@ -2575,6 +2576,7 @@ def main(argv: list[str] | None = None) -> int:
             break
         rnd = rnd + 1
         _checkpoint(rnd)  # next_round advances only after a completed (non-rate-limited) round
+        _sink_telemetry_so_far(tpath)   # per ROUND: this schedule has no background grader to hook
         # Plateau early-stop: a stuck agent re-sends its (uncached) growing context every round for no
         # gain — bound that spend. Stop after N consecutive rounds with no progress (neither the pass
         # count nor the total numeric mismatch improved). Disabled with --plateau-rounds 0.

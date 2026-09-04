@@ -90,7 +90,17 @@ def target_profile(target: str) -> TargetProfile:
     reviewed = _profile_from_reviewed_facts(target)
     if reviewed is not None:
         return reviewed
-    from .rtl import mlc_bridge
+    try:
+        from .rtl import mlc_bridge
+    except ImportError:
+        # The live bridge is an ORACLE module (mlc arc cosim + DRAM readback) and the sandbox masks it
+        # BY DESIGN. Preferring the reviewed pin above is what normally keeps this promised authoring
+        # command runnable there -- but a target with no reviewed facts falls through to here, and a
+        # hard import then raises `cannot import name 'mlc_bridge'` INSIDE the box. That contradicts
+        # this function's stated contract two lines up ("fields are None when neither source is
+        # available -- the caller degrades honestly and never fabricates a hardware fact") and reported
+        # radiance as a launch NO-GO for correctly enforced masking. Degrade, as documented.
+        return TargetProfile(target=target, legal_opcodes=None, memory_map=None, dim=None)
     ops = mlc_bridge.discover_legal_opcodes(target) if mlc_bridge.mlc_available()[0] else {}
     return TargetProfile(
         target=target,
