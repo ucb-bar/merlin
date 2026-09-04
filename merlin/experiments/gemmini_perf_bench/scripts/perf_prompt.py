@@ -412,7 +412,11 @@ of different size. Each tuning verdict therefore also reports, per member:
   (0, 1]. A value above 1 is refused as a broken derivation rather than reported as a fast program.
 
 - `achievable_macs_per_cycle` (in `summary`) -- the best rate any MEASURED program on this machine
-  actually reached, harvested from the functional run's own cycle counts. On this target it is a
+  actually reached, harvested from the functional run's cycle counts AND from the frozen-baseline
+  arm of this performance corpus. Baseline arms only: none of your own candidate measurements
+  contributes to it, so it is a target you cannot move by authoring a fast candidate. It may refine
+  UPWARD between feedback calls as more baselines are measured -- `summary.achievable_basis` says how
+  many points it came from and from where. On this target it is a
   small fraction of the structural peak, and the difference is a fact about the machine, not about
   your compiler: no program reaches the peak, so optimising toward it is chasing a number that does
   not exist.

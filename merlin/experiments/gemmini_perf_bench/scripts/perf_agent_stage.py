@@ -71,6 +71,16 @@ _HOST_FEEDBACK_SENTINEL = "__host_owned_tuning_gsim_feedback__"
 #: no holdout, so it can be called as often as the agent likes and can leak nothing.
 ANALYSIS_ACTION = "analyze-command-buffers"
 
+#: The exit code a round returns when its own deadline killed it, as opposed to failing. A round
+#: that spent its whole budget and a round that crashed are different events and are classified
+#: differently below; every other non-zero code stays a refusal.
+ROUND_DEADLINE_EXIT = 124
+
+#: How a member's per-arm workspace is named. The ceiling harvest globs on this rather than parsing
+#: the runner's run-id, so the writer below and the reader in `harvest_baseline_points` cannot drift.
+_ARM_WORKSPACE = "m{index:03d}_{arm}"
+_BASELINE_ARM_GLOB = "m*_baseline"
+
 #: The verdict every command-buffer-readable ordering signal earned, and the evidence behind it.
 #: Held out by workload: parameters fitted on one half, every rate below measured on the other.
 #: Regenerate with `validate_ordering_signals.py`; do not edit these by hand to match a hope.
@@ -344,6 +354,13 @@ class DevelopmentGsimFeedback:
     # the ceiling" tolerates, and it is MEASURED so that judgement is not a constant anyone can
     # turn until the answer changes. None when fewer than two points price, which refuses.
     achievable_dispersion: float | None = None
+    #: The phase-1 functional points the ceiling starts from, kept so it can be RE-DERIVED over a
+    #: wider set once this run's own frozen-baseline measurements exist. Phase 1's corpus is not
+    #: this corpus: measured 2026-09-04, its ceiling was 80.01 MACs/cycle while four performance
+    #: members already ran ABOVE it at baseline, and its dispersion of 0.472 put the "already at the
+    #: ceiling" line at 42.25 -- so 14 of 38 members were told they had no headroom left.
+    seed_points: tuple = ()
+    functional_run_id: str = ""
     #: Median measured simulation seconds per capsule, and how the ordering was arrived at. Used to
     #: sweep cheapest-first, so a losing candidate is refuted before the corpus's slowest members
     #: are paid for. Empty means no history: the declared order stands and the basis says so.
@@ -545,6 +562,48 @@ class DevelopmentGsimFeedback:
             "verdicts": [v.to_dict() for v in verdicts],
         }
 
+    def _refresh_achievable(self) -> None:
+        """Re-derive the ceiling and its tolerance over every measurement the agent did not author.
+
+        Phase 1's corpus is not phase 2's. Measured 2026-09-04: the ceiling harvested from the
+        functional run alone was 80.01 MACs/cycle while four performance members already ran ABOVE
+        it at baseline (PC01_k128 99.79, PR01 94.06, PR03 88.33, PR02 87.96), and that set's
+        dispersion of 0.472 put "already at the ceiling" at 42.25 -- so 14 of 38 members were being
+        told they had no headroom left. Over the widened set the ceiling is 99.79 and the dispersion
+        0.245, and 6 members read as finished. The tolerance MUST come from the same points as the
+        ceiling: a wide-set ceiling with a narrow-set spread is not a measurement of anything.
+
+        Widening can only ever RAISE the ceiling -- the rate is a max over the points, so it is
+        monotone under union, and a point with positive cycles cannot falsify `demand/rate <= busy`.
+        A higher ceiling makes every consumer stricter: shares fall, `no_headroom` fires less, and
+        the attainment stop condition fires less. There is no direction in which this flatters a
+        candidate.
+
+        BASELINE ARMS ONLY, and that is the entire safety argument. The baseline package is phase
+        1's submission, sha-pinned before the first member runs; its cycles cannot depend on
+        anything the agent wrote. Admitting candidate arms would let the agent raise its own
+        ceiling, pinning its candidate near 1.0 by construction while pushing every other member
+        down -- a target the agent authors is not a target.
+        """
+        import perf_model as PMODEL                                         # noqa: PLC0415
+        import perf_capsule_verdict as CV                                   # noqa: PLC0415
+
+        baseline_points = harvest_baseline_points(self.work_root)
+        points = list(self.seed_points) + list(baseline_points)
+        if not points:
+            return
+        ceiling = PMODEL.achievable_ceiling(points, provenance="functional and frozen baseline")
+        if not ceiling.known:
+            return                      # never downgrade a known ceiling to an absent one
+        self.achievable_macs_per_cycle = float(ceiling.value)
+        self.achievable_dispersion = CV.ceiling_dispersion(
+            [{"macs": p.macs, "cycles": p.cycles} for p in points])
+        self.achievable_basis = (
+            f"best rate over {len(points)} measured point(s): {len(self.seed_points)} from the "
+            f"phase-1 functional run {self.functional_run_id} and {len(baseline_points)} from the "
+            f"frozen-baseline arm of the performance corpus (baseline arms only; no candidate "
+            f"measurement contributes to this ceiling)")
+
     def evaluate(self, candidate: Path, *, round_index: int, call_index: int,
                  timeout_s: int) -> dict[str, Any]:
         candidate = Path(candidate).resolve(strict=True)
@@ -590,7 +649,8 @@ class DevelopmentGsimFeedback:
                 raw = self._execute(
                     arm="baseline", package=self.baseline, package_sha256=self.baseline_sha256,
                     member=member, decision=decision,
-                    workspace=call_root / f"m{index:03d}_baseline", timeout_s=remaining)
+                    workspace=call_root / _ARM_WORKSPACE.format(index=index, arm="baseline"),
+                    timeout_s=remaining)
                 baseline = self._redact_execution(
                     raw, decision, arm="baseline", family=member.family, capsule=member.capsule,
                     required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
@@ -601,7 +661,8 @@ class DevelopmentGsimFeedback:
             raw = self._execute(
                 arm="candidate", package=candidate, package_sha256=candidate_before,
                 member=member, decision=decision,
-                workspace=call_root / f"m{index:03d}_candidate", timeout_s=remaining)
+                workspace=call_root / _ARM_WORKSPACE.format(index=index, arm="candidate"),
+                timeout_s=remaining)
             candidate_row = self._redact_execution(
                 raw, decision, arm="candidate", family=member.family, capsule=member.capsule,
                 required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
@@ -669,6 +730,26 @@ class DevelopmentGsimFeedback:
         # The snapshot must still be the bytes the runs read: nothing here may edit it, and a
         # difference now would mean the measurement mutated its own input rather than that the agent
         # kept working. That is a real defect and still refuses.
+        # THE CEILING IS RE-DERIVED FROM THE BASELINES THIS SWEEP JUST MEASURED, then every field
+        # that depends on it is recomputed. Doing it only at prepare time would leave round 0 -- the
+        # round that sets the agent's whole plan -- scored against phase 1's corpus, which is the
+        # case that was actually wrong.
+        self._refresh_achievable()
+        rate = self.achievable_macs_per_cycle
+        if rate:
+            for row in cells:
+                if not row.get("measured") or not row.get("declared_macs"):
+                    continue            # an unmeasured cell keeps its nulls
+                ideal = float(row["declared_macs"]) / float(rate)
+                row["baseline_share_of_achievable"] = ideal / row["baseline_gsim_cycles"]
+                row["candidate_share_of_achievable"] = (
+                    ideal / row["candidate_gsim_cycles"] if row["comparable"] else None)
+                row.update(_capsule_verdict_fields(
+                    capsule=row["capsule"], declared_macs=row["declared_macs"],
+                    achievable_rate=rate, baseline_cycles=row["baseline_gsim_cycles"],
+                    candidate_cycles=(row["candidate_gsim_cycles"] if row["comparable"] else None),
+                    dispersion=self.achievable_dispersion))
+
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
             raise StageGateError("development GSIM evaluation mutated the candidate snapshot")
@@ -2182,6 +2263,35 @@ def _unmeasured_cell(member: Any, *, reason: str) -> dict[str, Any]:
     }
 
 
+def harvest_baseline_points(work_root: Path) -> list:
+    """Measured points from the FROZEN-BASELINE arm of this run, and nothing else.
+
+    The baseline package is phase 1's submission, sha-pinned before the first member runs and
+    re-executed unchanged for every one, so these points cannot depend on anything the agent wrote.
+    CANDIDATE arms are excluded by construction and that exclusion is the whole safety argument: a
+    ceiling the agent can raise is a target the agent authors, and `share_of_achievable` would then
+    pin its own candidate near 1.0 while pushing every other member down.
+
+    Scoped to ONE run's work root on purpose. Harvesting across stages would make the objective
+    depend on what happens to be on disk at launch -- two trials of one configuration would be
+    scored differently, and clearing `out/` would silently move the target.
+
+    The filter is the workspace directory THIS module creates, not a parse of the runner's run-id:
+    that name is minted in another module and matching it would be exactly the brittleness the
+    no-regex rule exists to prevent.
+    """
+    import perf_model as PMODEL                                             # noqa: PLC0415
+
+    root = Path(work_root)
+    if not root.is_dir():
+        return []
+    found: dict[str, Any] = {}
+    for arm_dir in sorted(root.glob(f"round_*/call_*/{_BASELINE_ARM_GLOB}")):
+        for point in PMODEL.harvest_measured_points(arm_dir)[0]:
+            found.setdefault(point.capsule, point)
+    return sorted(found.values(), key=lambda p: p.capsule)
+
+
 def harvest_member_cost(roots: "Sequence[Path]") -> dict[str, float]:
     """Median measured simulation seconds per capsule, from runs already on disk.
 
@@ -2265,6 +2375,7 @@ def prepare_development_feedback(
         _, member_cost_basis = order_members_by_cost((), member_cost)
         achievable_macs, achievable_basis = None, "no functional run was supplied to harvest"
         achievable_dispersion: float | None = None
+        seed_points: tuple = ()
         if functional_run_dir is not None:
             try:
                 import perf_model as PMODEL  # noqa: PLC0415
@@ -2277,6 +2388,7 @@ def prepare_development_feedback(
                         [{"macs": p.macs, "cycles": p.cycles} for p in points])
                 except Exception:  # noqa: BLE001 - an underivable spread refuses, never defaults
                     achievable_dispersion = None
+                seed_points = tuple(points)
                 if ceiling.known:
                     achievable_macs = float(ceiling.value)
                     achievable_basis = (f"best rate over {ceiling.n_samples} measured points in "
@@ -2314,7 +2426,8 @@ def prepare_development_feedback(
         rtl_identity, Path(work_root), decisions,
         peak_macs_per_cycle=peak_macs, peak_basis=peak_basis,
         achievable_macs_per_cycle=achievable_macs, achievable_basis=achievable_basis,
-        achievable_dispersion=achievable_dispersion,
+        achievable_dispersion=achievable_dispersion, seed_points=seed_points,
+        functional_run_id=(Path(functional_run_dir).name if functional_run_dir is not None else ""),
         member_cost=member_cost, member_cost_basis=member_cost_basis,
         tuning_call_budget=tuning_call_budget)
 
@@ -3997,7 +4110,8 @@ def validate_candidate_record(document: Mapping[str, Any], *, require_consumable
                 or broker.get("all_required_succeeded") is not True
                 or any(row.get("feedback_successes", 0) < 1 for row in receipt_rows)
                 or len(receipt_rows) != rounds_requested
-                or any(row.get("agent_exit_code") != 0 for row in round_rows)):
+                or any(row.get("agent_exit_code") not in (0, ROUND_DEADLINE_EXIT)
+                       for row in round_rows)):
             raise StageGateError(f"performance candidate is not consumable: {admission.get('refusal')}")
     return dict(document)
 
@@ -4833,7 +4947,15 @@ def run_stage(
     for round_index in range(rounds):
         remaining = int(deadline - time.monotonic())
         if remaining <= 0:
-            refusal = "performance stage wall-clock budget expired before the next round"
+            # Spending the declared wall budget is the run finishing, not failing. This wrote into
+            # the refusal channel, so the launcher's claim that the wall check "ends the run
+            # cleanly" was true for no value of `rounds`. A round that already sealed a candidate
+            # keeps it; with nothing sealed yet there is nothing to admit and it stays a refusal.
+            if round_records:
+                stopped_by = {"conditions": ["wall_budget"], "round": round_index,
+                              "reason": "the stage spent its declared wall-clock budget"}
+            else:
+                refusal = "performance stage wall-clock budget expired before the first round"
             break
         workspace = stage_root / "agent_workspaces" / f"round_{round_index:02d}"
         candidate = fresh_round_workspace(previous_submission, workspace, previous_digest)
@@ -4932,6 +5054,22 @@ def run_stage(
         last_inner = inner
         last_actions = actions
         previous_submission, previous_digest = candidate, observed
+        # A ROUND THAT SPENT ITS BUDGET IS FINISHED, NOT BROKEN -- provided it left the evidence a
+        # finished round leaves. Treating the deadline as a crash discards everything: a session
+        # that ran eleven hours, measured the corpus repeatedly and sealed a valid candidate was
+        # thrown away whole, because the same branch handled a spawn failure, a crash and an expiry.
+        # The budget is the run's declared size; reaching it is the expected end of a search that
+        # did not converge first, and the post-freeze formal grade still decides the verdict.
+        #
+        # It is admitted ONLY on the evidence a clean round already had to produce: a clean
+        # answer/tool-access audit, a sealable candidate, and at least one successful mandatory
+        # feedback call -- all three are checked above and any of them failing has already written
+        # `refusal`. Anything else non-zero stays a refusal, because a crash is not a budget.
+        if rc == ROUND_DEADLINE_EXIT and refusal is None and audit["clean"]:
+            stopped_by = {"conditions": ["round_deadline"], "round": round_index,
+                          "reason": ("the round reached its declared deadline with a clean audit "
+                                     "and a sealed candidate; the search did not converge first")}
+            break
         if rc != 0:
             refusal = f"Codex round {round_index} exited with rc={rc}"
             break
@@ -4976,7 +5114,12 @@ def run_stage(
     after = PC.check_fork(fork, base)
     if after.ok is not True:
         refusal = f"functional base fork changed during authoring: {after.reason}"
-    exits_clean = all(row["agent_exit_code"] == 0 for row in round_records)
+    # A round that reached its declared deadline counts as a clean exit only when the loop above
+    # classified it that way -- which it does only with a clean audit and a sealed candidate, and
+    # which it records in `stopped_by`. Without that, the deadline is still a refusal.
+    _admitted_exits = ({0, ROUND_DEADLINE_EXIT}
+                       if (stopped_by or {}).get("conditions") == ["round_deadline"] else {0})
+    exits_clean = all(row["agent_exit_code"] in _admitted_exits for row in round_records)
     delta = candidate_delta(base, previous_submission)
     if not delta["execution_relevant_changed_files"]:
         refusal = "Codex produced no execution-relevant candidate change"
