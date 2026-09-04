@@ -624,7 +624,18 @@ def wrap(te: TargetExperiment, ws: Path, inner: str, bundle: dict | None = None,
     """
     from merlin.targetgen.sandbox import toolchain as TC
     argv = full_argv(te, ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
-    tail = f" bash -c '{TC.sandbox_env(te, ws)} {inner}'"
+    return compose_command(argv, f" bash -c '{TC.sandbox_env(te, ws)} {inner}'", ws)
+
+
+def compose_command(argv: list[str], tail: str, ws: Path) -> str:
+    """THE ONE PLACE a bwrap argv becomes a shell string, so the size rule cannot be half-applied.
+
+    Every caller passes the result as a single argument to ``bash -c``, and a single execve argument
+    may not exceed MAX_ARG_STRLEN. There were two independent copies of this join -- this module's
+    ``wrap`` and the run loop's own ``bwrap_cmd`` -- and fixing only the first left the live agent path
+    dying with E2BIG on launch while the isolation suite passed. ``tail`` is appended verbatim so each
+    caller keeps its own payload quoting.
+    """
     inline = " ".join(argv) + tail
     if len(inline.encode("utf-8")) <= _MAX_ARG_BYTES:
         return inline
@@ -640,7 +651,9 @@ def _wrap_via_args_fd(argv: list[str], tail: str, ws: Path) -> str:
     """
     import shlex
 
-    payload = ws.parent / f".{ws.name}.bwrap-args"
+    import hashlib
+    digest = hashlib.sha256("\0".join(argv).encode("utf-8")).hexdigest()[:12]
+    payload = ws.parent / f".{ws.name}.bwrap-args.{digest}"
     payload.write_bytes(b"\0".join(a.encode("utf-8") for a in argv[1:]) + b"\0")
     payload.chmod(0o600)
     return (f"exec {{__bwargs}}<{shlex.quote(str(payload))} && "

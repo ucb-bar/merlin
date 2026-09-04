@@ -1036,7 +1036,10 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None 
     # its prompt arg, e.g. "…(if present)…"), so a naive f"…'{inner}'" would let those quotes close the
     # wrapper early and expose a `(` to the outer shell (opencode arm died rc=2 on exactly this). The
     # INNER bash still re-parses the payload as a script, so $(…)/\( \) in mask_selftest keep working.
-    return " ".join(parts) + " bash -c '" + payload.replace("'", "'\\''") + "'"
+    # Through the SHARED composer, which moves the bind list into a file descriptor once the string
+    # would exceed the execve per-argument limit. At ~1,100 answer surfaces the inline form is 159 KB
+    # against a 128 KiB ceiling, and every arm died with E2BIG naming `bash` before the first round.
+    return _BW.compose_command(parts, " bash -c '" + payload.replace("'", "'\\''") + "'", ws)
 
 
 def _corpus_probe_paths() -> tuple[Path, Path]:
