@@ -70,6 +70,25 @@ _HOST_FEEDBACK_SENTINEL = "__host_owned_tuning_gsim_feedback__"
 #: time to discover. This prices the agent's own emitted artifacts instead: no oracle, no goldens,
 #: no holdout, so it can be called as often as the agent likes and can leak nothing.
 ANALYSIS_ACTION = "analyze-command-buffers"
+
+#: The verdict every command-buffer-readable ordering signal earned, and the evidence behind it.
+#: Held out by workload: parameters fitted on one half, every rate below measured on the other.
+#: Regenerate with `validate_ordering_signals.py`; do not edit these by hand to match a hope.
+ORDERING_REFUSED = "refused_no_signal_beat_chance"
+ORDERING_EVIDENCE = {
+    "held_out_pairs": 478,
+    "held_out_workloads": 18,
+    "artifact": "out/artifacts/perf-bench/<target>/ordering_signal_validation.json",
+    "agreement": {
+        # signal: (agreed, decided, why it was refused)
+        "depgraph_makespan": [226, 452, "0.500 -- exactly chance"],
+        "command_count": [198, 421, "0.470 -- below chance"],
+        "tile_pressure": [203, 279, "0.728 overall, but 0.273 on one workload with 33 decided "
+                                    "pairs, where it points backwards"],
+        "barrier_count": [24, 37, "0.649 on too few decided pairs, from a single slice"],
+        "depgraph_critical_path": [17, 27, "0.630 on too few decided pairs, from a single slice"],
+    },
+}
 _HOST_ANALYSIS_SENTINEL = "__host_owned_command_buffer_analysis__"
 _HEX = frozenset("0123456789abcdef")
 _HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
@@ -1678,6 +1697,25 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     # command buffer declares) and never builds a composed envelope or per-resource demands, so it
     # has nothing a cycle-level differential could be computed from. The measurement path is what
     # carries a differential verdict.
+    # WHICH OF TWO ORDERINGS IS FASTER IS NOT ANSWERED HERE, and the refusal is measured. Every
+    # cheap signal available to this action was scored on the exact comparison the search makes --
+    # two programs for the SAME workload, which the oracle timed faster -- over held-out workloads,
+    # by `validate_ordering_signals.py`. None qualified. The numbers travel with the refusal so a
+    # reader can see it is a measurement rather than caution, and so a later change is checked
+    # against them rather than against a memory of them.
+    out["ordering_signals"] = {
+        "status": ORDERING_REFUSED,
+        "basis": ("held-out within-workload ordering agreement against the cycle oracle, "
+                  f"{ORDERING_EVIDENCE['held_out_pairs']} pair(s) over "
+                  f"{ORDERING_EVIDENCE['held_out_workloads']} workload(s)"),
+        "measured": dict(ORDERING_EVIDENCE["agreement"]),
+        "reason": ("no signal readable from a command buffer orders two schedules of the same "
+                   "workload better than chance, so none is offered for that purpose. Use this "
+                   "action to eliminate a candidate that does MORE declared work, adds completion "
+                   "points, or cannot beat its own lower bound -- all of which are decidable here. "
+                   "Which of two legal orderings is faster is decidable only by measurement."),
+        "artifact": ORDERING_EVIDENCE["artifact"],
+    }
     out["differential"] = {
         "basis": "not_attempted",
         "reason": ("this action prices declared WORK from the command buffers; a cycle-level "
@@ -1729,9 +1767,11 @@ def build_action_registry(candidate: Path,
     actions.append(BrokerAction(
         ANALYSIS_ACTION, (_HOST_ANALYSIS_SENTINEL, "{baseline_json}", "{candidate_json}"),
         ("baseline_json", "candidate_json"),
-        "host-owned ORDERING-ONLY comparison of two emitted command buffers: work volume, the "
-        "derived ceilings, and a differential verdict. Costs no oracle time -- use it to screen a "
-        "candidate BEFORE spending a measurement on it",
+        "host-owned comparison of two emitted command buffers from the buffers alone: declared work "
+        "volume per arm, the derived ceilings, the change in completion points (barriers), and a "
+        "cycle LOWER BOUND per arm. Costs no oracle time -- use it to ELIMINATE a candidate before "
+        "spending a measurement on it. It cannot certify one: nothing here predicts which of two "
+        "orderings is faster, and the block it returns says so",
         False))
     names = [action.name for action in actions]
     if len(names) != len(set(names)):
@@ -2154,6 +2194,12 @@ def prepare_development_feedback(
             workload = PAIR._gsim_workload(member)
             decision = GATE.plan_evaluation(
                 certificate, workload, phase="development_correctness", gsim_available=True)
+            # THE GATE GRANTS A DEVELOPMENT-ONLY REFERENCE-ENGINE FALLBACK HERE AND THIS REFUSES IT
+            # ANYWAY, deliberately. Taking it would put a reference-engine cycle count into the
+            # agent-visible feedback document, and that document's redaction boundary forbids naming
+            # that engine at all -- a cell would either carry the forbidden name or hide which engine
+            # timed it, and hiding it is worse. An out-of-envelope member is therefore admitted by
+            # PAYING for its certificate offline, not by relaxing what a development cell may say.
             if (not decision.admitted or not decision.eligible
                     or decision.selected_engine != "gsim" or not decision.use_gsim):
                 raise GATE.GsimGateError(

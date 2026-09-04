@@ -424,6 +424,35 @@ of different size. Each tuning verdict therefore also reports, per member:
 **Optimise toward the ACHIEVABLE ceiling, and report both.** Quote utilization against the structural
 peak for context only.
 
+### The free screen: `analyze-command-buffers`
+
+This action costs **no oracle time and no measurement budget**. It reads two emitted command buffers
+and nothing else -- no golden, no holdout, no simulator -- so you may call it as often as you like,
+and you should call it before spending a measurement. It returns, per arm:
+
+- `arms.<arm>.macs` and `.exact` -- the arithmetic each buffer's commands actually declare. `exact`
+  is false when a command could not be priced, which makes the number a floor rather than a total.
+- `barriers` -- how many completion points the candidate removed or added versus the baseline, or
+  UNKNOWN when the stream carries no countable completion opcode. UNKNOWN is not zero.
+- `lower_bound.<arm>` -- cycles this arm cannot go below, from its declared demand against the
+  derived ceiling.
+- `work_delta` -- present only when the two arms do DIFFERENT amounts of arithmetic, in which case a
+  cycle comparison between them is not a schedule comparison and you should say so.
+
+**What it may decide, and what it may not.** Use it to ELIMINATE: a candidate that declares more work
+than the baseline, that adds completion points, or whose own lower bound already exceeds the
+baseline's measured cycles is worse without measuring it. Use it that way freely -- an elimination
+here is sound, and it is free.
+
+It may **never certify**. A candidate this action likes has not been shown to be faster; it has only
+failed to be shown slower. Which of two legal ORDERINGS of the same commands runs faster is not
+answered here, and the `ordering_signals` block says so with the numbers: every signal readable from
+a command buffer was scored against the cycle oracle on exactly that comparison, held out by
+workload, and none beat chance -- the dependence-graph makespan landed on 0.500, a raw command count
+on 0.470, and a tile-pressure heuristic that reads 0.728 overall points BACKWARDS (0.273) on one
+workload with 33 decided pairs. Do not substitute your own reasoning for that measurement: if you
+believe an ordering is faster, the only thing that settles it is a measurement.
+
 **Drive candidate utilization UP, and never below the baseline's, on every member.** Utilization falling
 while a fit improves is the signature of a change that traded the machine away for a nicer curve; say
 so and go back. Where a value is null, the host could not derive it -- treat that as missing evidence
