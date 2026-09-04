@@ -154,17 +154,33 @@ def _host_answer_surfaces(te) -> list[Path]:
 def _make_host_owner_only(root: Path) -> int:
     """Keep a surface host-readable while denying other host users; return entries protected.
 
-    Symlinks are refused instead of followed: recursively changing a linked tree would expand the
-    preflight's authority beyond the descriptor-derived surface.
+    A symlink that LEAVES the surface is refused instead of followed: recursively changing a linked
+    tree would expand the preflight's authority beyond the descriptor-derived surface. One that stays
+    INSIDE it is skipped, not refused -- that reason does not apply to it, and its target is already
+    an entry of this walk in its own right, so it gets protected either way.
+
+    The distinction is not hypothetical. This repo's own versioned-product convention writes a
+    relative ``latest``-style link beside the file it names, so an answer surface holding two of them
+    made the batch refuse to launch for a link pointing at its own sibling directory entry.
     """
     if root.is_symlink():
         raise RuntimeError(f"answer surface must not be a symlink: {root}")
+    root_real = root.resolve()
     entries = [root] + sorted(root.rglob("*"))
+    protected = 0
     for entry in entries:
         if entry.is_symlink():
-            raise RuntimeError(f"answer surface contains a symlink: {entry}")
+            try:
+                target = entry.resolve()
+            except OSError as e:                     # a broken link resolves to nothing to protect
+                raise RuntimeError(f"answer surface contains an unresolvable symlink: {entry}") from e
+            if not target.is_relative_to(root_real):
+                raise RuntimeError(
+                    f"answer surface contains a symlink leaving the surface: {entry} -> {target}")
+            continue                                 # its target is protected as an entry of its own
         entry.chmod(0o700 if entry.is_dir() else 0o600)
-    return len(entries)
+        protected += 1
+    return protected
 
 
 def _bundle_id_from_command(command: list[str]) -> str:
