@@ -782,7 +782,14 @@ def reveal_and_materialize(
         sweep["source_reference"] = (
             "commit/reveal held-out points from the shared PK family; selected only after candidates sealed")
         sweep["base"]["label"] = "held_out"
-        sweep["base"]["source_role"] = "generated_seeded_holdout"
+        # source_role records HOW a capsule was constructed, and these are expanded from the very
+        # same PK sweep as the public members -- so `derived_sweep` is the accurate role and the one
+        # the capsule schema admits. Emitting "generated_seeded_holdout" here made every revealed
+        # capsule schema-INVALID, which failed the run at the reveal step after all three candidates
+        # had already sealed. What that spelling was carrying -- that these points were chosen only
+        # after sealing -- is not lost: it is in `label` (held_out) and in `source_reference` below,
+        # and no consumer ever keyed on the role.
+        sweep["base"]["source_role"] = "derived_sweep"
         trait_facts = {"traits": {"structural_pipeline_depth": {
             "satisfied": True,
             "tier": "rtl_circt_derived",
@@ -822,7 +829,7 @@ def reveal_and_materialize(
             entry["name"] = (
                 f"PKG{index:02d}_m{shape['M']}k{shape['K']}n{shape['N']}")
             entry["label"] = "held_out_generalization"
-            entry["source_role"] = "generated_seeded_holdout"
+            entry["source_role"] = "derived_sweep"   # see the note at the PKH sweep above
             entry["source_reference"] = (
                 "commit/reveal M/N/K generalization point from PK's runnable matmul contract; "
                 "selected before authoring and revealed only after all candidates sealed")
