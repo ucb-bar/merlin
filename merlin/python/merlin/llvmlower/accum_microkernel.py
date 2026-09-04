@@ -47,11 +47,13 @@ is byte-identical to the baseline.
 """
 from __future__ import annotations
 
+from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
+from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
+from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
+
 # Sentinel pass name spliced into the pipeline string by the feature's edit_pipeline to mark where
 # the A-scalarization rewrite runs (after contract->vector.fma lowering, before one-shot-bufferize).
 # It is NOT a real MLIR pass; the runner splits the pipeline here and never passes it to mlir-opt.
-from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
-
 SCALARIZE_MARKER = "__merlin_scalarize_a__"
 
 
@@ -390,7 +392,9 @@ def run_source() -> str:
         "from torch_mlir.passmanager import PassManager\n"
         "from torch_mlir.dialects import llvm\n"
         + _SELFCOPY_PRELUDE
-        + _REWRITER_SRC +
+        + _COPY_EXPAND_PRELUDE
+        + _REWRITER_SRC
+        + _MID_STAGE_SRC +
         f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         "passes = pipeline.split(',')\n"
@@ -414,7 +418,7 @@ def run_source() -> str:
         "    _n = scalarize_a_reads(module, ctx)\n"
         "    _m += sink_extf_through_extract(module, ctx)\n"
         "if stage2:\n"
-        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY)\n"
+        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY, _MID_STAGES)\n"
         "with open(out_path, 'w') as f:\n"
         "    __MERLIN_EMIT__\n"
         "print('OK scalarize_a rewrote', _n, 'sink_extf', _m)\n"

@@ -397,6 +397,14 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
     return _splice(passes)
 
 
+# The post-bufferization rewrites, and the argv glue that selects them. `_MID_STAGE_SRC` is spliced
+# into EVERY runner variant below (plain / act_poly / scalarize) so a feature-specific runner cannot
+# silently drop one -- which is exactly how `erase_self_copy` came to measure as an inert lever: the
+# act_poly runner called the PassManager directly, so every fork that also enabled
+# `vectorized_transcendental_activation` (the whole-model proposer enables it by default) got the
+# self-copy erase requested, reported as applied, and never run.
+from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
+from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 
@@ -417,7 +425,7 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _COPY_EXPAND_PRELUDE + _MID_STAGE_SRC + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -427,7 +435,7 @@ with open(src_path) as f:
 # and the frozen RVV schedule tiles+vectorizes it while the scalar weight transpose disappears.
 if _FUSE_TRANSPOSE_B:
     print("OK fuse_transpose_b", _fuse_transpose_b(module, ctx))
-_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY)
+_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES)
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
 print("OK")
@@ -451,18 +459,27 @@ from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
 '''
 
-_RUNNER_ACT_POLY_TAIL = r'''
+_RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _COPY_EXPAND_PRELUDE + _MID_STAGE_SRC + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
     module = ir.Module.parse(f.read(), ctx)
+# The post-bufferization rewrites are NOT act_poly's business, but they have to run on THIS runner
+# too. This tail used to drive the PassManager directly, which meant `erase_self_copy` and
+# `fuse_transpose_b` were accepted, threaded through argv, and then never executed whenever
+# `vectorized_transcendental_activation` was also enabled. MEASURED on small_llama_int8
+# (hand_v0_int8 package, act_poly + erase_self_copy): the 17 in-loop `@memrefCopy` call sites the
+# erase removes on the plain runner were all still there. Since the whole-model proposer enables
+# act_poly by default, that is every beam fork -- and the erase read as an inert lever.
+if _FUSE_TRANSPOSE_B:
+    print("OK fuse_transpose_b", _fuse_transpose_b(module, ctx))
 with ctx, ir.Location.unknown():
     _n = apply_activation_polynomial(module, ctx)
-PassManager.parse("builtin.module(" + pipeline + ")", ctx).run(module.operation)
+_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES)
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
 print("OK act_poly rewrote", _n)
-'''
+''')
 
 
 def _accum_microkernel_v3_features() -> frozenset[str]:
@@ -584,16 +601,23 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     _erase = "1" if _SELFCOPY_FEATURE in feats else "0"
     if _erase == "1":
         pipeline = _with_canon(pipeline)
-    # argv[5] gates fuse_transpose_b (default-off). Only the plain _RUNNER honors it; the act_poly /
-    # scalarize runners select on their own features and never enable it, so the baseline lowering
-    # stays byte-identical unless the fork explicitly turns the feature on.
+    # argv[5] gates fuse_transpose_b (default-off). Every runner variant honors it (the act_poly tail
+    # used to drop it along with the self-copy erase); with the feature off the lowering stays
+    # byte-identical.
     _fuse_tb = "1" if _FUSE_TRANSPOSE_FEATURE in feats else "0"
+    # argv[6] gates expand_memref_copy (default-off): every static `memref.copy` becomes a
+    # `linalg.copy`, which the pipeline's own convert-linalg-to-loops turns into an emitted scf
+    # load/store nest -- so finalize-memref-to-llvm has no copy left to turn into an @memrefCopy or
+    # memcpy call. Runs at the same split point as the erase; see llvmlower/copy_expand.py.
+    from .copy_expand import FEATURE as _EXPAND_COPY_FEATURE
+    _expand_copy = "1" if _EXPAND_COPY_FEATURE in feats else "0"
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
     stage_out = (work / "model.llvmdialect.mlir") if omp else out
     proc = subprocess.run(
-        [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb],
+        [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb,
+         _expand_copy],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")

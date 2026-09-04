@@ -15,6 +15,7 @@ it, so it can be measured against the immutable baseline.
 """
 from __future__ import annotations
 
+from .copy_expand import FEATURE as _EXPAND_COPY_FEATURE
 from .selfcopy import FEATURE as _SELF_COPY_FEATURE
 from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 import hashlib
@@ -2601,6 +2602,33 @@ register(ImprFeature(
                 "and before finalize-memref-to-llvm, where it would otherwise survive as an opaque "
                 "@memrefCopy rank-generic runtime call costing ~79 retired instructions per OUTPUT "
                 "ELEMENT. Removes the tile-epilogue copy; emits no new code.",
+))
+
+
+# Expand every static `memref.copy` into an emitted loop nest instead of a runtime call. The
+# companion to `erase_self_copy`, and the reason that one alone cannot close the axis: the erase
+# only removes copies that are REDUNDANT (`memref.copy %x, %x`), while a copy whose destination is a
+# `memref.subview` of a larger buffer moves real data and survives as `@memrefCopy`, MLIR's
+# rank-generic strided walker (~79 retired instructions per copied ELEMENT).
+#
+# MEASURED at the post-bufferization split point, small_llama_int8_consistent, hand_v0_int8:
+#   self       19 copies (all in-loop),   608 elements  -> erase_self_copy removes these
+#   diff-type  24 copies (prologue),     6144 elements  -> @memrefCopy, ~485K instructions/inference
+#   same-type  40 copies (prologue),    21360 elements  -> memcpy
+# So `envelope.runtime_calls` keeps both `memrefCopy` and `memcpy` however many self-copies are
+# erased. Rewriting the copy to `linalg.copy` hands it to the `convert-linalg-to-loops` already in
+# every pipeline, and finalize-memref-to-llvm then has nothing left to turn into a call.
+# See llvmlower/copy_expand.py for the structural predicate and the fail-closed skip count.
+register(ImprFeature(
+    name=_EXPAND_COPY_FEATURE,
+    action_class="PASS",
+    description="rewrite every ranked, statically shaped `memref.copy` to a `linalg.copy` after "
+                "bufferization and before finalize-memref-to-llvm, so the pipeline's own "
+                "convert-linalg-to-loops emits an scf load/store nest instead of leaving a call to "
+                "the rank-generic `@memrefCopy` runtime helper (or a copy-derived `memcpy`). "
+                "Structure-keyed (ranked + static shape), no shape or model assumption; a copy it "
+                "cannot prove static is left alone and counted. Default-off, baseline "
+                "byte-identical.",
 ))
 
 

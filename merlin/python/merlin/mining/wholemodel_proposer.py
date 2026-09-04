@@ -94,6 +94,13 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     ("accumulator_resident_wholemodel_vf_mrpad", True),   # matmul MR register block: 1.49x rdt2 matmul bucket
     ("vectorize_reduction", True),                        # reduce/softmax: 2nd byte-traffic family, was unvectorized
     ("erase_self_copy", False),                           # envelope: per-tile memrefCopy elimination
+    # The other half of the same axis, and the reason the erase alone never closed it. The erase can
+    # only remove copies that are REDUNDANT; a copy into a `memref.subview` moves real data and stays
+    # a call to the rank-generic `@memrefCopy`. MEASURED on small_llama int8 (hand_v0_int8, whole
+    # model, host-executed, bit-identical output): erase alone leaves `envelope.runtime_calls` at
+    # ('free','malloc','memcpy','memrefCopy','memset') with 24 prologue @memrefCopy sites; adding this
+    # takes it to ('free','malloc','memset') with 0 memrefCopy and 0 memcpy.
+    ("expand_memref_copy", False),                        # envelope: memrefCopy/memcpy -> emitted loops
     ("vectorized_transcendental_activation", True),       # gelu/sigmoid/silu: closes the 10-17x activation gap
 ]
 

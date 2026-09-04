@@ -50,21 +50,41 @@ def _erase_self_copies(module):
     return n
 
 
-def _run_stages(ctx, module, pipeline, erase):
-    """Run `pipeline`; when `erase`, split it after the post-bufferization canonicalize/cse and drop
-    self-copies in between. Splitting on buffer-loop-hoisting (not a fixed index) so the hook stays
-    put if the pass list moves."""
+def _run_stages(ctx, module, pipeline, erase, mid=()):
+    """Run `pipeline`; when `erase` (or any `mid` rewrite is requested), split it after the
+    post-bufferization canonicalize/cse and run the rewrites in between. Splitting on
+    buffer-loop-hoisting (not a fixed index) so the hook stays put if the pass list moves.
+
+    `mid` is a sequence of `(label, fn(ctx, module) -> int)` rewrites that need the SAME window as
+    the erase: after bufferization has created the buffer ops, before finalize-memref-to-llvm turns
+    them into opaque runtime calls. Each reports its count as `OK <label> <n>` so a rewrite that
+    matched nothing is visible in the build log instead of passing for applied."""
     from torch_mlir.passmanager import PassManager
     passes = [p for p in pipeline.split(',') if p]
     if not passes:
         return
-    k = next((i for i, p in enumerate(passes) if 'buffer-loop-hoisting' in p), -1) if erase else -1
+    want_split = bool(erase) or bool(mid)
+    k = next((i for i, p in enumerate(passes) if 'buffer-loop-hoisting' in p), -1) if want_split else -1
     if k < 0:
         PassManager.parse('builtin.module(' + ','.join(passes) + ')', ctx).run(module.operation)
         return
-    head, tail = passes[:k + 3], passes[k + 3:]          # ...hoisting, canonicalize, cse
+    # ...hoisting, canonicalize, cse -- but NEVER past the pass that lowers linalg to loops. A mid
+    # rewrite may EMIT linalg (expand_memref_copy rewrites a copy to `linalg.copy` and relies on
+    # convert-linalg-to-loops to turn it into an scf nest), and in the scalar pipeline that pass sits
+    # at k+1, so a fixed k+3 window put the rewrite AFTER its own lowering: the linalg op survived to
+    # LLVM conversion as an unrealized_conversion_cast and the whole build failed. Clamping keeps the
+    # RVV window (where the pass is at k+7) exactly where it was.
+    end = k + 3
+    for i, p in enumerate(passes):
+        if 'convert-linalg-to-loops' in p or 'convert-linalg-to-parallel-loops' in p:
+            end = min(end, i)
+            break
+    head, tail = passes[:end], passes[end:]
     PassManager.parse('builtin.module(' + ','.join(head) + ')', ctx).run(module.operation)
-    print('OK erase_self_copy', _erase_self_copies(module))
+    if erase:
+        print('OK erase_self_copy', _erase_self_copies(module))
+    for label, fn in mid:
+        print('OK ' + label, fn(ctx, module))
     if tail:
         PassManager.parse('builtin.module(' + ','.join(tail) + ')', ctx).run(module.operation)
 
