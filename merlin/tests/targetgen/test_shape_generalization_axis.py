@@ -75,16 +75,24 @@ def test_a_batched_region_is_refused_where_its_golden_cannot_grade_the_dtype():
     cell built its interface and then failed in the golden, leaving a capsule directory with no golden
     in it."""
     pool = CS.available_ops()
+    # The batched golden now exists in the integer, specir and SIMT engines as well -- a batched
+    # contraction is B independent ones -- so those dtypes resolve. What is still refused is the case
+    # this test is named for: WITHIN the block-scaled regime the batched reference reconstructs on the
+    # mx_ref datapath and takes mxfp8 alone, so a block-scaled cell in any other format has no golden.
     assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="mxfp8", rank=3) == "gemv_batched"
     assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="mxfp4", rank=3) is None
-    assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="i8", rank=3) is None
-    assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="bf16", rank=3) is None
+    assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="i8", rank=3) == "gemv_batched"
+    assert CS.op_for_shape("contraction", admitted_ops=pool, dtype="bf16", rank=3) == "gemv_batched"
+    # And the op must be OF the family asked for: a batched contraction cannot evidence a batched
+    # elementwise_map, which is a different computation under a name that happens to be available.
+    for fam in ("elementwise_map", "movement", "reduction"):
+        assert CS.op_for_shape(fam, admitted_ops=pool, dtype="i8", rank=3) is None, fam
 
 
 def test_the_single_format_golden_map_agrees_with_the_golden_itself():
-    """`_SINGLE_FORMAT_GOLDEN` is a claim about an engine, so it is checked against it. A golden that
-    widened or narrowed its accepted format without this map following would put the axis back to
-    choosing an op that cannot grade the cell."""
+    """`_SINGLE_FORMAT_GOLDEN_WITHIN_MX` is a claim about an engine, so it is checked against it. A
+    golden that widened or narrowed its accepted format without this map following would put the axis
+    back to choosing an op that cannot grade the cell."""
     import inspect
     import sys
 
@@ -92,7 +100,7 @@ def test_the_single_format_golden_map_agrees_with_the_golden_itself():
     sys.path.insert(0, str(repo_root() / "merlin" / "contract" / "capsules"))
     import generate_corpus as GC
 
-    for op, want in CS._SINGLE_FORMAT_GOLDEN.items():
+    for op, want in CS._SINGLE_FORMAT_GOLDEN_WITHIN_MX.items():
         src = "".join(inspect.getsource(fn) for name, fn in vars(GC).items()
                       if callable(fn) and op in name and name.startswith("_golden"))
         src = src or inspect.getsource(GC)

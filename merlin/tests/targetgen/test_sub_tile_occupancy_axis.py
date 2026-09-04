@@ -55,9 +55,14 @@ def test_sub_tile_is_actually_less_occupied_than_partial():
     got = {a: {k: _resolve(v, tile) for k, v in CS.extents_for(a, probes).items()}
            for a in ("aligned", "partial", "sub_tile")}
     aligned, partial, sub = got["aligned"], got["partial"], got["sub_tile"]
-    # `partial` is nearly full: it differs from aligned on ONE axis, by one element.
+    # `partial` is nearly full: every axis it rags, it rags by exactly ONE element. It rags K as well
+    # as N, and that is not cosmetic -- ragging only the output column left every family that does not
+    # contract with a `partial` capsule identical to its `aligned` one (a unary op's operand is M x K,
+    # so `N` never reached it), and nine cells were required, built, and classified `aligned`.
     diffs = [k for k in ("M", "K", "N") if partial[k] != aligned[k]]
-    assert diffs == ["N"] and aligned["N"] - partial["N"] == 1, (aligned, partial)
+    assert diffs, (aligned, partial)
+    assert all(aligned[k] - partial[k] == 1 for k in diffs), (aligned, partial)
+    assert "K" in diffs, "a unary op's operand is M x K; ragging only N cannot reach it"
     # `sub_tile` is barely occupied: strictly under half the edge on the parallel axes.
     assert sub["M"] * 2 <= tile and sub["N"] * 2 <= tile, sub
     assert sub["M"] < partial["M"] or sub["N"] < partial["N"]

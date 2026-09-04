@@ -198,14 +198,23 @@ def test_a_partial_tile_is_its_own_cell(tmp_path):
 
     three_axis = cert_capsule_cover([root], tile_dim=16)
     assert set(three_axis["capsules"]) == {"Aligned", "Ragged"}
-    assert any(c.endswith("/partial") for c in three_axis["cells"])
+    # WHICH ragged class is not the point and must not be frozen here. The occupancy axis carries
+    # three classes, not two: `33` at edge 16 leaves ONE of sixteen lanes live in its second tile,
+    # which is `sub_tile` (barely occupied) rather than `partial` (nearly full, as `tile-1` is). What
+    # this test is about -- the taped-out unit that computed partial N tiles wrongly while every
+    # functional check passed -- is that the ragged capsule gets a cell of its OWN.
     assert any(c.endswith("/aligned") for c in three_axis["cells"])
+    assert any(c.endswith(("/partial", "/sub_tile")) for c in three_axis["cells"])
+    assert len(set(three_axis["cells"])) == 2, three_axis["cells"]
 
 
 def test_one_ragged_axis_is_enough_to_be_partial(tmp_path):
     """Exercising the tile-edge path is the point; a capsule that is ragged on any axis does that."""
     root = _corpus_shaped(tmp_path, [("X", "contraction", "f32", [32, 32, 17])])
-    assert cert_capsule_cover([root], tile_dim=16)["cells"] == ["contraction/f32/partial"]
+    # Ragged on one axis is enough to leave the aligned class; `17` at edge 16 leaves one lane live,
+    # so the class it lands in is `sub_tile`. See the note in the test above on why the label itself
+    # is not the assertion.
+    assert cert_capsule_cover([root], tile_dim=16)["cells"] == ["contraction/f32/sub_tile"]
 
 
 def test_omitting_tile_dim_leaves_the_blind_spot_and_says_so(tmp_path):

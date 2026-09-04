@@ -64,7 +64,7 @@ def test_every_required_cell_becomes_an_entry(target):
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
     axes = ("memory regime", "host-only family", "composition axis", "roster axis",
             "rank axis", "layout axis", "host lane", "epilogue axis", "application axis",
-            "accumulation-depth axis")
+            "accumulation-depth axis", "geometry class")
     unattributed = [e["name"] for e in other
                     if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -137,9 +137,16 @@ def test_extents_are_tile_relative_not_baked_integers():
     # deliberately not portable across tile edges -- `968` has no tile-relative spelling at tile 16 --
     # which is exactly why it carries `source_role: model_derived` instead of `derived_sweep`. Scoping
     # by that role rather than by name keeps this test meaning "a SWEEP's shapes track the geometry".
+    # The GEOMETRY axis takes the same exemption and for the same reason: its content IS an aspect
+    # ratio a real model presents, scaled to what this target's store holds, so `M=196` has no
+    # tile-relative spelling any more than the application axis's `968` does. It is scoped by the axis
+    # marker rather than by name so the exemption cannot quietly widen to an entry that merely looks
+    # like one.
     for entry in [e for e in res["capsules"]
-                  if e.get("op") and e.get("source_role") != "model_derived"]:
+                  if e.get("op") and e.get("source_role") != "model_derived"
+                  and "geometry class" not in (e.get("source_reference") or "")]:
         for axis in ("M", "K", "N"):
+            assert axis in entry, f"{entry['name']} declares no {axis}"
             assert isinstance(entry[axis], str) and "tile" in entry[axis], (
                 f"{entry['name']}.{axis} = {entry[axis]!r} is not tile-relative")
 
