@@ -77,18 +77,30 @@ def _continuous_branch() -> ast.If:
 
 
 def test_continuous_runs_one_session_and_grades_on_an_interval():
+    """The interval grader runs ALONGSIDE the session, not after it.
+
+    It used to be an inline ``threading.Thread`` here; it is now the shared ``BackgroundGrader`` (which
+    still owns the thread) so that ``--schedule continuous`` -- the CERTIFIED path -- can install the very
+    same mechanism instead of silently having none. See
+    ``test_continuous_schedule_grades_under_the_agent.py`` for the gate on that path.
+    """
     br = _continuous_branch()
     calls = _calls(br)
-    assert "Thread" in calls, "the interval grader must run alongside the session, not after it"
+    assert "BackgroundGrader" in calls and "start" in calls, (
+        "the interval grader must run alongside the session, not after it")
+    assert "Thread" in _calls(_fn("start")), (
+        "BackgroundGrader.start no longer starts a thread, so nothing grades while the agent works")
     assert "qa_grade" in calls, "continuous mode must grade through the same path a round does"
     assert "launch_agent" in calls, "continuous mode still runs one real agent session"
 
 
 def test_a_failed_grade_cannot_kill_the_run():
     """A grade racing a mid-write submission is expected; it must degrade to a skipped tick."""
-    br = _continuous_branch()
-    handlers = [h for h in ast.walk(br) if isinstance(h, ast.ExceptHandler)]
+    loop = _fn("_loop")   # BackgroundGrader._loop -- the interval grader itself
+    handlers = [h for h in ast.walk(loop) if isinstance(h, ast.ExceptHandler)]
     assert handlers, "the interval grader must guard qa_grade — a mid-write submission is normal"
+    assert any(isinstance(n, ast.Continue) for h in handlers for n in ast.walk(h)), (
+        "a failed grade must be a SKIPPED TICK: the grader has to keep grading after one raises")
 
 
 def test_there_is_a_final_authoritative_grade_after_the_session():

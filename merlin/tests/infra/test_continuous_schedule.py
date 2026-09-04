@@ -89,6 +89,20 @@ def test_continuous_never_reports_budget_at_the_l3_barrier():
         assert loop._l3_barrier_decision(False, rnd=rnd, max_rounds=rnd + 1_000_000) == "iterate"
 
 
+def test_a_declared_wall_budget_still_ends_the_l3_fix_loop():
+    """The one thing that DOES terminate the L3 loop in continuous mode: the budget the operator declared.
+
+    Rounds are not a terminator, but `--max-wall-s` is -- otherwise a "12 h" run would iterate fix rounds
+    past its own budget forever. The driver expresses that by collapsing the cap to the current round once
+    the budget is spent; the decision function's contract is what makes that stop honest.
+    """
+    loop = _mod("run_baseline_qa_loop")
+    assert loop._l3_barrier_decision(False, rnd=7, max_rounds=7) == "budget"
+    src = (HARNESS / "run_baseline_qa_loop.py").read_text(encoding="utf-8")
+    assert "_cap, _budget_reason = rnd, \"max_wall_s\"" in src, (
+        "the L3 fix loop no longer honours --max-wall-s; a continuous run can outlive its declared budget")
+
+
 def test_promotion_is_not_coupled_to_the_schedule():
     """tier_promote must stay reachable from every verdict path. If a later change moves promotion onto
     the round boundary, continuous mode silently loses the property it exists for."""

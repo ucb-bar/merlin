@@ -97,6 +97,123 @@ def _l3_barrier_decision(l3_all_pass: bool, rnd: int, max_rounds: int) -> str:
     return "iterate"
 
 
+# Background (mid-session) grades get their OWN numbering band so a snapshot grade can never reuse --
+# and rmtree -- a round grade's scratch (`_qa_work/cand_NN`, `_qa_work/runs_NN`,
+# `qa_history/verdict_round_NN.json`). Rounds count up from 0; certified-continuous ticks from this base.
+BG_GRADE_TICK_BASE = 1000
+
+
+class BackgroundGrader:
+    """Grade a SNAPSHOT COPY of the workspace on an interval WHILE the agent keeps working.
+
+    This is the mechanism behind property 1 of the run shape ("no round barrier"): ``qa_grade`` copies
+    ``submission/`` into an operator-only scratch before grading, so the agent cannot mutate what is
+    being measured and a grade cannot be contaminated mid-flight; the redacted verdict lands back in
+    ``ws/qa/verdict.json`` under the running session. Feedback therefore reaches the agent WITHOUT
+    ending its context.
+
+    It used to exist only inside the legacy ``--continuous`` branch. ``--schedule continuous`` -- the
+    path the convention certifies and every real run takes -- ran the ROUND loop with its cap lifted and
+    installed no grader at all, so the agent got a fresh context every round. Measured on the atlas run
+    rb_atlasp1e (7 rounds / 8.58 h) the score oscillated 0, 35, 35, 21, 22, 39, 36 out of 57: progress
+    was repeatedly lost to the relaunch, not to the difficulty of the corpus.
+
+    Never raises into the run. A grade of a half-written submission is skipped and retried next tick,
+    and the post-grade hook (checkpoint + telemetry sink) is soft-failing for the same reason.
+    """
+
+    def __init__(self, grade, *, interval: float, on_grade=None, tick_base: int = 0,
+                 min_interval: float = 30.0, label: str = "continuous", enabled: bool = True) -> None:
+        self._grade = grade                # callable(tick:int) -> verdict dict
+        # Floored: an interval below the floor would hammer the (expensive) grade instead of pacing it.
+        self._interval = max(float(min_interval), float(interval))
+        self._on_grade = on_grade          # callable(tick:int, verdict:dict) -> None, runs in-thread
+        self._tick_base = int(tick_base)
+        self._label = label
+        self.enabled = bool(enabled)
+        self._stop = None
+        self._thread = None
+        self.grades = 0                    # completed background grades
+        self.verdict = None                # the most recent background verdict
+
+    @property
+    def tick(self) -> int:
+        """Tick number of the LAST completed background grade (the base when none has run)."""
+        return self._tick_base + self.grades
+
+    def next_tick(self) -> int:
+        """The tick a caller should use for the next (foreground, authoritative) grade."""
+        return self.tick + 1
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self._interval):
+            t = self.tick + 1
+            try:
+                v = self._grade(t)
+            except Exception as e:  # noqa: BLE001 -- a mid-write submission must never kill the run
+                print(f"[{self._label}] grade {t} skipped: {type(e).__name__}: {e}", flush=True)
+                continue
+            self.grades += 1
+            self.verdict = v
+            print(f"[{self._label}] grade {t}: {v.get('n_passed')}/{v.get('n_capsules')} "
+                  f"all_pass={v.get('all_pass')}", flush=True)
+            if self._on_grade is not None:
+                try:
+                    self._on_grade(t, v)
+                except Exception as e:  # noqa: BLE001 -- bookkeeping may never gate the run
+                    print(f"[{self._label}] post-grade hook skipped: {type(e).__name__}: {e}",
+                          flush=True)
+            if v.get("all_pass"):
+                self._stop.set()   # converged: stop grading; the session is torn down by its caller
+                return
+
+    def start(self) -> "BackgroundGrader":
+        """Begin grading in the background (no-op when disabled). Restartable after ``stop()``."""
+        import threading
+        if not self.enabled or self.running():
+            return self
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, name=f"{self._label}-grader", daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self, timeout: float = 60.0) -> None:
+        if self._stop is not None:
+            self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=timeout)
+        self._thread = None
+
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+
+def keep_launching(*, schedule: str, sessions_launched: int, rnd: int, max_rounds: int,
+                   active_wall_s: float, max_wall_s: int, authoring_complete: bool) -> tuple:
+    """Should the loop start another AGENT INVOCATION? Extracted so it is unit-testable.
+
+    Returns ``(launch?, reason)``; the reason is printed, so a stop is always attributable.
+
+    ROUNDS: the historical condition, unchanged -- bounded by ``--max-rounds``.
+
+    CONTINUOUS: there are no rounds. The run is ONE long agent session, bounded by ``--round-timeout``
+    and, when declared, by ``--max-wall-s`` (the TOTAL active agent wall budget -- e.g. 12 h). The round
+    COUNT is not a terminator anywhere; it never was meant to be, but until now ``--schedule continuous``
+    merely ran the ROUND loop with its cap lifted, which relaunched a FRESH agent context every round
+    and threw away the session's accumulated understanding with it. One invocation per process;
+    ``--resume`` (same run_id, same workspace) is the operator's lever for leftover budget.
+    """
+    if authoring_complete:
+        return False, "authoring_complete"
+    if schedule == "rounds":
+        return (rnd < max_rounds), ("" if rnd < max_rounds else "max_rounds")
+    if max_wall_s and active_wall_s >= max_wall_s:
+        return False, "max_wall_s"
+    if sessions_launched >= 1:
+        return False, "session_complete"
+    return True, ""
+
+
 def _l3_fix_verdict(vv: dict, attempt: int) -> dict:
     """Redacted L3 feedback for the next fix round, including Arm4's answer-free RTL readback."""
     out = {
@@ -1805,23 +1922,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""),
                     help="AWS profile (~/.aws) for --provider bedrock; else the env-var cred chain")
     ap.add_argument("--schedule", choices=("rounds", "continuous"), default="rounds",
-                    help="ROUNDS (default, byte-identical to before): the loop is bounded by "
-                         "--max-rounds, and the run ends when that budget is spent whether or not the "
-                         "submission was still improving. CONTINUOUS: the round COUNT stops being a "
-                         "terminator — the run ends on convergence, on a plateau, or on a wall/spend "
-                         "budget, i.e. on evidence about the submission rather than on an arithmetic "
-                         "cap. Per-capsule promotion is unaffected by this flag: a capsule's cert tier "
-                         "is enqueued the moment its loop tier passes (tier_promote fires on EVERY "
-                         "verdict — both brokers and the round grade), never at a round boundary. What "
-                         "continuous removes is the ARTIFICIAL end, not the grading cadence.\n"
-                         "Rounds remain the unit of agent invocation and of the artifact layout in both "
-                         "modes, so every downstream reader (round_NN transcripts, qa_history verdicts, "
-                         "the cost rollup) is unchanged.")
+                    help="ROUNDS (default, byte-identical to before): the loop relaunches a FRESH agent "
+                         "context each round and is bounded by --max-rounds. CONTINUOUS: there are no "
+                         "rounds. ONE long agent session (bounded by --round-timeout and, when declared, "
+                         "by --max-wall-s as the TOTAL active agent wall budget) with a BACKGROUND "
+                         "GRADER: every --grade-interval seconds a SNAPSHOT COPY of the workspace is "
+                         "graded and ws/qa/verdict.json is refreshed underneath the running agent, so "
+                         "feedback arrives without ending its context. The post-freeze public+hidden L3 "
+                         "grade still runs afterwards, so a formal success stays reachable — unlike the "
+                         "legacy --continuous. Per-capsule promotion is unaffected by this flag: a "
+                         "capsule's cert tier is enqueued the moment its loop tier passes (tier_promote "
+                         "fires on EVERY verdict — brokers and the background/round grade alike).\n"
+                         "The round_NN artifact layout is unchanged in both modes (a continuous run is "
+                         "round_00), so every downstream reader still works.")
     ap.add_argument("--max-wall-s", type=int, default=0,
-                    help="continuous only (0 = no wall cap): stop after this much ACTIVE agent wall "
-                         "time. With --schedule continuous and no wall cap and no plateau, the only "
-                         "terminators left are convergence and the spend ceiling — which is what you "
-                         "want for a run whose whole point is to finish the work, but say so on purpose.")
+                    help="continuous only (0 = no wall cap): TOTAL ACTIVE agent wall budget, e.g. 43200 "
+                         "for a 12h run. It bounds the single session itself (the session's wall cap is "
+                         "min(--round-timeout, remaining budget)) and the L3 fix loop after it, and it "
+                         "is cumulative across --resume invocations. With no wall cap the only "
+                         "terminators left are the session's own --round-timeout, convergence and the "
+                         "spend ceiling — fine for a run whose point is to finish, but say so on purpose.")
     ap.add_argument("--max-rounds", type=int, default=12)
     ap.add_argument("--min-rounds", type=int, default=0,
                     help="OPT-IN (0 = disabled, the default). Refuse the agent's READY_FOR_BARRIER "
@@ -1873,7 +1993,9 @@ def main(argv: list[str] | None = None) -> int:
                          "can never report a formal success. For the certified continuous path use "
                          "`--schedule continuous` with a long --round-timeout.")
     ap.add_argument("--grade-interval", type=int, default=900,
-                    help="seconds between background grades in --continuous mode (default 900)")
+                    help="seconds between background grades of a SNAPSHOT COPY of the workspace "
+                         "(default 900). Used by BOTH single-session paths: the certified "
+                         "`--schedule continuous` and the legacy `--continuous`. Floored at 30s.")
     # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
     # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
     # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
@@ -2364,95 +2486,107 @@ def main(argv: list[str] | None = None) -> int:
         # — sees its feedback refresh continuously instead of at a barrier. Per-capsule tier promotion is
         # unchanged and already immediate: capsule_runner runs each capsule's ladder cheapest-first, so a
         # capsule that clears the screen goes on to the certifying tier in the same grade, not next round.
-        import threading
-        stop = threading.Event()
-        state = {"tick": 0, "verdict": verdict}
+        # Same grader object the CERTIFIED path now installs (see BackgroundGrader) -- ticks still start
+        # at 1 here, so this legacy path's scratch dirs and verdict numbering are byte-for-byte what they
+        # were.
+        def _legacy_after_grade(t: int, v: dict) -> None:
+            _checkpoint(t)
+            _sink_telemetry_so_far(run_dir / "rounds" / "round_00.transcript.jsonl")
 
-        def _grader() -> None:
-            while not stop.wait(max(30, int(a.grade_interval))):
-                t = state["tick"] + 1
-                try:
-                    v = qa_grade(ws, run_dir, t, a.no_oracle, a.qa_timeout)
-                except Exception as e:  # noqa: BLE001 — a mid-write submission must never kill the run
-                    print(f"[continuous] grade {t} skipped: {type(e).__name__}: {e}", flush=True)
-                    continue
-                state["tick"], state["verdict"] = t, v
-                print(f"[continuous] grade {t}: {v.get('n_passed')}/{v.get('n_capsules')} "
-                      f"all_pass={v.get('all_pass')}", flush=True)
-                _checkpoint(t)
-                _sink_telemetry_so_far(run_dir / "rounds" / "round_00.transcript.jsonl")
-                if v.get("all_pass"):
-                    stop.set()                     # converged: stop grading; the session is torn down below
-                    return
-
-        gt = threading.Thread(target=_grader, name="continuous-grader", daemon=True)
-        gt.start()
+        lbg = BackgroundGrader(lambda t: qa_grade(ws, run_dir, t, a.no_oracle, a.qa_timeout),
+                               interval=a.grade_interval, on_grade=_legacy_after_grade, tick_base=0)
+        lbg.start()
         try:
             rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, 0,
                                      a.round_timeout, arm=arm)
         except subprocess.TimeoutExpired:
             rc, tpath = 124, run_dir / "rounds" / "round_00.transcript.jsonl"
             print("[continuous] agent session TIMEOUT (the session bound, not a round)")
-        stop.set()
-        gt.join(timeout=60)
+        lbg.stop()
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
-        verdict = qa_grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
+        verdict = qa_grade(ws, run_dir, lbg.next_tick(), a.no_oracle, a.qa_timeout)
         conf, workflow_conformant = _workflow_conformance(
             tpath, ws / "submission", arm, _endpoint_kind, _resolved_tools())
         rounds_summary.append({"round": 0, "mode": "continuous", "agent_rc": rc,
-                               "grades": state["tick"] + 1,
+                               "grades": lbg.next_tick(),
                                "all_pass": verdict.get("all_pass", False),
                                "workflow_conformant": workflow_conformant,
                                "authoring_complete": _authoring_complete(),
                                "conformance": conf,
                                "n_passed": verdict.get("n_passed"),
                                "n_capsules": verdict.get("n_capsules")})
-        _checkpoint(state["tick"] + 1)
+        _checkpoint(lbg.next_tick())
         print(f"\ncontinuous run complete: {run_dir}  numeric_all_pass="
               f"{verdict.get('all_pass', False)} workflow_conformant={workflow_conformant} "
               f"authoring_complete={_authoring_complete()} formal_complete=False "
-              f"grades={state['tick'] + 1}")
+              f"grades={lbg.next_tick()}")
         # This legacy single-session path does not run the common L3 barrier or the post-freeze hidden
         # grader.  It can report progress, but can never report a formal success.  Use
         # ``--schedule continuous`` for the continuous, fully certified path.
         return 1
 
     cost_capped = False             # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
+    sessions_launched = 0           # agent invocations THIS process made (continuous: exactly one)
+
+    # THE BACKGROUND GRADER on the CERTIFIED path. `--schedule continuous` is ONE long agent session; its
+    # feedback comes from grading a SNAPSHOT COPY every --grade-interval and refreshing ws/qa/verdict.json
+    # underneath the running agent, not from ending its context at a round barrier. `rounds` keeps its
+    # per-round grade and installs a DISABLED grader, so that schedule is behaviourally untouched.
+    def _bg_after_grade(t: int, v: dict) -> None:
+        nonlocal verdict
+        verdict = v            # a run killed mid-session still checkpoints the progress it really made
+        _checkpoint(rnd)       # next_round stays THIS session: --resume continues the same workspace
+        _sink_telemetry_so_far(run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl")
+
+    bg = BackgroundGrader(lambda t: qa_grade(ws, run_dir, t, a.no_oracle, a.qa_timeout),
+                          interval=a.grade_interval, on_grade=_bg_after_grade,
+                          tick_base=BG_GRADE_TICK_BASE, label="continuous",
+                          enabled=(a.schedule == "continuous"))
+
+    def _agent_wall_cap() -> int:
+        """Wall bound for ONE agent invocation.
+
+        ROUNDS: --round-timeout, unchanged. CONTINUOUS: the single session IS the run, so the declared
+        TOTAL budget bounds it too -- --max-wall-s is total ACTIVE agent wall time, and time already
+        spent (a rate-limited retry, an earlier --resume invocation) is subtracted so "12 h" means the
+        same thing whether the run started fresh or resumed.
+        """
+        if a.schedule != "continuous" or not a.max_wall_s:
+            return a.round_timeout
+        return max(60, min(a.round_timeout, int(a.max_wall_s - active_wall_s)))
 
     def _keep_going() -> bool:
-        """Should the loop run another agent invocation?
-
-        ROUNDS: the historical condition, unchanged — bounded by --max-rounds.
-
-        CONTINUOUS: the round COUNT is not a terminator. A run stops on EVIDENCE (converged, plateaued)
-        or on a declared BUDGET (wall, spend), never because an arithmetic cap ran out while the
-        submission was still improving. Measured on the v12 arm-4 run: it reached its ceiling in round 0
-        and then spent two more rounds and 37.9M tokens going nowhere — the round budget was both too
-        loose (it kept paying after convergence) and, on other runs, too tight (a productive round cut at
-        the cap). Neither failure is about the submission, which is the only thing a stop should be about.
-        A safety cap remains via --max-rounds only if the caller explicitly lowers it; the default 12 is
-        ignored in continuous mode so it cannot silently reimpose the very bound this removes.
-        """
-        if _authoring_complete():
-            return False
-        if a.schedule == "rounds":
-            return rnd < a.max_rounds
-        if a.max_wall_s and active_wall_s >= a.max_wall_s:
+        """Should the loop run another agent invocation? Policy lives in `keep_launching` (unit-tested);
+        this closure only feeds it the live state and prints the attributable reason."""
+        go, why = keep_launching(
+            schedule=a.schedule, sessions_launched=sessions_launched, rnd=rnd,
+            max_rounds=a.max_rounds, active_wall_s=active_wall_s, max_wall_s=a.max_wall_s,
+            authoring_complete=_authoring_complete())
+        if not go and why == "max_wall_s":
             print(f"[continuous] wall budget reached ({active_wall_s:.0f}s >= {a.max_wall_s}s) — "
                   f"stopping honestly (not converged; reason=max_wall_s)")
-            return False
-        return True
+        return go
 
     while _keep_going():
-        print(f"\n===== ROUND {rnd} =====")
+        if a.schedule == "continuous":
+            print(f"\n===== CONTINUOUS SESSION (one agent session, wall cap {_agent_wall_cap()}s; "
+                  f"background grade every {max(30, a.grade_interval)}s) =====")
+        else:
+            print(f"\n===== ROUND {rnd} =====")
         _rstart = time.time()
+        bg.start()      # certified continuous only: grade a snapshot UNDER the running agent
         try:
             rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd,
-                                     a.round_timeout, arm=arm)
+                                     _agent_wall_cap(), arm=arm)
         except subprocess.TimeoutExpired:
             rc, tpath = 124, run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             print(f"[round {rnd}] agent TIMEOUT")
+        finally:
+            # Stop before the authoritative grade below (and before the L3 barrier): two concurrent
+            # grades would race over ws/qa/verdict.json, and the L3 fix verdict written there is the
+            # whole point of that barrier.
+            bg.stop()
         _latest_authoring_tpath = tpath
 
         # Daily-quota wall: a provider DAILY token limit (429 'too many tokens per day') has no short
@@ -2521,6 +2655,11 @@ def main(argv: list[str] | None = None) -> int:
                   f"submission is checkpointed; fix the driver/model/credits and relaunch with --resume "
                   f"(same run_id) to retry this round.", flush=True)
             break
+
+        # Count only an invocation the agent ACTUALLY ran: the guards above return/continue on a
+        # rate-limited, quota-blocked or dead turn, and a session that never happened must not spend the
+        # continuous schedule's single-session budget.
+        sessions_launched += 1
 
         verdict = qa_grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
         # Cross-round MEMORY: write the harness-built round brief (progress log across all graded rounds +
@@ -2598,7 +2737,9 @@ def main(argv: list[str] | None = None) -> int:
             break
         rnd = rnd + 1
         _checkpoint(rnd)  # next_round advances only after a completed (non-rate-limited) round
-        _sink_telemetry_so_far(tpath)   # per ROUND: this schedule has no background grader to hook
+        # Per INVOCATION. On `rounds` this is the only mid-run sink there is; on `continuous` the
+        # background grader already sinks on its own cadence and this is the end-of-session refresh.
+        _sink_telemetry_so_far(tpath)
         # Plateau early-stop: a stuck agent re-sends its (uncached) growing context every round for no
         # gain — bound that spend. Stop after N consecutive rounds with no progress (neither the pass
         # count nor the total numeric mismatch improved). Disabled with --plateau-rounds 0.
@@ -2636,6 +2777,14 @@ def main(argv: list[str] | None = None) -> int:
             if ready:
                 print(f"[round {rnd-1}] agent dropped {READY_MARKER} — proceeding to verilator barrier")
             break
+
+    if a.schedule == "continuous" and sessions_launched and not _authoring_complete():
+        _left = (a.max_wall_s - active_wall_s) if a.max_wall_s else 0.0
+        if _left > 300:
+            print(f"[continuous] the single agent session ended with {_left:.0f}s of the --max-wall-s "
+                  f"budget unspent and the submission not complete. Continuing to the post-freeze grade "
+                  f"with what it built; relaunch with --resume (same run_id) to spend the rest on the "
+                  f"same workspace rather than restarting a context.")
 
     # --- cycle-accurate L3 (verilator) checkpoint -------------------------------------------------
     # The loop gate is spike (L2) only; this is where kernels are validated on the real RTL. Runs only
@@ -2749,12 +2898,19 @@ def main(argv: list[str] | None = None) -> int:
             # effectively unbounded cap keeps the decision to 'done' or 'iterate', so an L3 that has not
             # passed yet keeps being worked instead of stopping because an arithmetic budget expired.
             _cap = a.max_rounds if a.schedule == "rounds" else (rnd + 1_000_000)
+            # CONTINUOUS: the round COUNT is not a terminator here either -- but the declared TOTAL wall
+            # budget is. Without this, an L3 that keeps failing would iterate fix rounds forever, past the
+            # one bound a "12 h" run actually declared.
+            _budget_reason = "max_rounds"
+            if a.schedule == "continuous" and a.max_wall_s and active_wall_s >= a.max_wall_s:
+                _cap, _budget_reason = rnd, "max_wall_s"
             _decision = _l3_barrier_decision(vv["all_pass"], rnd, _cap)
             if _decision == "done":
                 break                                    # ONLY success exit
             if _decision == "budget":
-                print(f"[verilator] round budget exhausted at L3 ({vv['n_passed']}/{vv['n_capsules']}) — "
-                      f"stopping honestly (not converged; reason=max_rounds, NOT a barrier timeout)")
+                print(f"[verilator] budget exhausted at L3 ({vv['n_passed']}/{vv['n_capsules']}) — "
+                      f"stopping honestly (not converged; reason={_budget_reason}, NOT a barrier "
+                      f"timeout)")
                 break
             # 'iterate' — NON-terminal: redacted L3 failures back + clear a false READY (agent must earn it again) + fix round
             (ws / "qa").mkdir(exist_ok=True)
@@ -2766,7 +2922,7 @@ def main(argv: list[str] | None = None) -> int:
             _fix_tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             try:
                 _fix_rc, _fix_tpath = launch_agent(
-                    ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd, a.round_timeout, arm=arm)
+                    ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd, _agent_wall_cap(), arm=arm)
             except subprocess.TimeoutExpired:
                 _fix_rc = 124
                 print("[verilator fix-round] agent TIMEOUT")

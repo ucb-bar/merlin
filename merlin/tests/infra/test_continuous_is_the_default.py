@@ -13,6 +13,12 @@ An operator should not have to know a flag to get the behaviour the experiment i
 Each of those was broken or off-by-default at some point on merlincirct_arm4_func_20260901_v4, and
 each failure was invisible: a round barrier looks like slow progress, a promotion that never fires
 looks like "nothing needed promoting", and a discarded cert looks like a capsule that is still pending.
+
+The MECHANISM of the first property -- that `--schedule continuous` actually runs one session with a
+background grader under it -- is gated in `test_continuous_schedule_grades_under_the_agent.py`. The
+tests here check the FLAGS, and for a long time that was the whole gate: `--continuous` stayed opt-in
+and the round cap stayed lifted, while the certified schedule quietly ran the round loop with no
+grader at all. A flag test cannot see that; keep both files.
 """
 from __future__ import annotations
 
