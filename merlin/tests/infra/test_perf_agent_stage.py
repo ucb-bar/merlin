@@ -69,6 +69,10 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
             # A cell states a position on its own measurement, not just the numbers behind it.
             "verdict": "improved",
             "verdict_reason": "20 cycles saved, closing 29.1% of the gap to the achievable rate",
+            # A cell says whether the sweep paid for it. Omitting these made every test in this file
+            # that builds a document fail on the key set rather than on what it meant to assert.
+            "measured": True,
+            "skip_reason": None,
         }],
         "stopping": {"status": "continue", "queries": 1, "baseline_total_cycles": 120.0,
                      "best_total_cycles": 100.0, "previous_best_total_cycles": None,

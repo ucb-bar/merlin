@@ -548,13 +548,25 @@ class DevelopmentGsimFeedback:
     def evaluate(self, candidate: Path, *, round_index: int, call_index: int,
                  timeout_s: int) -> dict[str, Any]:
         candidate = Path(candidate).resolve(strict=True)
-        candidate_before = str(hash_tree(candidate)["sha256"])
         if self._baseline_cache is None:
             self._baseline_cache = {}
         call_root = self.work_root / f"round_{round_index:02d}" / f"call_{call_index:03d}"
         if call_root.exists() or call_root.is_symlink():
             raise StageGateError(f"development GSIM feedback workspace is not fresh: {call_root}")
         call_root.mkdir(parents=True)
+        # MEASURE A SNAPSHOT, NOT THE AGENT'S LIVE TREE. This sweep runs for over an hour while the
+        # agent keeps working, and it used to hash the live tree at both ends and refuse if the two
+        # differed. Measured 2026-09-04: every one of 38 members ran and passed, and the whole
+        # eighty-minute result was thrown away because the agent appended to `iteration_notes.md`
+        # while the last member was finishing -- a file the prompt TELLS it to keep, which no
+        # measurement reads. The check was aimed at a real property, that the cycles belong to the
+        # bytes that produced them, and a snapshot gives that property outright instead of turning a
+        # note into a voided campaign. Every run below reads the copy, so a concurrent edit cannot
+        # change what was measured, and `candidate_sha256` names the bytes actually executed.
+        measured_candidate = call_root / "_measured_candidate"
+        shutil.copytree(candidate, measured_candidate, symlinks=True)
+        candidate_before = str(hash_tree(measured_candidate)["sha256"])
+        candidate = measured_candidate
         members = sorted(self.corpus.capsules, key=lambda row: (row.family, row.capsule))
         if not members:
             raise StageGateError("development GSIM feedback has zero frozen tuning members")
@@ -654,9 +666,12 @@ class DevelopmentGsimFeedback:
                 member, reason=("the sweep is ordered cheapest-measured-first and this candidate "
                                 "was already behind on every comparable member measured before "
                                 "this one; the remaining members were not paid for")))
+        # The snapshot must still be the bytes the runs read: nothing here may edit it, and a
+        # difference now would mean the measurement mutated its own input rather than that the agent
+        # kept working. That is a real defect and still refuses.
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
-            raise StageGateError("development GSIM evaluation mutated the candidate compiler")
+            raise StageGateError("development GSIM evaluation mutated the candidate snapshot")
         comparable = [row for row in cells if row["comparable"]]
         return validate_redacted_feedback({
             "schema_version": 1,
@@ -1779,6 +1794,27 @@ def build_action_registry(candidate: Path,
     return tuple(actions)
 
 
+def _record_host_refusal(stage: Any, exc: BaseException, *, round_index: Any, call_index: Any) -> None:
+    """Write the full reason for a host-side refusal where the HOST can read it.
+
+    Deliberately not on the agent's path and deliberately best-effort: a failure to record a failure
+    must not replace it with a different one. It lands beside the evaluator's own work root, which is
+    host-private, so nothing here widens what the agent can see.
+    """
+    try:
+        import traceback                                                    # noqa: PLC0415
+
+        evaluator = getattr(stage, "feedback_evaluator", None)
+        root = Path(getattr(evaluator, "work_root", "")) / "host_refusals"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / f"round_{round_index}_call_{call_index}.txt").write_text(
+            f"{type(exc).__name__}: {exc}\n\n"
+            + "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            encoding="utf-8")
+    except Exception:  # noqa: BLE001 - recording is never allowed to mask the thing being recorded
+        pass
+
+
 def _capsule_verdict_fields(**kwargs: Any) -> dict[str, Any]:
     """Decide one member, and never let a failure to decide read as a decision."""
     try:
@@ -1832,6 +1868,31 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
         if (not isinstance(family, str) or not family or not isinstance(capsule, str)
                 or not capsule or (family, capsule) in identities):
             raise StageGateError(f"development feedback cell {index} has an invalid identity")
+        identities.add((family, capsule))
+        # AN UNMEASURED CELL HAS NULLS WHERE A MEASURED ONE HAS NUMBERS, and demanding numbers from
+        # it is not strictness -- it discards the whole sweep. Measured 2026-09-04: a sweep that
+        # walks members cheapest-first and stops once a candidate is already losing emits a cell for
+        # each member it did not pay for; every one carried null correctness and null cycles, this
+        # check rejected the first of them, and an eighty-minute measurement in which all 38 members
+        # ran was thrown away with nothing recorded but an exception type. An absent number must
+        # read as absent. What is still demanded is that the cell say so: `measured` False with a
+        # reason, `comparable` False, and no derived delta -- so a short sweep can never be read as
+        # a complete one, which is the failure this null was introduced to prevent.
+        if not isinstance(row.get("measured"), bool):
+            raise StageGateError(f"development feedback cell {index} does not say whether it ran")
+        measured = bool(row["measured"])
+        if not measured:
+            if row.get("comparable") is not False or not str(row.get("skip_reason") or ""):
+                raise StageGateError(
+                    f"development feedback cell {index} was not measured but claims a comparison "
+                    f"or gives no reason")
+            for field in ("baseline_correct", "candidate_correct", "baseline_gsim_cycles",
+                          "candidate_gsim_cycles", "candidate_minus_baseline_cycles",
+                          "baseline_over_candidate"):
+                if row.get(field) is not None:
+                    raise StageGateError(
+                        f"development feedback cell {index} was not measured but carries {field}")
+            continue
         # Utilization is derived or it is null. A ratio outside (0, 1] would mean the program beat a
         # ceiling its own RTL says is unreachable, which is a broken derivation, not a fast program.
         macs = row.get("declared_macs")
@@ -1850,7 +1911,6 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
             if (field.endswith("_utilization") or field.endswith("_share_of_achievable")) and value > 1:
                 raise StageGateError(
                     f"development feedback cell {index} reports {field} above the derived peak")
-        identities.add((family, capsule))
         if any(not isinstance(row.get(field), bool)
                for field in ("baseline_correct", "candidate_correct", "comparable")):
             raise StageGateError(f"development feedback cell {index} has invalid correctness")
@@ -1878,7 +1938,10 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
                                 "achievable_macs_per_cycle", "achievable_basis"}
             or summary.get("members") != len(cells)
             or summary.get("comparable") != sum(bool(row["comparable"]) for row in cells)
-            or summary.get("all_correct") != (summary.get("comparable") == len(cells))):
+            # "all correct" is a claim about what was MEASURED. Counting a member the sweep never
+            # paid for as a failure reports a correctness problem that nothing observed.
+            or summary.get("all_correct") != (
+                summary.get("comparable") == sum(1 for row in cells if row.get("measured")))):
         raise StageGateError("development feedback summary is inconsistent")
     # Exact schemas above already exclude goldens, outputs, paths, shapes, and
     # Verilator.  This serialized audit makes that boundary easy to regression-test.
@@ -2777,6 +2840,15 @@ class _Broker:
                 result = {"returncode": 0, "stdout": stdout, "stderr": "",
                           "elapsed_s": round(time.monotonic() - started, 3)}
             except Exception as exc:  # noqa: BLE001 - receipt the refusal; never expose raw evaluator data
+                # THE AGENT MAY NOT SEE WHY, BUT THE HOST MUST RECORD IT. What the agent gets stays
+                # the exception's type and nothing else, because the refusal reason names gate
+                # internals. What was written nowhere was the reason itself: the receipt keeps only
+                # a DIGEST of that one-line string, so a refusal after a full sweep left the type
+                # and no message, no traceback and no cell. Measured 2026-09-04: an eighty-minute
+                # measurement in which all 38 members ran was thrown away, and recovering the cause
+                # meant brute-forcing the exception name against the receipt's stderr digest.
+                _record_host_refusal(self, exc, round_index=self.feedback_round,
+                                     call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
                           "stderr": ("development GSIM feedback refused by the host-owned "
                                      f"evaluator ({type(exc).__name__})"),
