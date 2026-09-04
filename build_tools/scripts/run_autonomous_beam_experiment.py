@@ -78,7 +78,7 @@ def _xnnpack_kernels_wall_ns(model: str) -> float | None:
     return None
 
 
-def _reference(model: str, dtype: str, root: Path) -> dict:
+def _reference(model: str, dtype: str, root: Path, ours_bundle_id: str | None = None) -> dict:
     """The dtype-APPROPRIATE expert reference wall (ns) + provenance for attainment.
 
     fp32: the four-way XNNPACK-GEMM-in-our-runtime wall (the historical reference).
@@ -89,7 +89,7 @@ def _reference(model: str, dtype: str, root: Path) -> dict:
     if dtype == "fp32":
         return {"wall_ns": _xnnpack_kernels_wall_ns(model), "kind": "xnnpack_kernels_in_runtime",
                 "dtype": "fp32", "label": XNNPACK_KERNELS_LABEL}
-    et = executorch_cell(model, dtype, root=root)
+    et = executorch_cell(model, dtype, root=root, ours_bundle_id=ours_bundle_id)
     if et.get("executorch_status") == "measured":
         return {"wall_ns": et["executorch_wall_ns"], "kind": "executorch_external", "dtype": dtype,
                 "label": EXECUTORCH_LABEL,
@@ -114,15 +114,20 @@ def _manual_best(model: str) -> dict:
 
 
 def run_cell(dtype: str, model: str, *, width: int, depth: int, top_k: int) -> dict:
+    from merlin.mining.baseline import ExpertBaseline
     from merlin.mining.beam_cli import run_instrumented_beam
     from merlin.mining.wholemodel_proposer import propose_wholemodel_levers
     bundle = _BUNDLE.get((dtype, model))
     obj = _EXPERT_OBJDUMP.get(dtype)
     root = repo_root()
     # The TRUE external ExecuTorch(+XNNPACK) whole-model column (board-free ingest; never re-run ET).
-    et = executorch_cell(model, dtype, root=root)
+    # The capture bundle OUR side will be measured on. Without it the bundle guard is inert: it
+    # defaults to None and the check is skipped, so a wall taken on one bundle could be divided by a
+    # reference exported from another. Both call sites now declare it.
+    ours_bundle_id = Path(bundle).name if bundle else None
+    et = executorch_cell(model, dtype, root=root, ours_bundle_id=ours_bundle_id)
     # dtype-appropriate expert reference (fp32 XNNPACK-in-runtime, else ExecuTorch same-variant, else None).
-    ref = _reference(model, dtype, root)
+    ref = _reference(model, dtype, root, ours_bundle_id)
     comparability = {"xnnpack_kernels": XNNPACK_KERNELS_LABEL, "executorch": EXECUTORCH_LABEL,
                      "reference_used": ref.get("kind"),
                      # same-dtype is matched at 4 layers (reference wall, ET column, expert CCA
@@ -132,7 +137,15 @@ def run_cell(dtype: str, model: str, *, width: int, depth: int, top_k: int) -> d
     if not bundle or not Path(bundle).is_dir():
         return {"cell": f"{dtype}:{model}", "status": "not_run", "blocker": f"no bundle {bundle}",
                 "executorch": et, "reference": ref, "comparability": comparability}
-    xnn = ref["wall_ns"]
+    # `_reference` already knows what it measured -- the workload, the dtype, and whether the number
+    # is the fp32 XNNPACK-in-runtime wall or a true external ExecuTorch wall. Passing only the float
+    # discarded all of it, leaving `ExpertBaseline.mismatches()` with nothing declared to check, so
+    # it could never fire. That is how two int8 runs came to be scored against their fp32 sibling's
+    # wall and reported beating the expert (1.269x, 1.859x) while the one int8 cell carrying its own
+    # number reports 0.113. Declare the identity so a wrong comparand is refused instead of cited.
+    xnn = (ExpertBaseline(wall_ns=float(ref["wall_ns"]), workload=ours_bundle_id, dtype=ref.get("dtype"),
+                          substrate="k1_spacemit", note=ref.get("kind") or "")
+           if ref.get("wall_ns") else None)
     t0 = time.time()
     try:
         res = run_instrumented_beam(

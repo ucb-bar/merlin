@@ -147,3 +147,50 @@ def test_score_never_invents_conditions_for_a_wall_it_could_not_pick(tmp_path):
     assert out["board_conditions"] is None
     assert out["measurement_protocol"] is None
     assert out.get("measurement_gaps"), "an undeclared authority must say so"
+
+
+def test_a_cli_expert_wall_must_declare_what_it_measured():
+    """A bare --expert-wall-ns leaves ExpertBaseline.mismatches() nothing to check.
+
+    Only DECLARED fields are compared, so an undeclared baseline can never be shown to mismatch --
+    and therefore can never be refused. That is how two int8 beam runs came to be scored against
+    their fp32 sibling's wall and both reported beating the expert (1.269x, 1.859x) while the one
+    int8 cell carrying its own number reports 0.113. Refuse at the CLI edge instead.
+    """
+    import argparse
+    import pytest
+    from merlin.mining.beam_cli import _declared_expert
+
+    def _args(**kw):
+        d = {"expert_wall_ns": None, "expert_workload": None, "expert_dtype": None,
+             "expert_substrate": "k1_spacemit", "expert_note": ""}
+        d.update(kw)
+        return argparse.Namespace(**d)
+
+    # no wall at all is fine -- the beam simply reports no attainment
+    assert _declared_expert(_args()) is None
+    # a wall without an identity is refused, and the message says which flags are missing
+    with pytest.raises(SystemExit) as e:
+        _declared_expert(_args(expert_wall_ns=1234.0))
+    assert "--expert-workload" in str(e.value) and "--expert-dtype" in str(e.value)
+    # half-declared is still refused
+    with pytest.raises(SystemExit):
+        _declared_expert(_args(expert_wall_ns=1234.0, expert_workload="small_llama_int8_consistent"))
+    # fully declared: the baseline carries its identity and CAN now be refused on a real mismatch
+    b = _declared_expert(_args(expert_wall_ns=1234.0, expert_dtype="int8",
+                               expert_workload="small_llama_int8_consistent"))
+    assert b.provenance_recorded
+    assert b.mismatches(workload="small_llama_int8_consistent", dtype="int8") == ()
+    assert b.mismatches(workload="small_llama_int8_consistent", dtype="fp32")   # dtype guard fires
+    assert b.mismatches(workload="bitvla_int8_consistent", dtype="int8")        # workload guard fires
+
+
+def test_the_beam_driver_declares_its_baseline_and_its_bundle():
+    """Both inert guards in the autonomous driver: the bare-float baseline and ours_bundle_id=None."""
+    from merlin.common.paths import repo_root
+    src = (repo_root() / "build_tools" / "scripts" / "run_autonomous_beam_experiment.py").read_text()
+    assert "ExpertBaseline(wall_ns=float(ref[\"wall_ns\"])" in src
+    assert 'xnn = ref["wall_ns"]' not in src, "the baseline is a bare float again"
+    # both executorch_cell call sites declare the bundle ours was measured on
+    assert src.count("ours_bundle_id=ours_bundle_id") == 2
+    assert "executorch_cell(model, dtype, root=root)" not in src

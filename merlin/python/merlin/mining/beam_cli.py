@@ -176,6 +176,29 @@ def run_instrumented_beam(
         finish_run(parent, status=status, summary=parent_summary)
 
 
+def _declared_expert(args):
+    """Build the declared ExpertBaseline, or refuse a wall that cannot say what it measured.
+
+    Fail-closed at the CLI edge rather than at the API: ``ExpertBaseline.of`` deliberately still
+    accepts a bare float (stamped ``unrecorded``) so existing library callers keep working, but a run
+    launched from here is a run whose numbers get cited, and an undeclared comparand is exactly what
+    made two int8 attainments unfalsifiable.
+    """
+    from merlin.mining.baseline import ExpertBaseline
+    if args.expert_wall_ns is None:
+        return None
+    missing = [f"--expert-{n}" for n in ("workload", "dtype")
+               if not getattr(args, f"expert_{n}", None)]
+    if missing:
+        raise SystemExit(
+            f"--expert-wall-ns given without {' and '.join(missing)}. attainment_vs_expert divides "
+            "by this number, so an undeclared baseline cannot be shown to describe this run and "
+            "cannot be refused either — declare what it measured, or omit the wall entirely.")
+    return ExpertBaseline(wall_ns=float(args.expert_wall_ns), workload=args.expert_workload,
+                          dtype=args.expert_dtype, substrate=args.expert_substrate,
+                          note=args.expert_note or "")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="merlin-rvv-beam",
                                  description="aet-instrumented, board-serialized CCA beam search (BB3).")
@@ -186,6 +209,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--expert-wall-ns", type=float, default=None,
                     help="XNNPACK measured wall (ns) for this workload — the REAL target; each fork "
                          "reports attainment_vs_expert = xnn_wall/fork_wall (>=1 = matched/beat XNNPACK)")
+    # A bare wall is a number with no identity, and ExpertBaseline.mismatches() can only check what
+    # was DECLARED — so a bare --expert-wall-ns leaves the guard with nothing to compare and it never
+    # fires. That is how two int8 runs were scored against their fp32 sibling's wall and both
+    # reported beating the expert. Declaring the baseline is what makes the check real.
+    ap.add_argument("--expert-workload", default=None,
+                    help="the capture bundle the expert wall was measured on (bundle DIRECTORY NAME, "
+                         "e.g. small_llama_int8_consistent); required with --expert-wall-ns")
+    ap.add_argument("--expert-dtype", default=None,
+                    help="the numeric format the expert wall was measured in (fp32/int8/fp16); "
+                         "required with --expert-wall-ns")
+    ap.add_argument("--expert-substrate", default="k1_spacemit",
+                    help="which device produced the expert wall (default: k1_spacemit)")
+    ap.add_argument("--expert-note", default="",
+                    help="what the expert number IS (e.g. executorch_external, "
+                         "xnnpack_kernels_in_runtime) — recorded with the baseline")
     ap.add_argument("--model-dir", required=True,
                     help="EXPLORE-phase workload bundle (model.mlir + inputs + golden). Use a fast "
                          "whole-model bundle here (e.g. out/artifacts/recaptures/bitvla_fp32_consistent) "
@@ -240,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         seed_pkg=seed_pkg, model_dir=args.model_dir, expert_objdump=args.expert_objdump,
         op=args.op, dtype=args.dtype, shape_regime=args.shape_regime, targets=targets,
         width=args.width, depth=args.depth, top_k=args.top_k, max_workers=args.max_workers,
-        expert_wall_ns=args.expert_wall_ns, validate_model_dir=args.validate_model_dir,
+        expert_wall_ns=_declared_expert(args), validate_model_dir=args.validate_model_dir,
         noise_margin=args.noise_margin, proposer=proposer, teachers=args.teachers,
         pass_slot_turns=args.pass_slot_turns)
     best = res.get("best") or {}
