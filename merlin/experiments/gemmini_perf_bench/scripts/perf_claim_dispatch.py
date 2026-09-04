@@ -34,11 +34,20 @@ def _registry() -> dict[str, Callable[..., dict]]:
     except Exception:  # noqa: BLE001
         pass
     try:
+        import perf_paired_claim as PD
+        table[PD.ANALYZER] = PD.analyze_paired_claim
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        # This analyzer keeps its identity inside its acceptance template rather than as a module
+        # constant, so it is read from there -- never re-spelled here, which would let the registry
+        # and the contract drift apart silently.
         import perf_pr_claim as PR
-        for name in ("ANALYZER", "_ANALYZER"):
-            identity = getattr(PR, name, None)
-            if isinstance(identity, str) and identity:
-                table[identity] = PR.analyze_pr_claim
+        for attr in ("_ACCEPTANCE_BASE", "ACCEPTANCE_BASE", "_ACCEPTANCE",
+                     "_PROPOSED_ACCEPTANCE"):
+            base = getattr(PR, attr, None)
+            if isinstance(base, dict) and isinstance(base.get("analyzer"), str):
+                table[base["analyzer"]] = PR.analyze_pr_claim
                 break
     except Exception:  # noqa: BLE001
         pass

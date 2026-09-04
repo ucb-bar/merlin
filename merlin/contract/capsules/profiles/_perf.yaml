@@ -178,6 +178,23 @@ sweeps:
         upper_bound: the_structural_pipeline_depth_derived_from_rtl_facts
         predicate: bit_exactness_must_hold_at_every_settle_in_the_range_and_fail_below_the_lower_bound
         on_underivable: skip_with_evidence
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - contract_settle
+        - reduced_settle
+        expected_faster: reduced_settle
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   axes:
     M:
     - tile
@@ -243,6 +260,23 @@ sweeps:
         runs: derived_from_two_pairs_plus_negative_control
         projected_cycles: derived_at_preflight
         basis: paired_differential_at_two_separation_regimes
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - not_hoisted
+        - hoisted
+        expected_faster: hoisted
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   variants:
   - matmuls:
     - lhs: A0
@@ -318,6 +352,23 @@ sweeps:
         declared_constant: null
         minimum_replicate_count: 2
         predicate: a_saving_counts_iff_it_exceeds_the_measured_replicate_dispersion_of_its_own_pair
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - tile_regime
+        - layer_regime
+        expected_faster: layer_regime
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   variants:
   - matmuls:
     - lhs: A0
@@ -401,6 +452,23 @@ sweeps:
         runs: two_per_shape
         projected_cycles: derived_at_preflight
         basis: one_matmul_per_encoding
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - encoding_a
+        - encoding_b
+        expected_faster: either
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   variants:
   - op: matmul
     operand_dtype: encoding0
@@ -537,6 +605,7 @@ sweeps:
           why: the sibling reduction-depth family was refuted because every one of its depths lay inside
             the machine's overlap fill transient. This family's cheapest band starts at the same depth,
             so a band is put through the guard before any rate is quoted
+        expected_faster: resident
   axes:
     M:
     - tile
@@ -633,6 +702,23 @@ sweeps:
           for no deep-K slot. The expensive axis is the job count -- the L3 engine''s wall cost tracks
           OUTPUT size and a member drains one tile per job -- and four jobs is enough to separate a per-barrier
           saving from a constant one'
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - minimum_barriers
+        - barrier_after_every_job
+        expected_faster: minimum_barriers
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   variants:
   - jobs: 1
     matmuls:
