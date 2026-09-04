@@ -143,3 +143,50 @@ def test_an_unreadable_buffer_refuses_rather_than_crashing(tmp_path):
     with pytest.raises(Exception):
         stage.analyze_command_buffers(missing, good, peak_macs_per_cycle=256,
                                       achievable_macs_per_cycle=80.0)
+
+
+# --------------------------------------------------------------------------------------
+# Signals the free screen must NOT carry, and structural facts it must.
+
+def test_it_offers_no_calibrated_cycle_estimate(tmp_path):
+    """The per-command cost model is ANTI-predictive for within-capsule ordering.
+
+    Measured over 774 within-capsule ordered pairs from 115 distinct emitted programs: its
+    agreement with the cycle oracle is 39.3%, worse than a coin flip and worse than spike's 46.1%.
+    Within one capsule the work is fixed, so its `compute` term never varies between candidates and
+    the terms that do vary anti-correlate with measured cycles. It is accurate on absolute
+    magnitude (MAPE 8.1%) and that is a different question. Exposing it here would hand the agent a
+    signal pointing the wrong way, so this asserts it stays out.
+    """
+    stage = _stage()
+    a = _buffer(tmp_path, "a.json", (16, 16, 16))
+    b = _buffer(tmp_path, "b.json", (16, 16, 32))
+    out = stage.analyze_command_buffers(a, b, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0, target="gemmini")
+    assert "calibrated_estimate" not in out
+    flat = json.dumps(out)
+    assert "predicted_cycles" not in flat and "estimated_cycles" not in flat
+
+
+def test_the_lower_bound_is_a_floor_and_says_so(tmp_path):
+    stage = _stage()
+    a = _buffer(tmp_path, "a.json", (16, 16, 16))
+    out = stage.analyze_command_buffers(a, a, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0, target="gemmini")
+    bound = out["lower_bound"]["baseline"]
+    if bound["status"] == "derived":
+        assert bound["compute_floor_cycles"] > 0
+        assert "floor" in bound["licence"] and "never an estimate" in bound["licence"]
+
+
+def test_an_uncountable_barrier_stream_is_unknown_not_zero(tmp_path):
+    """"no barriers found" and "cannot see barriers" must never read alike."""
+    stage = _stage()
+    a = _buffer(tmp_path, "a.json", (16, 16, 16))
+    out = stage.analyze_command_buffers(a, a, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0, target="gemmini")
+    barriers = out["barriers"]
+    assert barriers["status"] in ("counted", stage.BARRIER_UNKNOWN)
+    if barriers["status"] != "counted":
+        assert barriers.get("reason")
+        assert "removed" not in barriers

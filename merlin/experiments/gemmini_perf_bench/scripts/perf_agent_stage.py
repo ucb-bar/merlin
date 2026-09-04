@@ -1424,9 +1424,112 @@ _PLACEHOLDER = re.compile(r"\{([A-Za-z][A-Za-z0-9_]*)\}")
 
 
 
+#: What a barrier count reports when the stream cannot be read. Never zero: "no barriers found" and
+#: "cannot see barriers" are different claims, and only one of them is evidence.
+BARRIER_UNKNOWN = "UNKNOWN"
+
+
+def _demand_lower_bound(buffer: Mapping[str, Any], peak_macs_per_cycle: int | None) -> dict[str, Any]:
+    """Cycles this arm cannot beat, from its own declared work and operands.
+
+    A bound, not a prediction. Compute demand is the priced MAC count over the structural peak;
+    movement demand is the operand bytes the buffer itself declares. Both are floors -- a spilling
+    schedule re-fetches, so real movement is only ever larger -- which keeps the result honestly a
+    lower bound rather than an estimate that could flatter a candidate.
+    """
+    if not peak_macs_per_cycle:
+        return {"status": "unavailable", "reason": "no derived structural peak for this target"}
+    from merlin.perf.work_volume import work_from_command_buffer            # noqa: PLC0415
+    work = work_from_command_buffer(buffer)
+    macs = int(getattr(work, "known_macs", 0) or 0)
+    tensors = buffer.get("tensors")
+    if not macs or not isinstance(tensors, Mapping):
+        return {"status": "unavailable", "reason": "the buffer declares no work or no tensors"}
+    width = {"i8": 1, "u8": 1, "i16": 2, "bf16": 2, "f16": 2, "i32": 4, "f32": 4}
+    operand_bytes = 0
+    for spec in tensors.values():
+        if not isinstance(spec, Mapping):
+            continue
+        shape, dtype = spec.get("shape"), str(spec.get("dtype") or "")
+        if not isinstance(shape, Sequence) or dtype not in width:
+            return {"status": "unavailable",
+                    "reason": f"an operand declares no shape or an unpriced dtype {dtype!r}"}
+        count = 1
+        for extent in shape:
+            count *= int(extent)
+        operand_bytes += count * width[dtype]
+    return {"status": "derived",
+            "compute_floor_cycles": macs / float(peak_macs_per_cycle),
+            "declared_operand_bytes": operand_bytes,
+            "exact": not bool(getattr(work, "is_lower_bound", False)),
+            "licence": "a floor the arm cannot beat; never an estimate of what it will cost"}
+
+
+def _command_events(buffer: Mapping[str, Any]) -> dict[str, float] | None:
+    """Count the emitted commands by the kind a calibrated cost model prices.
+
+    The cost model is fitted per COMMAND KIND, so what it needs is a histogram of the buffer's own
+    opcodes mapped onto the event names it was calibrated against. Returns None when the buffer
+    declares an opcode outside that vocabulary -- an unrecognised command means the histogram is
+    incomplete, and an incomplete histogram priced as if it were whole would understate the arm.
+    """
+    rows = buffer.get("commands")
+    if not isinstance(rows, Sequence) or not rows:
+        return None
+    # The ABI opcode -> calibrated event name. Both vocabularies are declared, not guessed: the
+    # left side is what the emitted buffer contains, the right is what the model was fitted on.
+    mapping = {"RES_PACK": "mvin2_B", "MATMUL_RESIDENT": "compute", "MATMUL": "compute",
+               "COMMIT": "mvout", "EVICT": "mvout", "FENCE": "fence", "BIAS_ADD": "compute",
+               "VECTOR_MAP": "compute", "VREDUCE": "compute", "CONV2D": "compute",
+               "MOVEMENT": "mvin_A", "ATTENTION_QK": "compute", "ATTENTION_PV": "compute"}
+    events: dict[str, float] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            return None
+        event = mapping.get(str(row.get("opcode") or ""))
+        if event is None:
+            return None
+        events[event] = events.get(event, 0.0) + 1.0
+    return events
+
+
+def _calibrated_estimate(target: str, buffer: Mapping[str, Any]) -> dict[str, Any]:
+    """A calibrated cycle estimate for one arm, with its measured error band -- or a refusal.
+
+    SCREENING ONLY. This model is order-blind: it prices a histogram of commands, so it separates
+    candidates that change WHAT is issued (tiling, blocking, how many barriers) and is blind to
+    candidates that only change the ORDER. It may eliminate a candidate; it may never certify one,
+    and its number never enters a result. The band is reported with the value because a point
+    estimate quoted without its error is the over-claim this whole layer exists to prevent.
+    """
+    events = _command_events(buffer)
+    if events is None:
+        return {"status": "unavailable",
+                "reason": "the buffer declares a command outside the calibrated vocabulary, so its "
+                          "event histogram is incomplete and pricing it would understate this arm"}
+    try:
+        from merlin.cost_model.linear import LinearCostModel                # noqa: PLC0415
+        model = LinearCostModel.load(_cost_model_artifact(target))
+        cycles, band = model.predict_with_band(events)
+    except Exception as exc:  # noqa: BLE001 - an uncalibrated target screens nothing, and says so
+        return {"status": "unavailable",
+                "reason": f"no calibrated cost model for {target!r}: {type(exc).__name__}"}
+    return {"status": "derived", "cycles": float(cycles), "band": float(band), "events": events,
+            "basis": "per-command coefficients calibrated against the cycle-accurate engine",
+            "licence": "screening only; order-blind; never a certified cycle count"}
+
+
+def _cost_model_artifact(target: str) -> Path | None:
+    """The target's calibrated coefficients, resolved by NAME rather than hardcoded per target."""
+    from merlin.common.paths import merlin_dir                              # noqa: PLC0415
+    candidate = merlin_dir() / "python" / "merlin" / "cost_model" / f"{target}_cost_coeffs.json"
+    return candidate if candidate.is_file() else None
+
+
 def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
                             peak_macs_per_cycle: int | None,
-                            achievable_macs_per_cycle: float | None) -> dict[str, Any]:
+                            achievable_macs_per_cycle: float | None,
+                            target: str = "") -> dict[str, Any]:
     """Price two emitted command buffers against each other -- ORDERING ONLY, and free.
 
     WHY THIS EXISTS. The measured feedback is the only judge the agent had, and it costs ~110 s a
@@ -1470,6 +1573,38 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     out["arms"] = arms
     out["peak_macs_per_cycle"] = peak_macs_per_cycle
     out["achievable_macs_per_cycle"] = achievable_macs_per_cycle
+
+    # THREE FREE SIGNALS, none of which may certify. Each reads the candidate's own emitted
+    # artifacts, so none can leak a golden or a holdout, and none costs oracle time. Together they
+    # let a bad candidate be ELIMINATED before a measurement is spent on it -- the measured rule is
+    # that a cheap tier which REFUTES is sound (12/12) while one that PASSES certifies nothing.
+    buffers = {arm: _load(path)
+               for arm, path in (("baseline", baseline_json), ("candidate", candidate_json))}
+
+    # NO CALIBRATED CYCLE ESTIMATE IS OFFERED, and the reason is measured, not cautious.
+    #
+    # The per-command cost model is accurate on absolute magnitude for in-distribution shapes
+    # (MAPE 8.1%), and it is ANTI-predictive for the comparison this action exists to make.
+    # Measured over 774 within-capsule ordered pairs drawn from 115 distinct emitted programs, its
+    # ordering agreement with the cycle oracle is 39.3% -- materially WORSE than the 50% a coin
+    # gets, and worse than spike's 46.1%. The mechanism is structural: within one capsule the work
+    # is fixed, so the `compute` term never varies between two candidates, and the only terms left
+    # that do vary (config, mvin, fence counts) anti-correlate with measured cycles. Reporting it
+    # here would not be a weak signal, it would be a signal pointing the wrong way, and the agent
+    # would follow it. Absolute magnitude is a different question from ordering; do not let a good
+    # answer to the first be quoted as an answer to the second.
+
+    # 2. synchronization: how many completion points the candidate removed
+    try:
+        from merlin.perf import barrier_arms as BARRIER                     # noqa: PLC0415
+        out["barriers"] = BARRIER.paired_removal(buffers["baseline"], buffers["candidate"])
+    except Exception as exc:  # noqa: BLE001 - an uncountable stream is UNKNOWN, never zero
+        out["barriers"] = {"status": BARRIER_UNKNOWN,
+                           "reason": f"barrier counting failed: {type(exc).__name__}"}
+
+    # 3. a LOWER BOUND on cycles from declared demand alone: what this arm cannot beat
+    out["lower_bound"] = {arm: _demand_lower_bound(buffer, peak_macs_per_cycle)
+                          for arm, buffer in buffers.items()}
 
     b, c = arms["baseline"]["macs"], arms["candidate"]["macs"]
     if b and c and b != c:
@@ -2433,7 +2568,9 @@ class _Broker:
                     Path(rendered["baseline_json"]), Path(rendered["candidate_json"]),
                     peak_macs_per_cycle=getattr(evaluator, "peak_macs_per_cycle", None),
                     achievable_macs_per_cycle=getattr(
-                        evaluator, "achievable_macs_per_cycle", None))
+                        evaluator, "achievable_macs_per_cycle", None),
+                    target=str(getattr(
+                        getattr(evaluator, "target_experiment", None), "target", "") or ""))
                 result = {"returncode": 0,
                           "stdout": _canonical_json(document).decode("utf-8"), "stderr": "",
                           "elapsed_s": round(time.monotonic() - started, 3)}

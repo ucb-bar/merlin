@@ -41,10 +41,21 @@ class LinearCostModel:
             {"const": self.const, "coeff": self.coeff, "error": self.error,
              "meta": self.meta}, indent=1), encoding="utf-8")
 
+    def priced_events(self) -> tuple[str, ...]:
+        """The command vocabulary this model prices.
+
+        A subclass declares ``EVENTS`` for its backend. When it does not -- i.e. this generic class
+        is used directly with a loaded calibration artifact, which is how a target-agnostic caller
+        reaches a per-target model -- the artifact's own coefficient keys ARE the vocabulary. Without
+        this the generic path silently prices nothing and returns the bare intercept, which reads as
+        a real (and badly wrong) cycle count rather than as a refusal.
+        """
+        return self.EVENTS or tuple(sorted(self.coeff))
+
     def predict(self, events: dict[str, float]) -> float:
-        """Predict region cycles from a per-command count dict (over this model's EVENTS)."""
+        """Predict region cycles from a per-command count dict (over this model's priced events)."""
         cyc = self.const
-        for e in self.EVENTS:
+        for e in self.priced_events():
             cyc += self.coeff.get(e, 0.0) * events.get(e, 0.0)
         return cyc
 
