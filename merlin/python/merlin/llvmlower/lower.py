@@ -15,6 +15,14 @@ from .codegen import build_host_shared, compile_ll
 from .passes_xdsl import preprocess_text
 from .pipeline import lower_to_llvm_ir
 
+# Registering here, and not in `impr_features` itself, keeps the epilogue-fusion stage's definition
+# next to the pass list it edits while still making the NAME resolvable: this module is what every
+# whole-model backend imports to lower, so by the time a feature set is normalized for a lowering the
+# entry exists. Idempotent, so a second import is a no-op.
+from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
+
+_register_epilogue_fusion()
+
 
 @dataclass
 class LowerResult:

@@ -10,6 +10,12 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 - `pipeline.py` — upstream pass pipeline + `translate_module_to_llvmir` (in the model2MLIR venv).
 - `codegen.py`, `toolchain.py`, `weights_pack.py` (manifest/safetensors → blob + arg table), `abi.py` (`_mlir_ciface_forward` host runner + `ScalarArg`), `lower.py`/`cli.py`.
 - `kernel_backend.py` — compile one outlined kernel func in isolation + check it vs a numpy reference (the per-kernel bisection harness; used by `runtime.dispatch_runtime`).
+- `impr_features.py` + the per-feature modules next to it (`selfcopy.py`, `transpose_fuse.py`,
+  `epilogue_fusion.py`) — NAMED, default-off edits to the pass list / transform schedule. A feature
+  defines its own edit and registers itself; the empty feature set must leave the pipeline
+  byte-identical. `epilogue_fusion.py` fuses a per-output epilogue (the int8 requant) into the loop
+  nest of the reduction that produced it, via affine producer-consumer fusion at zero compute
+  tolerance.
 - `custom_isa.py` — `merlin.inline_asm` → `llvm.inline_asm` 1:1 (custom ISA / `.insn` raw encodings; no LLVM fork). `passes_xdsl.lower_bf16_matmul_f32acc` rewrites bf16 matmuls to accumulate in f32.
 
 ## What does not belong here
