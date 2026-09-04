@@ -157,6 +157,8 @@ def run_instrumented_beam(
         parent_summary = {"best_run_id": (best or {}).get("run_id"),
                           "best_speedup": (best or {}).get("speedup"),
                           "best_attainment_vs_expert": (best or {}).get("attainment_vs_expert"),
+                          # Whether the budget, rather than the search space, bounded this result.
+                          "deferral_census": res.get("deferral_census"),
                           "best_lever": (best or {}).get("lever"),
                           "n_forks": len(res.get("nodes", [])) - 1,
                           "n_deferred": len(res.get("deferred", [])),

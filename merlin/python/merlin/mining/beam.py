@@ -624,7 +624,26 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     else:
         ranked = rank_results([n for n in nodes if n["gate_ok"]]) or nodes
     best = ranked[0] if ranked else None
+    # WAS THE SEARCH STARVED? A proposal deferred `over_width` is not a proposal the search
+    # rejected -- it is one it never got to try, and it stays invisible unless someone opens the
+    # tree and counts. In the run this census was added for, 41 of 44 deferrals were `over_width`,
+    # including every cap refinement: only the smallest stack-cap rung was ever built, while the
+    # largest is worth 1.34x. That reads as "the search converged" and is actually "the budget ran
+    # out". Report it beside the result so the two cannot be confused.
+    _by_reason: dict[str, int] = {}
+    for _d in deferred:
+        _by_reason[str(_d.get("reason") or "not_forkable")] = (
+            _by_reason.get(str(_d.get("reason") or "not_forkable"), 0) + 1)
+    _starved = sorted({str(_d.get("family") or _d.get("lever") or "?")
+                       for _d in deferred if _d.get("reason") == "over_width"})
+    deferral_census = {"total": len(deferred), "by_reason": _by_reason,
+                       "over_width": _by_reason.get("over_width", 0),
+                       "over_width_families": _starved,
+                       "width_was_binding": _by_reason.get("over_width", 0) > 0,
+                       "note": ("proposals deferred over_width were never built; a non-zero count "
+                                "means the result is bounded by --width, not by the search space")}
     tree = {"target": target, "seed": str(seed_pkg), "op_key": op_key,
+            "deferral_census": deferral_census,
             "baseline_frozen": {"digest": seed_digest_pre, "verified_unchanged": True},
             "repair_mode": repair_mode,
             "seed_correctness_residual": seed_node.get("correctness_residual"),
@@ -639,6 +658,7 @@ def run_beam(seed_pkg: str | Path, model_dir: str | Path, curated_text: str, op_
     tree_path = runs_root / "beam_tree.yaml"
     write_yaml(tree_path, tree, header="RVV beam-search tree (mining.beam.run_beam)")
     return {"best": best, "nodes": nodes, "deferred": deferred, "tree_path": str(tree_path),
+            "deferral_census": deferral_census,
             # Surfaced, not just written to the tree: a caller that cannot tell a repair run from a
             # speed run would read "no speedup" as a failed search rather than as the one honest
             # answer available from an incorrect baseline.

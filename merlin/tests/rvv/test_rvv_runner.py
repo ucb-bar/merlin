@@ -194,3 +194,41 @@ def test_the_beam_driver_declares_its_baseline_and_its_bundle():
     # both executorch_cell call sites declare the bundle ours was measured on
     assert src.count("ours_bundle_id=ours_bundle_id") == 2
     assert "executorch_cell(model, dtype, root=root)" not in src
+
+
+def test_a_starved_search_says_so_in_its_summary():
+    """`over_width` deferrals are proposals the search NEVER TRIED, not ones it rejected.
+
+    Without a census they are invisible unless someone opens beam_tree.yaml and counts, so a
+    budget-bounded run reads exactly like a converged one. The run this was added for deferred 41 of
+    44 proposals over_width across 16 distinct families -- including both cap refinements, whose
+    largest rung is worth 1.34x, and fuse_transpose_b, on a model where weight transposes cost 1.61x.
+    """
+    from merlin.mining import beam
+    src = (beam.__file__)
+    text = open(src).read()
+    assert "deferral_census" in text
+    # the census must reach BOTH the persisted tree and the returned dict
+    assert text.count("deferral_census") >= 3
+    from merlin.mining.beam_cli import __file__ as cli
+    assert '"deferral_census": res.get("deferral_census")' in open(cli).read()
+
+
+def test_the_census_counts_reasons_and_names_the_starved_families():
+    """Shape check on real deferral records: reasons are tallied and over_width families named."""
+    import collections
+    deferred = [
+        {"reason": "over_width", "family": "wholemodel:promote_buffers_to_stack:cap"},
+        {"reason": "over_width", "family": "wholemodel:fuse_transpose_b"},
+        {"reason": "over_width", "family": "wholemodel:fuse_transpose_b"},
+        {"reason": "illegal_on_parent", "family": "schedule:vector_sizes"},
+        {"lever": "x"},  # not forkable: no reason recorded
+    ]
+    by_reason = collections.Counter(str(d.get("reason") or "not_forkable") for d in deferred)
+    starved = sorted({str(d.get("family") or d.get("lever") or "?")
+                      for d in deferred if d.get("reason") == "over_width"})
+    assert by_reason["over_width"] == 3
+    assert by_reason["illegal_on_parent"] == 1
+    assert by_reason["not_forkable"] == 1
+    # families are DEDUPLICATED -- three deferrals, two distinct starved families
+    assert starved == ["wholemodel:fuse_transpose_b", "wholemodel:promote_buffers_to_stack:cap"]
