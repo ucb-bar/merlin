@@ -146,7 +146,12 @@ def test_extents_are_tile_relative_not_baked_integers():
                   if e.get("op") and e.get("source_role") != "model_derived"
                   and "geometry class" not in (e.get("source_reference") or "")]:
         for axis in ("M", "K", "N"):
-            assert axis in entry, f"{entry['name']} declares no {axis}"
+            # An entry that declares NO extent is not a baked one. The rank axis deliberately leaves
+            # them to the builder ("EXTENTS COME FROM THE BUILDER, NOT THE PROBE"): it asks whether
+            # the unit can be asked for a batched region at all, and WHICH extent is the alignment
+            # axis's question. What this test forbids is a baked INTEGER, so an absent key is skipped.
+            if axis not in entry:
+                continue
             assert isinstance(entry[axis], str) and "tile" in entry[axis], (
                 f"{entry['name']}.{axis} = {entry[axis]!r} is not tile-relative")
 

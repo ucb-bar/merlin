@@ -398,7 +398,11 @@ def test_derivation_grounds_each_target_in_its_own_evidence():
         assert derived.families(), f"{target}: no family derived from its own evidence"
         for fam, ev in derived.supported.items():
             assert ev.evidence, f"{target}/{fam}: derived without recording what was observed"
-            assert ev.source in ("isa_role", "isa_class", "rtl_facts", "unit_intent"), ev.source
+            # A family's source may name SEVERAL rungs, comma-joined, when a later one refines an
+            # earlier one's verdict -- `_from_lowering` appends itself to whichever rung decided the
+            # family, because what it adds is a shape axis rather than the family itself.
+            assert set(str(ev.source).split(",")) <= {
+                "isa_role", "isa_class", "rtl_facts", "unit_intent", "lowering"}, ev.source
         # the declaration and the evidence must agree -- drift is an error, not a note
         drift = cd.reconcile(el.capability_map_from_contract(contract), derived)
         assert not [d for d in drift if d["kind"] == "missing_declaration"], \
