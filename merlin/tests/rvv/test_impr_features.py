@@ -613,3 +613,46 @@ def test_an_unresolved_mr_sentinel_raises_instead_of_lowering_untagged():
     feat = F._REGISTRY[F.perop_mr_sentinel(8)]
     with pytest.raises(RuntimeError, match="unresolved"):
         feat.edit_pipeline(["canonicalize"])
+
+
+def test_the_default_mrpad_schedule_is_unchanged():
+    """Frozen-baseline invariant: parameterizing the pad literals must not move the f32 default."""
+    from merlin.llvmlower.impr_features import _accumulator_resident_v3_mrpad_pre_schedule as sched
+    txt = sched(4, 16, 16, NR_bmm=8)
+    assert "padding_values = [0.000000e+00 : f32, 0.000000e+00 : f32, 0.000000e+00 : f32]" in txt
+
+
+def test_a_pad_value_carries_the_type_of_the_operand_it_pads():
+    """transform.structured.pad HARD-ERRORS on a wrongly-typed pad value:
+
+        'transform.structured.pad' op expects a padding value of type 'i8', got 0.000000e+00 : f32
+
+    which the lowering catches as a PipelineError and turns into a whole-model SCALAR FALLBACK, so
+    the lever presents as 'applied but slow' rather than 'rejected'. Verified against mlir-opt.
+    """
+    from merlin.llvmlower.impr_features import (ensure_mrpad_for_elem_types, get,
+                                                _accumulator_resident_v3_mrpad_pre_schedule as sched)
+    txt = sched(4, 16, 16, NR_bmm=8, elem_types=("i8", "i8", "i32"))
+    assert "padding_values = [0 : i8, 0 : i8, 0 : i32]" in txt
+    name = ensure_mrpad_for_elem_types("i8", "i8", "i32")
+    assert name == "accumulator_resident_wholemodel_vf_mrpad_i8_i8_i32"
+    assert "padding_values = [0 : i8, 0 : i8, 0 : i32]" in get(name).edit_schedule("")
+    # idempotent registration
+    assert ensure_mrpad_for_elem_types("i8", "i8", "i32") == name
+
+
+def test_a_zero_literal_is_derived_and_refuses_what_it_cannot_derive():
+    """Deriving beats tabulating: a table goes stale on the first new element type, and the
+    consequence of a wrong literal here is silent (scalar fallback), not loud."""
+    import pytest
+    from merlin.llvmlower.impr_features import _zero_attr, ensure_mrpad_for_elem_types
+    assert _zero_attr("i8") == "0 : i8"
+    assert _zero_attr("i32") == "0 : i32"
+    assert _zero_attr("f32") == "0.000000e+00 : f32"
+    assert _zero_attr("f16") == "0.000000e+00 : f16"
+    for bad in ("weird", "tensor<4xi8>", ""):
+        with pytest.raises(ValueError):
+            _zero_attr(bad)
+    # and the refusal happens at REGISTRATION, not inside the transform interpreter
+    with pytest.raises(ValueError):
+        ensure_mrpad_for_elem_types("i8", "i8", "nonsense")

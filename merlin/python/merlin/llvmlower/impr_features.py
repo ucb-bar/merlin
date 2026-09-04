@@ -804,8 +804,24 @@ module attributes {{transform.with_named_sequence}} {{
 """
 
 
+def _zero_attr(t: str) -> str:
+    """The MLIR zero literal for element type ``t``, derived from the type rather than tabulated.
+
+    Integer types take ``0 : iN``; floating types take the f-literal form. A tabulated map would go
+    stale the first time a new element type appears, and the failure is silent (scalar fallback).
+    """
+    t = str(t).strip()
+    if t.startswith("i") and t[1:].isdigit():
+        return f"0 : {t}"
+    if t.startswith(("f", "bf")):
+        return f"0.000000e+00 : {t}"
+    raise ValueError(f"no zero literal derivable for element type {t!r}; add the rule rather than "
+                     "letting the schedule pad with a wrongly-typed value")
+
+
 def _accumulator_resident_v3_mrpad_pre_schedule(MR: int, NR: int, KC: int,
-                                                NR_bmm: int | None = None) -> str:
+                                                NR_bmm: int | None = None,
+                                                elem_types: tuple[str, str, str] | None = None) -> str:
     """PER-MATMUL MR register block with an M-PAD tail — the general fix for the M=1/M%MR!=0 case.
 
     ``accumulator_resident_wholemodel_vf`` clamps the matmul M tile to MR_mm=1 (no A-operand reuse:
@@ -831,7 +847,16 @@ def _accumulator_resident_v3_mrpad_pre_schedule(MR: int, NR: int, KC: int,
     the MR=1 clamp to a padded-MR register block; the proven whole-model attention path is untouched.
     """
     NB = NR_bmm if NR_bmm is not None else NR
-    z = "0.000000e+00 : f32"
+    # The padding value must have the ELEMENT TYPE OF THE OPERAND IT PADS. This was a single f32
+    # literal reused for all three, which is correct only while every contraction is f32 -- and
+    # `transform.structured.pad` does not warn, it hard-errors:
+    #   'transform.structured.pad' op expects a padding value of type 'i8', got 0.000000e+00 : f32
+    # A transform-interpreter error is a PipelineError, which the lowering catches as a whole-model
+    # SILENT SCALAR FALLBACK -- the failure mode is "mysteriously slow", not "build failed".
+    # It has never fired because the int8 datapath rewrites every linalg.matmul into a
+    # linalg.generic, so no i8 matmul reaches this schedule at all (see the module docstring note on
+    # named-op erasure). It fires the moment that is fixed, which is why it is fixed first.
+    za, zb, zc = (_zero_attr(t) for t in (elem_types or ("f32", "f32", "f32")))
     # copy_back_op = "linalg.copy" (NOT the default bufferization.materialize_in_destination): the
     # pipeline's canonicalize/cse merges the many identical `linalg.fill 0 -> tensor<MxNxf32>` matmul
     # inits into ONE shared value, and materialize_in_destination copies each padded result back into
@@ -844,7 +869,7 @@ def _accumulator_resident_v3_mrpad_pre_schedule(MR: int, NR: int, KC: int,
 module attributes {{transform.with_named_sequence}} {{
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
     %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
-    %padded, %pad, %cp = transform.structured.pad %mm pad_to_multiple_of [{MR}] {{padding_values = [{z}, {z}, {z}], padding_dimensions = [0], copy_back_op = "linalg.copy"}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    %padded, %pad, %cp = transform.structured.pad %mm pad_to_multiple_of [{MR}] {{padding_values = [{za}, {zb}, {zc}], padding_dimensions = [0], copy_back_op = "linalg.copy"}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %t1, %lmn:2 = transform.structured.tile_using_for %padded tile_sizes [{MR}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
@@ -2310,6 +2335,42 @@ def _register_accumulator_resident_v3() -> list[str]:
 
 
 ACCUM_RESIDENT_V3_NAMES: list[str] = _register_accumulator_resident_v3()
+
+MRPAD_NAME = "accumulator_resident_wholemodel_vf_mrpad"
+
+
+def ensure_mrpad_for_elem_types(a: str, b: str, c: str) -> str:
+    """Register (once) an M-pad register block whose padding values match the OPERAND TYPES.
+
+    The default ``accumulator_resident_wholemodel_vf_mrpad`` pads with an f32 zero for all three
+    operands, which is right only for an f32 contraction. On any other element type
+    ``transform.structured.pad`` hard-errors, the transform interpreter raises, and the lowering
+    catches that as a whole-model scalar fallback -- so the lever reads as "applied but slow" rather
+    than "rejected". Naming the types makes the variant selectable by the search instead of being a
+    property of whichever dtype the default happened to be written for.
+
+    Returns the feature name to put in a feature set.
+    """
+    types = (str(a), str(b), str(c))
+    name = f"{MRPAD_NAME}_" + "_".join(types)
+    if name in known():
+        return name
+    for t in types:                    # fail closed at REGISTRATION, not inside the interpreter
+        _zero_attr(t)
+    register(ImprFeature(
+        name=name, action_class="PASS",
+        description=(f"{MRPAD_NAME} with padding values typed for a {types[0]}x{types[1]}->{types[2]} "
+                     "contraction. Same recipe and same tail rule; only the pad literals differ, "
+                     "because a wrongly-typed pad value is a transform-interpreter error and "
+                     "therefore a silent whole-model scalar fallback."),
+        edit_pipeline=_accumulator_resident_v3_mrpad_pipeline,
+        implies=_tile_epilogue_hygiene(4),
+        edit_schedule=(lambda _t, _ty=types:
+                       _accumulator_resident_v3_mrpad_pre_schedule(4, 16, 16, NR_bmm=8,
+                                                                   elem_types=_ty)),
+        schedule_replace=True,
+    ))
+    return name
 
 
 # ---- compiler-emitted register-blocked RVV intrinsic micro-kernel -------------------
