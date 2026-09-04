@@ -3,7 +3,9 @@
 Answers two things at once:
   1. WHICH TOOLS the agent actually used (the Q3 breakdown) — every tool_use is classified: file reads,
      file writes, and Bash commands bucketed into build / merlin-authoring-tools / self-test / file-ops /
-     ORACLE(spike/verilator/vcs — must be empty: oracle is denied) / CIRCT / other.
+     SELFCHECK (the broker: agent_selfcheck.py / simjob.py — the only sanctioned route to a sim) /
+     ORACLE (a DIRECT spike/verilator/vcs invocation, bypassing the broker — must be empty) /
+     CIRCT / other.
   2. ISOLATION AUDIT — any READ of an out-of-bundle absolute path (the experimenter's ~/.claude memory,
      reference code on another volume, etc.). With sandbox=none these are possible; this is the detection
      the harness relies on. A clean run has zero.
@@ -67,6 +69,13 @@ _GRANTED_KERNELS = ("matmul_ws.c", "conv.c", "mvin_mvout.c", "padded.c")
 
 # Bash-command buckets (first match wins, in order). Tool NAMES, not target literals — kept as regex.
 BUCKETS = [
+    # FIRST, so the SANCTIONED path is never counted as the forbidden one. The agent reaches a
+    # simulator only through the broker -- `agent_selfcheck.py --sim <name>` and `simjob.py` -- and the
+    # sim NAME travels in that command line. Matching "oracle" on the bare word therefore bucketed 47
+    # broker requests of the atlas run of 2026-09-04 as direct oracle invocations, under a heading that
+    # says it "must be empty". An alarm that fires on the approved path is worse than no alarm: it is
+    # read once, dismissed, and then dismissed again on the run where it means something.
+    ("selfcheck",    re.compile(r"\b(agent_selfcheck\.py|simjob\.py)\b")),
     ("oracle",       re.compile(r"\b(spike|verilator|verilator_|vcs|simv|\./simulator)\b")),
     ("circt",        re.compile(r"\b(circt|firtool|arcilator|circt-opt)\b")),
     ("merlin_tools", re.compile(r"(targetgen/(synthesize|generate)|xdsl_dialects|interface_emit|merlin\.targetgen|synthesize\.py|generate\b)")),

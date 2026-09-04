@@ -491,3 +491,45 @@ def test_an_unsandboxed_round_still_recovers_its_final_message(tmp_path):
     _rc, tpath, records = _run(tmp_path, _fake_codex(tmp_path, _stream(), final="ALL DONE"))
     assert (tpath.parent / "round_00.final.txt").read_text().strip() == "ALL DONE"
     assert _by_type(records, "result")[0]["result"].strip() == "ALL DONE"
+
+
+def test_a_tool_use_block_carries_the_id_its_result_is_keyed_by():
+    """Without an ``id`` on the tool_use block, the run's whole tool telemetry reads as zero.
+
+    The transcript's ``tool_result`` has always carried ``tool_use_id``; the ``tool_use`` it pairs with
+    carried no ``id`` at all, so the join key existed on one side only. aet's stream parser records a
+    call only ``if tc.tool_use_id``, and per-call latency is measured as the gap between the two blocks
+    -- so the atlas round of 2026-09-04 reported ``tool_call_count=0`` and ``unique_tools_used=[]`` for
+    a round that made 125 tool calls, while an independent transcript audit of the same bytes counted
+    93 Bash, 31 Edit and 1 web_search. Nothing failed; the number was simply zero.
+    """
+    import codex_agent as CA
+
+    cmd = CA._tool_block({"type": CA.ITEM_COMMAND_EXECUTION, "command": "ls"}, "codex_tool_item_7")
+    assert cmd["id"] == "codex_tool_item_7", "the tool_use block must carry its pairing id"
+    assert cmd["name"] == "Bash"
+
+    edit = CA._tool_block({"type": CA.ITEM_FILE_CHANGE, "changes": []}, "codex_tool_item_8")
+    assert edit["id"] == "codex_tool_item_8"
+
+    other = CA._tool_block({"type": "web_search", "query": "x"}, "codex_tool_item_9")
+    assert other["id"] == "codex_tool_item_9", "the fallback branch must carry an id too"
+
+
+def test_aet_counts_the_tool_calls_the_transcript_contains():
+    """End-to-end over the parser that actually consumes the transcript, not just the block shape."""
+    import json
+    import codex_agent as CA
+    parse_stream = pytest.importorskip("aet.tracking.claude_stream").parse_stream
+
+    items = [{"type": CA.ITEM_COMMAND_EXECUTION, "command": "ls", "id": f"item_{i}"} for i in range(3)]
+    lines = []
+    for it in items:
+        tid = f"codex_tool_{it['id']}"
+        lines.append(json.dumps({"type": "assistant", "message": {
+            "id": tid, "model": "m", "content": [CA._tool_block(it, tid)]}}))
+        lines.append(json.dumps({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": tid, "content": "ok", "is_error": False}]}}))
+    result = parse_stream("\n".join(lines))
+    assert result.tool_call_count == 3, "every emitted tool_use must reach the telemetry store"
+    assert result.unique_tools_used == ["Bash"]

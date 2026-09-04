@@ -153,7 +153,21 @@ def main(argv: list[str] | None = None) -> int:
                 print("WARNING: this chia build cannot re-option resources; the Codex fan-out is NOT "
                       "gated on codex_slots — run with --verilator-slots to bound concurrency instead.")
         refs = [launcher.chia_remote(t["cmd"], str(LB.C.REPO), t["run_id"]) for t in tasks]
-        results = chia_get(refs)
+        # Collect per arm. Gathering the whole list in one call makes the FIRST failure discard every
+        # other arm's work, including arms that had already finished. On a shared host that is not a
+        # hypothetical: Ray's memory monitor kills the most-recently-scheduled task whenever the NODE
+        # crosses its threshold, regardless of whose memory it is -- measured 2026-09-04, it killed a
+        # run_arm holding 0.05 GB because unrelated tenants had taken the box to 95.7%, and the raise
+        # took down a round carrying 2h08m of agent work plus two arms still running. The arms are
+        # already submitted and keep running while we wait, so this costs nothing and loses nothing.
+        results = []
+        for task, ref in zip(tasks, refs, strict=True):
+            try:
+                results.append(chia_get(ref))
+            except Exception as exc:                      # noqa: BLE001 — report ANY arm death, run on
+                print(f"  ARM FAILED {task['run_id']}: {type(exc).__name__}: {exc}"[:500], flush=True)
+                results.append({"run_id": task["run_id"], "returncode": 1,
+                                "error": f"{type(exc).__name__}: {exc}"[:500]})
     fails = [r for r in results if r.get("returncode")]
     print(f"=== done: {len(results) - len(fails)}/{len(results)} ok ===")
     return 1 if fails else 0

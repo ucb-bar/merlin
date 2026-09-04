@@ -360,17 +360,25 @@ def _instruction_files(ws: Path) -> dict[str, int]:
     return found
 
 
-def _tool_block(item: dict) -> dict:
-    """Render a Codex tool item as a Claude ``tool_use`` block."""
+def _tool_block(item: dict, tool_use_id: str) -> dict:
+    """Render a Codex tool item as a Claude ``tool_use`` block.
+
+    ``tool_use_id`` is REQUIRED and must be the same string the paired ``tool_result`` carries: it is
+    the only key joining a call to its result, so every consumer of the transcript keys on it. Emitting
+    the block WITHOUT an id silently costs the run its entire tool telemetry -- aet's stream parser
+    records a call only ``if tc.tool_use_id``, so the atlas round of 2026-09-04 reported
+    ``tool_call_count=0`` and ``unique_tools_used=[]`` for a round that made 125 tool calls, and the
+    per-call latency (measured as the gap between a tool_use and its tool_result) had nothing to pair.
+    """
     itype = item.get("type")
     if itype == ITEM_COMMAND_EXECUTION:
-        return {"type": "tool_use", "name": "Bash",
+        return {"type": "tool_use", "id": tool_use_id, "name": "Bash",
                 "input": {"command": item.get("command", "")}}
     if itype == ITEM_FILE_CHANGE:
         changes = item.get("changes")
-        return {"type": "tool_use", "name": "Edit",
+        return {"type": "tool_use", "id": tool_use_id, "name": "Edit",
                 "input": {"changes": changes if isinstance(changes, list) else []}}
-    return {"type": "tool_use", "name": str(itype or "tool"),
+    return {"type": "tool_use", "id": tool_use_id, "name": str(itype or "tool"),
             "input": {k: v for k, v in item.items() if k not in ("id", "type")}}
 
 
@@ -642,7 +650,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                                     pending_tools[item_id] = item
                                     tr.emit({"type": "assistant", "message": {
                                         "id": f"codex_tool_{item_id}", "model": resolved,
-                                        "content": [_tool_block(item)]}, "arrived_at": arrived})
+                                        "content": [_tool_block(item, f"codex_tool_{item_id}")]},
+                                        "arrived_at": arrived})
                                 else:
                                     pending_tools.pop(item_id, None)
                                     tr.emit({"type": "user", "message": {"content": [{
