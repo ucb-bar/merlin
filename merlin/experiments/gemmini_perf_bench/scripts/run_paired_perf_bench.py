@@ -436,7 +436,12 @@ def _kernel_record(member: FrozenMember) -> dict[str, Any]:
     descriptor = dict(member.descriptor)
     descriptor["id"] = member.capsule
     descriptor.setdefault("source", "frozen_generated_performance_corpus")
-    descriptor.setdefault("sim_hint", "L2+L3")
+    # FAIL CHEAP. This defaulted an unlabelled kernel to "L2+L3", so a descriptor that simply did
+    # not mention a tier took the most expensive path available -- the wrong direction to fail in,
+    # since one deep member can cost more than the whole rest of the corpus. An unlabelled kernel
+    # now stays at the loop tier; `run_perf_bench.plan_cert_tier` is what promotes one, from a
+    # measured price rather than from the absence of a string.
+    descriptor.setdefault("sim_hint", "L2_only")
     operation = descriptor.get("operation")
     attrs = operation.get("attributes") if isinstance(operation, Mapping) else None
     if isinstance(attrs, Mapping) and isinstance(attrs.get("output_dtype"), str):
