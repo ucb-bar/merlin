@@ -458,31 +458,90 @@ def lower_conv_int8(module) -> int:
 
 # I-BERT integer-exp constants (2nd-order poly exp(p) ~ a(p+b)^2 + c on p in [-ln2,0]).
 _IEXP_A, _IEXP_B, _IEXP_C = 0.35815147, 1.35330989, 0.34401959
-_IEXP_SH = 24      # fixed-point fraction bits for the poly
-_IEXP_RSH = 20     # fraction bits for the 1/qln2 reciprocal (avoids a per-element integer divide)
+_IEXP_SH = 30      # fixed-point fraction bits for the poly
+_IEXP_K = 8        # exponent-quantization step is ln2 / 2**K  (see _IEXP_S below)
+_IEXP_CLAMP = -30.0  # exp(-30) ~ 1e-13: the value a masked/saturated input decays to
+
+# The exponent grid is FIXED, not derived from the row's dynamic range.
+#
+# It used to be dynamic: ``s = max(-x)/127`` per row, with everything below (qln2, b, A and a
+# reciprocal of qln2) recomputed per row from it. That is wrong for the op this pass exists to
+# serve. Softmax's input is ``scores - rowmax``, and an attention mask puts -inf at every masked
+# position, which the clamp above turns into -30. So the row max is the MASK SENTINEL, not the
+# data: a causally-masked row whose real scores span ~2 got ``s = 30/127 = 0.236``, quantizing the
+# exponent of the entries that actually matter in steps of 0.236 (up to 11.8% per-term exp error)
+# while spending 122 of its 127 levels on positions whose exp is 0 to any precision. Measured on
+# the small_llama W8A8 recapture, that one choice roughly DOUBLED the whole model's deviation from
+# the host W8A8 reference (rel 0.0077 -> 0.0148 against golden_w8a8.npy).
+#
+# A fixed step has no such coupling: ln2/2**K is the same for every row, masked or not, and it
+# makes ``qln2`` an exact power of two, so ``z = floor(-q / qln2)`` is a shift and the per-row
+# reciprocal disappears entirely. K = 8 puts the exponent step at 0.0027, which lands the i-exp on
+# the 2nd-order polynomial's OWN accuracy floor (max rel err 0.404% over |x| < 10, vs 0.40% as
+# K -> inf), i.e. refining further buys nothing. Six per-row generics (max-reduction, scale, qln2,
+# b, A, reciprocal) are deleted along with the dynamic scale.
+_IEXP_S = 0.6931471805599453 / (1 << _IEXP_K)          # ln2 / 2**K
+_IEXP_BQ = int(round(_IEXP_B / _IEXP_S))               # b in exponent-grid units
+_IEXP_AQ = int(round(_IEXP_A * (1 << _IEXP_SH) * _IEXP_S * _IEXP_S))
+_IEXP_CQ = int(round(_IEXP_C * (1 << _IEXP_SH)))
+_IEXP_QMAX = int(round(-_IEXP_CLAMP / _IEXP_S))        # |q| ceiling => z <= QMAX >> K
+
+
+def _iexp_body(arith, i32, i64, q):
+    """The integer I-BERT exp on the fixed exponent grid, as a flat op list.
+
+    ``q`` is the exponent in grid units (i32, ``<= 0``, ``|q| <= _IEXP_QMAX``), i.e. ``x ~ q * S``.
+    Returns the ops in emission order; the LAST one yields ``exp(x)`` as f32. Softmax and the SiLU
+    logistic both call this, so the two integer exps cannot drift apart — they used to be two
+    copies of the same twenty lines, and a fix to one would have silently missed the other.
+    """
+    from xdsl.dialects.builtin import FloatAttr, IntegerAttr, f32
+
+    zc = arith.ConstantOp.from_int_and_width(0, 32)
+    nq = arith.SubiOp(zc.result, q)                      # -q >= 0
+    ck = arith.ConstantOp(IntegerAttr(_IEXP_K, i32))
+    z = arith.ShRSIOp(nq.result, ck.results[0])          # z = floor(-q / 2**K)
+    zs = arith.ShLIOp(z.result, ck.results[0])
+    r = arith.AddiOp(q, zs.result)                       # r = q + z*2**K, in (-2**K, 0]
+    cb = arith.ConstantOp(IntegerAttr(_IEXP_BQ, i32))
+    t = arith.AddiOp(r.result, cb.results[0])            # t = r + b, all in grid units
+    t64 = arith.ExtSIOp(t.result, i64)
+    tt = arith.MuliOp(t64.result, t64.result)
+    ca = arith.ConstantOp(IntegerAttr(_IEXP_AQ, i64))
+    att = arith.MuliOp(ca.results[0], tt.result)
+    cc = arith.ConstantOp(IntegerAttr(_IEXP_CQ, i64))
+    ep = arith.AddiOp(att.result, cc.results[0])         # A*t^2 + C, at 2**SH fixed point
+    z64 = arith.ExtSIOp(z.result, i64)
+    e = arith.ShRSIOp(ep.result, z64.result)             # ... >> z  (the 2**-z range reduction)
+    ef = arith.SIToFPOp(e.result, f32)
+    inv = arith.ConstantOp(FloatAttr(1.0 / (1 << _IEXP_SH), f32))
+    exf = arith.MulfOp(ef.result, inv.results[0])
+    return [zc, nq, ck, z, zs, r, cb, t, t64, tt, ca, att, cc, ep, z64, e, ef, inv, exf]
 
 
 def lower_softmax_int(module) -> int:
-    """Replace softmax's ``math.exp`` with an integer (I-BERT) exp: a per-row dynamic scale,
-    then a fixed-point 2nd-order polynomial + power-of-two shift evaluated in integer arithmetic,
-    producing the same f32 exp values the downstream sum/divide consume. The transcendental
-    ``math.exp`` is gone. Anchors on each exp generic (no fragile region detection). Returns count.
+    """Replace softmax's ``math.exp`` with an integer (I-BERT) exp: a fixed-point 2nd-order
+    polynomial + power-of-two shift evaluated in integer arithmetic on the FIXED exponent grid
+    ``_IEXP_S``, producing the same f32 exp values the downstream sum/divide consume. The
+    transcendental ``math.exp`` is gone. Anchors on each exp generic (no fragile region
+    detection). Returns count.
 
-    Numerically validated vs f32 softmax: cos > 0.995 (mean 0.999) over L=8..968, scale 0.5..8.
+    The exponent grid is deliberately NOT derived from the row (see ``_IEXP_S``): softmax's input
+    carries the attention mask's -inf sentinels, so a per-row dynamic scale is set by the mask
+    rather than by the scores. The rewrite is therefore purely element-wise — one generic, no row
+    reduction — and every row is quantized identically whether it is masked or not.
     """
-    import math as _m
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr, IntegerAttr,
+    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr,
                                        TensorType, f32, i32, i64)
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
 
-    par, red = L.IteratorType.PARALLEL, L.IteratorType.REDUCTION
+    par = L.IteratorType.PARALLEL
     def amap(n, dims):
         return AffineMapAttr(AffineMap(n, 0, tuple(dims)))
-    ln2 = _m.log(2.0)
 
     def _is_softmax_exp(op):
         # a bare exp generic whose input is the max-subtraction (S - rowmax) — the softmax
@@ -505,112 +564,33 @@ def lower_softmax_int(module) -> int:
         shp = list(st.get_shape()); R = len(shp)
         if R < 1:
             continue
-        Rt = TensorType(f32, shp[:-1]); It = TensorType(i32, shp)
         block = op.parent_block()
         idR = AffineMap.identity(R).results
-        full = amap(R, idR); row = amap(R, idR[:R - 1])
-        idp = AffineMap.identity(R - 1).results
-        red_it = ArrayAttr([L.IteratorTypeAttr(par)] * (R - 1) + [L.IteratorTypeAttr(red)])
+        full = amap(R, idR)
         all_par = ArrayAttr([L.IteratorTypeAttr(par)] * R)
-        par_rowit = ArrayAttr([L.IteratorTypeAttr(par)] * (R - 1))
         new = []
 
-        # Clamp xs to [-30, 0]: attention masks make xs = -inf at masked positions, which would
-        # blow srow up to +inf and make q = -inf/inf = NaN. exp(-30) ~ 1e-13 ~ 0, matching the
-        # masked-out intent, and real (unmasked) logits-minus-max rarely fall below -30.
-        xc_e = tensor.EmptyOp((), st); c30n = arith.ConstantOp(FloatAttr(-30.0, f32))
-        cb = Block(arg_types=[f32, f32]); xa, _ = cb.args
-        cm = arith.MaximumfOp(xa, c30n.results[0]); cb.add_ops([cm, L.YieldOp(cm.result)])
-        xclamp = L.GenericOp(inputs=(xs,), outputs=(xc_e.results[0],), body=Region(cb),
-                             indexing_maps=ArrayAttr([full, full]), iterator_types=all_par,
-                             result_types=(st,))
-        new += [xc_e, c30n, xclamp]
-        xs = xclamp.results[0]
-
-        # srow[..] = max(-xs over last dim) / 127   (xs <= 0, so this is max|xs|/127)
-        se = tensor.EmptyOp((), Rt); z0 = arith.ConstantOp(FloatAttr(0.0, f32))
-        sf = L.FillOp(inputs=[z0.results[0]], outputs=[se.results[0]], res=[Rt])
-        rb = Block(arg_types=[f32, f32]); a_in, acc = rb.args
-        ng = arith.NegfOp(a_in); mx = arith.MaximumfOp(ng.result, acc)
-        rb.add_ops([ng, mx, L.YieldOp(mx.result)])
-        nmax = L.GenericOp(inputs=(xs,), outputs=(sf.results[0],), body=Region(rb),
-                           indexing_maps=ArrayAttr([full, row]), iterator_types=red_it,
-                           result_types=(Rt,))
-        sre = tensor.EmptyOp((), Rt); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
-        sb = Block(arg_types=[f32, f32]); nm, _ = sb.args
-        sd = arith.DivfOp(nm, c127.results[0])
-        eps = arith.ConstantOp(FloatAttr(1e-6, f32))      # floor: all-equal rows (xs==0) -> no div0
-        sfl = arith.MaximumfOp(sd.result, eps.results[0])
-        sb.add_ops([sd, eps, sfl, L.YieldOp(sfl.result)])
-        srow = L.GenericOp(inputs=(nmax.results[0],), outputs=(sre.results[0],), body=Region(sb),
-                           indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
-                           iterator_types=par_rowit, result_types=(Rt,))
-        new += [se, z0, sf, nmax, sre, c127, srow]
-
-        def per_row(fn, elem):
-            ot = TensorType(elem, shp[:-1]); e = tensor.EmptyOp((), ot)
-            bb = Block(arg_types=[f32, elem]); s_in, _ = bb.args
-            cops, res = fn(s_in); bb.add_ops(cops + [L.YieldOp(res)])
-            g = L.GenericOp(inputs=(srow.results[0],), outputs=(e.results[0],), body=Region(bb),
-                            indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
-                            iterator_types=par_rowit, result_types=(ot,))
-            new.extend([e, g]); return g.results[0]
-
-        def _qln2(s):
-            c = arith.ConstantOp(FloatAttr(ln2, f32)); d = arith.DivfOp(c.results[0], s)
-            r = mathd.RoundEvenOp(d.result); o = arith.ConstantOp(FloatAttr(1.0, f32))
-            mx2 = arith.MaximumfOp(r.result, o.results[0]); ci = arith.FPToSIOp(mx2.result, i32)
-            return [c, d, r, o, mx2, ci], ci.result
-        def _bq(s):
-            c = arith.ConstantOp(FloatAttr(_IEXP_B, f32)); d = arith.DivfOp(c.results[0], s)
-            r = mathd.RoundEvenOp(d.result); ci = arith.FPToSIOp(r.result, i32)
-            return [c, d, r, ci], ci.result
-        def _A(s):
-            c = arith.ConstantOp(FloatAttr(_IEXP_A * (1 << _IEXP_SH), f32))
-            s2 = arith.MulfOp(s, s); m2 = arith.MulfOp(c.results[0], s2.result)
-            r = mathd.RoundEvenOp(m2.result); ci = arith.FPToSIOp(r.result, i32)
-            return [c, s2, m2, r, ci], ci.result
-        def _recip(s):
-            c = arith.ConstantOp(FloatAttr(ln2, f32)); d = arith.DivfOp(c.results[0], s)
-            r = mathd.RoundEvenOp(d.result); o = arith.ConstantOp(FloatAttr(1.0, f32))
-            ql = arith.MaximumfOp(r.result, o.results[0])
-            cr = arith.ConstantOp(FloatAttr(float(1 << _IEXP_RSH), f32))
-            rc = arith.DivfOp(cr.results[0], ql.result); rr = mathd.RoundEvenOp(rc.result)
-            ci = arith.FPToSIOp(rr.result, i32)
-            return [c, d, r, o, ql, cr, rc, rr, ci], ci.result
-        qln2 = per_row(_qln2, i32); bq = per_row(_bq, i32)
-        A = per_row(_A, i32); recip = per_row(_recip, i32)
-
-        # q = round(xs / srow) -> i32  (xs/srow in [-127, 0])
-        qe = tensor.EmptyOp((), It)
-        qb = Block(arg_types=[f32, f32, i32]); xv, sv, _ = qb.args
-        qd = arith.DivfOp(xv, sv); qr = mathd.RoundEvenOp(qd.result); qc = arith.FPToSIOp(qr.result, i32)
-        qb.add_ops([qd, qr, qc, L.YieldOp(qc.result)])
-        q = L.GenericOp(inputs=(xs, srow.results[0]), outputs=(qe.results[0],), body=Region(qb),
-                        indexing_maps=ArrayAttr([full, row, full]), iterator_types=all_par,
-                        result_types=(It,))
-        new += [qe, q]
-
-        # integer exp poly: z=((-q)*recip)>>RSH; r=q+z*qln2; t=r+bq; e=(A*t^2+C)>>z; exp=sitofp(e)/2^SH
+        # exp(x) for x <= 0, integer I-BERT i-exp on the FIXED exponent grid (_IEXP_S). Element-
+        # wise and self-contained: no row reduction, no per-row constants, no reciprocal.
+        #   xc = max(x, -30)                 masked positions are -inf; exp(-30) ~ 1e-13 ~ 0, and
+        #                                    an unclamped -inf would make q = -inf -> poison
+        #   q  = roundeven(xc / S)           exponent in grid units, in [-QMAX, 0]
+        #   z  = (-q) >> K ; r = q + (z << K)    x = -z*ln2 + r*S with r*S in (-ln2, 0]
+        #   e  = (A*(r+b)^2 + C) >> z        the poly, then the power-of-two range reduction
         ee = tensor.EmptyOp((), st)
-        eb = Block(arg_types=[i32, i32, i32, i32, i32, f32]); qv, ql2, bqv, av, rcp, _ = eb.args
-        c0 = arith.ConstantOp.from_int_and_width(0, 32); nq = arith.SubiOp(c0.result, qv)
-        zr = arith.MuliOp(nq.result, rcp); rs = arith.ConstantOp(IntegerAttr(_IEXP_RSH, i32))
-        z = arith.ShRSIOp(zr.result, rs.results[0])
-        zql = arith.MuliOp(z.result, ql2); rr = arith.AddiOp(qv, zql.result); t = arith.AddiOp(rr.result, bqv)
-        t64 = arith.ExtSIOp(t.result, i64); a64 = arith.ExtSIOp(av, i64)
-        tt = arith.MuliOp(t64.result, t64.result); att = arith.MuliOp(a64.result, tt.result)
-        Ci = arith.ConstantOp(IntegerAttr(int(round(_IEXP_C * (1 << _IEXP_SH))), i64))
-        ep = arith.AddiOp(att.result, Ci.results[0])
-        z64 = arith.ExtSIOp(z.result, i64); e = arith.ShRSIOp(ep.result, z64.result)
-        ef = arith.SIToFPOp(e.result, f32); inv = arith.ConstantOp(FloatAttr(1.0 / (1 << _IEXP_SH), f32))
-        exf = arith.MulfOp(ef.result, inv.results[0])
-        eb.add_ops([c0, nq, zr, rs, z, zql, rr, t, t64, a64, tt, att, Ci, ep, z64, e, ef, inv, exf,
-                    L.YieldOp(exf.result)])
-        eg = L.GenericOp(inputs=(q.results[0], qln2, bq, A, recip), outputs=(ee.results[0],),
-                         body=Region(eb),
-                         indexing_maps=ArrayAttr([full, row, row, row, row, full]),
-                         iterator_types=all_par, result_types=(st,))
+        eb = Block(arg_types=[f32, f32]); xv, _ = eb.args
+        cclamp = arith.ConstantOp(FloatAttr(_IEXP_CLAMP, f32))
+        xc = arith.MaximumfOp(xv, cclamp.results[0])
+        cs = arith.ConstantOp(FloatAttr(_IEXP_S, f32))
+        qd = arith.DivfOp(xc.result, cs.results[0]); qr = mathd.RoundEvenOp(qd.result)
+        qi = arith.FPToSIOp(qr.result, i32)
+        ops_e = [cclamp, xc, cs, qd, qr, qi]
+        ops_e += _iexp_body(arith, i32, i64, qi.result)
+        exf = ops_e[-1]
+        eb.add_ops(ops_e + [L.YieldOp(exf.result)])
+        eg = L.GenericOp(inputs=(xs,), outputs=(ee.results[0],), body=Region(eb),
+                         indexing_maps=ArrayAttr([full, full]), iterator_types=all_par,
+                         result_types=(st,))
         new += [ee, eg]
 
         for nop in new:
@@ -744,25 +724,22 @@ def lower_gelu_int(module) -> int:
 
 def lower_silu_int(module) -> int:
     """Replace the logistic ``sigmoid`` generic (``1/(1+exp(-x))``, the SiLU/swish nonlinear)
-    with an integer (I-BERT) version: a per-row dynamic scale, the I-BERT integer-exp evaluated
-    on ``-|x| <= 0`` (the same fixed-point poly + power-of-two shift as softmax), then the
-    stable logistic ``sig = (x>=0 ? 1 : e) / (1 + e)`` in f32 (the divide is RVV ``vfdiv`` — no
-    integer per-lane divide). The ``math.exp`` is gone. Anchors on each ``prov.op = sigmoid``
-    generic; the downstream ``x * sigmoid`` multiply stays. Validated vs f32 SiLU: cos ~ 1.0.
-    Returns count."""
-    import math as _m
+    with an integer (I-BERT) version: the shared integer-exp (``_iexp_body``, the same fixed-point
+    poly + power-of-two shift softmax uses, on the same fixed exponent grid) evaluated on
+    ``-|x| <= 0``, then the stable logistic ``sig = (x>=0 ? 1 : e) / (1 + e)`` in f32 (the divide
+    is RVV ``vfdiv`` — no integer per-lane divide). The ``math.exp`` is gone. Anchors on each
+    ``prov.op = sigmoid`` generic; the downstream ``x * sigmoid`` multiply stays. Returns count."""
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr, IntegerAttr,
+    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr,
                                        TensorType, f32, i32, i64)
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
 
-    par, red = L.IteratorType.PARALLEL, L.IteratorType.REDUCTION
+    par = L.IteratorType.PARALLEL
     def amap(n, dims):
         return AffineMapAttr(AffineMap(n, 0, tuple(dims)))
-    ln2 = _m.log(2.0)
 
     def _is_sigmoid(op):
         if not (op.name == "linalg.generic" and len(op.inputs) == 1 and op.body.blocks):
@@ -780,100 +757,37 @@ def lower_silu_int(module) -> int:
         shp = list(st.get_shape()); R = len(shp)
         if R < 1:
             continue
-        Rt = TensorType(f32, shp[:-1]); It = TensorType(i32, shp)
         block = op.parent_block()
         idR = AffineMap.identity(R).results
-        full = amap(R, idR); row = amap(R, idR[:R - 1]); idp = AffineMap.identity(R - 1).results
-        red_it = ArrayAttr([L.IteratorTypeAttr(par)] * (R - 1) + [L.IteratorTypeAttr(red)])
+        full = amap(R, idR)
         all_par = ArrayAttr([L.IteratorTypeAttr(par)] * R)
-        par_rowit = ArrayAttr([L.IteratorTypeAttr(par)] * (R - 1))
         new = []
 
-        # srow[..] = max|x| over last dim / 127
-        se = tensor.EmptyOp((), Rt); z0 = arith.ConstantOp(FloatAttr(0.0, f32))
-        sf = L.FillOp(inputs=[z0.results[0]], outputs=[se.results[0]], res=[Rt])
-        rb = Block(arg_types=[f32, f32]); a_in, acc = rb.args
-        ab = mathd.AbsFOp(a_in); mx = arith.MaximumfOp(ab.result, acc)
-        rb.add_ops([ab, mx, L.YieldOp(mx.result)])
-        amax = L.GenericOp(inputs=(x,), outputs=(sf.results[0],), body=Region(rb),
-                           indexing_maps=ArrayAttr([full, row]), iterator_types=red_it,
-                           result_types=(Rt,))
-        sre = tensor.EmptyOp((), Rt); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
-        sb = Block(arg_types=[f32, f32]); nm, _ = sb.args
-        sd = arith.DivfOp(nm, c127.results[0]); eps = arith.ConstantOp(FloatAttr(1e-6, f32))
-        sfl = arith.MaximumfOp(sd.result, eps.results[0]); sb.add_ops([sd, eps, sfl, L.YieldOp(sfl.result)])
-        srow = L.GenericOp(inputs=(amax.results[0],), outputs=(sre.results[0],), body=Region(sb),
-                           indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
-                           iterator_types=par_rowit, result_types=(Rt,))
-        new += [se, z0, sf, amax, sre, c127, srow]
-
-        def per_row(fn, elem):
-            ot = TensorType(elem, shp[:-1]); e = tensor.EmptyOp((), ot)
-            bb = Block(arg_types=[f32, elem]); s_in, _ = bb.args
-            cops, res = fn(s_in); bb.add_ops(cops + [L.YieldOp(res)])
-            g = L.GenericOp(inputs=(srow.results[0],), outputs=(e.results[0],), body=Region(bb),
-                            indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
-                            iterator_types=par_rowit, result_types=(ot,))
-            new.extend([e, g]); return g.results[0]
-
-        def _qln2(s):
-            c = arith.ConstantOp(FloatAttr(ln2, f32)); d = arith.DivfOp(c.results[0], s)
-            r = mathd.RoundEvenOp(d.result); o = arith.ConstantOp(FloatAttr(1.0, f32))
-            mx2 = arith.MaximumfOp(r.result, o.results[0]); ci = arith.FPToSIOp(mx2.result, i32)
-            return [c, d, r, o, mx2, ci], ci.result
-        def _bq(s):
-            c = arith.ConstantOp(FloatAttr(_IEXP_B, f32)); d = arith.DivfOp(c.results[0], s)
-            r = mathd.RoundEvenOp(d.result); ci = arith.FPToSIOp(r.result, i32)
-            return [c, d, r, ci], ci.result
-        def _A(s):
-            c = arith.ConstantOp(FloatAttr(_IEXP_A * (1 << _IEXP_SH), f32))
-            s2 = arith.MulfOp(s, s); m2 = arith.MulfOp(c.results[0], s2.result)
-            r = mathd.RoundEvenOp(m2.result); ci = arith.FPToSIOp(r.result, i32)
-            return [c, s2, m2, r, ci], ci.result
-        def _recip(s):
-            c = arith.ConstantOp(FloatAttr(ln2, f32)); d = arith.DivfOp(c.results[0], s)
-            r = mathd.RoundEvenOp(d.result); o = arith.ConstantOp(FloatAttr(1.0, f32))
-            ql = arith.MaximumfOp(r.result, o.results[0])
-            cr = arith.ConstantOp(FloatAttr(float(1 << _IEXP_RSH), f32))
-            rc = arith.DivfOp(cr.results[0], ql.result); rr = mathd.RoundEvenOp(rc.result)
-            ci = arith.FPToSIOp(rr.result, i32)
-            return [c, d, r, o, ql, cr, rc, rr, ci], ci.result
-        qln2 = per_row(_qln2, i32); bq = per_row(_bq, i32)
-        A = per_row(_A, i32); recip = per_row(_recip, i32)
-
-        # sigmoid body: e = iexp(-|x|); sig = (x>=0 ? 1 : e)/(1+e)
+        # sigmoid body: e = iexp(-|x|); sig = (x>=0 ? 1 : e)/(1+e). Element-wise on the SAME fixed
+        # exponent grid softmax uses (_iexp_body) — the scale used to be a per-row max|x|/127,
+        # which made the logistic's resolution depend on the largest activation sharing its row.
+        #   q = -min(roundeven(|x| / S), QMAX)     QMAX caps z so the >> z below stays in range
         ee = tensor.EmptyOp((), st)
-        eb = Block(arg_types=[f32, f32, i32, i32, i32, i32, f32])
-        xv, sv, ql2, bqv, av, rcp, _ = eb.args
-        # q = -round(|x|/s)  (<= 0, the i-exp domain)
-        axv = mathd.AbsFOp(xv); qd = arith.DivfOp(axv.result, sv); qr = mathd.RoundEvenOp(qd.result)
-        c127f = arith.ConstantOp(FloatAttr(127.0, f32)); qcl = arith.MinimumfOp(qr.result, c127f.results[0])
+        eb = Block(arg_types=[f32, f32]); xv, _ = eb.args
+        axv = mathd.AbsFOp(xv)
+        cs = arith.ConstantOp(FloatAttr(_IEXP_S, f32))
+        qd = arith.DivfOp(axv.result, cs.results[0]); qr = mathd.RoundEvenOp(qd.result)
+        cqm = arith.ConstantOp(FloatAttr(float(_IEXP_QMAX), f32))
+        qcl = arith.MinimumfOp(qr.result, cqm.results[0])
         qa = arith.FPToSIOp(qcl.result, i32)
         c0 = arith.ConstantOp.from_int_and_width(0, 32); qv = arith.SubiOp(c0.result, qa.result)
-        # i-exp poly (identical to softmax): nq=-qv; z=(nq*recip)>>RSH; rr=qv+z*qln2; t=rr+bq;
-        #   e=(A*t^2 + C)>>z ; ef = sitofp(e)/2^SH
-        nq = arith.SubiOp(c0.result, qv.result)
-        zr = arith.MuliOp(nq.result, rcp); rs = arith.ConstantOp(IntegerAttr(_IEXP_RSH, i32))
-        z = arith.ShRSIOp(zr.result, rs.results[0])
-        zql = arith.MuliOp(z.result, ql2); rrp = arith.AddiOp(qv.result, zql.result); t = arith.AddiOp(rrp.result, bqv)
-        t64 = arith.ExtSIOp(t.result, i64); a64 = arith.ExtSIOp(av, i64)
-        tt = arith.MuliOp(t64.result, t64.result); att = arith.MuliOp(a64.result, tt.result)
-        Ci = arith.ConstantOp(IntegerAttr(int(round(_IEXP_C * (1 << _IEXP_SH))), i64))
-        ep = arith.AddiOp(att.result, Ci.results[0])
-        z64 = arith.ExtSIOp(z.result, i64); e = arith.ShRSIOp(ep.result, z64.result)
-        ef = arith.SIToFPOp(e.result, f32); inv = arith.ConstantOp(FloatAttr(1.0 / (1 << _IEXP_SH), f32))
-        exf = arith.MulfOp(ef.result, inv.results[0])
+        ops_s = [axv, cs, qd, qr, cqm, qcl, qa, c0, qv]
+        ops_s += _iexp_body(arith, i32, i64, qv.result)
+        exf = ops_s[-1]
         # sig = num/denom, num = (x>=0 ? 1 : e), denom = 1+e
         one = arith.ConstantOp(FloatAttr(1.0, f32)); denom = arith.AddfOp(one.results[0], exf.result)
         zc = arith.ConstantOp(FloatAttr(0.0, f32)); ge0 = arith.CmpfOp(xv, zc.results[0], "oge")
         num = arith.SelectOp(ge0.result, one.results[0], exf.result)
         sig = arith.DivfOp(num.result, denom.result)
-        eb.add_ops([axv, qd, qr, c127f, qcl, qa, c0, qv, nq, zr, rs, z, zql, rrp, t, t64, a64, tt,
-                    att, Ci, ep, z64, e, ef, inv, exf, one, denom, zc, ge0, num, sig, L.YieldOp(sig.result)])
-        sg = L.GenericOp(inputs=(x, srow.results[0], qln2, bq, A, recip), outputs=(ee.results[0],),
-                         body=Region(eb),
-                         indexing_maps=ArrayAttr([full, row, row, row, row, row, full]),
-                         iterator_types=all_par, result_types=(st,))
+        eb.add_ops(ops_s + [one, denom, zc, ge0, num, sig, L.YieldOp(sig.result)])
+        sg = L.GenericOp(inputs=(x,), outputs=(ee.results[0],), body=Region(eb),
+                         indexing_maps=ArrayAttr([full, full]), iterator_types=all_par,
+                         result_types=(st,))
         new += [ee, sg]
         for nop in new:
             block.insert_op_before(nop, op)

@@ -316,3 +316,64 @@ def test_integer_exp_matches_float_exp(tmp_path):
     ref = np.exp(xs)
     cos = float((out.ravel() @ ref.ravel()) / (np.linalg.norm(out) * np.linalg.norm(ref) + 1e-12))
     assert cos > 0.99, cos
+
+
+def _run_iexp(tmp_path, xs: np.ndarray) -> np.ndarray:
+    """Lower + compile the softmax i-exp and evaluate it on ``xs`` (rowmax passed as 0)."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_softmax_int
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.abi import HostModel
+    from merlin.xdsl_dialects._common import text as to_text
+
+    M, L = xs.shape
+    src = tmp_path / f"exp_{M}x{L}.mlir"
+    src.write_text(_EXP_MOD.format(m=M, l=L), encoding="utf-8")
+    module = parse_mlir_file(src)
+    assert lower_softmax_int(module) == 1
+    res = lower_model(to_text(module), tmp_path / f"b_{M}x{L}", targets=("host",))
+    hm = HostModel.load(str(res.host_so))
+    xs = np.ascontiguousarray(xs, dtype=np.float32)
+    mx = np.zeros((M,), np.float32)
+    out = np.zeros((M, L), np.float32)
+    hm([(xs.ctypes.data, (M, L)), (mx.ctypes.data, (M,)), (out.ctypes.data, (M, L))])
+    return out
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
+def test_integer_exp_is_elementwise_not_row_scaled(tmp_path):
+    """The i-exp of an element must not depend on the OTHER elements in its row.
+
+    It used to. The exponent grid was ``max(-x)/127`` reduced over the row, and softmax's input
+    carries the attention mask's -inf (clamped to -30) at every masked position — so the grid was
+    set by the mask sentinel, not the data, and a causally-masked row quantized its real scores
+    ~15x more coarsely than an unmasked one. Measured end-to-end on the small_llama W8A8
+    recapture, that alone took the deviation from the host W8A8 reference from rel 0.0077 to
+    0.0148, i.e. it was the single largest term in the W8A8 tier failure.
+
+    Padding a row with masked positions is the sharpest form of the question: the padding's exp is
+    zero to any precision, so it must leave every real entry's exp EXACTLY where it was.
+    """
+    real = np.array([0.0, -0.4, -1.3, -2.9], np.float32)
+    plain = np.tile(real, (2, 1))                                  # 4 real entries
+    padded = np.tile(np.concatenate([real, np.full(4, -np.inf, np.float32)]), (2, 1))
+    got_plain = _run_iexp(tmp_path, plain)[:, :4]
+    got_padded = _run_iexp(tmp_path, padded)
+    assert np.array_equal(got_plain, got_padded[:, :4]), (got_plain, got_padded[:, :4])
+    assert np.all(got_padded[:, 4:] == 0.0), got_padded[:, 4:]     # exp(-inf) -> 0
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
+def test_integer_exp_per_element_relative_error(tmp_path):
+    """i-exp tracks ``exp`` to better than 1% PER ELEMENT over the range softmax actually uses.
+
+    The cosine check above cannot see this: cosine is dominated by the largest terms, and the
+    row-scaled i-exp passed it at cos > 0.99 while individual terms were up to 12% off. The bound
+    here is the 2nd-order polynomial's own accuracy floor (measured max 0.41%), so it holds the
+    fixed-point choice (``_IEXP_K`` / ``_IEXP_SH``) to the approximation it claims to implement.
+    """
+    xs = np.linspace(-10.0, 0.0, 256, dtype=np.float32).reshape(8, 32)
+    got = _run_iexp(tmp_path, xs)
+    ref = np.exp(xs.astype(np.float64))
+    rel = np.abs(got.astype(np.float64) - ref) / ref
+    assert rel.max() < 1e-2, (rel.max(), xs.ravel()[int(np.argmax(rel))])
