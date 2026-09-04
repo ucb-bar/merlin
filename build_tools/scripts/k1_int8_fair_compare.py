@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 import time
 from dataclasses import replace
@@ -54,6 +55,9 @@ def _conditions() -> dict | None:
         return k1.board_conditions()
     except Exception as e:  # noqa: BLE001
         return {"error": f"{type(e).__name__}: {e}"}
+
+
+_MERLIN_PY = repo_root() / "merlin" / "python"
 
 
 def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
@@ -324,8 +328,35 @@ def main() -> None:
     (work / "FEATURES.txt").write_text("\n".join(sorted(feats or ())) + "\n", encoding="utf-8")
     print(f"[work] {work}", flush=True)
 
+    # WHAT SOURCE PRODUCED THIS. The commit says which revision is checked out; on a tree several
+    # sessions are editing at once that is not what the compiler READ. A measurement here built from
+    # another session's uncommitted edit and the result was attributed to the feature under test:
+    # a run started at 15:42:18 picked up a quantization fix committed at 15:43:24, so a wall and an
+    # accuracy improvement produced by that fix were both credited to the flag being measured.
+    # Feature-keyed build dirs key on features and codegen_env keys on the environment; neither sees
+    # source state. `source_digest` is over the bytes actually read, so a dirty tree is identifiable
+    # instead of looking pinned.
+    from merlin.common import provenance as _prov
+    _src = [_MERLIN_PY / "merlin" / "llvmlower" / "passes_quant_int.py",
+            _MERLIN_PY / "merlin" / "llvmlower" / "impr_features.py",
+            _MERLIN_PY / "merlin" / "llvmlower" / "quant_passes.py",
+            _MERLIN_PY / "merlin" / "runtime" / "backends" / "zephyr_model.py",
+            _MERLIN_PY / "merlin" / "mining" / "k1.py"]
+    _src = [q for q in _src if q.is_file()]
+    try:
+        _src_digest = _prov.source_digest(_src)
+    except Exception as _e:                      # a provenance stamp must not break a measurement
+        _src_digest = f"UNKNOWN:{type(_e).__name__}"
+    _dirty = sorted(q.name for q in _src
+                    if subprocess.run(["git", "status", "--porcelain", "--", str(q)],
+                                      cwd=repo_root(), capture_output=True,
+                                      text=True).stdout.strip())
+    print(f"[source] digest={_src_digest} dirty={_dirty or 'none'}", flush=True)
     rec: dict = {"model": a.model, "ours_bundle": md.name, "package": Path(a.baseline).name,
-                 "golden_tiers": sorted(refs), "started": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())}
+                 "golden_tiers": sorted(refs), "started": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
+                 # The compiler sources as READ, plus which of them were uncommitted at the time.
+                 # A non-empty `dirty` means this number cannot be reproduced from the commit alone.
+                 "source_digest": _src_digest, "source_dirty": _dirty}
 
     # INTERLEAVED, ours first, so a board that drifts during the session moves both arms rather than
     # landing the drift entirely on one of them.

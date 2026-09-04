@@ -161,3 +161,36 @@ def test_the_harness_records_the_compute_symbol_coverage():
     src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
     assert '"compute_symbol_coverage"' in src
     assert '"zero_vector_symbols"' in src, "the misleading key name is back"
+
+
+def test_a_measurement_records_the_source_it_was_built_from():
+    """The commit says which revision is checked out; on a tree several sessions edit at once that
+    is not what the compiler READ.
+
+    A board measurement here silently included another session's uncommitted quantization fix: the
+    run started at 15:42:18, the fix was committed at 15:43:24, and both the wall change and the
+    accuracy change it produced were credited to the flag under test. Feature-keyed build dirs key
+    on features; codegen_env keys on the environment; neither sees source state.
+    """
+    from merlin.common.paths import repo_root
+    src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
+    assert "source_digest" in src and "source_dirty" in src
+    assert "_prov.source_digest(_src)" in src
+    # the stamp must never be able to break a measurement
+    assert "a provenance stamp must not break a measurement" in src
+    # and it must cover the modules that actually decide the emitted code
+    for mod in ("passes_quant_int.py", "impr_features.py", "quant_passes.py",
+                "zephyr_model.py", "k1.py"):
+        assert mod in src, mod
+
+
+def test_source_digest_changes_with_the_bytes_read(tmp_path):
+    """Fail-closed property: a modified source must not keep the digest of the pinned one."""
+    from merlin.common import provenance as prov
+    a = tmp_path / "m.py"
+    a.write_text("x = 1\n")
+    first = prov.source_digest([a])
+    a.write_text("x = 2\n")
+    assert prov.source_digest([a]) != first
+    a.write_text("x = 1\n")
+    assert prov.source_digest([a]) == first    # and it is content-addressed, not time-based
