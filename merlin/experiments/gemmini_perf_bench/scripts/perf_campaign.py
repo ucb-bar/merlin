@@ -28,10 +28,75 @@ from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
+from perf_prompt import PerfCell, PerfPromptContractError
 
 
 class CampaignGateError(RuntimeError):
     """A phase-boundary or completion condition was not proved."""
+
+
+# ----------------------------------------------------------------------------------------------
+# WAIVERS. The gate's predicates are not all the same KIND of requirement, and treating them as one
+# undifferentiated wall is why the only way past it was to edit the gate.
+#
+# A COMPLETENESS predicate says the functional baseline is fully established. Waiving one yields a
+# WEAKER result: a cycle measurement resting on a baseline that is incomplete in a named way. That is
+# a legitimate research trade-off — it is still a real measurement, and a reader who is told exactly
+# what was incomplete can judge it.
+#
+# An INTEGRITY predicate says the numbers mean anything at all: the sandbox held, the answer mask was
+# clean, no answer-key identity crossed between public and hidden, the bytes are the bytes. Waiving
+# one does not yield a weaker result, it yields a WORTHLESS one, because the measurement could be
+# fabricated or leaked. So these are UNWAIVABLE, and asking to waive one is itself an error rather
+# than a permission — a blanket `--force` cannot exist here, only named waivers.
+UNWAIVABLE: frozenset[str] = frozenset({
+    "sandbox_not_bwrap",
+    "isolation_audit_unclean",
+    "bundle_input_snapshot_incomplete",
+    "answer_mask_vacuous",
+    "round_answer_access_unclean",
+    "finalize_answer_access_unclean",
+    "manifest_integrity_gate_failed",
+    "score_integrity_failed",
+    "capsule_identity_reused",
+    "freeze_not_immutable",
+    "cohort_admission_missing",
+    "cohort_admission_malformed",
+    "cohort_admission_does_not_close",
+    "excluded_name_set_unpinned",
+})
+
+
+# Derived from the two validators below: every predicate they can emit, minus the unwaivable ones.
+# Declared as a literal so a NEW predicate is not silently waivable the moment someone adds it --
+# adding one here is a deliberate act, and `inspect_functional_run` refuses an unknown name.
+_WAIVABLE_PREDICATES: frozenset[str] = frozenset({
+    "score_incomplete",
+    "score_not_gradeable",
+    "score_evidence_incomplete",
+    "capsule_without_passing_verdict",
+    "score_repeats_capsule",
+    "capsule_tier_not_earned",
+    "qa_loop_not_converged",
+    "no_completed_round",
+    "finalize_missing",
+    "finalize_regrade_not_pass",
+    "phase_functional_pass_missing",
+    "public_tier_below_cert",
+    "task_scope_public_mismatch",
+    "task_scope_hidden_mismatch",
+    "graded_count_not_admitted_cohort",
+})
+
+
+@dataclass(frozen=True)
+class Deviation:
+    """One gate predicate that failed and was explicitly waived, with what was actually observed."""
+    predicate: str
+    detail: str
+
+    def to_dict(self) -> dict:
+        return {"predicate": self.predicate, "detail": self.detail}
 
 
 @dataclass(frozen=True)
@@ -45,6 +110,14 @@ class FunctionalRun:
     public_score: dict
     hidden_score: dict
     frozen_at: str
+    # Empty tuple means the gate passed on its own terms. A non-empty tuple must travel with every
+    # number derived from this run: a result produced under a waiver can be reported, but it can never
+    # be cited as though the gate had passed.
+    deviations: tuple[Deviation, ...] = ()
+
+    @property
+    def gate_clean(self) -> bool:
+        return not self.deviations
 
 
 @dataclass(frozen=True)
@@ -85,39 +158,72 @@ def _full_ratio(value: object, *, label: str) -> int:
     return total
 
 
-def _validate_score(score: dict, *, label: str, expected: int) -> None:
+def _validate_score(score: dict, *, label: str, expected: int) -> list[Deviation]:
+    """Findings for one graded phase. Returns them rather than raising on the first.
+
+    A caller cannot acknowledge a deviation it was never shown, so every predicate is evaluated and
+    every failure is named. The gate's strictness is unchanged — `inspect_functional_run` still raises
+    on anything not explicitly waived — but it now reports the whole picture at once instead of one
+    blocker per run.
+    """
+    found: list[Deviation] = []
     n_capsules = score.get("n_capsules")
     n_passed = score.get("n_passed")
     rows = score.get("per_capsule")
     if (not isinstance(n_capsules, int) or isinstance(n_capsules, bool)
             or not isinstance(n_passed, int) or isinstance(n_passed, bool)
             or n_capsules <= 0 or n_passed != n_capsules or n_capsules != expected):
-        raise CampaignGateError(
-            f"{label} score is not a full non-vacuous {expected}/{expected} grade")
+        found.append(Deviation("score_incomplete",
+                               f"{label} score is not a full non-vacuous {expected}/{expected} grade "
+                               f"(n_capsules={n_capsules!r}, n_passed={n_passed!r})"))
     if score.get("functional_pass") != 1 or score.get("gradeable") is not True:
-        raise CampaignGateError(f"{label} score is not gradeable and functionally complete")
+        found.append(Deviation("score_not_gradeable",
+                               f"{label} score is not gradeable and functionally complete"))
     if score.get("integrity_status") != "clean" or score.get("integrity_exempt") is not False:
-        raise CampaignGateError(f"{label} score did not pass the integrity gate")
+        found.append(Deviation("score_integrity_failed",
+                               f"{label} score did not pass the integrity gate "
+                               f"(status={score.get('integrity_status')!r}, "
+                               f"exempt={score.get('integrity_exempt')!r})"))
     if not isinstance(rows, list) or len(rows) != expected:
-        raise CampaignGateError(f"{label} score has no complete per-capsule evidence")
+        found.append(Deviation("score_evidence_incomplete",
+                               f"{label} score has no complete per-capsule evidence"))
+        return found
     names: set[str] = set()
+    unverdicted, repeated, untiered = [], [], []
     for row in rows:
         if not isinstance(row, dict) or not row.get("capsule") or row.get("status") != "pass":
-            raise CampaignGateError(f"{label} contains a capsule without a passing verdict")
+            unverdicted.append(str((row or {}).get("capsule") if isinstance(row, dict) else row))
+            continue
         name = str(row["capsule"])
         if name in names:
-            raise CampaignGateError(f"{label} repeats capsule {name!r}")
+            repeated.append(name)
         names.add(name)
         tiers = row.get("tiers") or {}
         if tiers.get("L2") != "pass" or tiers.get("L3") != "pass":
-            raise CampaignGateError(f"{label} capsule {name!r} did not earn both L2 and L3")
+            untiered.append(f"{name}(L2={tiers.get('L2')!r},L3={tiers.get('L3')!r})")
+    if unverdicted:
+        found.append(Deviation("capsule_without_passing_verdict",
+                               f"{label} contains a capsule without a passing verdict: "
+                               f"{', '.join(unverdicted[:6])}"))
+    if repeated:
+        found.append(Deviation("score_repeats_capsule",
+                               f"{label} repeats capsule {repeated[0]!r}"))
+    if untiered:
+        found.append(Deviation("capsule_tier_not_earned",
+                               f"{label} capsule(s) did not earn both L2 and L3: "
+                               f"{', '.join(untiered[:6])}"))
+    return found
 
 
-def _validate_clean_run(environment: dict, summary: dict) -> None:
+def _validate_clean_run(environment: dict, summary: dict) -> list[Deviation]:
+    """Findings about how the run was CONDUCTED, separated by kind (see UNWAIVABLE)."""
+    found: list[Deviation] = []
     if environment.get("sandbox") != "bwrap":
-        raise CampaignGateError("functional run was not executed in the required bwrap sandbox")
+        found.append(Deviation("sandbox_not_bwrap",
+                               "functional run was not executed in the required bwrap sandbox"))
     if environment.get("isolation_violations") != []:
-        raise CampaignGateError("functional run lacks a clean isolation-violation audit")
+        found.append(Deviation("isolation_audit_unclean",
+                               "functional run lacks a clean isolation-violation audit"))
     inputs = environment.get("bundle_input_snapshot")
     snapshot_digest = inputs.get("content_sha256") if isinstance(inputs, dict) else None
     if (not isinstance(inputs, dict) or inputs.get("version") != 2
@@ -127,27 +233,51 @@ def _validate_clean_run(environment: dict, summary: dict) -> None:
             or inputs["n_files"] <= 0
             or not isinstance(inputs.get("n_bytes"), int) or isinstance(inputs.get("n_bytes"), bool)
             or inputs["n_bytes"] <= 0):
-        raise CampaignGateError(
-            "functional run lacks a complete immutable bundle-input snapshot v2 record")
+        found.append(Deviation("bundle_input_snapshot_incomplete",
+                               "functional run lacks a complete immutable bundle-input snapshot v2 "
+                               "record"))
     mask = environment.get("golden_mask_selftest")
     if (not isinstance(mask, dict) or mask.get("leaked_answer_files") != []
             or int(mask.get("n_answer_files_masked") or 0) <= 0):
-        raise CampaignGateError("functional run did not prove a non-vacuous clean answer mask")
+        found.append(Deviation("answer_mask_vacuous",
+                               "functional run did not prove a non-vacuous clean answer mask"))
     if summary.get("converged") is not True:
-        raise CampaignGateError("functional QA loop did not converge")
+        found.append(Deviation("qa_loop_not_converged",
+                               f"functional QA loop did not converge "
+                               f"(converged={summary.get('converged')!r})"))
     rounds = summary.get("rounds")
     if not isinstance(rounds, list) or not rounds:
-        raise CampaignGateError("functional QA evidence has no completed round")
-    for row in rounds:
-        if (not isinstance(row, dict) or row.get("answer_access_clean") is not True
-                or row.get("audit_hits") != []):
-            raise CampaignGateError("functional QA round failed the answer-access audit")
+        found.append(Deviation("no_completed_round", "functional QA evidence has no completed round"))
+    else:
+        for row in rounds:
+            if (not isinstance(row, dict) or row.get("answer_access_clean") is not True
+                    or row.get("audit_hits") != []):
+                found.append(Deviation("round_answer_access_unclean",
+                                       "functional QA round failed the answer-access audit"))
+                break
+    # THE FINALIZE BLOCK IS TWO DIFFERENT QUESTIONS, and folding them into one predicate made a
+    # SKIPPED finalize indistinguishable from an unaudited one. A submission-identity pin skips the
+    # finalizer by design (`run_baseline_qa_loop`: "docs-only finalizer would change certified
+    # bytes"), so a pinned run has no finalize turn at all — there is no agent activity to audit, and
+    # demanding an answer-access verdict for a turn that never happened is a category error. What such
+    # a run genuinely LACKS is the post-finalize regrade, and that is a completeness gap.
     finalize = summary.get("finalize")
-    if (not isinstance(finalize, dict)
-            or finalize.get("answer_access_clean") is not True
-            or finalize.get("audit_hits") != []
-            or finalize.get("regrade_all_pass") is not True):
-        raise CampaignGateError("functional finalization did not pass clean regrade and audit gates")
+    if not isinstance(finalize, dict):
+        found.append(Deviation("finalize_missing", "functional run recorded no finalization block"))
+    elif finalize.get("skipped") is True:
+        found.append(Deviation("finalize_regrade_not_pass",
+                               f"finalization was SKIPPED, so there is no post-finalize clean regrade "
+                               f"({finalize.get('reason') or 'no reason recorded'}); the rounds' own "
+                               f"answer-access audits still apply and no un-audited turn was run"))
+    else:
+        if finalize.get("answer_access_clean") is not True or finalize.get("audit_hits") != []:
+            found.append(Deviation("finalize_answer_access_unclean",
+                                   "functional finalization did not pass its answer-access audit"))
+        if finalize.get("regrade_all_pass") is not True:
+            found.append(Deviation("finalize_regrade_not_pass",
+                                   f"functional finalization did not pass a clean regrade "
+                                   f"(regrade_all_pass={finalize.get('regrade_all_pass')!r})"))
+    return found
 
 
 def _has_symlink(root: Path) -> Path | None:
@@ -168,12 +298,131 @@ def _digest_excluded_path(root: Path) -> Path | None:
     return None
 
 
-def inspect_functional_run(run_root: Path, run_id: str, expected_digest: str) -> FunctionalRun:
+def _admission_shortfall(score: dict, graded: int, *, label: str) -> tuple[int, list[Deviation]]:
+    """How many source capsules this phase did NOT grade, and whether that is properly accounted for.
+
+    Returns ``(accounted_exclusions, findings)``. A phase's ``cohort_admission`` record states the
+    source pool, the admitted cohort and the exclusions by class, with a digest over the excluded name
+    set. Requiring the arithmetic to CLOSE is what makes an exclusion evidence rather than a gap: a
+    capsule may be absent from a grade only if the record says so and the numbers add up.
+    """
+    found: list[Deviation] = []
+    admission = score.get("cohort_admission")
+    if not isinstance(admission, dict):
+        return 0, [Deviation("cohort_admission_missing",
+                             f"{label} carries no cohort-admission record, so a capsule absent from "
+                             f"the grade cannot be distinguished from one silently dropped")]
+    def _n(field: str) -> int | None:
+        v = admission.get(field)
+        return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+    source, admitted = _n("n_source_capsules"), _n("n_admitted_capsules")
+    cap_ex, res_ex = _n("n_capability_excluded"), _n("n_resource_excluded")
+    if None in (source, admitted, cap_ex, res_ex):
+        return 0, [Deviation("cohort_admission_malformed",
+                             f"{label} cohort-admission counts are malformed: {admission!r}")]
+    if admitted + cap_ex + res_ex != source:
+        found.append(Deviation("cohort_admission_does_not_close",
+                               f"{label} admission arithmetic does not close: admitted={admitted} + "
+                               f"capability={cap_ex} + resource={res_ex} != source={source}"))
+    if cap_ex or res_ex:
+        digest = admission.get("excluded_name_set_sha256")
+        if (not isinstance(digest, str) or len(digest) != 64
+                or any(c not in "0123456789abcdef" for c in digest)):
+            found.append(Deviation("excluded_name_set_unpinned",
+                                   f"{label} excluded {cap_ex + res_ex} capsule(s) without pinning "
+                                   f"the excluded name set to a digest"))
+    if graded != admitted:
+        found.append(Deviation("graded_count_not_admitted_cohort",
+                               f"{label} graded {graded} capsule(s) but its admission record admits "
+                               f"{admitted}"))
+    return cap_ex + res_ex, found
+
+
+def _validate_scope_coverage(task_scope: dict, public_score: dict, hidden_score: dict, *,
+                             n_public: int, n_hidden: int) -> list[Deviation]:
+    """Does each grade cover the sealed scope, once recorded exclusions are reconciled?
+
+    THE TWO SCOPE FIELDS COUNT DIFFERENT THINGS, and asserting one rule for both is why an honest run
+    was refused. ``required_public_dev_capsules`` is the ADMITTED cohort: `_task_runtime_scope` filters
+    the public pool by the descriptor's named `graded_exclude`, so it already nets out exclusions.
+    ``held_out_capsules`` is the SEALED POOL: hidden names are deliberately absent from the public
+    descriptor (they would leak the holdout), so that count cannot be name-filtered and is instead tied
+    to the hidden snapshot digest.
+
+    Measured on gemmini (2026-09-03): public 48 source -> 11 capability + 3 resource excluded -> 34
+    admitted, and the scope says 34, so it matched. Hidden 11 source -> 1 capability excluded ->
+    10 admitted, and the scope says 11, so `held_out_capsules != n_hidden` refused a run whose only
+    "gap" was `GH0_softmax_bf16_hidden` -- a bf16 capsule this target's frozen capability cannot
+    execute, excluded by the same derived hardware predicate that excluded its 11 public bf16 siblings,
+    and recorded with a digest over the excluded name set.
+
+    So reconcile against the phase's own admission record instead of comparing raw totals. This is
+    STRICTER where it counts: the exclusions must be recorded, digest-pinned, and add up, whereas a
+    raw-total comparison would pass silently whenever two unrelated numbers happened to agree.
+    """
+    found: list[Deviation] = []
+    pub_excluded, pub_found = _admission_shortfall(public_score, n_public,
+                                                   label="public functional grade")
+    hid_excluded, hid_found = _admission_shortfall(hidden_score, n_hidden,
+                                                   label="hidden functional grade")
+    found += pub_found + hid_found
+
+    required_public = task_scope.get("required_public_dev_capsules")
+    if (not isinstance(required_public, int) or isinstance(required_public, bool)
+            or required_public <= 0 or required_public != n_public):
+        found.append(Deviation("task_scope_public_mismatch",
+                               f"public functional grade does not cover the sealed task scope: "
+                               f"grade={n_public}, required={required_public!r}"))
+    required_hidden = task_scope.get("held_out_capsules")
+    if (not isinstance(required_hidden, int) or isinstance(required_hidden, bool)
+            or required_hidden <= 0):
+        found.append(Deviation("task_scope_hidden_mismatch",
+                               f"sealed task scope declares no positive held-out count: "
+                               f"{required_hidden!r}"))
+    elif required_hidden != n_hidden + hid_excluded:
+        found.append(Deviation("task_scope_hidden_mismatch",
+                               f"hidden functional grade does not cover the sealed task scope: "
+                               f"graded={n_hidden} + accounted exclusions={hid_excluded} "
+                               f"!= sealed={required_hidden}"))
+    return found
+
+
+def inspect_functional_run(run_root: Path, run_id: str, expected_digest: str, *,
+                           waive: "frozenset[str] | tuple[str, ...] | None" = None) -> FunctionalRun:
     """Validate one explicitly named, fully graded Arm-4 functional run.
 
     No directory search is performed: the caller supplies both the run ID and the whole-submission
     SHA-256, and all independently recorded digests plus the bytes on disk must agree with it.
+
+    ``waive`` names COMPLETENESS predicates to accept as known gaps rather than refusals, so a
+    campaign can be launched against a baseline that is incomplete in a stated way and still produce
+    a real measurement. It is a set of predicate NAMES, never a boolean: a blanket force would waive
+    whatever failed next, including something nobody looked at. Three rules keep it honest —
+
+    * a predicate in :data:`UNWAIVABLE` cannot be waived at all, and asking is an error (those
+      predicates decide whether the numbers mean anything, not how complete they are);
+    * a waiver naming a predicate that did NOT fail is an error, because a stale waiver silently
+      pre-authorises a future failure nobody has seen;
+    * every accepted waiver is recorded on the returned :class:`FunctionalRun` as a
+      :class:`Deviation` carrying what was actually observed, and travels with the result.
+
+    Identity and structure (run id, path safety, digest agreement, absent evidence files) are never
+    waivable and still raise immediately: without them there is no run to reason about.
     """
+    requested = frozenset(waive or ())
+    forbidden = sorted(requested & UNWAIVABLE)
+    if forbidden:
+        raise CampaignGateError(
+            f"these gate predicates are UNWAIVABLE and cannot be overridden: {', '.join(forbidden)}. "
+            f"They decide whether the measurement means anything (sandbox, answer mask, "
+            f"answer-access audit, integrity, public/hidden identity separation), not how complete "
+            f"the baseline is. A result produced with one of them waived would not be a weaker "
+            f"result, it would be an unattributable one.")
+    unknown = sorted(requested - _WAIVABLE_PREDICATES)
+    if unknown:
+        raise CampaignGateError(
+            f"unknown gate predicate(s) in waive: {', '.join(unknown)}; "
+            f"waivable predicates are: {', '.join(sorted(_WAIVABLE_PREDICATES))}")
     if not run_id:
         raise CampaignGateError("an explicit functional run id is required")
     if Path(run_id).name != run_id or run_id in (".", ".."):
@@ -209,25 +458,53 @@ def inspect_functional_run(run_root: Path, run_id: str, expected_digest: str) ->
         raise CampaignGateError("functional evidence names a different run id")
     if not str(environment.get("bundle_id") or "").startswith("merlin_assisted_rtlchecks_"):
         raise CampaignGateError("functional run is not from the Arm-4 RTL-checks bundle")
-    _validate_clean_run(environment, summary)
+    found: list[Deviation] = list(_validate_clean_run(environment, summary))
     if (manifest.get("integrity_status") != "clean" or manifest.get("integrity_exempt") is not False
             or manifest.get("gradeable") is not True):
-        raise CampaignGateError("functional run did not pass integrity and gradeability gates")
+        found.append(Deviation("manifest_integrity_gate_failed",
+                               "functional run did not pass integrity and gradeability gates"))
     public = manifest.get("public_dev") or {}
     hidden = manifest.get("hidden") or {}
     if public.get("functional_pass") != 1 or hidden.get("functional_pass") != 1:
-        raise CampaignGateError("functional run did not pass both public and hidden grades")
+        found.append(Deviation("phase_functional_pass_missing",
+                               "functional run did not pass both public and hidden grades"))
     if public.get("highest_tier") != "L3":
-        raise CampaignGateError("functional public run did not reach the required L3 tier")
+        found.append(Deviation("public_tier_below_cert",
+                               f"functional public run did not reach the required L3 tier "
+                               f"(highest_tier={public.get('highest_tier')!r})"))
     n_public = _full_ratio(public.get("passed"), label="public functional grade")
     n_hidden = _full_ratio(hidden.get("passed"), label="hidden functional grade")
-    _validate_score(public_score, label="public functional grade", expected=n_public)
-    _validate_score(hidden_score, label="hidden functional grade", expected=n_hidden)
-    if {str(r["capsule"]) for r in public_score["per_capsule"]} & {
-            str(r["capsule"]) for r in hidden_score["per_capsule"]}:
-        raise CampaignGateError("public and hidden grades reuse a capsule identity")
+    task_scope = environment.get("task_scope")
+    if not isinstance(task_scope, dict):
+        raise CampaignGateError("functional run lacks its sealed task scope")
+    found += _validate_scope_coverage(task_scope, public_score, hidden_score,
+                                      n_public=n_public, n_hidden=n_hidden)
+    found += _validate_score(public_score, label="public functional grade", expected=n_public)
+    found += _validate_score(hidden_score, label="hidden functional grade", expected=n_hidden)
+    _pub_rows = public_score.get("per_capsule") if isinstance(public_score, dict) else None
+    _hid_rows = hidden_score.get("per_capsule") if isinstance(hidden_score, dict) else None
+    if isinstance(_pub_rows, list) and isinstance(_hid_rows, list):
+        _shared = ({str(r["capsule"]) for r in _pub_rows if isinstance(r, dict) and r.get("capsule")}
+                   & {str(r["capsule"]) for r in _hid_rows if isinstance(r, dict) and r.get("capsule")})
+        if _shared:
+            found.append(Deviation("capsule_identity_reused",
+                                   f"public and hidden grades reuse a capsule identity: "
+                                   f"{', '.join(sorted(_shared)[:4])}"))
     if freeze.get("workspace_mutable_after_freeze") is not False or not freeze.get("frozen_at"):
-        raise CampaignGateError("functional freeze did not record an immutable workspace and timestamp")
+        found.append(Deviation("freeze_not_immutable",
+                               "functional freeze did not record an immutable workspace and "
+                               "timestamp"))
+
+    # Refuse everything not explicitly named, and name ALL of it in one message.
+    blocking = [d for d in found if d.predicate not in requested]
+    if blocking:
+        _lines = "; ".join(f"[{d.predicate}] {d.detail}" for d in blocking)
+        raise CampaignGateError(f"functional run refused by {len(blocking)} gate predicate(s): {_lines}")
+    stale = sorted(requested - {d.predicate for d in found})
+    if stale:
+        raise CampaignGateError(
+            f"waive names predicate(s) that did not fail: {', '.join(stale)}. A waiver for a "
+            f"predicate nobody saw fail would silently pre-authorise a future failure; drop it.")
 
     observed = hash_tree(submission)["sha256"]
     recorded = {
@@ -241,6 +518,7 @@ def inspect_functional_run(run_root: Path, run_id: str, expected_digest: str) ->
         raise CampaignGateError(
             f"explicit functional submission digest does not match every record: {recorded}")
     return FunctionalRun(
+        deviations=tuple(sorted(found, key=lambda d: d.predicate)),
         run_dir=run_dir,
         submission_dir=submission.resolve(),
         run_id=run_id,
@@ -451,37 +729,63 @@ def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
         oot_runner.build_package = original_build
 
 
-def completion_report(results: Sequence[Mapping], expected: Mapping[str, Sequence[str]]) -> dict:
-    """Count every expected Arm-4 cell without letting an incomplete run look like an empty pass."""
-    expected_cells = {(str(kernel), str(sim)) for kernel, sims in expected.items() for sim in sims}
+def completion_report(results: Sequence[Mapping], expected: Sequence[PerfCell]) -> dict:
+    """Validate exact Phase-P cells without treating functional-simulator cycles as performance."""
+    expected_rows = tuple(expected)
+    for identity in expected_rows:
+        if not isinstance(identity, PerfCell):
+            raise CampaignGateError("performance expected identity must be a PerfCell")
+        try:
+            identity.validate()
+        except PerfPromptContractError as exc:
+            raise CampaignGateError(f"invalid expected performance identity: {exc}") from exc
+    expected_cells = set(expected_rows)
     if not expected_cells:
         raise CampaignGateError("performance campaign has zero expected Arm-4 cells")
-    if any(not sims for sims in expected.values()):
-        raise CampaignGateError("performance campaign contains a kernel with zero expected simulators")
-    by_kernel: dict[str, Mapping] = {}
+    if len(expected_cells) != len(expected_rows):
+        raise CampaignGateError("performance expected cell identities contain duplicates")
+    by_identity: dict[PerfCell, Mapping] = {}
     for row in results:
-        kernel = str(row.get("kernel") or "")
-        if not kernel or kernel in by_kernel:
-            raise CampaignGateError(f"performance results repeat or omit a kernel identity: {kernel!r}")
-        by_kernel[kernel] = row
+        if not isinstance(row, Mapping):
+            raise CampaignGateError("performance result must be a mapping with an exact identity")
+        identity = PerfCell(
+            row.get("family"), row.get("capsule"), row.get("simulator"), row.get("replicate"))
+        try:
+            identity.validate()
+        except PerfPromptContractError as exc:
+            raise CampaignGateError(f"invalid reported performance identity: {exc}") from exc
+        if identity in by_identity:
+            raise CampaignGateError(f"performance results repeat cell identity {identity.label!r}")
+        by_identity[identity] = row
+
+    extras = sorted(set(by_identity) - expected_cells)
+    if extras:
+        raise CampaignGateError(
+            f"performance results contain unexpected cell identities: {[cell.label for cell in extras]}")
 
     reported = correct = cycles_measured = 0
     failed = 0
-    for kernel, sim in sorted(expected_cells):
-        row = by_kernel.get(kernel) or {}
-        arm = ((row.get("approaches") or {}).get("arm4") or {})
-        per_sim = arm.get("per_sim") or {}
-        cell = per_sim.get(sim)
-        if not isinstance(cell, Mapping):
+    for identity in sorted(expected_cells):
+        cell = by_identity.get(identity)
+        if cell is None:
             continue
         reported += 1
         is_correct = cell.get("correct") is True
         cycles = cell.get("cycles")
-        has_cycles = (isinstance(cycles, (int, float)) and not isinstance(cycles, bool)
-                      and cycles > 0)
+        has_cycles = (identity.simulator == "verilator"
+                      and isinstance(cycles, int) and not isinstance(cycles, bool) and cycles > 0)
+        if identity.simulator == "spike":
+            valid = is_correct and cycles is None
+        else:
+            provenance = cell.get("provenance") or {}
+            valid = (is_correct and has_cycles and isinstance(provenance, Mapping)
+                     and provenance.get("tier") == "L3"
+                     and provenance.get("simulator") == "verilator"
+                     and provenance.get("derived_from_rtl") is True
+                     and provenance.get("cycle_accurate") is True)
         correct += int(is_correct)
         cycles_measured += int(has_cycles)
-        failed += int(not (is_correct and has_cycles))
+        failed += int(not valid)
     missing = len(expected_cells) - reported
     counts = {"expected": len(expected_cells), "reported": reported, "correct": correct,
               "cycles_measured": cycles_measured, "failed": failed, "missing": missing,
@@ -489,11 +793,11 @@ def completion_report(results: Sequence[Mapping], expected: Mapping[str, Sequenc
     return counts
 
 
-def completion_counts(results: Sequence[Mapping], expected: Mapping[str, Sequence[str]]) -> dict:
-    """Require a correct, positive-cycle result for every expected Arm-4 kernel/simulator cell."""
+def completion_counts(results: Sequence[Mapping], expected: Sequence[PerfCell]) -> dict:
+    """Require every exact Arm-4 Phase-P identity to carry valid simulator-specific evidence."""
     counts = completion_report(results, expected)
     if not counts["complete"]:
         raise CampaignGateError(
             f"Arm-4 performance reported {counts['reported']} of {counts['expected']} expected cells; "
-            f"{counts['failed']} reported cell(s) failed correctness or positive-cycle measurement")
+            f"{counts['failed']} reported cell(s) failed simulator-specific completion evidence")
     return counts
