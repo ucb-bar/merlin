@@ -40,6 +40,10 @@ def main(argv=None) -> int:
     ap.add_argument("--exclude", default="", help="substring filter, applied after --include")
     ap.add_argument("--log-dir", required=True)
     ap.add_argument("--method", default="")
+    ap.add_argument("--resume", action="store_true",
+                    help="skip shapes a prior campaign of this ARM already finished cleanly")
+    ap.add_argument("--resume-from", action="append", default=[], metavar="DIR",
+                    help="explicit prior campaign dir to read; repeatable. Implies --resume")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
 
@@ -54,6 +58,42 @@ def main(argv=None) -> int:
 
     logs = Path(a.log_dir)
     logs.mkdir(parents=True, exist_ok=True)
+
+    # RESUME. A shape is expensive (30-150 min of cycle-accurate simulation) and independent, so a
+    # campaign that was interrupted should cost only what was actually in flight. Only rc==0 rows
+    # count: a shape whose driver died mid-flight has no row at all and is correctly re-run.
+    #
+    # ⚠️ The arm is part of the key. Both arms write into the same parent directory and a recipe
+    # rerun must not skip a shape that only the AUTOCOMP campaign finished -- they are different
+    # measurements of the same shape. Rows written from here carry `arm`; older rows are attributed
+    # from their campaign directory name, which is where the arm was already encoded.
+    completed: dict[str, str] = {}
+    if a.resume or a.resume_from:
+        prior = [Path(d) for d in a.resume_from]
+        if not prior:
+            prior = sorted(q for q in logs.parent.glob("campaign_*") if q.is_dir() and q != logs)
+        for d in prior:
+            mf = d / "campaign.jsonl"
+            if not mf.exists():
+                continue
+            for line in mf.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                rec = json.loads(line)
+                arm = rec.get("arm") or ("recipe" if "campaign_recipe" in d.name else
+                                         "autocomp" if "campaign_autocomp" in d.name else "")
+                if arm != a.arm or rec.get("rc") != 0:
+                    continue
+                completed[rec["workload"]] = str(d)
+    if completed:
+        skipped = [p for p in shapes if p.name in completed]
+        shapes = [p for p in shapes if p.name not in completed]
+        print(f"resume: skipping {len(skipped)} shape(s) already completed on arm={a.arm}")
+        for p in skipped:
+            print(f"  skip {p.name}  <- {completed[p.name]}")
+        if not shapes:
+            print("nothing left to run")
+            return 0
     method = a.method or (f"recipe_agent_census" if a.arm == "recipe" else "autocomp_census")
 
     print(f"{len(shapes)} shapes, arm={a.arm}, budget={a.budget}, slots={a.slots}")
@@ -77,7 +117,7 @@ def main(argv=None) -> int:
         while True:
             for i, (proc, path, t0) in enumerate(list(running)):
                 if proc.poll() is not None:
-                    rec = {"workload": path.name, "rc": proc.returncode,
+                    rec = {"workload": path.name, "arm": a.arm, "rc": proc.returncode,
                            "wall_s": round(time.time() - t0, 1),
                            "log": str(logs / f"{path.stem}.log")}
                     done.append(rec)
