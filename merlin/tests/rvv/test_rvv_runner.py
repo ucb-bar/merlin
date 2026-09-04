@@ -81,3 +81,69 @@ def test_workload_matmul_bundle_is_valid(tmp_path):
     from merlin.llvmlower.model_runner import parse_forward_signature
     sig = parse_forward_signature(b / "model.mlir")
     assert [s[0] for s in sig] == [[8, 8], [8, 8]]
+
+
+def test_the_wall_carries_the_conditions_and_protocol_it_was_measured_under():
+    """A wall without its conditions cannot be compared to a wall measured at another time.
+
+    `run_on_k1` already probes `board_conditions()` before AND after every run and attaches them
+    (`mining/k1.py`), and `certify_rvv` was copying only cycles/ticks/wall/vlen out of that dict --
+    dropping them. That is exactly how a ~2x board-condition change went unnoticed: two beam runs of
+    the BYTE-IDENTICAL frozen seed (same baseline digest 631fd07f9426) measured 349,877,321 and
+    175,682,867 ns, 1.9915x apart. `speedup` is internal (fork/seed) so the factor cancelled and
+    looked correct, while `attainment_vs_expert` divides by an EXTERNAL wall and absorbed all of it
+    (0.634 -> 1.287 on the same winning config). Nothing in either artifact could show it.
+
+    Fetching a value and then dropping it is indistinguishable from never fetching it, so pin the
+    forwarding, not just the intent.
+    """
+    import inspect
+
+    from merlin.mining import runner
+
+    src = inspect.getsource(runner.certify_rvv)
+    assert '"board_conditions": kr.get("board_conditions")' in src, (
+        "the conditions run_on_k1 already probed must reach the measurement entry")
+    assert '"warmup": warmup, "iters": iters' in src, (
+        "the protocol that produced the wall must be recorded beside it")
+
+
+def test_the_beam_node_carries_conditions_from_the_entry_the_wall_came_from():
+    """Recorded on the NODE, not just the certify record, and read from the same measurement entry
+    the wall was picked from -- so the conditions always describe THIS number rather than some other
+    substrate's run in the same record."""
+    import inspect
+
+    from merlin.mining import beam
+
+    src = inspect.getsource(beam._score)
+    assert '"board_conditions": _cond' in src
+    assert '"measurement_protocol": _proto' in src
+    assert 'if _m.get("wall_ns") is not None and _m.get("wall_ns") == k1_wall' in src, (
+        "conditions must come from the entry the reported wall came from")
+
+
+def test_score_never_invents_conditions_for_a_wall_it_could_not_pick(tmp_path):
+    """Fail-closed companion: conditions describe A NUMBER, so with no citable wall there must be
+    none. `_meas.pick` refuses to report a wall when the target's measurement authority is
+    undeclared (no capability contract), and the conditions must refuse with it rather than being
+    attached to a wall that was never reported."""
+    from merlin.kernels.compare import RvvFingerprint
+    from merlin.mining import beam
+
+    conds = {"before": {"governor": "performance"}, "after": {"governor": "performance"}}
+    result = {
+        "target": "k1",
+        "correctness": {"gate_ok": True},
+        "measurement": [{"target": "k1", "cycle_accurate": False, "cycles": 10,
+                         "time_ticks": 5, "wall_ns": 12345, "vlen": 256,
+                         "warmup": 2, "iters": 5, "board_conditions": conds}],
+    }
+    curated = RvvFingerprint(key={"op": "matmul", "dtype": "int8"}, decisions={}, histogram={},
+                             source="test")
+    out = beam._score(result, tmp_path, curated, {"op": "matmul", "dtype": "int8"}, target="k1")
+    # undeclared authority => no wall, and therefore no conditions attributed to one
+    assert out["k1_wall_ns"] is None
+    assert out["board_conditions"] is None
+    assert out["measurement_protocol"] is None
+    assert out.get("measurement_gaps"), "an undeclared authority must say so"

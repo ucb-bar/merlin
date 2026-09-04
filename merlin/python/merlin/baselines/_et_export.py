@@ -269,7 +269,18 @@ def main() -> int:
     ap.add_argument("--quantize", action="store_true",
                     help="PT2E W8A8 quantize before lowering (exercises XNNPACK's int8 qs8/qd8 RVV "
                          "ukernels). ExecuTorch does its OWN quantization, so pair with "
-                         "--compute-golden (gate = eager-vs-ExecuTorch for THIS config).")
+                         "--compute-golden (gate = eager-vs-ExecuTorch for THIS config). NOTE: this "
+                         "is IGNORED when --int8-whole-model is also set (that path is a module "
+                         "swap, not PT2E) — pass --qd8 with --quantize and WITHOUT "
+                         "--int8-whole-model to get the arithmetic merlin's int8 actually runs.")
+    ap.add_argument("--qd8", action="store_true",
+                    help="with --quantize: use per-channel weights + DYNAMIC per-row activation "
+                         "quantization (XNNPACK qd8) instead of the default static per-tensor qs8. "
+                         "This is the mirror of merlin's own int8 datapath (passes_quant_int: each "
+                         "activation dynamically quantized to i8, symmetric, per output row, against "
+                         "per-channel weight scales) and of the qd8 expert fixture the beam is "
+                         "taught from, so an ours-vs-ExecuTorch int8 ratio compares two runs of the "
+                         "same arithmetic rather than two different quantization schemes.")
     ap.add_argument("--m2m-root", default="/path/to/model2MLIR",
                     help="model2MLIR repo root (added to sys.path for its deps)")
     ap.add_argument("--int8-whole-model", action="store_true",
@@ -392,14 +403,35 @@ def main() -> int:
                 from torch.ao.quantization.quantize_pt2e import convert_pt2e, prepare_pt2e
 
             cap = export(model, captured, strict=False).module()
-            quantizer = XNNPACKQuantizer().set_global(get_symmetric_quantization_config())
+            # WHICH int8 this is, named rather than defaulted. `get_symmetric_quantization_config()`
+            # with no arguments is STATIC PER-TENSOR qs8, which is not the datapath merlin runs and
+            # therefore not a comparand for it: `llvmlower/passes_quant_int` dynamically quantizes
+            # each activation to i8, symmetric, PER OUTPUT ROW, against per-channel weight scales --
+            # i.e. qd8, the same family as the expert fixture the beam is taught from
+            # (merlin/tests/data/cca_asm/xnnpack_qd8_gemm_rvv.objdump). `--qd8` selects that mirror
+            # so an ours-vs-ExecuTorch int8 ratio compares two runs of the same arithmetic.
+            qcfg = (get_symmetric_quantization_config(is_per_channel=True, is_dynamic=True)
+                    if args.qd8 else get_symmetric_quantization_config())
+            quantizer = XNNPACKQuantizer().set_global(qcfg)
             prepared = prepare_pt2e(cap, quantizer)
             with torch.no_grad():
                 prepared(*captured)          # calibrate on the captured input
             model = convert_pt2e(prepared)   # now an int8 graph module
             quantized = True
+            # Which recipe produced these numbers, recorded WITH them. Two different int8 recipes
+            # (weight-only module swap vs PT2E qd8 vs PT2E qs8) produce walls that are not
+            # comparable to each other, and an unlabelled one gets compared anyway.
+            _pt2e_recipe = ("pt2e-qd8(symmetric, per-channel weights, DYNAMIC per-row activation "
+                            "quant -> XNNPACK qd8 int8 ukernels; mirrors merlin's "
+                            "passes_quant_int datapath)" if args.qd8 else
+                            "pt2e-qs8(symmetric, per-tensor, STATIC activation quant)")
+            subgraph_note = (subgraph_note + " " if subgraph_note else "") + _pt2e_recipe
         except Exception as e:  # noqa: BLE001
-            raise RuntimeError(f"PT2E int8 quantization failed: {e}") from e
+            # Fail closed and say which recipe failed. A qd8 failure must never silently become a
+            # weight-only or qs8 measurement -- the whole point of naming the recipe is that a cell
+            # reports the arithmetic it actually ran, or reports nothing.
+            _which = "qd8" if args.qd8 else "qs8"
+            raise RuntimeError(f"PT2E int8 quantization ({_which}) failed: {e}") from e
 
     # 3. torch.export (non-strict first; HF causal-LMs trace cleanly non-strict).
     try:

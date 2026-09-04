@@ -143,6 +143,42 @@ def bundle_mismatch_reason(ours_bundle_id: str, ref_bundle_id: str) -> str | Non
     return None
 
 
+#: The int8 recipes, and which of them are the same ARITHMETIC. `weight_only` is the odd one out and
+#: the trap: its dequant const-folds into an fp32 const weight that XNNPACK partitions as a normal
+#: fp32 GEMM, so a cell labelled int8 measures fp32 compute with int8 STORAGE and never reaches an
+#: int8 ukernel. `pt2e_qd8` is the one that mirrors merlin's own datapath (dynamic per-row activation
+#: quant against per-channel weights).
+QUANT_RECIPE_LABELS = {
+    "weight_only": "weight-only int8 storage; compute is a normal fp32 GEMM (no int8 ukernel)",
+    "pt2e_qs8": "PT2E static per-tensor activation quant (XNNPACK qs8)",
+    "pt2e_qd8": "PT2E per-channel weights + dynamic per-row activation quant (XNNPACK qd8)",
+}
+
+
+def quant_recipe_mismatch_reason(ours_recipe: str, ref_recipe: str) -> str | None:
+    """Why these two int8 measurements are not comparable ARITHMETIC, or None if they are.
+
+    Same shape and same rationale as :func:`bundle_mismatch_reason`, on the recipe axis. dtype is not
+    a sufficient key either: ``variant="int8"`` has meant three different computations in this repo,
+    and the default one is not int8 compute at all. Every ours-vs-ExecuTorch int8 ratio taken before
+    this field existed was against an unlabelled recipe, so UNKNOWN is refused as firmly as a
+    mismatch -- an unrecorded recipe cannot be shown to match, which is exactly why it cannot be
+    cited either.
+    """
+    if not ours_recipe or not ref_recipe:
+        missing = [n for n, v in (("ours", ours_recipe), ("reference", ref_recipe)) if not v]
+        return (f"quantization recipe UNKNOWN for {' and '.join(missing)}: dtype does not determine "
+                "it (weight_only / pt2e_qs8 / pt2e_qd8 are three different computations, and "
+                "weight_only is not int8 compute at all -- its dequant const-folds to an fp32 GEMM). "
+                "Re-measure with quant_recipe recorded on both sides.")
+    if ours_recipe != ref_recipe:
+        return (f"quantization recipe MISMATCH: ours ran {ours_recipe!r} "
+                f"({QUANT_RECIPE_LABELS.get(ours_recipe, 'unknown recipe')}), the reference ran "
+                f"{ref_recipe!r} ({QUANT_RECIPE_LABELS.get(ref_recipe, 'unknown recipe')}). A ratio "
+                "between two different quantization schemes measures the schemes, not the compilers.")
+    return None
+
+
 def executorch_cell(model: str, dtype: str, *, root: Path | None = None,
                     ours_bundle_id: str | None = None) -> dict:
     """The ExecuTorch column for a ``(model, dtype)`` cell — structured + honestly labeled.

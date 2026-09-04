@@ -208,7 +208,25 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
                                            "cycles": m.get("cycles"),
                                            "time_ticks": m.get("time_ticks"),
                                            "wall_ns": m.get("wall_ns"),
-                                           "vlen": kr.get("vlen", k1mod.VLEN)})
+                                           "vlen": kr.get("vlen", k1mod.VLEN),
+                                           # The PROTOCOL that produced this wall. Ours is
+                                           # min-of-`iters` after `warmup` untimed; ExecuTorch's
+                                           # runner has no warmup and averages its cold first
+                                           # execution in. A wall whose protocol is not recorded
+                                           # cannot be shown to match the number it is divided by.
+                                           "warmup": warmup, "iters": iters,
+                                           # The CONDITIONS the board was in. run_on_k1 already
+                                           # probes these before and after the run and they were
+                                           # being dropped here -- which is exactly how a ~2x
+                                           # board-condition change went unnoticed: two runs of the
+                                           # BYTE-IDENTICAL frozen seed (same baseline digest
+                                           # 631fd07f9426) measured 349,877,321 and 175,682,867 ns,
+                                           # 1.9915x apart. `speedup` is internal (fork/seed) so it
+                                           # cancelled and looked right, while attainment divides by
+                                           # an EXTERNAL wall and absorbed the whole factor
+                                           # (0.634 -> 1.287 on the same winner). Nothing in the
+                                           # artifact could catch it because nothing recorded this.
+                                           "board_conditions": kr.get("board_conditions")})
                 # K1 correctness gate: when spike did NOT gate (absent / not a target), the K1 output
                 # vs golden IS a real-silicon correctness signal — gate on it (same zm._gate the spike
                 # path uses) so the beam can rank forks on measured K1 speedup WITHOUT spike. K6 speedup

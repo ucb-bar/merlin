@@ -138,6 +138,30 @@ class BaselineResult:
     #: -- a consumer must treat empty as UNKNOWN and refuse to compare, never as "presumably the same".
     bundle_id: str = ""
 
+    #: WHICH int8 recipe produced this cell. Three exist and they are not comparable to each other:
+    #: ``weight_only`` (eager module swap -- its dequant const-folds to an fp32 const weight that
+    #: XNNPACK partitions as a NORMAL FP32 GEMM, so it measures fp32 compute with int8 storage and
+    #: never reaches an int8 ukernel), ``pt2e_qs8`` (static per-tensor activation quant), and
+    #: ``pt2e_qd8`` (per-channel weights + DYNAMIC per-row activation quant -- XNNPACK's qd8 int8
+    #: ukernels, and the mirror of merlin's own ``passes_quant_int`` datapath).
+    #: Empty means the producer did not record it, which a consumer must treat as UNKNOWN and refuse
+    #: to compare -- the same rule as ``bundle_id``. Every cached row predates this field, so every
+    #: historical int8 ratio in this repo was taken against an unlabelled recipe.
+    quant_recipe: str = ""
+
+    #: The measurement PROTOCOL: how many timed inferences, after how many untimed. ExecuTorch's
+    #: runner has no warmup and averages its cold first execution into ``--num_executions``, while
+    #: merlin's certify path is min-of-5 after 2 warmup; on small_llama int8 ET's cold inference is
+    #: 1.62x its warm one. Dividing one by the other measures the protocols, not the compilers.
+    #: ``None`` means unrecorded -- again UNKNOWN, not "presumably matched".
+    num_executions: int | None = None
+
+    #: Board conditions observed around the run (governor / current_khz / max_khz / thermal), as
+    #: ``{"before": {...}, "after": {...}}``. Two beam runs of a BYTE-IDENTICAL frozen seed measured
+    #: 1.9915x apart with nothing in either artifact able to show why; a wall without its conditions
+    #: cannot be compared against a wall measured at another time.
+    board_conditions: dict | None = None
+
     def __post_init__(self) -> None:
         if not isinstance(self.framework, str) or self.framework not in FRAMEWORKS:
             raise ValueError(f"unknown framework {self.framework!r}; expected one of {FRAMEWORKS}")

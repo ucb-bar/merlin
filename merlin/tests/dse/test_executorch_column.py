@@ -236,3 +236,41 @@ def test_the_measurement_record_carries_the_bundle_it_was_taken_on():
     raw = json.loads(d.read_text()); raw.pop("bundle_id")
     d.write_text(json.dumps(raw))
     assert BaselineResult.load(d).bundle_id == ""
+
+
+def test_an_unrecorded_quant_recipe_is_refused_like_an_unrecorded_bundle():
+    """dtype does not determine the arithmetic.
+
+    `variant="int8"` has meant three different computations here, and the DEFAULT one --
+    `weight_only` -- is not int8 compute at all: its dequant const-folds into an fp32 const weight
+    that XNNPACK partitions as a normal fp32 GEMM, so the cell measures fp32 math with int8 storage
+    and never reaches an int8 ukernel. Every cached int8 ratio in this repo was taken against that,
+    unlabelled. So an unrecorded recipe must be refused exactly as firmly as an unrecorded bundle.
+    """
+    from merlin.compare.executorch_column import quant_recipe_mismatch_reason as why
+
+    assert why("", "pt2e_qd8"), "unknown on our side must refuse"
+    assert why("pt2e_qd8", ""), "unknown on the reference side must refuse"
+    assert "UNKNOWN" in why("", "")
+    assert why("pt2e_qd8", "pt2e_qd8") is None, "same recipe is comparable"
+
+
+def test_a_recipe_mismatch_names_both_computations():
+    """A refusal has to be actionable: say what each side actually ran, not just that they differ."""
+    from merlin.compare.executorch_column import quant_recipe_mismatch_reason as why
+
+    r = why("pt2e_qd8", "weight_only")
+    assert r is not None
+    assert "pt2e_qd8" in r and "weight_only" in r
+    assert "fp32 GEMM" in r, "the reader must learn that weight_only is not int8 compute"
+
+
+def test_the_result_contract_carries_recipe_protocol_and_conditions():
+    """These three are what make a cell comparable at all; defaults must be UNKNOWN, never a guess."""
+    from merlin.baselines.contract import BaselineResult
+
+    r = BaselineResult(framework="executorch", model="m", variant="int8")
+    assert r.quant_recipe == ""
+    assert r.num_executions is None
+    assert r.board_conditions is None
+    assert "quant_recipe" in r.to_dict()

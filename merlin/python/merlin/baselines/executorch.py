@@ -195,7 +195,7 @@ class ExportResult:
 
 def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
                xnnpack: bool = True, quantize: bool = False, compute_golden: bool = False,
-               int8_subgraph: bool = False, int8_whole_model: bool = False,
+               int8_subgraph: bool = False, int8_whole_model: bool = False, qd8: bool = False,
                extra_env: dict[str, str] | None = None, timeout: int = 3600) -> ExportResult:
     """Run the AOT export helper under the ET venv to produce ``model.pte`` (+ ``.ptd`` weights).
 
@@ -235,6 +235,8 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
         cmd.append("--no-xnnpack")
     if quantize:
         cmd.append("--quantize")
+    if qd8:
+        cmd.append("--qd8")
     if compute_golden:
         cmd.append("--compute-golden")
     if int8_subgraph:
@@ -687,7 +689,7 @@ DEFAULT_MODELS = ("tiny_llama", "small_llama", "bitvla", "rdt2", "rdt", "openvla
 def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = None,
               write: bool = True, run_board: bool | None = None,
               xnnpack: bool = True, quantize: bool | None = None, compute_golden: bool = False,
-              int8_subgraph: bool = False, int8_whole_model: bool | None = None,
+              int8_subgraph: bool = False, int8_whole_model: bool | None = None, qd8: bool = False,
               full_fidelity: bool = True,
               export_env: dict[str, str] | None = None,
               num_executions: int = 1, etdump: bool = False,
@@ -707,6 +709,24 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # int8 variant defaults to ExecuTorch's OFFICIAL whole-model llama recipe (source-transform
     # weight-only int8 per-channel) — the path that unblocks full-model int8 on HF Llama. Falls back
     # to the decoder-linear subgraph only if explicitly requested.
+    # WHICH int8 recipe. `qd8` selects PT2E dynamic per-row activation quant against per-channel
+    # weights -- XNNPACK's qd8 int8 ukernels, and the mirror of merlin's own datapath
+    # (llvmlower/passes_quant_int). It is NOT the default only because it is newer; the default
+    # below stays the weight-only module swap so existing cells keep their meaning.
+    #
+    # The distinction is not cosmetic. The weight-only recipe's dequant const-folds into an fp32
+    # const weight that XNNPACK partitions as a NORMAL FP32 GEMM (see _et_export's
+    # _int8_whole_model_bias_preserving docstring), so that cell measures fp32 compute with int8
+    # STORAGE and never touches an int8 ukernel. Dividing an ours-int8 wall by it compares two
+    # different arithmetics.
+    if qd8:
+        if int8_whole_model:
+            raise ValueError(
+                "qd8 and int8_whole_model are two different int8 recipes and cannot both apply: "
+                "int8_whole_model is an eager module swap that never runs PT2E (the --quantize flag "
+                "is ignored on that path), while qd8 IS the PT2E path. Pick one and let the result "
+                "say which ran.")
+        int8_whole_model, quantize = False, True
     if int8_whole_model is None:
         int8_whole_model = (variant == "int8") and not int8_subgraph
     if quantize is None:
@@ -747,6 +767,14 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # that difference is not a speedup, and `compare.executorch_column.bundle_mismatch_reason`
     # refuses one unless BOTH sides record this.
     res.bundle_id = b.root.name
+    # WHICH int8 arithmetic this cell ran. Recorded from the SELECTED recipe, not inferred from the
+    # variant string: `variant="int8"` alone has meant three different computations over this repo's
+    # history, and only one of them reaches an int8 ukernel.
+    if variant == "int8" or quantize:
+        res.quant_recipe = ("pt2e_qd8" if qd8 else
+                            "weight_only" if int8_whole_model else
+                            "pt2e_qs8" if quantize else "")
+    res.num_executions = num_executions
     if not b.golden.is_file():
         res.gap_reason = f"golden missing: {b.root}/golden.npy absent (cannot gate correctness)"
         return _finish(res, model, variant, write)
@@ -769,7 +797,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     try:
         exp = export_pte(model, b, work, xnnpack=xnnpack, quantize=quantize,
                          compute_golden=compute_golden, int8_subgraph=int8_subgraph,
-                         int8_whole_model=int8_whole_model, extra_env=export_env)
+                         int8_whole_model=int8_whole_model, qd8=qd8, extra_env=export_env)
         if exp.summary and exp.summary.get("subgraph_note"):
             res.notes += " " + exp.summary["subgraph_note"]
         if exp.delegated_nodes is not None:

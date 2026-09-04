@@ -188,6 +188,16 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict,
     cov = (result.get("coverage") or {})
     objective = _meas.whole_model_objective(cov.get("claimed_mac_fraction"),
                                             cov.get("attainment"), numerics_ok=gate_ok)
+    # The conditions and protocol the WALL was measured under, carried onto the node so the tree
+    # records them per fork rather than leaving them in the certify record. Read from the same
+    # measurement entry the wall came from, so they always describe THIS number.
+    _cond, _proto = None, None
+    for _m in measurements:
+        if _m.get("wall_ns") is not None and _m.get("wall_ns") == k1_wall:
+            _cond = _m.get("board_conditions")
+            if _m.get("iters") is not None:
+                _proto = {"warmup": _m.get("warmup"), "iters": _m.get("iters")}
+            break
     out = {"gate_ok": gate_ok, "structural_match": sm, "cycles": cycles,
            "k1_wall_ns": k1_wall, "divergences": divs,
            "whole_model_objective": objective,
@@ -198,7 +208,11 @@ def _score(result: dict, run_dir: Path, curated: RvvFingerprint, op_key: dict,
            "correctness_residual": _correctness_residual(result),
            # Which substrate each number came from, so a reader never has to infer it. A number whose
            # provenance is inferred is a number that gets attributed to the wrong device.
-           "cycles_from": _cyc_from, "wall_from": _wall_from}
+           "cycles_from": _cyc_from, "wall_from": _wall_from,
+           # Under WHAT the wall was measured. Two runs of the byte-identical frozen seed measured
+           # 1.9915x apart with nothing in either artifact able to show it; a wall without its
+           # conditions cannot be compared to a wall measured at another time.
+           "board_conditions": _cond, "measurement_protocol": _proto}
     if _auth_gaps:
         out["measurement_gaps"] = _auth_gaps
     return out
