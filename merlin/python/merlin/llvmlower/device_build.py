@@ -209,16 +209,25 @@ def boundary_buildable(device: str) -> str | None:
         link = link_for(device, endpoint)
     except Exception:            # noqa: BLE001 -- an unresolvable device is caught by the package load
         return None
-    # NOT YET DELEGATED TO `_SEAM_EMITTERS`, deliberately. `device_native.seam_emittable` answers this
-    # question well -- it derives the DRAM window rather than assuming one (atlas resolves 0x80000000,
-    # the RTL's own AtlasMemMap.DRAM_BASE) and refuses radiance, which declares no window. Its address
-    # contract is exercised and fail-closes on a missing address, an address below the window, and
-    # overlapping ranges. What has NOT happened is a COMPLETE seam emitted end to end for any device:
-    # no test builds one, and the module's own build path (assemble_device_image -> host stager) has
-    # never run. Turning the delegation on flips this axis from UNDETERMINABLE to a shape for every
-    # device_native capsule, which is the one move `boundary.profile_linalg` exists to prevent --
-    # "the composition numbers would improve by argument alone". Enable this line together with a test
-    # that emits a seam and links it; until then the honest answer is still "nothing has built it".
+    # DELEGATED TO `_SEAM_EMITTERS` ONLY BECAUSE A SEAM HAS NOW BEEN EMITTED. This line was held back on
+    # purpose while nothing had built one: turning it on flips the composition axis from UNDETERMINABLE
+    # to a shape for every `device_native` capsule, and doing that on the strength of a module that
+    # merely exists is exactly the move `boundary.profile_linalg` exists to prevent -- "the composition
+    # numbers would improve by argument alone". What changed is an artifact, not an argument:
+    # `merlin/tests/infra/test_device_native_seam_emits.py` builds a complete seam for a device_native
+    # target from its own backend package -- the package's emitted directives ASSEMBLED to the bytes the
+    # device fetches, the address contract read off the command buffer the same package emitted for the
+    # same capsule and converted to offsets in the device's own derived DRAM window, and the host stager
+    # compiled to an object -- then LINKS that object against a harness generated from the contract and
+    # runs it, checking each operand lands at its declared offset and each result is collected from
+    # its own. The emitter keeps its own fail-closed refusals (an underivable window, an operand
+    # placement that is not an address contract), so a target whose seam genuinely cannot be emitted
+    # still reports UNKNOWN; it stops reporting UNKNOWN for the reason "this is not the transport I
+    # know how to build".
+    emitter = _SEAM_EMITTERS.get(link.command_transport)
+    if emitter is not None:
+        from importlib import import_module
+        return import_module(emitter).seam_emittable(device)
     if link.command_transport not in BUILDABLE_TRANSPORTS:
         return (f"{device!r} is reached by {link.command_transport!r}; this path compiles a device "
                 f"whose artifact is LLVM-dialect MLIR, and that transport's package emits "
@@ -303,7 +312,12 @@ def build_device_objects(device: str,
     # mlir-translate fails obscurely, and worse, the shim would declare an extern kernel symbol that
     # nothing in the archive defines. Declining with the transport named is the honest answer, and it
     # is the first consumer of the transport axis the Link derives.
-    unbuildable = boundary_buildable(device)
+    #
+    # `objects_buildable`, NOT `boundary_buildable`. The two had one answer while one transport had an
+    # emitter, and they diverged the moment a second one did: a `device_native` device's BOUNDARY is
+    # emittable (as a DRAM address contract) while its ARTIFACT is an instruction stream this loop
+    # cannot compile. Asking the boundary question here would let exactly that device through.
+    unbuildable = objects_buildable(device)
     if unbuildable:
         return DeviceBuild(device=device, skipped=(("all", unbuildable),))
 

@@ -136,23 +136,31 @@ def test_a_device_this_path_cannot_compile_is_declined_with_its_transport():
 
     This is the first consumer of the transport axis the Link derives -- before it, `endpoint_kind`
     answered four questions at once and none of them was 'can this be compiled here'."""
-    from merlin.llvmlower.device_build import boundary_buildable
+    from merlin.llvmlower.device_build import boundary_buildable, objects_buildable
 
-    verdicts = {t: boundary_buildable(t) for t in ("gemmini", "radiance", "atlas",
-                                                    "saturn_opu_mxv256d128")}
+    roster = ("gemmini", "radiance", "atlas", "saturn_opu_mxv256d128")
+    verdicts = {t: objects_buildable(t) for t in roster}
     declined = {t: why for t, why in verdicts.items() if why}
     if not declined:
         pytest.skip("no non-compilable device resolvable in this checkout")
     for t, why in declined.items():
         assert "reached by" in why and t in why, f"{t}: the decline must name the device and transport"
 
+    # THE BOUNDARY QUESTION IS NOT THE OBJECT QUESTION, and its decline is not phrased like one. A
+    # transport with its own emitter answers with the FACT it is missing (an underivable DRAM window),
+    # not with "reached by X" -- that reason belongs to this pipeline, which is not the one refusing.
+    for t, why in ((t, boundary_buildable(t)) for t in roster):
+        if why:
+            assert t in why, f"{t}: a decline must name the device it is about"
+            assert len(why) > 40, f"{t}: a decline must say what is missing, not just that it is"
+
 
 def test_the_decline_happens_before_any_work(tmp_path):
     """Named early so the reason is the transport, not a confusing failure three tools later."""
-    from merlin.llvmlower.device_build import boundary_buildable
+    from merlin.llvmlower.device_build import objects_buildable
 
     target = next((t for t in ("saturn_opu_mxv256d128", "radiance", "atlas")
-                   if boundary_buildable(t)), None)
+                   if objects_buildable(t)), None)
     if target is None:
         pytest.skip("no non-compilable device resolvable here")
     b = build_device_objects(target, _SIGS, _DTS, package_dir=_PKG or (tmp_path / "nope"),

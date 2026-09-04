@@ -187,10 +187,17 @@ class TestUnbuildableSeam:
     """An ELIGIBLE region is not a crossing this repo can emit.
 
     Eligibility says the capability manifest admits the work. It says nothing about whether any path
-    here can compile the seam that carries it: on a ``device_native`` target the boundary is a DRAM
-    address contract honoured by the harness, not a linkable call, and ``device_build`` refuses it
-    outright. Without this check the axis labels every admitted region ``A`` and a corpus can report
-    ``H->A->H`` covered on a target whose seam is uncompilable.
+    here can compile the seam that carries it. Without this check the axis labels every admitted region
+    ``A`` and a corpus can report ``H->A->H`` covered on a target whose seam nothing has ever built.
+
+    WHAT LIFTS THE REFUSAL IS AN ARTIFACT, NEVER A TRANSPORT. A ``device_native`` boundary is a DRAM
+    address contract rather than a linkable call, and while nothing emitted one, every such target was
+    refused. One is emitted now -- ``merlin/tests/infra/test_device_native_seam_emits.py`` assembles a
+    package's own device directives, reads the address contract off the command buffer that package
+    emitted for the same capsule, compiles the host stager, links it and runs it -- so a target whose
+    window that emitter can DERIVE is classified again. A ``device_native`` target whose DRAM window is
+    NOT derivable is still refused, and it is the live negative case below: the axis separates targets
+    by the facts each one declares, not by which transport they use.
     """
 
     def test_the_two_kinds_of_target_disagree_and_that_is_the_point(self):
@@ -198,8 +205,33 @@ class TestUnbuildableSeam:
 
         # host_instruction: a real call the device shim can emit.
         assert boundary_buildable("gemmini") is None
-        # device_native: the device fetches its own stream; there is no host-side call to build.
-        assert boundary_buildable("atlas"), "atlas' seam is not compilable by any path in this repo"
+        # device_native WITH a derivable DRAM window: the seam is an address contract, and a complete
+        # one -- device image, host stager, contract -- has been emitted and linked for this target.
+        assert boundary_buildable("atlas") is None, (
+            "atlas' seam IS emittable: its DRAM window derives from its own memory map")
+        # device_native WITHOUT one: nothing here can say where the host should stage an operand, so
+        # the crossing stays undeterminable however eligible the regions are.
+        assert boundary_buildable("radiance"), (
+            "radiance declares no derivable DRAM window, so its seam is not emittable by any path here")
+
+    def test_the_predicate_is_the_emitters_own_answer_not_a_second_opinion(self):
+        # The transport's emitter owns the reasons; `boundary_buildable` delegates to it. Two copies of
+        # this judgement is how the axis and the builder come to disagree about the same target.
+        from merlin.llvmlower.device_build import _SEAM_EMITTERS, boundary_buildable
+        from merlin.llvmlower.device_native import seam_emittable
+
+        assert "device_native" in _SEAM_EMITTERS
+        for target in ("atlas", "radiance"):
+            assert boundary_buildable(target) == seam_emittable(target)
+
+    def test_a_boundary_is_not_always_an_object(self):
+        # An emittable boundary must NOT let a device_native target into the object pipeline: its
+        # artifact is an instruction stream, and mlir-translate would fail obscurely on it -- or worse,
+        # the shim would declare extern kernel symbols nothing defines.
+        from merlin.llvmlower.device_build import boundary_buildable, objects_buildable
+
+        assert boundary_buildable("atlas") is None
+        assert objects_buildable("atlas"), "the object path must still refuse a device-native artifact"
 
     def test_an_unresolvable_target_is_not_called_unbuildable(self):
         # "we could not tell" must reach the caller's existing UNKNOWN path, never a claim that the
@@ -207,9 +239,36 @@ class TestUnbuildableSeam:
         assert B._unbuildable_seam("definitely_not_a_target_xyz") is None
 
     def test_an_unbuildable_target_reports_undeterminable_not_a_shape(self, tmp_path):
-        # The `prov.level` attribute is what routes a capsule to the linalg grammar (linalg_iface.
-        # is_linalg_on_tensors); without it this would silently fall through to the merlin_iface parser
-        # and the test would skip, which is the shape of a check that cannot fail.
+        # The negative case is a target whose seam GENUINELY cannot be emitted -- one whose DRAM window
+        # no fact in this repo derives -- so the axis keeps a live refusal now that another
+        # device_native target's seam can be built. The `prov.level` attribute is what routes a capsule
+        # to the linalg grammar (linalg_iface.is_linalg_on_tensors); without it this would silently fall
+        # through to the merlin_iface parser and the test would skip, which is the shape of a check that
+        # cannot fail.
+        module = tmp_path / "capsule.linalg.mlir"
+        module.write_text(textwrap.dedent("""
+            module attributes {prov.level = "linalg-on-tensors"} {
+              func.func @forward(%a: tensor<16x16xbf16>, %b: tensor<16x16xbf16>) -> tensor<16x16xbf16> {
+                %0 = tensor.empty() : tensor<16x16xbf16>
+                %1 = linalg.matmul ins(%a, %b : tensor<16x16xbf16>, tensor<16x16xbf16>)
+                                   outs(%0 : tensor<16x16xbf16>) -> tensor<16x16xbf16>
+                return %1 : tensor<16x16xbf16>
+              }
+            }
+        """).strip(), encoding="utf-8")
+        prof = B.profile_path(module, "radiance")
+        assert prof.grammar == "linalg", f"fixture did not reach the linalg path: {prof.detail}"
+        assert prof.n_unbuildable >= 1, (
+            f"fixture presented no accelerator-eligible region, so nothing was refused: {prof.detail}")
+        assert prof.kind == B.UNKNOWN, (
+            f"an eligible region on an unbuildable seam must be UNDETERMINABLE, got {prof.kind!r}")
+        assert prof.kind != B.HOST_ONLY, "never H: the target did not refuse the work"
+        assert "undeterminable" in prof.detail
+
+    def test_an_emittable_seam_is_classified_rather_than_refused(self, tmp_path):
+        # The other half of the same fixture, and the only thing that makes the refusal above a
+        # measurement rather than a constant: the SAME capsule on a target whose seam IS emittable gets
+        # a shape. Without this, "always UNKNOWN" would pass the test above forever.
         module = tmp_path / "capsule.linalg.mlir"
         module.write_text(textwrap.dedent("""
             module attributes {prov.level = "linalg-on-tensors"} {
@@ -223,10 +282,8 @@ class TestUnbuildableSeam:
         """).strip(), encoding="utf-8")
         prof = B.profile_path(module, "atlas")
         assert prof.grammar == "linalg", f"fixture did not reach the linalg path: {prof.detail}"
-        assert prof.kind == B.UNKNOWN, (
-            f"an eligible region on an unbuildable seam must be UNDETERMINABLE, got {prof.kind!r}")
-        assert prof.kind != B.HOST_ONLY, "never H: the target did not refuse the work"
-        assert "undeterminable" in prof.detail
+        assert prof.kind == B.A, f"an emittable seam must yield a shape, got {prof.kind!r}"
+        assert prof.n_unbuildable == 0
 
     def test_dropping_unbuildable_regions_would_have_been_worse(self):
         # Guards the implementation choice, not just the outcome. Had the unbuildable regions simply

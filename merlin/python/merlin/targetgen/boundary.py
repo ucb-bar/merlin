@@ -373,7 +373,11 @@ def profile_path(path: str | Path, target: str) -> BoundaryProfile:
     # not evidence that the seam is EXERCISED. This axis exists to say whether the corpus can prove a
     # compiler assembles work correctly ACROSS the boundary, and on a target whose seam no path here
     # can emit, a capsule labelled `H->A->H` is a claim nothing verified -- the composition numbers
-    # would improve by argument alone. UNKNOWN until the transport is built.
+    # would improve by argument alone. UNKNOWN until the transport is built -- and "built" means an
+    # emitted artifact, which is why `_unbuildable_seam` asks the BUILDER rather than reasoning about
+    # transports here. A `device_native` boundary (a DRAM address contract) became emittable once one
+    # was actually assembled, staged and linked; a `device_native` target whose DRAM window no fact
+    # derives is still refused by that same predicate, and its capsules are still UNKNOWN.
     if unbuildable:
         return BoundaryProfile(
             kind=UNKNOWN, grammar="linalg", n_unresolved=unresolved, n_unbuildable=n_eligible,
