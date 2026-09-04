@@ -76,6 +76,32 @@ ANALYSIS_ACTION = "analyze-command-buffers"
 #: differently below; every other non-zero code stays a refusal.
 ROUND_DEADLINE_EXIT = 124
 
+#: How many member measurements the sweep may run at once. DECLARED, never guessed: this is a shared
+#: host, and the fan-out a measurement ran at is stamped on its own result. Default 1, so a launch
+#: that says nothing behaves exactly as the sequential sweep did.
+#:
+#: Parallelism is sound here for a measured reason. Cycles on this stack are concurrency-invariant --
+#: verified identical serial and at 16 workers, and independently over 392 repeated measurements of
+#: identical bytes with zero disagreement -- while WALL times are not. This sweep cites cycles. Wall
+#: time is used only for the cheapest-first ordering, which is why `harvest_member_cost` ignores
+#: rows measured under fan-out.
+SWEEP_WORKERS_ENV = "MERLIN_PERF_SWEEP_WORKERS"
+
+
+def _sweep_workers() -> int:
+    """The declared sweep fan-out, or 1. Refuses a value it cannot read rather than guessing one."""
+    raw = (os.environ.get(SWEEP_WORKERS_ENV) or "").strip()
+    if not raw:
+        return 1
+    try:
+        workers = int(raw)
+    except ValueError:
+        raise StageGateError(
+            f"{SWEEP_WORKERS_ENV}={raw!r} is not an integer; refusing to guess a fan-out") from None
+    if workers < 1:
+        raise StageGateError(f"{SWEEP_WORKERS_ENV}={workers} is not a positive fan-out")
+    return workers
+
 #: How a member's per-arm workspace is named. The ceiling harvest globs on this rather than parsing
 #: the runner's run-id, so the writer below and the reader in `harvest_baseline_points` cannot drift.
 _ARM_WORKSPACE = "m{index:03d}_{arm}"
@@ -376,6 +402,8 @@ class DevelopmentGsimFeedback:
     _spend: "list[tuple[str, float]] | None" = None
     executor: Callable[..., Mapping[str, Any]] | None = None
     _baseline_cache: dict[tuple[str, str], dict[str, Any]] | None = None
+    #: Rows a wave measured ahead of the loop that consumes them, keyed by (member index, arm).
+    _prefetched: dict = field(default_factory=dict)
 
     def _execute(self, *, arm: str, package: Path, package_sha256: str,
                  member: PerformanceCapsule, decision: GATE.EvaluationDecision,
@@ -399,7 +427,7 @@ class DevelopmentGsimFeedback:
             gsim_certificate=self.certificate)
         return PAIR.run_execution(
             spec, workspace, timeout_s, self.target_experiment, self.rtl_identity,
-            hardware_counters=False)
+            hardware_counters=False, workers=_sweep_workers())
 
     @staticmethod
     @staticmethod
@@ -566,6 +594,64 @@ class DevelopmentGsimFeedback:
             "inapplicable": [v.name for v in verdicts if not v.evaluable],
         }
 
+    def _take_prefetched(self, index: int, arm: str) -> "dict | None":
+        """A row a wave already measured, or None. A recorded failure RAISES here, in member order,
+        so a member that could not be measured is refused exactly where the serial sweep would have
+        refused it -- rather than silently becoming a missing cell."""
+        row = getattr(self, "_prefetched", {}).pop((index, arm), None)
+        if isinstance(row, Mapping) and "__error__" in row:
+            raise StageGateError(f"development GSIM {arm} measurement failed: {row['__error__']}")
+        return row
+
+    def _prefetch_wave(self, wave, *, candidate: Path, candidate_before: str, call_root: Path,
+                       deadline: float, workers: int) -> dict:
+        """Measure a wave of members concurrently and return ``{(index, arm): redacted row}``.
+
+        Concurrency is threads, not processes, because every heavy step here already runs in its own
+        subprocess -- the fan-out is over waiting, not over Python. That is only safe because
+        `perf_campaign.boxed_entrypoints` keeps its policy per THREAD: it used to save and restore
+        two module globals, which does not compose, and the interleaving left one thread's package
+        execution running with no sandbox at all.
+
+        A member that raises is RECORDED against its slot rather than propagated. One member failing
+        used to unwind the whole sweep, which is how a measurement with every member run was thrown
+        away; here the caller turns a missing row into an unmeasured cell with the reason.
+        """
+        import concurrent.futures                                           # noqa: PLC0415
+
+        def one(index: int, member: Any, arm: str) -> dict:
+            decision = self.decisions.get((member.family, member.capsule))
+            remaining = int(deadline - time.monotonic())
+            if remaining <= 0:
+                raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
+            package = self.baseline if arm == "baseline" else candidate
+            digest = self.baseline_sha256 if arm == "baseline" else candidate_before
+            raw = self._execute(
+                arm=arm, package=package, package_sha256=digest, member=member, decision=decision,
+                workspace=call_root / _ARM_WORKSPACE.format(index=index, arm=arm),
+                timeout_s=remaining)
+            return self._redact_execution(
+                raw, decision, arm=arm, family=member.family, capsule=member.capsule,
+                required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
+
+        jobs: dict = {}
+        rows: dict = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            # LONGEST FIRST inside the wave, so the tail of the wave is its cheap members and the
+            # makespan is not set by a slow member that was submitted last.
+            for index, member in sorted(
+                    wave, key=lambda im: -float(self.member_cost.get(im[1].capsule, 0.0))):
+                if (member.family, member.capsule) not in self._baseline_cache:
+                    jobs[pool.submit(one, index, member, "baseline")] = (index, "baseline")
+                jobs[pool.submit(one, index, member, "candidate")] = (index, "candidate")
+            for future in concurrent.futures.as_completed(jobs):
+                slot = jobs[future]
+                try:
+                    rows[slot] = future.result()
+                except Exception as exc:  # noqa: BLE001 - recorded against its slot, never fatal
+                    rows[slot] = {"__error__": f"{type(exc).__name__}: {str(exc)[:300]}"}
+        return rows
+
     def _refresh_achievable(self) -> None:
         """Re-derive the ceiling and its tolerance over every measurement the agent did not author.
 
@@ -640,6 +726,17 @@ class DevelopmentGsimFeedback:
         # conclusion already reached.
         members, order_basis = order_members_by_cost(members, self.member_cost)
         stopped_after: int | None = None
+        # WAVES, so a declared fan-out does not cost the early stop its meaning. The first wave is
+        # exactly the prefix the stop rule needs before it may fire, which makes wave 0's decision
+        # identical to the sequential sweep's; after that the waves are the fan-out wide. What a
+        # wave can waste is the members it launched past the point the sequential sweep would have
+        # stopped -- bounded, and cheapest-first, so the boundary nearest the decision is the
+        # cheapest members. `_prefetched` is consumed by the loop body below in place of executing.
+        workers = _sweep_workers()
+        deadline = started + timeout_s
+        self._prefetched = {}
+        pending = list(enumerate(members))
+        wave_sizes = [self.MINIMUM_REFUTING_PREFIX] if workers > 1 else []
         for index, member in enumerate(members):
             key = (member.family, member.capsule)
             decision = self.decisions.get(key)
@@ -648,7 +745,13 @@ class DevelopmentGsimFeedback:
             remaining = timeout_s - int(time.monotonic() - started)
             if remaining <= 0:
                 raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
-            baseline = self._baseline_cache.get(key)
+            if workers > 1 and (index, "candidate") not in self._prefetched and pending:
+                take = wave_sizes.pop(0) if wave_sizes else workers
+                wave, pending = pending[:take], pending[take:]
+                self._prefetched.update(self._prefetch_wave(
+                    wave, candidate=candidate, candidate_before=candidate_before,
+                    call_root=call_root, deadline=deadline, workers=workers))
+            baseline = self._baseline_cache.get(key) or self._take_prefetched(index, "baseline")
             if baseline is None:
                 raw = self._execute(
                     arm="baseline", package=self.baseline, package_sha256=self.baseline_sha256,
@@ -662,14 +765,16 @@ class DevelopmentGsimFeedback:
             remaining = timeout_s - int(time.monotonic() - started)
             if remaining <= 0:
                 raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
-            raw = self._execute(
-                arm="candidate", package=candidate, package_sha256=candidate_before,
-                member=member, decision=decision,
-                workspace=call_root / _ARM_WORKSPACE.format(index=index, arm="candidate"),
-                timeout_s=remaining)
-            candidate_row = self._redact_execution(
-                raw, decision, arm="candidate", family=member.family, capsule=member.capsule,
-                required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
+            candidate_row = self._take_prefetched(index, "candidate")
+            if candidate_row is None:
+                raw = self._execute(
+                    arm="candidate", package=candidate, package_sha256=candidate_before,
+                    member=member, decision=decision,
+                    workspace=call_root / _ARM_WORKSPACE.format(index=index, arm="candidate"),
+                    timeout_s=remaining)
+                candidate_row = self._redact_execution(
+                    raw, decision, arm="candidate", family=member.family, capsule=member.capsule,
+                    required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
             comparable = baseline["correct"] and candidate_row["correct"]
             bcycles, ccycles = baseline["gsim_cycles"], candidate_row["gsim_cycles"]
             # UTILIZATION against a ceiling this machine's own RTL derives. Cycles alone say nothing
@@ -2320,6 +2425,16 @@ def harvest_member_cost(roots: "Sequence[Path]") -> dict[str, float]:
             capsule = str(document.get("capsule") or "")
             tier = ((document.get("tiers") or {}).get("L3") or {})
             active = ((tier.get("timing") or {}).get("sim_active_s"))
+            # A WALL TIME MEASURED UNDER FAN-OUT DOES NOT PRICE THE MEMBER. Cycles are
+            # concurrency-invariant on this stack; wall times are emphatically not -- the same query
+            # measured 3.7 s serial and 23.4 s at 16 workers, a 6.3x spread. Mixing those into the
+            # median would inflate exactly the members that happened to run beside others and
+            # silently corrupt the cheapest-first ordering the early stop depends on. The runner
+            # stamps the fan-out it ran at; a row that does not say, or says more than one, is not
+            # a price.
+            fanout = ((tier.get("concurrency") or {}).get("workers"))
+            if fanout is not None and fanout != 1:
+                continue
             if capsule and isinstance(active, (int, float)) and not isinstance(active, bool) and active > 0:
                 seconds.setdefault(capsule, []).append(float(active))
     table: dict[str, float] = {}

@@ -239,3 +239,91 @@ def test_a_member_may_beat_the_empirical_ceiling_but_not_the_structural_peak():
     broken["candidate_utilization"] = 1.5
     with pytest.raises(PAS.StageGateError, match="structural peak"):
         PAS.validate_redacted_feedback(_document([broken]))
+
+
+# ---------------------------------------------------------------------------------------------------
+# the parallel sweep must produce exactly what the serial one did
+# ---------------------------------------------------------------------------------------------------
+def _many(tmp_path, n=6):
+    from types import SimpleNamespace
+    members = []
+    for i in range(n):
+        src = tmp_path / f"c{i}"
+        src.mkdir()
+        members.append(SimpleNamespace(
+            family="PK", capsule=f"PK{i:02d}", source_dir=src, source_sha256="b" * 64,
+            descriptor={"label": "dev", "required_oracle_tiers": ["L0", "L1", "L2", "L3"]}))
+    return members
+
+
+def _evaluator_for(tmp_path, members, *, cycles):
+    from types import SimpleNamespace
+    decision = SimpleNamespace(selected_engine="gsim", use_gsim=True, eligible=True,
+                               admitted=True, certificate_sha256=SHA, final_cycle_authority=False)
+    seen = []
+
+    def executor(**kw):
+        import threading
+        seen.append((kw["member"].capsule, kw["arm"], threading.get_ident()))
+        n = cycles[kw["member"].capsule][kw["arm"]]
+        return {"measurement": {
+            "status": "pass", "numeric": "pass", "failure": None,
+            "per_sim": {"spike": {"correct": True}, "gsim": {"correct": True, "cycles": n}},
+            "gsim_qualification": {
+                "admitted": True,
+                "decision": {"selected_engine": "gsim", "certificate_sha256": SHA}}}}
+
+    ev = PAS.DevelopmentGsimFeedback(
+        SimpleNamespace(sha256=SHA),
+        SimpleNamespace(capsules=members, capsules_sha256=SHA),
+        Path("."), SHA, SimpleNamespace(target="t"), {}, tmp_path / "work",
+        {(m.family, m.capsule): decision for m in members},
+        peak_macs_per_cycle=256, peak_basis="t",
+        achievable_macs_per_cycle=80.0, achievable_basis="t", achievable_dispersion=0.2,
+        tuning_call_budget=100, executor=executor)
+    return ev, seen
+
+
+def test_a_parallel_sweep_yields_the_same_cells_as_a_serial_one(tmp_path, monkeypatch):
+    """Fan-out changes when a member is measured, never what it measured.
+
+    Cycles on this stack are concurrency-invariant -- verified identical serial and at 16 workers,
+    and over 392 repeated measurements of identical bytes with zero disagreement. So the two sweeps
+    must agree cell for cell, in the same member order.
+    """
+    members = _many(tmp_path)
+    cycles = {m.capsule: {"baseline": 100 + i, "candidate": 90 + i}
+              for i, m in enumerate(members)}
+
+    cand = tmp_path / "cand"
+    (cand / "performance").mkdir(parents=True)
+    (cand / "compiler.py").write_text("# c\n", encoding="utf-8")
+
+    monkeypatch.delenv(PAS.SWEEP_WORKERS_ENV, raising=False)
+    serial_ev, serial_seen = _evaluator_for(tmp_path / "s", members, cycles=cycles)
+    serial = serial_ev.evaluate(cand, round_index=0, call_index=0, timeout_s=600)
+
+    monkeypatch.setenv(PAS.SWEEP_WORKERS_ENV, "4")
+    parallel_ev, parallel_seen = _evaluator_for(tmp_path / "p", members, cycles=cycles)
+    parallel = parallel_ev.evaluate(cand, round_index=0, call_index=1, timeout_s=600)
+
+    def shape(doc):
+        return [(c["capsule"], c["baseline_gsim_cycles"], c["candidate_gsim_cycles"],
+                 c["comparable"], c["measured"]) for c in doc["cells"]]
+
+    assert shape(parallel) == shape(serial), "fan-out changed the cells or their order"
+
+    # POSITIVE CONTROL. Without this the test passes on an implementation whose fan-out never
+    # engages -- which is the same as having built nothing.
+    assert len({t for _, _, t in serial_seen}) == 1, "the serial sweep used more than one thread"
+    assert len({t for _, _, t in parallel_seen}) > 1, (
+        "the declared fan-out measured everything on one thread; the sweep did not parallelise")
+
+
+def test_an_unreadable_fan_out_is_refused_rather_than_guessed(tmp_path, monkeypatch):
+    monkeypatch.setenv(PAS.SWEEP_WORKERS_ENV, "lots")
+    with pytest.raises(PAS.StageGateError, match="not an integer"):
+        PAS._sweep_workers()
+    monkeypatch.setenv(PAS.SWEEP_WORKERS_ENV, "0")
+    with pytest.raises(PAS.StageGateError, match="positive"):
+        PAS._sweep_workers()

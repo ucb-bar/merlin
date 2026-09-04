@@ -495,7 +495,8 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
                       runs: Path, timeout: int, target: str, *, measurement_pass: str,
                       expected_package_sha256: str, rtl_identity: Mapping[str, Any],
                       decision: GATE.EvaluationDecision,
-                      certificate: GATE.CertificateRecord) -> dict[str, Any]:
+                      certificate: GATE.CertificateRecord,
+                      workers: int | None = None) -> dict[str, Any]:
     """Fixed Arm-4 semantics with GSIM as the only RTL execution/timing backend."""
     result: dict[str, Any] = {"approach": "arm4", "ok_build": True, "per_sim": {}}
     package_before, inputs_before = (str(hash_tree(package)["sha256"]),
@@ -511,7 +512,11 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
         grade = FIXED.CR.run_capsule(
             capsule, str(package), runs_root=str(runs),
             run_id=f"arm4_{kernel['id']}_{measurement_pass}", contract=FIXED._CONTRACT,
-            oracle_adapters=adapters, timeout=timeout, target=target, workers=1)
+            # The fan-out this measurement actually ran at, so the stamp on its own result is not
+            # a lie. It is only bookkeeping for cycles -- which are concurrency-invariant -- but the
+            # cheapest-first ordering prices members by WALL time, and that reader needs to know
+            # which rows were measured beside others.
+            oracle_adapters=adapters, timeout=timeout, target=target, workers=int(workers or 1))
     except Exception as exc:
         result.update({"ok_build": False, "status": "error",
                        "error": f"{type(exc).__name__}: {str(exc)[:500]}",
@@ -585,7 +590,8 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
 def run_execution(spec: ExecutionSpec, workspace: Path, timeout: int,
                   target_experiment: object, rtl_identity: Mapping[str, Any], *,
                   hardware_counters: bool, counter_binding: object = None,
-                  physical_unit: str = PHYSICAL_BYTE_UNIT) -> dict[str, Any]:
+                  physical_unit: str = PHYSICAL_BYTE_UNIT,
+                  workers: int | None = None) -> dict[str, Any]:
     workspace = _fresh_directory(workspace)
     package_before = str(hash_tree(spec.package)["sha256"])
     inputs_before = str(hash_tree(spec.member.source_dir)["sha256"])
@@ -603,7 +609,8 @@ def run_execution(spec: ExecutionSpec, workspace: Path, timeout: int,
                 getattr(target_experiment, "target"),
                 measurement_pass=f"{spec.arm}_{spec.replicate}_{name}",
                 expected_package_sha256=spec.package_sha256, rtl_identity=rtl_identity,
-                decision=spec.gsim_decision, certificate=spec.gsim_certificate)
+                decision=spec.gsim_decision, certificate=spec.gsim_certificate,
+                workers=workers)
 
     facts = rtl_identity.get("rtl_facts") if isinstance(rtl_identity, Mapping) else None
     rtl_sha = facts.get("sha256") if isinstance(facts, Mapping) else None
