@@ -1368,6 +1368,7 @@ def _write_capsule(entry, binding, out_root):
     # verifies is worse than none, because it reports the assertion as checked.
     _verify_a_forbidden_lane_is_provable(d, cap, getattr(binding, "target", None))
     dirty = _cap_oracle_tiers(entry, cap) or dirty
+    dirty = _stamp_member_geometry(cap, binding) or dirty
     # THE TOLERANCE MUST BE FALSIFIABLE AT THIS GOLDEN'S SCALE, and here is the first point at which
     # both the capsule and its golden exist for EVERY writer -- the same reason the generalization stamp
     # lives here. A profile declares ONE absolute tolerance for a whole target, which is the right shape
@@ -1539,6 +1540,42 @@ def _validate_lane_declaration(entry: dict, binding) -> None:
             raise ValueError(
                 f"{entry.get('name')!r}: forbids lane(s) {unreachable} that {target!r} cannot populate "
                 f"anyway, so the assertion is vacuously true and tests nothing")
+
+
+
+def _stamp_member_geometry(cap: dict, binding) -> bool:
+    """Record which shape class an OBJECTIVE member occupies, and whether real models present it.
+
+    A perf member exists to make generated code faster on shapes that matter, and nothing in a
+    generated capsule said which shapes those were. MEASURED on this repo's corpus: 27 of the 29
+    classifiable OBJECTIVE members sit in a geometric class the target's own census -- derived from
+    real captures -- does not contain, and every reachable class in that census has no members. That
+    was invisible from every artifact and answerable only by running a script.
+
+    Stamped here for the same reason the generalization block is: four writers build their capsule
+    dict themselves, so a key handled in one of them is absent from three quarters of the corpus.
+
+    DELIBERATELY NOT A GATE. The census's mass-carrying class is recorded as unbuildable on this
+    target, so refusing off-census members would emit an empty corpus. Recording the placement makes
+    the hole readable from the tracked capsule; deciding what to do about it is the corpus's job, not
+    the writer's.
+    """
+    perf = cap.get("performance")
+    if not isinstance(perf, dict) or perf.get("member_class") != "OBJECTIVE":
+        return False
+    target = str(getattr(binding, "target", "") or "")
+    if not target:
+        return False
+    from merlin.perf.member_geometry import stamp_for
+
+    block = stamp_for(cap, target=target)
+    # None and a block saying `in_census: false` are different answers: the first is "this member's
+    # geometry is unreadable here", the second is "it was read and no capture presents it". Writing
+    # the first as the second would turn an unpriced op into a coverage claim.
+    if block is None or perf.get("shape_geometry") == block:
+        return False
+    perf["shape_geometry"] = block
+    return True
 
 
 def _write_capsule_readme(entry: dict, cap: dict, d: Path) -> None:
