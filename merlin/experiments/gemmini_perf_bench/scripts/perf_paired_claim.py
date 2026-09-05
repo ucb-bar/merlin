@@ -336,10 +336,18 @@ def _validated_declaration(descriptors: object,
             "measured dispersion, so the constant would be declared and never applied")
 
     from merlin.perf import claim_reach
-    try:
-        schedule = claim_reach.replicate_contract(members[0]["performance"])
-    except ValueError as exc:
-        raise _Refusal(f"the replicate contract is malformed: {exc}") from exc
+    schedules = []
+    for descriptor in members:
+        try:
+            schedules.append(claim_reach.replicate_contract(descriptor["performance"]))
+        except ValueError as exc:
+            raise _Refusal(f"the replicate contract is malformed: {exc}") from exc
+    # The floor lives beside the band rather than inside the acceptance block for these families, so
+    # it is NOT covered by the acceptance-equality check above. A cohort whose members disagree
+    # about it would have its schedule decided by whichever member happened to be read first.
+    if any(entry != schedules[0] for entry in schedules):
+        raise _Refusal("members disagree about the replicate floor their band is measured over")
+    schedule = schedules[0]
     if schedule is None:
         raise _Refusal(
             "this family's band is the MEASURED replicate dispersion and its declaration states no "

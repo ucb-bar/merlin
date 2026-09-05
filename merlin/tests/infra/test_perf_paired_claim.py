@@ -535,3 +535,14 @@ def test_the_synchronization_family_is_admissible_as_frozen():
     result = P.preflight_paired_claim(growth, replicates=SCHEDULE)
     assert result["status"] == "READY", result["refusal_reasons"]
     assert result["cohort"]["per_unit_growth_falsifier"] is True
+
+
+def test_members_disagreeing_about_their_replicate_floor_are_refused():
+    """The floor sits beside the band, not inside the acceptance block, so equality of the frozen
+    contract does not cover it; one member with a different floor must not decide the schedule."""
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+    drifted = _preflight_descriptors()
+    drifted[1]["performance"]["noise_band"]["minimum_replicate_count"] = 4
+    assert "disagree about the replicate floor" in _preflight_refusal(
+        P.preflight_paired_claim(drifted, replicates=SCHEDULE))
