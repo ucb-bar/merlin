@@ -261,6 +261,53 @@ def verify_shape_static_vision_patch(model, captured) -> str:
             "unbacked symint AND the aten::bucketize ExecuTorch has no kernel for")
 
 
+def upcast_bf16_for_quantized_kernels(model, *, torch) -> str:
+    """Upcast a model's bfloat16 tensors to fp32 before PT2E, or return "" if it has none.
+
+    ExecuTorch's quantized kernels HAVE NO BFLOAT16 BRANCH. ``dequantize_per_channel_out`` dispatches
+    its output over ``ET_FORALL_FLOATH_TYPES_WITH``, which is Float / Double / Half only, and aborts
+    on anything else -- ``op_dequantize.cpp: assert failed (false): Unhandled output dtype 15``
+    (15 is BFloat16). There is no second implementation to reach for: the optimized kernel library
+    defines no quantized operators at all, so no runner build configuration fixes this. Nor is the
+    gap reachable ahead of time from ``plan_kernels``, which resolves operators by NAME and cannot
+    see the dtype an operator will be handed.
+
+    So a bf16 module is not a quantizable ExecuTorch model. Upcasting is what makes the cell exist,
+    and it is the RIGHT comparand as well as the only one: merlin's int8 datapath quantizes fp32
+    activations to i8 against per-channel weight scales, so an fp32-activation reference is closer
+    in arithmetic to ours than a bf16 one, not further.
+
+    Scoped to bfloat16 specifically (fp16 and fp64 are left alone, both being dtypes those kernels
+    DO handle), and it reports the count it changed, so a model that was already fp32 is a visible
+    no-op rather than a silent one. No model that previously produced a wall can regress through
+    here: a bf16 quantized graph aborts in the portable kernel and XNNPACK does not partition bf16
+    either, so anything this touches was already unrunnable.
+    """
+    def _bf16(t):
+        return t is not None and t.dtype == torch.bfloat16
+
+    changed = 0
+    for mod in model.modules():
+        for name, param in list(mod._parameters.items()):
+            if _bf16(param):
+                mod._parameters[name] = torch.nn.Parameter(param.data.to(torch.float32),
+                                                           requires_grad=False)
+                changed += 1
+        for name, buf in list(mod._buffers.items()):
+            if _bf16(buf):
+                mod._buffers[name] = buf.to(torch.float32)
+                changed += 1
+    if not changed:
+        return ""
+    left = ([n for n, p in model.named_parameters() if _bf16(p)]
+            + [n for n, b in model.named_buffers() if _bf16(b)])
+    if left:
+        raise RuntimeError(f"bfloat16 tensors survived the fp32 upcast ({left[:5]}); refusing to "
+                           "export a graph ExecuTorch's quantized kernels cannot execute")
+    return (f"upcast {changed} bfloat16 tensor(s) to fp32 (ExecuTorch's quantized kernels dispatch "
+            "over Float/Double/Half only and abort on bf16: 'Unhandled output dtype 15')")
+
+
 def _load_loader(loader_path: Path):
     _apply_loader_compat_shims()
     spec = importlib.util.spec_from_file_location("_m2m_loader", loader_path)
@@ -765,6 +812,15 @@ def main() -> int:
         if _b.is_floating_point() or _b.is_complex():
             _b.requires_grad_(False)
 
+    # PT2E emits quantized_decomposed ops that run OUTSIDE the delegate, and those kernels handle
+    # no bfloat16. Scoped to the PT2E branch: --int8-whole-model is an eager module swap that emits
+    # none of them, so its cells keep the exact arithmetic they were measured with.
+    _bf16_note = ""
+    if args.quantize and not args.int8_whole_model:
+        _bf16_note = upcast_bf16_for_quantized_kernels(model, torch=torch)
+        if _bf16_note:
+            print(f"[{args.model_name}] {_bf16_note}", file=sys.stderr)
+
     npz = np.load(args.inputs_npz)
     keys = list(npz.keys())
     captured = tuple(torch.from_numpy(npz[k]) for k in keys)
@@ -774,10 +830,12 @@ def main() -> int:
         print(f"[{args.model_name}] {_arity_note}", file=sys.stderr)
 
     subgraph_note = ""
+    if _bf16_note:
+        subgraph_note = _bf16_note
     _shim_note = verify_shape_static_vision_patch(model, captured)
     if _shim_note:
         print(f"[{args.model_name}] {_shim_note}", file=sys.stderr)
-        subgraph_note = _shim_note
+        subgraph_note = (subgraph_note + "; " if subgraph_note else "") + _shim_note
     if args.int8_subgraph:
         # Replace the whole model with its REAL linear-heavy subgraph (a genuine slice, actual
         # weights) — the FALLBACK if whole-model int8 won't export.

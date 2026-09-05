@@ -384,23 +384,31 @@ def test_the_reference_accuracy_bar_is_recorded_so_it_can_be_compared_with_ours(
 
 # ------------------------------------------------- what makes a cosine semantic is TRAINED weights
 #
-# The label used to key off whether the golden was REPRODUCIBLE. smolvla separates the two
-# properties: random-init yet bit-for-bit reproducible (a seeded re-instantiation matches its
-# weights.safetensors over all 500 parameter tensors), so its golden is reachable and its cosine is
-# a real framework-vs-eager agreement -- and it was being labelled "gated against the model's
-# captured TRAINED-WEIGHT golden", of a model that has no trained weights.
+# The label used to key off whether the golden was REPRODUCIBLE, but what makes a cosine semantic is
+# whether the weights are TRAINED, and those are independent properties -- hence three branches.
+#
+# smolvla used to be this test's live example of the middle branch (random-init, reproducible
+# golden) on the strength of a params digest matching its weights.safetensors over all 500 tensors.
+# Measured 2026-09-05, that does not carry: an eager fp32 re-instantiation through the loader scores
+# cos 0.027 / rel 1.56 against golden.npy BEFORE any quantization or export, so the golden is NOT
+# reachable and smolvla now sits in RANDOM_INIT_GOLDEN_UNREPRODUCIBLE. The three-way distinction is
+# still the thing under test, so it is exercised on the REGISTRY CONTENTS rather than on whichever
+# model happens to occupy each branch today -- a test pinned to one model's classification fails when
+# the classification is corrected, which is backwards.
 
 
-def test_gate_basis_separates_reproducible_from_trained():
+def test_gate_basis_separates_reproducible_from_trained(monkeypatch):
     from merlin.baselines import bundle as _b
 
     assert _b.golden_unreproducible("bitvla") and _b.weights_are_random_init("bitvla")
-    # The case that motivated the split: random-init, but the golden IS reproducible.
-    assert _b.weights_are_random_init("smolvla") and not _b.golden_unreproducible("smolvla")
     assert not _b.weights_are_random_init("small_llama")
+    # The middle branch: random-init weights whose golden IS reachable. Constructed rather than
+    # borrowed from a model, so this keeps testing the branch after any reclassification.
+    monkeypatch.setattr(_b, "RANDOM_INIT_GOLDEN_UNREPRODUCIBLE", frozenset({"bitvla"}))
+    monkeypatch.setitem(_b.RANDOM_INIT_WEIGHTS, "_reproducible_random_init", "constructed for this test")
 
     unreproducible = gate_basis("bitvla")
-    reproducible = gate_basis("smolvla")
+    reproducible = gate_basis("_reproducible_random_init")
     trained = gate_basis("small_llama")
     assert unreproducible != reproducible, "the two random-init cases are not the same claim"
     assert "UNREPRODUCIBLE" in unreproducible

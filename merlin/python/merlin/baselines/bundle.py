@@ -337,7 +337,8 @@ def loader_env(model: str) -> dict[str, str]:
 # torch for THIS instantiation" — NOT a semantic match against a trained model. Every such cell must
 # say so; see ``lowering_exactness_note``. This mirrors the TVM arm (openvla cos=1.0) and the int8
 # path, which already recomputes its reference for the same reason.
-RANDOM_INIT_GOLDEN_UNREPRODUCIBLE: frozenset[str] = frozenset({"bitvla", "openvla"})
+RANDOM_INIT_GOLDEN_UNREPRODUCIBLE: frozenset[str] = frozenset(
+    {"bitvla", "openvla", "smolvla"})
 
 
 #: Models whose captured weights are RANDOM-INIT rather than a trained checkpoint, with the evidence
@@ -352,9 +353,14 @@ RANDOM_INIT_WEIGHTS: dict[str, str] = {
     "smolvla": ("the loader defaults M2M_SMOLVLA_PRETRAINED=0 and the capture was taken with it "
                 "unset; the pretrained checkpoint on disk was deliberately NOT used, because "
                 "capturing with it would have made the int8 cell a different model from the "
-                "already-accepted fp32 cell. Weights ARE reproducible: two independent processes "
-                "produce the same params digest, and it equals the digest of the bundle's own "
-                "weights.safetensors over all 500 parameter tensors."),
+                "already-accepted fp32 cell. The PARAMETER TENSORS are reproducible (two independent "
+                "processes agree on the params digest, which equals the digest of the bundle's own "
+                "weights.safetensors over all 500 tensors) -- but the GOLDEN is not: measured "
+                "2026-09-05, an eager fp32 re-instantiation through the loader scores cos 0.027 / "
+                "rel 1.56 against golden.npy, BEFORE any quantization or export, and cos -0.031 "
+                "with the zero-parameter perturbation the capture harness applies. A matching "
+                "weights digest therefore does not imply a reachable golden here, which is why this "
+                "model is also in RANDOM_INIT_GOLDEN_UNREPRODUCIBLE."),
     "bitvla": "random-init capture; the golden's weights are additionally unrecoverable",
     "openvla": "random-init capture; the golden's weights are additionally unrecoverable",
 }

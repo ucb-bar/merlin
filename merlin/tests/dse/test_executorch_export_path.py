@@ -349,10 +349,18 @@ def test_smolvla_qd8_exports_and_leaves_no_operator_without_a_kernel():
     note = (exp.summary or {}).get("subgraph_note", "")
     assert "FROZEN vision patch positions" in note, note
     assert "bit-identical" in note, note
+    # The third blocker, and the only one that survived a successful load: the model is bf16, and
+    # ExecuTorch's quantized kernels dispatch over Float/Double/Half only. On the board it loaded,
+    # then aborted mid-execution in op_dequantize.cpp with "Unhandled output dtype 15".
+    assert "upcast" in note and "bfloat16" in note, note
+    assert "pt2e-qd8" in note, note
     plan = et.plan_kernels(exp.pte)
     assert plan.missing == {}, plan.missing
-    assert plan.libraries == {"quantized"}, plan.libraries
-    # The qd8 recipe SURVIVED. Const-folding the weight dequant is a way to clear the same symint
-    # that silently turns the cell into a weight-only fp32 GEMM, and the two are indistinguishable
-    # from the outside except by this operator still being in the program.
-    assert plan.operators.get("quantized_decomposed::dequantize_per_channel.out", 0) > 0
+    # WHERE THE LINEARS RUN. In fp32 XNNPACK partitions them, so the qd8 ukernels are actually
+    # reached and no quantize/dequantize is left portable -- which is why no kernel library beyond
+    # the default set is needed. A portable `mm` here would mean a linear fell back to a plain float
+    # GEMM outside the delegate, the silent way this cell stops measuring int8 compute at all.
+    assert plan.libraries == set(), plan.libraries
+    assert "aten::mm.out" not in plan.operators, plan.operators
+    assert "aten::addmm.out" not in plan.operators, plan.operators
+    assert (exp.delegated_nodes, exp.total_call_nodes) == (219, 2977)
