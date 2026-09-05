@@ -252,6 +252,40 @@ def _load_ratchet(p: Path | None) -> set[str]:
     return out
 
 
+def uncovered_debt(reports: list[dict], ratchet: set) -> list[str]:
+    """Every un-ratcheted coverage gap, across ALL FIVE axes, as ratchet keys.
+
+    Pulled out of ``main()`` because one axis silently went missing there: shape geometry was
+    measured and printed with the same un-ratcheted marker as the rest and never accumulated, so
+    ``--fail-on-uncovered`` returned 0 on it. A single function is what lets a test assert that an
+    uncovered gap on EACH axis reaches the verdict.
+    """
+    bad = [_debt(r["target"], u["cell"]) for r in reports if r["status"] == "ok"
+           for u in r["uncovered"] if _debt(r["target"], u["cell"]) not in ratchet]
+    # Composition gaps carry a `composition` axis tag so a shape and a cell can never collide in one flat
+    # file, and so a reader of the ratchet can see which axis each debt belongs to.
+    bad += [_debt(r["target"], k, "composition") for r in reports if r["status"] == "ok"
+            for k in ((r.get("composition") or {}).get("uncovered") or [])
+            if _debt(r["target"], k, "composition") not in ratchet]
+    bad += [_debt(r["target"], k, "memory") for r in reports if r["status"] == "ok"
+            for k in ((r.get("memory_mapping") or {}).get("uncovered") or [])
+            if _debt(r["target"], k, "memory") not in ratchet]
+    # The negative lane carries its own axis tag for the same reason the others do: a family name and a
+    # composition shape must never collide in one flat ratchet file.
+    bad += [_debt(r["target"], k, "host_only") for r in reports if r["status"] == "ok"
+            for k in ((r.get("host_only") or {}).get("uncovered") or [])
+            if _debt(r["target"], k, "host_only") not in ratchet]
+    # Shape geometry was the fifth axis and the only one that was DECORATION: it was measured, printed
+    # with the same `*` un-ratcheted marker as the others, and never accumulated here -- so an aspect
+    # ratio no capsule reproduces, and the share of real contraction MAC work sitting in it, printed as
+    # a violation while --fail-on-uncovered returned 0. The ratchet file has no `geometry:` line for the
+    # same reason: nothing has ever been forced to record one.
+    bad += [_debt(r["target"], k, "geometry") for r in reports if r["status"] == "ok"
+            for k in ((r.get("shape_geometry") or {}).get("uncovered") or [])
+            if _debt(r["target"], k, "geometry") not in ratchet]
+    return bad
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -412,21 +446,8 @@ def main(argv=None) -> int:
             for n in (r["diagnostics"].get("notes") or []):
                 print(f"   note: {n}")
 
-    bad = [_debt(r["target"], u["cell"]) for r in reports if r["status"] == "ok"
-           for u in r["uncovered"] if _debt(r["target"], u["cell"]) not in ratchet]
-    # Composition gaps carry a `composition` axis tag so a shape and a cell can never collide in one flat
-    # file, and so a reader of the ratchet can see which axis each debt belongs to.
-    bad += [_debt(r["target"], k, "composition") for r in reports if r["status"] == "ok"
-            for k in ((r.get("composition") or {}).get("uncovered") or [])
-            if _debt(r["target"], k, "composition") not in ratchet]
-    bad += [_debt(r["target"], k, "memory") for r in reports if r["status"] == "ok"
-            for k in ((r.get("memory_mapping") or {}).get("uncovered") or [])
-            if _debt(r["target"], k, "memory") not in ratchet]
-    # The negative lane carries its own axis tag for the same reason the others do: a family name and a
-    # composition shape must never collide in one flat ratchet file.
-    bad += [_debt(r["target"], k, "host_only") for r in reports if r["status"] == "ok"
-            for k in ((r.get("host_only") or {}).get("uncovered") or [])
-            if _debt(r["target"], k, "host_only") not in ratchet]
+    bad = uncovered_debt(reports, ratchet)
+
     # ⚠️ A TARGET THAT COULD NOT BE AUDITED HAS ESTABLISHED NOTHING. Every `bad` list above filters on
     # `status == "ok"`, so a target whose descriptor, contract or corpus could not be resolved
     # contributes no debt and the gate returns 0 -- reporting success for a question it never asked.

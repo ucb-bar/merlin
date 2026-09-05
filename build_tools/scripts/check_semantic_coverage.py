@@ -84,11 +84,22 @@ def _targets_with_profiles() -> list[str]:
     so it is untracked and kept out of the grant every arm reads). The sidecar is not a target: taking
     ``Path.stem`` of it yields ``"radiance.hidden"`` and the audit then reports a missing contract for a
     target that does not exist, burying the real findings under one per sidecar.
+
+    That was fixed for ``.hidden`` alone and the SHAPE recurred: this directory also holds shared and
+    synthetic profiles, whose stems are likewise not targets. Excluding one suffix by name would just
+    queue up the next recurrence, so the rule is structural and closed by construction -- a target
+    profile is ``<target>.yaml``, one stem component, no leading underscore. Anything dotted is a
+    SIDECAR of the target named by its first component, and anything underscore-led is a shared
+    fragment; neither is a target and neither may be audited as one. Measured before this: 7 of the
+    gate's 9 findings were ``no_contract`` for ``_perf`` and six ``*.synth`` stems, which buried the two
+    real findings and left a blocking CI gate permanently red -- which is how a red gate becomes an
+    ignored one.
     """
     d = repo_root() / "merlin" / "contract" / "capsules" / "profiles"
     if not d.is_dir():
         return []
-    return sorted(p.stem for p in d.glob("*.yaml") if not p.stem.endswith(".hidden"))
+    return sorted(p.stem for p in d.glob("*.yaml")
+                  if "." not in p.stem and not p.stem.startswith("_"))
 
 
 def audit(target: str) -> list[dict]:

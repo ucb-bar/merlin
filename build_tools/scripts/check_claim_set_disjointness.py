@@ -176,6 +176,30 @@ def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
     return row
 
 
+#: How each status `audit()` can put on a row maps to a verdict. These were two literal tuples inline in
+#: `main()`, and `claim_model_uncaptured` -- the status this file's own check #2 exists to raise --
+#: appeared in NEITHER, so it was computed, printed, and then structurally unable to change the exit
+#: code under any flag. A claim measured over a model nobody captured "reads identically to a passing
+#: one"; it read that way here too.
+_VIOLATION = frozenset({"circular", "overlap"})
+_UNMEASURED = frozenset({"claim_model_uncaptured", "no_requirement", "contract_unresolved",
+                         "no_captures", "unverifiable", "empty_derivation"})
+_CLEAN = frozenset({"ok"})
+
+
+def verdict_bucket(status: str) -> str:
+    """``"violation"`` | ``"unmeasured"`` | ``"clean"`` for one row status.
+
+    CLOSED BY CONSTRUCTION: a status this gate does not know falls through to ``unmeasured``, never to
+    ``clean``. An unclassified status must not be able to arrive as silence.
+    """
+    if status in _VIOLATION:
+        return "violation"
+    if status in _CLEAN:
+        return "clean"
+    return "unmeasured"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -190,12 +214,16 @@ def main(argv=None) -> int:
     except Exception as exc:                       # noqa: BLE001
         msg = f"claim-model declaration unreadable: {type(exc).__name__}: {exc}"
         print(f"[FAIL] {msg}", file=sys.stderr)
-        return 2 if a.fail_on_unverifiable else 0
+        # UNCONDITIONAL. The claim-model declaration is this gate's entire input; if it will not load,
+        # nothing below was checked. Gating that on --fail-on-unverifiable printed the word FAIL and
+        # exited 0 under the default invocation -- a green that cannot fail, on the file that defines
+        # the held-out set. The sibling gates spell this case 2 unconditionally.
+        return 2
 
     targets = a.target or _spec_targets()
     if not targets:
-        print("[claim-set] no target ships a conformance spec; nothing to audit")
-        return 2 if a.fail_on_unverifiable else 0
+        print("[claim-set] no target ships a conformance spec; nothing to audit", file=sys.stderr)
+        return 2  # nothing audited is not nothing wrong; see the note above
 
     bundles = _bundles()
     rows = [audit(t, bundles) for t in targets]
@@ -224,10 +252,12 @@ def main(argv=None) -> int:
         for g in CM.known_derivation_gaps():
             print(f"  [gap] {g.get('family')}/{g.get('shape_class')}: {g.get('reason', '').strip()}")
 
-    circular = [r for r in rows if r["status"] == "circular"]
-    unverifiable = [r for r in rows if r["status"] in
-                    ("no_captures", "unverifiable", "empty_derivation", "overlap",
-                     "no_requirement", "contract_unresolved")]
+    circular = [r for r in rows if verdict_bucket(r["status"]) == "violation"]
+    unverifiable = [r for r in rows if verdict_bucket(r["status"]) == "unmeasured"]
+    for r in unverifiable:
+        if r["status"] not in _VIOLATION and r["status"] not in _UNMEASURED:
+            print(f"[claim-set] status {r['status']!r} ({r['target']}) is not classified by this gate; "
+                  f"treating it as unverifiable rather than as a pass", file=sys.stderr)
     if a.fail_on_circular and circular:
         print(f"[FAIL] {len(circular)} target(s) derive a requirement from a held-out model",
               file=sys.stderr)
