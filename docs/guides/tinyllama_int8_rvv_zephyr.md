@@ -3,7 +3,7 @@ title: TinyLlama int8 on multicore RVV under Zephyr — end to end
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-26
+last_verified: 2026-09-04
 related: [getting_started, rvv_e2e, zephyr, model2mlir, reproducibility, compilation_strategies, vision_workloads_rvv_zephyr]
 code_refs:
   - merlin/python/merlin/compile_cli.py
@@ -15,6 +15,8 @@ code_refs:
   - merlin/python/merlin/targetgen/publish.py
   - build_tools/scripts/k1_multicore_scaling.py
   - build_tools/scripts/check_repro_env.py
+  - build_tools/scripts/make_w8a8_golden.py
+  - build_tools/scripts/make_w8a8_independent_golden.py
 ---
 
 # TinyLlama int8 on multicore RVV under Zephyr
@@ -82,6 +84,54 @@ W8A8 *does* legitimately diverge from fp32 — cos 0.976 on the full tensor, and
 top-1 does not match fp32. That is quantization, and it is why the gate has a separate `w8a8`
 tier rather than one fp32-tight threshold.
 
+### `golden_w8a8.npy` decides EXECUTION, not arithmetic
+
+Read the table above for what it says: the board matched the **host**. `golden_w8a8.npy` is
+written by `make_w8a8_golden.py`, which computes it with *merlin's own* int8 datapath
+(`dispatch_runtime.run_model(int8_compute=True)`). Both sides of that comparison are the same
+program, so a host run scores `cos 1.0 / rel 0.0` against it no matter what the arithmetic does —
+`rel` of exactly `0.0` over a 250-op transformer is the tell, not a triumph. Measured 2026-09-04:
+re-running `spectformer_int8_full` with the **pre-fix** `passes_quant_int` reproduced that
+bundle's shipped `golden_w8a8.npy` bit-for-bit (maxabs 0.0), while the post-fix code differs by
+0.0755. The reference was a photograph of the runtime frozen at the 2026-08-18 code.
+
+That reference answers "did the device reproduce what the host compiler computes", which is what
+the `0.484` hunt above actually needed. It cannot answer "is our int8 arithmetic right". Each
+golden now records which kind it is in a `golden_w8a8.provenance.json` beside it.
+
+To decide the arithmetic you need a reference from **outside** the compiler:
+
+```bash
+.venv/bin/python build_tools/scripts/make_w8a8_independent_golden.py --list
+.venv/bin/python build_tools/scripts/make_w8a8_independent_golden.py spectformer_int8_full
+# gemma2_2b pins the SMOKE layer count in capture.toml; the `_full` bundle was captured without it
+.venv/bin/python build_tools/scripts/make_w8a8_independent_golden.py gemma2_2b_int8_full \
+    --env M2M_GEMMA_LAYERS= --env M2M_GEMMA_SESSION= --env M2M_SEQ=128
+```
+
+It computes the reference with torchao's `int8_dyn_act_int8_weight` in torch eager, inside the
+model's own capture venv, and **refuses to write unless the activation-quantized instance
+reproduces the bundle's own quantized weights bit-for-bit**. That refusal is the artifact: a
+reference belonging to different weights than the bundle ships manufactures failures (or passes)
+that have nothing to do with the datapath, and is indistinguishable from a real one once written.
+It writes `golden_w8a8.independent.npy` **beside** `golden_w8a8.npy`, never over it — board runs
+grade against the shipped file, and changing a golden underneath a running grade is its own
+failure mode.
+
+The two references disagree by much more than the tier's own bar, so which one you cite decides
+the verdict (host int8 datapath, 2026-09-04, after the i-exp softmax fix `3d74bbe0`):
+
+| bundle | vs `golden_w8a8.npy` (self) | vs `golden_w8a8.independent.npy` |
+|---|---|---|
+| `small_llama_int8_consistent` | cos 0.9999655, rel 0.0084 | cos 0.9999655, rel 0.0084 *(the shipped file here IS the independent one)* |
+| `spectformer_int8_full` | cos 0.9999709, rel 0.0153 | **cos 0.9976, rel 0.175** |
+
+`spectformer` looks all but converged against its own frozen output and is a long way from the
+real W8A8 arithmetic. Note also that T1's per-element term (`max_rel < 0.05`) is not satisfiable
+by any correct implementation: the independent reference itself measures per-element max-rel
+1.313 against the fp32 golden under the same mask. Quote `tiers` / `tier_ok` / `per_element_basis`
+rather than a bare `ok`.
+
 ## 0. Prerequisites
 
 Do the base install and `.env` setup in [Getting started](getting_started.md) first, then confirm
@@ -130,6 +180,10 @@ reference](#grade-int8-against-an-int8-reference) above. If a bundle lacks `gold
 .venv/bin/python build_tools/scripts/make_w8a8_golden.py --list        # coverage
 .venv/bin/python build_tools/scripts/make_w8a8_golden.py tiny_llama_int8_full
 ```
+
+That writes the EXECUTION reference. For the independent one — the only reference that can decide
+the arithmetic — see [`golden_w8a8.npy` decides EXECUTION, not
+arithmetic](#golden_w8a8npy-decides-execution-not-arithmetic).
 
 int8 is the only measured-working quantized format today — `fp8`/`int4` are a documented plan, not
 a claim. See [model2MLIR frontend](model2mlir.md).
