@@ -2929,3 +2929,172 @@ register(ImprFeature(
         "carrying the unit (hardware_pins.yaml: saturn_opu_int8) at build time, because the "
         "instruction encodings are derived from its RTL rather than written down. Default-off."),
 ))
+
+
+# ---- post-contraction elementwise fusion --------------------------------------------
+# The stage this feature turns on ALREADY EXISTS in `pipeline.build_rvv_pipeline`, sitting directly
+# above `linalg-generalize-named-ops` with a paragraph of measurement explaining why it is the
+# load-bearing one. It was reachable only through the `MERLIN_FUSE_POST` environment variable -- and
+# no fork can vary an environment variable. That is the same gap `vectorize_non_contraction_generics`
+# was built to close for `MERLIN_VEC_RANK`: a lever the tuning loop cannot name is a lever the tuning
+# loop cannot find, however well the pipeline supports it. Naming it here makes it selectable; the env
+# var still forces it on for a manual A/B, and the splice below declines to double it when it does.
+#
+# WHAT IT IS FOR, measured on `small_llama_int8_consistent` at the config that is currently best
+# (`prepack_weight_layout, perop_register_block, promote_buffers_to_stack, expand_memref_copy,
+# cse_through_provenance`). A per-op board profile of that model puts `linalg.generic` at 16.5% of
+# whole-model runtime across 191 ops in 26 structural classes -- a long tail with no dominant member,
+# so there is nothing to special-case even if one wanted to. Re-priced with `cse_through_provenance`
+# ON (which collapses the rotary cos/sin/powf duplicates 8:1 and takes the module 163 -> 112
+# generics), what is LEFT at the top of the tail is the dynamic per-row activation quantization --
+# an `absf`/`maximumf` amax scan, a scale divide, and a `divf`/`roundeven`/`min`/`max`/`fptosi`
+# quantize pass -- together with the `sitofp`/`mulf`/`mulf` requant that `cse` does not touch at all.
+#
+# Read the IR of one of those and the cost is not the arithmetic. `linalg-specialize-generic-ops`
+# (which runs just above, to recover the contraction NAMES the schedule matches on) un-fuses every
+# elementwise chain, so each per-row scale is materialized into a full-size temporary before the op
+# that divides by it:
+#
+#     %scale = ... -> tensor<8xf32>
+#     %b = linalg.broadcast ins(%scale : tensor<8xf32>) outs(... : tensor<8x128xf32>) dimensions = [1]
+#     %q = linalg.generic ins(%act, %b) { divf; roundeven; min; max; fptosi } -> tensor<8x128xi8>
+#
+# Counted over the whole prepared module: 50 `linalg.broadcast`, reading 17,476 bytes and WRITING
+# 242,944 -- a 13.9x amplification for zero arithmetic, on a model whose weights are 602 KB. Running
+# the stage takes that to 13 broadcasts, 3,012 bytes read and 60,160 written: 182,784 bytes per
+# inference that are no longer materialized, and the consumer reads the small operand through its own
+# indexing map instead.
+#
+# ON THE EMITTED CODE (K1 rv64gcv cross-compile, same package, same feature set, the ONLY difference
+# being this stage; `rvv_audit.audit_binary` -> `compute_symbol()` = `forward`):
+#
+#     forward instructions      35,253 -> 31,348   (-11.1%)
+#       vector                  14,053 -> 12,561
+#       scalar compute          15,319 -> 13,802
+#       vsetvl                   1,118 ->    954
+#     forward vector fraction   0.4784 -> 0.4765   (flat -- see below)
+#     model.o                  189,008 -> 170,664 bytes
+#     stack alloca sites           118 ->    103   (344,640 -> 318,848 bytes)
+#     model.ll digest       1cd391e1cae90ae3 -> d5868600a852e88f
+#
+# The vector fraction is FLAT on purpose, and reporting it as a win would be wrong: the broadcast
+# loops were themselves partly vectorized, so deleting them removes vector and scalar instructions in
+# roughly equal proportion. The claim is that ~11% of the instructions in `forward` were spent
+# materializing values their consumer could read directly -- not that what remains is better
+# vectorized.
+#
+# NUMERICS: bit-identical. On spike (bare-metal whole-model image, delivery configuration, VLEN=256),
+# the output prefix digest is `cc60e8a90270ec1e` with and without the stage, and every gate figure
+# agrees to the last digit against the independent references (fp32 cos 0.9999725818634033 / rel
+# 0.007327893200253357 / argmax True; w8a8 cos 0.9999655485153198 / rel 0.008363386664235835;
+# tiers ['fp32','w8a8'], tier_ok 'fp32_cos_only', ok True).
+#
+# THE WALL IS UNMEASURED. Everything above is static, and static evidence has been wrong here twice
+# in one day: `fold_weight_transpose` removed ops and shrank the object and cost 1.09x, and a
+# five-lever stack went 1.815x -> 1.943x. Fewer instructions is a reason to MEASURE this, not a
+# result. It is default-off like every other lever, and it is ranked in the whole-model proposer so
+# the beam prices it on the board instead of anyone assuming the sign.
+#
+# NOT `fuse_elementwise_after_generalize`, WHICH IS REFUTED -- read this before assuming the two are
+# the same lever with different names. That one inserts a bare `linalg-fuse-elementwise-ops` AFTER
+# `linalg-generalize-named-ops`, and it MEASURED 1.22x SLOWER on this same model (3,543,517 ->
+# 4,313,041 ns): its scalar bucket fell 3.1 -> 2.8 ms but the CONTRACTION rose 1.8 -> 2.8 ms, because
+# by then every named op is generic, the dequant chain fuses into the producers, and that perturbs the
+# shape the transform schedule had already vectorized the contraction into. Its own note concludes the
+# broadcast waste is real but needs something that does not disturb the contraction.
+#
+# This feature runs the stage on the OTHER SIDE of that anchor -- before generalization, while the
+# contraction's neighbours are still named ops the blanket fusion cannot swallow -- and adds the
+# `canonicalize`/`cse` the refuted one omits. That is not a cosmetic difference, and the emitted code
+# says so. Decoded from both objects with `rvv_audit._insn_mnemonic`:
+#
+#     vwmacc     152 -> 152        the int8 contractions, byte for byte as vectorized as before
+#     vmacc        4 ->   4
+#     vredmax    104 -> 104        the amax reductions, likewise untouched
+#     vle32.v  2,116 -> 1,729      \
+#     vse32.v    809 ->   581       |  the temporaries that stop being written and re-read
+#     vfmul.vv   540 ->   263      /
+#     add      4,390 -> 3,763      \
+#     li       2,142 -> 1,641       |  1,547 scalar instructions of loop bookkeeping for those loops
+#     addi     2,475 -> 2,056      /
+#
+# The failure mode of the refuted sibling is a number this one can be checked against, and it does not
+# move. WHAT DOES GET WORSE, recorded rather than buried: `fmul.s` 0 -> 82 and `fsw` 128 -> 201 -- a
+# fused op leaves a small scalar f32 tail where none existed. It is dwarfed by the 277 `vfmul.vv` it
+# replaces, but it is a scalarization, and if this lever ever measures badly that is the first place
+# to look.
+#
+# STRUCTURE-KEYED: the hooks name an upstream MLIR pass and one anchor pass, no model, shape, dtype or
+# target. Nothing here knows what a quantize is.
+FUSE_ELEMENTWISE_NAME = "fuse_elementwise_post_contraction"
+
+#: The stage, in the order `build_rvv_pipeline` documents for it. The `canonicalize`/`cse` are NOT
+#: decoration: measured on the tagged IR of another model, fusion alone gives broadcast 277 /
+#: tensor.empty 1415 and fuse+canonicalize+cse gives 245 / 68 -- most of the temporary collapse is
+#: the cleanup, not the fusion.
+FUSE_ELEMENTWISE_STAGE: tuple[str, ...] = (
+    "func.func(linalg-fuse-elementwise-ops)", "canonicalize", "cse")
+
+#: The pass the stage must sit IMMEDIATELY IN FRONT OF. Anchoring on this one rather than on an index
+#: is what keeps the stage on the correct side of the two passes whose order is a correctness
+#: property: it must run AFTER `transform-interpreter` (fusing earlier folds matmuls into generics and
+#: `ops{["linalg.matmul"]}` then matches nothing -- a silent 0-vectorization) and BEFORE bufferization
+#: (afterwards there are no producer/consumer tensors left to fuse).
+FUSE_ELEMENTWISE_ANCHOR = "func.func(linalg-generalize-named-ops)"
+
+
+def _fuse_elementwise_pipeline(passes: list[str]) -> list[str]:
+    """Splice :data:`FUSE_ELEMENTWISE_STAGE` in just before :data:`FUSE_ELEMENTWISE_ANCHOR`.
+
+    Two refusals, both fail-closed, because "the feature was enabled and changed nothing" is the
+    failure mode this repo keeps re-learning:
+
+    * the stage already being present means ``MERLIN_FUSE_POST`` put it there, so this returns the
+      list unchanged rather than fusing twice (which is not merely wasteful -- a second
+      ``canonicalize``/``cse`` pair changes the emitted code, so a manual A/B and a feature-driven one
+      would not be comparing the same build);
+    * the anchor being absent means this is not a pipeline the stage belongs in, and inserting at a
+      guessed index would put the fusion on the wrong side of the transform interpreter. Raise, so the
+      build fails loudly instead of quietly emitting the baseline while reporting the feature applied.
+    """
+    if FUSE_ELEMENTWISE_STAGE[0] in passes:
+        return list(passes)
+    if FUSE_ELEMENTWISE_ANCHOR not in passes:
+        raise ValueError(
+            f"{FUSE_ELEMENTWISE_NAME} was requested but the pass list carries no "
+            f"{FUSE_ELEMENTWISE_ANCHOR!r} to anchor the fusion stage against, so there is no position "
+            f"that is provably after the transform interpreter and before bufferization. Refusing to "
+            f"insert at a guessed index and report the feature as applied.")
+    at = passes.index(FUSE_ELEMENTWISE_ANCHOR)
+    return [*passes[:at], *FUSE_ELEMENTWISE_STAGE, *passes[at:]]
+
+
+register(ImprFeature(
+    name=FUSE_ELEMENTWISE_NAME,
+    action_class="PASS",
+    description=(
+        "Run `linalg-fuse-elementwise-ops` (+ canonicalize/cse) after the transform schedule has "
+        "matched and vectorized the contractions, so the elementwise producer->consumer chains that "
+        "`linalg-specialize-generic-ops` un-fuses collapse again and each line is touched once. The "
+        "stage already existed in build_rvv_pipeline but was reachable only through the "
+        "MERLIN_FUSE_POST environment variable, which no fork can vary -- so the tuning loop could "
+        "not select it. Attacks the linalg.generic long tail (16.5% of int8 whole-model runtime "
+        "across 191 ops in 26 classes): the per-row activation-quantize and requant generics each "
+        "read a scale that `specialize` materialized into a full-size temporary first. MEASURED on "
+        "small_llama_int8_consistent at the current best config -- linalg.broadcast 50 -> 13, "
+        "242,944 -> 60,160 bytes written per inference for zero arithmetic (13.9x amplification "
+        "removed); emitted `forward` 35,253 -> 31,348 instructions (-11.1%, vector 14,053 -> 12,561 "
+        "and scalar 13,802 from 15,319, so the vector FRACTION is flat at 0.478 -> 0.477 by "
+        "construction), model.o 189,008 -> 170,664 bytes, stack alloca 118 -> 103 sites. Output "
+        "BIT-IDENTICAL on spike (prefix digest cc60e8a90270ec1e either way; tiers ['fp32','w8a8'], "
+        "tier_ok 'fp32_cos_only', ok True, every gate figure equal to the last digit). NOT the "
+        "refuted `fuse_elementwise_after_generalize`, which runs the stage on the far side of the "
+        "generalize anchor and measured 1.22x SLOWER by perturbing the already-vectorized "
+        "contraction: here vwmacc stays 152 and vredmax 104 while vle32.v 2,116 -> 1,729 and "
+        "vse32.v 809 -> 581. (fmul.s 0 -> 82 is a small scalar tail this introduces.) THE WALL IS "
+        "UNMEASURED -- fewer instructions is a reason to measure, not a result: on this same model a "
+        "transpose fold that removed ops and shrank the object measured 1.09x SLOWER. Structure-keyed "
+        "(names one upstream pass and one anchor pass; no model, shape, dtype or target). "
+        "Default-off; baseline byte-identical."),
+    edit_pipeline=_fuse_elementwise_pipeline,
+))

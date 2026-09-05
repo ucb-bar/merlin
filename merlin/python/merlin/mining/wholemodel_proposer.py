@@ -45,9 +45,16 @@ from ..kernels.knobs import ForkProposal
 # silently never proposed rather than rejected. Register it here, where the list lives.
 from ..llvmlower.transpose_maps import ensure_registered as _register_fold_weight_transpose
 from ..llvmlower.weight_prepack import ensure_registered as _register_prepack_weight_layout
+# `cse_through_provenance` is registered by `llvmlower.lower`, which this module never imports -- so
+# `_composes` raised KeyError and returned False for EVERY parent stack carrying it. That is not a
+# lever of its own being skipped: it is in the config the search currently calls best, so while it was
+# missing here NO lever could be proposed on top of the winner, and the beam silently had nothing to
+# build on. Exactly the failure the comment above describes, one import short of being prevented.
+from ..llvmlower.prov_cse import ensure_registered as _register_cse_through_provenance
 
 _register_fold_weight_transpose()
 _register_prepack_weight_layout()
+_register_cse_through_provenance()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
@@ -132,6 +139,20 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # ('free','malloc','memcpy','memrefCopy','memset') with 24 prologue @memrefCopy sites; adding this
     # takes it to ('free','malloc','memset') with 0 memrefCopy and 0 memcpy.
     ("expand_memref_copy", False),                        # envelope: memrefCopy/memcpy -> emitted loops
+    # The third lever on the same byte-traffic axis, and the one that attacks the linalg.generic long
+    # tail rather than the copies around it. `linalg-specialize-generic-ops` has to run before the
+    # schedule (it recovers the contraction NAMES the transform arms match on), and it un-fuses every
+    # elementwise chain on the way past -- so each per-row quantize/requant scale is materialized into
+    # a full-size temporary before the op that reads it. MEASURED on small_llama int8 at this list's
+    # own winner: 50 `linalg.broadcast` writing 242,944 bytes per inference from 17,476 read (13.9x,
+    # zero arithmetic) -> 13 writing 60,160; emitted `forward` 35,253 -> 31,348 instructions, model.o
+    # 189,008 -> 170,664 B, stack alloca 118 -> 103 sites, output BIT-IDENTICAL on spike. Ranked LAST
+    # of the additive passes deliberately: the wall is UNMEASURED, and on this same model a transpose
+    # fold with an equally clean static case measured 1.09x SLOWER -- pricing it is the beam's job,
+    # which is the whole reason it is listed instead of defaulted. No `ensure_registered` import is
+    # needed above: unlike the satellite-module levers this one is registered eagerly by
+    # `impr_features` itself, where its `edit_pipeline` hook lives.
+    ("fuse_elementwise_post_contraction", False),         # tail: broadcast/elementwise -> fused, 50 -> 13
     ("vectorized_transcendental_activation", True),       # gelu/sigmoid/silu: closes the 10-17x activation gap
 ]
 
