@@ -132,16 +132,43 @@ def test_a_target_with_no_facts_reports_unknown_and_never_zero():
     assert 0 not in (d["separate_accumulator_space"], d["array"]), "an unread quantity is not a zero"
 
 
-@pytest.mark.parametrize("target,expect", [("muon", ABSENT), ("atlas", UNKNOWN)])
-def test_the_two_real_targets_that_show_both_states(target, expect):
-    """Both states occur in this repo's own artifacts: one target's extractor emits ``memories: []`` while
-    another's carries no ``memories`` key at all (mlc discovers 39 SRAMs for it and declines to classify
-    any of them, so the capacity obligation is undecidable there -- correctly)."""
+def test_a_target_whose_facts_name_no_memory_list_stays_undeterminable():
+    """UNKNOWN on a real artifact, not just a synthetic one: this target's facts carry no ``memories``
+    key at all (mlc discovers 39 SRAMs for it and declines to classify any of them), so the capacity
+    obligation is undecidable there -- correctly. ABSENT vs UNKNOWN is pinned against synthetic facts
+    above, because which real target shows which state depends on what has been extracted in this
+    checkout and that is not a property of this module."""
+    target = "atlas"
     if not rtl_facts.rtl_facts_path(target).is_file():
         pytest.skip(f"no RTL-facts artifact for {target!r} in this checkout")
     sp = derive_address_space(target)
-    assert sp.stores_status == expect, [u.to_dict() for u in sp.unknowns]
+    assert sp.stores_status == UNKNOWN, [u.to_dict() for u in sp.unknowns]
     assert sp.stores == () and sp.separate_accumulator_space is None
+
+
+def test_a_simt_target_derives_a_lane_granular_store_whose_row_is_a_lane_count():
+    """The SIMT store is the case ``lane_granular`` exists for. This target has no systolic array, so
+    its access width comes from a LANE COUNT rather than from an array edge plus a datapath element --
+    and that is why it has ``row_elems`` while ``row_bytes`` stays None: the row holds whatever element
+    the program puts in it, so the BYTE width is what varies, not the element count.
+
+    The distinction is load-bearing. A store whose element width merely could not be LINKED to a
+    datapath also has no ``element_bits``, and treating that as lane-granular would answer "16 elements
+    per row" for a store whose row width is genuinely unknown. Only a store that SAYS it is lane-granular
+    may answer, which is why ``elems_per_row()`` is checked here and not inferred from the None."""
+    target = "muon"
+    if not rtl_facts.rtl_facts_path(target).is_file():
+        pytest.skip(f"no RTL-facts artifact for {target!r} in this checkout")
+    sp = derive_address_space(target)
+    assert sp.stores_status == DERIVED, [u.to_dict() for u in sp.unknowns]
+    assert len(sp.stores) == 1, sp.stores
+    store = sp.stores[0]
+    assert store.lane_granular is True
+    assert store.row_bytes is None and store.row_elems, store.to_dict()
+    assert store.elems_per_row() == store.row_elems
+    # No datapath, so no element width -- and the module says so rather than substituting a byte.
+    assert store.element_bits is None
+    assert "element_bits" in sp.unknown_quantities()
 
 
 def test_an_unlinkable_element_width_leaves_the_row_unknown_not_assumed():
