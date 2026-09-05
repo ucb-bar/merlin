@@ -1805,6 +1805,7 @@ def _cost_model_artifact(target: str) -> Path | None:
 
 
 def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
+                            candidate_root: Path | None = None,
                             peak_macs_per_cycle: int | None,
                             achievable_macs_per_cycle: float | None,
                             target: str = "") -> dict[str, Any]:
@@ -1824,9 +1825,21 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     from merlin.perf.work_volume import work_from_command_buffer          # noqa: PLC0415
 
     def _load(path: Path) -> Mapping[str, Any]:
+        # A RELATIVE PATH HERE HAD NO BASE, and this action runs in the HOST process rather than
+        # under the sandbox's --chdir, so a relative argument resolved against a directory the agent
+        # has never seen. Three bases were live in one tool: the agent's shell sees
+        # `submission/performance/...`, a brokered subprocess is chdir'd into the submission so it
+        # sees `performance/...`, and this host action saw neither. Measured: the agent spent two
+        # calls discovering that, having been taught the second convention by the emit action one
+        # call earlier, and the refusal it got back said "absent or linked" -- a claim about the
+        # filesystem, when the actual fault was the base.
         resolved = Path(path)
+        if not resolved.is_absolute():
+            resolved = (candidate_root / resolved) if candidate_root else resolved
         if resolved.is_symlink() or not resolved.is_file():
-            raise StageGateError(f"command buffer is absent or linked: {resolved}")
+            hint = ("" if Path(path).is_absolute() or candidate_root is None else
+                    f" (a relative path is resolved against the candidate root {candidate_root})")
+            raise StageGateError(f"command buffer is absent or linked: {resolved}{hint}")
         return json.loads(resolved.read_text(encoding="utf-8"))
 
     out: dict[str, Any] = {"schema_version": 1, "kind": "host_owned_command_buffer_analysis",
@@ -3074,6 +3087,7 @@ class _Broker:
                 evaluator = self.feedback_evaluator
                 document = analyze_command_buffers(
                     Path(rendered["baseline_json"]), Path(rendered["candidate_json"]),
+                    candidate_root=Path(self.candidate),
                     peak_macs_per_cycle=getattr(evaluator, "peak_macs_per_cycle", None),
                     achievable_macs_per_cycle=getattr(
                         evaluator, "achievable_macs_per_cycle", None),

@@ -438,6 +438,11 @@ peak for context only.
 
 ### The free screen: `analyze-command-buffers`
 
+`baseline_json` and `candidate_json` are paths to emitted command buffers. **A relative path is
+resolved against your submission root** -- the same base the brokered compile commands use, so
+`performance/out.command_buffer.json` works and an absolute path always works. Your own shell sits
+one level above that, so a path that works in `bash` may need its leading `submission/` dropped here.
+
 This action costs **no oracle time and no measurement budget**. It reads two emitted command buffers
 and nothing else -- no golden, no holdout, no simulator -- so you may call it as often as you like,
 and you should call it before spending a measurement. It returns, per arm:
