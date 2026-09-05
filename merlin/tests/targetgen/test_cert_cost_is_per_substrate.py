@@ -147,8 +147,10 @@ def test_a_single_capsule_run_is_a_cost_sample(tmp_path):
 
     recs = CC._timing_records("t", root=tmp_path)
     # Keyed on (capsule, engine): a capsule certified on two engines has two samples, not one that
-    # the filesystem order picks. This record declares no engine, so it files under UNKNOWN_ENGINE.
-    key = ("CAL_probe", CC.UNKNOWN_ENGINE)
+    # the filesystem order picks. This record states no `engine` field, but its console name carries
+    # the engine and that is enough to keep it out of the unattributed population -- the alternative
+    # is filing the majority of the history under one key and fitting two machines as one law.
+    key = ("CAL_probe", "verilator")
     assert key in recs, f"a single-capsule run must contribute a sample: {recs}"
     seconds, source = recs[key]
     assert seconds == 177.249, "the cycle-accurate tier's time, not the functional one or the sum"
