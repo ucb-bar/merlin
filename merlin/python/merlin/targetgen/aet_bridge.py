@@ -8,8 +8,9 @@ so every experiment becomes visible to ``aet spend`` / ``aet plot`` for cross-ex
 and the shared budget ceiling.
 
 Design contract:
-  * **opt-in** — a no-op unless ``MERLIN_AET_SINK=1`` (see :func:`aet_sink_enabled`), so default runs
-    are unchanged and the existing telemetry path is untouched.
+  * **opt-in, then STICKY** — a no-op unless ``MERLIN_AET_SINK=1`` *or* the run directory already
+    carries an aet record from an earlier session (see :func:`aet_sink_enabled`), so default runs are
+    unchanged while a ``--resume`` from another shell keeps recording instead of silently stopping.
   * **lazy + soft** — aet is imported inside the function; if it is not installed (or anything fails),
     the bridge warns and returns ``False`` rather than raising, so a telemetry hiccup never fails a run.
   * **target-agnostic** — the target/suite/method/model/run_id all arrive as arguments from the run's
@@ -22,9 +23,25 @@ import sys
 from pathlib import Path
 
 
-def aet_sink_enabled() -> bool:
-    """True when the aet telemetry sink is opted in via ``MERLIN_AET_SINK`` (1/true/yes/on)."""
-    return os.environ.get("MERLIN_AET_SINK", "").strip().lower() in ("1", "true", "yes", "on")
+def aet_sink_enabled(run_dir: str | Path | None = None) -> bool:
+    """True when the aet telemetry sink is on for this run.
+
+    Two ways to be on, and the second one is the point:
+
+    1. the ``MERLIN_AET_SINK`` env var is set (1/true/yes/on) in THIS process, the original opt-in;
+    2. ``run_dir`` already HAS an aet record (``logs/metrics.jsonl``) -- i.e. some earlier session of
+       this same run opted in.
+
+    Without (2) the opt-in lives only in one process's environment, so a ``--resume`` launched from a
+    different shell silently stops recording and the run's telemetry ends wherever the first session
+    did. MEASURED on the atlas capsule-bench run of 2026-09-04: the first session wrote
+    ``logs/metrics.jsonl`` until 22:34Z and two later ``--resume`` launches wrote nothing at all --
+    ``/proc/<pid>/environ`` of the live resumed process carried no ``MERLIN_AET_SINK``. The run itself,
+    not an exported variable, is what remembers that it is being recorded.
+    """
+    if os.environ.get("MERLIN_AET_SINK", "").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    return run_dir is not None and (Path(run_dir) / "logs" / "metrics.jsonl").is_file()
 
 
 def _warn(msg: str) -> None:
@@ -137,7 +154,22 @@ def emit_to_aet(
         if notional is not None:
             logger.log_param("billing_mode", billing_mode)
             logger.log_metric("cost.subscription_notional_usd", round(notional, 4))
-        logger.log_agent_turns(result.num_turns)
+        # TURN COUNT. ``result.num_turns`` is the CLI's own figure taken from the LAST ``result`` event,
+        # and it is authoritative only when a CLI actually reported one. Two ways it lies here:
+        #   * a driver whose terminator carries no count. The codex driver emits
+        #     ``{"type":"result","subtype":"success"}`` with no ``num_turns``, so aet's parser reads
+        #     ``int(None or 0) == 0`` and -- because a result event WAS present -- skips its own
+        #     "no result event" fallback. MEASURED: the atlas run's final record said
+        #     ``aet.agent.num_turns: 0`` for a transcript holding 794 assistant turns, while the mid-run
+        #     records (parsed before any result event existed) said 101, 186, 282 ... 634.
+        #   * a COMBINED multi-round transcript, where the last result event describes only the last
+        #     round and the earlier rounds' turns vanish.
+        # Taking the max with the assistant turns actually present in the transcript fixes both without
+        # ever discarding a larger authoritative figure, and never invents a turn that is not there.
+        observed_turns = len(result.turn_usage)
+        logger.log_agent_turns(max(int(result.num_turns or 0), observed_turns))
+        # Recorded separately so the two are distinguishable after the fact rather than merged.
+        logger.log_metric("aet.agent.assistant_turns", observed_turns)
         if result.session_id:
             logger.log_session_id(result.session_id)
         logger.close()
@@ -149,7 +181,9 @@ def emit_to_aet(
         if notional is not None:
             cost_note = f" ({billing_mode}: ${notional:.4f} notional, not billed)"
         _warn(f"recorded run {run_id} → {run_dir}/logs "
-              f"(cost=${cost:.4f}{cost_note}, turns={result.num_turns}, tools={result.tool_call_count})")
+              f"(cost=${cost:.4f}{cost_note}, "
+              f"turns={max(int(result.num_turns or 0), observed_turns)}, "
+              f"tools={result.tool_call_count})")
         return True
     except Exception as e:
         _warn(f"failed to record run {run_id} into aet: {e}")

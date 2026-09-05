@@ -37,6 +37,7 @@ import yaml
 import _common as C
 
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
+from merlin.common import arrival_stamp as AS  # noqa: E402  (one arrival-time convention for every driver's transcript)
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 
 ARM_BUNDLE = {"raw_baseline": "raw_baseline_public_v0", "merlin_assisted": "merlin_assisted_public_v0",
@@ -262,9 +263,13 @@ def main(argv: list[str] | None = None) -> int:
                f'< {run_dir / "TASK.md"}')
         if a.sandbox == "bwrap":
             cmd = _bwrap_wrap(cmd, ws, bundle)
-        with open(transcript, "w") as tf, open(run_dir / "claude_stderr.log", "w") as ef:
-            proc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef)
-            exit_code = proc.returncode
+        # Streamed, not redirected: a straight stdout redirect leaves no process able to observe a
+        # line, so the transcript carries no per-event wall time. arrival_stamp appends `arrived_at`
+        # to every event, in the same shape the codex driver writes.
+        exit_code = AS.stream_stamped(
+            ["bash", "-c", cmd], cwd=ws, transcript=transcript,
+            stderr_path=run_dir / "claude_stderr.log",
+            raw_path=run_dir / "claude_stream.raw.jsonl")
         # the agent writes its package into workspace/submission; capture it
         wsub = ws / "submission"
         if wsub.exists():

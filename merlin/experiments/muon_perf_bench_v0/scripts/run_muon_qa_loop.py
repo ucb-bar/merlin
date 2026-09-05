@@ -33,6 +33,7 @@ for _c in (_HERE, *_HERE.parents):
         break
 sys.path.insert(0, str(_HERE))
 import agent_selfcheck as SC                      # noqa: E402  (grade())
+from merlin.common import arrival_stamp as AS  # noqa: E402  (one arrival-time convention)
 from merlin.benchharness import runs_root          # noqa: E402  (canonical out/runs root)
 from merlin.targetgen import experiment_tokens as ET   # noqa: E402  (canonical transcript parser)
 from merlin.targetgen.rtl.facts import rtl_facts_path   # noqa: E402  (target-agnostic facts dir)
@@ -104,10 +105,12 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, rnd: int, tim
     (run_dir / "rounds").mkdir(parents=True, exist_ok=True)
     tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
     epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
-    with open(tpath, "w") as tf, open(epath, "w") as ef:
-        proc = subprocess.run(["bash", "-c", inner], cwd=str(ws), stdout=tf, stderr=ef,
-                              timeout=timeout)
-    return proc.returncode
+    # Streamed, not redirected: a straight stdout redirect leaves no process able to observe a line,
+    # so the transcript carries no per-event wall time and a trajectory has to synthesise its axis.
+    # arrival_stamp appends `arrived_at` to every event, in the same shape every other driver writes.
+    return AS.stream_stamped(["bash", "-c", inner], cwd=ws, transcript=tpath, stderr_path=epath,
+                             timeout=timeout,
+                             raw_path=run_dir / "rounds" / f"round_{rnd:02d}.stream.raw.jsonl")
 
 
 def grade_round(ws: Path, run_dir: Path, rnd: int, timeout: int) -> dict:

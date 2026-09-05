@@ -3,7 +3,7 @@ title: Running capsule-bench experiments on AWS Bedrock
 kind: guide
 status: current
 owner: capsule-bench
-last_verified: 2026-07-30
+last_verified: 2026-09-04
 related: [adding_a_target, getting_started]
 code_refs: [merlin/experiments/capsule_bench/harness, merlin/python/merlin/targetgen/aet_bridge.py]
 ---
@@ -69,6 +69,14 @@ With `MERLIN_AET_SINK=1`, `aet_bridge` records each finished run into `<run_dir>
 format (per-turn tokens split input / cache-read / cache-create / output, **per-model** cost + tokens,
 `num_turns`, tool calls). This is additive — the legacy `experiment_tokens` cost yaml + trajectory plots
 still write.
+
+The opt-in is **sticky per run**, not per process: once `<run_dir>/logs/metrics.jsonl` exists, a later
+`--resume` keeps recording even when it is launched from a shell that never exported `MERLIN_AET_SINK`.
+Before that, a resumed run went quiet and its telemetry ended wherever the first session did.
+
+`num_turns` is the CLI's own figure where a CLI reports one, and otherwise the assistant turns actually
+present in the transcript (`aet.agent.assistant_turns` always records the latter). Drivers whose
+terminating `result` event carries no turn count — codex is one — used to land as `num_turns: 0`.
 
 Track cumulative spend across **all** experiments and enforce the ceiling:
 

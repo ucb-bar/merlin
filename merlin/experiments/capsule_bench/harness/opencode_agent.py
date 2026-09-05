@@ -28,9 +28,11 @@ import signal
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import model_tiers as _MT
+from merlin.common import arrival_stamp as _AS  # the one arrival-time convention
 
 # opencode's provider id for Amazon Bedrock (the @ai-sdk/amazon-bedrock provider). Overridable via env for a
 # differently-registered provider. A model value that already carries a provider ("prov/model") is respected.
@@ -125,6 +127,11 @@ def _parse_run_error(stdout: str) -> str | None:
 # bounds the damage either way. Overridable via MERLIN_OPENCODE_STALL_S; 0 disables the detector.
 _STALL_SECONDS = int(os.environ.get("MERLIN_OPENCODE_STALL_S", "1800"))
 _POLL_SECONDS = 10
+#: How often the capture file is tailed for ARRIVAL STAMPS. Separate from _POLL_SECONDS on purpose: the
+#: stall/CPU bookkeeping wants a long window (a 1 s CPU delta is noise), while an activity-share plot wants
+#: the finest honest resolution we can pay for. Every line seen in one drain shares that drain's timestamp,
+#: so a stamp means "arrived within the last _TAIL_POLL_SECONDS" -- coarse, but MEASURED, not interpolated.
+_TAIL_POLL_SECONDS = 1.0
 # Progress must clear this much CPU to count. opencode block-buffers stdout when it is redirected to a
 # file, so a quiet round can do real work while the byte count stands still (measured: a GLM-5 round wrote
 # three source files and ran selfchecks while its transcript sat at 109 bytes for 15 min). CPU is the
@@ -216,7 +223,8 @@ class AgentStalled(subprocess.TimeoutExpired):
 
 
 def _capture(cmd: list, env: dict, timeout: int, cwd: str,
-             stall_seconds: int = _STALL_SECONDS) -> tuple[int, str, str]:
+             stall_seconds: int = _STALL_SECONDS,
+             stamps: list | None = None) -> tuple[int, str, str]:
     """Run ``cmd`` capturing stdout to a FILE (opencode truncates a piped stream at 64 KiB and still exits 0,
     cutting the JSON mid-stream). stdin=DEVNULL because ``run`` blocks on an open stdin pipe.
 
@@ -226,11 +234,17 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
     stderr pipe open, hanging the parent's own post-timeout reap (observed: a stalled GLM-5 agent sat at the
     1800s cap with the driver blocked and no result). Run in a NEW SESSION and, on timeout, SIGKILL the whole
     PROCESS GROUP so the entire tree dies and the reap returns promptly; the caller maps TimeoutExpired to a
-    rc=124 round result."""
+    rc=124 round result.
+
+    ``stamps``, when given, is FILLED with one ISO-8601 UTC arrival time per stdout line, in order, as the
+    lines appear in the capture file -- the same ``arrived_at`` convention :mod:`codex_agent` and
+    :mod:`merlin.common.arrival_stamp` use. opencode's stream cannot be piped (see above), so the file is
+    tailed instead of read; the resolution is therefore ``_TAIL_POLL_SECONDS``, not per-line."""
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".out", prefix="oc_out_", delete=False)
     tmp.close()
     errf = tempfile.NamedTemporaryFile(mode="w", suffix=".err", prefix="oc_err_", delete=False)
     errf.close()
+    _tailf = None                      # the arrival-stamp tail handle; closed in the outer finally
 
     def _reap(proc):
         """Kill the whole tree: bash -> bwrap -> opencode."""
@@ -252,6 +266,27 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
             last_size, last_change = -1, time.monotonic()
             last_poll = time.monotonic()
             last_cpu = _tree_cpu_seconds(pgid)
+            # Arrival stamps. The stream goes to a FILE (it cannot be piped), so the file is TAILED:
+            # every line that became visible since the previous drain gets that drain's timestamp.
+            # Coarse, but measured -- nothing here interpolates a time it did not observe.
+            if stamps is not None:
+                _tailf = open(tmp.name, "rb")
+            _pending = bytearray()
+
+            def _drain(final: bool = False) -> None:
+                if _tailf is None:
+                    return
+                _pending.extend(_tailf.read())
+                arrived = _AS.now_iso()
+                while True:
+                    nl = _pending.find(b"\n")
+                    if nl < 0:
+                        break
+                    stamps.append(arrived)
+                    del _pending[:nl + 1]
+                if final and _pending:              # a last line with no trailing newline
+                    stamps.append(arrived)
+                    _pending.clear()
             def _with_partial(exc):
                 """Attach whatever the run produced before it was killed.
 
@@ -261,6 +296,7 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                 round spent 40 minutes working and left a two-line transcript. The work is not
                 recoverable, but the record of it is."""
                 try:
+                    _drain(final=True)          # stamp what arrived before the kill, then salvage it
                     exc.partial_stdout = Path(tmp.name).read_text(errors="replace")
                     exc.partial_stderr = Path(errf.name).read_text(errors="replace")
                 except OSError:
@@ -273,10 +309,16 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                     _reap(p)
                     raise _with_partial(subprocess.TimeoutExpired(cmd, timeout))
                 try:
-                    p.wait(timeout=min(_POLL_SECONDS, remaining))
+                    p.wait(timeout=min(_TAIL_POLL_SECONDS, remaining))
                     break                                   # exited on its own
                 except subprocess.TimeoutExpired:
                     pass
+                _drain()
+                # The stall/CPU bookkeeping below keeps its ORIGINAL _POLL_SECONDS cadence: its CPU delta
+                # and socket check are meaningless over a one-second window, and shortening it would
+                # change what counts as a stall. Only the arrival tail runs at the finer rate.
+                if time.monotonic() - last_poll < _POLL_SECONDS:
+                    continue
                 # Progress is WORK DONE, not liveness: a stalled agent stays healthy indefinitely. Two
                 # independent signals, because either one alone is wrong: bytes miss a quiet round whose
                 # output is still sitting in opencode's stdio buffer, and CPU alone would miss an agent
@@ -301,13 +343,37 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                 elif stall_seconds and (now - last_change) >= stall_seconds:
                     _reap(p)
                     raise _with_partial(AgentStalled(cmd, int(now - last_change)))
+            _drain(final=True)
         return p.returncode, Path(tmp.name).read_text(), Path(errf.name).read_text()
     finally:
+        if _tailf is not None:
+            try:
+                _tailf.close()
+            except OSError:
+                pass
         for _f in (tmp.name, errf.name):
             try:
                 os.unlink(_f)
             except OSError:
                 pass
+
+
+def _msg_arrived_at(info: dict) -> str | None:
+    """The arrival time of an EXPORTED message, taken from opencode's own ``info.time`` (epoch ms).
+
+    This path runs only when the live stream yielded nothing, so there is no observed arrival time to
+    use. Taking opencode's own recorded time keeps the salvaged messages spread across the round instead
+    of collapsed onto the single instant the salvage ran. When opencode recorded no time, this returns
+    None and ``emit`` falls back to the moment the record was WRITTEN -- an upper bound, not the
+    message's own time, and the same fallback every driver-authored record already gets."""
+    t = info.get("time") if isinstance(info, dict) else None
+    if not isinstance(t, dict):
+        return None
+    for key in ("completed", "created"):
+        v = t.get(key)
+        if isinstance(v, (int, float)) and v > 0:
+            return datetime.fromtimestamp(v / 1000.0, tz=timezone.utc).isoformat()
+    return None
 
 
 def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
@@ -317,6 +383,7 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
         info = msg.get("info", {}) if isinstance(msg, dict) else {}
         if info.get("role") != "assistant":
             continue
+        arrived = _msg_arrived_at(info)
         tok = info.get("tokens") or {}
         cache = tok.get("cache") or {}
         blocks = []
@@ -342,24 +409,39 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
                       "output_tokens": tok.get("output", 0) or 0,
                       "cache_read_input_tokens": cache.get("read", 0) or 0,
                       "cache_creation_input_tokens": cache.get("write", 0) or 0},
-            "content": blocks}})
+            "content": blocks}, **({_AS.ARRIVED_AT: arrived} if arrived else {})})
         # claude-compatible tool_result events so the transcript is self-authoritative + the mask-leak
         # audit can correlate each read's result (parity with the claude-CLI path).
         if tool_results:
-            emit({"type": "user", "message": {"content": tool_results}})
+            emit({"type": "user", "message": {"content": tool_results},
+                  **({_AS.ARRIVED_AT: arrived} if arrived else {})})
 
 
-def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
+def _parse_run_stream(stdout: str, mid: str, rnd: int, emit, stamps: list | None = None) -> int:
     """Reconstruct the transcript from opencode's ``run --format json`` STDOUT stream (always captured),
     instead of a post-hoc ``opencode export`` (fragile: a wrong sandbox isolates the session data dir, so
     the export is blind and yields 0 messages — the empty-transcript bug). Each stream line is an event with
     a ``part``: a ``text`` part is an assistant text block; a ``tool`` part is a tool_use (+ its result from
     ``state.output``); ``step-finish`` parts carry token usage. Emits claude-compatible events (assistant +
     user/tool_result) so parse_transcript / audit_transcript / conformance consume them like every driver.
-    Returns the number of tool calls seen."""
+    Returns the number of tool calls seen.
+
+    ``stamps`` (from :func:`_capture`) carries one arrival time per stdout LINE, so each event emitted
+    here gets the ``arrived_at`` of the line it came from -- the same field the codex driver writes, so
+    one reader consumes every driver. Split on ``"\n"`` rather than ``splitlines()`` because that is
+    exactly how the tail counted lines; any other split would shift the alignment silently. When no
+    stamps were collected the events simply carry none (see ``emit``): an absent stamp is honest, an
+    invented one is not."""
     tok = {"input": 0, "output": 0, "cread": 0, "cwrite": 0, "reasoning": 0}
     n_tools = 0
-    for line in stdout.splitlines():
+
+    def _stamped(obj: dict, at: str | None) -> dict:
+        if at:
+            obj[_AS.ARRIVED_AT] = at            # appended last: no existing field moves or changes
+        return obj
+
+    for _i, line in enumerate(stdout.split("\n")):
+        arrived = stamps[_i] if (stamps is not None and _i < len(stamps)) else None
         line = line.strip()
         if not line:
             continue
@@ -370,21 +452,21 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
         part = e.get("part") or {}
         pt = part.get("type")
         if pt == "text" and part.get("text"):
-            emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_{part.get('id','')}", "model": mid,
-                  "usage": {"input_tokens": 0, "output_tokens": 0}, "content": [{"type": "text", "text": part["text"]}]}})
+            emit(_stamped({"type": "assistant", "message": {"id": f"opencode_{rnd}_{part.get('id','')}", "model": mid,
+                  "usage": {"input_tokens": 0, "output_tokens": 0}, "content": [{"type": "text", "text": part["text"]}]}}, arrived))
         elif pt == "tool":
             st = part.get("state") or {}
             cid = part.get("callID") or part.get("id")
-            emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_{cid}", "model": mid,
+            emit(_stamped({"type": "assistant", "message": {"id": f"opencode_{rnd}_{cid}", "model": mid,
                   "usage": {"input_tokens": 0, "output_tokens": 0},
                   "content": [{"type": "tool_use", "id": cid, "name": part.get("tool", "tool"),
-                               "input": st.get("input", {}) if isinstance(st, dict) else {}}]}})
+                               "input": st.get("input", {}) if isinstance(st, dict) else {}}]}}, arrived))
             n_tools += 1
             out = st.get("output") if isinstance(st, dict) else None
             if out is not None:
-                emit({"type": "user", "message": {"content": [
+                emit(_stamped({"type": "user", "message": {"content": [
                     {"type": "tool_result", "tool_use_id": cid,
-                     "content": out if isinstance(out, str) else json.dumps(out)}]}})
+                     "content": out if isinstance(out, str) else json.dumps(out)}]}}, arrived))
         elif pt == "step-finish":
             t = part.get("tokens") or {}
             c = t.get("cache") or {}
@@ -397,11 +479,12 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit) -> int:
             # inside output_tokens -- recording it anyway is what makes that distinction visible instead
             # of a silent zero that reads as "this model did not think".
             tok["reasoning"] += t.get("reasoning", 0) or 0
-    # one usage-bearing assistant event so token/cost accounting sees the round's totals
-    emit({"type": "assistant", "message": {"id": f"opencode_{rnd}_usage", "model": mid, "content": [],
+    # one usage-bearing assistant event so token/cost accounting sees the round's totals. Stamped with
+    # the LAST line's arrival: it is a rollup of the stream just read, not an event that arrived later.
+    emit(_stamped({"type": "assistant", "message": {"id": f"opencode_{rnd}_usage", "model": mid, "content": [],
           "usage": {"input_tokens": tok["input"], "output_tokens": tok["output"],
                     "cache_read_input_tokens": tok["cread"], "cache_creation_input_tokens": tok["cwrite"],
-                    "reasoning_tokens": tok["reasoning"]}}})
+                    "reasoning_tokens": tok["reasoning"]}}}, stamps[-1] if stamps else None))
     return n_tools
 
 
@@ -509,6 +592,10 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     tf = open(tpath, "w")
 
     def emit(obj: dict) -> None:
+        # Driver-AUTHORED records (init, result, salvage) are stamped with the moment they are written;
+        # stream-derived events arrive here already carrying the arrival time of the line they came from,
+        # and setdefault must not overwrite that. Same `arrived_at` field as every other driver.
+        obj.setdefault(_AS.ARRIVED_AT, _AS.now_iso())
         tf.write(json.dumps(obj) + "\n"); tf.flush()
 
     sub = _MT.resolve(subagent_model) if subagent_model else ""
@@ -609,8 +696,10 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         cmd = run_cmd
 
     rc = 0
+    #: Filled by _capture with one arrival time per stdout line (see _parse_run_stream).
+    stamps: list[str] = []
     try:
-        code, stdout, stderr = _capture(cmd, env, timeout, str(ws))
+        code, stdout, stderr = _capture(cmd, env, timeout, str(ws), stamps=stamps)
     except subprocess.TimeoutExpired as _te:
         _why = ("agent stalled: no output for "
                 f"{getattr(_te, 'timeout', '?')}s while the process stayed alive"
@@ -619,7 +708,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         # actions and token usage are in the stream captured so far; discarding them reported the round as
         # though the agent had done nothing, which is both false and unbudgetable -- the tokens were spent.
         _partial = getattr(_te, "partial_stdout", "") or ""
-        _recovered = _parse_run_stream(_partial, mid, rnd, emit) if _partial else 0
+        _recovered = _parse_run_stream(_partial, mid, rnd, emit, stamps=stamps) if _partial else 0
         if _recovered == 0 and _partial:
             _sid = _parse_session_id(_partial)
             if _sid:                                    # the session store outlives the killed process
@@ -654,7 +743,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     # PRIMARY: reconstruct from the run's own --format json STDOUT stream (always captured; robust to the
     # sandbox/data-dir isolation that leaves `opencode export` blind). Fall back to `export` only if the
     # stream yielded no tool activity (e.g. a future format change).
-    n_tools = _parse_run_stream(stdout, mid, rnd, emit)
+    n_tools = _parse_run_stream(stdout, mid, rnd, emit, stamps=stamps)
     if n_tools == 0:
         ecode, eout, _estderr = _capture([opencode_bin, "export", sid], env, max(60, timeout // 4), str(ws))
         try:

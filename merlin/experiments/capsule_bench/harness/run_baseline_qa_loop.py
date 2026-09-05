@@ -63,6 +63,7 @@ def _strip_build_state(root: Path) -> None:
                 pass
 
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
+from merlin.common import arrival_stamp as AS  # noqa: E402  (one arrival-time convention for every driver's transcript)
 from merlin.common.paths import ext_path  # noqa: E402
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 from merlin.targetgen import tool_registry as _TR  # noqa: E402  (the arm-gated tool catalog)
@@ -1557,24 +1558,20 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
         tpath.parent.mkdir(parents=True, exist_ok=True)
         epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
-        with open(tpath, "w") as tf, open(epath, "w") as ef:
-            # start_new_session + killpg on timeout: the command is `bash -c '<bwrap ... claude ...>'`, so a
-            # plain subprocess timeout SIGKILLs only the outer bash and leaves the bwrap->claude tree alive
-            # (bwrap --die-with-parent does not reliably cascade). Kill the whole process group instead.
-            proc = subprocess.Popen(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
-                                    start_new_session=True)
-            try:
-                proc.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                except (ProcessLookupError, PermissionError):
-                    proc.kill()
-                proc.wait()
-                raise
+        # STREAM the child's stdout instead of redirecting it straight into the transcript. A redirect
+        # means no process in the chain ever observes a line, so nothing can record WHEN it arrived --
+        # which is why the trajectory plot had to lay a round's messages out by weighted time instead of
+        # by the wall clock. arrival_stamp appends `arrived_at` to each event (the same field the codex
+        # driver already writes, so one reader consumes both) and preserves every existing field and its
+        # position. It also keeps the old kill semantics: start_new_session + killpg on timeout, because
+        # the command is `bash -c '<bwrap ... claude ...>'` and SIGKILLing only the outer bash would leave
+        # the bwrap->claude tree alive (bwrap --die-with-parent does not reliably cascade).
+        rc = AS.stream_stamped(
+            ["bash", "-c", cmd], cwd=ws, transcript=tpath, stderr_path=epath, timeout=timeout,
+            raw_path=run_dir / "rounds" / f"round_{rnd:02d}.stream.raw.jsonl")
     finally:
         _stop_selfcheck_broker(ws, broker)
-    return proc.returncode, tpath
+    return rc, tpath
 
 
 def _stage_shim(ws: Path, src_name: str, dst_name: str) -> None:
@@ -1870,9 +1867,11 @@ def finalize_report(ws: Path, run_dir: Path, model: str, effort: str, sandbox: s
                  f'--output-format stream-json --verbose < {ws / "FINALIZE.md"}')
         cmd = bwrap_cmd(inner, ws, bundle) if sandbox == "bwrap" else inner
         try:
-            with open(tpath, "w") as tf, open(epath, "w") as ef:
-                rc = subprocess.run(["bash", "-c", cmd], cwd=str(ws), stdout=tf, stderr=ef,
-                                    timeout=timeout).returncode
+            # Same arrival-stamped stream as the round launch above: the finalize turn is part of the
+            # graded transcript, so it carries real per-event times too.
+            rc = AS.stream_stamped(
+                ["bash", "-c", cmd], cwd=ws, transcript=tpath, stderr_path=epath, timeout=timeout,
+                raw_path=run_dir / "rounds" / "finalize.stream.raw.jsonl")
         except subprocess.TimeoutExpired:
             rc = 124
     else:
@@ -2473,7 +2472,9 @@ def main(argv: list[str] | None = None) -> int:
         """
         try:
             from merlin.targetgen import aet_bridge as AB
-            if not AB.aet_sink_enabled() or not Path(transcript).exists():
+            # run_dir, not just the env var: the opt-in is a property of the RUN, so a --resume
+            # launched from a shell without MERLIN_AET_SINK keeps recording instead of going quiet.
+            if not AB.aet_sink_enabled(run_dir) or not Path(transcript).exists():
                 return
             AB.emit_to_aet(run_dir=run_dir, run_id=a.run_id, method=arm, model=a.model,
                            target=_te().target, suite="capsule-bench",
@@ -3041,7 +3042,7 @@ def main(argv: list[str] | None = None) -> int:
     # MERLIN_AET_SINK=1) so it shows up in `aet spend` / `aet plot` across experiments. This is
     # purely additive — the existing experiment_tokens cost yaml above stays authoritative.
     from merlin.targetgen import aet_bridge as AB
-    if AB.aet_sink_enabled():
+    if AB.aet_sink_enabled(run_dir):
         AB.emit_to_aet(run_dir=run_dir, run_id=a.run_id, method=arm, model=a.model,
                        target=_te().target, suite="capsule-bench",
                        transcript_paths=[combined],

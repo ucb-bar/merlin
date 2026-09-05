@@ -43,7 +43,10 @@ def _run_dir(sub, runid):
 
 def _circt_gen_count(d):
     n = 0
-    for tp in sorted((d / "rounds").glob("*.jsonl")) if (d / "rounds").is_dir() else []:
+    # round_*.transcript.jsonl ONLY, matching every other consumer. `rounds/` also holds each round's
+    # untouched raw stdout tee (round_NN.stream.raw.jsonl) and the codex raw/timestamped streams, and a
+    # bare "*.jsonl" counted the same tool call once per copy.
+    for tp in sorted((d / "rounds").glob("round_*.transcript.jsonl")) if (d / "rounds").is_dir() else []:
         for ln in tp.read_text(errors="ignore").splitlines():
             try:
                 o = json.loads(ln)
