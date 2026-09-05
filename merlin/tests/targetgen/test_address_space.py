@@ -145,9 +145,18 @@ def test_the_states_the_shipped_artifacts_actually_show():
     answer for a target whose facts cannot state a capacity, and if nothing shows it any more, the
     interesting fact is that the state became unreachable on real inputs, not that this file is stale.
     ABSENT is asserted synthetically above; it is not required of any shipped target.
+
+    Re-pointed on 2026-09-04, exactly as the paragraph above asks: mx_gemmini was the shipped UNKNOWN,
+    and it stopped being one when the facts resolver started honouring the target's own declared facts
+    source (it is a config variant of another target's generator, so its structural facts are that
+    target's -- see ``merlin.targetgen.rtl.facts.facts_alias``). The spatial tile joined the set at the
+    same time, deriving its MRF from the state manifest instead of nothing. The composite host+
+    accelerator target is the honest UNKNOWN now: nothing elaborates under its name, so no capacity can
+    be read, and its artifact says so.
     """
     seen: dict = {}
-    for target in ("gemmini", "atlas", "radiance", "muon", "mx_gemmini", "saturn_opu"):
+    for target in ("gemmini", "atlas", "radiance", "muon", "mx_gemmini", "saturn_opu",
+                   "saturn_opu_mxv256d128", "saturn_opu_mxv256d128_rvv"):
         if not rtl_facts.rtl_facts_path(target).is_file():
             continue
         sp = derive_address_space(target)

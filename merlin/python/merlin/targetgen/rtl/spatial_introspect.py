@@ -395,6 +395,125 @@ def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ------------------------------------------------------------ the shared facts.json body (family-neutral)
+def _tile_array(tile: dict, module: str | None, evidence: str | None) -> dict:
+    """One ``arrays`` entry for the compute tile — the SHARED vocabulary, not a spatial-only spelling.
+
+    The systolic family publishes its mesh under ``arrays``; a consumer asking "what compute array does
+    this target have, and how big is it" must get an answer for a spatial tile too. Only keys the bundle
+    actually derived are emitted (``container`` is the elaborated top module; there is no cell-module name
+    in the geometry read, so none is invented)."""
+    out = {"name": "tile", "rows": tile["rows"], "cols": tile["cols"],
+           "instances": tile.get("cells"), "source": "opu_state_manifest", "evidence": evidence}
+    if module:
+        out["container"] = module
+    for k in ("clusters", "cells_per_cluster"):
+        if isinstance(tile.get(k), dict):
+            out[k] = tile[k]
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def spatial_facts(target: str) -> dict:
+    """The spatial tensor-tile facts adapted to the ``facts.json`` ARTIFACT shape.
+
+    :func:`build_fact_bundle` returns the BUNDLE shape (``{fields: {name: {value, derived, ...}}}``) that
+    the renderers and the manifest deriver read. The artifact every other consumer reads through
+    :func:`merlin.targetgen.rtl.facts.load_facts` has a different shape entirely — ``{schema_version,
+    generator, inputs, facts: <body>}`` — and the body speaks a SHARED vocabulary (``arrays`` /
+    ``memories`` / ``datapaths`` / ``interfaces`` / ``timing``) so a question asked of one target can be
+    asked of all of them. This is the spatial analog of
+    :func:`merlin.targetgen.rtl.mlc_bridge.simt_facts`, which does the same job for the SIMT family.
+
+    Fail-closed, per field: a field the extractor could not ground is NOT silently absent — it is recorded
+    under the artifact's top-level ``unknown`` map with the extractor's own reason, so "we could not read
+    this" never reads as "the hardware does not have it". When nothing at all was derived the body is left
+    EMPTY on purpose, which is what :class:`~merlin.targetgen.rtl.facts.FactsEmpty` exists to catch — with
+    the recorded reason now attached to it."""
+    bundle = build_fact_bundle(target)
+    fields = bundle.get("fields") or {}
+
+    def _val(name: str):
+        rec = fields.get(name) or {}
+        return rec.get("value") if rec.get("derived") else None
+
+    unknown = {name: (rec.get("evidence") or bundle.get("reason")
+                      or f"the spatial extractor did not ground {name!r}")
+               for name, rec in fields.items() if not rec.get("derived")}
+
+    inputs = dict(bundle.get("inputs") or {})
+    module = inputs.get("module")
+    body: dict[str, Any] = {}
+
+    tile = _val("tile_dim")
+    if isinstance(tile, dict):
+        body["arrays"] = [_tile_array(tile, module, (fields["tile_dim"] or {}).get("evidence"))]
+
+    widths = _val("element_widths") or {}
+    mrf = _val("mrf_depth")
+    accum_bits = widths.get("accumulator_bits")
+    cells = tile.get("cells") if isinstance(tile, dict) else None
+    if isinstance(mrf, int) and isinstance(accum_bits, int) and isinstance(cells, int):
+        # The per-cell multi-register file IS this tile's on-chip operand/accumulator store, and it is the
+        # only memory the state manifest exposes. Bytes are the product of three DERIVED numbers and the
+        # multiplication is written into the evidence, the same way the systolic family reports
+        # depth x width for its scratchpad -- never a capacity read off a document.
+        body["memories"] = [{
+            "name": "mrf", "banks_per_cell": mrf, "cells": cells, "bits_per_entry": accum_bits,
+            "bytes": cells * mrf * accum_bits // 8, "source": "opu_state_manifest",
+            "evidence": f"{cells} cells x {mrf} regs banks/cell x {accum_bits} bits/entry"}]
+    else:
+        unknown.setdefault(
+            "memories",
+            "the tile's on-chip capacity is the product of cells x MRF banks x accumulator width; at "
+            f"least one is ungrounded (cells={cells!r}, mrf_depth={mrf!r}, accumulator_bits="
+            f"{accum_bits!r}), so no capacity is published")
+
+    dtypes = _val("dtypes")
+    if dtypes:
+        body["datapaths"] = [{"name": d.get("name"), "dtype": d.get("operand"),
+                              "accumulator": d.get("accumulator"), "evidence": d.get("path")}
+                             for d in dtypes if isinstance(d, dict)]
+
+    cats = _val("op_categories")
+    if cats:
+        # An ISA-less endpoint: the command buffer's one-hot op ports ARE its interface, so they are
+        # published under the same key a RoCC target publishes its decode table under. Deliberately NOT
+        # named funct_decode_table -- `facts.decode_body` keys the "this class of target has no decode"
+        # refusal on that name, and spelling it here would claim an instruction decode that does not exist.
+        body["interfaces"] = [{"name": "command_buffer", "op_categories": list(cats),
+                               "evidence": (fields["op_categories"] or {}).get("evidence")}]
+
+    lat = _val("fma_latency")
+    if isinstance(lat, dict):
+        ev = (fields["fma_latency"] or {}).get("evidence")
+        body["timing"] = [{"module": module, "name": name, "pipeline_depth": cyc,
+                           "source": "opu_hw_dialect", "evidence": ev}
+                          for name, cyc in sorted(lat.items()) if isinstance(cyc, int)]
+
+    accum_kind = _val("accum_kind")
+    spatial = {k: v for k, v in (("tile_dim", tile), ("mrf_depth", mrf),
+                                 ("element_widths", widths or None), ("accum_kind", accum_kind))
+               if v is not None}
+    if spatial:
+        body["spatial"] = spatial
+
+    if body:
+        body["target"] = target
+        body["source"] = {"kind": "opu_state_manifest", "module": module,
+                          "state_manifest": inputs.get("state_manifest"),
+                          "hw_mlir": inputs.get("hw_mlir"), "method": bundle.get("method")}
+
+    doc: dict[str, Any] = {
+        "schema_version": "spatial-facts/v0",
+        "generator": bundle.get("generator") or {"name": __name__, "version": GENERATOR_VERSION},
+        "inputs": inputs or {"target": target},
+        "facts": body,
+    }
+    if unknown:
+        doc["unknown"] = unknown
+    return doc
+
+
 def dump_fact_bundle(target: str, out_path: Path | str | None = None) -> dict[str, Any]:
     """Build the spatial fact bundle and write it to the PURGEABLE cache
     ``out/artifacts/cache/rtl_introspect/<target>/facts.json`` (like the systolic path). Returns the
