@@ -53,6 +53,7 @@ from ..llvmlower.weight_prepack import ensure_registered as _register_prepack_we
 from ..llvmlower.concat_dps import ensure_registered as _register_concat_dps
 from ..llvmlower.epilogue_fusion import ensure_registered as _register_fuse_epilogue_loops
 from ..llvmlower.prov_cse import ensure_registered as _register_cse_through_provenance
+from ..llvmlower.perop_blocks import ensure_registered as _register_conv_register_block
 
 _register_fold_weight_transpose()
 _register_prepack_weight_layout()
@@ -63,6 +64,12 @@ _register_cse_through_provenance()
 # improvement to it stays invisible too. Ranking stays the owning lever's call.
 _register_concat_dps()
 _register_fuse_epilogue_loops()
+# The direct-conv arm. Registered, deliberately NOT ranked: it is inert on every model whose convs
+# model2MLIR expanded into im2col (which is every model captured at the default element budget), so
+# ranking it would spend beam width on a fork that cannot differ from its parent. It becomes a
+# candidate only alongside a capture whose convs took the direct form, and it has NO hardware
+# measurement yet -- see llvmlower.perop_blocks.CONV_ARM_FEATURE.
+_register_conv_register_block()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff

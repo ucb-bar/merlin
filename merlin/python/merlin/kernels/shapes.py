@@ -80,13 +80,66 @@ def _iterator_types(op) -> "list[str] | None":
     return None
 
 
+def indexing_maps(op) -> "list[list[Any]] | None":
+    """``indexing_maps`` of a linalg op as one result-expression list per operand, or None.
+
+    Read through the attribute tables rather than a typed accessor so it works on a module parsed with
+    unregistered dialects as well as on a fully-typed xDSL ``GenericOp``. None means "could not read",
+    which is NOT the same as "no maps" — callers must fail closed on it rather than proceed.
+    """
+    from ..common.mlir_query import _attr_tables
+    maps = getattr(op, "indexing_maps", None)
+    if maps is None:
+        for table in _attr_tables(op):
+            if "indexing_maps" in table:
+                maps = table["indexing_maps"]
+                break
+    if maps is None:
+        return None
+    out: list[list[Any]] = []
+    for m in getattr(maps, "data", ()):
+        results = getattr(getattr(m, "data", None), "results", None)
+        if results is None:
+            return None
+        out.append(list(results))
+    return out or None
+
+
+def _dim_position(expr) -> "int | None":
+    """The iteration dim an affine map RESULT names, or None when the result is not a bare dim."""
+    from xdsl.ir.affine import AffineDimExpr
+    return int(expr.position) if isinstance(expr, AffineDimExpr) else None
+
+
 def _generic_contraction(op) -> "ContractionShape | None":
     """A ``linalg.generic`` read as a contraction, or None when it is not one.
 
     Contraction test (structural): 2 shaped inputs + 1 shaped output, iterator types are some
-    parallel dims followed by exactly one reduction dim, and the output rank equals the number of
+    parallel dims followed by exactly one reduction dim, the output rank equals the number of
     parallel dims — i.e. the output covers every parallel dim, which is what makes the trailing pair
-    the register-blockable (M, N)."""
+    the register-blockable (M, N) — and the two INPUT MAPS both contract over the reduction dim, with
+    the A operand carrying it LAST.
+
+    That last clause is not decoration; it is the assumption the reduction extent is read under. The
+    test used to be ranks only, and a rank is not enough: an ``aten.bucketize`` boundary search has
+    the identical signature — iterator types ``[parallel, parallel, reduction]``, output rank 2, and a
+    rank-2 A operand — but its A map is ``(d0, d1, d2) -> (d0, d1)``, which does not mention the
+    reduction dim at all. It was therefore reported as ``linalg.matmul`` with parallel (1, 32) and a
+    reduction extent of 32 read off A's LAST dim, which is N, not K; its real reduction extent is the
+    31 of its rank-1 boundary operand.
+
+    A phantom is not a harmless over-report, because the block policy and the TAGGER are downstream of
+    two different things: the policy prices this list, and the tagger runs after
+    ``linalg-specialize-generic-ops``, which (correctly) refuses to name a bucketize a matmul. So a
+    phantom is priced and can never be tagged, and ``perop_blocks.BlockAgreementError`` fails the whole
+    build — MEASURED on smolvla int8: ``1 contraction(s) were priced by the block policy but not
+    tagged: ['linalg.matmul:1x32:32']``, with the tagger reporting no untagged geometry at all because
+    the op it was asked about is not a named contraction anywhere in the module.
+
+    Checking the maps is what makes this observer classify the way the specialization pass does, which
+    is what the two sides have to agree on. It is derived, not a shape allowlist: no extent appears in
+    the test, so an M=1 contraction that IS one still prices and still tags.
+    """
     its = _iterator_types(op)
     if not its or its.count("reduction") != 1 or its[-1] != "reduction":
         return None
@@ -111,6 +164,18 @@ def _generic_contraction(op) -> "ContractionShape | None":
     # 14 phantoms (parallel (1, 32)) dragged the derived M block down to 1.
     a, a_dtype = ins[0]
     if len(a) != n_par:
+        return None
+    # ... and the rank is STILL not enough (see the docstring): both inputs must actually contract
+    # over the reduction dim, and A must carry it in the position the extent is read from. Unreadable
+    # maps fail CLOSED — an observer that cannot see the maps has not verified anything, and pricing
+    # an unverified op is what produced the un-taggable phantom.
+    maps = indexing_maps(op)
+    if maps is None or len(maps) < 3:
+        return None
+    red = n_par                                   # the reduction dim's position (it is the last one)
+    if not maps[0] or _dim_position(maps[0][-1]) != red:
+        return None
+    if all(_dim_position(r) != red for r in maps[1]):
         return None
     return ContractionShape(op=op_class, parallel=tuple(int(d) for d in out),
                             reduction=(int(a[-1]),),

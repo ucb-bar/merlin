@@ -38,7 +38,26 @@ TAG_PREFIX = "merlin.blk_"
 #: tiles with 4 sizes and a matmul arm with 3, so a class-agnostic tag lets one arm match the other
 #: class's ops and the schedule dies with "too many tiles provided, expected at most 3 found 4"
 #: (measured on a model whose prepared IR carries both classes at the same block).
-_CLASS_TOKEN = {"linalg.matmul": "mm", "linalg.batch_matmul": "bmm"}
+#:
+#: ``CONV_CLASS`` is a MERLIN class name, not an MLIR op name -- the direct (non-im2col) convolution
+#: arrives as a plain ``linalg.generic`` with a compound-affine input map, and there is no named op to
+#: key on. It is spelled like one so it flows through ``shape_key`` / ``distinct_blocks`` /
+#: ``coverage`` with the contraction classes instead of needing a parallel bookkeeping path.
+_CLASS_TOKEN = {"linalg.matmul": "mm", "linalg.batch_matmul": "bmm",
+                "linalg.conv2d_direct": "conv"}
+
+#: The DIRECT 2-D convolution contraction: ``out[n,f,oh,ow] += in[n,ci,oh*sh+kh,ow*sw+kw] * w[f,ci,kh,kw]``,
+#: i.e. the form model2MLIR emits when the im2col intermediate would exceed its element budget
+#: (``decompositions._conv_im2col_matmul`` declines -> ``_try_direct_conv2d``; recorded on every op as
+#: ``prov.conv_path = "direct_contraction"``). It is NOT a contraction by
+#: ``kernels.shapes._generic_contraction``'s test -- that requires exactly ONE reduction dim and this
+#: has three (ci, kh, kw) -- so ``block_table`` never sees it and nothing tags it.
+CONV_CLASS = "linalg.conv2d_direct"
+
+#: Default-OFF request that adds the conv arm. Same contract as ``PEROP_NR_FILL_NAME``: a REQUEST the
+#: preparation step consumes, never a lowering edit. Absent -> :func:`conv_block_table` returns ``{}``,
+#: the block table is byte-identical, and so is every schedule derived from it.
+CONV_ARM_FEATURE = "conv_register_block"
 
 
 def class_token(op: str) -> str:
@@ -226,6 +245,201 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
     return out
 
 
+# ---------------------------------------------------------------------------------------------------
+# THE DIRECT-CONV ARM. Default-OFF (`CONV_ARM_FEATURE`), and everything below returns empty without it.
+#
+# WHY IT EXISTS. model2MLIR rewrites every convolution into `im2col gather + linalg.matmul` because a
+# contraction is what a vector schedule matches; the gather materializes the activation kh*kw/(sh*sw)
+# times over. Its own budget (`decompositions._IM2COL_MAX_ELEMS_DEFAULT`, env `M2M_IM2COL_MAX_ELEMS`)
+# can divert a conv to `_try_direct_conv2d`, which keeps the true compound-affine form and materializes
+# nothing -- but that form matches NO arm here, so the contraction itself goes scalar and the diversion
+# is a net loss. This arm is the missing half: without it the budget knob is unusable.
+#
+# WHAT THE FORM ACTUALLY IS (read off deepjscc int8 lowered at M2M_IM2COL_MAX_ELEMS=147456, not
+# assumed) -- one `linalg.generic`, 7 iteration dims, 4 parallel + 3 reduction:
+#
+#   #in  = (d0, d1, d2, d3, d4, d5, d6) -> (d0, d4, d2 * sh + d5, d3 * sw + d6)
+#   #w   = (d0, d1, d2, d3, d4, d5, d6) -> (d1, d4, d5, d6)
+#   #out = (d0, d1, d2, d3, d4, d5, d6) -> (d0, d1, d2, d3)
+#   iterator_types = [parallel x4, reduction x3]      dims: n=d0 f=d1 oh=d2 ow=d3 ci=d4 kh=d5 kw=d6
+#
+# and after the int8 rewrite (`passes_quant_int.lower_conv_int8`, which preserves the EXACT maps and
+# iterators) the same op with i8 x i8 -> i32 arithmetic in the body.
+#
+# WHICH DIMS THE BLOCK TILES. NR goes on `ow` (d3): it is the innermost output dim, the activation is
+# contiguous along it (the map's d3 term is the only one carrying d3), and the WEIGHT map does not
+# mention d3 at all -- so the weight is a scalar broadcast across the lanes, which is the operand shape
+# a `vwmacc.vx` wants. MR goes on `f` (d1): each of the MR rows has its own weight scalar and they all
+# read the SAME activation vector, so MR accumulators are fed by one load. `n` and `oh` are tiled to 1
+# and the three reduction dims to 1, exactly as the matmul arm tiles K to 1.
+#
+# WHY THE VECTORIZER NEEDS ONE MORE STEP THAN THE MATMUL ARM -- MEASURED, not assumed.
+# `transform.structured.vectorize` on the tiled conv FAILS ("Attempted to vectorize, but failed",
+# reproduced on mlir-opt from third_party/llvm-install and through the m2m venv's own pass manager).
+# The precondition it fails is that every indexing map be a projected permutation, and `d2 * sh + d5`
+# is not one -- this is a property of the MAP, not of the extents: a 1x1 pointwise conv written with
+# the same map fails identically. Tiling kh/kw/ci to 1 does not help either; the map keeps its `+ d5`
+# term whatever the trip count.
+# The step that does work is `transform.apply_patterns.linalg.fold_unit_extent_dims_via_slices` on the
+# tiled op: with n, oh, ci, kh, kw all at extent 1 it rewrites the op to rank MR x NR (or rank NR at
+# MR=1) whose maps ARE projected permutations -- verified emitted form at MR=1, NR=16:
+#     linalg.generic {maps = [(d0)->(d0), (d0)->(), (d0)->(d0)], iterator_types = ["parallel"]}
+#       ins(tensor<16xi8>, tensor<i8>) outs(tensor<16xi32>)
+# i.e. an activation vector times a broadcast weight scalar into a resident accumulator. That op
+# vectorizes, and the whole nest reaches LLVM IR.
+#
+# The fold DROPS the op's discardable attributes, so the `merlin.blk_conv_*` tag does not survive it
+# and the vectorize step cannot re-match on it. The tag is therefore moved to the enclosing reduction
+# LOOP with `transform.annotate` BEFORE the fold (a loop the fold does not rewrite), and the vectorize
+# re-matches `linalg.generic` inside that annotated loop. Matching by op name alone would have claimed
+# every other generic in the model.
+# ---------------------------------------------------------------------------------------------------
+
+
+def ensure_registered() -> None:
+    """Register the default-off :data:`CONV_ARM_FEATURE` request. Idempotent.
+
+    Registered from HERE (not from ``impr_features``) and called by both the preparation step and
+    ``pipeline.lower_to_llvm_ir``, because the lowering runs in a child process that re-imports the
+    feature registry: a name registered only in the parent fails to resolve in the child (the exact
+    failure ``impr_features._try_lazy_register`` exists for).
+    """
+    from .impr_features import ImprFeature, known, register
+    if CONV_ARM_FEATURE in known():
+        return
+    register(ImprFeature(
+        name=CONV_ARM_FEATURE,
+        action_class="PASS",
+        description=(
+            "Tile + vectorize the DIRECT (non-im2col) 2-D convolution: the compound-affine "
+            "linalg.generic model2MLIR emits when the im2col intermediate exceeds its element budget "
+            "(prov.conv_path=direct_contraction). Without this arm that form matches no schedule arm "
+            "and falls to convert-linalg-to-loops, so diverting a conv away from im2col is a pure "
+            "loss and the budget knob (M2M_IM2COL_MAX_ELEMS) is unusable. A REQUEST consumed by "
+            "runtime.backends.zephyr_model.prepare_for_lowering, which prices the conv geometries "
+            "into the per-op block table; with it absent the table, the tags and the schedule are "
+            "byte-identical. NOT MEASURED ON HARDWARE -- static evidence only."),
+    ))
+
+
+def _has_compound_term(results) -> bool:
+    """Does this map carry a non-dim result (``d2 * sh + d5``)? The conv's signature, structurally.
+
+    Same test ``passes_quant_int.lower_conv_int8`` uses to recognise a conv, so the pass that makes
+    the int8 conv and the arm that vectorizes it cannot disagree about what a conv is.
+    """
+    from xdsl.ir.affine import AffineDimExpr
+    return any(not isinstance(r, AffineDimExpr) for r in results)
+
+
+def conv_geometry(out_shape, in_shape, w_shape) -> "tuple[int, int] | None":
+    """``(stride_h, stride_w)`` if these three shapes are a direct 2-D conv, else None.
+
+    PURE SHAPE ARITHMETIC, and deliberately so: it is the ONE predicate both sides of the tagging
+    run -- merlin prices with it here, and the runner (which sees the module through the MLIR python
+    bindings, in another process and another IR library) re-derives the same key with the same rule.
+    A predicate stated twice in two dialects is a predicate that can drift; stated as extents it
+    cannot.
+
+    ``in[n, ci, (oh-1)*sh + kh, (ow-1)*sw + kw]`` is the exact extent an unpadded, undilated conv
+    window covers, so solving it for ``sh``/``sw`` both VALIDATES the geometry and recovers the
+    stride. Anything that does not solve to positive integers is not this form and gets no block.
+    """
+    if len(out_shape) != 4 or len(in_shape) != 4 or len(w_shape) != 4:
+        return None
+    n, f, oh, ow = (int(d) for d in out_shape)
+    n_i, ci_i, ih, iw = (int(d) for d in in_shape)
+    f_w, ci_w, kh, kw = (int(d) for d in w_shape)
+    if n != n_i or f != f_w or ci_i != ci_w:
+        return None
+    strides = []
+    for o, i, k in ((oh, ih, kh), (ow, iw, kw)):
+        if o < 1 or k < 1 or i < k:
+            return None
+        if o == 1:
+            strides.append(1)                 # a single output position pins no stride; 1 is the
+            continue                          # only one that can be wrong about nothing
+        span = i - k
+        if span < 0 or span % (o - 1):
+            return None
+        s = span // (o - 1)
+        if s < 1:
+            return None
+        strides.append(s)
+    return strides[0], strides[1]
+
+
+def conv_shapes(src) -> "list[Any]":
+    """Every DIRECT 2-D convolution in ``src``, as :class:`ContractionShape` at :data:`CONV_CLASS`.
+
+    ``parallel`` is ``(N, F, Oh, Ow)`` and ``reduction`` is ``(Ci, Kh, Kw)`` -- the op's own dim order,
+    which is what the tile-size vector below is written in. Returns ``[]`` (never raises) on an
+    unreadable module, the same degradation ``kernels.shapes.observe_contractions`` takes: an observer
+    that cannot read must report "nothing", which costs a vectorization, not a build.
+    """
+    from ..common import mlir_query as mq
+    from ..kernels.microkernel import ContractionShape
+    from ..kernels.shapes import _iterator_types, _shaped, indexing_maps
+    try:
+        module = mq.parse(src)
+    except Exception:  # noqa: BLE001
+        return []
+    found: list[Any] = []
+    for op in mq.walk(module):
+        try:
+            if mq.op_name(op) != "linalg.generic":
+                continue
+            its = _iterator_types(op)
+            if not its or its[:4] != ["parallel"] * 4 or its[4:] != ["reduction"] * 3:
+                continue
+            maps = indexing_maps(op)
+            if maps is None or len(maps) != 3 or not _has_compound_term(maps[0]):
+                continue
+            ins = [s for s in (_shaped(v) for v in op.operands) if s is not None]
+            outs = [s for s in (_shaped(v) for v in getattr(op, "results", ())) if s is not None]
+            if len(ins) < 2 or not outs:
+                continue
+            (out, out_dt), (a, a_dt), (w, w_dt) = outs[0], ins[0], ins[1]
+            if conv_geometry(out, a, w) is None:
+                continue
+            found.append(ContractionShape(
+                op=CONV_CLASS, parallel=tuple(int(d) for d in out),
+                reduction=tuple(int(d) for d in w[1:]), dtypes=(a_dt, w_dt, out_dt)))
+        except Exception:  # noqa: BLE001
+            continue
+    return found
+
+
+def conv_block_table(src, features: "Any" = (), *, mr_cap: int = DEFAULT_MR, nr_cap: int,
+                     vlen: int | None = None) -> dict[str, tuple[int, int]]:
+    """``{shape_key: (MR, NR)}`` for the direct convs in ``src`` -- EMPTY unless the arm is requested.
+
+    Merges into the same table :func:`block_table` produces, on purpose: the tagger, the
+    priced-vs-tagged agreement check, the schedule generation and the coverage report are then the
+    SAME code for a conv as for a matmul, and there is no second bookkeeping path to drift.
+
+    The block is chosen by the same measured predicate the contractions use
+    (``from_strategy._rvv_best_block`` over the (F, Ow) extent pair), so a conv never gets a block the
+    lowering is known to reject. ``nr <= 1`` is dropped for the same reason a contraction's is: a
+    one-lane "vector" buys nothing, and the op is then left to ``convert-linalg-to-loops`` exactly as
+    it is today.
+    """
+    if CONV_ARM_FEATURE not in set(features or ()):
+        return {}
+    ensure_registered()
+    from ..mining.from_strategy import _rvv_best_block
+    out: dict[str, tuple[int, int]] = {}
+    for s in conv_shapes(src):
+        f, ow = int(s.parallel[1]), int(s.parallel[3])
+        shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
+        mr, nr = _rvv_best_block(mr_cap, shape_nr_cap, [(f, ow)])
+        if nr <= 1:
+            continue
+        out[shape_key(s.op, tuple(int(d) for d in s.parallel),
+                      tuple(int(d) for d in s.reduction))] = (int(mr), int(nr))
+    return out
+
+
 def distinct_blocks(table: dict[str, tuple[int, int]]) -> list[tuple[str, int, int]]:
     """``[(op_class, MR, NR)]`` for each distinct (class, block) the table asks for.
 
@@ -329,13 +543,26 @@ def runner_rewrite_src(table: dict[str, tuple[int, int]]) -> str:
     measured predicate lives. The runner reads each named contraction's geometry, looks it up, and sets
     the attribute the schedule matches. An op with no entry is left untagged on purpose (see
     :func:`block_table`).
+
+    :func:`conv_geometry` is SPLICED IN from its own source rather than restated here. The runner runs
+    in the m2m venv, in another process, over the MLIR python bindings, and cannot import merlin -- so
+    the alternative is two copies of the predicate that decides a conv's key, in two IR libraries, that
+    can silently disagree and leave a priced conv untagged (which is the one failure this file's
+    ``BlockAgreementError`` exists to make loud).
     """
+    import inspect
+
     entries = ",\n    ".join(f"{k!r}: {v!r}" for k, v in sorted(table.items()))
+    geometry_src = inspect.getsource(conv_geometry)
     return f'''
 _MERLIN_BLOCK_TABLE = {{
     {entries}
 }}
 
+_MERLIN_CONV_CLASS = {CONV_CLASS!r}
+
+
+{geometry_src}
 
 def _merlin_shape_key(op):
     """Rebuild the merlin shape key from an op's types: '<class>:<parallel>:<reduction>'.
@@ -355,6 +582,40 @@ def _merlin_shape_key(op):
     return "%s:%s:%s" % (name, "x".join(str(d) for d in par), k)
 
 
+def _merlin_conv_key(op):
+    """The merlin shape key for a DIRECT 2-D convolution generic, or None.
+
+    The same three tests merlin priced with: 4 parallel + 3 reduction iterators; an activation map
+    that is NOT a projected permutation (the `d2 * sh + d5` window term -- which is also exactly why
+    `transform.structured.vectorize` refuses the op until the schedule folds its unit dims); and three
+    rank-4 shapes that solve the unpadded-window extent equation in `conv_geometry` above.
+    """
+    if op.operation.name != "linalg.generic":
+        return None
+    if len(op.operands) < 2 or not len(op.results):
+        return None
+    try:
+        iters = [str(x) for x in op.operation.attributes["iterator_types"]]
+        maps = op.operation.attributes["indexing_maps"]
+        if len(iters) != 7 or len(maps) != 3:
+            return None
+        if any("reduction" in s for s in iters[:4]):
+            return None
+        if any("reduction" not in s for s in iters[4:]):
+            return None
+        if ir.AffineMapAttr(maps[0]).value.is_projected_permutation:
+            return None
+        out = [d for d in ir.ShapedType(op.results[0].type).shape]
+        a = [d for d in ir.ShapedType(op.operands[0].type).shape]
+        w = [d for d in ir.ShapedType(op.operands[1].type).shape]
+    except Exception:
+        return None
+    if conv_geometry(out, a, w) is None:
+        return None
+    return "%s:%s:%s" % (_MERLIN_CONV_CLASS, "x".join(str(d) for d in out),
+                         "x".join(str(d) for d in w[1:]))
+
+
 def tag_perop_blocks(module, ctx):
     """Set merlin.blk_<MR>x<NR> on each named contraction whose geometry is in the table.
 
@@ -363,6 +624,11 @@ def tag_perop_blocks(module, ctx):
     this runs on the POST-specialization one, so a shape the policy priced can simply not be here --
     and an untagged contraction matches no schedule arm and falls to convert-linalg-to-loops in
     silence. Reporting both sides lets the caller fail the build instead of shipping a scalar model.
+
+    Direct convolutions are walked too. When the conv arm was not requested the table holds no conv
+    key, so every conv falls through to `seen_untagged` and NOTHING is tagged -- byte-identical to
+    before the arm existed, except that the untagged conv is now NAMED in the agreement line instead
+    of being invisible.
     """
     n = 0
     hit = set()
@@ -373,22 +639,89 @@ def tag_perop_blocks(module, ctx):
             for block in region.blocks:
                 for inner in list(block.operations):
                     walk(inner)
-                    if inner.operation.name not in ("linalg.matmul", "linalg.batch_matmul"):
+                    name = inner.operation.name
+                    if name in ("linalg.matmul", "linalg.batch_matmul"):
+                        key = _merlin_shape_key(inner)
+                        tok = "bmm" if name.endswith("batch_matmul") else "mm"
+                    elif name == "linalg.generic":
+                        key = _merlin_conv_key(inner)
+                        if key is None:
+                            continue
+                        tok = "conv"
+                    else:
                         continue
-                    key = _merlin_shape_key(inner)
                     blk = _MERLIN_BLOCK_TABLE.get(key)
                     if blk is None:
                         seen_untagged.add(str(key))
                         continue
-                    tok = "bmm" if inner.operation.name.endswith("batch_matmul") else "mm"
                     with ctx:
-                        inner.operation.attributes["merlin.blk_%s_%dx%d" % (tok, blk[0], blk[1])] = \
+                        inner.operation.attributes["merlin.blk_%s_%dx%d" % (tok, blk[0], blk[1])] = \\
                             ir.UnitAttr.get()
                     hit.add(key)
                     n += 1
     walk(module.operation)
     return n, hit, seen_untagged
 '''
+
+#: Attribute the conv arm puts on the enclosing reduction loop so the vectorize step can find the op
+#: again AFTER the unit-dim fold, which drops the op's own tag. One per distinct block, so two blocks
+#: cannot claim each other's nests.
+CONV_NEST_PREFIX = "merlin.conv_nest_"
+
+
+def conv_nest_tag(mr: int, nr: int) -> str:
+    return f"{CONV_NEST_PREFIX}{int(mr)}x{int(nr)}"
+
+
+def _conv_arms(blocks: "list[tuple[str, int, int]]") -> str:
+    """The direct-conv arms, or ``""`` when the table prices no conv (the byte-identical default).
+
+    Emitted as THREE stages rather than one, for the reason recorded in the module header: tile ->
+    annotate the reduction nest -> fold the now-unit dims out of the op (which is what makes its
+    indexing maps projected permutations, without which ``transform.structured.vectorize`` refuses
+    the op outright) -> re-match inside the annotated nest -> vectorize.
+
+    The fold is emitted ONCE for all conv blocks. It is a func-scope pattern application, so it also
+    folds unit extents out of untagged linalg ops elsewhere in the module -- semantics-preserving, but
+    a real perturbation, and the reason this whole arm is behind a default-off request.
+    """
+    if not blocks:
+        return ""
+    tile_arms, vec_arms = [], []
+    for i, (op, mr, nr) in enumerate(blocks):
+        h = f"c{i}"
+        nest = conv_nest_tag(mr, nr)
+        # dims (n, f, oh, ow, ci, kh, kw): NR on ow (contiguous, weight-invariant), MR on f.
+        tile_arms.append(
+            f'    %{h} = transform.structured.match attributes{{{tag_for(op, mr, nr)}}} in %arg0 '
+            f': (!transform.any_op) -> !transform.any_op\n'
+            f'    %{h}t, %{h}l:4 = transform.structured.tile_using_for %{h} '
+            f'tile_sizes [1, {mr}, 1, {nr}, 0, 0, 0] : (!transform.any_op) -> '
+            f'({", ".join(["!transform.any_op"] * 5)})\n'
+            f'    %{h}k, %{h}kl:3 = transform.structured.tile_using_for %{h}t '
+            f'tile_sizes [0, 0, 0, 0, 1, 1, 1] : (!transform.any_op) -> '
+            f'({", ".join(["!transform.any_op"] * 4)})\n'
+            f'    transform.annotate %{h}kl#0 "{nest}" : !transform.any_op')
+        sizes = f"[{nr}]" if int(mr) == 1 else f"[{mr}, {nr}]"
+        # `transform.foreach`, not a bare `match ... in %handle`: the annotated-nest handle carries ONE
+        # payload per conv of this block, and `transform.structured.match` REFUSES a multi-op root
+        # ("requires exactly one target handle" -- measured on deepjscc, whose 4x16 block covers three
+        # geometries). foreach re-enters the body once per nest, so the arm scales with the model.
+        vec_arms.append(
+            f'    %{h}n = transform.structured.match ops{{["scf.for"]}} attributes{{{nest}}} in %arg0 '
+            f': (!transform.any_op) -> !transform.any_op\n'
+            f'    transform.foreach %{h}n : !transform.any_op {{\n'
+            f'    ^bb_{h}(%{h}one: !transform.any_op):\n'
+            f'      %{h}g = transform.structured.match ops{{["linalg.generic"]}} in %{h}one '
+            f': (!transform.any_op) -> !transform.any_op\n'
+            f'      transform.structured.vectorize %{h}g vector_sizes {sizes} : !transform.any_op\n'
+            f'    }}')
+    fold = ('    %convf = transform.structured.match ops{["func.func"]} in %arg0 '
+            ': (!transform.any_op) -> !transform.any_op\n'
+            '    transform.apply_patterns to %convf {\n'
+            '      transform.apply_patterns.linalg.fold_unit_extent_dims_via_slices\n'
+            '    } : !transform.any_op')
+    return "\n".join(tile_arms + [fold] + vec_arms) + "\n"
 
 
 def schedule_text(table: dict[str, tuple[int, int]], kc: int) -> str:
@@ -398,9 +731,18 @@ def schedule_text(table: dict[str, tuple[int, int]], kc: int) -> str:
     re-matching by op name. That is deliberate: re-matching would pick up every contraction of that
     class again (including ones another arm already tiled), and it would depend on the attribute
     surviving tiling, which nothing guarantees. Chaining the handle needs neither.
+
+    Direct-conv blocks (:data:`CONV_CLASS`, only present when the default-off :data:`CONV_ARM_FEATURE`
+    was requested) are emitted by :func:`_conv_arms` AFTER every contraction arm: their stage folds
+    unit extents at func scope, and doing that before a contraction arm vectorizes would rewrite the
+    tile it is about to match. With no conv block in the table this text is byte-identical to before
+    the arm existed.
     """
+    contraction_blocks, conv_blocks = [], []
+    for entry in distinct_blocks(table):
+        (conv_blocks if entry[0] == CONV_CLASS else contraction_blocks).append(entry)
     arms = []
-    for i, (op, mr, nr) in enumerate(distinct_blocks(table)):
+    for i, (op, mr, nr) in enumerate(contraction_blocks):
         h = f"b{i}"
         tile = f"[1, {mr}, {nr}, 0]" if op.endswith("batch_matmul") else f"[{mr}, {nr}, 0]"
         ktile = "[0, 0, 0, 1]" if op.endswith("batch_matmul") else "[0, 0, 1]"
@@ -420,6 +762,7 @@ def schedule_text(table: dict[str, tuple[int, int]], kc: int) -> str:
 module attributes {{transform.with_named_sequence}} {{
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
 {body}
+{_conv_arms(conv_blocks)}\
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns
