@@ -51,9 +51,31 @@ HERE = Path(__file__).resolve().parent
 PROFILES = HERE / "profiles"
 
 _PERFORMANCE_FIELDS = frozenset({
-    "level", "family", "lever", "comparand", "falsifier", "gate", "regime", "emitter", "cost",
+    "level", "family", "lever", "member_class", "comparand", "falsifier", "gate", "regime",
+    "emitter", "cost",
 })
 _PERFORMANCE_CLAIMS = frozenset({"RECOVERS", "PREDICTS", "DIFFERENTIAL"})
+#: WHAT A MEMBER IS FOR, which is not the same question as what it CLAIMS. A family declares a claim
+#: (does the law hold?); a member additionally has a job in the search, and the two had been conflated
+#: with a measurable cost.
+#:
+#: ``LAW``
+#:     The member exists to make a family's claim decidable -- it is a point in a fitted cohort. Its
+#:     cohort is EXACT (the analyzers refuse a partial one), so it can never be sampled; but its cycle
+#:     count is a property of the machine, not of how good today's candidate is, so re-measuring it on
+#:     every candidate buys nothing. Measured on a real sweep: the parallel-extents family is 16 of 38
+#:     members and 33% of the 36.9-minute serial sweep, for members worth under 2% of the objective.
+#: ``OBJECTIVE``
+#:     The member exists to BE optimised. Its cycles are the thing the search minimises, so it is
+#:     re-measured every candidate and it is what the total is summed over.
+#: ``REFERENCE``
+#:     The member is measured against a shipped hand-written implementation of the same shape, which
+#:     is the only place a RECOVERS claim has a denominator. Reported beside the objective, never
+#:     folded into it -- a fraction-of-reference and a sum-of-cycles are different quantities.
+#:
+#: Declared rather than inferred from the claim, because the mapping is not one-to-one: a DIFFERENTIAL
+#: family can be either, and inferring it would silently reclassify a family when its claim changed.
+_MEMBER_CLASSES = frozenset({"LAW", "OBJECTIVE", "REFERENCE"})
 #: The optimization LEVELS a performance family may declare. DOCUMENTED rather than enforced: several
 #: test fixtures declare synthetic levels to prove the validator is generic, so closing this set is a
 #: change to make deliberately alongside those fixtures rather than as a side effect. What it is for:
@@ -106,6 +128,17 @@ def _validate_performance_block(block, *, owner: str) -> dict:
     if claim not in _PERFORMANCE_CLAIMS:
         raise ValueError(
             f"{owner}: performance.claim must be one of {sorted(_PERFORMANCE_CLAIMS)}, got {claim!r}")
+    member_class = block.get("member_class")
+    if member_class not in _MEMBER_CLASSES:
+        raise ValueError(
+            f"{owner}: performance.member_class must be one of {sorted(_MEMBER_CLASSES)}, got "
+            f"{member_class!r} -- a member with no declared job is measured every candidate AND "
+            f"summed into the objective, which is how a law-fitting cohort came to weigh as much as "
+            f"the workload it was never meant to represent")
+    if member_class == "REFERENCE" and claim != "RECOVERS":
+        raise ValueError(
+            f"{owner}: a REFERENCE member is measured against a shipped implementation, so its claim "
+            f"must be RECOVERS; got {claim!r}")
     gate_value = block.get("gate")
     if isinstance(gate_value, dict) and "requires" in gate_value:
         raise ValueError(

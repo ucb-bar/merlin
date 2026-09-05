@@ -367,3 +367,68 @@ def test_profile_serializes_with_its_tiers_and_worklist():
     assert d["traits"]["explicit_dma"]["tier"] == TIER_FACTS
     assert d["archetype"]["dispatch"] == "host_instruction"
     assert "MODULE COUNTS" in d["timing"]["note"]
+
+
+# ---------------------------------------------------------------------------------------------
+# The trait vocabulary is a LIST, and every entry has exactly one answer
+# ---------------------------------------------------------------------------------------------
+#
+# Both halves of this had already gone wrong at once: `multiple_operand_encodings` appeared twice in
+# TRAITS and was keyed twice in `_DERIVERS`, against two byte-identical copies of the same deriver.
+# Nothing failed, which is the point -- a dict literal silently keeps the last value for a repeated
+# key, `for name in TRAITS` just derived the same trait twice, and the only visible symptom was the
+# name appearing twice in `satisfied()`/`refuted()`/`unestablished()`. So the checks that matter are
+# the ones a run cannot make: the tuple's own length, and this module's SOURCE, read as a syntax tree
+# rather than as text. (Structurally, per the repo's no-regex rule: a pattern over lines would have to
+# guess the spelling of a dict entry, and would drop the ones it guessed wrong -- silently.)
+
+
+def _profile_module_tree():
+    import ast
+    from pathlib import Path
+
+    import merlin.perf.profile as profile_module
+    return ast.parse(Path(profile_module.__file__).read_text(encoding="utf-8"))
+
+
+def test_the_trait_vocabulary_has_no_duplicates():
+    assert len(TRAITS) == len(set(TRAITS)), (
+        f"TRAITS repeats {sorted({n for n in TRAITS if TRAITS.count(n) > 1})}; a repeated trait is "
+        f"derived twice and reported twice, and hides which entry a reader should edit")
+
+
+def test_every_trait_has_exactly_one_deriver():
+    from merlin.perf.profile import _DERIVERS
+
+    assert set(_DERIVERS) == set(TRAITS), (
+        f"_DERIVERS and TRAITS disagree: only in TRAITS {sorted(set(TRAITS) - set(_DERIVERS))}, "
+        f"only in _DERIVERS {sorted(set(_DERIVERS) - set(TRAITS))}")
+    assert tuple(_DERIVERS) == tuple(TRAITS), "_DERIVERS mirrors TRAITS, so it mirrors its order too"
+    # A run-time dict cannot show a repeated key, so the source-level checks below carry the rest.
+
+
+def test_the_deriver_table_names_each_trait_once_in_the_source():
+    import ast
+
+    tree = _profile_module_tree()
+    literals = [node.value for node in tree.body
+                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
+                and any(isinstance(t, ast.Name) and t.id == "_DERIVERS" for t in node.targets)]
+    assert len(literals) == 1, "_DERIVERS is assigned once, as a dict literal"
+    keys = [k.value for k in literals[0].keys if isinstance(k, ast.Constant)]
+    assert len(keys) == len(literals[0].keys), "every _DERIVERS key is a plain string literal"
+    duplicates = sorted({k for k in keys if keys.count(k) > 1})
+    assert not duplicates, (
+        f"_DERIVERS keys {duplicates} more than once; the dict keeps whichever deriver was written "
+        f"last, so the answer would be chosen by insertion order rather than by anyone")
+
+
+def test_no_deriver_function_is_defined_twice():
+    import ast
+
+    names = [node.name for node in _profile_module_tree().body
+             if isinstance(node, ast.FunctionDef)]
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    assert not duplicates, (
+        f"{duplicates} is defined more than once at module level; the later definition wins and the "
+        f"earlier one is unreachable, so two copies can diverge with only one of them ever running")

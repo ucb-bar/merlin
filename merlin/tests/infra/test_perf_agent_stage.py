@@ -1871,3 +1871,146 @@ def test_the_ranked_list_is_bounded_so_the_summary_stays_a_summary():
     out = PAS.recoverable_cycles(cells, 100.0)
     assert out["priced_members"] == 20
     assert len(out["ranked"]) == PAS.RECOVERABLE_RANK_LIMIT
+
+
+# --------------------------------------------------- the objective is summed over the objective only
+
+class _FakeMember:
+    def __init__(self, family, capsule, member_class):
+        self.family, self.capsule = family, capsule
+        self.descriptor = ({"performance": {"member_class": member_class}}
+                           if member_class is not None else {})
+
+
+class _FakeCorpus:
+    def __init__(self, members):
+        self.capsules = tuple(members)
+
+
+def _classified_stopper(members, **kw):
+    """`_stopper` with a corpus attached, since the class is read from the corpus, not the cell."""
+    stopper = _stopper(**kw)
+    stopper.corpus = _FakeCorpus(members)
+    return stopper
+
+
+def _cell(family, capsule, baseline, candidate, macs=4096):
+    return {"comparable": True, "family": family, "capsule": capsule,
+            "baseline_gsim_cycles": baseline, "candidate_gsim_cycles": candidate,
+            "declared_macs": macs}
+
+
+def test_a_law_member_does_not_enter_the_total_and_an_objective_member_does():
+    """THE SPLIT THIS EXISTS FOR, and the failure it prevents.
+
+    A member that fits a LAW about the machine -- a reduction-depth cohort, a 2-D law over M and N --
+    is measured so its family's claim can be decided. It is not the workload the search is improving,
+    and summing it into the objective let 16 tile-scale points weigh as much as the members that
+    carry the cycles. Measured: that family was 33% of a 36.9-minute sweep for under 2% of the
+    recoverable cycles, and the search converged at 0.2%.
+    """
+    stopper = _classified_stopper([
+        _FakeMember("PR", "deep", "OBJECTIVE"),
+        _FakeMember("PM", "law_a", "LAW"),
+        _FakeMember("PM", "law_b", "LAW"),
+    ])
+    out = _stop(stopper, [_cell("PR", "deep", 1000, 900),
+                          _cell("PM", "law_a", 500, 500),
+                          _cell("PM", "law_b", 500, 500)])
+    assert out["baseline_total_cycles"] == 1000.0, "the two LAW members must not be in the total"
+    assert out["objective_members"] == 1
+    assert "OBJECTIVE" in out["objective_basis"]
+
+
+def test_a_corpus_that_declares_no_class_sums_everything_and_says_so():
+    """Fails OPEN, not closed. A frozen corpus is content-addressed and may predate the declaration;
+    refusing it would turn a schema addition into a campaign-stopping error, and excluding its members
+    would quietly shrink the very total being measured."""
+    stopper = _classified_stopper([_FakeMember("PR", "a", None), _FakeMember("PM", "b", None)])
+    out = _stop(stopper, [_cell("PR", "a", 1000, 900), _cell("PM", "b", 500, 500)])
+    assert out["baseline_total_cycles"] == 1500.0
+    assert "declare no class" in out["objective_basis"]
+
+
+def test_a_cohort_of_only_law_members_still_reports_a_total():
+    """A sweep that happened to measure only LAW members must not report a zero objective -- zero
+    cycles reads as a perfect result rather than as an absent one."""
+    stopper = _classified_stopper([_FakeMember("PM", "a", "LAW"), _FakeMember("PM", "b", "LAW")])
+    out = _stop(stopper, [_cell("PM", "a", 500, 500), _cell("PM", "b", 500, 400)])
+    assert out["baseline_total_cycles"] == 1000.0
+    assert out["objective_members"] == 2
+
+
+# ------------------------------------------------ the two ops work_volume counted and pricing refused
+
+def _attention_descriptor(q=(16, 32), k=(16, 32)):
+    return {"operation": {"op": "attention_qk",
+                          "attributes": {"q": "Q", "k": "K", "out": "Y0"}},
+            "inputs": [{"name": "Q", "shape": list(q)}, {"name": "K", "shape": list(k)}]}
+
+
+def _batched_descriptor(lhs=(2, 16, 32), rhs=(2, 32, 16)):
+    return {"operation": {"op": "gemv_batched",
+                          "attributes": {"lhs": "A0", "weight": "W", "out": "Y0", "batch": lhs[0]}},
+            "inputs": [{"name": "W", "shape": list(rhs)}, {"name": "A0", "shape": list(lhs)}]}
+
+
+def test_attention_is_priced_by_queries_depth_and_keys():
+    """Refused for years by a rank-2 WEIGHT check against an operation that declares no weight.
+
+    Q @ K^T names its operands q and k and transposes the second by definition, so there is nothing
+    for that check to find. work_volume has counted this opcode all along -- only the declared price
+    refused it, which left every attention member with no utilization, no share of achievable and no
+    verdict, and disabled the corpus-wide attainment stop condition for every other member too.
+    """
+    macs, basis = PAS.declared_capsule_macs(_attention_descriptor())
+    assert macs == 16 * 32 * 16
+    assert "queries" in basis
+
+
+def test_batched_work_is_the_slice_times_the_batch():
+    macs, basis = PAS.declared_capsule_macs(_batched_descriptor())
+    assert macs == 2 * (16 * 32 * 16), "one independent contraction per batch slice"
+    assert "batch" in basis
+
+
+def test_the_declared_price_agrees_with_what_the_emitted_program_counts():
+    """TWO PRICING PATHS, ONE ANSWER. declared_capsule_macs reads the SPECIFICATION and work_volume
+    reads the EMITTED PROGRAM; utilization divides one by cycles while the achievable ceiling is
+    harvested from the other. If they disagree, a member's own headroom and the ceiling it is measured
+    against come from different arithmetic, and nothing in either path would say so."""
+    from merlin.perf.work_volume import work_from_command_buffer
+
+    attention_cb = {
+        "abi_version": "0.1", "target": "t", "version": "0.1", "params": {},
+        "tensors": {"Q": {"role": "input", "shape": [16, 32], "dtype": "i8"},
+                    "K": {"role": "input", "shape": [16, 32], "dtype": "i8"},
+                    "Y0": {"role": "output", "shape": [16, 16], "dtype": "i32"}},
+        "commands": [{"opcode": "ATTENTION_QK", "operands": {"q": "Q", "k": "K", "dst": "Y0"},
+                      "attributes": {}}],
+        "outputs": ["Y0"]}
+    assert (work_from_command_buffer(attention_cb).exact_macs
+            == PAS.declared_capsule_macs(_attention_descriptor())[0])
+
+    batched_cb = {
+        "abi_version": "0.1", "target": "t", "version": "0.1", "params": {},
+        "tensors": {"A0": {"role": "input", "shape": [2, 16, 32], "dtype": "i8"},
+                    "W": {"role": "weight", "shape": [2, 32, 16], "dtype": "i8"},
+                    "Y0": {"role": "output", "shape": [2, 16, 16], "dtype": "i32"}},
+        "commands": [{"opcode": "BATCHED_MATMUL", "operands": {"a": "A0", "w": "W", "dst": "Y0"},
+                      "attributes": {}}],
+        "outputs": ["Y0"]}
+    assert (work_from_command_buffer(batched_cb).exact_macs
+            == PAS.declared_capsule_macs(_batched_descriptor())[0])
+
+
+@pytest.mark.parametrize("descriptor,fragment", [
+    (_attention_descriptor(q=(16, 32), k=(16, 64)), "do not share a depth"),
+    (_attention_descriptor(q=(16, 32, 4)), "not two rank-2"),
+    (_batched_descriptor(lhs=(2, 16, 32), rhs=(3, 32, 16)), "different batches"),
+    (_batched_descriptor(lhs=(2, 16, 32), rhs=(2, 64, 16)), "do not contract"),
+    (_batched_descriptor(lhs=(16, 32)), "not two rank-3"),
+])
+def test_an_inconsistent_declaration_refuses_rather_than_pricing_one_reading(descriptor, fragment):
+    macs, basis = PAS.declared_capsule_macs(descriptor)
+    assert macs is None and fragment in basis

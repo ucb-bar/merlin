@@ -13,7 +13,9 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import stat
+import threading
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -30,6 +32,7 @@ import heldout_gsim_qualification as HQUAL
 import produce_gsim_certificate as CERTPROD
 import run_perf_bench as FIXED
 from merlin.benchharness import hash_tree, runs_root as _runs_root
+from merlin.common.artifacts import cache_dir
 from merlin.targetgen.contract import compile as OOT
 from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -240,7 +243,13 @@ def _validate_handoff(functional: PC.FunctionalRun, handoff: Handoff, corpus: Fr
     if (Path(handoff.target_descriptor).resolve(strict=True) != descriptor
             or _sha256_file(descriptor) != handoff.target_descriptor_sha256):
         raise PC.CampaignGateError("candidate handoff target descriptor differs")
-    if (handoff.replicates != 3 or tuple(handoff.formal_replicate_identities) != REPLICATES):
+    # COUNTED FROM THE DECLARATION, NOT WRITTEN DOWN. This read `!= 3` while REPLICATES holds two
+    # identities and the frozen acceptance declares exact_count 2, so every handoff refused and the
+    # formal paired campaign could not start at all. The literal was left behind when the replicate
+    # count was cut from three to two; the error message on the next line was updated and this was
+    # not, which is precisely why it reads as correct.
+    if (handoff.replicates != len(REPLICATES)
+            or tuple(handoff.formal_replicate_identities) != REPLICATES):
         raise PC.CampaignGateError(
             f"measurement requires exactly the {len(REPLICATES)} identities {list(REPLICATES)}")
     if handoff.candidate_initial_sha256 != functional.digest:
@@ -466,8 +475,9 @@ def _fresh_directory(path: Path) -> Path:
 #: The search re-measures programs it has already measured, constantly. Across every campaign on
 #: disk, consecutive candidates emitted BYTE-IDENTICAL code for every corpus member -- the agent
 #: edits, the harness pays a full 38-member cycle-accurate sweep, and the emitted program is the one
-#: it measured last time. Measured on one call: 15 of 28 repeated members re-ran a program whose
-#: number was already known.
+#: it measured last time. Measured over the 380-execution sweep of 2026-09-05: 296 of its 380 L3
+#: executions were answered from this table -- 11.15 of the 14.32 GSIM-hours it would otherwise
+#: have spent.
 #:
 #: This is not a screen and it is not a prediction. Two runs of the same program on the same pinned
 #: simulator return the same cycles -- verified here over 392 repeated measurements of identical
@@ -476,23 +486,152 @@ def _fresh_directory(path: Path) -> Path:
 #: because the command buffer alone is not the program: 28 members shared one and only 15 of them
 #: shared a cycle count. Keyed on the lowered module the agreement is exact, 15 of 15.
 #:
-#: Scoped per pinned engine, so a different simulator build shares nothing with this table.
+#: Scoped per pinned engine, so a different simulator build shares nothing with this table, and per
+#: MEASUREMENT SCOPE (see :func:`_l3_memo_key`), so a pass that exists to observe what the previous
+#: pass did not observe is never answered by that previous pass.
+#:
+#: This table is the FAST half and it dies with the process; :class:`L3MeasurementStore` is the half
+#: that survives one. The distinction is not academic: the three trials of the 2026-09-05 launch ran
+#: as three stage processes over 81 distinct programs, 71 of which more than one process measured
+#: from scratch, so each trial paid its own 3.2-3.6 GSIM-hours for very largely the same work.
 _L3_MEMO: dict[str, dict[str, Any]] = {}
 
+#: Where the surviving half lives. PURGEABLE by construction: every entry is a measurement that can
+#: be re-derived by running the same program on the same pinned engine again.
+_L3_CACHE_NAMESPACE = "perf_l3_measurements"
+_L3_CACHE_SCHEMA = "l3_measurement_reuse_v1"
 
-def _l3_memo_key(cb: Mapping[str, Any], llvm_text: str, binary_sha256: str) -> str:
-    """What the cycles are a function of: the emitted program and the engine that runs it."""
+
+def _l3_memo_key(cb: Mapping[str, Any], llvm_text: str, binary_sha256: str, scope: str) -> str:
+    """What the cycles are a function of: the emitted program, the engine, and what is being observed.
+
+    ``scope`` names the independent observation the caller is making -- its replicate identity and
+    its counter pass. It belongs in the key because two observations can run THE SAME program on THE
+    SAME engine and still not be the same measurement, and a table that cannot tell them apart hands
+    one the other's number.
+
+    The counter passes are the sharp case. :func:`run_execution` runs one program up to three ways
+    (unprofiled, occupancy, physical bytes); the only difference between them lives in the process
+    environment the ELF is built under, so nothing in the command buffer or the lowered module can
+    see it. Without the scope the physical-byte pass would be served the occupancy pass's readings
+    and ``_link_counter_passes`` would link a pass to itself. The replicate is the other case:
+    ``REPLICATES`` exists so a campaign can MEASURE the replicate dispersion rather than assume it
+    zero, and a second replicate served from the first's number assumes precisely that.
+    """
     digest = hashlib.sha256()
-    digest.update(binary_sha256.encode())
-    digest.update(b"\0")
-    digest.update(json.dumps(cb, sort_keys=True, separators=(",", ":")).encode())
-    digest.update(b"\0")
-    digest.update(llvm_text.encode())
+    for part in (binary_sha256, scope,
+                 json.dumps(cb, sort_keys=True, separators=(",", ":")), llvm_text):
+        digest.update(part.encode())
+        digest.update(b"\0")
     return digest.hexdigest()
 
 
+def _engine_identity(certificate: GATE.CertificateRecord) -> dict[str, str]:
+    """Which engine a cycle count belongs to: the binary that ran it, and the RTL it was built from.
+
+    The binary sha alone decides the key -- it IS the engine that produced the number. All three
+    pins travel with a stored record anyway, and a reader compares them before it believes one, so a
+    table filled under one certificate can never answer for a run pinned to a different one.
+    """
+    return {name: str(certificate.pins[name]["sha256"])
+            for name in ("gsim_binary", "gsim_firrtl", "gsim_model")}
+
+
+class L3MeasurementStore:
+    """Measurements already paid for, kept where the NEXT process can find them.
+
+    Deliberately not :class:`ContentAddressedRawStore`, which sits a few lines up and does something
+    that looks similar and is not. That store addresses a document by the digest of its OWN bytes,
+    requires its root to be fresh, and treats a second write at one address as a collision to
+    refuse. All three are right for the campaign's raw-result ledger and all three are wrong here:
+    this store addresses a measurement by the digest of the INPUTS that determine it, and it has to
+    OUTLIVE the run that filled it, because surviving the process boundary is the only thing it adds
+    over the in-process table above.
+
+    Every failure resolves to "measure it again". An absent, unreadable, half-written or
+    differently-pinned entry is a MISS and never a guess -- the cost of a miss is a simulation the
+    run was going to pay for anyway, and a cache that answers when it is not sure is worse than no
+    cache at all.
+    """
+
+    def __init__(self, root: Path):
+        self.root = Path(root)
+
+    def _path(self, key: str) -> Path:
+        return self.root / f"{key}.json"
+
+    def get(self, key: str, engine: Mapping[str, str]) -> dict[str, Any] | None:
+        """The stored measurement for ``key`` on ``engine``, or None -- never a partial answer."""
+        try:
+            record = json.loads(self._path(key).read_bytes())
+        except (OSError, ValueError):
+            return None
+        if not isinstance(record, Mapping):
+            return None
+        # RE-DERIVED, NOT TRUSTED. The file is named by the key, so a record whose own key disagrees
+        # with the name is corruption; and the engine pins are compared as data rather than assumed
+        # from the filename, because reusing a cycle count across simulator builds is a wrong number
+        # rather than a slow one.
+        if record.get("key") != key or dict(record.get("engine_pins") or {}) != dict(engine):
+            return None
+        evidence, result = record.get("evidence"), record.get("result")
+        if not isinstance(evidence, Mapping) or not isinstance(result, Mapping):
+            return None
+        return {"evidence": dict(evidence), "result": dict(result)}
+
+    def put(self, key: str, engine: Mapping[str, str], entry: Mapping[str, Any]) -> None:
+        """Record a measurement for the next process. Never raises: a cache is not a gate."""
+        record = {"schema": _L3_CACHE_SCHEMA, "key": key, "engine_pins": dict(engine),
+                  "evidence": entry.get("evidence"), "result": entry.get("result")}
+        try:
+            payload = _canonical_bytes(record)
+        except (TypeError, ValueError):
+            # A measurement that will not serialize stays in the in-process table, which is where it
+            # was already useful. Refusing to write it is a lost saving; writing something lossy
+            # would be a wrong number later.
+            return
+        tmp = None
+        try:
+            self.root.mkdir(parents=True, exist_ok=True)
+            tmp = self.root / f".{key}.{os.getpid()}.{threading.get_ident()}.tmp"
+            tmp.write_bytes(payload)
+            # ATOMIC PUBLICATION, because concurrent sweeps and concurrent processes both write here
+            # and a reader must never see half a record. A torn read would be a miss anyway (the
+            # parse fails), but the rename costs nothing and removes the question.
+            os.replace(tmp, self._path(key))
+        except OSError:
+            if tmp is not None:
+                tmp.unlink(missing_ok=True)
+
+
+def _l3_store(target: str) -> L3MeasurementStore:
+    """The cross-process store for ``target``, grouped by target the way every other product is.
+
+    ONE STORE, SHARED BY EVERY PROCESS ON THIS CHECKOUT -- including the parallel trials of one
+    experiment, which are otherwise required to share nothing mutable. That is sound, and it is worth
+    saying why rather than leaving a reader to wonder. An entry is a pure function of the emitted
+    program and the pinned engine, and a hit requires a trial's OWN bytes to be identical to bytes
+    already measured; what comes back is then that trial's own number, the one it was about to spend
+    an hour deriving. Nothing about another trial's candidate can reach an agent through it. What the
+    sharing must not be is INVISIBLE, which is why every reused row now says so in its provenance.
+    """
+    return L3MeasurementStore(
+        cache_dir(f"{_L3_CACHE_NAMESPACE}/{_simple_component(target, label='target')}",
+                  ensure=False))
+
+
 def _gsim_l3_adapter(target: str, evidence: dict[str, Any],
-                     certificate: GATE.CertificateRecord) -> Callable[..., dict[str, Any]]:
+                     certificate: GATE.CertificateRecord, *, reuse_scope: str,
+                     store: L3MeasurementStore | None = None) -> Callable[..., dict[str, Any]]:
+    """The L3 oracle, with the measurements it has already paid for in front of it.
+
+    ``reuse_scope`` names the independent observation this adapter is making, so that two passes
+    over one program stay two measurements (see :func:`_l3_memo_key`). ``store`` is the cross-process
+    half; the caller may pass one for a test, and otherwise it is the target's own cache.
+    """
+    engine = _engine_identity(certificate)
+    store = _l3_store(target) if store is None else store
+
     def run(cb: dict[str, Any], llvm_text: str, workdir: str | Path,
             timeout: int) -> dict[str, Any]:
         from merlin.runtime.backends import base as backends
@@ -503,9 +642,15 @@ def _gsim_l3_adapter(target: str, evidence: dict[str, Any],
         actual_binary = Path(resolver()).resolve(strict=True)
         if _sha256_file(actual_binary) != certificate.pins["gsim_binary"]["sha256"]:
             raise RuntimeError("runtime GSIM binary differs from the GSIM certificate pin")
-        pinned = certificate.pins["gsim_binary"]["sha256"]
-        key = _l3_memo_key(cb, llvm_text, pinned)
+        pinned = engine["gsim_binary"]
+        key = _l3_memo_key(cb, llvm_text, pinned, reuse_scope)
         cached = _L3_MEMO.get(key)
+        if cached is None:
+            # NOT IN THIS PROCESS, so ask the one that outlives it. Promoted into the table on the
+            # way through, because the next lookup in this process should not go back to disk.
+            cached = store.get(key, engine)
+            if cached is not None:
+                _L3_MEMO[key] = cached
         if cached is not None:
             # ALREADY MEASURED, so return the measurement rather than repeating it. Everything the
             # cycles depend on -- the emitted program and the pinned engine -- is in the key, and
@@ -522,6 +667,16 @@ def _gsim_l3_adapter(target: str, evidence: dict[str, Any],
             reused = copy.deepcopy(cached["result"])
             reused["elf"] = None
             reused["reused_measurement"] = True
+            # THE TIMING BLOCK IS THE ONLY PART OF THIS RETURN THE TIER RECORD KEEPS, so it is the
+            # only place a reader of `capsule_result.json` can be told that `sim_active_s` is time an
+            # EARLIER run spent. Without it the record shows 138 s of simulation beside an adapter
+            # wall of 0.02 s and nothing says which of the two this run actually paid -- which is how
+            # a reuse that was working the whole time read as one that had never fired: every run
+            # tree on disk was grepped for the stamp and returned nothing, because nothing on the
+            # loop path ever wrote it down.
+            timing = dict(reused.get("timing") or {})
+            timing["reused_measurement"] = True
+            reused["timing"] = timing
             return reused
         primary = OOT.run_on_oracle(cb, llvm_text, simulator="gsim", target=target,
                                     workdir=workdir, timeout=timeout)
@@ -544,6 +699,7 @@ def _gsim_l3_adapter(target: str, evidence: dict[str, Any],
             "model_sha256": certificate.pins["gsim_model"]["sha256"]}
         _L3_MEMO[key] = {"evidence": copy.deepcopy(evidence["gsim"]),
                          "result": copy.deepcopy(primary)}
+        store.put(key, engine, _L3_MEMO[key])
         return primary
     return run
 
@@ -553,6 +709,7 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
                       expected_package_sha256: str, rtl_identity: Mapping[str, Any],
                       decision: GATE.EvaluationDecision,
                       certificate: GATE.CertificateRecord,
+                      reuse_scope: str,
                       workers: int | None = None) -> dict[str, Any]:
     """Fixed Arm-4 semantics with GSIM as the only RTL execution/timing backend."""
     result: dict[str, Any] = {"approach": "arm4", "ok_build": True, "per_sim": {}}
@@ -563,7 +720,7 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
     evidence: dict[str, Any] = {}
     adapters = {
         "L2": FIXED.CR._spike_verilator_adapter("spike", target),
-        "L3": _gsim_l3_adapter(target, evidence, certificate),
+        "L3": _gsim_l3_adapter(target, evidence, certificate, reuse_scope=reuse_scope),
     }
     try:
         grade = FIXED.CR.run_capsule(
@@ -613,6 +770,12 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
                             "derived_from_rtl": tr.get("derived_from_rtl") is True,
                             "cycle_accurate": tr.get("cycle_accurate") is True,
                             "evidence": tr.get("evidence"),
+                            # WHETHER THIS ROW'S CYCLES WERE MEASURED HERE OR REUSED, said in the
+                            # provenance rather than left to be inferred from a wall time. A reused
+                            # row is the same number by determinism, but a reader who cannot tell
+                            # the two apart cannot audit either one.
+                            "reused_measurement": (elf.get("reused_measurement")
+                                                   if simulator == "gsim" else None),
                             "elf_sha256": elf.get("elf_sha256") if simulator == "gsim" else None}
                            if isinstance(tr, Mapping) else None),
             "counters": tr.get("counters") if isinstance(tr, Mapping) else None,
@@ -657,6 +820,11 @@ def run_execution(spec: ExecutionSpec, workspace: Path, timeout: int,
     kernel = _kernel_record(spec.member)
 
     def run_one(name: str) -> dict[str, Any]:
+        # THE PASS IS PART OF WHAT IS BEING MEASURED. `name` distinguishes the unprofiled pass from
+        # the two counter passes, whose difference lives entirely in the process environment the ELF
+        # is built under and so is invisible to the emitted program; the replicate distinguishes the
+        # repeat this campaign runs in order to measure its own dispersion. Both have to reach the
+        # reuse key or a pass gets handed a number that answers a different question.
         work = _fresh_directory(workspace / name)
         runs = _fresh_directory(work / "capsule_runs")
         policy = PC.package_sandbox_policy(target_experiment, work, spec.package)
@@ -667,7 +835,7 @@ def run_execution(spec: ExecutionSpec, workspace: Path, timeout: int,
                 measurement_pass=f"{spec.arm}_{spec.replicate}_{name}",
                 expected_package_sha256=spec.package_sha256, rtl_identity=rtl_identity,
                 decision=spec.gsim_decision, certificate=spec.gsim_certificate,
-                workers=workers)
+                reuse_scope=f"{spec.replicate}/{name}", workers=workers)
 
     facts = rtl_identity.get("rtl_facts") if isinstance(rtl_identity, Mapping) else None
     rtl_sha = facts.get("sha256") if isinstance(facts, Mapping) else None

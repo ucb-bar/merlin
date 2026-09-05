@@ -41,6 +41,9 @@ def _performance_block(*, family="PG", traits=None, emitter_status="existing"):
         "family": family,
         "lever": "test_lever",
         "claim": "DIFFERENTIAL",
+        # What the member is FOR, as distinct from what it claims. Required on every real block, so
+        # the fixture carries one; without it this fixture would be a shape the corpus cannot produce.
+        "member_class": "OBJECTIVE",
         "comparand": {"kind": "paired", "against": "control", "cancels": ["shape"],
                        "demand_equal": ["M", "K"]},
         "falsifier": {"observation": "cycles", "fires_when": "delta_is_zero",

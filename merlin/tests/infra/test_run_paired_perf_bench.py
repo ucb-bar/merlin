@@ -176,7 +176,12 @@ def test_l3_adapter_uses_only_pinned_gsim_and_never_resolves_verilator(
     monkeypatch.setattr(RUNNER.OOT, "run_on_oracle", primary)
     monkeypatch.setattr(backends, "get_backend", lambda _target: Backend())
     evidence = {}
-    result = RUNNER._gsim_l3_adapter("gemmini", evidence, certificate)(
+    # A store under tmp_path, because the adapter's default one is the target's real cache: a test
+    # that measures into it would leave an answer behind for whatever ran next.
+    adapter = RUNNER._gsim_l3_adapter(
+        "gemmini", evidence, certificate, reuse_scope="r000/unprofiled",
+        store=RUNNER.L3MeasurementStore(tmp_path / "l3_cache"))
+    result = adapter(
         {"tensors": {"y": {"role": "output", "shape": [1], "dtype": "i32"}}},
         "module", tmp_path / "work", 9)
 

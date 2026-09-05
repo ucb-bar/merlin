@@ -16,6 +16,8 @@ sweeps:
       level: L1_tile
       family: PK
       lever: reduction_depth
+      # fits a law about the machine: its cohort is exact and its cycles do not measure today's candidate
+      member_class: LAW
       claim: PREDICTS
       comparand:
         kind: fitted_prediction
@@ -131,6 +133,8 @@ sweeps:
       level: L1_separation_floor
       family: PS
       lever: per_class_settle
+      # its paired delta is what the search minimises
+      member_class: OBJECTIVE
       claim: DIFFERENTIAL
       comparand:
         kind: paired_run
@@ -221,6 +225,8 @@ sweeps:
       level: L3_inter_layer
       family: PC
       lever: dma_issue_before_wait
+      # its paired delta is what the search minimises
+      member_class: OBJECTIVE
       claim: DIFFERENTIAL
       comparand:
         kind: paired_run
@@ -306,6 +312,8 @@ sweeps:
       level: L5_fusion
       family: PF
       lever: epilogue_fusion
+      # its paired delta is what the search minimises
+      member_class: OBJECTIVE
       claim: DIFFERENTIAL
       comparand:
         kind: group_arithmetic
@@ -377,6 +385,8 @@ sweeps:
       level: L2_intra_layer
       family: PL
       lever: cross_regime_amortization
+      # its paired delta is what the search minimises
+      member_class: OBJECTIVE
       claim: DIFFERENTIAL
       comparand:
         kind: paired_regime
@@ -481,6 +491,8 @@ sweeps:
       level: L6_global
       family: PG
       lever: operand_encoding
+      # its paired delta is what the search minimises
+      member_class: OBJECTIVE
       claim: DIFFERENTIAL
       comparand:
         kind: group_arithmetic
@@ -573,6 +585,8 @@ sweeps:
       level: L2_intra_layer
       family: PR
       lever: operand_residency
+      # its paired delta is what the search minimises
+      member_class: OBJECTIVE
       claim: DIFFERENTIAL
       comparand:
         kind: group_arithmetic
@@ -706,6 +720,8 @@ sweeps:
       level: L2_intra_layer
       family: PQ
       lever: redundant_synchronization_removal
+      # its paired delta is what the search minimises
+      member_class: OBJECTIVE
       claim: DIFFERENTIAL
       comparand:
         kind: paired_run
@@ -927,6 +943,8 @@ sweeps:
       level: L1_tile
       family: PM
       lever: parallel_extents
+      # fits a law about the machine: its cohort is exact and its cycles do not measure today's candidate
+      member_class: LAW
       claim: PREDICTS
       comparand:
         kind: fitted_prediction
@@ -1041,6 +1059,8 @@ sweeps:
       level: L2_intra_layer
       family: PV
       lever: window_reuse_amplification
+      # fits a law about the machine: its cohort is exact and its cycles do not measure today's candidate
+      member_class: LAW
       claim: PREDICTS
       comparand:
         kind: fitted_prediction
@@ -1150,6 +1170,8 @@ blocked_unimplemented:
     level: L4_boundary
     family: PB
     lever: host_island_placement
+    # its paired delta is what the search minimises
+    member_class: OBJECTIVE
     claim: DIFFERENTIAL
     comparand:
       kind: group_arithmetic
@@ -1203,6 +1225,8 @@ blocked_unimplemented:
     level: L1_tile
     family: PT
     lever: reduction_depth_past_the_overlap_fill_transient
+    # fits a law about the machine: its cohort is exact and its cycles do not measure today's candidate
+    member_class: LAW
     claim: PREDICTS
     comparand:
       kind: fitted_prediction

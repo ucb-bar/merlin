@@ -32,7 +32,20 @@ __all__ = ["LEVELS", "COMMIT_OPCODES", "STAGE_OPCODES", "RELEASE_OPCODES", "EPIL
 
 #: The optimisation ladder, coarsest last. These are the level names the capsule corpus itself
 #: declares, so a finding can be joined to the family that would measure it -- where one exists.
-LEVELS = ("L1_tile", "L2_intra_layer", "L3_inter_layer", "L4_boundary", "L5_fusion", "L6_global")
+#:
+#: This is a MIRROR of the corpus generator's own level vocabulary, and mirrors drift: it shipped
+#: without ``L1_separation_floor``, so a finding could not be tagged at that rung and
+#: :func:`level_summary` reported a ladder with a hole in it -- silently, because a rung that is never
+#: counted is indistinguishable from a rung with nothing on it, which is exactly the failure mode this
+#: module exists to argue against. The vocabulary is NOT imported from the generator that owns it
+#: (``merlin/contract/capsules/generate_corpus.py``): that is a contract script and this is library
+#: code, and a library reaching into a script to learn its own constants inverts the layering. It is
+#: pinned instead by a test that FAILS when the two lists differ
+#: (``merlin/tests/dse/test_structural_levels.py``) -- the same discipline as
+#: :func:`merlin.perf.attribution.buckets_match_reference`, where a mirror is kept honest by a check
+#: that can fail rather than by a comment asking the next editor to remember.
+LEVELS = ("L1_tile", "L1_separation_floor", "L2_intra_layer", "L3_inter_layer", "L4_boundary",
+          "L5_fusion", "L6_global")
 
 #: ABI vocabulary. These are the emitted program's own opcode names, carried by the buffer rather
 #: than assumed about any device: a backend speaking this ABI emits them whatever its ISA.

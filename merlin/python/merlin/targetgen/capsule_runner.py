@@ -1746,6 +1746,26 @@ def model_citable_rtl_tier(declared: "list[str] | tuple[str, ...]", target: str 
     return rtl[-1] if rtl else None
 
 
+def _screen_tiers_of(target: str | None) -> tuple[tuple[str, str], ...]:
+    """The (tier, sim) pairs BELOW this target's RTL tiers -- the cheap functional screens, in order.
+
+    Derived from the target's own ``tier_sim`` map minus its declared ``rtl_tiers``, so it is the
+    contract that names the screen, never a "spike" literal here. A target that declares no cheap tier
+    (an adapter-supplied ladder with an empty ``tier_sim``) yields ``()`` and the caller must then say
+    the screen is UNAVAILABLE rather than invent one.
+    """
+    if not target:
+        return ()
+    try:
+        from .runner_config import runner_config_from_manifest
+        from .target_experiment import load_capability_manifest
+        cfg = runner_config_from_manifest(load_capability_manifest(target))
+    except Exception:                                    # noqa: BLE001 — unresolvable manifest
+        return ()
+    return tuple((t, cfg.tier_sim[t]) for t in cfg.oracle_tiers
+                 if t not in cfg.rtl_tiers and t in cfg.tier_sim)
+
+
 def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | None,
                     ) -> "dict[str, TierResult]":
     """The tier block for a WHOLE-MODEL capsule, derived from the model's OWN layer accounting.

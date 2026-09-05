@@ -88,3 +88,49 @@ def test_an_unreadable_buffer_is_unknown_not_clean():
     """Silence must never be reported as efficiency."""
     for bad in (None, {}, {"commands": []}, {"commands": "not a list"}):
         assert SL.findings(bad)["status"] == SL.UNKNOWN
+
+
+# ---------------------------------------------------------------------------------------------
+# The level vocabulary is a mirror, and a mirror needs a check that can FAIL
+# ---------------------------------------------------------------------------------------------
+#
+# `LEVELS` restates the optimisation rungs the capsule corpus generator declares, because library
+# code importing a contract script to learn its own constants would invert the layering. The cost of
+# restating is drift, and it had already happened: `L1_separation_floor` was missing here, so a
+# finding could never be tagged at that rung and `level_summary` returned a ladder one rung short --
+# invisibly, since an uncounted rung reads exactly like an empty one. This is the same discipline
+# `merlin.perf.attribution.buckets_match_reference` applies to its five time buckets: pin the two
+# vocabularies to each other, and let the pin fail rather than asking an editor to remember.
+#
+# The generator is imported HERE, in the test, which is the whole point -- a test may reach across a
+# layer the library may not. It is imported rather than skipped over: a cross-check that could not
+# run is not a pass, and this one can always run, because the generator ships in this repo.
+
+
+def _generator_levels() -> frozenset:
+    import sys
+
+    from merlin.common.paths import merlin_dir
+
+    capsules = merlin_dir() / "contract" / "capsules"
+    if str(capsules) not in sys.path:
+        sys.path.insert(0, str(capsules))
+    import generate_corpus as GC  # noqa: PLC0415
+
+    return GC._PERFORMANCE_LEVELS
+
+
+def test_the_levels_are_exactly_the_corpus_generators():
+    reference = _generator_levels()
+    assert set(SL.LEVELS) == set(reference), (
+        f"the structural-level mirror drifted: missing here {sorted(reference - set(SL.LEVELS))}, "
+        f"extra here {sorted(set(SL.LEVELS) - reference)}")
+    assert len(SL.LEVELS) == len(set(SL.LEVELS)), "a level counted twice would double its findings"
+
+
+def test_the_separation_floor_rung_is_reportable():
+    """The rung the mirror had dropped: reachable in a summary, with a zero rather than a hole."""
+    assert "L1_separation_floor" in SL.LEVELS
+    assert SL.level_summary([])["L1_separation_floor"] == 0
+    tagged = [{"level": "L1_separation_floor", "kind": "a_finding"}]
+    assert SL.level_summary(tagged)["L1_separation_floor"] == 1

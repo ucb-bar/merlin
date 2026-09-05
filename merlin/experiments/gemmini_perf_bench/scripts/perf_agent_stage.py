@@ -90,7 +90,18 @@ _FUSED_CONTRACTION = "fused_matmul_bias"
 #: "part" arm of the fusion comparison, and its verdict is that paired difference rather than a
 #: utilization ratio, so pricing it in MACs would be a category error rather than a missing number.
 _ELEMENTWISE_OPERATIONS = ("bias_add",)
-_WORK_OPERATIONS = ("matmul", "resident_reuse", _CONV_OPERATION, _FUSED_CONTRACTION)
+#: Q @ K^T. Both operands are [queries, depth] and the right one is transposed by the operation
+#: rather than by an attribute, so there is no "weight" in the matmul sense and the rank-2 weight
+#: check below cannot see it. `work_volume` has counted this opcode all along; only the declared
+#: price refused it, which left every attention member with no utilization, no share of achievable,
+#: and no verdict.
+_ATTENTION_QK_OPERATION = "attention_qk"
+#: A batch of independent contractions, rank-3 on both operands. Same story: `work_volume` counts
+#: BATCHED_MATMUL, and the declared price refused it for not being rank-2 -- so the one shape the
+#: target contract was corrected to admit still could not be scored.
+_BATCHED_OPERATION = "gemv_batched"
+_WORK_OPERATIONS = ("matmul", "resident_reuse", _CONV_OPERATION, _FUSED_CONTRACTION,
+                    _ATTENTION_QK_OPERATION, _BATCHED_OPERATION)
 
 #: How many member measurements the sweep may run at once. DECLARED, never guessed: this is a shared
 #: host, and the fan-out a measurement ran at is stamped on its own result. Default 1, so a launch
@@ -532,6 +543,34 @@ class DevelopmentGsimFeedback:
                 return False                  # a tie or a win anywhere: keep measuring
         return True
 
+    #: What a member declares itself to be FOR. Mirrors the generator's own vocabulary; a member whose
+    #: frozen descriptor predates the field is treated as OBJECTIVE and counted, because silently
+    #: dropping it from the total would understate the very thing the total measures.
+    OBJECTIVE_CLASS = "OBJECTIVE"
+
+    def _objective_identities(self) -> tuple[set[tuple[str, str]], int]:
+        """``({(family, capsule) that carry the objective}, how many declared nothing)``.
+
+        Fails OPEN on an undeclared member and says how many there were, rather than failing closed.
+        A frozen corpus is content-addressed and may predate the declaration entirely; refusing it
+        would turn a schema addition into a campaign-stopping error, and dropping its members from the
+        total would quietly shrink the objective instead.
+        """
+        objective: set[tuple[str, str]] = set()
+        undeclared = 0
+        # No corpus at all is the same situation one level up: nothing declares a class, so nothing
+        # may be excluded from the total. Returning an empty set makes the caller fall back to every
+        # comparable member and say so, which is the honest reading.
+        for member in getattr(self.corpus, "capsules", None) or ():
+            declared = ((member.descriptor or {}).get("performance") or {}).get("member_class")
+            if not isinstance(declared, str) or not declared:
+                undeclared += 1
+                objective.add((member.family, member.capsule))
+                continue
+            if declared == self.OBJECTIVE_CLASS:
+                objective.add((member.family, member.capsule))
+        return objective, undeclared
+
     def _stopping(self, cells: Sequence[Mapping[str, Any]], *,
                   label: str, elapsed_s: float) -> dict[str, Any]:
         """Should the search stop? Every condition's answer, fired or not.
@@ -555,8 +594,23 @@ class DevelopmentGsimFeedback:
             return {"status": "undeterminable",
                     "reason": "no member is comparable, so there is no measured total to judge",
                     "verdicts": []}
-        baseline_total = float(sum(c["baseline_gsim_cycles"] for c in comparable))
-        candidate_total = float(sum(c["candidate_gsim_cycles"] for c in comparable))
+        # THE OBJECTIVE IS SUMMED OVER THE MEMBERS THAT ARE THE OBJECTIVE, which had never been true.
+        # Every comparable cell was summed, so members that exist only to fit a LAW about the machine
+        # -- a reduction-depth cohort, a 2-D law over M and N -- weighed exactly as much as the
+        # workload the search is meant to improve. Measured on a real campaign: the parallel-extents
+        # family is 16 of 38 members and 33% of a 36.9-minute sweep, for members worth under 2% of the
+        # recoverable cycles, and the search converged at 0.2%.
+        #
+        # The class is read from the FROZEN CORPUS rather than from the cell, deliberately. It is a
+        # property of what the member is for, declared once at generation; putting it on a measurement
+        # would invite it to differ between two measurements of one member. It also keeps the
+        # agent-visible cell schema closed, which is what stops that document growing fields nobody
+        # validates.
+        objective, undeclared = self._objective_identities()
+        judged = [c for c in comparable
+                  if (c.get("family"), c.get("capsule")) in objective] or comparable
+        baseline_total = float(sum(c["baseline_gsim_cycles"] for c in judged))
+        candidate_total = float(sum(c["candidate_gsim_cycles"] for c in judged))
         if self._totals is None:
             self._totals = []
         previous_best = min(self._totals) if self._totals else None
@@ -597,6 +651,14 @@ class DevelopmentGsimFeedback:
             "status": "stop" if stops else "continue",
             "queries": state.queries,
             "baseline_total_cycles": baseline_total,
+            "objective_members": len(judged),
+            "objective_basis": (
+                f"summed over the {len(judged)} member(s) declaring member_class "
+                f"{self.OBJECTIVE_CLASS!r}"
+                + (f"; {undeclared} member(s) declare no class and are counted"
+                   if undeclared else "")
+                + ("; no member declared the class, so every comparable member was summed"
+                   if not objective else "")),
             "best_total_cycles": best_total,
             "previous_best_total_cycles": previous_best,
             "attainable_total_cycles": (None if attainable is SELECT.UNKNOWN else attainable),
@@ -2328,6 +2390,34 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
         if (isinstance(shape, Sequence) and not isinstance(shape, (str, bytes))
                 and all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in shape)):
             shapes[str(row.get("name"))] = [int(v) for v in shape]
+    # BOTH OF THESE PRECEDE THE RANK-2 WEIGHT CHECK, because neither has a rank-2 weight to find:
+    # attention names its operands q/k and transposes the second by definition, and a batched
+    # contraction is rank-3 on both sides. Reaching the check below would refuse them for the shape
+    # of a field they do not declare.
+    if operation.get("op") == _ATTENTION_QK_OPERATION:
+        q = shapes.get(str(attributes.get("q")))
+        k = shapes.get(str(attributes.get("k")))
+        if q is None or k is None or len(q) != 2 or len(k) != 2:
+            return None, "the declared attention operands are not two rank-2 shapes"
+        if q[1] != k[1]:
+            return None, (f"the declared attention operands do not share a depth: q {q} against k {k}")
+        # [queries, depth] @ [keys, depth]^T -> [queries, keys], so queries x depth x keys.
+        return q[0] * q[1] * k[0], "declared attention operand shapes (queries x depth x keys)"
+
+    if operation.get("op") == _BATCHED_OPERATION:
+        lhs = shapes.get(str(attributes.get("lhs")))
+        rhs = shapes.get(str(attributes.get("weight")))
+        if lhs is None or rhs is None or len(lhs) != 3 or len(rhs) != 3:
+            return None, "the declared batched operands are not two rank-3 shapes"
+        if lhs[0] != rhs[0]:
+            return None, (f"the declared batched operands describe different batches: {lhs} against "
+                          f"{rhs}")
+        if lhs[2] != rhs[1]:
+            return None, (f"the declared batched operands do not contract: {lhs} against {rhs}")
+        return lhs[0] * lhs[1] * lhs[2] * rhs[2], (
+            "declared batched operand shapes (batch x M x K x N), one independent contraction per "
+            "batch slice")
+
     weight = shapes.get(str(attributes.get("weight")))
     if weight is None or len(weight) != 2:
         return None, "the declared weight operand is not a rank-2 shape"
