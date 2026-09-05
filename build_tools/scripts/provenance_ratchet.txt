@@ -36,3 +36,70 @@ out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260707T02
 out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260707T021908Z_6961778/baseline_result.json
 out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260708T042753Z_5883c86/baseline_result.json
 out/artifacts/measurements/k1_spacemit/xr0/cross_framework_v1_20260708T004147Z_f23b8ae/baseline_result.json
+
+# ---------------------------------------------------------------------------------------------------
+# ADDED 2026-09-04 AS A DELIBERATE EXCEPTION to the may-only-shrink rule above, on the maintainer's
+# explicit instruction, to unblock the Stop hook. Recording the reason in full because an exception with
+# a forgotten justification becomes a precedent.
+#
+# WHAT THESE ARE. Cross-framework baselines (executorch / exo / tvm) for the K1 SpaceMiT board, written
+# by merlin.baselines.contract.BaselineResult.write(). They claim a verdict -- `passed: true` -- with no
+# provenance block, so a number here cannot be attributed to a board image or toolchain revision. These
+# are BASELINES, i.e. the figures our own results get compared against, which is the worst class of
+# result to leave unattributable.
+#
+# ROOT CAUSE, and why nobody could simply fix it in passing: there is no `k1_spacemit` pin in
+# merlin/contract/hardware_pins.yaml. `provenance.record()` has nothing to attribute to, so adding the
+# call alone would record an empty block. The real fix is two steps, in order:
+#   1. declare a k1_spacemit pin (identifies the board image + the RVV toolchain it was built against);
+#   2. call merlin.common.provenance.record() in BaselineResult.write().
+#
+# THIS LIST WILL REGROW UNTIL THAT HAPPENS. The producer is LIVE: the hook reported 40 paths, and 68 by
+# the time the entries were written, minutes later. Ratcheting a live writer postpones the finding; it
+# does not retire it. Treat every entry below as an open bug, not as settled debt.
+#
+# ATTRIBUTION NOTE. These were first traced to the gemmini perf campaign via a shared chia-venv
+# interpreter tree; that was WRONG. The writer is merlin/python/merlin/baselines/_et_export.py and its
+# siblings, run from the main checkout by the cross-framework baselines workstream. Attribute a writer by
+# its own pid, never by which venv's interpreter appears in its ancestry.
+# ---------------------------------------------------------------------------------------------------
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T082636Z_b0b7822/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T082708Z_b0b7822/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T082738Z_b0b7822/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T082808Z_b0b7822/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T154504Z_fa8041e/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T154536Z_fa8041e/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T154604Z_fa8041e/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T154633Z_fa8041e/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T165126Z_6052f61/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T165159Z_6052f61/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T165232Z_9499663/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T165303Z_9499663/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T180319Z_f2e3afe/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T180354Z_0b4039e/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T180646Z_428146d/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T180721Z_428146d/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T180859Z_428146d/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T180934Z_428146d/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T181211Z_2e4b57b/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T181245Z_2e4b57b/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T205713Z_6a32c3b/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T205745Z_6a32c3b/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T210056Z_6a32c3b/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T210128Z_6a32c3b/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T211700Z_6a32c3b/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T211733Z_6a32c3b/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T214822Z_b084b99/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T214857Z_5704b48/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T224034Z_3686396/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T224113Z_3686396/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T235020Z_0774e13/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T235052Z_0774e13/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T235323Z_0774e13/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260904T235354Z_0774e13/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260905T004602Z_2dd8bc7/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260905T004640Z_2dd8bc7/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260905T010247Z_4ccd1d9/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260905T010333Z_cfd9e67/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260905T015509Z_bfc9ba8/baseline_result.json
+out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260905T015556Z_bfc9ba8/baseline_result.json
