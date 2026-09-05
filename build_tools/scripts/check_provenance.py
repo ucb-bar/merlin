@@ -94,7 +94,8 @@ def _scan_out() -> list[Path]:
             for entry in d.iterdir():
                 seen += 1
                 if seen > _SCAN_CAP:
-                    print(f"  NOTE: scan capped at {_SCAN_CAP} entries; some reports were not examined")
+                    print(f"  NOTE: scan capped at {_SCAN_CAP} entries; some reports were not examined",
+                          file=sys.stderr)
                     return found
                 if entry.is_symlink():
                     continue
@@ -208,6 +209,24 @@ def _surface_sources(prov, pins: dict, got, notes: list[str], seen: set[str]) ->
     return problems
 
 
+def _hook_result(stop_hook: bool, reason: str | None, lines: list[str] | None = None) -> int:
+    """Emit the refusal (or the all-clear) in the dialect the caller speaks.
+
+    A Claude Code Stop hook signals BLOCK through ``{"decision": "block"}`` on stdout; a non-zero exit
+    is a NON-blocking error there. ``--stop-hook`` was parsed here but only ever decorated the success
+    line, so every provenance failure exited 1 and the session stopped regardless -- the gate reported
+    and could not enforce. Routing both dialects through one helper keeps them from drifting apart.
+    """
+    if not stop_hook:
+        return 0 if reason is None else 1
+    if reason is None:
+        print(json.dumps({}))
+    else:
+        body = reason + ("\n- " + "\n- ".join(lines) if lines else "")
+        print(json.dumps({"decision": "block", "reason": body}))
+    return 0  # stop-hook signals via JSON, not exit code
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     staged = "--staged" in argv
@@ -221,8 +240,8 @@ def main(argv: list[str] | None = None) -> int:
         from merlin.common import provenance as P
         pins = P.load_pins()
     except Exception as exc:                              # noqa: BLE001 — any failure is fatal here
-        print(f"provenance: FAILED — pin registry unusable: {exc}")
-        return 1
+        print(f"provenance: FAILED — pin registry unusable: {exc}", file=sys.stderr)
+        return _hook_result(stop_hook, f"provenance: pin registry unusable: {exc}")
     notes.append(f"{len(pins)} pin(s) declared: {', '.join(sorted(pins))}")
 
     # 2. Tracked reports that claim a verdict.
@@ -274,8 +293,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             arts = P.load_artifacts()
         except Exception as exc:                          # noqa: BLE001 — a malformed section is fatal
-            print(f"provenance: FAILED — artifact registry unusable: {exc}")
-            return 1
+            print(f"provenance: FAILED — artifact registry unusable: {exc}", file=sys.stderr)
+            return _hook_result(stop_hook, f"provenance: artifact registry unusable: {exc}")
         for name in sorted(arts):
             got = P.verify_artifact(name)
             if got.ok:
@@ -304,16 +323,17 @@ def main(argv: list[str] | None = None) -> int:
                          [Path(x).name for x in (_UNREADABLE + unreadable)][:5])
                      + (" ..." if skipped > 5 else ""))
 
-    for n in notes:
-        print(f"  {n}")
+    for n in notes:              # stdout must be JSON ONLY in hook mode
+        print(f"  {n}", file=sys.stderr if stop_hook else sys.stdout)
     if problems:
-        print("provenance: FAILED")
+        print("provenance: FAILED", file=sys.stderr)
         for p in problems:
-            print(f"  - {p}")
-        return 1
+            print(f"  - {p}", file=sys.stderr)
+        return _hook_result(stop_hook, f"Hardware-provenance violations ({len(problems)}):", problems)
+    if stop_hook:
+        return _hook_result(stop_hook, None)
     print(f"provenance: OK ({checked} verdict-claiming report(s) checked"
-          + (f", {skipped} unreadable" if skipped else "") + ")"
-          + (" [stop-hook]" if stop_hook else ""))
+          + (f", {skipped} unreadable" if skipped else "") + ")")
     return 0
 
 

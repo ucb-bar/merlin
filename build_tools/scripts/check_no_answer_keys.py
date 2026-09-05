@@ -15,6 +15,7 @@ Run as a pre-commit + Stop gate. Exit non-zero listing any tracked answer key.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 
@@ -52,23 +53,48 @@ def _is_answer_key(path: str) -> bool:
     return False
 
 
-def main() -> int:
+def _fail(stop_hook: bool, reason: str, lines: list[str]) -> int:
+    """Report a refusal in whichever dialect the caller speaks.
+
+    A Claude Code Stop hook signals BLOCK through ``{"decision": "block"}`` on stdout, not through the
+    exit status (a non-zero exit is a non-blocking error there). This gate was wired into the Stop hook
+    with ``--stop-hook`` but never implemented the flag, so a tracked answer key exited 1 and the
+    session stopped anyway. Both dialects now come from one place so they cannot drift apart again.
+    """
+    if stop_hook:
+        print(json.dumps({"decision": "block",
+                          "reason": reason + ("\n- " + "\n- ".join(lines) if lines else "")}))
+        return 0  # stop-hook signals via JSON, not exit code
+    print(f"[FAIL] no-answer-keys: {reason}", file=sys.stderr)
+    for line in lines[:40]:
+        print(f"    {line}", file=sys.stderr)
+    if len(lines) > 40:
+        print(f"    … and {len(lines) - 40} more", file=sys.stderr)
+    return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    stop_hook = "--stop-hook" in argv
     try:
         tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True,
                                  check=True).stdout.splitlines()
     except (OSError, subprocess.CalledProcessError) as e:
-        print(f"check_no_answer_keys: could not list tracked files: {e}", file=sys.stderr)
-        return 0  # not a git tree / git unavailable — nothing to gate
+        # FAIL CLOSED. "We could not look" is not "there is nothing to find". This gate is the only
+        # thing standing between a public repo and a published answer key, and returning 0 on an
+        # unread index made an unreadable tree indistinguishable from a clean one — a green that
+        # cannot fail. An unexaminable surface is a refusal; fix the tree and re-run.
+        return _fail(stop_hook,
+                     f"could not list tracked files ({e}); the answer-key surface was NOT examined, "
+                     f"which is not the same as clean", [])
     leaks = [p for p in tracked if _is_answer_key(p)]
     if leaks:
-        print(f"[FAIL] no-answer-keys: {len(leaks)} benchmark answer key(s) are TRACKED "
-              f"(public repo — untrack with `git rm --cached`, they stay on disk + are gitignored):",
-              file=sys.stderr)
-        for p in leaks[:40]:
-            print(f"    {p}", file=sys.stderr)
-        if len(leaks) > 40:
-            print(f"    … and {len(leaks) - 40} more", file=sys.stderr)
-        return 1
+        return _fail(stop_hook,
+                     f"{len(leaks)} benchmark answer key(s) are TRACKED (public repo — untrack with "
+                     f"`git rm --cached`, they stay on disk + are gitignored):", leaks)
+    if stop_hook:
+        print(json.dumps({}))
+        return 0
     print("[  ok] no-answer-keys: no golden/expected/hidden answer surfaces are tracked.")
     return 0
 
