@@ -78,3 +78,40 @@ def test_an_authored_key_the_semantic_block_does_not_consume_is_not_dropped():
         else __import__("inspect").getsource(CSp)
     assert "for key, value in authored.items()" in src, (
         "authored keys outside the known set must be carried, not discarded")
+
+
+def test_every_extends_names_a_capsule_that_the_same_synthesis_emits():
+    """⚠️ REGRESSION, and it silently voided the whole anchor relation.
+
+    A phase-2 member is admissible ONLY as an extension of a sibling that was certified, and
+    ``tier_policy.verify_extends`` resolves the field to a CAPSULE. The application axis put the
+    behavioural CLASS there instead -- ``contraction/i8/aligned/fits_double/rank2/squareish_gemm`` --
+    because that is the requirement side's own vocabulary. Measured: 23 of 28 members carrying the
+    field named a class, so every one resolved to nothing and verified as UNVERIFIED, which the gate
+    correctly treats as WEAKER than naming nobody, because an unchecked extends reads as certified.
+
+    The relation was declared everywhere and resolvable almost nowhere, and the count that would have
+    shown it -- "0 of 90 verified" -- reads identically to "nobody has certified the anchors yet".
+    """
+    import yaml
+
+    from merlin.common.paths import merlin_dir
+
+    spec_dir = merlin_dir() / "contract" / "capsules" / "conformance"
+    checked = 0
+    for path in sorted(spec_dir.glob("*.yaml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not doc.get("cells"):
+            continue
+        try:
+            res = CS.synthesize(doc)
+        except Exception:                          # noqa: BLE001 -- a target that cannot synthesize
+            continue                               # is a different test's problem
+        names = {e["name"] for e in res["capsules"]}
+        unresolvable = [(e["name"], e["extends"]) for e in res["capsules"]
+                        if e.get("extends") and e["extends"] not in names]
+        assert not unresolvable, (
+            f"{path.stem}: `extends` naming something that is not a capsule this synthesis emits: "
+            f"{unresolvable[:4]}. verify_extends resolves a CAPSULE; a class key can never resolve.")
+        checked += 1
+    assert checked, "no conformance spec was checkable"

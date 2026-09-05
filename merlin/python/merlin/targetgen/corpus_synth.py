@@ -329,10 +329,6 @@ def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
 #: mode coverage over the derived corpus measured nothing and every mode-asserting hand-authored capsule
 #: was structurally unmatchable by anything the synthesizer could produce. Omitting the key is what lets
 #: ``_default_modes`` run.
-#: Epilogue stages a contraction builder can actually carry. Mirrors
-#: ``conformance._BUILDER_EPILOGUE_STAGES``; the family each one belongs to is DERIVED from the
-#: semantic taxonomy rather than listed here, so a new stage needs no second table.
-_EPILOGUE_STAGES = ("relu", "acc_scale", "bias_add", "maxpool")
 
 
 def _fused_carrier(family: str, composed_with: tuple, pool: set[str]) -> tuple[str, list[str]] | None:
@@ -361,7 +357,12 @@ def _fused_carrier(family: str, composed_with: tuple, pool: set[str]) -> tuple[s
     if carrier is None:
         return None
     from merlin.targetgen import semantic_families as _sf
-    stage = next((st for st in _EPILOGUE_STAGES if _sf.from_op(st) == family), None)
+    from merlin.targetgen.corpus_spec import BUILDER_EPILOGUE_STAGES
+
+    # The stages a contraction builder can actually carry, read from the builder module itself (the same
+    # tuple the requirement's epilogue axis walks) rather than re-typed here; the family each one belongs
+    # to is DERIVED from the semantic taxonomy, so a new stage needs no table at all.
+    stage = next((st for st in BUILDER_EPILOGUE_STAGES if _sf.from_op(st) == family), None)
     return (carrier, [stage]) if stage else None
 
 
@@ -1423,7 +1424,16 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             # (and the gate) can tell a large capsule resting on a guarantee from one resting on
             # nothing.
             entry["max_oracle_tier"] = _tier
-            entry["extends"] = str(_cap.get("extends") or "")
+            # ⚠️ `extends` MUST NAME THE SIBLING CAPSULE, NOT THE CLASS IT BELONGS TO. The requirement
+            # side names the behavioural CLASS ("contraction/i8/aligned/fits_double/rank2/
+            # squareish_gemm") because that is its own vocabulary; `tier_policy.verify_extends` looks
+            # up a CAPSULE and so could never resolve one. Measured: 23 of 28 members carrying the
+            # field named a class, and every one of them verified as UNVERIFIED -- which the gate
+            # correctly treats as WEAKER than naming nobody, because an unchecked extends reads as
+            # certified. The anchor relation was declared everywhere and resolvable almost nowhere.
+            #
+            # The class stays, in `source_reference`, where it is provenance rather than a reference.
+            entry["extends"] = f"{SYNTH_PREFIX}_app_{_slug}_l3"
         _mark_source(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
