@@ -29,6 +29,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from merlin.perf import barrier_arms as BA
+
 ANALYZER = "perf_paired_claim.analyze_paired_claim/v1"
 
 ESTABLISHED = "ESTABLISHED"
@@ -47,18 +49,27 @@ def _dispersion(values: Sequence[float]) -> float:
     return (max(values) - min(values)) if len(values) > 1 else 0.0
 
 
-def analyze_paired_claim(descriptors: object, results: object) -> dict[str, Any]:
+def analyze_paired_claim(descriptors: object, results: object,
+                         per_unit: object = None) -> dict[str, Any]:
     """Decide one differential family over already-measured arms.
 
     ``results`` rows carry ``capsule``, ``arm`` (a declared comparison role), ``replicate`` and
     ``cycles``. Every member must report both of its declared arms.
+
+    ``per_unit`` maps capsule -> how many units the cheap arm REMOVED (for the synchronization
+    family, completion points, from :func:`merlin.perf.barrier_arms.paired_removal`). It is required
+    exactly when the family's own falsifier declares a per-unit GROWTH observation, and is ignored
+    otherwise. A direction test cannot decide a growth claim: "this arm is cheaper on every member"
+    is true of a saving that is CONSTANT across members, which is precisely what a per-unit claim
+    denies. Deciding such a family on direction alone reports a verdict on an assertion nothing
+    evaluated -- so when the counts are absent the cohort is REFUSED, never quietly passed.
     """
     if not isinstance(descriptors, Sequence) or not descriptors:
         return _fail("no capsule descriptors were supplied")
     if not isinstance(results, Sequence) or not results:
         return _fail("no measured rows were supplied")
 
-    contracts, families = [], set()
+    contracts, families, falsifiers = [], set(), []
     for d in descriptors:
         if not isinstance(d, Mapping):
             return _fail("a descriptor is not a mapping")
@@ -70,6 +81,7 @@ def analyze_paired_claim(descriptors: object, results: object) -> dict[str, Any]
                          observed_claim=perf.get("claim"))
         families.add(str(perf.get("family")))
         contracts.append(perf.get("acceptance"))
+        falsifiers.append(perf.get("falsifier"))
     if len(families) != 1:
         return _fail("descriptors span more than one family", families=sorted(families))
     if any(not isinstance(c, Mapping) for c in contracts):
@@ -80,6 +92,14 @@ def analyze_paired_claim(descriptors: object, results: object) -> dict[str, Any]
     if contract.get("analyzer") != ANALYZER:
         return _fail("the contract names a different analyzer",
                      declared=contract.get("analyzer"), this=ANALYZER)
+
+    # The falsifier decides WHICH question this cohort answers, so it must be one question. Members
+    # disagreeing here would mean half a family tested a direction and half tested a growth.
+    if any(not isinstance(f, Mapping) for f in falsifiers):
+        return _fail("a member carries no falsifier")
+    falsifier = falsifiers[0]
+    if any(f != falsifier for f in falsifiers):
+        return _fail("members disagree about the falsifier")
 
     roles = contract.get("roles")
     if (not isinstance(roles, Sequence) or isinstance(roles, str) or len(roles) != 2
@@ -135,19 +155,67 @@ def analyze_paired_claim(descriptors: object, results: object) -> dict[str, Any]
         indistinguishable = [r["capsule"] for r in judged
                              if abs(r["delta_cycles"]) <= r["replicate_band"]]
         if indistinguishable:
-            return {"verdict": REFUTED, "rows": rows, "reason": (
+            outcome = {"verdict": REFUTED, "rows": rows, "reason": (
                 f"{len(indistinguishable)} member(s) cost the same on both arms within their own "
                 f"replicate band, so the two are not distinguishable"),
                 "indistinguishable": indistinguishable[:8]}
-        return {"verdict": ESTABLISHED, "rows": rows,
-                "reason": f"all {len(judged)} member(s) separate the two arms beyond their band"}
+        else:
+            outcome = {"verdict": ESTABLISHED, "rows": rows,
+                       "reason": f"all {len(judged)} member(s) separate the two arms beyond their band"}
+    else:
+        sign = 1.0 if predicted == roles[0] else -1.0
+        losers = [r["capsule"] for r in judged if sign * r["delta_cycles"] <= r["replicate_band"]]
+        if losers:
+            outcome = {"verdict": REFUTED, "rows": rows, "reason": (
+                f"{predicted!r} was predicted cheaper and is not, on {len(losers)} member(s), beyond "
+                f"their measured replicate band"), "members": losers[:8]}
+        else:
+            outcome = {"verdict": ESTABLISHED, "rows": rows,
+                       "reason": (f"{predicted!r} is cheaper on all {len(judged)} member(s), beyond "
+                                  f"each member's own replicate band")}
+    return _apply_growth_falsifier(outcome, falsifier, judged, roles, per_unit)
 
-    sign = 1.0 if predicted == roles[0] else -1.0
-    losers = [r["capsule"] for r in judged if sign * r["delta_cycles"] <= r["replicate_band"]]
-    if losers:
-        return {"verdict": REFUTED, "rows": rows, "reason": (
-            f"{predicted!r} was predicted cheaper and is not, on {len(losers)} member(s), beyond "
-            f"their measured replicate band"), "members": losers[:8]}
-    return {"verdict": ESTABLISHED, "rows": rows,
-            "reason": (f"{predicted!r} is cheaper on all {len(judged)} member(s), beyond each "
-                       f"member's own replicate band")}
+
+def _apply_growth_falsifier(outcome: dict[str, Any], falsifier: Mapping[str, Any],
+                            judged: Sequence[Mapping[str, Any]], roles: Sequence[str],
+                            per_unit: object) -> dict[str, Any]:
+    """Fold the declared per-unit growth test into a direction verdict, or refuse for want of counts.
+
+    Only ever downgrades. A cohort that fails the direction test is already decided, and a cohort
+    that passes it has shown only that one arm is cheaper -- not that the saving scales with the
+    count removed, which is the separate thing this family's falsifier asserts.
+    """
+    if str(falsifier.get("observation") or "") != BA.PER_UNIT_GROWTH_OBSERVATION:
+        return outcome
+    if outcome["verdict"] == REFUSED:
+        return outcome
+    if not isinstance(per_unit, Mapping) or not per_unit:
+        return _fail(
+            "this family's falsifier tests whether the saving GROWS with the count removed, and no "
+            "per-unit counts were supplied -- the direction result alone does not decide it",
+            declared_observation=falsifier.get("observation"), direction_verdict=outcome["verdict"],
+            rows=outcome.get("rows"))
+    points, missing = [], []
+    for row in judged:
+        capsule = str(row["capsule"])
+        removed = per_unit.get(capsule)
+        if not isinstance(removed, int) or isinstance(removed, bool):
+            missing.append(capsule)
+            continue
+        # delta_cycles is positive when roles[0] -- the arm that removed the units -- is cheaper, so
+        # it IS the saving those removals bought.
+        points.append({"removed": removed, "cycles_saved": float(row["delta_cycles"])})
+    if missing:
+        return _fail("a member has no per-unit count, so its saving cannot be attributed",
+                     members=missing[:8], rows=outcome.get("rows"))
+    growth = BA.analyze_barrier_claim(points)
+    merged = dict(outcome)
+    merged["growth"] = growth
+    if growth["verdict"] == BA.ESTABLISHED:
+        merged["reason"] = f"{outcome['reason']}; {growth['reason']}"
+        return merged
+    merged["verdict"] = REFUTED if growth["verdict"] == BA.REFUTED else REFUSED
+    merged["reason"] = (
+        f"the arms separate ({outcome['reason']}), but the declared falsifier is about GROWTH and "
+        f"it does not hold: {growth.get('reason')}")
+    return merged

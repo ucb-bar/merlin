@@ -30,6 +30,14 @@ from typing import Any
 #: which is target-independent: a backend that speaks this ABI emits these regardless of its ISA.
 COMPLETION_OPCODES = ("COMMIT", "FENCE", "BARRIER")
 
+#: The falsifier ``observation`` a family declares when its claim is PER-UNIT GROWTH rather than a
+#: direction.  A direction claim ("this arm is cheaper") and a growth claim ("the saving grows with
+#: the count removed") are different assertions and only the second one indicts a PER-UNIT cost, so a
+#: family declaring this must have :func:`analyze_barrier_claim` run over its cohort -- deciding it
+#: with a direction test alone would report a verdict on a claim nobody evaluated.  Compared as data
+#: against the declaration, never matched as a pattern.
+PER_UNIT_GROWTH_OBSERVATION = "paired_cycle_saving_by_removed_barrier_count"
+
 ESTABLISHED = "ESTABLISHED"
 REFUTED = "REFUTED"
 REFUSED = "REFUSED"

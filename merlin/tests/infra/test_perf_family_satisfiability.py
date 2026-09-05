@@ -9,6 +9,7 @@ do. Nothing caught it because nothing asserted it, so this does.
 from __future__ import annotations
 
 import dataclasses
+import importlib
 
 import pytest
 import yaml
@@ -66,3 +67,50 @@ def test_no_family_declares_a_predictive_claim_without_a_contract():
         if performance.get("claim") == "PREDICTS":
             assert isinstance(performance.get("acceptance"), dict), (
                 f"{family_id} claims PREDICTS with no frozen acceptance contract")
+
+
+@pytest.mark.parametrize("family_id", [fid for fid, _ in _families()[0]])
+def test_an_emitter_declared_existing_actually_exists(family_id):
+    """``emitter.status: existing`` is a claim about this tree, so resolve it rather than trust it.
+
+    MEASURED, and this is why the test exists: the synchronization family declared
+    ``entry: merlin.perf.barrier_arms.pair_from_emitter`` with ``status: existing``. The module
+    exists; that function never did, and neither did the ``retire knob`` its ``knobs`` named. Eleven
+    capsules shipped declaring an emitter against nothing, so the family's second arm could not be
+    built and ten of them measured one arm against no comparand. Generation succeeded, the capsules
+    materialised, and the gap was invisible from every artifact -- an emitter is only consulted when
+    someone tries to build the arm, and nobody had.
+
+    Import-and-getattr is the whole check. It is cheap, it cannot pass vacuously, and it fails in the
+    one direction that matters: a declaration naming something absent.
+    """
+    performance = dict(_families()[0])[family_id]
+    emitter = performance.get("emitter") or {}
+    if str(emitter.get("status")) != "existing":
+        pytest.skip(f"{family_id} does not declare an existing emitter")
+    entry = str(emitter.get("entry") or "")
+    assert entry and not entry.startswith("new:"), (
+        f"{family_id} declares status 'existing' with entry {entry!r}, which names work not yet done")
+    module_path, _, attribute = entry.rpartition(".")
+    assert module_path and attribute, f"{family_id}: entry {entry!r} is not a module path plus a name"
+    module = importlib.import_module(module_path)
+    assert hasattr(module, attribute), (
+        f"{family_id} declares emitter {entry!r} as existing, but {module_path} defines no "
+        f"{attribute!r}; the family cannot build its arms")
+
+
+@pytest.mark.parametrize("family_id", [fid for fid, _ in _families()[1]])
+def test_a_blocked_family_does_not_claim_its_emitter_exists(family_id):
+    """The mirror direction: a family recorded as blocked must not also claim a working emitter, or
+    the block reason and the emitter record disagree about whether the work is done."""
+    performance = dict(_families()[1])[family_id]
+    emitter = performance.get("emitter") or {}
+    status, entry = str(emitter.get("status")), str(emitter.get("entry") or "")
+    if status != "existing":
+        return
+    module_path, _, attribute = entry.rpartition(".")
+    assert module_path and attribute and not entry.startswith("new:"), (
+        f"{family_id} is blocked yet declares emitter {entry!r} as existing")
+    module = importlib.import_module(module_path)
+    assert hasattr(module, attribute), (
+        f"{family_id} is blocked and its 'existing' emitter {entry!r} does not resolve either")

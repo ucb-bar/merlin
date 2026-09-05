@@ -683,9 +683,21 @@ sweeps:
         layout: identical_operands_and_identical_command_stream_plus_the_removed_barriers
       emitter:
         status: existing
-        entry: merlin.perf.barrier_arms.pair_from_emitter
+        entry: merlin.perf.barrier_arms.paired_removal
         knobs:
-          transformation: emit_one_capsule_at_two_settings_of_the_target_emitters_retire_knob
+          # THE TWO ARMS ARE THE TWO COMPILERS, not two settings of a corpus knob. The previous
+          # declaration named `pair_from_emitter` and a "retire knob" on the target emitter; neither
+          # exists -- there is no such entry point in the module and no such knob in any emitter --
+          # so this family declared `status: existing` against nothing and ten capsules measured one
+          # arm against no second arm. The expensive arm is what the BASELINE compiler already emits
+          # (a completion point after every unit of work) and the cheap arm is what an optimizing
+          # candidate emits instead, which is exactly the pair the measurement path already builds.
+          # So the emitter's honest job is to READ both emitted programs and count what each
+          # synchronizes. Verified on this corpus's own buffers: COMMIT count tracks the job count
+          # exactly (j=2 -> 2, j=8 -> 8, j=16 -> 16), and a buffer declaring no completion opcode
+          # yields UNKNOWN rather than a count of zero.
+          transformation: count_completion_points_in_the_baseline_and_candidate_emissions_of_one_capsule
+          removed_barrier_count: varies_across_members_because_the_job_count_does
       noise_band:
         kind: measured_replicate_dispersion
         declared_constant: null
