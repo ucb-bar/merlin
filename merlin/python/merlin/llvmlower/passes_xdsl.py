@@ -576,6 +576,7 @@ _INSERT_HEAD = '"tensor.insert_slice"('
 _PROPS_OPEN = ") <{"
 _SIZES_FIELD = "static_sizes = array<i64: "
 _STRIDES_FIELD = "static_strides = array<i64: "
+_OFFSETS_FIELD = "static_offsets = array<i64: "
 _OPERAND_TYPES = ": (tensor<"
 
 
@@ -671,9 +672,19 @@ def _fix_insert_slices(line: str) -> str:
 
     Pre-fixes model2MLIR artifacts that predate the slice_scatter step fix (m2m's
     ``ir/decompositions.py`` read ``step`` from the ``end`` argument slot, so insert_slice got
-    ``strides[dim] = end``). ``step`` is almost always 1; only a stride whose ``size * stride``
-    walks past the destination extent is reset. New captures do not hit this, but the
-    recaptures already on disk do, so the repair stays.
+    ``strides[dim] = end``). ``step`` is almost always 1; only a stride the slice cannot FIT under
+    is reset. New captures do not hit this, but the recaptures already on disk do, so the repair
+    stays.
+
+    "Fits" is ``offset + (size - 1) * stride < extent`` -- the LAST written index, not one stride
+    past it. The earlier ``size * stride > extent`` counted the step past the final element as a
+    written element and so rejected a scatter that is exactly full: a ``ConvTranspose2d(stride=2)``
+    upsample writes ``size=16`` elements at 0, 2, ..., 30 of a 31-wide destination, and ``16 * 2 =
+    32 > 31`` reset it to 1, turning the scatter into a dense corner copy. Silently: the module
+    stays verifier-clean, so it surfaced only as a wrong number (measured on deepjscc, whose two
+    transposed convolutions are the only non-unit-stride inserts in any tracked recapture --
+    whole-model ``fp32_cos 0.885366`` against the capture's own golden, ``1.000000`` with this
+    predicate). ``merlin/tests/ir/test_insert_slice_strides.py`` pins both directions.
     """
     out: list[str] = []
     i = 0
@@ -691,6 +702,7 @@ def _fix_insert_slices(line: str) -> str:
         sizes_field = _array_field(props, _SIZES_FIELD, last=True)
         strides_field = (None if sizes_field is None
                          else _array_field(props[sizes_field[1]:], _STRIDES_FIELD, last=False))
+        offsets_field = _array_field(props, _OFFSETS_FIELD, last=False)
         if sizes_field is None or strides_field is None:
             out.append(line[i:end])
             i = end
@@ -699,8 +711,11 @@ def _fix_insert_slices(line: str) -> str:
         sizes = [int(s) for s in props[sizes_field[0]:sizes_field[1]].split(",")]
         strides = [int(s) for s in raw_strides.split(",")]
         dst_dims = [int(d) for d in dst.split("x")[:-1]]
-        repaired = [1 if sz * st > extent else st
-                    for sz, st, extent in zip(sizes, strides, dst_dims)]
+        # The offset is part of where the last element lands; an absent field means all-zero.
+        offsets = ([int(s) for s in props[offsets_field[0]:offsets_field[1]].split(",")]
+                   if offsets_field is not None else [0] * len(sizes))
+        repaired = [1 if off + (sz - 1) * st >= extent else st
+                    for off, sz, st, extent in zip(offsets, sizes, strides, dst_dims)]
         if repaired == strides:
             out.append(line[i:end])
             i = end
