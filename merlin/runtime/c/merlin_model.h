@@ -38,6 +38,7 @@ typedef struct {
 
 /* Generated per model (model_call.c): unrolls the N-pointer ciface call. */
 void merlin_invoke(void **descriptor_ptrs);
+typedef void (*merlin_invoke_fn_t)(void **descriptor_ptrs);
 
 /* Run forward() once.
  *   args        : the generated MERLIN_ARGS table (length n_args, OUTPUT last).
@@ -50,5 +51,25 @@ void merlin_invoke(void **descriptor_ptrs);
 void merlin_run(const merlin_arg_t *args, int n_args, const void *weights_base,
                 void *const *input_ptrs, void *out_buffer,
                 merlin_descriptor_t *descs);
+
+/* Multi-result form used by stateful sessions. output_ptrs is indexed by MLIR result ordinal.
+ * The single-result merlin_run above remains as a compatibility wrapper. */
+void merlin_run_multi(const merlin_arg_t *args, int n_args, const void *weights_base,
+                      void *const *input_ptrs, void *const *output_ptrs,
+                      merlin_descriptor_t *descs);
+
+/* Multi-program sessions link several compiled entry points into one process. This form selects
+ * the generated invocation trampoline explicitly, avoiding a global `forward` dispatch or a
+ * model-name branch in the runtime. */
+void merlin_run_multi_with(const merlin_arg_t *args, int n_args, const void *weights_base,
+                           void *const *input_ptrs, void *const *output_ptrs,
+                           merlin_descriptor_t *descs, merlin_invoke_fn_t invoke);
+
+/* Copy declared result buffers into their next-step input buffers. Returns 0 on success and -1
+ * when a pair is out of range or its byte extents differ (state is never truncated silently). */
+int merlin_commit_state(const merlin_arg_t *args, int n_args,
+                        void *const *input_ptrs, void *const *output_ptrs,
+                        int n_state_pairs, const int *input_args,
+                        const int *output_indices);
 
 #endif

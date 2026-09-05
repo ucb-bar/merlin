@@ -109,9 +109,17 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
     for i in range(n):
         conds.append(_conditions())
         try:
+            # EMBED ONE SESSION STEP, NOT THE WHOLE CORPUS. This harness times one input run
+            # repeatedly; it never walks a session trajectory. `c_runtime.generate` otherwise
+            # emits every declared step as C literals -- resnet50 declares 256, which is a
+            # 769,560,668-byte `model_io.h` and ~7 GB of clang RSS for stimulus the measurement
+            # does not use. Step 0 is the graded one (verified: session_inputs[0] == inputs.npz's
+            # first input, session_goldens[0] == golden_w8a8.npy), and the cap truncates the
+            # correctness/quality references alongside the streams so step k still meets
+            # reference k. A bundle declaring no session is unaffected.
             res = k1.run_on_k1(model_dir, work_root / f"ours_{i}", pkg, timeout=1800,
                                op_profile=False, iters=iters, warmup=warmup,
-                               parallel_harts=parallel_harts)
+                               parallel_harts=parallel_harts, max_session_steps=1)
             g = zm._gate(res["prefix"], golden_refs)
             # WHAT FRACTION OF THE OUTPUT THIS SCORE COVERS. The board harness prints at most
             # MERLIN_DUMP_CAP elements, and _gate truncates the reference to match, so a prefix
