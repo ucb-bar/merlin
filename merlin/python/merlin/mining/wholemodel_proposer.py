@@ -55,6 +55,7 @@ from ..llvmlower.epilogue_fusion import ensure_registered as _register_fuse_epil
 from ..llvmlower.prov_cse import ensure_registered as _register_cse_through_provenance
 from ..llvmlower.perop_blocks import ensure_registered as _register_conv_register_block
 from ..llvmlower.im2col_pack import ensure_registered as _register_im2col_panel_pack
+from ..llvmlower.quant_round import ensure_registered as _register_fuse_quantize_round_convert
 
 _register_fold_weight_transpose()
 _register_prepack_weight_layout()
@@ -72,6 +73,10 @@ _register_fuse_epilogue_loops()
 # measurement yet -- see llvmlower.perop_blocks.CONV_ARM_FEATURE.
 _register_conv_register_block()
 _register_im2col_panel_pack()
+# The quantize round/convert fusion. Registered HERE for the reason the block above gives -- the
+# lever's own module is imported by nothing on the proposal path, so without this line `_composes`
+# would swallow its KeyError and the lever would be INVISIBLE rather than declined.
+_register_fuse_quantize_round_convert()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
@@ -182,6 +187,23 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # needed above: unlike the satellite-module levers this one is registered eagerly by
     # `impr_features` itself, where its `edit_pipeline` hook lives.
     ("fuse_elementwise_post_contraction", False),         # tail: broadcast/elementwise -> fused, 50 -> 13
+    # The quantize chain's counterpart to the activation lever right above, and it is listed next to it
+    # because it is the SAME composition: an elementwise generic whose body carries a `math.*` op is
+    # refused outright by the `merlin.vec_r{rank}` tagger, so the op never reaches an arm; the fix is
+    # to rewrite the math to pure arith BEFORE the tagger runs. There, `math.exp`/`erf`/`tanh` become
+    # a minimax polynomial (an APPROXIMATION, gated on cos/rel error). Here, `math.roundeven -> clamp
+    # -> fptosi` becomes an EXACT inline round -- the clamp commutes with round-half-to-even because
+    # its bounds are integral, which bounds the argument, and `fptosi`'s truncation is then a no-op on
+    # an already-integral value. DERIVED on this branch from deepjscc int8's own prepared module: 35
+    # generics carry `math.roundeven`, 32 of them fuse (the other 3 are one-sided clamps and are
+    # refused), and those 32 quantize 5,179,876 elements per inference through a `roundevenf` call
+    # whose callee is 9 instructions. Read off the LINKED elf, `forward`'s call sites to `roundevenf`
+    # go 37 -> 5 and its vector fraction 0.1541 -> 0.3758, with the output digest bit-identical to the
+    # baseline across six environment paddings on all three int8 captures. IMPLIES `vectorize_non_contraction_generics`, which is where the payoff
+    # is: alone the rewrite trades a call for inline arith and measures as a wash. NO SPEED CLAIM --
+    # the wall is unmeasured and this list already carries two levers whose static case was clean and
+    # whose measurement was not.
+    ("fuse_quantize_round_convert", False),               # quantize: roundevenf call/elem -> inline arith
     ("vectorized_transcendental_activation", True),       # gelu/sigmoid/silu: closes the 10-17x activation gap
     # The OTHER half of the im2col tail, and the only lever on this list that changes an operand's
     # LAYOUT rather than what is computed from it. model2MLIR lays the column matrix out [K][M] and

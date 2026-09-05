@@ -412,6 +412,7 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
                         tag_vec_ranks: bool = False,
                         named_contraction: bool = False,
                         prequant_gather: bool = False,
+                        fuse_quant_round: bool = False,
                         op_counts_out: "dict[str, int] | None" = None,
                         vec_lanes: int = _VEC_RANK_LANES,
                         vec_max_rank: int = _VEC_RANK_MAX_RANK) -> Path:
@@ -463,6 +464,21 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     # them: a float->i1 `arith.fptosi` is POISON in LLVM for every value but 0 and -1, and the
     # poison propagates until a branch on it lets simplifycfg delete the rest of `forward`.
     fix_bool_fptosi(module)
+    # FUSE THE QUANTIZE ROUND/CLAMP/CONVERT CHAIN (default OFF -> baseline byte-identical), and do it
+    # HERE, between the quant passes that build the chain and the vectorize tagging below that reads
+    # the body. The order is the whole point of the placement: the tagger REFUSES any generic with a
+    # `math.*` op in its body (the `skip_math` branch), and `math.roundeven` is why every activation
+    # quantize in an int8 model carries no tag today. Rewriting the chain to pure arith before the
+    # tagger runs is what lets the EXISTING per-rank arms claim these ops, with no new arm -- the
+    # same composition `vectorized_transcendental_activation` uses for math.exp/erf/tanh.
+    # Reported, not silent: a pass that rewrote nothing and a pass that could not reach anything both
+    # return 0, and only the counters separate them.
+    if fuse_quant_round:
+        from ...llvmlower.quant_round import fuse_round_clamp_convert
+        _rrep: dict = {}
+        fuse_round_clamp_convert(module, report_out=_rrep)
+        print("[quant_round] fuse_quantize_round_convert: "
+              + " ".join(f"{k}={v}" for k, v in sorted(_rrep.items())))
     # PER-RANK VECTORIZE TAGGING (default OFF -> baseline byte-identical): tag each all-parallel
     # (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
     # BOUNDED-vectorize the scalar non-matmul ops by rank (the win lever for openvla — ~900ms of scalar
@@ -614,15 +630,26 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
     from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
     features = frozenset(features or frozenset())
-    _lanes = _vec_lanes(features)
-    _max_rank = _vec_max_rank(features)
+    # Read the vec-family point off the IMPLIES CLOSURE, not off the raw set. `normalize` is what
+    # expands `implies`, and it runs inside the LOWERING (pipeline.apply_schedule) -- after this
+    # point. So a feature that implies the vectorize arms got the arms spliced into the schedule and
+    # NO `merlin.vec_r{rank}` tags for them to match, which is an inert lever that reports as
+    # applied. Only this read is taken from the closure: `features` itself stays as the caller gave
+    # it, so the membership tests below (and the `blocking` gate) are unchanged and every existing
+    # feature set builds byte-identically.
+    from ...llvmlower.impr_features import normalize as _normalize
+    _closed = _normalize(features)
+    _lanes = _vec_lanes(_closed)
+    _max_rank = _vec_max_rank(_closed)
     from ...llvmlower.impr_features import (NAMED_INT8_CONTRACTION_NAME,
                                             QUANTIZE_BEFORE_GATHER_NAME)
+    from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
     _op_counts: dict[str, int] = {}
     prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    named_contraction=NAMED_INT8_CONTRACTION_NAME in features,
                                    prequant_gather=QUANTIZE_BEFORE_GATHER_NAME in features,
+                                   fuse_quant_round=_FUSE_QUANT_ROUND in features,
                                    op_counts_out=_op_counts,
                                    vec_lanes=_lanes or _VEC_RANK_LANES,
                                    vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK)

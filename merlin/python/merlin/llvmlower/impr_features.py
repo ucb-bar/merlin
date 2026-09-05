@@ -93,6 +93,18 @@ def _try_lazy_register(name: str) -> bool:
     ``compiler_features`` -- rather than reaching it through a ``microkernel`` knob block, which
     registers it as a side effect of resolving -- failed with an "unknown impr feature" KeyError.
     Each family is registered from its own arity, so a name is either derivable or an honest error."""
+    # The quantize round/convert fusion is a SINGLE name in its own module, so it resolves by import
+    # like the family below rather than through the arity table. It has to resolve HERE and not only
+    # where it is ranked: `wholemodel_proposer` registers it for the PROPOSAL path, but a package that
+    # names it in `compiler_features` reaches `normalize` through `k1.build_k1_binary`, which imports
+    # no proposer -- and through the lowering SUBPROCESS, which re-imports this module and sees no
+    # registration the parent made at run time. Both raised "unknown impr feature" until this hook
+    # existed. Registering from the name is what makes the lever resolvable in ANY process.
+    from .quant_round import FEATURE as _QR_NAME
+    if name == _QR_NAME:
+        from .quant_round import ensure_registered as _qr_ensure
+        _qr_ensure()
+        return name in _REGISTRY
     # The parallel-GRAIN family carries its threshold in the name and lives in its own module, so
     # it is resolved first and by import rather than through the arity table below.
     from .parallel_grain import FEATURE_PREFIX as _PG_PREFIX
