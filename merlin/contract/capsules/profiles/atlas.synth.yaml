@@ -81,7 +81,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/bf16/aligned (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -100,7 +99,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/bf16/partial (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -119,7 +117,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/bf16/sub_tile (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -137,7 +134,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/fp8_e4m3/aligned (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -156,7 +152,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/fp8_e4m3/partial (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -175,7 +170,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/fp8_e4m3/sub_tile (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -193,7 +187,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/bf16/aligned (basis=observed, admitted_by=['mxu',
     'vector_unit']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -213,7 +206,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/bf16/partial (basis=observed, admitted_by=['mxu',
     'vector_unit']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -233,7 +225,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/bf16/sub_tile (basis=observed, admitted_by=['mxu',
     'vector_unit']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -252,7 +243,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/aligned (basis=observed,
     admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -271,7 +261,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/partial (basis=observed,
     admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -290,7 +279,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/fp8_e4m3/sub_tile (basis=observed,
     admitted_by=['mxu', 'vector_unit']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -308,7 +296,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/bf16/aligned (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -327,7 +314,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/bf16/partial (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -346,7 +332,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/bf16/sub_tile (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -364,7 +349,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/fp8_e4m3/aligned (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -383,7 +367,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/fp8_e4m3/partial (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -402,7 +385,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/fp8_e4m3/sub_tile (basis=observed, admitted_by=['mxu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -422,7 +404,6 @@ capsules:
     them must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes
     them correctly from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -454,7 +435,6 @@ capsules:
     must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
     correctly from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -486,7 +466,6 @@ capsules:
     be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them correctly
     from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -518,7 +497,6 @@ capsules:
     on the host. A corpus with no capsule here cannot tell a compiler that routes them correctly from
     one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -550,7 +528,6 @@ capsules:
     this target''s capability manifest admits no capability for it, so the compiler must leave it on the
     host lane. dtype f32 is the one the captures carry for this family'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -580,7 +557,6 @@ capsules:
     target''s capability manifest admits no capability for it, so the compiler must leave it on the host
     lane. dtype f32 is the one the captures carry for this family'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -606,7 +582,6 @@ capsules:
     host layers interleaved into the interior. Inventory and extents come from micro_model.spec; the shapes
     the requirement names are [''A'', ''A->A'', ''A->H->A'', ''H'', ''H->A->H'', ''routing'']'
   label: public
-  modes: {}
   lanes:
     require:
     - on_mesh
@@ -628,7 +603,6 @@ capsules:
     handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
     come from capability_probes'
   label: public
-  modes: {}
   semantic:
     generalization_axis: rank
   B: 2
@@ -650,7 +624,6 @@ capsules:
     particular stage -- so without this the capability is reported covered by whichever single stage the
     cell axis happened to pick'
   label: public
-  modes: {}
   semantic:
     generalization_axis: epilogue
   M: tile
@@ -675,7 +648,6 @@ capsules:
     demand a particular stage -- so without this the capability is reported covered by whichever single
     stage the cell axis happened to pick'
   label: public
-  modes: {}
   semantic:
     generalization_axis: epilogue
   M: tile
@@ -699,7 +671,6 @@ capsules:
     tell a compiler that tiles this ratio well from one that does not. 1000 written output elements exceeds
     the 862 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_fp8_e4m3_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 1
@@ -726,7 +697,6 @@ capsules:
     exceeds the 862 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
     on ''SY_contraction_fp8_e4m3_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 196
@@ -753,7 +723,6 @@ capsules:
     exceeds the 862 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
     on ''SY_contraction_fp8_e4m3_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 196
@@ -780,7 +749,6 @@ capsules:
     exceeds the 862 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
     on ''SY_contraction_fp8_e4m3_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 1024

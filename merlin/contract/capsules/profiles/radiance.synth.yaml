@@ -89,7 +89,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/bf16/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -109,7 +108,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/bf16/partial (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -129,7 +127,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/bf16/sub_tile (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -148,7 +145,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/f32/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -168,7 +164,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/f32/partial (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -188,7 +183,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/f32/sub_tile (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -207,7 +201,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/fp16/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -227,7 +220,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/fp16/partial (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -247,7 +239,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/fp16/sub_tile (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -266,7 +257,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/mxfp4/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: 2*tile
   K: 2*tile
   N: 2*tile
@@ -285,7 +275,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/mxfp6/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: 2*tile
   K: 2*tile
   N: 2*tile
@@ -304,7 +293,6 @@ capsules:
   source_reference: synthesized for conformance cell attention/mxfp8/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -323,7 +311,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/bf16/aligned (basis=observed, admitted_by=['mx_pe',
     'simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -342,7 +329,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/bf16/partial (basis=observed, admitted_by=['mx_pe',
     'simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -361,7 +347,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/bf16/sub_tile (basis=observed, admitted_by=['mx_pe',
     'simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -379,7 +364,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -398,7 +382,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/f32/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -417,7 +400,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/f32/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -435,7 +417,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -454,7 +435,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -473,7 +453,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/fp16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -491,7 +470,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/aligned (basis=observed, admitted_by=['mx_pe']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -510,7 +488,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/partial (basis=observed, admitted_by=['mx_pe']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -529,7 +506,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/sub_tile (basis=observed, admitted_by=['mx_pe']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -547,7 +523,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/mxfp4/aligned (basis=observed, admitted_by=['mx_pe']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: 2*tile
   K: 2*tile
   N: 2*tile
@@ -566,7 +541,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/mxfp6/aligned (basis=observed, admitted_by=['mx_pe']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: 2*tile
   K: 2*tile
   N: 2*tile
@@ -585,7 +559,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/mxfp8/aligned (basis=observed, admitted_by=['mx_pe']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -604,7 +577,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/bf16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -624,7 +596,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/bf16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -644,7 +615,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/bf16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -663,7 +633,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -683,7 +652,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/f32/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -703,7 +671,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/f32/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -722,7 +689,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -742,7 +708,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -762,7 +727,6 @@ capsules:
   source_reference: synthesized for conformance cell elementwise_map/fp16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -781,7 +745,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/bf16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -800,7 +763,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/bf16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -819,7 +781,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/bf16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -837,7 +798,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -856,7 +816,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/f32/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -875,7 +834,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/f32/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -893,7 +851,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -912,7 +869,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -931,7 +887,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/fp16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -949,7 +904,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/bf16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -968,7 +922,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/bf16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -987,7 +940,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/bf16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1005,7 +957,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -1024,7 +975,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/f32/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -1043,7 +993,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/f32/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1061,7 +1010,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -1080,7 +1028,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -1099,7 +1046,6 @@ capsules:
   source_reference: synthesized for conformance cell normalization/fp16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1117,7 +1063,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/bf16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -1137,7 +1082,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/bf16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -1157,7 +1101,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/bf16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1176,7 +1119,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/f32/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -1196,7 +1138,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/f32/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -1216,7 +1157,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/f32/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1235,7 +1175,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/fp16/aligned (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -1255,7 +1194,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/fp16/partial (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -1275,7 +1213,6 @@ capsules:
   source_reference: synthesized for conformance cell reduction/fp16/sub_tile (basis=observed, admitted_by=['simt_cluster']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1294,7 +1231,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/bf16/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -1314,7 +1250,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/bf16/partial (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -1334,7 +1269,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/bf16/sub_tile (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1353,7 +1287,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/f32/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -1373,7 +1306,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/f32/partial (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -1393,7 +1325,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/f32/sub_tile (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1412,7 +1343,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/fp16/aligned (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -1432,7 +1362,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/fp16/partial (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -1452,7 +1381,6 @@ capsules:
   source_reference: synthesized for conformance cell softmax/fp16/sub_tile (basis=observed_via_primitives,
     admitted_by=['simt_cluster']); extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -1472,7 +1400,6 @@ capsules:
     operand-store rows (0.007812 of capacity), which is what puts this capsule in that regime. Extents
     resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with'
   label: public
-  modes: {}
   M: tile
   K: tile
   N: tile
@@ -1493,7 +1420,6 @@ capsules:
     32768 written output elements exceeds the 742 a 300.0s certification budget affords on this target,
     so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
   label: public
-  modes: {}
   M: 128*tile
   K: tile
   N: tile
@@ -1516,7 +1442,6 @@ capsules:
     65536 written output elements exceeds the 742 a 300.0s certification budget affords on this target,
     so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
   label: public
-  modes: {}
   M: 256*tile
   K: tile
   N: tile
@@ -1534,7 +1459,6 @@ capsules:
     host layers interleaved into the interior. Inventory and extents come from micro_model.spec; the shapes
     the requirement names are [''A->A'', ''A->H->A'', ''H'', ''H->A->H'', ''routing'']'
   label: public
-  modes: {}
   lanes:
     require:
     - on_mesh
@@ -1556,7 +1480,6 @@ capsules:
     handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
     come from capability_probes'
   label: public
-  modes: {}
   semantic:
     generalization_axis: rank
   B: 2
@@ -1576,7 +1499,6 @@ capsules:
     is M=1 K=85 N=333. Every other synthesized capsule is square, so without this the corpus cannot tell
     a compiler that tiles this ratio well from one that does not'
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 1
@@ -1600,7 +1522,6 @@ capsules:
     tell a compiler that tiles this ratio well from one that does not. 16640 written output elements exceeds
     the 742 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 65
@@ -1626,7 +1547,6 @@ capsules:
     tell a compiler that tiles this ratio well from one that does not. 5525 written output elements exceeds
     the 742 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 65
@@ -1652,7 +1572,6 @@ capsules:
     tell a compiler that tiles this ratio well from one that does not. 14322 written output elements exceeds
     the 742 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_bf16_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 341
@@ -1679,7 +1598,6 @@ capsules:
     residency regime admits (64 accumulation passes, 0.5 of the operand store). The reduction moves the
     operands and not the result, so this certifies at one output tile'
   label: public
-  modes: {}
   semantic:
     generalization_axis: accumulation_depth
   pass_requirements:
@@ -1700,7 +1618,6 @@ capsules:
     residency regime admits (128 accumulation passes, 1.0 of the operand store). The reduction moves the
     operands and not the result, so this certifies at one output tile'
   label: public
-  modes: {}
   semantic:
     generalization_axis: accumulation_depth
   pass_requirements:
@@ -1721,7 +1638,6 @@ capsules:
     residency regime admits (256 accumulation passes, 2.0 of the operand store). The reduction moves the
     operands and not the result, so this certifies at one output tile'
   label: public
-  modes: {}
   semantic:
     generalization_axis: accumulation_depth
   pass_requirements:

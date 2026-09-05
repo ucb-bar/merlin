@@ -65,7 +65,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/aligned (basis=observed, admitted_by=['opu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -84,7 +83,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/partial (basis=observed, admitted_by=['opu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -103,7 +101,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/sub_tile (basis=observed, admitted_by=['opu']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -123,7 +120,6 @@ capsules:
     must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
     correctly from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -155,7 +151,6 @@ capsules:
     this target''s capability manifest admits no capability for it, so the compiler must leave it on the
     host lane. dtype f32 is the one the captures carry for this family'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -185,7 +180,6 @@ capsules:
     this target''s capability manifest admits no capability for it, so the compiler must leave it on the
     host lane. dtype f32 is the one the captures carry for this family'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -215,7 +209,6 @@ capsules:
     target''s capability manifest admits no capability for it, so the compiler must leave it on the host
     lane. dtype f32 is the one the captures carry for this family'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -241,7 +234,6 @@ capsules:
     host layers interleaved into the interior. Inventory and extents come from micro_model.spec; the shapes
     the requirement names are [''H'']'
   label: public
-  modes: {}
   lanes:
     require:
     - on_mesh
@@ -263,7 +255,6 @@ capsules:
     handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
     come from capability_probes'
   label: public
-  modes: {}
   semantic:
     generalization_axis: rank
   B: 2
@@ -285,7 +276,6 @@ capsules:
     the 862 a 300.0s certification budget affords, and this target declares no tier cheaper than its cert
     tier (none resolved) to fall back to, so the capsule is emitted UNCAPPED and is expected to be expensive'
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 1
@@ -311,7 +301,6 @@ capsules:
     its cert tier (none resolved) to fall back to, so the capsule is emitted UNCAPPED and is expected
     to be expensive'
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 196
@@ -337,7 +326,6 @@ capsules:
     its cert tier (none resolved) to fall back to, so the capsule is emitted UNCAPPED and is expected
     to be expensive'
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 196
@@ -363,7 +351,6 @@ capsules:
     its cert tier (none resolved) to fall back to, so the capsule is emitted UNCAPPED and is expected
     to be expensive'
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 1024
