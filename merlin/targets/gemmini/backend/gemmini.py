@@ -31,7 +31,7 @@ from typing import Any
 from merlin.runtime.metrics import COMMON_METRIC_NAMES
 from merlin.runtime.reference import outputs_match, reference_outputs
 from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
-from .gemmini_codegen import DIM, generate_driver   # sibling — moves with this backend package
+from .gemmini_codegen import DIM, CodegenError, generate_driver   # sibling — moves with this backend package
 
 # Self-register this reference NPU backend with the class registry (base._REGISTRY). Discovery in
 # base._ensure_discovered imports this module to run the call, so the core carries no name -> module
@@ -60,6 +60,23 @@ ORACLE = {
 
 class GemminiError(RuntimeError):
     pass
+
+
+def counter_partition_inputs() -> dict[str, Any]:
+    """Target boundary for the generic CIRCT occupancy-partition verifier.
+
+    Module identities select structures in this target's elaborated artifact; no event predicate,
+    engine name, code, or numeric parameter is copied here.  The generic verifier must still prove
+    the boolean partition from the artifact before an overlap value can be called measured.
+    """
+    from merlin.targetgen.rtl import mlc_bridge
+
+    path = mlc_bridge.core_hw_mlir("gemmini")
+    if path is None or not Path(path).is_file():
+        return {"status": "unknown", "why": "elaborated CIRCT core HW is unavailable"}
+    return {"status": "available", "hw_text": Path(path).read_text(
+        encoding="utf-8", errors="replace"), "module": "Gemmini",
+        "counter_module": "CounterController", "source": str(path)}
 
 
 def chipyard_root() -> Path:
@@ -127,9 +144,21 @@ def verilator_path() -> Path:
             / f"simulator-chipyard.harness-{_rtl_sim_config()}")
 
 
-#: The env spelling this backend has always honored. Kept as an OVERRIDE, not as the source of truth:
-#: it was the only way to point at a GSIM emulator, so on every machine where nobody exported it the
-#: cert tier silently fell through to Verilator. The derived home below is what normally answers.
+def gsim_path() -> Path:
+    """The prebuilt GSIM emulator binary for this target's RTL, or where one would live.
+
+    Env-first like every other tool here, but the env override is the ONLY realistic source: GSIM emits a
+    standalone C++ model of the elaborated design and that model is built out of tree (chipyard has no
+    ``sims/gsim`` rule), so the derived path below exists to keep the resolution shape identical to
+    :func:`verilator_path` and to fail closed — an absent binary makes ``available('gsim')`` False, never
+    an exception. Same variable spelling as the SIMT target's ``MERLIN_MUON_GSIM_EMU``.
+    """
+    env = os.environ.get("MERLIN_GEMMINI_GSIM_EMU", "").strip()
+    if env:
+        return Path(env)
+    return chipyard_root() / "sims/gsim" / f"emu-chipyard.harness-{_rtl_sim_config()}"
+
+
 GSIM_EMU_ENV = "MERLIN_GEMMINI_GSIM_EMU"
 
 
@@ -200,12 +229,11 @@ def available(simulator: str = "verilator") -> bool:
     if simulator == "verilator":
         return base and verilator_path().is_file()
     if simulator == "gsim":
-        # Delegated to the shared resolver, which checks more than existence: the mode bit (an artifact
-        # copied without it, or the emitted .cpp rather than the built model, both "exist"), and the
-        # build receipt beside the binary. An emulator whose receipt binds a DIFFERENT digest is refused
-        # here rather than used -- certifying against the wrong RTL revision is the hazard the whole
-        # provenance convention exists to prevent.
-        return base and gsim_status()[0]
+        # Executability is checked as well as existence, unlike the Verilator path: that binary is a
+        # build product of a chipyard rule that leaves it executable, whereas the GSIM emu arrives via an
+        # env var a caller points anywhere — at a copied-without-mode artifact, or at the emitted .cpp.
+        emu = gsim_path()
+        return base and emu.is_file() and os.access(emu, os.X_OK)
     raise GemminiError(f"unknown simulator {simulator!r}")
 
 
@@ -356,13 +384,25 @@ def preflight_codegen_smoke(*, target: str) -> tuple[bool, str]:
     """Compile the production command-buffer emitter and run it bit-exact on RTL.
 
     This is the target-owned implementation of the generic pre-spend codegen-smoke hook.  It exercises
-    the same ``generate_driver -> riscv gcc -> Verilator -> parse -> reference equality`` path used by a
-    real grade.  Merely finding the simulator or compiling an empty file is insufficient: both have been
-    true while the emitted kernel itself was wrong.
+    the same ``generate_driver -> riscv gcc -> selected L3 engine -> parse -> reference equality`` path
+    used by a real grade.  The engine is resolved through the shared RTL policy, including
+    ``MERLIN_REQUIRED_RTL_ENGINE``; otherwise a GSIM-pinned run would silently pay for an unrelated
+    Verilator pass before every resume.  Merely finding the simulator or compiling an empty file is
+    insufficient: both have been true while the emitted kernel itself was wrong.
     """
-    if not available("verilator"):
-        return False, ("Gemmini production codegen smoke cannot run: the Verilator RTL oracle, "
-                       "RISC-V compiler, or curated harness is unavailable")
+    try:
+        # Import at call time: capsule_runner discovers this backend while it is itself importing, so a
+        # module-level import would create a cycle.  This is the SAME selector used to bind the L3 grade;
+        # the preflight must not maintain a second engine policy.
+        from merlin.targetgen.capsule_runner import chipyard_l3_selection
+        selection = chipyard_l3_selection(target)
+        rtl_engine = str(selection["engine"])
+    except Exception as e:  # noqa: BLE001 — no policy-selected L3 means the smoke cannot certify codegen
+        return False, ("Gemmini production codegen smoke cannot select its L3 RTL engine: "
+                       f"{type(e).__name__}: {str(e)[-200:]}")
+    if not available(rtl_engine):
+        return False, (f"Gemmini production codegen smoke cannot run: the selected {rtl_engine} RTL "
+                       "oracle, RISC-V compiler, or curated harness is unavailable")
     tile = int(DIM)
     cb = {
         "abi_version": "0.1",
@@ -384,7 +424,7 @@ def preflight_codegen_smoke(*, target: str) -> tuple[bool, str]:
     }
     try:
         with tempfile.TemporaryDirectory(prefix="merlin_gemmini_codegen_smoke_") as td:
-            result = run_command_buffer(cb, workdir=td, simulator="verilator", timeout=600)
+            result = run_command_buffer(cb, workdir=td, simulator=rtl_engine, timeout=600)
             elf_present = Path(str(result.get("elf") or "")).is_file()
     except Exception as e:  # noqa: BLE001 — this is the failure the launch gate exists to surface
         return False, f"Gemmini production codegen smoke failed: {type(e).__name__}: {str(e)[-240:]}"
@@ -396,7 +436,7 @@ def preflight_codegen_smoke(*, target: str) -> tuple[bool, str]:
                        f"(correct={result.get('correct')!r}, output={bool(output)}, "
                        f"elf={elf_present}, oracle={oracle!r})")
     return True, (f"production command-buffer codegen compiled and ran a {tile}x{tile} kernel "
-                  "bit-exact on Verilator RTL")
+                  f"bit-exact on {rtl_engine} RTL")
 
 
 def harness_build_recipe():
@@ -436,14 +476,60 @@ def harness_build_recipe():
 # strings, so it belongs with the backend rather than behind a contract key no second target could
 # implement. What the CONTRACT still supplies is the harness ABI (entry symbol, fence, includes,
 # metric), read through `harness_abi.for_target` below.
-from .gemmini_codegen_mlir import _harness_c
+from .gemmini_codegen_mlir import _harness_c, _measurement_c_fragments
 
 
 def _is_movement_cb(cb: dict) -> bool:
     cmds = cb.get("commands", [])
     return (not any(c.get("opcode") == "RES_PACK" for c in cmds)
-            and any(c.get("opcode") == "VECTOR_MAP"
-                    and c.get("attributes", {}).get("combine") == "identity" for c in cmds))
+            and any(c.get("opcode") == "MOVEMENT" or (
+                    c.get("opcode") == "VECTOR_MAP"
+                    and c.get("attributes", {}).get("combine") == "identity") for c in cmds))
+
+
+_NATIVE_INTERFACE_OPS = frozenset({"ATTENTION_QK", "ATTENTION_PV", "CONV2D"})
+
+
+def _native_interface_command(cb: dict) -> dict | None:
+    """Return the one whole interface op whose LLVM ABI is the interface tensor list.
+
+    The resident-matmul backend has an intentionally different internal ABI
+    (weights ++ materialized lhs matrices ++ outputs).  A whole-op artifact does not: its pointers are
+    the tensors declared by the interface, including an original NHWC activation rather than a
+    runner-materialized im2col matrix.  Keep the distinction explicit so the harness cannot silently
+    call one ABI with the other's argument list.
+    """
+    native = [command for command in cb.get("commands", [])
+              if command.get("opcode") in _NATIVE_INTERFACE_OPS]
+    if not native:
+        return None
+    if len(native) != 1:
+        raise CodegenError(
+            f"native interface harness supports exactly one whole op, got {len(native)}")
+    return native[0]
+
+
+#: Declared output dtype -> (C type, alignment macro) for a harness-allocated destination buffer. The
+#: SAME two spellings the tiled harness (`gemmini_codegen_mlir._harness_c`) allocates its outputs with:
+#: an i8 readout lands in the operand type `elem_t`, and a full accumulator readout lands in `int32_t`
+#: (NOT `acc_t` — see that function for why the typedef cannot be trusted). Kept as a table, and
+#: consulted rather than defaulted, so an output dtype nobody has sized is a REFUSAL and never a buffer
+#: quietly allocated at the wrong width.
+_DEST_CTYPE = {"i8": ("elem_t", "row_align"), "i32": ("int32_t", "row_align_acc")}
+
+
+def _declared_output_dtype(cb: dict, cmd: dict, dst: str) -> str:
+    """The dtype the destination of ``cmd`` is DECLARED to land in: the command's own ``output_dtype``
+    attribute, else the declared dtype of the ``dst`` tensor. Raises when neither states one — a movement
+    capsule's whole point is the container widening, so an unstated output dtype is not a thing to guess.
+    """
+    dtype = (cmd.get("attributes") or {}).get("output_dtype") \
+        or ((cb.get("tensors") or {}).get(dst) or {}).get("dtype")
+    if not dtype:
+        raise CodegenError(
+            f"movement destination {dst!r} declares no output dtype (neither the command's "
+            f"output_dtype attribute nor the tensor's dtype), so its buffer cannot be sized")
+    return str(dtype)
 
 
 def _movement_harness_c(cb: dict, *, target: str, inputs: dict | None = None) -> str:
@@ -462,15 +548,30 @@ def _movement_harness_c(cb: dict, *, target: str, inputs: dict | None = None) ->
     from merlin.runtime.commandbuffer import materialize_inputs
     from merlin.targetgen.contract.harness_abi import for_target
     mv = next(c for c in cb["commands"]
-              if c.get("opcode") == "VECTOR_MAP" and c["attributes"].get("combine") == "identity")
-    src, dst = mv["operands"]["lhs"], mv["operands"]["dst"]
+              if c.get("opcode") == "MOVEMENT" or (
+                  c.get("opcode") == "VECTOR_MAP"
+                  and c.get("attributes", {}).get("combine") == "identity"))
+    src = mv["operands"].get("src") or mv["operands"].get("lhs")
+    dst = mv["operands"]["dst"]
     m, n = cb["tensors"][src]["shape"]
     mp, np_ = _ceil_dim(m), _ceil_dim(n)
     leaves = materialize_inputs(cb, inputs)
     sp = _pad_rowmajor(list(leaves[src].data), m, n, mp, np_)
+    # The destination is allocated from the DECLARED OUTPUT dtype, not from the operand dtype. Movement
+    # is a container widening (operand dtype in, accumulate dtype out), so pinning the destination to
+    # `elem_t` under-allocated it by the width ratio: two shipped capsules declare an i32 output, and a
+    # CORRECT 4-byte store into a 1-byte-per-element buffer ran ~700 bytes off the end of .bss and
+    # trapped AFTER printing DONE — a harness overrun reported as a failure of the submission.
+    odt = _declared_output_dtype(cb, mv, dst)
+    if odt not in _DEST_CTYPE:
+        raise CodegenError(
+            f"movement destination {dst!r} declares output dtype {odt!r}, which this harness has no "
+            f"buffer width for (sized: {sorted(_DEST_CTYPE)}). Refusing rather than allocating a "
+            f"guessed width")
+    dst_ctype, dst_align = _DEST_CTYPE[odt]
     decls = [f"static const elem_t T_{src}[{mp * np_}] row_align(1) = "
              f"{{{','.join(str(int(v)) for v in sp)}}};",
-             f"static elem_t T_{dst}[{mp * np_}] row_align(1);"]
+             f"static {dst_ctype} T_{dst}[{mp * np_}] {dst_align}(1);"]
     prints = [f'  printf("OUT {dst} {m} {n}");',
               f"  for (long i = 0; i < {m}; i++) for (long j = 0; j < {n}; j++)"
               f" printf(\" %d\", (int)T_{dst}[i * {np_} + j]);", '  printf("\\n");']
@@ -479,13 +580,141 @@ def _movement_harness_c(cb: dict, *, target: str, inputs: dict | None = None) ->
     # the (tiny) cycle metric first guarantees it is always captured; the OUT dump follows for correctness.
     abi = for_target(target)
     window = abi.cycle_window_line()
+    measured_call = abi.call(f"(void*)T_{src}, (void*)T_{dst}")
+    fragments = _measurement_c_fragments(measured_call)
     return ("#include <stdint.h>\n#include <stdio.h>\n" + abi.declarations() + "\n"
+            + fragments["include"]
             + "\n".join(decls) + "\nint main() {\n"
-            "  uint64_t c0 = read_cycles();\n"
-            + abi.call(f"(void*)T_{src}, (void*)T_{dst}") + "\n"
-            "  uint64_t c1 = read_cycles();\n"
-            '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
+            + fragments["warmup"]
+            + fragments["prologue"]
+            + "  uint64_t c0 = read_cycles();\n"
+            + measured_call + "\n"
+            + "  uint64_t c1 = read_cycles();\n"
+            + fragments["epilogue"]
+            + '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
             + (window + "\n" if window else "")
+            + "\n".join(prints) + "\n"
+            '  printf("DONE\\n");\n  return 0;\n}\n')
+
+
+def _flat_matrix_shape(spec: dict, *, name: str) -> tuple[int, int]:
+    """Flatten leading logical dimensions into rows, preserving the final dimension as columns.
+
+    Gemmini's DRAM-facing matrix layout pads both dimensions to its tile edge.  For NHWC this means
+    one physical row per pixel and, critically, a padded physical C stride; compact NHWC bytes do not
+    match the addresses emitted by a tiled whole-convolution artifact.
+    """
+    shape = spec.get("shape")
+    if not isinstance(shape, list) or len(shape) < 2 or any(
+            not isinstance(dim, int) or isinstance(dim, bool) or dim <= 0 for dim in shape):
+        raise CodegenError(f"native interface tensor {name!r} needs a positive rank >= 2 shape, got {shape!r}")
+    rows = 1
+    for dim in shape[:-1]:
+        rows *= dim
+    return rows, shape[-1]
+
+
+def _native_interface_harness_c(cb: dict, command: dict, *, inputs: dict | None = None) -> str:
+    """Harness for a schema-native whole op with the interface's pointer ABI.
+
+    The tensor table is emitted by the interface parser in declaration order.  Preserve that order
+    exactly: unlike the in-tree resident-matmul emitter, a package artifact receives neither reordered
+    weights nor codegen-only derived buffers.  Every physical buffer is a zero-padded matrix whose last
+    logical dimension is its padded row stride.
+    """
+    from .gemmini_codegen import _ceil_dim, _pad_rowmajor
+    from merlin.runtime.commandbuffer import materialize_inputs
+
+    tensors = cb.get("tensors") or {}
+    opcode = command.get("opcode")
+    operands = command.get("operands") or {}
+    packs = {item.get("operands", {}).get("dst"): item.get("operands", {}).get("src")
+             for item in cb.get("commands", []) if item.get("opcode") == "RES_PACK"}
+    if opcode == "ATTENTION_QK":
+        required = [operands.get("q"), operands.get("k"), operands.get("dst")]
+    elif opcode == "ATTENTION_PV":
+        required = [operands.get("p"), operands.get("v"), operands.get("dst")]
+    elif opcode == "CONV2D":
+        weight = operands.get("weight")
+        required = [operands.get("ifm"), packs.get(weight, weight), operands.get("dst")]
+    else:  # pragma: no cover - caller selects only _NATIVE_INTERFACE_OPS
+        raise CodegenError(f"unsupported native interface opcode {opcode!r}")
+    if any(not isinstance(name, str) or not name for name in required):
+        raise CodegenError(f"native interface {opcode} has incomplete operands {operands!r}")
+    missing = [name for name in required if name not in tensors]
+    if missing:
+        raise CodegenError(
+            f"native interface {opcode} operand(s) {missing} have no declared tensor buffer")
+
+    # Dict insertion order is the only representation of interface declaration order retained by the
+    # command-buffer JSON.  Restrict it to external buffers, then prove every whole-op operand is present;
+    # do not reconstruct a plausible order from roles (CONV commonly declares IFM before its weight).
+    external_roles = {"input", "weight", "bias", "output"}
+    args = [name for name, spec in tensors.items() if spec.get("role") in external_roles]
+    if any(name not in args for name in required):
+        raise CodegenError(
+            f"native interface {opcode} operands are not all declared external buffers: {required!r}")
+
+    leaves = materialize_inputs(cb, inputs)
+    output_names = [name for name in args if tensors[name].get("role") == "output"]
+    if operands["dst"] not in output_names:
+        raise CodegenError(
+            f"native interface destination {operands['dst']!r} is not a declared output tensor")
+
+    decls: list[str] = []
+    layouts: dict[str, tuple[int, int, int, int]] = {}
+    for name in args:
+        spec = tensors[name]
+        rows, cols = _flat_matrix_shape(spec, name=name)
+        prows, pcols = _ceil_dim(rows), _ceil_dim(cols)
+        layouts[name] = (rows, cols, prows, pcols)
+        if spec.get("role") == "output":
+            dtype = str(spec.get("dtype") or "")
+            if dtype not in _DEST_CTYPE:
+                raise CodegenError(
+                    f"native interface output {name!r} declares dtype {dtype!r}, which this harness "
+                    f"has no buffer width for (sized: {sorted(_DEST_CTYPE)})")
+            ctype, align = _DEST_CTYPE[dtype]
+            decls.append(f"static {ctype} T_{name}[{prows * pcols}] {align}(1);")
+            continue
+        if spec.get("dtype") != "i8":
+            raise CodegenError(
+                f"native interface input {name!r} must use the target operand dtype i8, "
+                f"got {spec.get('dtype')!r}")
+        if name not in leaves:
+            raise CodegenError(f"native interface input {name!r} was not materialized")
+        padded = _pad_rowmajor(list(leaves[name].data), rows, cols, prows, pcols)
+        decls.append(f"static const elem_t T_{name}[{prows * pcols}] row_align(1) = "
+                     f"{{{','.join(str(int(value)) for value in padded)}}};")
+
+    call = ", ".join(f"(void*)T_{name}" for name in args)
+    prints: list[str] = []
+    for name in output_names:
+        shape = tensors[name].get("shape")
+        if not isinstance(shape, list) or len(shape) != 2:
+            raise CodegenError(
+                f"native interface output {name!r} must be a rank-2 flattened tensor, got {shape!r}")
+        rows, cols, _, pcols = layouts[name]
+        prints.extend([
+            f'  printf("OUT {name} {rows} {cols}");',
+            f"  for (long i = 0; i < {rows}; i++) for (long j = 0; j < {cols}; j++)"
+            f" printf(\" %d\", (int)T_{name}[i * {pcols} + j]);",
+            '  printf("\\n");',
+        ])
+
+    measured_call = f"  gemmini_kernel({call});\n  gemmini_fence();"
+    fragments = _measurement_c_fragments(measured_call)
+    return ("#include <stdint.h>\n#include <stdio.h>\n#include \"include/gemmini_testutils.h\"\n"
+            + fragments["include"]
+            + "extern void gemmini_kernel();\n" + "\n".join(decls) + "\nint main() {\n"
+            + fragments["warmup"]
+            + fragments["prologue"]
+            + "  uint64_t c0 = read_cycles();\n"
+            + measured_call + "\n"
+            + "  uint64_t c1 = read_cycles();\n"
+            + fragments["epilogue"]
+            + '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
+            '  printf("METRIC cycle_window_gemmini_region 1\\n");\n'
             + "\n".join(prints) + "\n"
             '  printf("DONE\\n");\n  return 0;\n}\n')
 
@@ -502,5 +731,9 @@ def render_harness(cb: dict, *, target: str, inputs: dict | None = None) -> str:
     simulator saw the injected operands and the device saw different ones -- guaranteed to mismatch, and
     reported as a functional failure of the target.
     """
-    return (_movement_harness_c(cb, target=target, inputs=inputs) if _is_movement_cb(cb)
-            else _harness_c(cb, inputs))
+    if _is_movement_cb(cb):
+        return _movement_harness_c(cb, target=target, inputs=inputs)
+    native = _native_interface_command(cb)
+    if native is not None:
+        return _native_interface_harness_c(cb, native, inputs=inputs)
+    return _harness_c(cb, inputs)

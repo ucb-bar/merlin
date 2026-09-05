@@ -126,7 +126,8 @@
                     "bias",
                     "requant",
                     "acc_scale",
-                    "relu"
+                    "relu",
+                    "maxpool"
                   ]
                 }
               },
