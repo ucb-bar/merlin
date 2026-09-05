@@ -51,7 +51,8 @@ _REAL_USAGE = {
 
 
 def _fake_codex(tmp_path: Path, lines: list[dict], *, final: str = "DONE",
-                exit_code: int = 0, hang: bool = False) -> Path:
+                exit_code: int = 0, hang: bool = False,
+                version: str = "codex-cli 0.153.0") -> Path:
     """Write an executable stand-in for the codex CLI that replays *lines*.
 
     It also honors ``-o <file>`` so the driver's final-message handling is real.
@@ -66,6 +67,12 @@ def _fake_codex(tmp_path: Path, lines: list[dict], *, final: str = "DONE",
         f"#!{sys.executable}",
         "import json, sys, time, os",
         "argv = sys.argv[1:]",
+        # The real CLI answers --version without reading stdin, and the driver asks it for the
+        # provenance stamp. A stand-in that replayed its event stream here would hand back the first
+        # JSON line as a version string.
+        "if '--version' in argv:",
+        f"    sys.stdout.write({version!r} + '\\n')",
+        "    sys.exit(0)",
         "out = None",
         "for i, a in enumerate(argv):",
         "    if a in ('-o', '--output-last-message') and i + 1 < len(argv):",
@@ -555,3 +562,38 @@ def test_aet_counts_the_tool_calls_the_transcript_contains():
     result = parse_stream("\n".join(lines))
     assert result.tool_call_count == 3, "every emitted tool_use must reach the telemetry store"
     assert result.unique_tools_used == ["Bash"]
+
+
+def test_the_cli_version_is_recorded_in_the_init_record_and_the_summary(tmp_path):
+    """Which CLI parsed this stream is part of the run's provenance.
+
+    ``unknown_types`` DETECTS contract drift; it cannot say what to compare a drifted run against.
+    Every event name this driver reads belongs to a particular CLI, so a run that does not record
+    which one produced its stream cannot be attributed to a contract afterwards -- the same reason a
+    hardware verdict records its RTL revision rather than just its number.
+    """
+    script = _fake_codex(tmp_path, _stream(), version="codex-cli 9.9.9")
+    _rc, tpath, records = _run(tmp_path, script)
+
+    init = _by_type(records, "system")[0]
+    assert init["cli_version"] == "codex-cli 9.9.9"
+
+    summary = _by_type(records, "codex_summary")[0]
+    assert summary["cli_version"] == "codex-cli 9.9.9"
+    on_disk = json.loads((tpath.parent / "round_00.codex_summary.json").read_text())
+    assert on_disk["cli_version"] == "codex-cli 9.9.9", "the stamp must survive to the artifact"
+
+
+def test_an_unaskable_binary_records_none_rather_than_a_guess(tmp_path):
+    """A fabricated version stamp on every run is worse than an absent one."""
+    assert CA.cli_version(str(tmp_path / "no-such-codex-binary")) is None
+
+
+def test_the_version_is_asked_once_per_binary(tmp_path):
+    """The stamp must not cost a subprocess per round."""
+    script = _fake_codex(tmp_path, _stream(), version="codex-cli 1.2.3")
+    calls = tmp_path / "version_calls"
+    assert CA.cli_version(str(script)) == "codex-cli 1.2.3"
+    assert CA.cli_version(str(script)) == "codex-cli 1.2.3"
+    assert str(script) in CA._CLI_VERSION
+    assert not calls.exists()

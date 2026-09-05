@@ -211,6 +211,34 @@ def usage_to_claude_shape(usage: dict) -> tuple[dict, bool]:
 _FROZEN_CONFIG = 'model = {model}\nmodel_reasoning_effort = {effort}\n{provider}'
 
 
+#: ``codex --version`` per binary, asked once. The CLI is a hot dependency and its event names are
+#: what this module parses, so a run that does not record which CLI produced its stream cannot be
+#: attributed to a contract later -- the same reason a hardware verdict records its RTL revision.
+_CLI_VERSION: dict = {}
+
+
+def cli_version(codex_bin: str = "codex") -> "str | None":
+    """The CLI's self-reported version, or ``None`` when it cannot be asked.
+
+    ``None`` is a real answer and is recorded as such: guessing a version would put a fabricated
+    provenance stamp on every run made with that binary, which is worse than an absent one. The
+    string is stored VERBATIM (e.g. ``codex-cli 0.153.0``) and never parsed here -- a comparison is
+    somebody else's job, and a parser is one more thing to drift.
+    """
+    if codex_bin in _CLI_VERSION:
+        return _CLI_VERSION[codex_bin]
+    out = None
+    try:
+        proc = subprocess.run([codex_bin, "--version"], capture_output=True, text=True, timeout=30)
+        if proc.returncode == 0:
+            text = (proc.stdout or proc.stderr or "").strip().splitlines()
+            out = text[0].strip() if text else None
+    except (OSError, subprocess.SubprocessError):
+        out = None
+    _CLI_VERSION[codex_bin] = out or None
+    return _CLI_VERSION[codex_bin]
+
+
 def real_codex_home() -> Path:
     return Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
 
@@ -550,7 +578,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     tr.emit({
         "type": "system", "subtype": "init", "driver": "codex", "round": rnd,
         "model": resolved, "model_requested": model,
-        "codex_bin": codex_bin, "sandbox": sandbox,
+        "codex_bin": codex_bin, "cli_version": cli_version(codex_bin), "sandbox": sandbox,
         # Instruction parity between arms is an artifact-level fact, not a hope.
         "workspace_instruction_files": _instruction_files(ws),
         "tiering_requested_but_unsupported": bool(subagent_model or background_model),
@@ -804,6 +832,9 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "turns_usage_reported": turns_reported, "usage_complete": usage_complete,
         "unknown_types": sorted(set(unknown)), "errors": errors[:10],
         "timed_out": timed_out, "exit_code": rc,
+        # Which CLI parsed this stream. `unknown_types` above DETECTS contract drift; this says what
+        # to compare a drifted run against. None means the binary could not be asked, never a guess.
+        "cli_version": cli_version(codex_bin),
         "wall_s": round(time.monotonic() - started, 3),
         # ChatGPT-auth runs consume a subscription, not metered dollars. Any USD
         # figure downstream is notional and must not enter a money budget.
