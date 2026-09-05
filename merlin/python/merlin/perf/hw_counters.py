@@ -27,6 +27,7 @@ reads into a capsule's command stream is a separate, invasive step in the runner
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 import hashlib
 from itertools import combinations

@@ -26,7 +26,6 @@ These console-scripts are installed with the package (`uv sync --all-extras`, or
 | `merlin-kernel-report` | `merlin.mining.report:main` |
 | `merlin-liveness` | `merlin.liveness.cli:main` |
 | `merlin-onboard` | `merlin.targetgen.onboard:main` |
-| `merlin-opt` | `merlin.xdsl_dialects.opt:main` |
 | `merlin-rvv-autotune` | `merlin.mining.autotune:main` |
 | `merlin-rvv-beam` | `merlin.mining.beam_cli:main` |
 | `merlin-rvv-mine` | `merlin.mining.mine:main` |

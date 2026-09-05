@@ -363,6 +363,133 @@ class TestBracket:
         got = H.eta_from_counters(H.parse_counter_output(console), oc, **_proof_args())
         assert got["state"] == "measured" and got["eta"] > 0
 
+
+class TestObservationsFromCounters:
+    """The hop from counter readings to a `merlin.perf.observations` block.
+
+    The three properties that decide whether the numbers mean anything: a per-engine busy total
+    includes its shared cycles, the block declares itself NON-partitioned (which is what licenses the
+    overlap reading), and a missing combination costs its engines their entry rather than zeroing them.
+    """
+
+    # ALPHA alone 10, BETA alone 20, GAMMA alone 30, A+B 4, A+G 5, B+G 6, A+B+G 7.  Charged cycles 82.
+    _VALUES = {"WHOLE_ALPHA_CYCLES": 10, "WHOLE_BETA_CYCLES": 20, "WHOLE_GAMMA_CYCLES": 30,
+               "WHOLE_ALPHA_BETA_CYCLES": 4, "WHOLE_ALPHA_GAMMA_CYCLES": 5,
+               "WHOLE_BETA_GAMMA_CYCLES": 6, "WHOLE_ALPHA_BETA_GAMMA_CYCLES": 7}
+
+    def _block(self, values=None, total=100):
+        return H.observations_from_counters(values if values is not None else self._VALUES,
+                                            _counters(), total_cycles=total, source="unit test")
+
+    def _q(self, block):
+        from merlin.perf import observations as OBS
+        return {e["quantity"]: e["value"] for e in block[OBS.TIMING_OBSERVATIONS_KEY]}
+
+    def test_a_per_engine_busy_total_includes_its_shared_cycles(self):
+        q = self._q(self._block())
+        # ALPHA = 10 + 4 + 5 + 7.  Reading the single alone would say 10 and understate the engine.
+        assert q["busy_cycles.ALPHA.in_program"] == 26
+        assert q["busy_cycles.BETA.in_program"] == 20 + 4 + 6 + 7
+        assert q["busy_cycles.GAMMA.in_program"] == 30 + 5 + 6 + 7
+
+    def test_the_totals_deliberately_exceed_the_window(self):
+        """Overlap is counted once per engine sharing it, so the busy totals do NOT partition."""
+        q = self._q(self._block(total=100))
+        busy = sum(v for k, v in q.items() if k.startswith("busy_cycles."))
+        assert busy > 100
+
+    def test_overlap_is_the_multi_engine_combinations(self):
+        q = self._q(self._block())
+        assert q["overlap_cycles.observed"] == 4 + 5 + 6 + 7
+
+    def test_idle_is_the_window_less_the_charged_cycles(self):
+        q = self._q(self._block(total=100))
+        assert q["idle_cycles.no_unit_busy"] == 100 - 82
+
+    def test_the_block_declares_itself_not_partitioned_so_overlap_survives(self):
+        from merlin.perf import observations as OBS
+        block = self._block()
+        assert block[OBS.PARTITIONED_KEY] is False
+        validated = OBS.validate_block(block)
+        assert validated is not None and validated.partitioned is False
+        kept = {e["quantity"] for e in validated.observations}
+        assert OBS.OVERLAP_OBSERVED in kept, "a partitioned block would have had its overlap refused"
+
+    def test_a_missing_combination_unmeasures_its_engines_rather_than_zeroing_them(self):
+        from merlin.perf import observations as OBS
+        values = dict(self._VALUES)
+        values.pop("WHOLE_ALPHA_BETA_CYCLES")
+        block = self._block(values)
+        assert block[OBS.UNMEASURED_UNITS_KEY] == ["ALPHA", "BETA"]
+        q = self._q(block)
+        assert "busy_cycles.ALPHA.in_program" not in q
+        assert "busy_cycles.BETA.in_program" not in q
+        assert q["busy_cycles.GAMMA.in_program"] == 30 + 5 + 6 + 7, "GAMMA is still fully readable"
+
+    def test_a_missing_combination_withholds_overlap_and_idle_entirely(self):
+        values = dict(self._VALUES)
+        values.pop("WHOLE_BETA_GAMMA_CYCLES")
+        q = self._q(self._block(values))
+        assert "overlap_cycles.observed" not in q, "a partial sum would be read as the total"
+        assert "idle_cycles.no_unit_busy" not in q
+
+    def test_no_total_cycles_means_no_idle_quantity_rather_than_a_guess(self):
+        q = self._q(H.observations_from_counters(self._VALUES, _counters(), total_cycles=None))
+        assert "idle_cycles.no_unit_busy" not in q
+        assert "overlap_cycles.observed" in q
+
+    def test_a_window_smaller_than_the_charged_cycles_drops_idle(self):
+        """Counters and the cycle window disagreeing is a fact to notice, not a negative duration."""
+        q = self._q(self._block(total=10))
+        assert "idle_cycles.no_unit_busy" not in q
+
+    def test_the_engine_names_are_not_hardcoded(self):
+        other = textwrap.dedent("""\
+            #define PART_RED_CYCLES 1
+            #define PART_BLUE_CYCLES 2
+            #define PART_RED_BLUE_CYCLES 3
+            """)
+        block = H.observations_from_counters(
+            {"PART_RED_CYCLES": 5, "PART_BLUE_CYCLES": 6, "PART_RED_BLUE_CYCLES": 2},
+            H.derive_occupancy_counters(other), total_cycles=20)
+        q = self._q(block)
+        assert q["busy_cycles.RED.in_program"] == 7
+        assert q["busy_cycles.BLUE.in_program"] == 8
+        assert q["overlap_cycles.observed"] == 2
+        assert q["idle_cycles.no_unit_busy"] == 20 - 13
+
+    def test_across_kind_overlap_excludes_two_engines_of_one_kind(self):
+        """`eta_from_timing_block` resolves on the KIND axis, so it needs this quantity, not the other.
+
+        ALPHA computes; BETA and GAMMA both move. Their shared cycles are real overlap but they are not
+        movement/compute overlap, and charging them to the kind-axis reading would overstate what the
+        pairing achieved.
+        """
+        block = H.observations_from_counters(
+            self._VALUES, _counters(), total_cycles=100,
+            kind_of={"ALPHA": "compute", "BETA": "movement", "GAMMA": "movement"})
+        q = self._q(block)
+        assert q["overlap_cycles.observed"] == 4 + 5 + 6 + 7
+        assert q["overlap_cycles.across_kinds"] == 4 + 5 + 7, "the BETA+GAMMA 6 is within one kind"
+
+    def test_all_distinct_kinds_make_the_two_overlap_readings_agree(self):
+        block = H.observations_from_counters(
+            self._VALUES, _counters(), total_cycles=100,
+            kind_of={"ALPHA": "compute", "BETA": "movement", "GAMMA": "other"})
+        q = self._q(block)
+        assert q["overlap_cycles.across_kinds"] == q["overlap_cycles.observed"]
+
+    def test_no_kind_map_means_no_kind_axis_reading(self):
+        """A unit's kind is declared, never derived from a counter name."""
+        q = self._q(self._block())
+        assert "overlap_cycles.across_kinds" not in q
+        assert "overlap_cycles.observed" in q
+
+    def test_a_partial_kind_map_is_refused_rather_than_guessed(self):
+        q = self._q(H.observations_from_counters(self._VALUES, _counters(), total_cycles=100,
+                                                  kind_of={"ALPHA": "compute"}))
+        assert "overlap_cycles.across_kinds" not in q, (
+            "an unclassified engine makes every combination containing it unclassifiable")
     def test_incomplete_header_set_never_produces_a_measured_eta(self):
         header = _HDR.replace("#define WHOLE_BETA_GAMMA_CYCLES 6\n", "")
         counters = _counters(header)
@@ -376,7 +503,7 @@ class TestBracket:
         args["hw_text"] = args["hw_text"].replace(
             "%event_0 = comb.and", "%event_0 = comb.or")
         got = H.eta_from_counters(
-            {name: 10 for name in self._oc().by_combination.values()}, self._oc(), **args)
+            {name: 10 for name in _counters().by_combination.values()}, _counters(), **args)
         assert got["state"] == "unknown" and got["eta"] is None
         assert got["partition_proof"]["status"] == "unknown"
 
