@@ -122,3 +122,25 @@ def test_a_condition_that_cannot_be_answered_says_so():
     # the conditions that CAN be answered here must not be tarred with the same flag
     for name in ("attainment_reached", "plateaued", "budget_exhausted"):
         assert verdicts[name].evaluable is True, f"{name} is answerable and must say so"
+
+
+def test_a_missing_input_marks_the_condition_unevaluable_wherever_it_occurs():
+    """`missing` in the prose is not the same as saying so in a field.
+
+    Observed live: `attainment_reached` reported "the conservative attainable target is UNKNOWN, so
+    attainment cannot be evaluated" and was NOT listed as inapplicable, while
+    `predicted_remaining_below` -- the same situation -- was. Two of four conditions could not be
+    answered and only one admitted it, which is the defect this flag exists to remove.
+    """
+    from merlin.perf import select as SELECT
+    from merlin.perf.budget import Budget, unpriced_channel
+
+    budget = Budget(unit=unpriced_channel("q", missing="not priced here"), limit_items=100)
+    # attainable UNKNOWN: exactly the live case, caused by members with no declared work
+    state = SELECT.SearchState(baseline_cycles=1000, best_cycles=900.0, budget=budget,
+                               improvements=(0.5, 0.4, 0.3))
+    verdicts = {v.name: v for v in SELECT.check_stop(state)}
+    assert verdicts["attainment_reached"].evaluable is False, (
+        "a condition whose own reason says it cannot be evaluated must say so in the field too")
+    for name in ("plateaued", "budget_exhausted"):
+        assert verdicts[name].evaluable is True

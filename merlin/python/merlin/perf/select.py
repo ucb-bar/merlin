@@ -509,10 +509,10 @@ def attainment_reached(state: SearchState, policy: StopPolicy) -> StopVerdict:
         return StopVerdict(name, False,
                            "the conservative attainable target is UNKNOWN, so attainment cannot be "
                            "evaluated; not stopping",
-                           ("a resolved structural bound for this workload",))
+                           ("a resolved structural bound for this workload",), evaluable=False)
     if is_unknown(state.best_cycles) or float(state.best_cycles) <= 0:
         return StopVerdict(name, False, "no measured cycle count yet; not stopping",
-                           ("at least one evaluated candidate",))
+                           ("at least one evaluated candidate",), evaluable=False)
     ratio = float(state.attainable_cycles) / float(state.best_cycles)
     if ratio >= policy.attainment_fraction:
         return StopVerdict(name, True,
@@ -535,7 +535,7 @@ def predicted_remaining_below(state: SearchState, policy: StopPolicy) -> StopVer
     name = "predicted_remaining_below"
     if is_unknown(state.best_cycles) or float(state.best_cycles) <= 0:
         return StopVerdict(name, False, "no measured cycle count to improve on yet; not stopping",
-                           ("at least one evaluated candidate",))
+                           ("at least one evaluated candidate",), evaluable=False)
     if is_unknown(state.predicted_best_cycles):
         # NOT EVALUABLE, rather than evaluated and negative. A caller that never enumerates an
         # unevaluated candidate can never supply this, so reporting it as a plain "did not fire"
