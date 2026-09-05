@@ -63,6 +63,59 @@ Each of these was found outside this loop. Mapped against the corpus:
 | conv2d reuses stale scratchpad rows, worst under zero padding | L2 intra-layer | **none.** All four conv capsules in the tree declare `padding=[0,0,0,0] stride=[1,1] dilation=[1,1] ci=4 kh/kw=3/3` — identical geometry, four times. `build_conv2d` accepts all three parameters (`corpus_spec.py:1039-1041`); nothing has ever passed a non-default. |
 | a QK kernel issued 4,098 fences where 2 suffice | L4 boundary + CPU↔accel | **1/256 of the scale.** `PQ` *is* the synchronization family and is well built, but its largest member is `PQ04_j16_k16` — 16 barriers over 16×16 tiles — and its own declaration says so: *"the members are deliberately SHALLOW … four jobs is enough to separate a per-barrier saving from a constant one."* Never on an attention shape. |
 | `ranks: [2,4]` rejected every rank-3 batched matmul before it reached the device rewrite | eligibility, upstream of all timing | **none, and still none.** Fixed to `[2,3,4]` in `merlin/python/merlin/_data/targets/gemmini/contracts/target_contract.yaml:122`, whose comment records *"gemmini shipped none because of this line."* There are zero rank-3 capsules anywhere in the gemmini corpus, functional or perf, so the fix has no regression test and can silently revert. |
+| a large shape addresses memory outside the scratchpad/accumulator, and **claims resident weight reuse while actually reloading** | L2 intra-layer, residency | **structurally unreachable** — see below |
+| massive kernels (≈1000×700×700) crash outright | — | unreachable for the same reason; deprioritised, but it is the same region |
+
+### The residency gap is an empty interior, not a missing point
+
+The false-residency bug deserves its own statement because it is the most expensive one — `PR`,
+whose declared lever is `operand_residency`, owns **92.4% of all corpus cycles**, and this bug says
+that family's central claim can be false without any member noticing.
+
+Measured coverage of the two axes across all 49 members:
+
+| family | M | N | K |
+|---|---|---|---|
+| `PK` | 16 | 16 | 16 … 128 |
+| `PL` | 16 | 16 | 16, 32 |
+| `PQ` | 16 | 16 | 16, 32 |
+| `PC` | 16 | 64 | 64, 128 |
+| **`PM`** (parallel extents) | **16, 32, 48, 64** | **16, 32, 48, 64** | **16 — fixed** |
+| **`PR`** (operand residency) | **16 — fixed** | **16 — fixed** | **16 … 16384** |
+
+**No member has both `K > 16` and `M > 16`.** The two axes that jointly produce residency pressure
+are each swept while the other is pinned, so the covered region is an L-shape and the bug lives in
+its empty interior. `PR`'s own `source_reference` says as much: *"at fixed single-tile parallel
+extents."*
+
+Put in bytes, against the derived store — `memory_regime.operand_store('gemmini', dtype='int8')`
+returns a **262,144-byte scratchpad, 16,384 rows × 16 int8**:
+
+- largest weight working set in the corpus: `PR08_spills_k16384` at 16384×16 = 262,144 B — **exactly
+  1.0× capacity**, and that member is the one whose Verilator capture failed at the 3600 s default;
+- the reported failing shape, 1000×700×700 int8: weight 490,000 B + activation 700,000 B = **~1.19 MB,
+  about 4.5× the whole store**.
+
+So the corpus probes residency along a *thin needle* (N=16) up to exactly capacity, and the defect
+lives at four and a half times capacity in a shape where both dimensions are large. A schedule can
+claim residency, silently reload, and every member still passes.
+
+**The detector already exists and is already wired.** `perf/structural_levels.py:102` emits
+`residency_restaged` (`L2_intra_layer`) on exactly this pattern — a value staged (`RES_PACK`),
+released (`EVICT`), then staged again — and `analyze_command_buffers` already returns it to the
+agent for free (`perf_agent_stage.py:1915-1922`). It reports **zero findings on all corpus buffers**,
+which is a true negative: no member is large enough to spill. Replayed over the wider run tree it
+fires 17 times, every one on a *multi-op* capsule-bench kernel. The instrument works; it has never
+been pointed at a workload that could trip it.
+
+The addressing half has an existing guard too: `perf/preflight.py:17-18` refuses a tensor larger than
+the DRAM window because such a program "is not rejected — its tail is never loaded. The device
+executes the prefix and halts, **and the cycle count describes the prefix.**" Any member in this
+region must be run through preflight, or it returns a number, and the number is wrong.
+
+**Corpus action:** the missing member is not "bigger". It is a member with **large M, large N, and a
+weight that exceeds the store** — one point in the empty interior — carrying a residency claim that
+`residency_restaged` can falsify. That is one new sweep, not a new subsystem.
 
 ## Why nothing model-shaped can be admitted today
 
@@ -187,13 +240,16 @@ Do not re-litigate these here:
 
 A wrong "blocked" record is worse than no record, because it reads as a settled capability finding.
 
-1. **`MANIFEST.yaml:414-427` still carries `PV` as `blocked_unimplemented`** with the reason that the
+1. **`PV` was carried in `MANIFEST.yaml` as `blocked_unimplemented`** with the reason that the
    integer reference engine has no convolution definition. That is **false** — `CONV2D` is in
    `MODELED_OPCODES`. It was true only while a library regression was in place. `_perf.yaml:945`
-   already unblocked the family (`emitter.status: existing`, four fitted `ci` points at tile
-   multiples); what is stale is the on-disk manifest and the absent `PV*` directories. **The corpus
-   needs regenerating, not unblocking.** `merlin/tests/infra/test_perf_conv_family.py:51` guards the
-   false claim's return.
+   had already unblocked the family; only the on-disk manifest was stale, and the `PV*` directories
+   were simply absent. **RESOLVED 2026-09-04** by regenerating the corpus: `PV00_c16 … PV03_c64`
+   now exist at `ci ∈ tile×{1,2,3,4}`, the corpus is 49 members, the blocked list is `[PB, PT, PF]`,
+   and `performance_generation.gemmini.errors == []`.
+   `merlin/tests/infra/test_perf_conv_family.py:51` guards the false claim's return.
+   Note the members still carry `padding=[0,0,0,0] stride=[1,1] dilation=[1,1]`, so the stale-row
+   conv bug remains unreachable until those axes are varied.
 2. **Eleven `PQ` capsules declare `emitter.entry: merlin.perf.barrier_arms.pair_from_emitter` with
    `emitter.status: existing`, and that function does not exist.** `barrier_arms.py` defines only
    `count_barriers`, `paired_removal` and `analyze_barrier_claim`. The family's second arm has never
