@@ -100,18 +100,72 @@ def test_the_encoder_agrees_with_the_reference_simulator_on_concrete_inputs():
 
 # -- fail-closed behaviour --------------------------------------------------------------------
 
-def test_an_unknown_opcode_raises_rather_than_being_skipped():
-    """Silently skipping a command changes what the query is about, without saying so."""
+@pytest.mark.parametrize("opcode,expect", [
+    ("SOFTMAX", "computes in float"),          # the reference itself is float here
+    ("LAYERNORM", "no branch in the reference"),  # in the schema enum, unimplemented upstream
+    ("CONV2D", "gap in THIS encoder"),         # encodable in principle, not built
+    ("NOT_AN_OPCODE", "no definition for"),    # genuinely unknown
+])
+def test_an_unencodable_opcode_raises_and_says_WHICH_class(opcode, expect):
+    """Silently skipping a command changes what the query is about, without saying so.
+
+    And "unknown" is not an actionable diagnostic: a float opcode, an opcode the reference simulator
+    does not implement either, and a genuinely unrecognised mnemonic call for three different
+    responses from whoever reads the abstention.
+    """
     from merlin.verify.cb_semantics import CommandBufferEncoder
     from merlin.verify.smt_semantics import UnsupportedSemantics
 
     _, cb, _ = _pair()
     cb = copy.deepcopy(cb)
-    cb["commands"][1]["opcode"] = "SOFTMAX"
+    cb["commands"][1]["opcode"] = opcode
     e = CommandBufferEncoder(_null_encoder(), cb)
     e.declare_leaves()
-    with pytest.raises(UnsupportedSemantics, match="no definition for"):
+    with pytest.raises(UnsupportedSemantics, match=expect):
         e.run()
+
+
+def test_the_opcode_classes_are_disjoint_and_cover_the_schema_enum():
+    """A new opcode in the schema must land in a named class, not silently in "unknown"."""
+    import json
+
+    from merlin.common.paths import merlin_dir
+    from merlin.verify.cb_semantics import (DEFERRED_OPCODES, ENCODABLE_OPCODES,
+                                            FLOAT_ONLY_OPCODES, NO_NUMERIC_EFFECT,
+                                            UNIMPLEMENTED_OPCODES)
+
+    classes = [ENCODABLE_OPCODES, FLOAT_ONLY_OPCODES, UNIMPLEMENTED_OPCODES,
+               frozenset(DEFERRED_OPCODES)]
+    for i, a in enumerate(classes):
+        for b in classes[i + 1:]:
+            assert not (a & b), f"opcode in two classes at once: {sorted(a & b)}"
+    assert NO_NUMERIC_EFFECT <= ENCODABLE_OPCODES, "a no-effect opcode must still be encodable"
+
+    schema = json.loads(
+        (merlin_dir() / "contract" / "schemas" / "command_buffer.schema.json").read_text())
+
+    def _find_enum(node):
+        if isinstance(node, dict):
+            if "enum" in node and any(str(v).isupper() for v in node["enum"]):
+                return set(node["enum"])
+            for v in node.values():
+                found = _find_enum(v)
+                if found:
+                    return found
+        elif isinstance(node, list):
+            for v in node:
+                found = _find_enum(v)
+                if found:
+                    return found
+        return set()
+
+    enum = _find_enum(schema)
+    assert enum, "could not locate the opcode enum; this test would be vacuous"
+    unclassified = (enum - ENCODABLE_OPCODES - FLOAT_ONLY_OPCODES - UNIMPLEMENTED_OPCODES
+                    - set(DEFERRED_OPCODES))
+    assert not unclassified, (
+        f"schema opcodes in no named class: {sorted(unclassified)} — they would abstain with an "
+        f"unhelpful 'unknown' instead of saying why")
 
 
 def test_a_float_epilogue_stage_abstains_and_never_passes():
