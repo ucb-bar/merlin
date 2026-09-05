@@ -331,6 +331,18 @@ a separate one — the L3 engine's wall cost tracks output size, so a corpus sma
 candidate is small *because* it is unrepresentative, and the two cannot be separated by tuning the
 member list.
 
+> **Every affordability number in this note is read from a DERIVED spec and will move when that spec
+> is re-derived.** `cert_affordability` in `conformance/<target>.yaml` is regenerated from the
+> certifications on disk, and the figures quoted below (`max_elements: 875`, `budget_s: 300`,
+> `seconds = 80.6607 + 0.250531 * output`, fitted over 240..1,024 elements) are what it holds today.
+> One correction is already known to be coming: `cert_cost.capsule_output_elements` inferred a
+> capsule's written extent from the operand it READ rather than its declared result, which priced a
+> convolution by its input image — `SY_conv_k16x16` at 16,384 elements and 7,177 s where the truth is
+> 256 elements and 81 s — and priced seven flash-attention capsules at zero. Fixed in `f98f0085`; the
+> spec has not yet been regenerated through it. This note has already had one finding expire exactly
+> this way (see the superseded census section above), so treat a quoted number here as a reading with
+> a date, not a constant.
+
 ## A fourth wall: the output has to be read back, and that costs simulated cycles
 
 Three walls on capsule size were already recorded here — the affordability cap, the extrapolation
