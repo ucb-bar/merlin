@@ -1,0 +1,75 @@
+name: SY_micro_model
+kind: model
+source_role: pytorch_model_slice
+source_reference: 'synthesized for the composition axis: one layer per admitted family,
+  one per family a real capture contains that the manifest does not admit, sized to
+  the target''s own tile edge, with host layers interleaved into the interior. Inventory
+  and extents come from micro_model.spec; the shapes the requirement names are [''A'',
+  ''A->A'', ''A->H->A'', ''H'', ''H->A->H'', ''routing'']'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: I0
+  role: input
+  shape:
+  - 32
+  - 32
+  dtype: f32
+operation:
+  op: model
+  attributes:
+    model: SY_micro_model
+    dtype: f32
+    out: Y0
+    compile_dtype: fp32
+    arg_order:
+    - I0
+    - Y0
+    weights: capsule.weights.safetensors
+numeric_policy:
+  compare: tolerance_float
+  dtype: f32
+  atol: 0.03125
+  rtol: 0.015625
+expected:
+  instruction_classes: []
+required_oracle_tiers:
+- L0
+- L1
+- L2
+vcs: optional
+firesim: optional
+gate:
+  after_op_pass_fraction: 0.8
+lanes:
+  require:
+  - on_mesh
+pytorch_ref:
+  op: model
+  dtype: f32
+  loader: capsule.pytorch.py
+input_provenance:
+  workload: ''
+  status: undeclared
+  synthetic_inputs: unknown
+  paper_ready: unknown
+  accuracy_claim_supported: false
+  accuracy_claim_withheld_because: the loader declares no input provenance (status
+    'undeclared'), so whether these inputs are real dataset samples is UNKNOWN --
+    an unknown may not be quoted as either
+  grades: compiler_correctness
+  note: 'This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces,
+    on these exact inputs, the reference the same loader produced. It is not a statement
+    about the model''s accuracy on real data; only a capture whose inputs are real
+    and attributed can support that.'
+  loader_env: {}
+  declared: {}
+linalg_mlir: capsule.interface.mlir
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: false
+  not_asserted_reason: the accelerator demand could not be derived from this model's
+    linalg against this target's declared capabilities and role census, so must_accelerate
+    is withheld rather than asserted ungrounded
+  eligible: auto

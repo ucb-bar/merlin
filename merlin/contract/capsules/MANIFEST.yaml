@@ -86,10 +86,9 @@ generated:
 - isa/SY_elementwise_map_i8_aligned
 - isa/SY_elementwise_map_i8_partial
 - isa/SY_elementwise_map_i8_sub_tile
-- isa/SY_geometry_gemv_like
 - isa/SY_geometry_odd_tail_heavy
+- isa/SY_geometry_projection_like
 - isa/SY_geometry_squareish_gemm
-- isa/SY_geometry_tall_skinny
 - isa/SY_movement_i8_aligned
 - isa/SY_movement_i8_partial
 - isa/SY_movement_i8_sub_tile
@@ -111,6 +110,28 @@ generated:
 - layers/GP0_matmul_maxpool_i8
 - layers/GP1_matmul_maxpool_tail_i8
 - layers/GP2_conv2d_maxpool_i8
+- layers/SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l2
+- layers/SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l3
+- layers/SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l2
+- layers/SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l3
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l2
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l3
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l2
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l3
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l2
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l3
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l2
+- layers/SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l3
+- layers/SY_conv_k16x16_s16x16_d1x1_padUNKNOWN
+- layers/SY_conv_k3x3_s1x1_d1x1_pad1x1
+- layers/SY_conv_k3x3_s1x1_d1x1_pad1x1_2x2_indilated2x2
+- layers/SY_conv_k3x3_s1x1_d1x1_padUNKNOWN
+- layers/SY_conv_k3x3_s2x2_d1x1_pad1x1
+- layers/SY_conv_k4x4_s4x4_d1x1_padUNKNOWN
+- layers/SY_conv_k5x5_s1x1_d1x1_padUNKNOWN
+- layers/SY_conv_k7x7_s1x1_d1x1_padUNKNOWN
+- layers/SY_conv_k7x7_s4x4_d1x1_pad3x3
+- layers/SY_conv_k8x8_s8x8_d1x1_padUNKNOWN
 - layers/SY_epilogue_acc_scale
 - layers/SY_epilogue_bias_add
 - layers/SY_epilogue_maxpool
@@ -160,13 +181,13 @@ hand_authored:
 - layers/B3_conv2d_im2col_i8
 - layers/B4_conv2d_relu_i8
 held_out:
-  n_generated: 10
-  n_hand_authored: 5
+  n_generated: 0
+  n_hand_authored: 15
 performance_generation:
   gemmini:
     shared_template:
       path: merlin/contract/capsules/profiles/_perf.yaml
-      sha256: f57668786d0d3f68f8f266a9d8426526810114ab4cbb7d60e5f9f2d19343ed67
+      sha256: bdd97dfb4eb5ac4faa6b5d181488cc5a0b8738a83074a291c8ccc22bf34d8697
     facts:
       target: gemmini
       sha256: 5f892671d3dc46fe5ad03460fce6bc7b040439da7216906f521aa7339ff390b9
@@ -404,10 +425,10 @@ performance_generation:
   atlas:
     shared_template:
       path: merlin/contract/capsules/profiles/_perf.yaml
-      sha256: 3ac45d0567bbcf20dee9d6c1506ff3cc56a0299d40b4b0349021b81ed7f1fb9c
+      sha256: bdd97dfb4eb5ac4faa6b5d181488cc5a0b8738a83074a291c8ccc22bf34d8697
     facts:
       target: atlas
-      sha256: 78aee46b096caa76c2babfa8e2cedf7f37ce67b592bfd98b374b349af0bc699d
+      sha256: d168f3d71a0c30b5637ab47d09b07d3b7fb1ad5c12d7cb102e8361e5ffe7617c
     phase:
       category: _perf
       label: dev
@@ -470,6 +491,21 @@ performance_generation:
       comparison_roles:
       - barrier_after_every_job
       - minimum_barriers
+    - family: PM
+      claim: PREDICTS
+      fit_axes:
+      - M
+      - N
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PV
+      claim: PREDICTS
+      fit_axes:
+      - ci
+      comparison_roles:
+      - measurement
+      - prediction
     - family: PB
       claim: DIFFERENTIAL
       fit_axes:
@@ -485,9 +521,9 @@ performance_generation:
       - prediction
       - measurement
     counts:
-      declared_families: 10
-      generated_families: 4
-      generated_members: 18
+      declared_families: 12
+      generated_families: 7
+      generated_members: 47
       by_family:
         PK:
           admitted_members: 4
@@ -508,11 +544,17 @@ performance_generation:
           admitted_members: 4
           written_members: 4
         PR:
-          admitted_members: 0
-          written_members: 0
+          admitted_members: 9
+          written_members: 9
         PQ:
           admitted_members: 0
           written_members: 0
+        PM:
+          admitted_members: 16
+          written_members: 16
+        PV:
+          admitted_members: 4
+          written_members: 4
         PB:
           admitted_members: 0
           written_members: 0
@@ -586,55 +628,6 @@ performance_generation:
       comparison_roles:
       - hoisted
       - not_hoisted
-    - family: PR
-      sweep: PR
-      status: skipped_inapplicable
-      reason: 'sweep ''PR'': no regime in [''fits_double'', ''fits_single'', ''fits_on_reuse'',
-        ''spills''] is reachable on ''atlas'': fits_double: ''atlas'' declares no
-        operand-store capacity we can derive; fits_single: ''atlas'' declares no operand-store
-        capacity we can derive; fits_on_reuse: ''atlas'' declares no operand-store
-        capacity we can derive; spills: ''atlas'' declares no operand-store capacity
-        we can derive'
-      axis_derivation:
-        axis: K
-        derive: memory_regime_reduction_depth
-        detail: 'sweep ''PR'': no regime in [''fits_double'', ''fits_single'', ''fits_on_reuse'',
-          ''spills''] is reachable on ''atlas'': fits_double: ''atlas'' declares no
-          operand-store capacity we can derive; fits_single: ''atlas'' declares no
-          operand-store capacity we can derive; fits_on_reuse: ''atlas'' declares
-          no operand-store capacity we can derive; spills: ''atlas'' declares no operand-store
-          capacity we can derive'
-      gate:
-        outcome: satisfied
-        required_traits:
-        - managed_scratchpad
-        - structural_pipeline_depth
-        satisfied:
-        - managed_scratchpad
-        - structural_pipeline_depth
-        refuted: []
-        unestablished: []
-        facts:
-          managed_scratchpad:
-            satisfied: true
-            tier: residual_declared
-            evidence: 'residual memory_model DECLARES [''accumulators'', ''block_scale_memory'',
-              ''resident''] (intent, not RTL-grounded: no memory is discovered in
-              these facts)'
-            missing: []
-          structural_pipeline_depth:
-            satisfied: true
-            tier: rtl_facts
-            evidence: 'the RTL timing walk resolved a finite pipeline_depth for 43
-              of 84 walked hw.modules and refused 41 (a MODULE COUNT, not coverage:
-              the walk resolves combinational leaves and refuses sequenced units,
-              so it is biased away from where the cycles are)'
-            missing: []
-      fit_axes:
-      - K
-      comparison_roles:
-      - resident
-      - spilling
     - family: PQ
       sweep: PQ
       status: skipped_inapplicable
@@ -1088,7 +1081,7 @@ performance_generation:
   radiance:
     shared_template:
       path: merlin/contract/capsules/profiles/_perf.yaml
-      sha256: 3ac45d0567bbcf20dee9d6c1506ff3cc56a0299d40b4b0349021b81ed7f1fb9c
+      sha256: 0cb381234f3481a335f727e688542f61cda2f9bd0437f0ae53ebfa540a47b2c1
     facts:
       target: radiance
       sha256: 59591d26dc57eddfde5e47b51e8d0d7db7fdccf5c971b323c4a2d40aba4256d2
@@ -1154,6 +1147,21 @@ performance_generation:
       comparison_roles:
       - barrier_after_every_job
       - minimum_barriers
+    - family: PM
+      claim: PREDICTS
+      fit_axes:
+      - M
+      - N
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PV
+      claim: PREDICTS
+      fit_axes:
+      - ci
+      comparison_roles:
+      - measurement
+      - prediction
     - family: PB
       claim: DIFFERENTIAL
       fit_axes:
@@ -1169,7 +1177,7 @@ performance_generation:
       - prediction
       - measurement
     counts:
-      declared_families: 10
+      declared_families: 12
       generated_families: 1
       generated_members: 4
       by_family:
@@ -1195,6 +1203,12 @@ performance_generation:
           admitted_members: 0
           written_members: 0
         PQ:
+          admitted_members: 0
+          written_members: 0
+        PM:
+          admitted_members: 0
+          written_members: 0
+        PV:
           admitted_members: 0
           written_members: 0
         PB:
@@ -1424,6 +1438,63 @@ performance_generation:
       comparison_roles:
       - barrier_after_every_job
       - minimum_barriers
+    - family: PM
+      sweep: PM
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        satisfied: []
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is uncached for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+      fit_axes:
+      - M
+      - N
+      comparison_roles:
+      - measurement
+      - prediction
+    - family: PV
+      sweep: PV
+      status: skipped_inapplicable
+      gate:
+        outcome: unestablished
+        required_traits:
+        - structural_pipeline_depth
+        - managed_scratchpad
+        satisfied:
+        - managed_scratchpad
+        refuted: []
+        unestablished:
+        - structural_pipeline_depth
+        facts:
+          structural_pipeline_depth:
+            satisfied: null
+            tier: not_established
+            evidence: the timing fact class is uncached for this target
+            missing:
+            - 'a facts artifact carrying a timing block -- UNCACHED is not the same
+              as absent, and this fact class exists: re-extract to answer'
+          managed_scratchpad:
+            satisfied: true
+            tier: rtl_facts
+            evidence: facts.memories discovered 1 explicitly sized on-chip memories
+              (shared_memory)
+            missing: []
+      fit_axes:
+      - ci
+      comparison_roles:
+      - measurement
+      - prediction
     blocked_unimplemented:
     - family: PB
       status: blocked_unimplemented
@@ -2267,32 +2338,7 @@ performance_generation:
     errors: []
 roster_generation:
   gemmini:
-    not_built:
-    - capsule: SY_model_resnet50
-      model: resnet50
-      operand_dtype: i8
-      quant_scheme: int8_dyn_act_int8_weight
-      status: not_built
-      reason: 'M2MUnavailable: RuntimeError: paper capture requires M2M_RESNET_INPUT_NPZ
-        with preprocessed ImageNet images; set M2M_RESNET_RANDOM=1 only for compiler
-        smoke tests'
-    - capsule: SY_model_lstmnetvit
-      model: lstmnetvit
-      operand_dtype: i8
-      quant_scheme: int8_dyn_act_int8_weight
-      status: not_built
-      reason: 'M2MUnavailable: m2m capture produced a non-clean program for op ''model''/i8
-        (ok=True, opaque=44, scheme=''int8_dyn_act_int8_weight'', rc=3); a capsule
-        input must be 0-opaque. Opaque ops: torchao_choose_qparams_affine_default_1=6,
-        torchao_quantize_affine_default_1=6, torchao_choose_qparams_affine_default_4=6,
-        torchao_quantize_affine_default_4=6, torchao_choose_qparams_affine_default=2,
-        torchao_quantiz'
-    - capsule: SY_model_smolvla
-      model: smolvla
-      operand_dtype: i8
-      quant_scheme: int8_dyn_act_int8_weight
-      status: not_built
-      reason: 'M2MUnavailable: ModuleNotFoundError: No module named ''lerobot'''
+    not_built: []
   atlas:
     not_built:
     - capsule: SY_model_resnet50
@@ -2308,7 +2354,8 @@ roster_generation:
       operand_dtype: fp8_e4m3
       quant_scheme: float8_dyn_act_float8_weight
       status: not_built
-      reason: 'M2MUnavailable: Traceback (most recent call last):'
+      reason: 'M2MUnavailable: AssertionError: Float8 dynamic activation quantization
+        is only supported on CUDA>=8.9 and MI300+'
     - capsule: SY_model_smolvla
       model: smolvla
       operand_dtype: fp8_e4m3
@@ -2320,36 +2367,12 @@ roster_generation:
       operand_dtype: fp8_e4m3
       quant_scheme: float8_dyn_act_float8_weight
       status: not_built
-      reason: 'M2MUnavailable: Traceback (most recent call last):'
+      reason: 'M2MUnavailable: AssertionError: Float8 dynamic activation quantization
+        is only supported on CUDA>=8.9 and MI300+'
   mx_gemmini:
     not_built: []
   radiance:
-    not_built:
-    - capsule: SY_model_resnet50
-      model: resnet50
-      operand_dtype: i8
-      quant_scheme: int8_dyn_act_int8_weight
-      status: not_built
-      reason: 'M2MUnavailable: RuntimeError: paper capture requires M2M_RESNET_INPUT_NPZ
-        with preprocessed ImageNet images; set M2M_RESNET_RANDOM=1 only for compiler
-        smoke tests'
-    - capsule: SY_model_lstmnetvit
-      model: lstmnetvit
-      operand_dtype: i8
-      quant_scheme: int8_dyn_act_int8_weight
-      status: not_built
-      reason: 'M2MUnavailable: m2m capture produced a non-clean program for op ''model''/i8
-        (ok=True, opaque=44, scheme=''int8_dyn_act_int8_weight'', rc=3); a capsule
-        input must be 0-opaque. Opaque ops: torchao_choose_qparams_affine_default_1=6,
-        torchao_quantize_affine_default_1=6, torchao_choose_qparams_affine_default_4=6,
-        torchao_quantize_affine_default_4=6, torchao_choose_qparams_affine_default=2,
-        torchao_quantiz'
-    - capsule: SY_model_smolvla
-      model: smolvla
-      operand_dtype: i8
-      quant_scheme: int8_dyn_act_int8_weight
-      status: not_built
-      reason: 'M2MUnavailable: ModuleNotFoundError: No module named ''lerobot'''
+    not_built: []
   saturn_opu_rvv:
     not_built: []
   saturn_opu:
@@ -2366,7 +2389,7 @@ lane_generation:
     - capsule: SY_host_lane_attention_bf16
       family: attention_full
       reason: '''SY_host_lane_attention_bf16'' forbids `on_mesh`, but ''atlas'' classifies
-        its program as ''UNKNOWN'' rather than host-only: it contains region(s) the
+        its program as ''A->H->A'' rather than host-only: it contains region(s) the
         manifest admits, so the assertion demands the compiler decline work it is
         entitled to do. Choose a family whose decomposition this target admits nothing
         of, or drop the forbid'
@@ -2383,22 +2406,11 @@ lane_generation:
     forbid_not_provable: []
 superseded_generation:
   gemmini:
-    removed:
-    - PQ03_j1_k32
-    - PQ04_j2_k32
-    - PQ05_j4_k32
+    removed: []
   radiance:
-    removed:
-    - SY_rank_attention_batched
-    - SY_rank_elementwise_map_batched
-    - SY_rank_movement_batched
-    - SY_rank_normalization_batched
-    - SY_rank_reduction_batched
-    - SY_rank_softmax_batched
+    removed: []
   atlas:
-    removed:
-    - SY_rank_elementwise_map_batched
-    - SY_rank_movement_batched
+    removed: []
   saturn_opu_rvv:
     removed: []
   mx_gemmini:

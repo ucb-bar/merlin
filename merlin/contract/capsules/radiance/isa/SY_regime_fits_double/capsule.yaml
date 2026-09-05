@@ -13,13 +13,13 @@ inputs:
   shape:
   - 16
   - 16
-  dtype: bf16
+  dtype: fp16
 - name: A0
   role: input
   shape:
   - 16
   - 16
-  dtype: bf16
+  dtype: fp16
 operation:
   op: matmul
   attributes:
@@ -35,7 +35,9 @@ numeric_policy:
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1
@@ -52,6 +54,6 @@ pass_requirements:
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125
-  ceiling_atol: 128.00301551818848
+  ceiling_atol: 157.75511467456818
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true

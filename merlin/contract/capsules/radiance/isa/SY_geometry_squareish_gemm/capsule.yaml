@@ -2,27 +2,27 @@ name: SY_geometry_squareish_gemm
 kind: isa
 source_role: derived_sweep
 source_reference: 'synthesized for geometry class ''squareish_gemm'': real captures
-  present 58 contraction region(s) of this aspect ratio carrying 0.001016 of all contraction
-  MAC work, and the heaviest of them is M=65 K=341 N=85. Every other synthesized capsule
-  is square, so without this the corpus cannot tell a compiler that tiles this ratio
-  well from one that does not. 5525 written output elements exceeds the 742 a 300.0s
-  certification budget affords on this target, so it is graded at L2 and rests on
-  ''SY_contraction_bf16_aligned'''
+  present 289 contraction region(s) of this aspect ratio carrying 0.094393 of all
+  contraction MAC work, and the heaviest of them is M=102 K=307 N=76. Every other
+  synthesized capsule is square, so without this the corpus cannot tell a compiler
+  that tiles this ratio well from one that does not. 7752 written output elements
+  exceeds the 742 a 300.0s certification budget affords on this target, so it is graded
+  at L2 and rests on ''SY_contraction_fp16_aligned'''
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
 - name: W
   role: weight
   shape:
-  - 341
-  - 85
-  dtype: bf16
+  - 307
+  - 76
+  dtype: fp16
 - name: A0
   role: input
   shape:
-  - 65
-  - 341
-  dtype: bf16
+  - 102
+  - 307
+  dtype: fp16
 operation:
   op: matmul
   attributes:
@@ -31,8 +31,6 @@ operation:
     out: Y0
     epilogue: []
     output_dtype: f32
-    semantic:
-      generalization_axis: shape_geometry
 numeric_policy:
   compare: tolerance_float
   dtype: f32
@@ -40,7 +38,9 @@ numeric_policy:
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1
@@ -49,16 +49,17 @@ vcs: optional
 firesim: optional
 semantic:
   semantic_family: contraction
-  generalization_axis: seen
+  generalization_axis: shape_geometry
   must_accelerate: true
   eligible: auto
 pass_requirements:
 - target-isa-lowering
 - tile-schedule
-extends: SY_contraction_bf16_aligned
+max_oracle_tier: L2
+extends: SY_contraction_fp16_aligned
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125
-  ceiling_atol: 245.51398754119873
+  ceiling_atol: 1230.8823590278625
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true

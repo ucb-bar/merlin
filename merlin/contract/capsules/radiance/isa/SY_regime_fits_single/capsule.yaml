@@ -6,7 +6,7 @@ source_reference: 'synthesized for memory regime ''fits_single'': the declared i
   this capsule in that regime. Extents resolved by memory_regime.extents_for_regime
   with the same sizing the coverage gate measures with. 32768 written output elements
   exceeds the 742 a 300.0s certification budget affords on this target, so it is graded
-  at L2 and rests on ''SY_contraction_bf16_aligned'''
+  at L2 and rests on ''SY_contraction_fp16_aligned'''
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -15,13 +15,13 @@ inputs:
   shape:
   - 16
   - 16
-  dtype: bf16
+  dtype: fp16
 - name: A0
   role: input
   shape:
   - 2048
   - 16
-  dtype: bf16
+  dtype: fp16
 operation:
   op: matmul
   attributes:
@@ -37,7 +37,9 @@ numeric_policy:
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1
@@ -51,10 +53,11 @@ semantic:
   eligible: auto
 pass_requirements:
 - target-isa-lowering
-extends: SY_contraction_bf16_aligned
+max_oracle_tier: L2
+extends: SY_contraction_fp16_aligned
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125
-  ceiling_atol: 244.25302362442017
+  ceiling_atol: 353.4001145362854
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true

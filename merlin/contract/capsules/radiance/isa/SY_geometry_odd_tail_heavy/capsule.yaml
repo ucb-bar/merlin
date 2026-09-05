@@ -2,12 +2,12 @@ name: SY_geometry_odd_tail_heavy
 kind: isa
 source_role: derived_sweep
 source_reference: 'synthesized for geometry class ''odd_tail_heavy'': real captures
-  present 16 contraction region(s) of this aspect ratio carrying 0.000413 of all contraction
+  present 16 contraction region(s) of this aspect ratio carrying 0.000327 of all contraction
   MAC work, and the heaviest of them is M=65 K=85 N=256. Every other synthesized capsule
   is square, so without this the corpus cannot tell a compiler that tiles this ratio
   well from one that does not. 16640 written output elements exceeds the 742 a 300.0s
   certification budget affords on this target, so it is graded at L2 and rests on
-  ''SY_contraction_bf16_aligned'''
+  ''SY_contraction_fp16_aligned'''
 label: public
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -16,13 +16,13 @@ inputs:
   shape:
   - 85
   - 256
-  dtype: bf16
+  dtype: fp16
 - name: A0
   role: input
   shape:
   - 65
   - 85
-  dtype: bf16
+  dtype: fp16
 operation:
   op: matmul
   attributes:
@@ -31,8 +31,6 @@ operation:
     out: Y0
     epilogue: []
     output_dtype: f32
-    semantic:
-      generalization_axis: shape_geometry
 numeric_policy:
   compare: tolerance_float
   dtype: f32
@@ -40,7 +38,9 @@ numeric_policy:
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1
@@ -49,16 +49,17 @@ vcs: optional
 firesim: optional
 semantic:
   semantic_family: contraction
-  generalization_axis: seen
+  generalization_axis: shape_geometry
   must_accelerate: true
   eligible: auto
 pass_requirements:
 - target-isa-lowering
 - tile-schedule
-extends: SY_contraction_bf16_aligned
+max_oracle_tier: L2
+extends: SY_contraction_fp16_aligned
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125
-  ceiling_atol: 191.2143211364746
+  ceiling_atol: 582.1867022514343
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true

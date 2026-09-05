@@ -33,7 +33,9 @@ numeric_policy:
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1

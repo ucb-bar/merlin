@@ -13,13 +13,13 @@ inputs:
   shape:
   - 2048
   - 16
-  dtype: bf16
+  dtype: fp16
 - name: A0
   role: input
   shape:
   - 16
   - 2048
-  dtype: bf16
+  dtype: fp16
 operation:
   op: matmul
   attributes:
@@ -28,8 +28,6 @@ operation:
     out: Y0
     epilogue: []
     output_dtype: f32
-    semantic:
-      generalization_axis: accumulation_depth
 numeric_policy:
   compare: tolerance_float
   dtype: f32
@@ -37,7 +35,9 @@ numeric_policy:
   rtol: 0.015625
 expected:
   instruction_classes: []
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1
@@ -46,7 +46,7 @@ vcs: optional
 firesim: optional
 semantic:
   semantic_family: contraction
-  generalization_axis: composition
+  generalization_axis: accumulation_depth
   must_accelerate: true
   eligible: auto
 pass_requirements:
@@ -54,6 +54,6 @@ pass_requirements:
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125
-  ceiling_atol: 1.2601003453601152
+  ceiling_atol: 268.52924728393555
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true
