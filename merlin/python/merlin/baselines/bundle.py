@@ -267,6 +267,36 @@ def full_env(model: str) -> dict[str, str]:
 RANDOM_INIT_GOLDEN_UNREPRODUCIBLE: frozenset[str] = frozenset({"bitvla", "openvla"})
 
 
+#: Models whose captured weights are RANDOM-INIT rather than a trained checkpoint, with the evidence
+#: for that classification. This is a DIFFERENT question from whether the golden is reproducible, and
+#: conflating the two mislabels a whole class of cell: smolvla is random-init yet perfectly
+#: reproducible (a seeded re-instantiation matches its weights.safetensors bit-for-bit, 500/500
+#: tensors), so a passing cosine on it measures framework-vs-eager agreement, NOT a semantic match
+#: against trained weights -- while the reproducibility-keyed label called it "semantic".
+#: Every entry is declared with what was actually checked; an unlisted model is treated as trained,
+#: which is the status quo and is why the label still says what evidence backs it.
+RANDOM_INIT_WEIGHTS: dict[str, str] = {
+    "smolvla": ("the loader defaults M2M_SMOLVLA_PRETRAINED=0 and the capture was taken with it "
+                "unset; the pretrained checkpoint on disk was deliberately NOT used, because "
+                "capturing with it would have made the int8 cell a different model from the "
+                "already-accepted fp32 cell. Weights ARE reproducible: two independent processes "
+                "produce the same params digest, and it equals the digest of the bundle's own "
+                "weights.safetensors over all 500 parameter tensors."),
+    "bitvla": "random-init capture; the golden's weights are additionally unrecoverable",
+    "openvla": "random-init capture; the golden's weights are additionally unrecoverable",
+}
+
+
+def weights_are_random_init(model: str) -> bool:
+    """True if ``model``'s captured weights are random-init rather than a trained checkpoint."""
+    return model in RANDOM_INIT_WEIGHTS
+
+
+def random_init_evidence(model: str) -> str:
+    """What was actually checked to classify ``model``'s weights. Empty when it is not classified."""
+    return RANDOM_INIT_WEIGHTS.get(model, "")
+
+
 def golden_unreproducible(model: str) -> bool:
     """True if ``model``'s captured golden cannot be reproduced by re-instantiating its loader."""
     return model in RANDOM_INIT_GOLDEN_UNREPRODUCIBLE

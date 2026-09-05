@@ -380,3 +380,39 @@ def test_the_reference_accuracy_bar_is_recorded_so_it_can_be_compared_with_ours(
     # see that "both passed" never meant "both cleared the same test".
     assert bar == {"cos_threshold": 0.99, "rel_threshold": 5e-2,
                    "cos": 0.9943368460376679, "rel": 0.10627618720798984}
+
+
+# ------------------------------------------------- what makes a cosine semantic is TRAINED weights
+#
+# The label used to key off whether the golden was REPRODUCIBLE. smolvla separates the two
+# properties: random-init yet bit-for-bit reproducible (a seeded re-instantiation matches its
+# weights.safetensors over all 500 parameter tensors), so its golden is reachable and its cosine is
+# a real framework-vs-eager agreement -- and it was being labelled "gated against the model's
+# captured TRAINED-WEIGHT golden", of a model that has no trained weights.
+
+
+def test_gate_basis_separates_reproducible_from_trained():
+    from merlin.baselines import bundle as _b
+
+    assert _b.golden_unreproducible("bitvla") and _b.weights_are_random_init("bitvla")
+    # The case that motivated the split: random-init, but the golden IS reproducible.
+    assert _b.weights_are_random_init("smolvla") and not _b.golden_unreproducible("smolvla")
+    assert not _b.weights_are_random_init("small_llama")
+
+    unreproducible = gate_basis("bitvla")
+    reproducible = gate_basis("smolvla")
+    trained = gate_basis("small_llama")
+    assert unreproducible != reproducible, "the two random-init cases are not the same claim"
+    assert "UNREPRODUCIBLE" in unreproducible
+    assert "REPRODUCIBLE" in reproducible and "not\ntrained" in reproducible.replace(" ", "\n", 1000)
+    assert reproducible.startswith("lowering-exactness"), "random-init is never semantic"
+    assert trained.startswith("semantic")
+
+
+def test_every_random_init_classification_carries_its_evidence():
+    from merlin.baselines import bundle as _b
+
+    # A bare set would let a model be classified with no record of what was checked.
+    for model in _b.RANDOM_INIT_WEIGHTS:
+        assert len(_b.random_init_evidence(model)) > 20, f"{model} classified without evidence"
+    assert _b.random_init_evidence("small_llama") == ""

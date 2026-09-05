@@ -235,13 +235,17 @@ def bundle_footprint(root: Path, *, budget_bytes: int = DEFAULT_BOARD_USABLE_BYT
     all_programs = sum(e["resident_bytes"] for e in per_program)
 
     recognised = set(RESIDENT_BUNDLE_FILES) | set(RECOGNISED_NON_RESIDENT_FILES)
+    # Independent references and their provenance sidecars are named per-golden
+    # (golden_w8a8.independent.npy, golden.independent.npy.provenance.json, ...), so they are
+    # recognised by suffix rather than by an ever-growing literal list.
+    recognised_suffixes = (".independent.npy", ".provenance.json")
     unpriced = 0
     unpriced_examples: list[str] = []
     if root.is_dir():
         for f in sorted(root.rglob("*")):
             if not f.is_file() or f.resolve() in priced_paths:
                 continue
-            if f.name in recognised:
+            if f.name in recognised or f.name.endswith(recognised_suffixes):
                 continue
             unpriced += f.stat().st_size
             if len(unpriced_examples) < 5:

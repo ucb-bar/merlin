@@ -78,11 +78,21 @@ def _collect(root: Path) -> list:
 def gate_basis(model: str) -> str:
     """Per-model honesty label for what a passing cos actually MEANS on this model.
 
-    Random-init models ship no reproducible weights, so their gate is LOWERING-EXACTNESS (framework
-    vs eager-torch on this seeded instantiation), not a semantic match against trained weights."""
+    There are THREE cases here, not two. The label used to key off whether the golden is
+    REPRODUCIBLE, but what makes a cosine semantic is whether the weights are TRAINED, and those are
+    independent properties. smolvla is the case that separates them: random-init yet bit-for-bit
+    reproducible, so its golden is perfectly reachable and its cosine is perfectly meaningful --
+    as framework-vs-eager agreement, which is not semantics. The old two-branch label called it
+    "semantic (gated against the model's captured trained-weight golden)", and there are no trained
+    weights."""
     if _bundle.golden_unreproducible(model):
-        return ("lowering-exactness (random-init model: cos measures framework-vs-eager-torch on THIS "
-                "seeded instantiation, NOT a semantic match against trained weights)")
+        return ("lowering-exactness (random-init model whose golden is UNREPRODUCIBLE: cos measures "
+                "framework-vs-eager-torch on THIS seeded instantiation, NOT a semantic match against "
+                "trained weights)")
+    if _bundle.weights_are_random_init(model):
+        return ("lowering-exactness (random-init but REPRODUCIBLE weights: the golden is reachable "
+                "and the cos is a real framework-vs-eager-torch agreement, but the weights are not "
+                "trained, so it says nothing about the model's semantics)")
     return "semantic (gated against the model's captured trained-weight golden)"
 
 
