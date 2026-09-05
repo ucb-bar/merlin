@@ -22,6 +22,7 @@ Why these three concerns and not the exporter itself:
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -36,6 +37,36 @@ def _load_et_export_helper():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _require_int8_bundle(model: str, dirname: str):
+    """The (model, int8) capture bundle by DIRECTORY NAME, skipping when the arm cannot run.
+
+    Named explicitly rather than via ``bundle.resolve`` so the test pins the bundle it was measured
+    against: resolve() prefers ``_full`` over ``_consistent`` when both exist, and a delegation count
+    asserted across that difference is a count for a different model.
+    """
+    from merlin.common.artifacts import recaptures_dir
+
+    if not et.et_venv_available():
+        pytest.skip(f"ExecuTorch export venv absent at {et.et_venv_python()}")
+    root = recaptures_dir() / dirname
+    if not ((root / "inputs.npz").is_file() and (root / "golden.npy").is_file()):
+        pytest.skip(f"capture bundle {dirname} absent (recaptures are purgeable)")
+    b = et._bundle.CaptureBundle(model=model, variant="int8", root=root)
+    if not b.torch_loader.is_file():
+        pytest.skip(f"model2MLIR torch loader absent for {model}")
+    return b
+
+
+def _export_qd8(model: str, b, tmp: Path | None = None):
+    """AOT-only qd8 export (no board, no runner build) -> ExportResult."""
+    from merlin.common.paths import build_dir
+
+    work = (tmp or build_dir() / "baselines" / "executorch" / "runs") / f"{model}_int8_qd8_regress"
+    work.mkdir(parents=True, exist_ok=True)
+    return et.export_pte(model, b, work, xnnpack=True, quantize=True, compute_golden=True,
+                         qd8=True, extra_env=et.loader_env(model), timeout=1800)
 
 
 def _workload(root, model: str, capture_toml: str):
@@ -211,3 +242,51 @@ def test_every_rostered_model_has_a_torch_loader():
     missing = [m for m in et.DEFAULT_MODELS
                if not et._bundle.resolve(m, "int8").torch_loader.is_file()]
     assert not missing, f"no model2MLIR torch loader for {missing}"
+
+
+# ------------------------------------------------------- the two PT2E blocks that refused cells
+
+def test_bounding_the_channels_last_walk_always_reports_whether_it_applied():
+    """The qd8 NHWC fix is a hand-port of a PINNED upstream method, so it must never apply silently.
+
+    It patches ``ChannelsLastTaggedReshapePass.input_to_nhwc`` to stop the ``is_dynamic_qdq``
+    ancestor walk from leaving the rank ``can_be_converted_to_nhwc`` validated. A hand-port is only
+    correct against the upstream shape it was written against, so the function is fail-closed on
+    drift: it either applies and says so, or declines and says why. A silent no-op would read as
+    "qd8 is impossible for this model" — exactly the misreading that kept lstmnetvit refused.
+    """
+    mod = _load_et_export_helper()
+    status = mod._bound_dynamic_qdq_channels_last_walk()
+    assert isinstance(status, str) and status
+    assert ("walk bounded to the validated rank" in status) or ("NOT bounded (" in status), status
+
+
+@pytest.mark.slow
+@pytest.mark.integration
+def test_qd8_export_of_a_float_graph_is_byte_for_byte_unaffected_by_the_dtype_fix():
+    """The dtype-preserving quantizer must be a NO-OP wherever the stock one already worked.
+
+    ``_convert_scalars_to_attrs`` is skipped only for nodes whose own result is non-floating — nodes
+    XNNPACK has no integer ukernel to annotate anyway. small_llama is a pure-float graph, so its
+    delegation must be exactly what the stock quantizer produced (measured 15/136). If this moves,
+    the fix has started changing quantization instead of only declining to corrupt integer indices.
+    """
+    b = _require_int8_bundle("small_llama", "small_llama_int8_consistent")
+    exp = _export_qd8("small_llama", b)
+    assert (exp.delegated_nodes, exp.total_call_nodes) == (15, 136)
+
+
+@pytest.mark.slow
+@pytest.mark.integration
+def test_lstmnetvit_qd8_exports_now_that_the_nhwc_walk_is_bounded():
+    """lstmnetvit was a REFUSED int8 cell purely because of the unbounded dynamic-qdq NHWC walk.
+
+    fp32 and qs8 both exported fine; only qd8 — the one recipe comparable to merlin's datapath —
+    died in ``ChannelsLastTaggedReshapePass`` with ``required rank 4 tensor to use channels_last``.
+    A recurrent+ViT controller is the only non-llama, non-CNN architecture in the set, so this cell
+    is what makes the int8 comparison a diverse set rather than a family of llamas.
+    """
+    b = _require_int8_bundle("lstmnetvit", "lstmnetvit_int8_consistent")
+    exp = _export_qd8("lstmnetvit", b)
+    assert exp.delegated_nodes and exp.delegated_nodes > 0
+    assert "walk bounded to the validated rank" in (exp.summary or {}).get("subgraph_note", "")

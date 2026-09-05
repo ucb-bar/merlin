@@ -136,6 +136,169 @@ def reconcile_input_arity(captured, keys, example, *, source: str = "inputs.npz"
             note)
 
 
+def _dtype_preserving_quantizer(quantizer_cls, qcfg):
+    """``quantizer_cls`` with a ``transform_for_annotation`` that does not retype integer arithmetic.
+
+    XNNPACKQuantizer's ``transform_for_annotation`` is ``_convert_scalars_to_attrs``: for every
+    ``aten.add.Tensor`` / ``aten.mul.Tensor`` it lifts a scalar argument into a buffer so the scalar
+    can carry a quantization annotation. It builds that buffer as ``torch.tensor(float(arg))`` —
+    unconditionally **float32**, with no reference to the dtype of the node it is rewriting.
+
+    On any graph whose mask/position arithmetic is integer (every HF ``transformers`` decoder: a
+    ``cumsum`` of an int64 attention mask, offset by a literal ``+ 1``) that promotes the result to
+    float, and the float tensor then reaches ``aten.index.Tensor`` as an INDEX:
+
+        IndexError: tensors used as indices must be long, int, byte or bool tensors
+
+    raised at calibration, after ``prepare_pt2e`` returned cleanly. It fires with an empty quantizer
+    too, so it is the transform and not the annotation, and no ``filter_fn`` / ``set_module_*``
+    exclusion reaches it — which is why the whole-model int8 path was a module swap instead.
+
+    The fix is to read the dtype the pass is supposed to preserve rather than assume one: skip nodes
+    whose own ``meta['val']`` is not floating point. Those are exactly the nodes the lift cannot
+    help — XNNPACK has no integer add/mul ukernel to annotate — so a float graph is transformed
+    EXACTLY as before (byte-identical for every model that already exported) and an integer index
+    computation is left as the integer computation it is.
+
+    MEASURED with this in place: tiny_llama qd8 goes from failing at calibration to lowering with
+    155/155 Linears int8; whisper_tiny reaches ``convert_pt2e`` with 65 int8 Linears (it then fails
+    later and separately, inside the XNNPACK partitioner, with a dependency cycle).
+    """
+    import torch
+    from executorch.backends.xnnpack.quantizer.xnnpack_quantizer_utils import (
+        get_new_attr_name_with_prefix)
+
+    scalar_ops = (torch.ops.aten.add.Tensor, torch.ops.aten.mul.Tensor)
+
+    class _DtypePreserving(quantizer_cls):  # type: ignore[valid-type,misc]
+        def transform_for_annotation(self, model):
+            for n in model.graph.nodes:
+                if n.op != "call_function" or n.target not in scalar_ops:
+                    continue
+                val = n.meta.get("val")
+                dtype = getattr(val, "dtype", None)
+                if dtype is not None and not dtype.is_floating_point:
+                    continue          # integer arithmetic: leave it integer
+                new_args = []
+                for arg in n.args:
+                    if isinstance(arg, torch.fx.Node):
+                        new_args.append(arg)
+                        continue
+                    name = get_new_attr_name_with_prefix("_tensor_constant_")(model)
+                    const = torch.tensor(float(arg))
+                    model.register_buffer(name, const)
+                    with model.graph.inserting_before(n):
+                        attr = model.graph.create_node("get_attr", name, (), {})
+                        attr.meta["val"] = n.meta["val"].fake_mode.from_tensor(
+                            const, static_shapes=True)
+                    new_args.append(attr)
+                n.args = tuple(new_args)
+            model.recompile()
+            return model
+
+    return _DtypePreserving().set_global(qcfg)
+
+
+def _bound_dynamic_qdq_channels_last_walk() -> str:
+    """Stop XNNPACK's NHWC-tagging pass from re-targeting its copy at a DIFFERENT-RANK ancestor.
+
+    ``ChannelsLastTaggedReshapePass.input_to_nhwc`` validates its argument with
+    ``can_be_converted_to_nhwc(input_node)`` — which requires a rank-4 tensor — and only then, in
+    the ``is_dynamic_qdq(input_node)`` branch, walks ``input_node = input_node.args[0]`` to the root
+    of the arg chain. The walk REBINDS the name the check was made about, so the
+    ``_to_copy(memory_format=torch.channels_last)`` it then inserts can land on an ancestor of a
+    different rank:
+
+        RuntimeError: required rank 4 tensor to use channels_last format
+
+    The branch is guarded by ``is_dynamic_qdq``, so this reaches qd8 (dynamic per-row activation
+    quant) and nothing else: the same model exports fine as fp32 and as qs8, which is why it read as
+    "qd8 is impossible for this model" rather than as a bug with a bounded blast radius.
+
+    The fix keeps the walk but refuses to leave the rank the check validated. That is the invariant
+    the code already assumes; it just was not enforced across the rebinding.
+
+    Applied by hand-porting the pinned upstream method (ExecuTorch is pinned by sha and its identity
+    is recorded with every result). It is therefore FAIL-CLOSED on drift: if the installed
+    ``input_to_nhwc`` no longer contains the unbounded walk this fork was written against, nothing is
+    patched and the returned status says so, rather than silently running a stale copy of someone
+    else's pass. Returns the status string to record in the export summary.
+
+    MEASURED: lstmnetvit qd8 goes from failing this pass to lowering with 10 conv2d + 22 linear int8.
+    """
+    import inspect
+
+    try:
+        import torch
+        from executorch.backends.xnnpack._passes import channels_last_tagged_reshape_pass as clp
+        from executorch.backends.xnnpack.utils.utils import is_param_node
+        from executorch.exir.dialects._ops import ops as exir_ops
+    except ImportError as e:
+        # Reached when this module is imported OUTSIDE the ExecuTorch venv (it is also read as a
+        # plain module by the board-free tests). Report; never raise — the caller's job is to record
+        # whether the fix took effect, and an exception here would be indistinguishable from the
+        # export failure the fix exists to prevent.
+        return f"channels-last qd8 walk NOT bounded (import failed: {e})"
+
+    cls = clp.ChannelsLastTaggedReshapePass
+    try:
+        src = inspect.getsource(cls.input_to_nhwc)
+    except (OSError, TypeError) as e:
+        return f"channels-last qd8 walk NOT bounded (source unavailable: {e})"
+    if "is_dynamic_qdq(input_node)" not in src or "input_node = input_node.args[0]" not in src:
+        return ("channels-last qd8 walk NOT bounded (upstream input_to_nhwc no longer matches the "
+                "pinned shape this fix was written against — re-verify before re-applying)")
+
+    def _rank(node) -> int | None:
+        val = getattr(node, "meta", {}).get("val")
+        shape = getattr(val, "shape", None)
+        return None if shape is None else len(shape)
+
+    def input_to_nhwc(self, graph_module, input_node, target_node):
+        if is_param_node(self.exported_program, input_node):
+            if (cls.XNN_NHWC_NODE in input_node.meta and cls.is_nchw_node(input_node)):
+                raise AssertionError("The same constant data tensor can't be used in NCHW format "
+                                     "in one place and NHWC in another")
+            self.mark_as_nhwc_node(input_node)
+        if input_node.op == "placeholder":
+            if self._is_nhwc(input_node.meta["val"][0]):
+                return
+        elif cls.is_nhwc_node(input_node):
+            return
+        if self.input_dim_order(input_node, clp.InputDimOrder.NHWC):
+            return
+        if not self.can_be_converted_to_nhwc(input_node):
+            raise AssertionError("Attempting to convert non-NHWC compatible node to NHWC")
+
+        if cls.PARTNER_NODE in input_node.meta:
+            input_node_nhwc = input_node.meta[cls.PARTNER_NODE]
+        else:
+            is_dynamic_input = clp.is_dynamic_qdq(input_node)
+            if is_dynamic_input:
+                validated_rank = _rank(input_node)
+                while (getattr(input_node, "args", None)
+                       and isinstance(input_node.args[0], torch.fx.Node)):
+                    candidate = input_node.args[0]
+                    if _rank(candidate) != validated_rank:
+                        break            # the bound: never leave the rank that was validated
+                    input_node = candidate
+            with graph_module.graph.inserting_after(input_node):
+                input_node_nhwc = self.create_call_function_node(
+                    graph_module=graph_module, target=exir_ops.edge.aten._to_copy.default,
+                    args=(input_node,), memory_format=torch.channels_last)
+                cls.mark_as_nhwc_node(input_node_nhwc)
+            if is_dynamic_input:
+                input_node.replace_all_uses_with(input_node_nhwc)
+                input_node_nhwc.args = (input_node,)
+
+        self.insert_copy_and_assign_partner_nodes_quantization_sensitive(
+            graph_module=graph_module, original_input=input_node,
+            copy_node=input_node_nhwc, target_node=target_node)
+
+    cls.input_to_nhwc = input_to_nhwc
+    return "channels-last qd8 walk bounded to the validated rank"
+
+
 def _linear_subgraph(model):
     """Extract the model's REAL linear-heavy subgraph for the int8 path.
 
@@ -461,7 +624,16 @@ def main() -> int:
             # so an ours-vs-ExecuTorch int8 ratio compares two runs of the same arithmetic.
             qcfg = (get_symmetric_quantization_config(is_per_channel=True, is_dynamic=True)
                     if args.qd8 else get_symmetric_quantization_config())
-            quantizer = XNNPACKQuantizer().set_global(qcfg)
+            # Not a plain XNNPACKQuantizer: its transform_for_annotation retypes INTEGER scalar
+            # arithmetic to float, which corrupts the index feeding HF's causal-mask
+            # `aten.index.Tensor` and made whole-model PT2E impossible on every transformers
+            # decoder. See _dtype_preserving_quantizer — float graphs transform identically.
+            quantizer = _dtype_preserving_quantizer(XNNPACKQuantizer, qcfg)
+            if args.qd8:
+                # Only qd8 reaches the unbounded NHWC walk (its branch is gated on is_dynamic_qdq),
+                # so the fix is applied on exactly the path that hits it, and its status is recorded
+                # with the result rather than assumed to have taken effect.
+                _nhwc_status = _bound_dynamic_qdq_channels_last_walk()
             prepared = prepare_pt2e(cap, quantizer)
             with torch.no_grad():
                 prepared(*captured)          # calibrate on the captured input
@@ -474,6 +646,8 @@ def main() -> int:
                             "quant -> XNNPACK qd8 int8 ukernels; mirrors merlin's "
                             "passes_quant_int datapath)" if args.qd8 else
                             "pt2e-qs8(symmetric, per-tensor, STATIC activation quant)")
+            if args.qd8:
+                _pt2e_recipe += "; " + _nhwc_status
             subgraph_note = (subgraph_note + " " if subgraph_note else "") + _pt2e_recipe
         except Exception as e:  # noqa: BLE001
             # Fail closed and say which recipe failed. A qd8 failure must never silently become a
