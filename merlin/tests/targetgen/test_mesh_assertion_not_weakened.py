@@ -55,7 +55,9 @@ def test_every_reported_capsule_really_declines_admitted_work():
     for row in rep["weakened"]:
         adm, why = CF.admitted_with_reason(row["target"])
         assert why == "resolved", f"{row['capsule']}: {why}"
-        dtypes = {str(x) for x in (adm.get(row["family"]) or ())}
+        # ONE SPELLING AUTHORITY, same as the gate: the manifest says `int8`, a capsule says `i8`.
+        # Comparing raw made every int8 cell read as "not admitted" and hid 51 findings.
+        dtypes = {CF.capsule_dtype(str(x)) for x in (adm.get(row["family"]) or ())}
         assert row["dtype"] in dtypes, (
             f"{row['capsule']} was reported, but {row['family']}/{row['dtype']} is NOT admitted on "
             f"{row['target']} (admits {sorted(dtypes)}) -- a fallback is correct there")
@@ -99,9 +101,12 @@ def test_the_hand_authored_set_is_reported_distinctly():
     hand = [r for r in rep["weakened"] if r["hand_authored"]]
     for r in hand:
         assert r["source_role"] in ("handauthored_compiler_test", "uplifted_from_bareMetalC")
-    # The gate must be able to fail on them.
+    # The gate must FAIL on them BY DEFAULT -- the exit code has to reflect the finding without an
+    # opt-in flag. `--no-ratchet` is what the accepted-debt list is hiding; with the ratchet applied
+    # the same population must be fully accounted for, never silently dropped.
     if hand:
-        assert gate.main(["--fail-on-weakened"]) == 1
+        assert gate.main(["--no-ratchet"]) == 1
+        assert gate.main(["--no-ratchet", "--advisory"]) == 0
 
 
 def test_an_unresolvable_target_establishes_nothing():
@@ -110,4 +115,19 @@ def test_an_unresolvable_target_establishes_nothing():
     rep = gate.audit()
     assert isinstance(rep["unresolved_targets"], dict)
     if rep["unresolved_targets"]:
-        assert gate.main(["--fail-on-unresolved"]) == 2
+        assert gate.main([]) == 2      # by default, not behind a flag
+    # And the six corpus CATEGORIES (`isa`, `hidden`, `model`, ...) must never appear here: they are
+    # not targets, and reading them as such put a sixth of the corpus in this bucket.
+    import yaml
+
+    from merlin.common.paths import merlin_dir
+    categories = {d.name for d in (merlin_dir() / "contract" / "capsules").iterdir()
+                  if d.is_dir() and not (d / "capsule.yaml").exists()}
+    declared = set()
+    tdir = repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
+    for desc in tdir.glob("*/target_experiment.yaml"):
+        doc = yaml.safe_load(desc.read_text(encoding="utf-8")) or {}
+        declared.add(str(doc.get("target") or desc.parent.name))
+        declared.add(desc.parent.name)
+    for t in rep["unresolved_targets"]:
+        assert t in declared, f"{t!r} is a corpus category, not a target"

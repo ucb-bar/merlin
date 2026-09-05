@@ -102,6 +102,12 @@ def _objdump_vsetvli(binp: Path) -> dict:
         p = subprocess.run([str(objdump), "-d", str(binp)], capture_output=True, text=True, timeout=120)
     except (subprocess.TimeoutExpired, OSError) as e:
         return {"vsetvli_found": None, "note": f"objdump failed: {e}"}
+    if p.returncode != 0:
+        # A non-zero objdump prints nothing on stdout, and the counts below would then report
+        # "no e32/m4 vsetvli, 0 vfmacc.vf" -- a MEASUREMENT of the wrong thing, not an absence.
+        # UNKNOWN, surfaced, never a zero (cf. the same shape on unrelocated .o loop spans).
+        return {"vsetvli_found": None,
+                "note": f"objdump exited {p.returncode}: {p.stderr.strip()[-200:]}"}
     setvli = sorted({ln.strip() for ln in p.stdout.splitlines()
                      if "vsetvl" in ln and "e32" in ln and "m4" in ln})
     vfmacc = p.stdout.count("vfmacc.vf")

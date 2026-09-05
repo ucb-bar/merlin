@@ -28,7 +28,7 @@ direction that matters -- the point is to stop producing unattributable results,
 
 Usage:
   check_provenance.py                 # tracked reports + registry
-  check_provenance.py --staged        # only what is staged (pre-commit)
+  check_provenance.py --staged        # staged files + the untracked `out/` scan (pre-commit)
   check_provenance.py --stop-hook     # session gate; same checks, hook-shaped output
   check_provenance.py --verify-pins   # additionally verify pins against live checkouts
 """
@@ -58,11 +58,15 @@ _SCAN_CAP = 20000
 
 
 def _tracked(staged: bool) -> list[Path]:
+    """The tracked half of the work list. RAISES when `git` fails -- it must never return "nothing".
+
+    Returning ``[]`` on a non-zero `git` made an unreadable index indistinguishable from a clean one:
+    the gate printed OK having examined nothing. "We could not look" is not "there is nothing to
+    find" (see check_no_answer_keys.py, which fixed the same shape first).
+    """
     args = (["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"] if staged
             else ["git", "ls-files"])
-    got = subprocess.run(args, capture_output=True, text=True, cwd=_ROOT)
-    if got.returncode != 0:
-        return []
+    got = subprocess.run(args, capture_output=True, text=True, cwd=_ROOT, check=True)
     return [_ROOT / line for line in got.stdout.splitlines() if line.strip()]
 
 
@@ -247,7 +251,20 @@ def main(argv: list[str] | None = None) -> int:
     # 2. Tracked reports that claim a verdict.
     allow = _ratcheted()
     checked = 0
-    candidates = _tracked(staged) if staged else (_tracked(False) + _scan_out())
+    # --staged SCANS `out/` TOO. The untracked scan is the whole reason this gate exists -- verdict-
+    # claiming reports live untracked under the generated-output root -- and skipping it in --staged
+    # meant the pre-commit hook, the ONLY place --staged is used, never ran that check once: measured
+    # 0 reports checked under --staged against 86 for the bare invocation. Affordability was the
+    # implied excuse and it does not hold: measured 1.6 s for the full scan against 0.09 s for staged-
+    # only, on 86 verdict-claiming reports out of a capped 20000-entry walk.
+    try:
+        candidates = _tracked(staged) + _scan_out()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"provenance: FAILED — could not list the files to examine ({exc}); NOTHING was "
+              f"examined, which is not the same as clean", file=sys.stderr)
+        return _hook_result(stop_hook,
+                            f"provenance: could not list the files to examine ({exc}); nothing "
+                            f"was examined, which is not the same as clean")
     unreadable: list[str] = []
     for path in candidates:
         if path.suffix not in _REPORT_SUFFIXES:

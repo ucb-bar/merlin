@@ -424,8 +424,12 @@ def load_ratchet(path: Path | None = None) -> dict[tuple[str, str], str]:
 # ------------------------------------------------------------------------------------------ driver
 def _iter_targets(staged: bool) -> list[str]:
     if staged:
+        # FAIL CLOSED on an unreadable index. This gate's entire work list comes from `git`, so a `git`
+        # that cannot run (bad GIT_DIR, no repo, no binary) yielded an EMPTY list and the gate printed
+        # OK -- a green that could not have gone red. `check=True` turns that into an exception the
+        # caller reports; see check_no_answer_keys.py, which fixed the same shape first.
         out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                             cwd=ROOT, capture_output=True, text=True).stdout
+                             cwd=ROOT, capture_output=True, text=True, check=True).stdout
         rels = [ln for ln in out.splitlines() if ln.strip()]
     else:
         rels = []
@@ -470,7 +474,15 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(sys.argv[1:] if argv is None else argv)
 
     ratchet_path = Path(a.ratchet) if a.ratchet else None
-    found = findings(a.staged, ratchet_path)
+    try:
+        found = findings(a.staged, ratchet_path)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        # FAIL CLOSED: the work list comes from `git`, and a `git` that cannot run used to yield an
+        # empty list and a printed "[  ok]" -- a green that could not have gone red. "We could not
+        # look" is not "there is nothing to find" (see check_no_answer_keys.py, same fix).
+        print(f"[FAIL] fact-provenance: could not list the files to examine ({exc}); NOTHING was "
+              f"examined, which is not the same as clean.", file=sys.stderr)
+        return 1
     viol = [f for f in found if f["kind"] == "violation"]
     ratch = [f for f in found if f["kind"] == "ratcheted"]
     xchk = [f for f in found if f["kind"] == "cross_check"]

@@ -71,7 +71,11 @@ is the raising form — use it where proceeding under drift would be meaningless
 - `build_tools/scripts/check_provenance.py` — pre-commit (`--staged`), session Stop hook (`--stop-hook`),
   and `--verify-pins` for live checkout verification. It scans **untracked** reports under
   `out/artifacts/` too, because that is where the reports actually live; a version that only looked at
-  tracked files passed while an unattributed certification sat on disk.
+  tracked files passed while an unattributed certification sat on disk. **`--staged` runs that scan as
+  well** — it used to skip it, so the pre-commit hook (the only caller that passes `--staged`) reported
+  "0 verdict-claiming report(s) checked" against 86 for the bare invocation. The whole scan costs ~1.4 s.
+  Any unreadable work list is a REFUSAL, never an empty one: a `git` that cannot run means nothing was
+  examined, which is not the same as clean.
 - Reports are recognised as verdict-claiming when they carry `certified` / `correct` / `passed` == true.
 
 ## Related

@@ -96,17 +96,32 @@ def _stale_path_literals(root: Path, tracked: list[str]) -> list[str]:
 
 
 def _repo_root() -> Path:
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
-                         capture_output=True, text=True).stdout.strip()
-    return Path(out) if out else Path.cwd()
+    """The tree this gate is about. FAIL CLOSED -- a wrong root checks the wrong files.
+
+    A failed `git rev-parse` used to fall back to the CWD, so running the gate from anywhere outside a
+    repo silently re-pointed it at some other directory and it examined whatever happened to be there.
+    """
+    got = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                         check=True)
+    top = got.stdout.strip()
+    if not top:
+        raise OSError("`git rev-parse --show-toplevel` produced no path")
+    return Path(top)
 
 
 def _tracked(root: Path, staged: bool) -> list[str]:
+    """The work list. `check=True` because an empty list is indistinguishable from a clean tree.
+
+    Reproduced verbatim before this fix:
+    ``GIT_DIR=/nonexistent/x.git check_artifact_layout.py --staged`` printed ``artifact-layout: OK``
+    and exited 0 having examined nothing. See check_no_answer_keys.py, which fixed the same shape
+    first: "we could not look" is not "there is nothing to find".
+    """
     if staged:
         cmd = ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"]
     else:
         cmd = ["git", "ls-files"]
-    out = subprocess.run(cmd, cwd=root, capture_output=True, text=True).stdout
+    out = subprocess.run(cmd, cwd=root, capture_output=True, text=True, check=True).stdout
     return [ln for ln in out.splitlines() if ln.strip()]
 
 
@@ -146,8 +161,17 @@ def check(root: Path, staged: bool) -> list[str]:
 def main(argv: list[str]) -> int:
     staged = "--staged" in argv
     stop_hook = "--stop-hook" in argv
-    root = _repo_root()
-    violations = check(root, staged)
+    try:
+        root = _repo_root()
+        violations = check(root, staged)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        reason = (f"artifact-layout: could not list the files to examine ({exc}); NOTHING was "
+                  f"examined, which is not the same as clean. Fix the tree/index and re-run.")
+        if stop_hook:
+            print(json.dumps({"decision": "block", "reason": reason}))
+            return 0  # stop-hook signals via JSON, not exit code
+        sys.stderr.write(f"[FAIL] {reason}\n")
+        return 1
     if stop_hook:
         if violations:
             print(json.dumps({"decision": "block",
