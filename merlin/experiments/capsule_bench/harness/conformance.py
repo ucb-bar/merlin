@@ -370,7 +370,11 @@ def _cca_evidence(call: ToolCall, *, script: str, subcommand: str, api: str) -> 
     names = _python_call_names(call)
     if any(name.endswith(f".{api}") or name == api for name in names):
         return True
-    command = str(call.input.get("command") or call.input.get("cmd") or "")
+    # UNWRAP: codex issues `/bin/bash -lc "python cca_contract.py ..."`, so the outer argv is `bash`
+    # and the mandated CCA call goes uncredited -- which then makes arm4_discovery_before_submission
+    # _mutation unsatisfiable, because two of its five discovery indices are None. Third place the
+    # same wrapper blindness had to be fixed.
+    command = _unwrap_shell(str(call.input.get("command") or call.input.get("cmd") or ""))
     resolved = _executable(_shell_tokens(command))
     if resolved is None or resolved[0] not in {"python", "python3"}:
         return False
@@ -387,7 +391,7 @@ def _submission_mutation(call: ToolCall) -> bool:
     if targets_submission and name in {"write", "edit", "multiedit", "write_file", "apply_patch"}:
         return True
 
-    command = str(call.input.get("command") or call.input.get("cmd") or "")
+    command = _unwrap_shell(str(call.input.get("command") or call.input.get("cmd") or ""))
     tokens = _shell_tokens(command)
     mentions_submission = (
         "submission/" in command or "/submission/" in command
@@ -438,7 +442,10 @@ def _rtl_checks_read(calls: list[ToolCall]) -> bool:
         # Direct file-read tools are evidence.  Shell evidence must be one simple read operation; echo,
         # comments and composed commands cannot turn a fabricated string into readback evidence.
         direct_read = name in {"read", "read_file", "open_file"}
-        resolved = _executable(_shell_tokens(command)) if command else None
+        # UNWRAP FIRST. Codex issues every command as `/bin/bash -lc "<real command>"`, so reading the
+        # outer argv sees `bash` and never the `jq`/`cat` that did the readback -- the same blindness
+        # that hid this arm's discovery evidence, surviving in a second place.
+        resolved = _executable(_shell_tokens(_unwrap_shell(command))) if command else None
         shell_read = resolved is not None and resolved[0] in {
             "cat", "jq", "grep", "rg", "head", "tail", "sed", "awk", "python", "python3",
         }

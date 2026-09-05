@@ -1794,7 +1794,8 @@ def _billing_mode(model: str) -> str:
 
 
 def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
-                 bundle: dict, rnd: int, timeout: int, arm: str = "raw_baseline") -> tuple[int, Path]:
+                 bundle: dict, rnd: int, timeout: int, arm: str = "raw_baseline",
+                 continuous: bool = False) -> tuple[int, Path]:
     # TASK.md must live INSIDE the bound workspace: run_dir is under runs/ which bwrap tmpfs-masks,
     # so a stdin redirect from run_dir/TASK.md is invisible inside the sandbox (empty stdin).
     ws_task = ws / "TASK.md"
@@ -1843,9 +1844,13 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
                 raise SystemExit(f"--driver codex is not available: {e}")
             # effort is threaded through: codex takes it as a config override, and an
             # arm that silently ran at a different reasoning effort is a different arm.
+            # `codex exec` is one TURN, not one session -- it returns when the model stops. Under
+            # --schedule continuous the harness launches ONE session and expects it to spend the wall
+            # budget, so without this a run ends after a single turn with most of the budget unspent
+            # (measured four times; the last left 14772s of 23890s). Keep the SAME thread alive.
             return _CA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
                                  subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
-                                 effort=effort)
+                                 effort=effort, continue_session=continuous)
         # claudecode. The claude CLI speaks the Anthropic Messages API, so a NON-Anthropic model reaches
         # it only through the LiteLLM bridge (ANTHROPIC_BASE_URL -> our proxy -> Bedrock). This is what
         # makes the harness the experimental variable instead of a fixed property of the model: nemotron
@@ -3087,7 +3092,8 @@ def main(argv: list[str] | None = None) -> int:
             import round_brief as _RBlaunch
             _RBlaunch.refresh_before_launch(run_dir, ws, rnd)
             rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd,
-                                     a.round_timeout, arm=arm)
+                                     a.round_timeout, arm=arm,
+                                     continuous=(a.schedule == "continuous"))
         except subprocess.TimeoutExpired:
             rc, tpath = 124, run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             print(f"[round {rnd}] agent TIMEOUT")
@@ -3666,40 +3672,30 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _emit_run_timing(run_dir: Path, rounds_summary: list) -> None:
-    """Write run_dir/timing_detailed.json: think+gen (dedup'd result events) vs tool/sim, + CIRCT skips."""
-    import glob as _glob
-    api_ms = total_ms = 0
-    # dedup result events per round (retried/resumed rounds emit multiple 'result's — take the LAST per file)
-    for tp in sorted(_glob.glob(str(run_dir / "rounds" / "round_*.transcript.jsonl"))):
-        last = None
-        for ln in Path(tp).read_text(errors="ignore").splitlines():
-            try:
-                o = json.loads(ln)
-            except Exception:
-                continue
-            if o.get("type") == "result":
-                last = o
-        if last:
-            api_ms += last.get("duration_api_ms", 0) or 0
-            total_ms += last.get("duration_ms", 0) or 0
-    # CIRCT gate skips (CIRCT arm)
+    """Write run_dir/timing_detailed.json: the think-vs-tool split, plus this arm's CIRCT gate counts.
+
+    DERIVED from the transcript's arrival stamps by :mod:`timing_decomposition`. It used to be
+    `sum(result.duration_api_ms)` versus `duration_ms - api_ms`, fields only the claude CLI's terminal
+    result event carries: every codex run therefore recorded 0.0/0.0/0.0 -- no error, no gap marker, a
+    confident statement that the agent never thought. On a real run the derived figures were 5407.8 s
+    thinking and 12402.0 s tool time. A quantity that cannot be derived records null with a reason.
+    """
+    import timing_decomposition as _TD
+
+    rec = _TD.decompose_run(run_dir)
+    # CIRCT gate counts stay here: harness bookkeeping, not a property of the transcript.
     gate = run_dir / "circt_gate_log.jsonl"
     skips = ran = 0
     if gate.is_file():
         for ln in gate.read_text().splitlines():
             try:
                 r = json.loads(ln)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
-            skips += int(bool(r.get("sim_skipped"))); ran += int(not r.get("sim_skipped"))
-    (run_dir / "timing_detailed.json").write_text(json.dumps({
-        "think_generate_s": round(api_ms / 1000, 1),
-        "tool_and_wait_s": round(max(0.0, total_ms - api_ms) / 1000, 1),
-        "think_pct": round(100 * api_ms / max(total_ms, 1), 1),
-        "circt_gate": {"sims_skipped": skips, "sims_run": ran},
-        "note": "result events dedup'd per round (retries not double-counted). think+gen=duration_api_ms.",
-    }, indent=2))
-
+            skips += int(bool(r.get("sim_skipped")))
+            ran += int(not r.get("sim_skipped"))
+    rec["circt_gate"] = {"sims_skipped": skips, "sims_run": ran}
+    (run_dir / "timing_detailed.json").write_text(json.dumps(rec, indent=2))
 
 if __name__ == "__main__":
     raise SystemExit(main())
