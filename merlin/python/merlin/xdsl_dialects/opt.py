@@ -62,6 +62,52 @@ def _takes_module(fn: Callable[..., Any]) -> bool:
     return bool(params) and params[0] in ("module", "op")
 
 
+def _emit_dispatch_program(module) -> str:
+    """Run outline -> build_dispatch_program and print the program as stable JSON.
+
+    `merlin-emit-dispatch-program` consumes an ``OutlineResult`` and produces a ``DispatchProgram`` --
+    Python objects at both ends -- so it can never be a ModulePass and `--list-merlin-passes` reports
+    it as unregistrable. That is true of the PASS, not of its OUTPUT: the program has a stable
+    ``to_dict`` and printing it gives FileCheck something to read. Without this seam the obligation
+    gate could never rise above 2 of 4, not because the pass is unverifiable but because nothing
+    exposed its result as text.
+
+    Sorted keys so the output is diffable and a check cannot depend on dict ordering.
+    """
+    import json
+
+    from .lowering.dispatch_program import build_dispatch_program
+    from .lowering.outline import outline_dispatches
+
+    prog = build_dispatch_program(outline_dispatches(module))
+    return json.dumps(prog.to_dict(), indent=2, sort_keys=True) + "\n"
+
+
+def _emit_schedule(module) -> str:
+    """Run the chain through partition_dispatches and print the C schedule table it renders.
+
+    `merlin-partition-dispatches` is the same shape -- ``DispatchProgram`` in, ``PartitionResult``
+    out -- but it already had a text renderer nobody had connected to a driver. Its invariant is the
+    strongest of the three unverified passes (``validate`` proves every dependency edge crosses a
+    level barrier upward), so exposing the table is what lets a check assert it.
+    """
+    from .lowering.dispatch_program import build_dispatch_program
+    from .lowering.outline import outline_dispatches
+    from .lowering.schedule_dispatch import emit_schedule_c, partition_dispatches
+
+    prog = build_dispatch_program(outline_dispatches(module))
+    result = partition_dispatches(prog)
+    sched = getattr(result, "schedule", result)
+    return emit_schedule_c(prog, sched)
+
+
+#: Non-MLIR stages whose OUTPUT is stable text. Keyed by the ``--emit`` value.
+EMITTERS = {
+    "dispatch-program": _emit_dispatch_program,
+    "schedule": _emit_schedule,
+}
+
+
 def _replace_body(dst, src) -> None:
     """Move ``src``'s module body into ``dst`` in place.
 
@@ -201,12 +247,48 @@ if HAS_XDSL:
             arg_parser.add_argument("--list-merlin-passes", action="store_true",
                                     help="list merlin catalog passes (and any that cannot be an "
                                          "MLIR pass, with the reason) and exit")
+            arg_parser.add_argument("--emit", default=None, choices=sorted(EMITTERS),
+                                    help="run a NON-MLIR stage of the dispatch chain and print its "
+                                         "text. These stages consume and produce Python objects "
+                                         "rather than IR, so they can never be ModulePasses -- but "
+                                         "their output is stable text, which is all FileCheck needs.")
+
+        def setup_pipeline(self):
+            """Skip pipeline construction in ``--emit`` mode.
+
+            The RUN line still carries ``-p <pass-name>`` there, and deliberately so: the verdict
+            recorder credits a pass by reading that token, and a check whose subject is invisible to
+            the gate discharges nothing. But these stages are not ModulePasses, so handing the name to
+            ``PassPipeline.parse_spec`` raises ``Unrecognized passes``. The emit path runs the stage
+            itself and never touches the pipeline, so there is nothing to build.
+            """
+            if getattr(self.args, "emit", None):
+                from xdsl.passes import PassPipeline
+
+                self.pipeline = PassPipeline(())
+                return
+            super().setup_pipeline()
 
         def run(self):
             if getattr(self.args, "list_merlin_passes", False):
                 self._print_passes()
                 return
+            emit = getattr(self.args, "emit", None)
+            if emit:
+                print(EMITTERS[emit](self._parse_single_module()), end="")
+                return
             super().run()
+
+        def _parse_single_module(self):
+            """The input module, parsed once, for the non-MLIR emitters."""
+            chunks, extension = self.prepare_input()
+            stream, offset = chunks[0]
+            module = self.parse_chunk(stream, extension, offset)
+            for extra, _ in chunks[1:]:
+                extra.close()
+            if module is None:
+                raise SystemExit("input did not parse to a module")
+            return module
 
         def _print_passes(self) -> None:
             from .lowering import passes as P
