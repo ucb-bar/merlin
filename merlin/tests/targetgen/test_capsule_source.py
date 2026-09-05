@@ -353,7 +353,7 @@ def test_a_model_capsules_declared_quant_scheme_reaches_the_capture(monkeypatch,
         def available(self):
             return True
 
-        def _run(self, loader_py, op, dtype, *, workdir, src, scheme=None):
+        def _run(self, loader_py, op, dtype, *, workdir, src, scheme=None, **_):
             seen.update(op=op, dtype=dtype, scheme=scheme)
             raise CS.M2MUnavailable("stop here: the argument, not the capture, is under test")
 
@@ -376,7 +376,7 @@ def test_a_model_capsule_that_declares_no_scheme_still_passes_none():
         def available(self):
             return True
 
-        def _run(self, loader_py, op, dtype, *, workdir, src, scheme=None):
+        def _run(self, loader_py, op, dtype, *, workdir, src, scheme=None, **_):
             seen["scheme"] = scheme
             raise CS.M2MUnavailable("stop")
 

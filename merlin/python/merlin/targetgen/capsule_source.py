@@ -402,7 +402,13 @@ class PytorchRefSource:
         self.timeout = timeout
 
     def available(self) -> bool:
-        return self.python.exists() and (self.m2m_dir / "m2m" / "__init__.py").exists()
+        return self._runnable(self.python)
+
+    def _runnable(self, python: Path) -> bool:
+        """Whether a capture can run under ``python`` -- the default interpreter, or the one a workload
+        pins for itself. Same two conditions either way: an interpreter that exists, next to an m2m
+        checkout to import."""
+        return Path(python).exists() and (self.m2m_dir / "m2m" / "__init__.py").exists()
 
     def capture(self, spec: dict, *, workdir: str | Path | None = None) -> CapsuleArtifacts:
         """Capture a generated op loader (matmul/attention/... rendered from ``spec``)."""
@@ -420,7 +426,9 @@ class PytorchRefSource:
 
     def capture_loader(self, loader_py: str | Path, dtype: str, *,
                        workdir: str | Path | None = None,
-                       scheme: str | None = None) -> CapsuleArtifacts:
+                       scheme: str | None = None,
+                       env: dict | None = None,
+                       python: str | Path | None = None) -> CapsuleArtifacts:
         """Capture an EXISTING loader file (a whole-model workload) rather than a generated op loader.
         Same worker path; ``op`` is ``model`` and ``pytorch_src`` is the loader's own source.
 
@@ -428,24 +436,41 @@ class PytorchRefSource:
         path took the DEFAULT for its dtype, and the default for int8 is weight-only -- a float matmul
         over dequantized weights. A model capsule declaring `compile_dtype: int8` was therefore capturing
         a program with no integer contraction in it at all, which is the wrong program for an integer
-        mesh and one no golden substitution can repair."""
+        mesh and one no golden substitution can repair.
+
+        ``env`` is the model's OWN declared loader environment (:func:`model_capture_env`) and ``python``
+        the interpreter it pins (:func:`model_capture_python`). Both used to be ignored here, and a real
+        network is not capturable without them: a loader that refuses to invent inputs unless told which
+        stream to use raised, and a loader whose dependency lives only in its own venv raised
+        ``ModuleNotFoundError`` -- and BOTH were recorded as "this model could not be built", which reads
+        as a limit of the compiler rather than of how it was invoked."""
         loader_py = Path(loader_py)
-        if not self.available():
-            raise M2MUnavailable(f"m2m venv python {self.python} or repo {self.m2m_dir} missing")
+        # `available()` stays the predicate when nothing is pinned, so a caller that has established
+        # availability some other way keeps saying so; a PINNED interpreter is checked on its own terms.
+        interpreter = Path(python) if python else self.python
+        if not (self._runnable(interpreter) if python else self.available()):
+            raise M2MUnavailable(f"m2m venv python {interpreter} or repo {self.m2m_dir} missing")
         if not loader_py.is_file():
             raise M2MUnavailable(f"model loader not found: {loader_py}")
         tmp = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="capsule_model_"))
         tmp.mkdir(parents=True, exist_ok=True)
         return self._run(loader_py, "model", dtype, workdir=tmp, src=loader_py.read_text(),
-                         scheme=scheme)
+                         scheme=scheme, env=env, python=interpreter)
 
-    def _cache_slot(self, op: str, dtype: str, src: str, scheme: str | None) -> "Path | None":
+    def _cache_slot(self, op: str, dtype: str, src: str, scheme: str | None,
+                    env: dict | None = None, python: "Path | None" = None) -> "Path | None":
         """Where a capture of exactly this input already lives, or ``None`` if caching is unavailable.
 
         Keyed on everything that changes the PROGRAM -- the loader's source, the format, the capture
         scheme, the op role -- so a changed loader misses rather than serving a stale module. Not keyed
         on the target: a capture is a property of the model and the format, and two targets that choose
         the same format are entitled to the same bytes.
+
+        The declared loader ENVIRONMENT and INTERPRETER are part of the key for the same reason the
+        source is: they change the program and the operands (which input stream a loader reads, which
+        checkpoint it loads, which dependency stack it imports). Keyed on the source alone, a capture
+        taken under one input declaration would be served for a request that declared another -- the
+        silent kind of substitution this corpus exists to prevent.
 
         This exists because the roster axis made whole-model captures routine. Four networks per target
         re-captured on every corpus regeneration is tens of minutes of work whose result is identical
@@ -454,24 +479,33 @@ class PytorchRefSource:
         """
         try:
             from merlin.common.artifacts import cache_dir
+            declared = "\x1f".join(f"{k}={v}" for k, v in sorted((env or {}).items()))
             key = hashlib.sha256(
-                "\0".join((op, str(dtype), str(scheme or ""), str(self.m2m_dir), src)).encode()
+                "\0".join((op, str(dtype), str(scheme or ""), str(self.m2m_dir), src,
+                           declared, str(python or self.python))).encode()
             ).hexdigest()[:16]
             return cache_dir("model_capture") / f"{op}_{dtype}_{key}"
         except Exception:            # noqa: BLE001 -- an unavailable cache is not a failed capture
             return None
 
     def _run(self, loader_py: Path, op: str, dtype: str, *, workdir: Path, src: str,
-             scheme: str | None = None) -> CapsuleArtifacts:
+             scheme: str | None = None, env: dict | None = None,
+             python: "Path | None" = None) -> CapsuleArtifacts:
         worker = Path(__file__).with_name("_m2m_capture_worker.py")
         # A CACHED CAPTURE IS THE SAME CAPTURE. Reused only when the slot holds a complete, clean result
         # -- the same two conditions the fresh path checks below -- so a half-written slot from an
         # interrupted run re-captures instead of serving a truncated module.
-        slot = self._cache_slot(op, dtype, src, scheme)
+        declared_env = {str(k): str(v) for k, v in (env or {}).items()}
+        interpreter = Path(python) if python else self.python
+        slot = self._cache_slot(op, dtype, src, scheme, declared_env, interpreter)
         if slot is not None and (slot / "meta.json").is_file():
             try:
                 cached = json.loads((slot / "meta.json").read_text())
-                if cached.get("ok") and cached.get("opaque", -1) == 0:
+                # A slot written before the worker recorded input provenance cannot say what its inputs
+                # were, and a capsule may not be built from a capture whose provenance is unrecoverable.
+                # Re-capturing is the cheap, honest repair; serving it would launder an unknown.
+                if (cached.get("ok") and cached.get("opaque", -1) == 0
+                        and "loader_provenance_status" in cached):
                     return CapsuleArtifacts(
                         op=op, dtype=dtype, pytorch_src=src,
                         linalg_mlir=(slot / "linalg.mlir").read_text(encoding="utf-8"),
@@ -484,9 +518,18 @@ class PytorchRefSource:
         if slot is not None:
             workdir = slot
             workdir.mkdir(parents=True, exist_ok=True)
+        # THE MODEL'S OWN DECLARED LOADER ENVIRONMENT, applied under the ambient one. A loader states
+        # what it needs next to itself (its workload's `capture.toml`, plus the curated fidelity knobs in
+        # `baselines.bundle`); building the worker environment from `os.environ` alone silently dropped
+        # that declaration, and every loader that refuses to guess then raised -- recorded as an unbuilt
+        # model. The DECLARATION WINS over an ambient value, as it does on every other arm that replays
+        # it: a capsule must capture the model its declaration names, not whatever the shell that ran
+        # the generator happened to export, or two regenerations produce two different networks under
+        # one name.
         env = dict(os.environ)
+        env.update(declared_env)
         env["MERLIN_M2M_DIR"] = str(self.m2m_dir)
-        cmd = [str(self.python), str(worker), "--loader", str(loader_py),
+        cmd = [str(interpreter), str(worker), "--loader", str(loader_py),
                "--dtype", dtype, "--out", str(workdir), "--m2m-dir", str(self.m2m_dir)]
         if scheme:
             cmd += ["--scheme", str(scheme)]
@@ -1016,6 +1059,119 @@ def _workload_named(root: Path, name: str) -> "Path | None":
     return None
 
 
+def resolve_model_workload(entry: dict, m2m_dir: str | Path | None = None) -> "str | None":
+    """The model2MLIR WORKLOAD DIRECTORY behind this entry's loader, or ``None`` when it has none.
+
+    The roster names a model (``resnet50``) and the workload directory carries the checkpoint revision
+    (``resnet50_v1_5``); the entry's own ``model`` string is therefore NOT the key under which the
+    model's capture declaration is filed. Resolving the loader first and reading the directory back off
+    it means one resolution serves both -- the loader and its declaration always come from the same
+    workload, which a second lookup by name could not guarantee.
+
+    ``None`` for an in-repo loader (a derived micro model writes its own): it is not a workload, so it
+    declares no capture environment, and inventing one for it would be a fabricated fact.
+    """
+    root = (Path(m2m_dir) if m2m_dir else _m2m_dir()) / "workloads"
+    try:
+        rel = resolve_model_loader(entry, m2m_dir).resolve().relative_to(root.resolve())
+    except (ValueError, OSError):
+        return None
+    return rel.parts[0] if len(rel.parts) >= 2 else None
+
+
+def model_capture_env(workload: "str | None") -> dict:
+    """The loader environment ``workload`` DECLARES for its own capture (``{}`` when it declares none).
+
+    Delegated to :func:`merlin.baselines.bundle.loader_env`, which is where this repo already states
+    the policy per MODEL -- host locations replayed from the workload's own ``capture.toml``, plus the
+    curated full-fidelity knobs. One declaration, read by every arm that captures a model, so a capsule
+    and a baseline cannot end up capturing two different networks under one name.
+    """
+    if not workload:
+        return {}
+    try:
+        from merlin.baselines import bundle as _bundle
+        return dict(_bundle.loader_env(workload))
+    except Exception:                       # noqa: BLE001 -- an unreadable declaration is not a capture failure
+        return {}
+
+
+def model_capture_python(workload: "str | None") -> "Path | None":
+    """The interpreter ``workload`` pins for its own capture, when it pins one that exists here."""
+    if not workload:
+        return None
+    try:
+        from merlin.baselines import bundle as _bundle
+        return _bundle.capture_python(workload)
+    except Exception:                       # noqa: BLE001
+        return None
+
+
+#: What a whole-model capsule GRADES. Stated on the capsule itself so the distinction cannot be lost
+#: between the capture and whoever quotes the result.
+_CORRECTNESS_ONLY_NOTE = (
+    "This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces, on these exact "
+    "inputs, the reference the same loader produced. It is not a statement about the model's accuracy "
+    "on real data; only a capture whose inputs are real and attributed can support that.")
+
+
+def input_provenance_record(workload: "str | None", applied_env: dict, meta: dict) -> dict:
+    """What the capsule records about WHERE ITS INPUTS CAME FROM, from the loader's own declaration.
+
+    A whole-model capsule can be captured on real, attributed dataset samples or on a seeded synthetic
+    stream, and the compiled-vs-reference comparison is equally valid either way -- both sides come from
+    the same loader on the same operands. What differs is what the PASS may then be quoted as: only real
+    attributed inputs over a trained checkpoint can back an accuracy claim, and a capsule that does not
+    say which it ran on invites the stronger reading of the weaker fact.
+
+    FAIL CLOSED, in the direction that matters for each field separately:
+
+    * ``synthetic_inputs`` is tri-state and stays ``"unknown"`` when the loader declared nothing -- an
+      undeclared capture is not thereby a real-data one, and it is not thereby a synthetic one either.
+    * ``accuracy_claim_supported`` is False unless the loader positively declares real inputs AND
+      certifies the capture (``paper_ready``). An unknown withholds the claim and says so in
+      ``accuracy_claim_withheld_because``, which is a different sentence from "the inputs were
+      synthetic" so the two never read as one.
+    """
+    declared = dict(meta.get("loader_provenance") or {})
+    status = str(meta.get("loader_provenance_status") or "unknown")
+    raw = declared.get("synthetic_inputs")
+    synthetic = raw if isinstance(raw, bool) else "unknown"
+    ready = meta.get("loader_paper_ready")
+    paper_ready = ready if isinstance(ready, bool) else "unknown"
+    supported = (synthetic is False) and (paper_ready is True)
+    if supported:
+        why = ""
+    elif status != "declared":
+        why = (f"the loader declares no input provenance (status {status!r}), so whether these inputs "
+               f"are real dataset samples is UNKNOWN -- an unknown may not be quoted as either")
+    elif synthetic is True:
+        why = ("the inputs are a seeded SYNTHETIC stream, not real dataset samples; the reference is "
+               "self-consistent with them, which proves the compiler and says nothing about accuracy")
+    elif synthetic == "unknown":
+        why = "the loader's declaration does not state whether its inputs are real dataset samples"
+    else:
+        why = ("the loader did not certify this capture (paper_ready is "
+               f"{paper_ready!r}); real inputs alone do not make the run an accuracy measurement")
+    return {
+        "workload": workload or "",
+        "status": status,
+        "synthetic_inputs": synthetic,
+        "paper_ready": paper_ready,
+        "accuracy_claim_supported": bool(supported),
+        **({"accuracy_claim_withheld_because": why} if why else {}),
+        "grades": "compiler_correctness",
+        "note": _CORRECTNESS_ONLY_NOTE,
+        # WHAT MERLIN APPLIED, next to WHAT THE LOADER SAID. Two independent records: the first says how
+        # the capture was invoked, the second what the loader made of it, and a disagreement between
+        # them is visible rather than averaged away.
+        "loader_env": {str(k): str(v) for k, v in sorted((applied_env or {}).items())},
+        "declared": declared,
+        **({"declaration_error": meta["loader_provenance_error"]}
+           if meta.get("loader_provenance_error") else {}),
+    }
+
+
 def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, list[str]]:
     """What a whole-model capstone OWES the accelerator: its semantic family and instruction classes.
 
@@ -1208,9 +1364,19 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
     src = source or PytorchRefSource()
     dtype = entry.get("operand_dtype") or binding.operand_dtype
     loader = resolve_model_loader(entry, src.m2m_dir)
+    # THE MODEL'S OWN CAPTURE DECLARATION. A roster model states next to its loader how it must be
+    # captured -- which input stream to read, which checkpoint, which interpreter its dependencies live
+    # in -- and this path used to invoke the loader with none of it. Every loader that declines to
+    # invent its inputs then raised, and the corpus recorded the model as one it could not build: a
+    # fact about the invocation, published as a fact about the compiler's reach.
+    workload = resolve_model_workload(entry, src.m2m_dir)
+    capture_env = model_capture_env(workload)
     # The capsule's declared scheme, not the dtype default. `quant_scheme` is how an entry says which
     # arithmetic it means by "int8"; dropping it here silently substituted weight-only quantization.
-    art = src.capture_loader(loader, dtype, scheme=entry.get("quant_scheme"))
+    art = src.capture_loader(loader, dtype, scheme=entry.get("quant_scheme"),
+                             env=capture_env, python=model_capture_python(workload))
+    # WHERE THE INPUTS CAME FROM -- recorded unconditionally, tri-state, and never inferred here.
+    provenance = input_provenance_record(workload, capture_env, art.meta)
 
     d = Path(out_root) / entry["cat"] / entry["name"]
     d.mkdir(parents=True, exist_ok=True)
@@ -1265,6 +1431,11 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         **({"lanes": {"require": _checked_lanes(entry, binding)}}
            if (entry.get("lanes") or {}).get("require") else {}),
         "pytorch_ref": {"op": "model", "dtype": idt, "loader": "capsule.pytorch.py"},
+        # WHAT THIS CAPSULE'S INPUTS WERE. On the capsule rather than only in the golden, because the
+        # capsule is what a reader has in hand when they quote the result, and a pass on seeded
+        # synthetic inputs proves the compiler reproduces the reference -- not that the model is
+        # accurate. `accuracy_claim_supported` is False unless the loader positively says otherwise.
+        "input_provenance": provenance,
         "linalg_mlir": "capsule.interface.mlir",
         # A model capsule carried no semantic block, so the eligibility oracle could not resolve it
         # (`model` is not a family and never will be -- a model is a composition). Naming the family it
@@ -1283,6 +1454,10 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
             "grade_policy": {"compare": binding.compare, "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
             "interface": "linalg_positional", "arg_order": in_names + [out_name],
             "pytorch_source": "capsule.pytorch.py", "linalg_mlir": "capsule.interface.mlir",
+            # The same record the capsule carries, on the oracle side too: what the reference was
+            # computed over is part of where the reference came from, and a grader reading only the
+            # golden must not have to infer it.
+            "input_provenance": provenance,
             "inputs": prov},
         "outputs": {out_name: art.golden},
     }

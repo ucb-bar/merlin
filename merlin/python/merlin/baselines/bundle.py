@@ -16,6 +16,7 @@ from_pytorch) lives OUTSIDE this repo at
 from __future__ import annotations
 
 import os
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -244,6 +245,73 @@ FULL_FIDELITY_ENV: dict[str, dict[str, str]] = {
 def full_env(model: str) -> dict[str, str]:
     """Loader env that reproduces the full-fidelity model the golden was captured on (may be empty)."""
     return dict(FULL_FIDELITY_ENV.get(model, {}))
+
+
+def capture_config(model: str) -> dict:
+    """The workload's OWN ``capture.toml`` (``{}`` when it declares none, or it cannot be read).
+
+    A model2MLIR workload declares how it must be captured next to its loader: which interpreter
+    (``venv``) and which environment (``[env]``). That declaration is the model's, not merlin's, so it
+    is READ rather than mirrored -- a second copy in this repo would go stale exactly when the loader
+    changed, which is the moment it matters.
+    """
+    path = model2mlir_root() / "workloads" / model / "capture.toml"
+    if not path.is_file():
+        return {}
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def capture_locations(model: str) -> dict[str, str]:
+    """Per-host LOCATION env the workload's own ``capture.toml`` declares for its loader.
+
+    Two kinds of entry live in ``[env]`` and only one of them may be replayed:
+
+    * **Locations** -- where a weight cache or an upstream checkout sits ON THIS HOST
+      (``HF_HOME = "/.../hf_cache"``). Load-bearing: without them a loader that reads a gated or
+      multi-GB checkpoint cannot see the copy already on disk and falls back to a network fetch that
+      fails, so the model reads as unexportable when its weights are sitting right there. They are also
+      exactly the values merlin must NOT carry itself -- machine-specific absolute paths in a public
+      repo -- so they are replayed from the external workload's own config.
+    * **Fidelity knobs** -- a layer count, a session mode, a vocab size. In ``capture.toml`` these hold
+      the *smoke* setting (2 decoder layers where the shipped bundle holds 26), so replaying one would
+      build a smaller model than the golden. Dropped; the knobs that DO matter come from
+      :func:`full_env`, which is curated and wins over anything here.
+
+    The split is structural, not a per-model list: a value that resolves to an existing directory is a
+    location, anything else is a knob.
+    """
+    env = capture_config(model).get("env")
+    if not isinstance(env, dict):
+        return {}
+    return {str(k): v for k, v in env.items()
+            if isinstance(v, str) and v and Path(v).is_dir()}
+
+
+def capture_python(model: str) -> "Path | None":
+    """The interpreter the workload PINS for its own capture, when it declares one that exists.
+
+    A workload's upstream stack is pinned per model (``capture.toml``'s ``venv``), and for some models
+    it is not the shared m2m venv at all -- a loader whose dependency lives only in its own environment
+    raises ``ModuleNotFoundError`` under any other interpreter, which reads as "this model cannot be
+    captured" when the truth is "it was captured with the wrong python". ``None`` when the workload
+    pins nothing, or pins an interpreter that is not on this host, so the caller keeps its own default
+    rather than running a python that does not exist.
+    """
+    declared = str(capture_config(model).get("venv", "") or "")
+    if not declared:
+        return None
+    value = Path(declared)
+    venv = value if value.is_absolute() else (model2mlir_root() / "workloads" / model / value)
+    py = venv / "bin" / "python"
+    return py if py.is_file() else None
+
+
+def loader_env(model: str) -> dict[str, str]:
+    """Full loader environment for a full-fidelity capture: capture locations, then curated knobs."""
+    return {**capture_locations(model), **full_env(model)}
 
 
 # Models whose torch loader instantiates RANDOM weights (no pretrained checkpoint) AND whose capture

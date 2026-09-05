@@ -43,7 +43,6 @@ import json
 import os
 import shutil
 import subprocess
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -203,44 +202,16 @@ def resolve_bundle(model: str, variant: str = "fp32") -> _bundle.CaptureBundle:
 
 
 def capture_locations(model: str) -> dict[str, str]:
-    """Per-host LOCATION env the workload's own ``capture.toml`` declares for its loader.
-
-    A model2MLIR workload records the environment its capture ran under in
-    ``workloads/<model>/capture.toml``'s ``[env]`` block. Two kinds of entry live there and only
-    one of them may be replayed:
-
-    * **Locations** — where a weight cache or an upstream checkout sits ON THIS HOST
-      (``HF_HOME = "/…/hf_cache"``). These are load-bearing: without them a loader that reads a
-      gated or multi-GB checkpoint cannot see the copy already on disk and falls back to a network
-      fetch that fails outright (``OSError: You are trying to access a gated repo … 401``), so the
-      model reads as unexportable when its weights are sitting right there. They are also exactly
-      the values merlin must NOT carry itself — machine-specific absolute paths in a public repo.
-      Replaying them from the external workload's own config keeps them out of this tree.
-    * **Fidelity knobs** — a layer count, a session mode, a vocab size. In ``capture.toml`` these
-      hold the *smoke* setting (2 decoder layers where the shipped bundle holds 26), so replaying
-      one would export a smaller model than the golden and than merlin's own arm run. Dropped.
-
-    The split is structural, not a per-model list: a value that resolves to an existing directory
-    is a location; anything else is a knob. Knobs that DO matter for full fidelity come from
-    ``bundle.full_env`` instead, which is curated and wins over anything here.
-    """
-    path = _bundle.model2mlir_root() / "workloads" / model / "capture.toml"
-    if not path.is_file():
-        return {}
-    try:
-        data = tomllib.loads(path.read_text())
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
-    env = data.get("env")
-    if not isinstance(env, dict):
-        return {}
-    return {str(k): v for k, v in env.items()
-            if isinstance(v, str) and v and Path(v).is_dir()}
+    """Per-host LOCATION env the workload's own ``capture.toml`` declares — see
+    :func:`merlin.baselines.bundle.capture_locations`, which owns the rule (locations replayed,
+    smoke-fidelity knobs dropped). Kept as a name here because the export path reads it by this name;
+    the DECLARATION is read in one place so a second copy cannot drift from it."""
+    return _bundle.capture_locations(model)
 
 
 def loader_env(model: str) -> dict[str, str]:
     """Full loader environment for a full-fidelity export: capture locations, then curated knobs."""
-    return {**capture_locations(model), **_bundle.full_env(model)}
+    return _bundle.loader_env(model)
 
 
 # --- AOT export (in the ET venv) ----------------------------------------------------------------

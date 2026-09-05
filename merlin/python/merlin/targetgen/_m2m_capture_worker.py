@@ -98,6 +98,62 @@ def _mlir_dtype(torch_dtype) -> str:
     return spelling[torch_dtype]
 
 
+def _scalars(mapping) -> dict:
+    """The JSON-safe scalar entries of a loader-declared mapping (tensors and streams are dropped).
+
+    A session spec carries the image/trajectory STREAM alongside its provenance; serializing that would
+    put hundreds of megabytes of operand data into a meta file. Only scalars travel, so what is recorded
+    is the loader's own statement about the data and never the data itself.
+    """
+    out = {}
+    for key, value in (mapping or {}).items():
+        if value is None or isinstance(value, (str, bool, int, float)):
+            out[str(key)] = value
+    return out
+
+
+def _loader_provenance(mod, mdl, inputs) -> dict:
+    """What the LOADER declares about the data this capture ran on -- never inferred here.
+
+    A whole-model loader can be driven down more than one input path (a real, attributed dataset
+    stream; a seeded synthetic one), and which path ran is a property of the loader's environment, not
+    of the program. If nothing records it, a capsule that only ever proves COMPILER CORRECTNESS -- the
+    compiled program reproduces the reference the same loader produced on the same inputs -- can be
+    read as a statement about the model's accuracy on real data, which it is not.
+
+    Two declaration shapes are honored because both already exist in the wild: a ``session_provenance``
+    attribute on the returned module, and a ``get_session_spec`` function returning ``provenance`` +
+    ``paper_ready``. FAIL CLOSED: a loader that declares neither yields status ``undeclared`` and a
+    loader whose declaration RAISES yields ``error`` -- both distinct from "declared not synthetic", so
+    an unknown can never be recorded as a claim.
+    """
+    prov: dict = {}
+    ready = None
+    status = "undeclared"
+    error = None
+    direct = getattr(mdl, "session_provenance", None)
+    if isinstance(direct, dict):
+        prov.update(_scalars(direct))
+        status = "declared"
+    if hasattr(mod, "get_session_spec"):
+        try:
+            spec = mod.get_session_spec(mdl, inputs)
+        except Exception as exc:                       # noqa: BLE001 -- a raising declaration is a fact
+            error = f"{type(exc).__name__}: {exc}"
+            if status != "declared":
+                status = "error"
+        else:
+            if isinstance(spec, dict):
+                declared = spec.get("provenance")
+                if isinstance(declared, dict):
+                    prov.update(_scalars(declared))
+                    status = "declared"
+                if isinstance(spec.get("paper_ready"), bool):
+                    ready = bool(spec["paper_ready"])
+    return {"loader_provenance": prov, "loader_paper_ready": ready,
+            "loader_provenance_status": status, "loader_provenance_error": error}
+
+
 def _input_abi(inputs):
     """Flatten the loader's input pytree and preserve each tensor leaf's real shape and dtype."""
     import torch
@@ -134,6 +190,9 @@ def main(argv=None) -> int:
     loader = _load_loader(Path(a.loader))
 
     mdl, inputs = loader.get_model_and_inputs()
+    # BEFORE any cast/quantization: what the loader says about the data it just built. Recorded for
+    # every capture, so the capsule can never be silent about whether its inputs were real.
+    provenance = _loader_provenance(loader, mdl, inputs)
     _scheme, cast = _SCHEME.get(a.dtype, (None, None))
     if cast is not None:
         mdl = mdl.to(getattr(torch, cast))
@@ -170,6 +229,10 @@ def main(argv=None) -> int:
         # The only authoritative dtype record that survives JSON serialization. The parent verifies this
         # independently against the captured @forward signature before declaring capsule inputs.
         "input_abi": input_abi,
+        # WHAT THE INPUTS WERE, as the loader itself declares them. The parent turns this into the
+        # capsule's input-provenance record; without it a synthetic-input capture and a real-data one
+        # are indistinguishable afterwards, and only one of them can back an accuracy statement.
+        **provenance,
     }
     (out / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     # a machine-readable tail line the parent greps for, even if warnings precede it
