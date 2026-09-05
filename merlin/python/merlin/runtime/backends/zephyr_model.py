@@ -437,6 +437,19 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     lower_torchao_affine_quant(module)
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)
+    # BIND the quantized-subclass inner tensors on the COMPILED path too. The interpreter binds them
+    # while it walks the graph (`dispatch_runtime.execute`); a compiled binary has no such moment, so
+    # each tagged `tensor.empty` is lifted here to a trailing `@forward` argument and
+    # `c_runtime.generate` derives the same list from the same `model.mlir` to append its rows and
+    # its bytes. Left alone, the two paths disagree in the worst possible way: the interpreter gates
+    # cos 1.0 while the binary computes on whatever the allocator last left in those pages.
+    # A module with no quantized subclass is untouched, so every other bundle lowers byte-identically.
+    from ...llvmlower import qinner as _qinner
+    _qargs = _qinner.lift(module)
+    if _qargs:
+        print(f"[qinner] lifted {len(_qargs)} quant-inner tensor(s) to @forward arguments "
+              f"({', '.join(a.key for a in _qargs[:3])}"
+              f"{', ...' if len(_qargs) > 3 else ''})")
     if int8_compute:
         # Real W8A8 integer datapath (matmul/conv/attention -> i8xi8->i32 + requant; the
         # transcendentals -> integer/RVV), via the quant-pass registry (byte-identical default set).
@@ -566,6 +579,12 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
         # gates clean and reports as applied.
         from ...mining.lever_applicability import module_op_counts
         op_counts_out.update(module_op_counts(module))
+    # THE GATE. Nothing downstream can tell an uninitialized buffer from a computed one: it lowers,
+    # links, runs and prints a number. Refuse here, on the module that is about to become the object,
+    # when a `tensor.empty` is READ rather than written -- derived from linalg's own ins/outs split
+    # and from each operand's use in the body, so a shape-only operand (a pooling window) is not
+    # mistaken for data and no model, quantization scheme or target is named.
+    _qinner.require_initialized(module, where=str(mlir_path))
     out = work / "model.prepared.mlir"
     out.write_text(to_text(module))
     return out

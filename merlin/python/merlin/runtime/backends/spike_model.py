@@ -194,6 +194,16 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     #    thread-safe and a delivery builds several images in one process (see common.ir_lock).
     from ...common.ir_lock import IR_LOCK
     with IR_LOCK:
+        # Preparation is what LIFTS a quantized subclass's inner tensors to `@forward` arguments,
+        # and `c_runtime.generate` (step 2) appends the matching table rows unconditionally. Lowering
+        # the raw module while the table describes two extra arguments is an ABI skew nothing would
+        # report, so a bundle that needs the lift may not take the unprepared branch.
+        from ...llvmlower import qinner as _qinner
+        if not (int8_compute or features or rvv_schedule) and _qinner.plan_for_bundle(prepared_path):
+            raise SpikeModelError(
+                f"{model_dir} carries quant-inner tensors, which are bound by lifting them in "
+                "prepare_for_lowering; build it with int8_compute/features/rvv_schedule so the "
+                "object and the argument table agree")
         if int8_compute or features or rvv_schedule:
             from . import zephyr_model as _zm
             prepared_path, features = _zm.prepare_for_lowering(

@@ -213,15 +213,17 @@ K1_RUNNABLE: frozenset[str] = frozenset(
 # shape-only window operand emitted at capture, as upstream linalg.pooling_* does. The FP32 bundle
 # now lowers and gates clean: fp32_cos 1.0, rel 5.05e-07, argmax True.
 #
-# The int8 bundle's second blocker is also FIXED. Its W8A8 capture left
+# The int8 bundle's remaining blockers are also FIXED. Its W8A8 capture left
 # `torchao.choose_qparams_affine` / `torchao.quantize_affine` as opaque external calls (m2m has a
 # decomposition for `dequantize_affine` only), which nothing in merlin defined -- an undefined
-# reference at link and an OutlineError in the interpreter. `llvmlower.torchao_affine` now decomposes
-# both into linalg (bit-exact against torchao's own implementation) on both paths, and the K1 ELF
-# links. What remains before an int8 CNN cell is citable is the FC weight: `%323`/`%324` are
-# `prov.quant_inner`-tagged empties the interpreter binds from `extra.npz` and the COMPILED path does
-# not, so a compiled classifier head reads uninitialized memory until the bundle is rewritten
-# (`build_tools/scripts/fix_qinner.py`).
+# reference at link and an OutlineError in the interpreter; `llvmlower.torchao_affine` now decomposes
+# both into linalg (bit-exact against torchao's own implementation) on both paths. And the FC weight
+# (`prov.quant_inner`-tagged empties the interpreter bound from `extra.npz` while the compiled path
+# left them uninitialized) is now lifted to `@forward` arguments by `llvmlower.qinner` and bound from
+# the same npz by the generated argument table. MEASURED on an x86 build of the same prepared IR:
+# the compiled output is BIT-IDENTICAL to the interpreter's (cos 1.0 / rel 1.38e-07 at
+# int8_compute=False, cos 0.99823 / rel 0.0471 at int8_compute=True). What has not been measured is
+# the board itself.
 K1_RAM_INFEASIBLE: frozenset[str] = frozenset({"openvla", "molmoact", "pi05"})
 
 # Full-fidelity capture env (the exact loader settings the recapture used to build the REAL/native

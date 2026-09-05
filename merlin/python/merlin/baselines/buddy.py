@@ -906,6 +906,15 @@ def link_k1_elf(model_dir: Path, obj: Path, work: Path, *, inputs_npz: Path | No
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     cgen = work / "cgen"
     meta = c_runtime.generate(model_dir, cgen, inputs_npz)
+    # buddy lowers the bundle with its OWN pipeline, which does not lift a quantized subclass's
+    # inner tensors to arguments the way merlin's preparation step does. The table would then carry
+    # rows the buddy object has no parameters for -- a silent ABI skew, since C checks no prototype
+    # across objects. Refuse instead of measuring a shifted argument list.
+    if int(meta.get("n_qinner", 0)):
+        raise BuddyError(
+            f"{model_dir} carries {meta['n_qinner']} quant-inner tensor(s); buddy's lowering does "
+            "not lift them to @forward arguments, so its object and merlin's argument table would "
+            "disagree")
 
     weights_bin = cgen / "weights.bin"
     # buddy embeds the weight blob via `ld -r -b binary`; a ~0.5 GB+ embedded blob makes an ELF that

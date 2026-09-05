@@ -92,9 +92,23 @@ def generate(model_dir: str | Path, out_dir: str | Path,
                 return np.ascontiguousarray(extra[k])
         raise KeyError(f"buffer {name!r} not in {extra_path}")
 
-    # weights blob (payload, byte-identical to what the manifest offsets index)
+    # weights blob (payload, byte-identical to what the manifest offsets index). Anything the
+    # bundle does NOT store as a packed weight but the compiled model still has to READ -- the
+    # quantized-subclass inner tensors, the zero region a stubbed argument's dead descriptor points
+    # at -- is APPENDED here and addressed by its offset past the payload, so it costs no C literals
+    # and rides the same mmap/embed path the weights already use.
     blob = (model_dir / "weights.safetensors").read_bytes()[payload_off:]
-    (out_dir / "weights.bin").write_bytes(blob)
+    appended = bytearray()
+
+    def _append_blob(data: bytes) -> int:
+        """Place ``data`` after the weights payload (64-byte aligned) and return its blob offset."""
+        pad = (-len(appended)) % 64
+        appended.extend(b"\0" * pad)
+        begin = len(blob) + len(appended)
+        appended.extend(data)
+        return begin
+
+    stub_zero_offsets: dict[int, int] = {}   # byte length -> offset of a shared zero region
 
     out_shape, out_dt = _out_shape(model_dir / "model.mlir")
 
@@ -120,6 +134,18 @@ def generate(model_dir: str | Path, out_dir: str | Path,
         meta = man[str(i)]
         elem = DT_BYTES[dt]
         if meta["kind"] == "param":
+            if meta.get("stub"):
+                # A quantized-subclass weight is STUBBED: the manifest names a placeholder the
+                # packer never filled (the fused f32 weight is dead -- the contraction consumes the
+                # int8 inner tensors through the quant-inner channel). Reading the placeholder's
+                # offset with the ARGUMENT's shape walks off into whatever tensors follow it in the
+                # blob; the numpy interpreter hands the same argument zeros. Point the descriptor at
+                # a zero region instead, shared between equally sized stubs since they are read-only.
+                nbytes = max(1, int(np.prod(shape)) * elem)
+                if nbytes not in stub_zero_offsets:
+                    stub_zero_offsets[nbytes] = _append_blob(bytes(nbytes))
+                rows.append(("MERLIN_WEIGHT", stub_zero_offsets[nbytes], len(shape), shape, elem, dt))
+                continue
             begin, _ = hdr[meta["weight"]]["data_offsets"]
             rows.append(("MERLIN_WEIGHT", begin, len(shape), shape, elem, dt))
             continue
@@ -146,6 +172,21 @@ def generate(model_dir: str | Path, out_dir: str | Path,
         static_io_bytes += int(arr.nbytes)
         embedded.add(i)
         rows.append(("MERLIN_INPUT", i, len(shape), shape, elem, dt))
+    # QUANT-INNER ARGUMENTS. A torchao subclass's int8 `int_data`/`scale` are not `@forward`
+    # arguments: the capture parks them in `extra.npz` under `qinner::` keys and leaves an
+    # uninitialized `tensor.empty` in the graph. `merlin.llvmlower.qinner.lift` (run from the shared
+    # preparation step) turns each into a TRAILING argument, so the same derivation appends matching
+    # rows here and the real bytes to the blob. Without this the interpreter binds them and the
+    # compiled binary reads whatever was in memory -- one bundle gating cos 1.0 on the host and
+    # computing garbage on the board.
+    from . import qinner as _qinner
+    qinner_args = _qinner.plan_for_bundle(model_dir / "model.mlir")
+    if qinner_args:
+        for arg, arr in zip(qinner_args, _qinner.resolve(extra, qinner_args)):
+            begin = _append_blob(np.ascontiguousarray(arr).tobytes())
+            rows.append(("MERLIN_WEIGHT", begin, len(arg.shape), list(arg.shape),
+                         DT_BYTES[arg.dtype], arg.dtype))
+    n_sig_args = len(sig) + len(qinner_args)
     # output row (last)
     rows.append(("MERLIN_OUTPUT", 0, len(out_shape), out_shape,
                  DT_BYTES[out_dt], out_dt))
@@ -174,7 +215,7 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     # that was never declared.
     io.append("static void *MERLIN_INPUT_PTR[MERLIN_N_ARGS] = {" + ",".join(
         f"(void*)merlin_in_{i}" if i in embedded else "0"
-        for i in range(len(sig))) + ",0};")
+        for i in range(n_sig_args)) + ",0};")
     io.append("#endif")
 
     # model_call.c — unrolled ciface invocation
@@ -184,6 +225,7 @@ def generate(model_dir: str | Path, out_dir: str | Path,
               f"extern void _mlir_ciface_forward({decl});",
               f"void merlin_invoke(void **d) {{ _mlir_ciface_forward({call}); }}"]
 
+    (out_dir / "weights.bin").write_bytes(bytes(blob) + bytes(appended))
     (out_dir / "model_gen.h").write_text("\n".join(h) + "\n")
     (out_dir / "model_io.h").write_text("\n".join(io) + "\n")
     (out_dir / "model_call.c").write_text("\n".join(call_c) + "\n")
@@ -194,5 +236,6 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     # code-region reserve chosen without it puts the weights blob inside .bss, which surfaces only as
     # a linker "section .weights VMA overlaps section .bss" and reads as anything but a sizing error.
     return {"n_args": len(rows), "out_shape": out_shape, "out_dt": out_dt,
-            "weights_bytes": len(blob),
+            "n_qinner": len(qinner_args),
+            "weights_bytes": len(blob) + len(appended),
             "static_io_bytes": static_io_bytes + int(np.prod(out_shape)) * DT_BYTES[out_dt]}
