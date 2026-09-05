@@ -148,6 +148,133 @@ def rewrite_transposed_args(mlir_text: str, args: set[int]) -> tuple[str, int]:
     return "\n".join(out_lines) + "\n", dropped
 
 
+class RewriteRefused(ValueError):
+    """A rewrite whose soundness condition does not hold on this bundle. Raised, never worked around:
+    a rewrite that cannot be proven value-preserving must not be applied silently."""
+
+
+def _read_header(safetensors: Path) -> dict[str, Any]:
+    """The safetensors header (tensor name -> spec), without the `__metadata__` entry."""
+    with open(safetensors, "rb") as f:
+        hlen = struct.unpack("<Q", f.read(8))[0]
+        header = json.loads(f.read(hlen))
+    header.pop("__metadata__", None)
+    return header
+
+
+def hoist_safety_problems(src: Path | str, man: dict[str, Any], want: dict[str, int],
+                          hoisted_args: set[int]) -> list[str]:
+    """Reasons the stored layout of `want` (weight name -> arg) CANNOT be pre-applied to `src`.
+
+    Empty means safe. Each check is here because its ABSENCE is silent -- the IR analysis proves the
+    transpose is the argument's sole consumer, which says nothing about how the argument's bytes are
+    stored, and every one of these would have produced a bundle that builds, links and grades while
+    reading the wrong bytes:
+
+    1. **The weight is not in the blob.** A quantized-subclass weight is STUBBED in the manifest
+       (`{"stub": true}`; `resnet50_v1_5_int8_w8a8_consistent` and `lstmnetvit_int8_w8a8_consistent`
+       have 1 and 22 of them) and has no safetensors entry at all. :func:`_rewrite_safetensors`
+       iterates the HEADER, so such a name is simply never reached -- while the manifest shape below
+       is flipped regardless, leaving a manifest that describes a transpose nobody performed.
+    2. **Not 2-D.** Only a 2-D weight has an unambiguous pre-applied transpose.
+    3. **Another argument reads the same weight.** `mining/section_build` and the capture manifests
+       both key weights by NAME, so two `@forward` arguments can name one tensor. Transposing it for
+       a hoisted argument silently transposes it for the other reader too.
+    4. **A byte range shared with another tensor.** Two distinct names can index overlapping bytes
+       (a tied head, an aliased view). Rewriting one rewrites the other's data underneath it.
+    """
+    src = Path(src)
+    header = _read_header(src / "weights.safetensors")
+    problems: list[str] = []
+
+    for name, arg in sorted(want.items(), key=lambda kv: kv[1]):
+        spec = header.get(name)
+        if spec is None:
+            stubbed = bool(man.get(str(arg), {}).get("stub"))
+            problems.append(
+                f"arg {arg}: weight {name!r} has no bytes in weights.safetensors "
+                f"({'manifest marks it stub=true' if stubbed else 'dangling manifest entry'}); "
+                "its layout cannot be pre-applied, and flipping only the manifest shape would "
+                "describe a transpose that never happened")
+            continue
+        if len(spec.get("shape", ())) != 2:
+            problems.append(f"arg {arg}: weight {name!r} has shape {spec.get('shape')}; only 2-D "
+                            "weights are hoisted")
+
+    for key, entry in man.items():
+        w = entry.get("weight")
+        if w not in want or not key.isdigit():
+            continue
+        if int(key) not in hoisted_args:
+            problems.append(
+                f"weight {w!r} is also read by arg {key}, which is NOT hoisted; pre-transposing it "
+                "would change what that argument sees")
+
+    ranges = {n: tuple(s["data_offsets"]) for n, s in header.items() if "data_offsets" in s}
+    for name in sorted(want):
+        mine = ranges.get(name)
+        if mine is None:
+            continue
+        for other, theirs in ranges.items():
+            if other != name and theirs[0] < mine[1] and mine[0] < theirs[1]:
+                problems.append(
+                    f"weight {name!r} shares bytes [{mine[0]}, {mine[1]}) with {other!r}; "
+                    "transposing it would rewrite the other tensor's data underneath it")
+    return problems
+
+
+def retarget_weights_file(mlir_text: str, weights_path: Path | str) -> tuple[str, bool]:
+    """Point the module's ``prov.weights_file`` at `weights_path`. Returns (text, changed).
+
+    A rewritten bundle whose provenance still names the SOURCE blob claims to have been built from
+    bytes it was not built from. That is the live defect this module's docstring describes:
+    `gemma2_2b_int8_full_seq8_pretransposed` and every other `_pretransposed` bundle on disk still
+    name the ORIGINAL `weights.safetensors`, so anyone reading one concludes it is stock.
+
+    Structural, no regex: the attribute is found by its literal key on the module line and its value
+    ends at the next quote.
+    """
+    key = 'prov.weights_file = "'
+    out: list[str] = []
+    changed = False
+    for line in mlir_text.splitlines():
+        if not changed and line.lstrip().startswith("builtin.module") and key in line:
+            head, _, rest = line.partition(key)
+            _old, quote, tail = rest.partition('"')
+            if quote:
+                line = f"{head}{key}{weights_path}\"{tail}"
+                changed = True
+        out.append(line)
+    return "\n".join(out) + "\n", changed
+
+
+#: written by the hoist itself -- never carried over from the source bundle
+_HOIST_WRITES = {"model.mlir", "weights.safetensors", "weights.safetensors.manifest.json",
+                 REWRITES_FILE}
+#: derived from the PRE-rewrite `model.mlir`; carrying it forward would let a consumer lower stale IR
+_STALE_PREFIX = "model.prepared"
+
+
+def _carry_sidecars(src: Path, dst: Path, written: set[str]) -> list[str]:
+    """Hardlink every sidecar `src` has that the rewrite does not itself write; name what it skips.
+
+    A FIXED list was the bug this replaces. Bundles on disk carry `session_contract.yaml` (the
+    state-carry map `llvmlower.c_runtime.generate` reads), `session_inputs.npz`,
+    `session_goldens.npz`, `session_quality_fp32.npz`, `golden_mesh_datapath.npy` and
+    `ingest_meta.json` -- none of them in it -- so a rewritten bundle silently lost its multi-step
+    contract and its extra goldens, and graded as a different, single-shot model.
+    """
+    skipped: list[str] = []
+    for p in sorted(src.iterdir()):
+        if not p.is_file() or p.name in written:
+            continue
+        if p.name.startswith(_STALE_PREFIX):
+            skipped.append(p.name)
+            continue
+        _link_or_copy(p, dst / p.name)
+    return skipped
+
+
 def hoist_weight_transposes(src: Path | str, dst: Path | str,
                             func_name: str = "forward") -> RewriteRecord:
     """Store every sole-use weight in the layout its consumer wants, so the model stops transposing
@@ -196,8 +323,21 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
             raise ValueError(f"arg {arg} is hoistable in the IR but names no weight in the manifest")
         want[entry["weight"]] = arg
 
+    # The IR analysis proves the transpose is the argument's SOLE CONSUMER. That is a fact about
+    # the graph and says nothing about how the bytes are STORED -- a stubbed weight, a weight two
+    # arguments name, an aliased byte range. Each of those produces a bundle that builds and grades
+    # while reading the wrong bytes, so they are checked here and refused, never worked around.
+    problems = hoist_safety_problems(src, man, want, set(by_arg))
+    if problems:
+        raise RewriteRefused(
+            f"cannot pre-apply the weight layout of {src.name}: " + "; ".join(problems))
+
     dst.mkdir(parents=True, exist_ok=True)
     done = _rewrite_safetensors(src, dst, set(want))
+    if done != len(want):                       # belt-and-braces: the checks above should make this
+        raise RewriteRefused(                   # unreachable, and a silent undercount is the failure
+            f"{src.name}: transposed {done} of {len(want)} weights; refusing to write a bundle whose "
+            "manifest claims a layout its bytes do not have")
 
     for entry in man.values():
         if entry.get("weight") in want and "shape" in entry:
@@ -205,11 +345,11 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
     (dst / "weights.safetensors.manifest.json").write_text(json.dumps(man, indent=2))
 
     new_text, dropped = rewrite_transposed_args(mlir_text, set(by_arg))
+    # Point the provenance at the blob this bundle actually has (see `retarget_weights_file`).
+    new_text, retargeted = retarget_weights_file(new_text, (dst / "weights.safetensors").resolve())
     (dst / "model.mlir").write_text(new_text)
 
-    for name in ("extra.npz", "inputs.npz", "input_order.json", "golden.npy", "golden_w8a8.npy",
-                 "region_goldens.npz"):
-        _link_or_copy(src / name, dst / name)
+    skipped = _carry_sidecars(src, dst, _HOIST_WRITES)
     if (src / REWRITES_FILE).is_file():         # carry the chain forward, do not start a new one
         shutil.copy2(src / REWRITES_FILE, dst / REWRITES_FILE)
 
@@ -227,10 +367,15 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
             "mib_moved_per_inference_before": round(report.hoistable_bytes / 2 ** 20, 1),
             "bytes_moved_per_inference_after": 0,
             "blocked_not_hoisted": len(report.blocked),
+            "weights_file_retargeted": retargeted,
+            "sidecars_not_carried": skipped,
             "analysis": "merlin.xdsl_dialects.lowering.weight_layout.weight_layout_report",
         },
         caveats=([f"{len(report.blocked)} re-layout(s) were NOT hoisted (argument has other readers)"]
-                 if report.blocked else []),
+                 if report.blocked else [])
+        + ([f"stale, NOT carried over from the source bundle: {skipped}"] if skipped else [])
+        + ([] if retargeted else ["prov.weights_file was absent, so it could not be retargeted at "
+                                  "this bundle's own weights"]),
     )
     record_rewrite(dst, rec)
     return rec

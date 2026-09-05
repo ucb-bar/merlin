@@ -489,6 +489,31 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                       "(the matmul-bucket timer lives in the routed GEMM shim)")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
+    # PREPACKED WEIGHT LAYOUT (`prepack_weight_layout`, default-off). Apply the model's weight
+    # re-layout ONCE, here, instead of on every inference: materialize a rewritten bundle (the
+    # argument transposes erased and the arguments retyped, the safetensors bytes physically
+    # transposed) and use it as `model_dir` from this point on. It has to reach BOTH consumers --
+    # `prepare_for_lowering` below reads `model_dir/model.mlir`, while `c_runtime.generate` (step 3)
+    # independently re-parses the SAME bundle for the ABI table and copies its weight payload
+    # verbatim into `weights.bin`. A rewrite that reached only one of them would leave the compiled
+    # object indexing a transposed weight that the blob stores untransposed. MEASURED on the live K1,
+    # interleaved same-session: 1.70x on small_llama int8. The rewrite is cached per (bundle,
+    # rewrite) and NEVER mutates the source recapture, which every other session reads.
+    from ..llvmlower import weight_prepack as _wp
+    _wp.ensure_registered()   # unregistered => `_composes` swallows the KeyError and never proposes it
+    if _wp.FEATURE in (getattr(pkg, "compiler_features", None) or ()):
+        try:
+            model_dir, _prepack = _wp.prepacked_bundle(model_dir)
+        except _wp.PrepackRefused as exc:
+            # Fail CLOSED. Falling back to the stock bundle would build the BASELINE while reporting
+            # the lever as applied -- the inert-lever failure, but silent and un-auditable.
+            raise K1Error(f"{_wp.FEATURE}: {exc}") from exc
+        (work / "PREPACKED_BUNDLE").write_text(str(model_dir))
+        print(f"[prepack] {model_dir.name}: "
+              f"{_prepack.get('weights_pre_transposed')} weights pre-transposed, "
+              f"{_prepack.get('transposes_removed')} transposes removed, "
+              f"{_prepack.get('mib_moved_per_inference_before')} MiB/inference no longer moved "
+              f"(cached={_prepack.get('cached')})")
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     cc = toolchain_cc()
     if cc is None:

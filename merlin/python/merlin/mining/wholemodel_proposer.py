@@ -44,8 +44,10 @@ from ..kernels.knobs import ForkProposal
 # swallowed there as "does not compose" -- so a lever registered lazily elsewhere would be
 # silently never proposed rather than rejected. Register it here, where the list lives.
 from ..llvmlower.transpose_maps import ensure_registered as _register_fold_weight_transpose
+from ..llvmlower.weight_prepack import ensure_registered as _register_prepack_weight_layout
 
 _register_fold_weight_transpose()
+_register_prepack_weight_layout()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
@@ -53,6 +55,17 @@ _register_fold_weight_transpose()
 # facet field — plus the additive passes as a teacher-idle fallback. The teacher (engine 1) supplies
 # the rest from real divergences.
 RANKED_LEVERS: list[tuple[str, bool]] = [
+    # FIRST, because it is the largest whole-model effect measured on this repo's silicon oracle, and
+    # because it is the only lever here that changes what the BUNDLE stores rather than what the
+    # compiler emits. Interleaved in one K1 session, alternating bundles, three rounds each, both arms
+    # gating ok=True: 3,548,286/3,574,361/3,561,602 ns stock vs 2,125,388/2,086,712/2,127,671 ns
+    # prepacked -- 1.70x against a 2.6% noise band. It is NOT the transposes' own byte traffic (0.4 MiB
+    # per inference on this model, inside the band); it is that 15 `linalg.transpose` ops and their
+    # `tensor.empty` destinations stop being materialized at all, taking their buffers, allocs and
+    # copies with them. Bit-exact by construction and asserted per weight as `stored.T`, so a fork
+    # carrying it grades against the same goldens. Refuses (rather than silently building stock) on a
+    # bundle whose layout cannot be pre-applied soundly.
+    ("prepack_weight_layout", False),
     # NOTE: `named_int8_contraction` is deliberately NOT listed here. It is an ENABLER -- inert on
     # its own by construction, since keeping the contraction named changes no emitted code until a
     # schedule acts on the named form -- and `run_beam` EXCLUDES inert forks from the survivor set.

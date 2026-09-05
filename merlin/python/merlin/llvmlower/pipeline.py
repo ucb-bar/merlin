@@ -585,6 +585,8 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # another. Idempotent.
     from .transpose_maps import ensure_registered as _register_fold_weight_transpose
     _register_fold_weight_transpose()
+    from .weight_prepack import ensure_registered as _register_prepack_weight_layout
+    _register_prepack_weight_layout()
     feats = normalize(features)
     if parallel_harts is not None and not vectorize:
         raise PipelineError(
