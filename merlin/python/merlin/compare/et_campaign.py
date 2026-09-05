@@ -115,16 +115,17 @@ KNOWN_REFERENCE_BLOCKERS: dict[str, dict] = {
     # -- and the campaign flagged it `stale_expectation`. A declared blocker that has been overtaken
     # is worse than none, because it suppresses attention on a cell that now works and quietly
     # re-labels a real refusal as the expected one.
-    "smolvla": {
-        "stage": "executorch_export",
-        "reason": ("ExecuTorch AOT export fails on an UNBACKED symbolic dimension: "
-                   "exir/tensor.py:94 dim_order_from_stride cannot resolve u31, so no .pte is "
-                   "produced at either N. ExecuTorch cannot run this model at int8 at all"),
-        "not_a_fallback": ("this is an export-stage failure, not a slow run: there is no ExecuTorch "
-                           "number to compare against, and our own arm running it would be a "
-                           "CAPABILITY difference, never a speedup"),
-        "observed": "2026-09-05",
-    },
+    # smolvla's entry was REMOVED on 2026-09-05, the day it was written, because its declared
+    # blocker no longer holds. It said "ExecuTorch cannot run this model at int8 at all" on the
+    # strength of an unbacked symint (u31) that `to_executorch` could not resolve in
+    # `dim_order_from_stride`. The symint came from SmolVLM's vision embedding building its
+    # patch-position table out of the patch mask's DATA; `_et_export` now computes that table
+    # shape-statically and freezes it (proved bit-identical to upstream on the captured input), and
+    # the qd8 export produces a 103 MB .pte + 353 MB .ptd whose operators ALL have kernels
+    # (`plan_kernels`: nothing missing, needs EXECUTORCH_BUILD_KERNELS_QUANTIZED) and which
+    # Program::load + Method::load accept. No board wall has been taken yet, so the cell is simply
+    # UNMEASURED -- and an unmeasured cell must read as unexpected if it refuses, not as the
+    # export failure that has already been fixed.
     "gemma2_2b": {
         "stage": "pt2e_calibration",
         "reason": ("PT2E calibration corrupts dtypes through cumsum -> aten.index.Tensor; "

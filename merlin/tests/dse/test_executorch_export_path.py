@@ -307,3 +307,52 @@ def test_lstmnetvit_qd8_exports_now_that_the_nhwc_walk_is_bounded():
     note = (exp.summary or {}).get("subgraph_note", "")
     assert "walk bounded to the qdq chain" in note, note
     assert "rewiring bounded to qdq consumers" in note, note
+
+
+def test_the_vision_patch_shim_is_wired_into_the_compat_shims():
+    """The shim must stay REACHED, not merely defined.
+
+    ``_apply_loader_compat_shims`` is the one place the export path installs library-drift shims, and
+    it swallows every exception so a shim that stops being called leaves no trace: the export would
+    simply go back to failing on the unbacked symint with no hint that a fix exists. This asserts the
+    wiring, which is the part a refactor silently drops; the NUMERICS are gated in the export path
+    itself (``verify_shape_static_vision_patch`` raises rather than warns).
+    """
+    mod = _load_et_export_helper()
+    src = (merlin_dir() / "python" / "merlin" / "baselines" / "_et_export.py").read_text()
+    # Only the FUNCTION's own body, cut at its return: the shim's `def` line contains the same name,
+    # so a wider slice would still match after the call was deleted -- a check that cannot fail.
+    body = src.partition("def _apply_loader_compat_shims(")[2].partition("\n    return applied")[0]
+    assert body, "could not isolate _apply_loader_compat_shims' body"
+    assert "_shape_static_vision_patch_positions()" in body, \
+        "_apply_loader_compat_shims no longer installs the vision patch-position shim"
+    for name in ("_vision_position_ids", "_shape_static_vision_patch_forward",
+                 "_frozen_vision_patch_forward", "verify_shape_static_vision_patch"):
+        assert callable(getattr(mod, name, None)), name
+
+
+@pytest.mark.slow
+@pytest.mark.integration
+def test_smolvla_qd8_exports_and_leaves_no_operator_without_a_kernel():
+    """smolvla was a REFUSED int8 cell for two reasons, and only the first was ever recorded.
+
+    SmolVLM's vision embedding builds its patch-position table from the patch mask's DATA
+    (``arange(mask.sum())``, then a bool-mask ``index_put``), so ``torch.export`` minted an unbacked
+    symint and ``to_executorch`` died in ``dim_order_from_stride`` on ``u31 < 1``. Clearing that
+    exposed the second: ExecuTorch registers no ``aten::bucketize`` kernel in ANY of its three kernel
+    libraries, so a program that still calls it exports fine and is then refused at ``Method::load``
+    -- the spectformer failure mode, which an export-only assertion cannot see. Hence both halves are
+    asserted here: the program exists AND every operator in it has a home.
+    """
+    b = _require_int8_bundle("smolvla", "smolvla_int8_consistent")
+    exp = _export_qd8("smolvla", b)
+    note = (exp.summary or {}).get("subgraph_note", "")
+    assert "FROZEN vision patch positions" in note, note
+    assert "bit-identical" in note, note
+    plan = et.plan_kernels(exp.pte)
+    assert plan.missing == {}, plan.missing
+    assert plan.libraries == {"quantized"}, plan.libraries
+    # The qd8 recipe SURVIVED. Const-folding the weight dequant is a way to clear the same symint
+    # that silently turns the cell into a weight-only fp32 GEMM, and the two are indistinguishable
+    # from the outside except by this operator still being in the program.
+    assert plan.operators.get("quantized_decomposed::dequantize_per_channel.out", 0) > 0

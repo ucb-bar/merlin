@@ -30,6 +30,7 @@ import argparse
 import importlib.util
 import json
 import sys
+import types
 from pathlib import Path
 
 
@@ -82,6 +83,10 @@ def _apply_loader_compat_shims() -> list[str]:
             applied.append("torch_compilable_check-noop")
     except Exception:  # noqa: BLE001
         pass
+    try:  # shape-static vision patch-position table (SmolVLM-based VLAs)
+        applied += _shape_static_vision_patch_positions()
+    except Exception:  # noqa: BLE001
+        pass
     try:  # BitNet capitalized-key alias (bitvla)
         from transformers.models.auto.configuration_auto import CONFIG_MAPPING
         if "BitNet" not in CONFIG_MAPPING:
@@ -91,6 +96,169 @@ def _apply_loader_compat_shims() -> list[str]:
     except Exception:  # noqa: BLE001 - shim is best-effort; loader failure surfaces the real reason
         pass
     return applied
+
+
+#: The vision-embedding forward this process replaced, kept so the rewrite can be PROVED an identity
+#: against the real captured input rather than argued to be one.
+_ORIGINAL_VISION_PATCH_FORWARD = None
+
+
+def _vision_position_ids(self, pixel_values, patch_attention_mask):
+    """SmolVLM's vision patch-position table, computed without a data-dependent SHAPE.
+
+    Upstream derives the table from the patch mask's DATA, in two ways that both mint an unbacked
+    symint under ``torch.export``:
+
+      1. ``torch.arange(p_attn_mask[:, 0].sum())`` -- an arange over a 0-dim TENSOR is a
+         data-dependent size (transformers 5.0.x; upstream itself vectorised this away in 5.9.0 by
+         ranging over the static ``patch_attention_mask.size(1)/size(2)`` and keeping the sum only
+         as the arithmetic ``step_h = 1/nb_patches_h``);
+      2. ``position_ids[mask] = pos_ids`` -- boolean-mask indexing, whose selected-element count is
+         data-dependent.
+
+    ExecuTorch then cannot decide ``u31 < 1`` in ``exir/tensor.py`` ``dim_order_from_stride`` and
+    ``to_executorch`` refuses the program, so no ``.pte`` exists at all.
+
+    This body is upstream-5.9.0's vectorised form with (2) written as the shape-preserving identity
+    ``position_ids = where(mask, pos_ids, 0)`` -- exact because ``position_ids`` starts as
+    ``full(..., 0)``, so the masked assignment writes ``pos_ids`` where the mask is true and leaves
+    zero elsewhere, which is what ``where`` computes. Neither rewrite touches a number; the caller
+    proves that by running the original forward beside it on the captured input.
+    """
+    import torch
+
+    batch_size, _, max_im_h, max_im_w = pixel_values.shape
+    max_nb_patches_h, max_nb_patches_w = max_im_h // self.patch_size, max_im_w // self.patch_size
+    boundaries = torch.arange(1 / self.num_patches_per_side, 1.0,
+                              1 / self.num_patches_per_side, device=pixel_values.device)
+    position_ids = torch.full(size=(batch_size, max_nb_patches_h * max_nb_patches_w),
+                              fill_value=0, device=pixel_values.device)
+
+    nb_patches_h = patch_attention_mask[:, :, 0].sum(dim=1)   # a VALUE, never a shape
+    nb_patches_w = patch_attention_mask[:, 0, :].sum(dim=1)
+    step_h, step_w = 1.0 / nb_patches_h, 1.0 / nb_patches_w
+
+    h_indices = torch.arange(patch_attention_mask.size(1), device=position_ids.device,
+                             dtype=torch.float32)
+    w_indices = torch.arange(patch_attention_mask.size(2), device=position_ids.device,
+                             dtype=torch.float32)
+    fractional_coords_h = torch.clamp(h_indices[None, :] * step_h[:, None], max=(1.0 - 1e-6))
+    fractional_coords_w = torch.clamp(w_indices[None, :] * step_w[:, None], max=(1.0 - 1e-6))
+    fractional_coords_h = fractional_coords_h.to(pixel_values.dtype)
+    fractional_coords_w = fractional_coords_w.to(pixel_values.dtype)
+
+    bucket_coords_h = torch.bucketize(fractional_coords_h, boundaries, right=True)
+    bucket_coords_w = torch.bucketize(fractional_coords_w, boundaries, right=True)
+    pos_ids = (bucket_coords_h[:, :, None] * self.num_patches_per_side
+               + bucket_coords_w[:, None, :]).reshape(batch_size, -1)
+
+    mask = patch_attention_mask.reshape(batch_size, -1)
+    return torch.where(mask, pos_ids.to(position_ids.dtype), torch.zeros_like(position_ids))
+
+
+def _shape_static_vision_patch_forward(self, pixel_values, patch_attention_mask):
+    """The patched forward: static position table + the unchanged patch embedding."""
+    patch_embeds = self.patch_embedding(pixel_values)
+    embeddings = patch_embeds.flatten(2).transpose(1, 2)
+    return embeddings + self.position_embedding(
+        _vision_position_ids(self, pixel_values, patch_attention_mask))
+
+
+def _frozen_vision_patch_forward(self, pixel_values, patch_attention_mask):
+    """As above with the position TABLE frozen to the constant it evaluates to.
+
+    Needed because ExecuTorch implements no ``aten::bucketize`` kernel in any of its three kernel
+    libraries (portable / optimized / quantized), so a program that still calls it is refused at
+    ``Method::load`` with OperatorMissing -- an export that succeeds and a runner that cannot load
+    the result. The table depends only on the patch mask, which the caller builds from SHAPES
+    (``SmolVLMVisionTransformer.forward`` makes it with ``torch.ones`` when it is passed None, which
+    is what SmolVLA's ``embed_image`` does), so freezing it specialises the program to the exported
+    configuration exactly the way every other static shape in an exported program already is.
+    Installed only after the frozen table is shown to reproduce the ORIGINAL forward bit-for-bit.
+    """
+    patch_embeds = self.patch_embedding(pixel_values)
+    embeddings = patch_embeds.flatten(2).transpose(1, 2)
+    return embeddings + self.position_embedding(self._merlin_frozen_position_ids)
+
+
+def _shape_static_vision_patch_positions() -> list[str]:
+    """Install :func:`_shape_static_vision_patch_forward` on SmolVLM's vision embeddings."""
+    global _ORIGINAL_VISION_PATCH_FORWARD
+    from transformers.models.smolvlm.modeling_smolvlm import SmolVLMVisionEmbeddings
+
+    if _ORIGINAL_VISION_PATCH_FORWARD is not None:
+        return []
+    _ORIGINAL_VISION_PATCH_FORWARD = SmolVLMVisionEmbeddings.forward
+    SmolVLMVisionEmbeddings.forward = _shape_static_vision_patch_forward
+    return ["smolvlm-vision-pos-ids-shape-static"]
+
+
+def verify_shape_static_vision_patch(model, captured) -> str:
+    """Prove the vision-patch rewrite is an IDENTITY on this model + input, or raise.
+
+    Runs one eager forward with a pre-hook that records what actually reached the patched module,
+    then replays the ORIGINAL forward on those same tensors and demands a bit-identical result. A
+    rewrite argued to be an identity and never checked is exactly the kind of change that later gets
+    attributed to the model instead of to us, so this refuses to export rather than reporting a
+    tolerance.
+    """
+    import torch
+
+    if _ORIGINAL_VISION_PATCH_FORWARD is None:
+        return ""
+    from transformers.models.smolvlm.modeling_smolvlm import SmolVLMVisionEmbeddings
+
+    mods = [m for m in model.modules() if isinstance(m, SmolVLMVisionEmbeddings)]
+    if not mods:
+        return ""
+    seen: dict[int, tuple] = {}
+
+    def _hook(mod, args, kwargs):
+        pix = kwargs.get("pixel_values", args[0] if args else None)
+        msk = kwargs.get("patch_attention_mask", args[1] if len(args) > 1 else None)
+        if pix is not None and msk is not None:
+            seen[id(mod)] = (pix.detach().clone(), msk.detach().clone())
+        return None
+
+    handles = [m.register_forward_pre_hook(_hook, with_kwargs=True) for m in mods]
+    try:
+        with torch.no_grad():
+            model(*captured)
+    finally:
+        for h in handles:
+            h.remove()
+
+    checked = []
+    for mod in mods:
+        got = seen.get(id(mod))
+        if got is None:
+            raise RuntimeError("vision patch-position shim: the patched module was never called on "
+                               "the captured input, so the rewrite could not be verified")
+        pix, msk = got
+        with torch.no_grad():
+            ref = _ORIGINAL_VISION_PATCH_FORWARD(mod, pix, msk)
+            new = _shape_static_vision_patch_forward(mod, pix, msk)
+            table = _vision_position_ids(mod, pix, msk)
+        if not torch.equal(ref, new):
+            raise RuntimeError(
+                "vision patch-position shim CHANGED NUMERICS "
+                f"(max |diff| {float((ref.float() - new.float()).abs().max())}); refusing to export")
+        # Freeze the table (no aten::bucketize kernel exists in ANY ExecuTorch kernel library), then
+        # prove the frozen form too -- a specialisation accepted on an argument is how a wrong
+        # constant gets into a program that still looks exported.
+        mod.register_buffer("_merlin_frozen_position_ids", table.detach().clone(),
+                            persistent=False)
+        mod.forward = types.MethodType(_frozen_vision_patch_forward, mod)
+        with torch.no_grad():
+            frozen = mod.forward(pix, msk)
+        if not torch.equal(ref, frozen):
+            raise RuntimeError(
+                "frozen vision patch-position table CHANGED NUMERICS "
+                f"(max |diff| {float((ref.float() - frozen.float()).abs().max())}); refusing")
+        checked.append(f"{tuple(int(x) for x in msk.shape)}")
+    return ("shape-static + FROZEN vision patch positions, VERIFIED bit-identical to upstream on "
+            f"{len(checked)} module(s) with mask shape(s) {', '.join(checked)}; removes the "
+            "unbacked symint AND the aten::bucketize ExecuTorch has no kernel for")
 
 
 def _load_loader(loader_path: Path):
@@ -546,6 +714,20 @@ def main() -> int:
     from executorch.exir import ExecutorchBackendConfig, to_edge_transform_and_lower
     from torch.export import export
 
+    # OUT VARIANTS for the quantized_decomposed ops. `to_executorch`'s ToOutVarPass needs an
+    # out-variant for every operator left OUTSIDE the delegate, and a PT2E graph whose XNNPACK
+    # partition does not absorb every quantize/dequantize/choose_qparams keeps portable ones. Without
+    # this library the whole program is refused -- "Missing out variants:
+    # quantized_decomposed::{quantize_per_tensor,dequantize_per_tensor,choose_qparams}" -- and no
+    # .pte is produced. The board runner needs the matching kernel library linked, which
+    # `executorch.plan_kernels` already reports as `libraries={'quantized'}` + its cmake option.
+    try:
+        import executorch.kernels.quantized  # noqa: F401
+        _qkernels = "quantized-out-variants=registered"
+    except Exception as _e:  # noqa: BLE001
+        _qkernels = f"quantized-out-variants=UNAVAILABLE({type(_e).__name__}: {_e})"
+    print(f"[{args.model_name}] {_qkernels}", file=sys.stderr)
+
     # 1. Load model; substitute the CAPTURED input so the export trace matches the captured golden.
     #    Mirror the consistent-capture harness (model2MLIR/workloads/capture_consistent.py): seed the
     #    instantiation so weight init is reproducible, THEN perturb any exactly-zero parameters with
@@ -592,6 +774,10 @@ def main() -> int:
         print(f"[{args.model_name}] {_arity_note}", file=sys.stderr)
 
     subgraph_note = ""
+    _shim_note = verify_shape_static_vision_patch(model, captured)
+    if _shim_note:
+        print(f"[{args.model_name}] {_shim_note}", file=sys.stderr)
+        subgraph_note = _shim_note
     if args.int8_subgraph:
         # Replace the whole model with its REAL linear-heavy subgraph (a genuine slice, actual
         # weights) — the FALLBACK if whole-model int8 won't export.
