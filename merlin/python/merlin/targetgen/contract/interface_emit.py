@@ -483,6 +483,63 @@ def op_mnemonics(text: str) -> list[str]:
     return out
 
 
+def declared_result_elements(text: str) -> dict[str, int]:
+    """``{value name: elements in its DECLARED result type}`` for every op in a module.
+
+    WHAT A COMMAND WRITES, taken from the module's own declaration rather than inferred from what it
+    read. Every op in this grammar prints its result type, and that type is the contract: an engine
+    executing the module must produce exactly it.
+
+    ⚠️ WHY THIS EXISTS. The cost model prices a certification by the elements a capsule WRITES, and it
+    used to take the extent of the operand a terminal command READ -- correct only for a shape-preserving
+    op. Measured against the corpus's own goldens, that inferred extent disagreed with the golden for 43
+    of 452 capsules and could not be computed at all for a 44th: a strided convolution was priced by its
+    input image (``SY_conv_k16x16`` at 16,384 elements against a 256-element result -- 7,177 predicted
+    seconds against 89), a batched matmul by its stacked operand, and seven flash-attention capsules at
+    ZERO, because the op they end on reads an operand key the inference did not enumerate. The declared
+    types agree with the goldens for 450 of 452.
+
+    Keyed on the ``name`` attribute where an op carries one and on the SSA result otherwise, matching
+    what :func:`parse_interface_mlir` records as a command's ``dst`` -- so a caller can look a command's
+    destination up here directly.
+
+    A NON-TENSOR result maps to 0, not to nothing: ``!merlin_iface.resident`` and
+    ``!merlin_iface.acc<...>`` are device-side state, not program output, and a capsule ending on one
+    writes nothing the host can read. An op whose result type cannot be read at all is ABSENT from the
+    mapping, so a caller pricing by it can fail closed instead of substituting a guess.
+
+    Built from :func:`_op_line`, this module's one shape decomposition, so it cannot drift from what the
+    parser reads.
+    """
+    out: dict[str, int] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        op = _op_line(line)
+        if op is None or not op["mnemonic"] or op["mnemonic"] in _STRUCTURAL_OPS:
+            continue
+        name = _parse_attr_block(op["attrs_body"]).get("name", op["result"])
+        if not name:
+            continue
+        ttype = _last_type(op["tail"])
+        if not ttype:
+            continue                               # declares no result type at all: UNKNOWN, not zero
+        try:
+            dims, _dtype = _shape_dtype(ttype)
+        except ValueError:
+            # Not a tensor type: a residency handle or an accumulator, which is device state and not
+            # a program output. Recorded as zero rather than omitted, so it reads as "writes nothing"
+            # and not as "unknown".
+            out[str(name)] = 0
+            continue
+        n = 1
+        for d in dims:
+            n *= int(d)
+        out[str(name)] = n
+    return out
+
+
 def undefined_op_mnemonics(text: str) -> list[str]:
     """Mnemonics a module uses that grammar v0.1 does not define, sorted and de-duplicated."""
     known = defined_mnemonics()

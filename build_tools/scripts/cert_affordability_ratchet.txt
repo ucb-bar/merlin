@@ -4,36 +4,46 @@
 # Keyed `<target>/<capsule>`: a bare name is NOT unique -- SY_micro_model exists under two
 # targets with different costs, and a bare key let one target's accepted debt excuse the other's.
 #
-# Measured 2026-09-03: build_tools/scripts/check_cert_affordability.py --budget-s 900.
+# ⚠️ THE BUDGET THIS FILE IS TAKEN AT IS 300s, THE ONE THE CORPUS IS SIZED TO. It previously said 900,
+# which is not a bar anything in the repo uses: every conformance spec on disk declares
+# `cert_affordability.budget_s: 300.0` and sizes its members to the ~862-875 written elements that
+# affords. Running the gate at the corpus's own budget against a ratchet taken at three times it
+# reports debt growth that is really a moved bar -- 16 rows at 900s against 113 at 300s.
+#
 # Cost law from four cycle-accurate calibration runs (177.2/351.6/723.1/1682.6 s at
 # 512/1024/2048/4096 written elements): seconds = 0.20509 * output^1.0782, log-log r2 0.9976.
 # SUPERLINEAR, so a flat rate under-predicts by 16% at the top rung and 57% at the largest here.
 #
-# 304 capsules demand L3 for a predicted 123.8h,
-# down from 181.3h once the two SY_regime_* capsules were capped at L2 on this law.
-# 7 are beyond the calibrated 4,096 elements and carry 104.82h.
-#
-# TWO KINDS OF DEBT, because the remedies differ.
+# ⚠️ NOT EVERY REMEDY IS OPEN TO EVERY ROW, and the gate now says which are (`remedies` per row):
+#   - a cycle-counted performance capsule cannot be capped without deleting its measurement;
+#   - a target whose adapter registry offers only its cert tier has NO cheaper tier to cap onto, so
+#     `max_oracle_tier` and `extends` are both unavailable to it. Two of the six roster targets are
+#     in that position and they carry 45 of the over-budget rows.
+# Both keep the other two remedies: a smaller shape, or an accepted cost recorded here with a reason.
 
-# (1) CAPPABLE AT L2 (9, 105.7h): purely functional.
-# Pair each with an affordable certified sibling and cap this one via `extends` -- the split
-# conformance.py derives. The large shape is usually the representative one, so the remedy is a
-# DECLARATION, not a smaller shape.
-# Predicted total once capped: 18.1h, keeping 295 of 304.
+# (1) CAPPABLE (functional, on a target with a tier below its cert tier). Pair each with an
+# affordable certified sibling and cap this one via `extends` -- the split conformance.py derives.
+# The large shape is usually the representative one, so the remedy is a DECLARATION, not a smaller
+# shape.
 
-model/SY_model_tiny_llama    # 139,030s, 256,000 written EXTRAPOLATED
+gemmini/SY_model_tiny_llama    # 139,030s, 256,000 written EXTRAPOLATED
+atlas/AHD00_deep_epilogue_hidden_96x64x64    # 2,493s, 6,144 written EXTRAPOLATED
+atlas/AHD01_deep_epilogue_hidden_96x160x64    # 2,493s, 6,144 written EXTRAPOLATED
+atlas/SY_micro_model    # 1,610s, 4,096 written
+
+# (2) CANNOT BE CAPPED -- the target declares no tier below its cert tier, so neither
+# `max_oracle_tier` nor `extends` is a remedy it can take. Accepted cost; the alternative is a
+# smaller shape, which for a model slice means it stops being the slice it is named for.
+
 saturn_opu/OPM0_ffn_up    # 106,945s, 200,704 written EXTRAPOLATED
 saturn_opu/OPM2_attn_proj    # 78,424s, 150,528 written EXTRAPOLATED
 saturn_opu/OPM1_ffn_down    # 23,989s, 50,176 written EXTRAPOLATED
 saturn_opu/OPM3_patch_embed    # 23,989s, 50,176 written EXTRAPOLATED
-atlas/AHD00_deep_epilogue_hidden_96x64x64    # 2,493s, 6,144 written EXTRAPOLATED
-atlas/AHD01_deep_epilogue_hidden_96x160x64    # 2,493s, 6,144 written EXTRAPOLATED
-atlas/SY_micro_model    # 1,610s, 4,096 written
 saturn_opu_rvv/SY_micro_model    # 1,610s, 4,096 written
 
-# (2) CANNOT BE CAPPED (2, 0.9h): a perf capsule
-# whose gate instrument is a cycle count NEEDS a cycle-accurate tier; capping it would delete the
-# measurement it exists to take. Remedy is a smaller shape or an accepted cost.
+# (3) CANNOT BE CAPPED -- a perf capsule whose gate instrument is a cycle count NEEDS a
+# cycle-accurate tier; capping it would delete the measurement it exists to take. Remedy is a
+# smaller shape or an accepted cost.
 
 atlas/PL01_k32    # 1,610s, PL: cycle_count_and_preflight
 atlas/PL03_k64    # 1,610s, PL: cycle_count_and_preflight

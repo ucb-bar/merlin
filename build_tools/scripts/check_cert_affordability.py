@@ -22,6 +22,14 @@ that ``extends`` it and rests on its guarantee. So an over-budget capsule must e
 sibling that is certified). Declaring neither, while demanding L3 at a size nobody can run, is the
 gap this gate reports.
 
+⚠️ AND WHICH OF THOSE REMEDIES IS OPEN IS A FACT ABOUT THE CAPSULE, not a menu. Both `max_oracle_tier`
+and `extends` are a cap onto a tier BELOW the cert tier, and a target whose adapter registry offers only
+the cert tier has none -- measured on this roster, two of six targets resolve to a single tier and carry
+46 of the over-budget rows. A performance capsule whose gate instrument is a cycle count is in the same
+position for a different reason. Both keep the other two remedies (a smaller shape, an accepted cost),
+and every row therefore carries the ``remedies`` its own facts license, so a reader is never advised a
+fix the runner would refuse.
+
 Modes, mirroring the sibling gates in this directory:
 
   --target NAME        restrict to one target's capsule roots (repeatable)
@@ -156,10 +164,62 @@ def _engine_fit(target: str, cache: dict):
     return fits[0] if len(fits) == 1 else None
 
 
+#: What a row records when its target's tier ladder could not be resolved at all. NOT ``False``: "this
+#: target has no cheaper tier" and "nobody could ask" license opposite actions -- the first says the
+#: only remedies left are a smaller shape or an accepted cost, the second says go and find out. Folding
+#: the second into the first would advise an accepted cost on a target that may well have an L2 adapter.
+_TIER_UNKNOWN = "UNKNOWN"
+
+
+def _cheaper_tier(label: str, cache: dict):
+    """The tier ``label`` declares BELOW its certification tier, ``None`` if it declares none.
+
+    ⚠️ AN L2 CAP IS NOT A REMEDY EVERY TARGET HAS. The gate advises an over-budget capsule to declare
+    ``max_oracle_tier: L2`` or an ``extends`` -- but both are a cap onto a CHEAPER TIER, and a target
+    whose adapter registry offers only the cert tier has none to cap onto. Measured on this roster: two
+    of six targets resolve to a single tier, and they carry 46 of the over-budget rows. Advising them to
+    cap is advising a fix the runner would refuse, which is how a gate ends up looking ignorable.
+
+    Read from the same adapter registry the runner grades through -- the corpus's own
+    ``conformance._declared_oracle_tiers`` -- so this cannot name a tier the run does not have, and so
+    no tier name is spelled here. Unresolvable is ``_TIER_UNKNOWN``, never a cap.
+    """
+    if label not in cache:
+        try:
+            from merlin.targetgen.conformance import _declared_oracle_tiers  # noqa: PLC2701
+            tiers = [str(t) for t in (_declared_oracle_tiers(label) or ())]
+            cache[label] = tiers[0] if len(tiers) > 1 else (None if tiers else _TIER_UNKNOWN)
+        except Exception:                          # noqa: BLE001 -- unaskable is UNKNOWN, never a cap
+            cache[label] = _TIER_UNKNOWN
+    return cache[label]
+
+
+def _remedies(row: dict, cheaper) -> list:
+    """The remedies actually OPEN to an over-budget capsule, as data.
+
+    Three exist -- a smaller shape, a cap onto a cheaper tier (``max_oracle_tier`` plus an ``extends``
+    naming a certified sibling), and an accepted cost recorded in the ratchet -- and which of them a
+    given capsule may take is a FACT about that capsule, not a menu to print under every row. A
+    performance capsule whose gate instrument is a cycle count cannot be capped without deleting the
+    measurement it exists to take; a capsule on a target with no tier below its cert tier cannot be
+    capped onto anything at all. Both keep the other two.
+    """
+    out = ["smaller_shape"]
+    if row.get("needs_cycle_accurate"):
+        pass                                       # capping deletes the measurement, so not a remedy
+    elif cheaper is _TIER_UNKNOWN or cheaper == _TIER_UNKNOWN:
+        out.append("cap_onto_cheaper_tier_UNRESOLVED")
+    elif cheaper:
+        out.append("cap_onto_cheaper_tier")
+    out.append("accepted_cost")
+    return out
+
+
 def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
     root = merlin_dir() / "contract" / "capsules"
     rows, unpriceable, extends_rows = [], [], []
     fit_cache: dict = {}
+    tier_cache: dict = {}
     for cy in sorted(root.rglob("capsule.yaml")):
         try:
             doc = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
@@ -214,6 +274,13 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
                      # exists to take. Advising that remedy would be advising an impossible fix, so
                      # these are reported apart with the remedy that IS available to them.
                      "needs_cycle_accurate": "cycle" in instrument,
+                     # ⚠️ WHICH REMEDIES THIS ROW MAY ACTUALLY TAKE, not the menu. Over-budget rows were
+                     # reported as one bucket and advised to declare an L2 cap or an extends -- both of
+                     # which are a cap onto a CHEAPER TIER that two of six targets do not have. Carried
+                     # per row so the ratchet's reason can be written from what is true of that capsule.
+                     "cheaper_tier": _cheaper_tier(_target, tier_cache),
+                     "remedies": _remedies({"needs_cycle_accurate": "cycle" in instrument},
+                                           _cheaper_tier(_target, tier_cache)),
                      "path": str(cy.parent.relative_to(_REPO))})
     # ⚠️ AN UNVERIFIED `extends` IS NOT A REMEDY. A non-empty field was read as one, so a capsule
     # naming a sibling that was never certified counted as remedied -- the failure the field exists to
@@ -375,6 +442,23 @@ def main(argv=None) -> int:
             for r in rep["over_budget_needs_cycle_accurate"][:10]:
                 print(f"     ! {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
                       f"{r['capsule']}  [{r['perf_family']}: {r['instrument']}]")
+        _no_cap = [r for r in rep["over_budget"] if r.get("cheaper_tier") is None]
+        _unknown_cap = [r for r in rep["over_budget"]
+                        if r.get("cheaper_tier") == _TIER_UNKNOWN]
+        if _no_cap:
+            print(f"   over budget on a target that declares NO TIER CHEAPER than its cert tier "
+                  f"({len(_no_cap)}): `max_oracle_tier` and `extends` are both a cap onto a cheaper "
+                  f"tier, so neither is a remedy these can take — theirs are a smaller shape or an "
+                  f"accepted cost")
+            for r in _no_cap[:10]:
+                print(f"     - {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
+                      f"{_debt_key(r)}")
+            if len(_no_cap) > 10:
+                print(f"       ... and {len(_no_cap) - 10} more")
+        if _unknown_cap:
+            print(f"   over budget with an UNRESOLVED tier ladder ({len(_unknown_cap)}): nobody could "
+                  f"ask whether a cheaper tier exists, so whether a cap is available is unknown rather "
+                  f"than absent — resolve the target's adapters before accepting the cost")
         print("   measured (target, engine) basis for these prices:")
         for target, blk in sorted(rep["measured_basis"].items()):
             if not blk["engines"]:
