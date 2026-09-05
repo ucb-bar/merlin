@@ -157,6 +157,60 @@ eight per-channel DMA units and the DMA-beat counters that this trace does not c
 in `unmeasured_units`, and the idle figures differ by precisely their cycles, which is why idle from a
 trace is a bound and not a figure to compare across engines.
 
+## Why atlas and radiance cannot be promoted by a rebuild (2026-09-04)
+
+Both engines are refused under `MERLIN_GSIM_REQUIRE_RECEIPT=1` — radiance because no receipt sits
+beside it (`lineage: unrecorded`), atlas because its adoption record covers the bytes but nothing built
+them here (`adopted`, not `bound`). The obvious fix, and the one both records propose, is a
+receipt-writing rebuild from the FIRRTL already on disk. **That would not close either gap, and it
+would make the record worse.**
+
+A build receipt binds a binary to the FIRRTL it was compiled from. It answers "which bytes did I
+elaborate?", not "which hardware revision is this?". The chain only reaches hardware if the FIRRTL
+itself is attributable, and for both targets it is not:
+
+- **atlas.** `AtlasCore.fir` verifies by content as the registered artifact `atlas_core_firrtl_gsim`
+  (`eb99a31f`), and that entry says in full why the digest is all there is: *"A COMMIT CANNOT IDENTIFY
+  THIS FILE"* — it was produced under a gitignored build dir in a checkout carrying 67 uncommitted
+  changes, and the lifting worktree that made it has since been deleted. `atlas_npu` has meanwhile
+  drifted from the pinned `569b7c31` to `d6770b6d` on a different branch. Rebuilding from those bytes
+  yields a receipt whose `firrtl_sha256` traces to an artifact that is explicitly unattributable.
+- **radiance.** The emulator's source is `RadianceGsimConfig.fir`, elaborated 2026-08-14 under the
+  chipyard checkout. That checkout is now at `d45f86f4` (2026-09-02) with `generators/radiance` at
+  `82cd2e1f`, and the elaboration recorded nothing — the `.d` and `chisel.log` beside the FIRRTL carry
+  parameters, not revisions. `radiance_muon_rtl` additionally reports the checkout is a *different
+  repository* from the one the pin declares (`ucb-bar/radiance` vs `ucb-bar/chipyard.git`) at a
+  different commit. So the revision the model was elaborated from is not recoverable from what exists.
+
+Minting a receipt over either would flip a status that currently reads UNRECORDED — truthfully — to
+one that reads bound, while the hardware question stayed exactly as unanswered. That is the failure
+this convention exists to prevent, stated in its own words: *a result attributed to the wrong device is
+worse than no result, because it gets cited.* The `recipes.yaml` debt note for atlas already names the
+real fix — **re-elaborate from the pinned checkout and mint a receipt** — and that is a fresh
+elaboration whose output must then be re-qualified against Verilator, not a repackaging of the bytes on
+disk. Both remain open, deliberately.
+
+## Radiance runs, but its completion could not be observed (2026-09-04)
+
+Acceptance for radiance had never been backed by a run, so one was made: capsule `R0_gemm_fp32`, cb
+from the interface MLIR, kernel from the reference emitter (`emit_kernel_mlir`), compiled fork-free to
+rv32, fused into the rv64 SoC carrier and run on the GSIM model through `gsim_muon_adapter`. It
+executed — 386,090 cycles of real Muon dispatch/issue/writeback, exit 0, well inside an 8M cycle cap —
+and the adapter returned a pass.
+
+**The pass was vacuous.** The console carried none of the four contract markers: no `Cycles:`, no
+`finished execution`, and equally no `Timeout exceeded` and no `FINISHED: cycles=`. The emulator's own
+stats line read `dram_aw=0 dram_w=0 writes_resultpage=0 uart_chars=0` — the kernel wrote nothing to
+DRAM and printed nothing (the same silent-console symptom recorded for this target elsewhere). The
+completion test was a double negative, asking only whether the two FAILURE markers were absent, so it
+could not tell "the GPU went idle having finished" from "this harness never printed a word".
+
+The test now requires a positive witness and reports honest-unavailable without one, which is the
+standard the Verilator sibling already held (`_run_verilator` grades on the `finished execution`
+marker). Radiance L3 on GSIM therefore reports **unavailable** rather than passing — the engine and
+the toolchain are demonstrably working end to end, and what is missing is the observability to grade
+the result, which is a harness gap to close and not a verdict to keep.
+
 ## Verified end to end (2026-09-04)
 
 The claim "GSIM runs our accelerators" is only worth what a reproduction says, so both flavours were

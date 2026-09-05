@@ -314,13 +314,36 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
         #            its "FINISHED: cycles=<cap>" line.
         #   FAIL  => the verify kernel spins, the GPU never idles, and the RTL rdtime watchdog trips the
         #            "Timeout exceeded" PlusArgTimeout assertion (or the run hits the +max-cycles cap).
-        # Grade on those observables (structural string containment; no regex, no fabricated pass).
-        completed = ("Timeout exceeded" not in console
-                     and f"FINISHED: cycles={maxcyc}" not in console)
-        if not completed:
+        # Grade on those observables (structural string containment; no regex, no fabricated pass) --
+        # and grade on POSITIVE evidence, not merely on the absence of the two failure markers.
+        #
+        # MEASURED 2026-09-04, which is why this is not written as a double negative any more: a
+        # radiance capsule compiled fork-free, fused, and ran 386,090 cycles on the GSIM model, and the
+        # console carried NONE of the four markers -- no `Cycles:`, no `finished execution`, and equally
+        # no `Timeout exceeded` and no `FINISHED: cycles=`. The emulator's own stats line read
+        # `dram_aw=0 dram_w=0 writes_resultpage=0 uart_chars=0`: the kernel wrote nothing and printed
+        # nothing. The old test passed it, because a test that only checks that failure markers are
+        # ABSENT cannot tell "the GPU went idle having finished" from "this harness never printed a
+        # word". A check that could not run must not report success.
+        #
+        # The Verilator sibling has always demanded its positive marker (`_run_verilator` grades on
+        # "Muon [...] finished execution."), so this only brings the two engines to one standard.
+        failed = ("Timeout exceeded" in console or f"FINISHED: cycles={maxcyc}" in console)
+        # `_read_console` hoists marker lines out of a truncated console precisely so this search is
+        # over the whole run and not over the tail window.
+        witness = next((m for m in ("Cycles:", "finished execution") if m in console), None)
+        if failed:
             raise muon.MuonUnavailable(
                 "GSIM RTL model ran but the kernel did not reach GPU-idle completion within "
                 f"{maxcyc} cycles (self-verify failed / hung: rdtime watchdog or cycle cap). "
+                f"tail:\n{console[-600:]}")
+        if witness is None:
+            raise muon.MuonUnavailable(
+                "GSIM RTL model ran and neither failed nor completed OBSERVABLY: the console carries "
+                f"no completion witness ({('Cycles:', 'finished execution')}) and no failure marker "
+                f"either, over {console_bytes} bytes on disk. That is an unread instrument, not a "
+                "pass -- a kernel whose output never reaches the console is indistinguishable here "
+                "from one that finished, so the tier reports unavailable rather than certifying it. "
                 f"tail:\n{console[-600:]}")
         cycles = muon._cycles_from_rtl_report(console)
         return {
