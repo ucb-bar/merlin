@@ -100,18 +100,65 @@ def test_a_malformed_contract_is_refused(bad):
     assert out["verdict"] == P.REFUSED
 
 
-def test_every_shipped_differential_family_predicts_a_direction():
-    """The live profile must not carry a paired claim that no measurement could contradict."""
+def test_every_shipped_paired_family_predicts_a_direction():
+    """A PAIRED claim must name which arm it expects to win, or no measurement can contradict it.
+
+    Scoped to the families this analyzer actually decides. A differential is not always a two-arm
+    direction: the residency family's claim is that a per-unit rate DIFFERS across a residency
+    boundary, and its falsifier fires when the two rates AGREE -- so it is falsifiable without
+    predicting a winner, and demanding one of it was this test over-generalising. Requiring a key
+    the deciding analyzer does not read is not a stricter contract, it is drift: the residency
+    family carried `expected_faster` for exactly that reason and its own preflight then refused it
+    as "an acceptance contract this analyzer does not implement".
+    """
     profile = yaml.safe_load(
         (repo_root() / "merlin/contract/capsules/profiles/_perf.yaml").read_text(encoding="utf-8"))
+    checked = 0
     for sweep in profile["sweeps"]:
         performance = sweep["base"]["performance"]
         if performance.get("claim") != "DIFFERENTIAL":
             continue
         acceptance = performance.get("acceptance")
         assert isinstance(acceptance, dict), f"{sweep['id']} has no acceptance contract"
+        if str(acceptance.get("analyzer") or "").split(".")[0] != "perf_paired_claim":
+            # Decided elsewhere; that analyzer's own contract test owns its shape. What must still
+            # hold is that it declares a falsifier, i.e. that something could contradict it.
+            assert (performance.get("falsifier") or {}).get("observation"), (
+                f"{sweep['id']} is DIFFERENTIAL and names no falsifier observation")
+            continue
         predicted = acceptance.get("expected_faster")
         assert predicted, f"{sweep['id']} predicts no direction, so it cannot be wrong"
         roles = list(sweep.get("comparison_roles") or [])
         assert predicted == P.EITHER or predicted in roles, (
             f"{sweep['id']} predicts {predicted!r}, which is not one of its roles {roles}")
+        checked += 1
+    assert checked >= 3, "the direction check matched almost nothing; it has stopped testing"
+
+
+def test_a_family_may_not_declare_a_key_its_own_analyzer_does_not_implement():
+    """The drift this cost a run: a bulk edit added `expected_faster` to six families at once,
+    including one whose analyzer never reads it, and that family's preflight then refused every
+    descriptor it had."""
+    import importlib
+    import sys
+
+    profile = yaml.safe_load(
+        (repo_root() / "merlin/contract/capsules/profiles/_perf.yaml").read_text(encoding="utf-8"))
+    scripts = str(repo_root() / "merlin/experiments/gemmini_perf_bench/scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    for sweep in profile["sweeps"]:
+        acceptance = (sweep["base"]["performance"].get("acceptance") or {})
+        analyzer = str(acceptance.get("analyzer") or "")
+        module_name = analyzer.split(".")[0]
+        if not module_name:
+            continue
+        try:
+            module = importlib.import_module(module_name)
+            supported = module.supported_acceptance()
+        except Exception:  # noqa: BLE001 - an unimportable analyzer is a separate finding
+            continue
+        extra = sorted(set(acceptance) - set(supported))
+        assert not extra, (
+            f"{sweep['id']} declares {extra} which {module_name} does not implement; its preflight "
+            f"will refuse every descriptor in the family")

@@ -605,7 +605,6 @@ sweeps:
           why: the sibling reduction-depth family was refuted because every one of its depths lay inside
             the machine's overlap fill transient. This family's cheapest band starts at the same depth,
             so a band is put through the guard before any rate is quoted
-        expected_faster: resident
   axes:
     M:
     - tile
