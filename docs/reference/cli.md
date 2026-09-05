@@ -24,6 +24,7 @@ These console-scripts are installed with the package (`uv sync --all-extras`, or
 | `merlin-kernel-mine` | `merlin.mining.mine:main` |
 | `merlin-kernel-opt` | `merlin.mining.op_sweep:main` |
 | `merlin-kernel-report` | `merlin.mining.report:main` |
+| `merlin-lit-suite` | `merlin.targetgen.lit_suite:main` |
 | `merlin-liveness` | `merlin.liveness.cli:main` |
 | `merlin-onboard` | `merlin.targetgen.onboard:main` |
 | `merlin-opt` | `merlin.xdsl_dialects.opt:main` |
@@ -36,3 +37,4 @@ These console-scripts are installed with the package (`uv sync --all-extras`, or
 | `merlin-target-fetch` | `merlin.targetgen.oot_fetch:main` |
 | `merlin-target-publish` | `merlin.targetgen.publish:main` |
 | `merlin-targetgen` | `merlin.targetgen.cli:main` |
+| `merlin-verify` | `merlin.verify.cli:main` |
