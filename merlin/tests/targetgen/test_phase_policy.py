@@ -393,3 +393,72 @@ def test_verification_does_not_depend_on_how_the_corpus_was_ENUMERATED(tmp_path)
     assert forward["paired"] == backward["paired"]
     assert forward["n_verified"] == backward["n_verified"] == 1
 
+
+# ------------------------------------------------- can the family reach a verdict about its lever?
+
+def _perf(**over):
+    """A performance declaration with no contradiction and a wired analyzer."""
+    base = {"family": "operand_residency",
+            "gate": {"capacity": "at_least_two_separation_regimes"},
+            "comparand": {"demand_equal": ["operation_and_dtype"]},
+            "acceptance": {"analyzer": "merlin.perf.residency_claim.decide/1"}}
+    base.update(over)
+    return base
+
+
+def test_lever_reach_reads_the_fields_FamilyReach_ACTUALLY_declares():
+    """THE REGRESSION, pinned at the source. This predicate read ``reach.reachable`` and
+    ``reach.reason``; :class:`FamilyReach` declares neither, so every branch below the call was dead and
+    the answer was UNKNOWN whatever it was asked -- a check that could not fail, reporting a result."""
+    import dataclasses
+
+    from merlin.perf.claim_reach import FamilyReach
+
+    declared = {f.name for f in dataclasses.fields(FamilyReach)}
+    assert {"family", "satisfiable", "obstructions", "decidable_today", "notes"} <= declared
+    assert "reachable" not in declared and "reason" not in declared, (
+        "if FamilyReach grows these, revisit lever_is_reachable -- it reads the fields above directly, "
+        "and directly is the point: a reshape must raise here, not degrade to UNKNOWN")
+
+
+def test_a_wired_family_that_contradicts_nothing_is_REACHABLE():
+    v = PP.lever_is_reachable(_capsule(performance=_perf()))
+    assert v.value == PP.YES, v.reason
+    assert "analyzer" in v.reason
+
+
+def test_a_family_that_contradicts_ITSELF_cannot_reach_its_lever():
+    """The measured shape: a gate demanding at least two distinct values of a quantity the comparand
+    holds equal. No admissible measurement can both vary that quantity and hold it fixed, so the family
+    admits no pair -- and every capsule it emits still builds, measures and reports."""
+    contradicted = _perf(comparand={"demand_equal": ["separation_regime"]})
+    v = PP.lever_is_reachable(_capsule(performance=contradicted))
+    assert v.value == PP.NO, v.reason
+    assert "contradicts itself" in v.reason and "demand_equal" in v.reason
+
+
+def test_a_family_with_no_analyzer_is_UNKNOWN_and_never_NO():
+    """A missing driver is a WIRING state -- it can be added later -- while an obstruction is a
+    contradiction. Collapsing the two would condemn a family for not being finished yet."""
+    v = PP.lever_is_reachable(_capsule(performance=_perf(acceptance={})))
+    assert v.value == PP.UNKNOWN, v.reason
+    assert "analyzer" in v.reason
+
+
+def test_a_capsule_declaring_no_performance_block_names_no_lever():
+    assert PP.lever_is_reachable(_capsule()).value == PP.UNKNOWN
+
+
+def test_the_reach_report_separates_no_claim_from_an_unreachable_one():
+    """Most of a functional corpus declares no performance block, and that is not a finding -- it is
+    counted, not listed, so the listed members are the ones somebody has to act on."""
+    caps = [_capsule(name="functional"),
+            _capsule(name="wired", performance=_perf()),
+            _capsule(name="unwired", performance=_perf(acceptance={})),
+            _capsule(name="contradicted",
+                     performance=_perf(comparand={"demand_equal": ["separation_regime"]}))]
+    rep = PP.lever_reach_report(caps)
+    assert rep["n_no_performance_claim"] == 1
+    assert rep["n_reachable"] == 1 and rep["n_undecidable"] == 1 and rep["n_unreachable"] == 1
+    assert [n for names in rep["unreachable"].values() for n in names] == ["contradicted"]
+    assert "functional" not in str(rep["unreachable"]) + str(rep["undecidable"])

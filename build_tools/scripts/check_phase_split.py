@@ -83,6 +83,7 @@ def main() -> int:
     undecided: list[str] = []
     orphaned: list[str] = []
     unverified: list[str] = []
+    unreachable_levers: list[str] = []
 
     for t in targets:
         caps = []
@@ -117,6 +118,15 @@ def main() -> int:
         if anc["n_orphaned"]:
             orphaned.append(f"{t}: {anc['n_orphaned']} phase-2 member(s) rest on nothing "
                             f"({anc['orphaned'][0]['why']})")
+
+        # A phase-2 member exists to carry a performance claim, and a claim whose family cannot reach a
+        # verdict costs a certification floor to tell nobody anything. REPORTED, not gated: an
+        # unreachable lever is a finding about a declaration, and gating on the count would make
+        # deleting the family the rational response -- the trap this file already refuses for the ratio.
+        reach = PP.lever_reach_report(caps)
+        report[t]["lever_reach"] = reach
+        for why, names in reach["unreachable"].items():
+            unreachable_levers.append(f"{t}: {len(names)} member(s) ({', '.join(names[:3])}) -- {why}")
 
         for v in rep["verdicts"]:
             if v.phase in (PP.PHASE1, PP.PHASE2, PP.NEITHER) and not v.reason.strip():
@@ -162,6 +172,13 @@ def main() -> int:
         print(f"\n{head} phase-split: an unverified `extends` is a WEAKER claim than naming nobody, "
               "because an unchecked one reads as certified:")
         for line in unverified:
+            print(f"  - {line}")
+
+    if unreachable_levers:
+        print("\n[note] phase-split: a phase-2 member carries a performance claim, and a family whose "
+              "declaration contradicts itself reaches no verdict -- the member costs a certification "
+              "floor to tell nobody anything:")
+        for line in unreachable_levers[:10]:
             print(f"  - {line}")
 
     if undecided:

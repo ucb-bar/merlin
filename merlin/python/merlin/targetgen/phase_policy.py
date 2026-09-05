@@ -47,7 +47,7 @@ __all__ = [
     "YES", "NO", "UNKNOWN", "Verdict", "PhaseVerdict",
     "PHASE1", "PHASE2", "BOTH", "NEITHER", "UNDETERMINED",
     "certifiable", "priceable", "phase_of", "declared_macs", "split_report", "anchors",
-    "cycle_accurate_seen",
+    "cycle_accurate_seen", "lever_is_reachable", "lever_reach_report",
 ]
 
 #: Tri-state. ``UNKNOWN`` is not a soft ``NO``: it says the question could not be answered here, which
@@ -661,12 +661,24 @@ def worth_timing(capsule: Mapping[str, Any], *, share_of_achievable: float | Non
 
 
 def lever_is_reachable(capsule: Mapping[str, Any]) -> Verdict:
-    """Does the lever this member's family declares have an analyzer that can decide it?
+    """Can the family this member declares reach a VERDICT about its lever at all?
 
     The measured case: a family owning 92.4% of a corpus's cycles declared ``operand_residency`` while
     every action the search could take moved tiling, hoisting or barriers. It was never improved once,
     across three trials -- not because the search was weak but because nothing it could do reached the
     thing the family was about.
+
+    ⚠️ THIS FUNCTION USED TO ANSWER UNKNOWN NO MATTER WHAT IT WAS ASKED. It read ``reach.reachable`` and
+    ``reach.reason`` off a :class:`merlin.perf.claim_reach.FamilyReach`, which declares neither -- so
+    every branch below the call was dead and the predicate could not fail. That is this repo's most
+    common defect wearing this module's own vocabulary, and the reason the fields are now read DIRECTLY
+    rather than through ``getattr`` defaults: if ``FamilyReach`` is reshaped again, this raises where it
+    is called instead of quietly reporting that nothing could be decided.
+
+    The three answers are the three states ``claim_reach`` actually distinguishes, kept apart for the
+    reason it keeps them apart: an obstruction is a CONTRADICTION in the declaration (no admissible
+    measurement exists, so nothing reaches the lever), while a missing analyzer is a WIRING state (a
+    driver can be added later) and is UNKNOWN, never NO.
     """
     perf = capsule.get("performance")
     if not isinstance(perf, Mapping):
@@ -677,10 +689,49 @@ def lever_is_reachable(capsule: Mapping[str, Any]) -> Verdict:
         reach = CR.family_reach(perf)
     except Exception as exc:  # noqa: BLE001
         return Verdict(UNKNOWN, f"the family's reach could not be derived ({type(exc).__name__})")
-    ok = getattr(reach, "reachable", None)
-    why = str(getattr(reach, "reason", "") or "")
-    if ok is True:
-        return Verdict(YES, why or f"the analyzer for lever {perf.get('lever')!r} resolves")
-    if ok is False:
-        return Verdict(NO, why or f"nothing reaches lever {perf.get('lever')!r}")
-    return Verdict(UNKNOWN, why or "the family declares a lever whose reach is not established")
+    family = str(reach.family)
+    obstructions = tuple(reach.obstructions)
+    if obstructions:
+        detail = "; ".join(f"{o.get('rule')}: {o.get('detail')}" for o in obstructions)
+        return Verdict(NO, f"family {family!r} contradicts itself, so no admissible measurement reaches "
+                           f"its lever -- {detail}")
+    if not reach.satisfiable:
+        return Verdict(NO, f"family {family!r} is not satisfiable, so nothing reaches its lever")
+    if not reach.decidable_today:
+        notes = "; ".join(str(n) for n in reach.notes)
+        return Verdict(UNKNOWN, notes or (f"family {family!r} states no contradiction but names no "
+                                          "analyzer, so nothing computes its verdict from its rows "
+                                          "today -- a wiring state, not a contradiction"))
+    return Verdict(YES, f"family {family!r} states no contradiction and names the analyzer that turns "
+                        f"its evidence into a verdict")
+
+
+def lever_reach_report(capsules: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Which members' declared levers can be reached, and why the others cannot.
+
+    Reported rather than gated, and kept beside the phase split because it answers the question the
+    split leaves open: a phase-2 member exists to carry a performance claim, and a claim whose family
+    cannot reach a verdict costs a certification floor to tell nobody anything. Members declaring no
+    performance block at all are counted, not listed -- most of a functional corpus declares none, and
+    that is not a finding.
+    """
+    unreachable: dict[str, list[str]] = {}
+    undecidable: dict[str, list[str]] = {}
+    reachable, no_claim = 0, 0
+    for c in capsules:
+        name = str(c.get("name") or "")
+        if not isinstance(c.get("performance"), Mapping):
+            no_claim += 1
+            continue
+        v = lever_is_reachable(c)
+        if v.value == YES:
+            reachable += 1
+        elif v.value == NO:
+            unreachable.setdefault(v.reason, []).append(name)
+        else:
+            undecidable.setdefault(v.reason, []).append(name)
+    return {"n_reachable": reachable, "n_unreachable": sum(len(v) for v in unreachable.values()),
+            "n_undecidable": sum(len(v) for v in undecidable.values()),
+            "n_no_performance_claim": no_claim,
+            "unreachable": {k: sorted(v) for k, v in sorted(unreachable.items())},
+            "undecidable": {k: sorted(v) for k, v in sorted(undecidable.items())}}
