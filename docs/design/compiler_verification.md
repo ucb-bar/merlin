@@ -1007,6 +1007,91 @@ validation. It now names the agent-facing command, its three exit codes, and tha
 limit of the checker rather than a defect in the buffer. The seam remains granted to `merlin_verify`
 alone; arms 3/4/5 do not have it, so arm-to-arm attribution is unaffected.
 
+### 2026-09-05 (findings) — three defects the layer surfaced, none of them in the layer
+
+Pointing checks at things nobody had checked keeps finding things. Three from this pass, in
+descending severity. None is in the verification code; all are in what it was pointed at.
+
+#### 1. Two harness engines define the same readout differently, and the contract does not adjudicate
+
+`capsule_golden._apply_epilogue` ends `_narrow_to_dtype(t, attrs.get("output_dtype", "i32"))` —
+default **i32**, narrowing **any** integer width below the accumulator. `runtime/simulator.py` and
+`runtime/reference.py` end their COMMIT with `if attrs.get("output_dtype", "i8") == "i8"` — default
+**i8**, narrowing on an **exact** match. Verified by reading both lines, and by execution on one
+capsule with M,K,N = 2,32768,2 (accumulator 74192):
+
+| `output_dtype` | golden | reference | simulator | |
+|---|---|---|---|---|
+| absent | 74192 | 127 | 127 | **diverge** |
+| `i16` | 32767 | 74192 | 74192 | **diverge** |
+| `i4` / `u8` | 7 / 255 | 74192 | 74192 | **diverge** |
+| `i8` | 127 | 127 | 127 | agree |
+| `i32` | 74192 | 74192 | 74192 | agree |
+
+The divergence is value-dependent — at K=4096 the accumulator is 9047 and `i16` agrees — which is why
+it has never surfaced by accident.
+
+**Which way the error goes.** At L0 the golden is compared against `reference_outputs(agent_cb)`. A
+submission that omits `output_dtype` — legal, since nothing requires it — gets the reference's i8
+clamp applied to a result the capsule declared i32, and fails with *"your command buffer does not
+compute the declared operation"*. The failure blames the agent for a disagreement between two harness
+engines. L1 cannot catch it, because both of its sides apply the same rule. Measured: **85 of 130**
+shipped integer contraction capsules would fail L0 for a correct backend that simply omits the
+attribute.
+
+**Latent today, and the guard keeps it that way.** All 317 shipped `merlin_iface.commit` ops declare
+`output_dtype`, so nothing currently reaches it. A test now fails on any capsule added without it —
+the tripwire fires on the capsule that would arm the defect, not months later on a submission.
+
+**Not fixed here, deliberately.** The contract is silent: `command_buffer.schema.json` lists the
+attribute as an optional string with no default, and `command_buffer_abi.yaml` describes its values
+but not its absence, in a block that spells out `REQUIRED` and `no default` for the pooling attributes
+immediately below. Neither engine is wrong by the declared ABI, so picking one in shared library code
+would be inventing a target fact — and `i8` in particular is one target's `requant_output_dtype`,
+which `corpus_spec` correctly derives and never assumes. This needs a contract decision plus one
+shared narrow function, not a unilateral edit. Recorded, pinned, and left for that decision.
+
+Our own encoder mirrors the RUNTIME rule, because the runtime is what the corpus grades against. That
+is deliberate and means it inherits the divergence rather than fixing it; a test asserts the encoder
+says so, so this package does not quietly become a sixth answer to the question.
+
+#### 2. A production pass can compile the wrong function and delete the model, silently
+
+`merlin-outline-dispatches` is documented as splitting `func @forward`, and `run_dialect_plane` calls
+it with `forward=None`. With no name it takes the FIRST func with a body and rebuilds the module as
+driver-plus-kernels, discarding the rest. Reproduced directly:
+
+```
+in:   func.func private @helper(...)   +   func.func @forward(...) { linalg.matmul }
+out:  builtin.module { func.func @helper(%0) { return %0 } }
+```
+
+`@forward` — the whole model — is gone. Zero kernels, no exception, no diagnostic, and `@helper` lost
+its `private`. This appears to be the mechanism behind an incident already recorded in the obligation
+gate's own docstring: *"the boundary capstone invoked the outliner once and outlined ZERO kernels."*
+
+Pinned by `merlin/tests/data/lit/core/outline_dispatches.mlir`, which asserts what the pass ACTUALLY
+does so a fix shows up as a red test rather than landing silently. Not fixed here: `capsule_runner`
+calls it this way and is under another session's lock with runs in flight.
+
+#### 3. A cost model that misses the dominant contraction spellings
+
+`schedule_dispatch.node_cost` gates its M·N·K branch on `prov.op in ("matmul", "batch_matmul")`.
+Across captured MLIR in `out/artifacts/`: `matmul` 7453, `batch_matmul` 5540 — but also
+`convolution_im2col_matmul` **8701** and `int_matmul` **3834**, all real contractions with a K
+dimension, none matched. A 256x1024x1024 GEMM prices at 268,435,456 as `matmul` and **262,144** as
+`int_matmul` — 1024x under. For the int8 corpus every GEMM is priced as a copy, so hart balancing and
+the reported speedup are wrong for exactly the models the multicore path exists to serve.
+
+#### What the gate reads now
+
+**2 of 4** production passes verified, up from 1. The remaining two are not reachable by lit at all:
+`merlin-emit-dispatch-program` and `merlin-partition-dispatches` consume and produce Python
+dataclasses rather than IR, so there is no stdout for FileCheck to read, and `merlin-opt` already
+refuses them with that reason. Reaching 4/4 would need a text-output seam on `merlin-opt` — a code
+change, not a test. Recording them as `abstracted` would document the reason but would NOT satisfy
+`--fail-on-unverified`, and saying otherwise would overstate the coverage.
+
 ---
 
 ## 7. Reproducing what is claimed here
