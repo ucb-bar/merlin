@@ -287,42 +287,49 @@ Two consequences for corpus design:
   shape, and it will separate a kernel issuing thousands of redundant synchronisations from one
   issuing two. That second case is the 4,098-fence pathology, which is the point.
 
-## The corpus is not on the census, it is off it
+## The corpus sits on the lightest reachable class and misses the heaviest
 
-The scope gap above is stated as an empty intersection of `(M,K,N)` triples. Measured again through
-the repo's own deterministic classifier (`dse_guidance.shape_taxonomy.classify_geometry`, fixed
-documented thresholds, no clustering) against the measured census in
-`conformance/gemmini.yaml` → `shape_geometry.required`, it is worse than a sampling gap.
+⚠️ **THIS SECTION SUPERSEDES A STRONGER CLAIM MADE HERE ON 2026-09-05**, and the way it went wrong is
+worth more than the claim was. It read: *"27 of 29 OBJECTIVE members classify as `projection_like` — a
+class the census does not contain at all … the corpus is not on their manifold."* That was true of the
+census as it stood when it was measured. **The census is re-derived from the recapture store, and it
+moved the same day**: `projection_like` is now a census class with 148 regions. A finding taken against
+a derived artifact expires when that artifact is re-derived, and the only defence is to re-measure
+rather than to quote.
 
-Of the 31 `OBJECTIVE` members, 29 declare a contraction geometry. **27 of those 29 classify as
-`projection_like` — a class the census does not contain at all.** The remaining two classify as
-`wide_skinny`, which is the class the census marks **unreachable** (its heaviest shape carries a
-589,824,000-element tensor against a 262,144-element operand store).
+Measured again, after the re-derivation, with `dse_guidance.shape_taxonomy.classify_geometry` against
+`conformance/gemmini.yaml` → `shape_geometry.required`:
 
-| census class | regions | mac_fraction | OBJECTIVE members |
-|---|---:|---:|---:|
-| `gemv_like` | 2 | 0.000000 | **0** |
-| `squareish_gemm` | 58 | 0.001016 | **0** |
-| `tall_skinny` | 441 | 0.004431 | **0** |
-| `odd_tail_heavy` | 16 | 0.000413 | **0** |
-| `wide_skinny` (unreachable) | 1674 | 0.994138 | 2 |
-| *`projection_like` — not in the census* | — | — | **27** |
+| census class | regions | mac_fraction | reachable | OBJECTIVE members |
+|---|---:|---:|---|---:|
+| `wide_skinny` | 2248 | **0.821837** | **no** | 2 |
+| `squareish_gemm` | 289 | **0.094393** | yes | **0** |
+| `unknown` | 36 | 0.046123 | yes | **0** |
+| `tall_skinny` | 771 | 0.035248 | **no** | 0 |
+| `projection_like` | 148 | **0.002062** | yes | **27** |
+| `odd_tail_heavy` | 16 | 0.000327 | yes | **0** |
+| `gemv_like` | 66 | 0.000010 | **no** | 0 |
 
-**Every reachable class the captures present has zero members, and the class 27 members do land in
-is one no capture presents.** The corpus does not under-sample the models; it is not on their
-manifold.
+The gap is narrower than the superseded claim and still decisive:
 
-That classification depends on documented thresholds, so here is the same finding without any:
-**output size.** The corpus's `OBJECTIVE` members produce **256 output elements (27 of them) or 1,024
-(2 of them)**. The census's smallest class, `gemv_like`, produces 1,000, and the class carrying 99.4%
-of the MAC mass produces 32,768,000 — **32,000× larger**. Twenty-seven of twenty-nine members are
-below the smallest shape any captured model presents.
+* **Every OBJECTIVE member sits in the lightest reachable class.** All 27 classifiable members are
+  `projection_like`, which carries **0.2%** of contraction MAC mass. The heaviest reachable class,
+  `squareish_gemm` at **9.4%** — forty-six times the mass — has **none**, and neither does `unknown`
+  at 4.6%.
+* **85.7% of MAC mass is in classes the census itself marks unreachable** (`wide_skinny` 82.2%,
+  `tall_skinny` 3.5%, `gemv_like` 0.001%). The two members that do land in `wide_skinny` are there by
+  aspect ratio only, at 1,024 output elements against a class whose real shapes carry a 589,824,000-
+  element tensor.
 
-This is the same fact as the cheapness of the corpus rather than a separate one: the L3 engine's wall
-cost tracks output size, so a corpus small enough to sweep per candidate is small *because* it is
-unrepresentative. The two properties cannot be separated by tuning the member list; only a member
-whose cost is carried by something other than an L3 measurement escapes it, which is what composed
-bands are for.
+So the corpus is on the manifold, at the one reachable point that matters least. Optimising every
+member perfectly moves a share of model time bounded by the mass of the class they occupy.
+
+The threshold-free version of the same fact is **output size**: the OBJECTIVE members produce 256 or
+1,024 elements, while the three geometry members the synthesizer actually mints for the reachable
+classes produce 8,960, 49,152 and 150,528. This is the same fact as the corpus's cheapness rather than
+a separate one — the L3 engine's wall cost tracks output size, so a corpus small enough to sweep per
+candidate is small *because* it is unrepresentative, and the two cannot be separated by tuning the
+member list.
 
 ## The cost model on this branch cannot price a census-anchored member
 
