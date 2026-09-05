@@ -86,7 +86,18 @@ class Encoder:
         return self.smt.DeclareFunOp(self.smt.BitVectorType(width), f"{prefix}_{self._n}").results[0]
 
     def const(self, value: int, width: int):
-        return self.smt.BvConstantOp(self.smt.BitVectorAttr(value, width)).results[0]
+        """A ``bv<width>`` literal. Accepts SIGNED values and stores the two's complement.
+
+        ``BitVectorAttr`` requires an unsigned value in ``[0, 2**width)``, but the constants this
+        encoder needs are naturally signed — the i8 saturation bounds are -128 and 127. Wrapping here
+        keeps every caller in the sign domain it actually reasons about, instead of making each one
+        remember to convert.
+        """
+        if not -(2 ** (width - 1)) <= value < 2 ** width:
+            raise UnsupportedSemantics(
+                f"constant {value} is not representable in {width} bits")
+        return self.smt.BvConstantOp(
+            self.smt.BitVectorAttr(value & ((1 << width) - 1), width)).results[0]
 
     def symbolic_tensor(self, name: str, rows: int, cols: int, elem_width: int,
                         acc_width: int = 32) -> Tensor:
@@ -193,6 +204,82 @@ class Encoder:
                     acc = wide if acc is None else self.smt.BVAddOp(acc, wide).results[0]
                 out[(m, n)] = acc if acc is not None else self.const(0, acc_width)
         return Tensor(lhs.rows, rhs.cols, acc_width, out)
+
+    # -- readout epilogue, mirroring merlin.runtime.tensor exactly -------------------------------
+    #    Every method below has a counterpart in the reference engine, and the refinement check is
+    #    only meaningful if they agree bit for bit. Where they could drift, the divergence is named.
+
+    def _slt(self, a, b):
+        from .smt_ops import BVCmpOp
+
+        return BVCmpOp.get("slt", a, b).results[0]
+
+    def _ite(self, cond, then_v, else_v):
+        return self.smt.IteOp(cond, then_v, else_v).results[0]
+
+    def relu(self, t: Tensor) -> Tensor:
+        """``x if x > 0 else 0`` — ``Tensor.relu`` (tensor.py:182).
+
+        The reference uses a STRICT ``>``; ``max(x, 0)`` agrees on every value including 0, so this
+        encodes as ``ite(x < 0, 0, x)``.
+        """
+        zero = self.const(0, t.width)
+        out = {k: self._ite(self._slt(v, zero), zero, v) for k, v in t.elems.items()}
+        return Tensor(t.rows, t.cols, t.width, out)
+
+    def requant(self, t: Tensor, shift: int) -> Tensor:
+        """``(x + (1 << (shift-1))) >> shift`` — ``Tensor.requant`` (tensor.py:141), round-half-up.
+
+        Python's ``>>`` on a negative int is an arithmetic floor shift, which is exactly
+        ``smt.bv.ashr``; a logical shift here would silently disagree on negatives.
+        ``shift <= 0`` is the identity, as in the reference.
+        """
+        if shift <= 0:
+            return t
+        half = self.const(1 << (shift - 1), t.width)
+        amt = self.const(shift, t.width)
+        out = {}
+        for k, v in t.elems.items():
+            biased = self.smt.BVAddOp(v, half).results[0]
+            out[k] = self.smt.BVAShrOp(biased, amt).results[0]
+        return Tensor(t.rows, t.cols, t.width, out)
+
+    def add_bias(self, t: Tensor, bias: Tensor) -> Tensor:
+        """``out[i][j] += bias[j]`` — ``Tensor.add_bias`` (tensor.py:129).
+
+        The reference requires the bias to be a length-``n`` vector; anything else is a shape error
+        there, so it is refused here rather than broadcast in some other way.
+        """
+        n = t.cols
+        flat = {}
+        for (r, c), v in bias.elems.items():
+            flat[r * bias.cols + c] = v
+        if len(flat) != n:
+            raise UnsupportedSemantics(
+                f"bias has {len(flat)} elements but the accumulator has {n} columns; the reference "
+                f"engine requires a length-{n} bias vector")
+        out = {}
+        for (r, c), v in t.elems.items():
+            b = flat[c]
+            if bias.width != t.width:
+                b = self.sign_extend(b, bias.width, t.width)
+            out[(r, c)] = self.smt.BVAddOp(v, b).results[0]
+        return Tensor(t.rows, t.cols, t.width, out)
+
+    def saturate(self, t: Tensor, lo: int, hi: int, width: int) -> Tensor:
+        """Clamp to ``[lo, hi]`` and narrow — ``Tensor.to_i8`` / ``_i8_clamp`` (tensor.py:305).
+
+        The clamp happens at the ACCUMULATOR width (so the comparisons are meaningful) and the result
+        keeps that width: narrowing the bitvector would need an extract op, and the clamped value is
+        already exactly representable, so the extra width is harmless and the terms stay comparable.
+        """
+        lo_c, hi_c = self.const(lo, t.width), self.const(hi, t.width)
+        out = {}
+        for k, v in t.elems.items():
+            v = self._ite(self._slt(v, lo_c), lo_c, v)
+            v = self._ite(self._slt(hi_c, v), hi_c, v)
+            out[k] = v
+        return Tensor(t.rows, t.cols, t.width, out)
 
     def any_differs(self, a: Tensor, b: Tensor):
         """A boolean term: the two tensors disagree somewhere.
