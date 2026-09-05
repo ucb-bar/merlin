@@ -210,6 +210,9 @@ def main(argv=None) -> int:
     ap.add_argument("--fail-on-unresolved", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--advisory", action="store_true",
                     help="print the findings and exit 0 (inventory mode; NOT for a hook)")
+    ap.add_argument("--stop-hook", action="store_true",
+                    help="session Stop hook: JSON-only on stdout, blocks via {'decision': 'block'} "
+                         "rather than the exit status")
     a = ap.parse_args(argv)
 
     rep = audit(tuple(a.target or ()))
@@ -217,6 +220,25 @@ def main(argv=None) -> int:
     new = [r for r in rep["weakened"] if f"{r['target']}/{r['capsule']}" not in ratchet]
     hand_all = [r for r in rep["weakened"] if r["hand_authored"]]
     hand_new = [r for r in new if r["hand_authored"]]
+
+    if a.stop_hook:
+        # A Claude Code Stop hook BLOCKS through {"decision": "block"} on stdout; a non-zero exit is a
+        # NON-blocking error there, and stdout must carry nothing but the JSON.
+        if rep["unresolved_targets"]:
+            print(json.dumps({"decision": "block", "reason":
+                              f"mesh assertion: {len(rep['unresolved_targets'])} target(s) have no "
+                              f"resolvable contract, so their capsules established nothing: "
+                              + ", ".join(sorted(rep["unresolved_targets"]))}))
+        elif new:
+            print(json.dumps({"decision": "block", "reason":
+                              f"{len(new)} capsule(s) decline must_accelerate on work their target's "
+                              f"contract admits, with no not_asserted_reason "
+                              f"({len(hand_new)} hand-authored):\n- "
+                              + "\n- ".join(f"{r['target']}/{r['capsule']} "
+                                            f"({r['family']}/{r['dtype']})" for r in new[:40])}))
+        else:
+            print(json.dumps({}))
+        return 0  # stop-hook signals via JSON, not exit code
 
     if a.json:
         print(json.dumps({"report": rep, "new": new, "n_ratchet_entries": len(ratchet)}, indent=2))

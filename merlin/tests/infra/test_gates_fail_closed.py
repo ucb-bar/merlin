@@ -186,3 +186,12 @@ def test_layout_tracked_refuses_rather_than_returning_an_empty_work_list(monkeyp
     for staged in (True, False):
         with pytest.raises((OSError, subprocess.CalledProcessError)):
             gate._tracked(repo_root(), staged)
+
+
+def test_the_mesh_gate_can_block_a_session():
+    """It is routable into the Stop hook, where a BLOCK is JSON on stdout, not a non-zero exit."""
+    clean = _run("check_mesh_assertion_not_weakened.py", ["--stop-hook"])
+    assert clean.returncode == 0 and json.loads(clean.stdout.strip()) == {}
+    blocked = _run("check_mesh_assertion_not_weakened.py", ["--stop-hook", "--no-ratchet"])
+    assert blocked.returncode == 0, "a Stop hook signals via JSON, not the exit code"
+    assert json.loads(blocked.stdout.strip())["decision"] == "block"
