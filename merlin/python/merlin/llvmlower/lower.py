@@ -7,6 +7,7 @@ linalg-on-tensors text
 """
 from __future__ import annotations
 
+import os as _os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -44,7 +45,8 @@ def lower_model(mlir_text: str, workdir: str | Path,
                 vectorize: bool = False, transform_schedule: str | None = None,
                 hoist_static_allocs: bool = True, parallel: bool = False,
                 features: "frozenset[str] | None" = None,
-                parallel_harts: int | None = None) -> LowerResult:
+                parallel_harts: int | None = None,
+                static_arena: bool | None = None) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
     ``textual=True`` uses the pure-text preprocessing (no xDSL round-trip) —
@@ -56,6 +58,11 @@ def lower_model(mlir_text: str, workdir: str | Path,
 
     ``parallel_harts=N`` layers an outer OpenMP-parallel loop under that RVV schedule, so
     the object is BOTH vectorized and multicore (the multi-hart Saturn / Zephyr SMP path).
+
+    ``static_arena=True`` (or ``MERLIN_STATIC_ARENA=1``) binds the emitted per-intermediate
+    ``malloc``/``free`` pairs to one statically planned arena -- see
+    :mod:`merlin.llvmlower.arena_bind`. Default OFF: unflagged, the emitted ``.ll`` is byte-identical
+    to the baseline, and the report of what was bound lands in ``stats["static_arena"]``.
     """
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
@@ -88,6 +95,17 @@ def lower_model(mlir_text: str, workdir: str | Path,
         except Exception:                       # noqa: BLE001 -- an exotic constructor: keep the original
             raise exc
         raise enriched from exc
+    if static_arena is None:
+        static_arena = bool(_os.environ.get("MERLIN_STATIC_ARENA"))
+    if static_arena:
+        # Bind the emitted heap allocations to one statically planned arena. Kept behind a flag, and
+        # applied HERE rather than inside the pass pipeline, because this is the last point the
+        # measured whole-model path still passes through as text: `mining.k1.build_k1_binary` calls
+        # `lower_model_file` and then compiles the `.ll` it gets back. With the flag off nothing runs
+        # and the `.ll` is byte-identical to the frozen baseline.
+        from .arena_bind import bind_arena
+        ll_text, arena_report = bind_arena(ll_text)
+        stats["static_arena"] = arena_report.to_dict()
     ll_path = work / "model.ll"
     ll_path.write_text(ll_text, encoding="utf-8")
 
@@ -106,10 +124,11 @@ def lower_model_file(mlir_path: str | Path, workdir: str | Path,
                      hoist_static_allocs: bool = True,
                      parallel: bool = False,
                      features: "frozenset[str] | None" = None,
-                     parallel_harts: int | None = None) -> LowerResult:
+                     parallel_harts: int | None = None,
+                     static_arena: bool | None = None) -> LowerResult:
     return lower_model(Path(mlir_path).read_text(encoding="utf-8"), workdir, targets,
                        textual=textual, vectorize=vectorize,
                        transform_schedule=transform_schedule,
                        hoist_static_allocs=hoist_static_allocs,
                        parallel=parallel, features=features,
-                       parallel_harts=parallel_harts)
+                       parallel_harts=parallel_harts, static_arena=static_arena)

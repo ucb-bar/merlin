@@ -19,6 +19,11 @@ consumes anything like it today: the C replay engine this docstring used to name
 ``merlin/runtime/c/merlin_program.c``, DOES NOT EXIST in the tree, and :func:`build_program` itself has
 no caller outside its tests. Saying otherwise is what makes an unwired planner look wired. See
 ``docs/design/static_arena_wiring.md`` for what the K1 path would need before it could call this.
+
+The arena the measured whole-model build actually gets does NOT come through here. It is planned
+directly over the emitted LLVM IR by :mod:`merlin.llvmlower.arena_bind`, which shares this module's
+placement core (``arena_plan.pack_disjoint``) but derives liveness from the ``malloc``/``free`` pairs
+the build emits rather than from a dispatch DAG.
 Default-off and additive — the existing monolithic/outlined paths are untouched.
 """
 from __future__ import annotations

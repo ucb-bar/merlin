@@ -28,7 +28,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .faults import CORPUS, Fault
+from .faults import CB_CORPUS, CORPUS, Fault
 
 LAYERS = ("static", "formal", "dynamic")
 
@@ -147,6 +147,112 @@ def _dynamic(interface_module, tc, golden) -> tuple[bool, str]:
     return False, "clean", ""
 
 
+def _compilation(interface_module, cb, timeout_ms: int) -> tuple[bool, str, str]:
+    """Does the emitted command buffer compute what the interface program specified?
+
+    The layer that covers a compiler we did not write. Like the formal layer above, an encoder that
+    cannot model something the buffer uses ABSTAINS; reporting our own incompleteness as the
+    backend's defect is the one outcome that would make this worse than not checking.
+    """
+    from .refine import UnsupportedSemantics, validate_compilation
+
+    try:
+        v = validate_compilation(interface_module, cb, timeout_ms=timeout_ms)
+    except UnsupportedSemantics as exc:
+        return False, "abstained", f"encoder cannot model this buffer: {exc}"[:160]
+    if v.refuted:
+        return True, "detected", "refuted with a counterexample"
+    if v.status == "unknown":
+        return False, "abstained", f"solver returned unknown within {timeout_ms} ms (NOT a miss)"
+    return False, "clean", "unsat"
+
+
+def _dynamic_cb(cb, golden) -> tuple[bool, str, str]:
+    """Simulate a command buffer directly and compare against the independent golden."""
+    from merlin.runtime import simulate
+
+    try:
+        got = simulate(cb)["outputs"]
+    except Exception as exc:
+        return True, "detected", f"simulation failed: {type(exc).__name__}"
+    if got != golden:
+        return True, "detected", "outputs differ from the golden"
+    return False, "clean", ""
+
+
+def run_cb_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
+                  timeout_ms: int = 60_000,
+                  faults: tuple[Fault, ...] = CB_CORPUS) -> dict[str, Any]:
+    """Run the COMMAND-BUFFER fault corpus past the layers that can see a command buffer.
+
+    Separate from :func:`run_matrix` because the subject is different. ``run_matrix`` mutates the
+    interface module — OUR compiler's output — and asks which layers notice. This mutates the
+    command buffer, which is what a BACKEND emits, so it measures the layers that can see a compiler
+    we did not write: the compilation check and the numeric golden.
+
+    The static layer is absent on purpose rather than reported as a miss: its checks are FileCheck
+    patterns over MLIR text, and a command buffer is JSON. A layer that cannot look at the artifact
+    at all is not a layer that looked and found nothing.
+    """
+    import copy
+
+    from merlin.runtime import simulate
+
+    clean_iface, tc = _lower_to_interface(m, k, n, reuse)
+    clean_cb = _finish_lowering(clean_iface, tc)
+    golden = simulate(clean_cb)["outputs"]
+
+    layers = ("compilation", "dynamic")
+
+    def _run(cb):
+        out = []
+        t0 = time.time()
+        hit, outcome, diag = _compilation(clean_iface, cb, timeout_ms)
+        out.append((("compilation"), hit, outcome, diag, time.time() - t0))
+        t0 = time.time()
+        hit, outcome, diag = _dynamic_cb(cb, golden)
+        out.append((("dynamic"), hit, outcome, diag, time.time() - t0))
+        return out
+
+    baseline = [Detection("<none: unmutated>", layer, hit, secs, diag, outcome)
+                for layer, hit, outcome, diag, secs in _run(copy.deepcopy(clean_cb))]
+
+    rows: list[Detection] = []
+    applicable: list[Fault] = []
+    inapplicable: list[dict[str, str]] = []
+    for fault in faults:
+        cb = copy.deepcopy(clean_cb)
+        try:
+            fault.mutate(cb)
+        except Exception as exc:
+            # The mutation does not apply at this shape (e.g. no requant stage to drop). That is a
+            # property of the program, not a detection result, so it is recorded and excluded from
+            # the denominator rather than counted as a fault nothing caught.
+            inapplicable.append({"fault": fault.name, "reason": f"{type(exc).__name__}: {exc}"[:160]})
+            continue
+        applicable.append(fault)
+        for layer, hit, outcome, diag, secs in _run(cb):
+            rows.append(Detection(fault.name, layer, hit, secs, diag, outcome))
+
+    return {
+        "schema": "verify_cb_detection_matrix/v1",
+        "subject": "the command buffer a backend emits",
+        "shape": {"m": m, "k": k, "n": n, "reuse": reuse},
+        "timeout_ms": timeout_ms,
+        "layers": list(layers),
+        "layers_not_applicable": {
+            "static": "FileCheck patterns match MLIR text; a command buffer is JSON, so this layer "
+                      "cannot look at the artifact at all — recorded as inapplicable, not as a miss",
+            "rtl": "needs a simulator/hardware this harness does not have; reported, not assumed",
+        },
+        "false_positives": [asdict(d) for d in baseline],
+        "detections": [asdict(d) for d in rows],
+        "faults": [{"name": f.name, "summary": f.summary, "expected": list(f.expected)}
+                   for f in applicable],
+        "faults_inapplicable": inapplicable,
+    }
+
+
 def run_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
                timeout_ms: int = 60_000, faults: tuple[Fault, ...] = CORPUS) -> dict[str, Any]:
     """Run the corpus past every layer. Returns a JSON-serializable record."""
@@ -231,8 +337,14 @@ def render(record: dict[str, Any]) -> str:
     for d in record["false_positives"]:
         if d["detected"]:
             out.append(f"!! FALSE POSITIVE: {d['layer']} flagged the unmutated program")
-    for layer, why in record["layers_not_measured"].items():
+    for layer, why in (record.get("layers_not_measured") or {}).items():
         out.append(f"not measured: {layer} -- {why}")
+    # A layer that CANNOT look at this artifact is a different statement from one that looked and
+    # found nothing, and from one we simply did not run. All three are spelled out.
+    for layer, why in (record.get("layers_not_applicable") or {}).items():
+        out.append(f"not applicable: {layer} -- {why}")
+    for item in (record.get("faults_inapplicable") or []):
+        out.append(f"fault not applicable at this shape: {item['fault']} -- {item['reason']}")
     return "\n".join(out)
 
 

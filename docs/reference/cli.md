@@ -37,4 +37,4 @@ These console-scripts are installed with the package (`uv sync --all-extras`, or
 | `merlin-target-fetch` | `merlin.targetgen.oot_fetch:main` |
 | `merlin-target-publish` | `merlin.targetgen.publish:main` |
 | `merlin-targetgen` | `merlin.targetgen.cli:main` |
-| `merlin-verify` | `merlin.verify.evaluate:main` |
+| `merlin-verify` | `merlin.verify.cli:main` |

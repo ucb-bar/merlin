@@ -31,6 +31,29 @@ from .smt_semantics import Encoder, Tensor, UnsupportedSemantics
 #: Opcodes this encoder has a bit-exact integer definition for.
 ENCODABLE_OPCODES = frozenset({
     "RES_PACK", "MATMUL", "MATMUL_RESIDENT", "COMMIT", "EVICT",
+    "VECTOR_MAP", "BIAS_ADD", "VREDUCE", "ATTENTION_QK", "ATTENTION_PV", "MOVEMENT",
+})
+
+#: Integer opcodes that ARE encodable in principle but are not built here yet. Named with the reason
+#: rather than left to fall through to "unknown": a reader deciding whether to extend the encoder
+#: needs to know the difference between "we cannot" and "we have not".
+DEFERRED_OPCODES = {
+    "CONV2D": "encodable in principle — the im2col geometry is concrete, so it unrolls — but it needs "
+              "the reference's index map factored out so the two engines cannot disagree about a "
+              "padding edge; not built",
+    "BATCHED_MATMUL": "encodable in principle as a per-batch loop of 2-D matmuls, but this encoder's "
+                      "Tensor is rank-2 and would need a batch layer; not built",
+}
+
+#: Opcodes the reference simulator itself implements in float, so a bit-exact check would be the
+#: wrong specification rather than merely an expensive one. Named individually so an abstention can
+#: say WHICH class it fell into instead of "unknown".
+FLOAT_ONLY_OPCODES = frozenset({"RMSNORM", "SOFTMAX", "GELU", "SOFTCAP", "ROPE"})
+
+#: In the command-buffer schema's opcode enum but with no branch in ``simulate`` at all — the
+#: reference raises ``unknown opcode`` on them, so there is nothing here to mirror.
+UNIMPLEMENTED_OPCODES = frozenset({
+    "LAYERNORM", "GEGLU", "ATTENTION_FULL", "CONV", "MATMUL_BATCHED",
 })
 
 #: Opcodes that provably cannot change a committed value, so skipping them is sound rather than
@@ -121,16 +144,26 @@ class CommandBufferEncoder:
                     self.resident.pop(operands.get("handle", ""), None)
                 continue
             if op not in ENCODABLE_OPCODES:
-                raise UnsupportedSemantics(
-                    f"command {i} uses opcode {op!r}, which this encoder has no definition for. "
-                    f"Encodable: {sorted(ENCODABLE_OPCODES)}. Refusing rather than skipping it — a "
-                    f"skipped command silently changes what the query is about.")
+                raise UnsupportedSemantics(_why_not_encodable(i, op))
             if op == "RES_PACK":
                 self._res_pack(operands, attrs)
             elif op in ("MATMUL", "MATMUL_RESIDENT"):
                 self._matmul(operands)
             elif op == "COMMIT":
                 dst, value = self._commit(operands, attrs)
+                committed[dst] = value
+            elif op == "VECTOR_MAP":
+                self._vector_map(operands, attrs)
+            elif op == "VREDUCE":
+                self._vreduce(operands, attrs)
+            elif op == "BIAS_ADD":
+                dst, value = self._bias_add(operands, attrs)
+                committed[dst] = value
+            elif op in ("ATTENTION_QK", "ATTENTION_PV"):
+                dst, value = self._attention(op, operands, attrs)
+                committed[dst] = value
+            elif op == "MOVEMENT":
+                dst, value = self._movement(operands, attrs)
                 committed[dst] = value
 
         declared = list(self.cb.get("outputs") or ())
@@ -193,6 +226,132 @@ class CommandBufferEncoder:
         self.env[dst] = t
         return dst, t
 
+    def _vector_map(self, operands: dict, attrs: dict) -> None:
+        """simulator.py:194 — elementwise combine, then an optional activation."""
+        combine = str(attrs.get("combine", "add"))
+        dst = operands["dst"]
+        if combine == "identity":
+            t = self._get(operands["lhs"])
+        else:
+            a, b = self._get(operands["lhs"]), self._get(operands["rhs"])
+            if (a.rows, a.cols) != (b.rows, b.cols):
+                raise UnsupportedSemantics(
+                    f"VECTOR_MAP operands differ in shape: {(a.rows, a.cols)} vs {(b.rows, b.cols)}")
+            if combine == "add":
+                t = self._elementwise(a, b, self.enc.smt.BVAddOp)
+            elif combine == "mul":
+                t = self._elementwise(a, b, self.enc.smt.BVMulOp)
+            else:
+                raise UnsupportedSemantics(
+                    f"VECTOR_MAP combine {combine!r} has no encoding here "
+                    f"(the reference defines identity/add/mul)")
+        for stage in (attrs.get("activation") or []):
+            if str(stage) != "relu":
+                raise UnsupportedSemantics(
+                    f"VECTOR_MAP activation {stage!r} has no encoding here "
+                    f"(the reference defines relu only)")
+            t = self.enc.relu(t)
+        self.env[dst] = t
+
+    def _vreduce(self, operands: dict, attrs: dict) -> None:
+        """simulator.py:505 — total sum to a length-1 tensor.
+
+        The reference keeps the SOURCE dtype label while summing in unbounded ints, so a mod-2^w sum
+        at the source width would disagree with it for any non-trivial element count. The sum is
+        therefore taken at the accumulator width, with the same overflow bound the contraction uses.
+        """
+        rop = str(attrs.get("op", "sum"))
+        if rop != "sum":
+            raise UnsupportedSemantics(
+                f"VREDUCE op {rop!r} has no encoding here (the reference defines sum only)")
+        src = self._get(operands["src"])
+        n = src.rows * src.cols
+        bound = safe_k_bound(src.width, self.acc_width)
+        if n > bound:
+            raise UnsupportedSemantics(
+                f"VREDUCE over {n} elements exceeds the overflow-free bound {bound} for "
+                f"{src.width}-bit elements in an i{self.acc_width} accumulator")
+        acc = None
+        for (r, c) in sorted(src.elems):
+            term = self.enc.sign_extend(src.at(r, c), src.width, self.acc_width)
+            acc = term if acc is None else self.enc.smt.BVAddOp(acc, term).results[0]
+        self.env[operands["dst"]] = Tensor(1, 1, self.acc_width,
+                                           {(0, 0): acc if acc is not None
+                                            else self.enc.const(0, self.acc_width)})
+
+    def _bias_add(self, operands: dict, attrs: dict) -> tuple[str, Tensor]:
+        """simulator.py:218 — the UNFUSED per-column add. Note the default dtype is i32, not i8."""
+        src, dst = operands["src"], operands["dst"]
+        t = self.enc.add_bias(self._get(src), self._get(self._bias_name(operands, attrs, dst)))
+        t = self._narrow(t, attrs, default="i32")
+        self.env[dst] = t
+        return dst, t
+
+    def _attention(self, op: str, operands: dict, attrs: dict) -> tuple[str, Tensor]:
+        """simulator.py:321 / :356 — the two attention matmuls, default dtype i32.
+
+        QK contracts over the trailing head dim of BOTH operands, so K is transposed first; PV is a
+        plain matmul. Getting that transpose wrong would silently compare the wrong contraction, so
+        it mirrors the reference's own index expression.
+        """
+        if op == "ATTENTION_QK":
+            q, k, dst = self._get(operands["q"]), self._get(operands["k"]), operands["dst"]
+            if q.cols != k.cols:
+                raise UnsupportedSemantics(
+                    f"ATTENTION_QK head-dim mismatch: {(q.rows, q.cols)} vs {(k.rows, k.cols)}")
+            k_t = Tensor(k.cols, k.rows, k.width,
+                         {(j, i): k.at(i, j) for i in range(k.rows) for j in range(k.cols)})
+            t = self.enc.matmul(q, k_t, acc_width=self.acc_width)
+        else:
+            pt, vt, dst = self._get(operands["p"]), self._get(operands["v"]), operands["dst"]
+            if pt.cols != vt.rows:
+                raise UnsupportedSemantics(
+                    f"ATTENTION_PV key-count mismatch: {(pt.rows, pt.cols)} vs {(vt.rows, vt.cols)}")
+            t = self.enc.matmul(pt, vt, acc_width=self.acc_width)
+        for stage in (attrs.get("epilogue") or []):
+            stage = str(stage)
+            if stage == "requant":
+                t = self.enc.requant(t, int(attrs.get("requant_shift", self.default_shift)))
+            elif stage == "relu":
+                t = self.enc.relu(t)
+            else:
+                raise UnsupportedSemantics(
+                    f"{op} epilogue stage {stage!r} has no exact integer encoding here "
+                    f"(the reference accepts acc_scale/requant/relu; acc_scale is float)")
+        t = self._narrow(t, attrs, default="i32")
+        self.env[dst] = t
+        return dst, t
+
+    def _movement(self, operands: dict, attrs: dict) -> tuple[str, Tensor]:
+        """simulator.py:485 — a load/store round-trip that carries values UNCHANGED.
+
+        Deliberately no clamp and no requantize: only the container dtype widens. A movement
+        capsule's whole point is that the data survives the trip bit-for-bit, so narrowing here would
+        refute exactly the programs it exists to check.
+        """
+        if "src" not in operands:
+            raise UnsupportedSemantics("MOVEMENT needs operands src/dst")
+        src, dst = operands["src"], operands["dst"]
+        t = self._get(src)
+        self.env[dst] = t
+        return dst, t
+
+    def _elementwise(self, a: Tensor, b: Tensor, op_cls) -> Tensor:
+        out = {k: op_cls(v, b.elems[k]).results[0] for k, v in a.elems.items()}
+        return Tensor(a.rows, a.cols, a.width, out)
+
+    def _narrow(self, t: Tensor, attrs: dict, *, default: str) -> Tensor:
+        """The readout narrow, mirroring the reference's rule: an EXACT "i8" match, nothing else.
+
+        The default differs per opcode in the reference (COMMIT defaults to i8, the vector and
+        attention family to i32), so it is passed in rather than assumed. Mirroring either wrongly
+        would refute a correct backend.
+        """
+        if str(attrs.get("output_dtype", default)) == "i8":
+            lo, hi = _SIGNED_RANGE["i8"]
+            return self.enc.saturate(t, lo, hi, 8)
+        return t
+
     # -- helpers ---------------------------------------------------------------------------------
     def _bias_name(self, operands: dict, attrs: dict, dst: str) -> str:
         """Mirror ``commandbuffer.bias_tensor_name``: attributes first, then operands, else raise."""
@@ -211,6 +370,24 @@ class CommandBufferEncoder:
             raise UnsupportedSemantics(
                 f"command references tensor {name!r}, which is neither declared nor produced by an "
                 f"earlier command") from None
+
+
+def _why_not_encodable(index: int, op: str) -> str:
+    """Say WHICH class an unencodable opcode fell into — 'unknown' is not an actionable diagnostic."""
+    if op in FLOAT_ONLY_OPCODES:
+        return (f"command {index} uses {op!r}, which the reference simulator itself computes in "
+                f"float. A bit-exact check on a float datapath is the wrong specification, not "
+                f"merely an expensive one: reassociation is a legal backend choice, so it would "
+                f"reject correct backends. Abstaining.")
+    if op in DEFERRED_OPCODES:
+        return (f"command {index} uses {op!r}: {DEFERRED_OPCODES[op]}. This is a gap in THIS encoder, "
+                f"not a defect in the buffer.")
+    if op in UNIMPLEMENTED_OPCODES:
+        return (f"command {index} uses {op!r}, which is in the command-buffer schema's enum but has "
+                f"no branch in the reference simulator at all — there is nothing here to mirror.")
+    return (f"command {index} uses opcode {op!r}, which this encoder has no definition for. "
+            f"Encodable: {sorted(ENCODABLE_OPCODES)}. Refusing rather than skipping it — a skipped "
+            f"command silently changes what the query is about.")
 
 
 def _width_of(dtype: str, name: str) -> int:

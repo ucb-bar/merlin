@@ -2,10 +2,12 @@
 
 Rebuilds the function body in the interface dialect: for each weight selected for
 residency, emit one ``interface.resident_pack``; rewrite each matmul against it as
-``interface.matmul`` -> ``interface.commit`` (no epilogue stages for the plain
-repeated-RHS workload; raw i32 accumulations are committed as output_dtype i32); evict
-after the last use. Contract/schedule decoration is consumed (dropped). The cross-op
-analyses (use-after-evict, place legality, discharged checks) run on the result.
+``interface.matmul`` -> ``interface.commit`` (raw i32 accumulations are committed as
+output_dtype i32); evict after the last use. A bias-add consumer of a contraction is
+absorbed into that contraction's commit as a ``bias_add`` epilogue stage naming the bias
+tensor; every other epilogue shape stays unaccounted and is refused. Contract/schedule
+decoration is consumed (dropped). The cross-op analyses (use-after-evict, place legality,
+discharged checks) run on the result.
 """
 from __future__ import annotations
 
@@ -132,6 +134,169 @@ def _is_vector_lane_op(op) -> bool:
     matmuls, so every mixed payload looked like a dropped computation.
     """
     return op.name in _ELEMENTWISE_COMBINE or op.name == "linalg.max"
+
+
+def _iterators_all_parallel(op) -> bool:
+    """Every iterator of a ``linalg.generic`` is ``parallel`` (no reduction dimension)."""
+    from xdsl.dialects.linalg.attrs import IteratorType
+
+    its = list(op.iterator_types)
+    return bool(its) and all(getattr(a, "data", None) is IteratorType.PARALLEL for a in its)
+
+
+def _is_trailing_broadcast(amap, rank: int) -> bool:
+    """``(d0..d{rank-1}) -> (d{rank-1})``: the map that indexes a bias by the output's LAST axis.
+
+    Deliberately narrow. The engine's bias stage is ``Tensor.add_bias``, which adds a length-n
+    vector to every row of an (m, n) tensor — a PER-COLUMN bias. A row bias
+    (``(d0, d1) -> (d0)``) is a different computation that no engine here implements, so it must
+    not match: matching it would emit a `bias_add` the runtime would execute against the wrong
+    axis (or reject), which is exactly the fail-open this stage exists to prevent.
+    """
+    from xdsl.ir.affine import AffineDimExpr
+
+    if amap.num_dims != rank or amap.num_symbols:
+        return False
+    res = amap.results
+    return (len(res) == 1 and isinstance(res[0], AffineDimExpr)
+            and res[0].position == rank - 1)
+
+
+def _adds_its_two_inputs(op) -> bool:
+    """The generic's body is exactly ``linalg.yield(add(%in0, %in1))``.
+
+    Structural, per this repo's no-regex rule: the body's op list is walked and its operands are
+    compared to the block arguments by IDENTITY. Either operand order is accepted because addition
+    commutes; the ``outs`` block argument must be UNREAD (an init-reading body is an accumulation,
+    not a bias add). Anything else — a second op, a different arithmetic op, a yield of something
+    other than the sum — does not match, and therefore stays unaccounted and refused.
+    """
+    blocks = list(op.body.blocks)
+    if len(blocks) != 1:
+        return False
+    body = blocks[0]
+    body_ops = list(body.ops)
+    if len(body_ops) != 2 or len(body.args) != 3:
+        return False
+    add, yld = body_ops
+    if add.name not in ("arith.addf", "arith.addi") or yld.name != "linalg.yield":
+        return False
+    if len(add.operands) != 2 or len(add.results) != 1:
+        return False
+    if set(add.operands) != {body.args[0], body.args[1]}:
+        return False
+    if any(use for use in body.args[2].uses):
+        return False
+    return list(yld.operands) == [add.results[0]]
+
+
+def find_bias_epilogues(block, matmuls) -> dict:
+    """``{matmul op -> (generic op, bias value)}`` — the bias-add consumers a commit can absorb.
+
+    A ``linalg.generic`` qualifies only when ALL of the following hold, each read out of the IR
+    structurally (never matched as text):
+
+    * all-parallel iterators, exactly two inputs, one output, one result;
+    * input 0 is the result of one of ``matmuls``, mapped by the IDENTITY map, and that result has
+      no other consumer (fusing rewrites the contraction's only readout — a second consumer would
+      otherwise silently receive the biased tensor in place of the raw accumulation);
+    * input 1 is mapped by the trailing-axis broadcast (see :func:`_is_trailing_broadcast`) and is
+      a rank-1 tensor whose extent and element type match the output's last axis;
+    * the output map is the identity and the result type equals the contraction's;
+    * the body is exactly an ``arith.addf``/``arith.addi`` of the two inputs (see
+      :func:`_adds_its_two_inputs`).
+
+    Everything else — a row bias, a multiply, a two-op body, a masked store, a generic with a
+    reduction — does NOT match, stays out of the payload, and is therefore refused by
+    :func:`_check_payload_complete` rather than quietly dropped.
+    """
+    from xdsl.dialects.builtin import TensorType
+    from xdsl.ir.affine import AffineMap
+
+    mm_set = set(matmuls)
+    found: dict = {}
+    for op in block.ops:
+        if op.name != "linalg.generic":
+            continue
+        if len(op.inputs) != 2 or len(op.outputs) != 1 or len(op.results) != 1:
+            continue
+        if not _iterators_all_parallel(op):
+            continue
+        maps = [m.data for m in op.indexing_maps]
+        if len(maps) != 3:
+            continue
+        rank = len(list(op.iterator_types))
+        ident = AffineMap.identity(rank)
+        if maps[0] != ident or maps[2] != ident:
+            continue
+        if not _is_trailing_broadcast(maps[1], rank):
+            continue
+        if not _adds_its_two_inputs(op):
+            continue
+        acc, bias = op.inputs
+        owner = getattr(acc, "owner", None)
+        if owner not in mm_set or owner in found:
+            continue
+        if len(list(acc.uses)) != 1:
+            continue
+        acc_t, out_t = acc.type, op.results[0].type
+        if not isinstance(acc_t, TensorType) or acc_t != out_t:
+            continue
+        bias_t = bias.type
+        if not isinstance(bias_t, TensorType):
+            continue
+        bias_shape = list(bias_t.get_shape())
+        out_shape = list(out_t.get_shape())
+        if len(bias_shape) != 1 or bias_shape[0] != out_shape[-1]:
+            continue
+        if bias_t.element_type != out_t.element_type:
+            continue
+        found[owner] = (op, bias)
+    return found
+
+
+def runtime_tensor_names(block_args, pack_sources) -> dict:
+    """Command-buffer tensor name for each tensor value of a rebuilt interface block.
+
+    ``interface.commit`` references its bias BY NAME because the runtime engine has no SSA — its
+    environment is keyed by the names the command buffer's resource table declares. Those names are
+    minted by ``runtime_lowering.lower_to_runtime``'s naming pre-pass, two stages further down: a
+    pack source is ``W``/``W1``.., every other tensor block argument is ``A0``.. in block order.
+    This stage has to produce the SAME name, so the rule is stated here in the one form the two
+    stages can be compared in, and ``merlin/tests/ir/test_interface_bias_epilogue.py`` pins them
+    against each other by lowering all the way to the emitted buffer and reading the bias operand
+    back out of it — a drift between the two turns that test red instead of producing a commit that
+    names a tensor the engine has never heard of.
+    """
+    from xdsl.dialects.builtin import TensorType
+
+    names: dict = {}
+    n_w = 0
+    for v in pack_sources:
+        names[v] = "W" if n_w == 0 else "W%d" % n_w
+        n_w += 1
+    n_a = 0
+    for arg in block_args:
+        if arg in names:
+            continue
+        if isinstance(arg.type, TensorType):
+            names[arg] = "A%d" % n_a
+            n_a += 1
+    return names
+
+
+def payload_ops(block, matmuls) -> list:
+    """Everything in ``block`` the interface rebuild materializes as computation.
+
+    One definition for the rebuild loop, the completeness guard, and (once it adopts this) the
+    router: contractions, the vector-lane elementwise/activation ops, and the bias-add generics a
+    commit absorbs as an epilogue stage. A bias generic belongs here precisely BECAUSE it is
+    rebuilt — as a ``bias_add`` stage on its contraction's commit rather than as an op of its own.
+    """
+    fused = find_bias_epilogues(block, matmuls)
+    return (list(matmuls)
+            + [op for op in block.ops if _is_vector_lane_op(op)]
+            + [g for g, _ in fused.values()])
 
 
 def support_ops(block, payload: set) -> set:
@@ -338,7 +503,22 @@ def lower_to_interface(module):
     # That branch is still here; it was the pre-loop refusal in front of it that made every mixed
     # workload unreachable, and with it gemmini's whole-model-on-mesh baseline and the two- and
     # three-layer chain tests.
-    payload = list(matmuls) + [op for op in src_block.ops if _is_vector_lane_op(op)]
+    # A bias-add consumer of a contraction is REBUILT (as a `bias_add` stage on that contraction's
+    # commit), so it is payload, not a drop. The bias tensor is named, not passed by SSA, so refuse
+    # here — before anything is emitted — any bias whose name cannot be derived.
+    bias_epilogues = find_bias_epilogues(src_block, matmuls)
+    src_args = set(src_block.args)
+    for _gen, bias_val in bias_epilogues.values():
+        if bias_val not in src_args:
+            raise LoweringError(
+                "a bias-add epilogue's bias tensor is not a function argument, so it has no "
+                "command-buffer name — `interface.commit` references its bias BY NAME (the engine "
+                "has no SSA) and only the function's own tensor arguments are declared in the "
+                "buffer's resource table. A computed or constant bias would have to be named "
+                "something the engine never materializes, so it is refused rather than invented: "
+                "raise the bias to a function argument.")
+    fused_generics = {gen for gen, _ in bias_epilogues.values()}
+    payload = payload_ops(src_block, matmuls)
     _check_payload_complete(fn, src_block, payload)
 
     arg_types = [a.type for a in src_block.args]
@@ -368,6 +548,7 @@ def lower_to_interface(module):
     # -> commit; the committed tensor is recorded so downstream consumers find it.
     matmul_set = set(matmuls)
     inline_packs = {}  # base weight value -> inline ResidentPackOp (single-use weights)
+    pending_bias = []  # (CommitOp, old bias SSA value) — named once the pack set is final
     ret_op = None
     for op in list(src_block.ops):
         if isinstance(op, ReturnOp):
@@ -421,11 +602,24 @@ def lower_to_interface(module):
             out_t = op.results[0].type
             if not isinstance(out_t, TensorType):
                 raise LoweringError("matmul result is not a tensor")
+            fused = bias_epilogues.get(op)
+            stages = [StringAttr("bias_add")] if fused is not None else []
             commit = i.CommitOp(operands=[imm.acc], result_types=[out_t], properties={
-                "epilogue": ArrayAttr([]),
+                "epilogue": ArrayAttr(stages),
                 "output_dtype": StringAttr(_out_dtype(out_t))})
             ops += [imm, commit]
             value_map[op.results[0]] = commit.out
+            if fused is not None:
+                # The generic's result IS the committed tensor now; its own materialization is the
+                # stage on this commit. The `bias` NAME is filled in after the loop, once every
+                # resident_pack is emitted — the naming rule keys off which arguments are pack
+                # sources, and the last inline pack is not known until then.
+                value_map[fused[0].results[0]] = commit.out
+                pending_bias.append((commit, fused[1]))
+            continue
+        if op in fused_generics:
+            # Rebuilt as the `bias_add` stage of its contraction's commit above, and its result is
+            # already mapped to that commit — emitting it again would apply the bias twice.
             continue
         # Non-matmul payload: elementwise combine / activation ops run on the target's vector lanes
         # (interface.vector_map). These are the residual adds, gating multiplies, and activations of
@@ -446,6 +640,21 @@ def lower_to_interface(module):
             # dead one is harmless to drop. Its scale/weight args flow through as pack operands.
             continue
         raise LoweringError(f"interface lowering does not yet handle payload op '{op.name}'")
+
+    # Name each fused bias with the command-buffer name its argument will carry (see
+    # :func:`runtime_tensor_names`). Done here because the pack SOURCES — which decide the naming —
+    # are exactly the resident_pack ops now sitting in ``ops``, in the order the later stages walk.
+    if pending_bias:
+        pack_sources = [o.src for o in ops if isinstance(o, i.ResidentPackOp)]
+        names = runtime_tensor_names(blk.args, pack_sources)
+        for commit, old_bias in pending_bias:
+            new_bias = value_map[old_bias]
+            name = names.get(new_bias)
+            if name is None:
+                raise LoweringError(
+                    "a bias-add epilogue's bias tensor has no command-buffer name — refusing "
+                    "rather than committing a `bias_add` stage the engine cannot resolve")
+            commit.properties["bias"] = StringAttr(name)
 
     outs = []
     out_types = []

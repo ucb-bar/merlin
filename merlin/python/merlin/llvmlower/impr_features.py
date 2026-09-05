@@ -1830,10 +1830,52 @@ register(ImprFeature(
 VEC_NONCONTRACTION_NAME = "vectorize_non_contraction_generics"
 #: Default lane count for the bare feature name. The lane width is a KNOB SPACE, not a
 #: constant: `ensure_vec_noncontraction(lanes)` registers a point per width so a search can
-#: pick it. Measured on deepjscc: 8 lanes emits 4.9x more vector instructions and runs 1.28x
-#: SLOWER (per-8-element loop overhead beats the vector win), so the width matters and the
-#: default must not be assumed good.
+#: pick it. The 1.28x regression this lever first measured was FLAT across 8/16/32 lanes, which
+#: is the tell that the width was never the variable -- see `_vec_noncontraction_hygiene`.
 VEC_NONCONTRACTION_LANES = 8
+
+
+def _vec_noncontraction_hygiene() -> frozenset[str]:
+    """The lowering hygiene the per-rank vectorize arms cannot be measured without.
+
+    Each arm TILES the all-parallel generic on TENSORS and then vectorizes the tile, so every tile
+    yields a ``tensor.insert_slice`` back into the loop-carried destination. Bufferization realizes
+    that destructive update as a subview of the destination, a ``vector.transfer_write`` into it, a
+    SECOND structurally identical subview, and a ``memref.copy`` between the two -- i.e. the tile is
+    copied ONTO ITSELF, once per tile, INSIDE the innermost loop::
+
+        %sv   = memref.subview %arg99[0, %i, %j, %k] [1, 1, 1, 8] [1, 1, 1, 1]
+        vector.transfer_write %v, %sv[...]        // the result is already in place here
+        %sv_0 = memref.subview %arg99[0, %i, %j, %k] [1, 1, 1, 8] [1, 1, 1, 1]
+        memref.copy %sv, %sv_0                    // ...and this copies it onto itself
+
+    That is the same defect ``selfcopy`` documents for the tiled CONTRACTION epilogue, and it is why
+    this lever measured 1.28x SLOWER at bit-identical output with the vector count up 4.9x: the
+    per-tile copy is emitted per 8 ELEMENTS, so the vector win is spent on a memcpy of the bytes the
+    vector store just wrote. The earlier attribution missed it because it counted ``@memrefCopy``
+    call sites -- these copies are contiguous in the innermost dim, so they lower to ``llvm.memcpy``
+    instead and the memrefCopy count does not move at all.
+
+    MEASURED at the post-bufferization split point (int8 recaptures, impr_tuned_wholemodel_vf_int8,
+    host lowering), copy CALL SITES emitted inside ``forward``:
+
+        deepjscc      lever off  72 memcpy | lever on  87 (+15, one per vectorized op)
+                      + erase    52 memcpy | + erase   52 (+0)
+        small_llama   lever off  52 memcpy | lever on  85 (+33, one per vectorized op)
+                      + erase    39 memcpy | + erase   39 (+0)
+
+    Erasing a ``memref.copy %x, %x`` is unconditionally value-preserving (identical SSA operand =>
+    identical base, offsets and region) and is a no-op on a lowering that has none, so implying it
+    can only help or do nothing -- and enabling it is what makes ``lower_to_llvm_ir`` splice the
+    post-bufferization ``canonicalize,cse`` that collapses the two subviews into the one SSA value
+    the erase keys on. Output stayed BIT-IDENTICAL on both models, all four arms.
+
+    It is an ``implies`` rather than a note in the description for the reason ``_tile_epilogue_hygiene``
+    gives: a default-off lever whose payoff is cancelled by a separate default-off fix is an inert
+    lever, because everyone naming it directly in ``compiler_features`` gets the cancelled version.
+    """
+    return frozenset({_SELF_COPY_FEATURE})
+
 
 #: Bounded per-rank vectorize of the tagged all-parallel generics. BOUNDED on purpose: a plain
 #: no-sizes `vectorize` on a whole model explodes (vector<17x576> = 9792 lanes, measured 8725 ms), and
@@ -1892,12 +1934,25 @@ register(ImprFeature(
         "prepare pass's merlin.vec_r{rank} tags, which build_app enables when this feature is on. "
         "MEASURED on deepjscc int8 (spike): emits 394 -> 1945 vector instructions (4.9x, so the "
         "lever is NOT inert), output BIT-IDENTICAL, and 484,690,000 -> 621,555,001 cycles, i.e. "
-        "1.28x SLOWER. Flat at 0.78x across 8/16/32 lanes, and memrefCopy/malloc counts barely "
-        "move, so the cost is the tile-and-vectorize-on-tensors realization (per-tile destructive "
-        "update) rather than the vector width. Keep default-off until a realization that fuses "
-        "the elementwise into the contraction epilogue (or uses a vsetvlmax-width loop) beats the "
-        "scalar baseline. Recorded so nobody enables it expecting a win."),
+        "1.28x SLOWER, flat at 0.78x across 8/16/32 lanes. That flatness was the tell that the "
+        "width was never the variable: the tile-and-vectorize-on-tensors realization emits a "
+        "`memref.copy %x, %x` of each tile INSIDE the innermost loop -- a memcpy of the bytes the "
+        "vector store just wrote, per 8 elements. It went unattributed because those copies lower "
+        "to `llvm.memcpy`, not to the `@memrefCopy` the earlier check counted. This feature now "
+        "IMPLIES `erase_self_copy`, which removes them: measured on the host lowering, the copy "
+        "call sites the lever adds inside `forward` go from +15 (deepjscc) / +33 (small_llama) to "
+        "+0 on both, with the vector-instruction gain kept and the output still bit-identical. "
+        "NOT yet claimed as a speedup -- that is a board measurement, and the cycle number above "
+        "is the one it has to beat. Two known limits remain, both MEASURED and neither fixable "
+        "from this file: (a) COVERAGE -- `func.func(linalg-specialize-generic-ops)`, which runs "
+        "before the transform interpreter so the contraction arms can match named ops, rewrites "
+        "the tagged generics into `linalg.broadcast` and DROPS their `merlin.vec_r{rank}` "
+        "attribute, so only 15 of 93 tagged ops (deepjscc) ever reach an arm while the prepare "
+        "pass reports 93; (b) the arms still allocate one extra destination buffer per vectorized "
+        "op (+12 allocs / +1.05 MB of 50.19 MB cumulative on deepjscc), which is malloc calls "
+        "rather than per-element traffic."),
     edit_schedule=_splice_vec_rank_arms,
+    implies=_vec_noncontraction_hygiene(),
 ))
 
 
@@ -1946,10 +2001,11 @@ def vec_noncontraction_lanes(features) -> int | None:
 def ensure_vec_noncontraction(lanes: int) -> str:
     """Register (on demand) the non-contraction vectorize point at ``lanes`` innermost lanes.
 
-    The lane width is the knob the measurement says matters: at 8 lanes on deepjscc the lever emits
-    4.9x more vector instructions, keeps the output BIT-IDENTICAL, and still runs 1.28x slower, because
-    a [1, 8] tile pays loop overhead per 8 elements. Exposing the width as a registered point per value
-    is what lets a search find one that pays instead of a human guessing.
+    Exposing the width as a registered point per value is what lets a search find one that pays
+    instead of a human guessing. It is NOT the axis the first measurement moved: cycles were flat at
+    0.78x across 8/16/32, because every width paid the same per-tile self-copy (see
+    ``_vec_noncontraction_hygiene``). Each point implies the same hygiene as the bare name, so a
+    width the search picks is measured in the same realization as the default one.
     """
     if lanes == VEC_NONCONTRACTION_LANES:
         return VEC_NONCONTRACTION_NAME
@@ -1962,6 +2018,7 @@ def ensure_vec_noncontraction(lanes: int) -> str:
                      f"{lanes} innermost lanes (see {VEC_NONCONTRACTION_NAME}). Default-off; the width "
                      f"must be chosen by measurement, not assumed."),
         edit_schedule=lambda t, _l=lanes: _splice_vec_rank_arms(t, _l),
+        implies=_vec_noncontraction_hygiene(),
     ))
     return name
 

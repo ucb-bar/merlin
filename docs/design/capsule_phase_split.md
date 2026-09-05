@@ -66,15 +66,14 @@ against it.
 Budget 300 s, corpus as of the arm4 integration. `cert-fit` is the target's own measured
 certification history, which is what makes the size predicate answerable at all.
 
-| target | capsules | both | phase-1 only | phase-2 only | neither | undetermined | cert-fit |
-|---|---|---|---|---|---|---|---|
-| gemmini | 133 | **68** | 31 | 31 | 3 | 0 | n=24 |
-| radiance | 144 | 0 | 0 | 86 | 58 | 0 | n=32 |
-| atlas | 90 | 0 | 0 | 4 | 0 | **86** | none |
-| mx_gemmini | 49 | 0 | 0 | 4 | 0 | **45** | none |
-| saturn_opu | 47 | 0 | 0 | 9 | 0 | **38** | none |
-| saturn_opu_rvv | 46 | 0 | 0 | 4 | 0 | **42** | none |
-| **all** | **509** | 68 | 31 | 138 | 61 | **211** | |
+| target | capsules | both | phase-1 only | phase-2 only | neither | undetermined | anchored | orphan | cert-fit |
+|---|---|---|---|---|---|---|---|---|---|
+| gemmini | 121 | **61** | 27 | 29 | 4 | 0 | 29 | 0 | n=24 |
+| radiance | 132 | **53** | 50 | 22 | 7 | 0 | 10 | 12 | n=32 |
+| atlas | 100 | 0 | 0 | 0 | 0 | **100** | 0 | 67 | none |
+| mx_gemmini | 42 | 0 | 0 | 0 | 0 | **42** | 0 | 29 | none |
+| saturn_opu | 42 | 0 | 0 | 0 | 0 | **42** | 0 | 35 | none |
+| saturn_opu_rvv | 46 | 0 | 0 | 0 | 0 | **46** | 0 | 40 | none |
 
 Three findings, in the order they matter.
 
@@ -85,14 +84,21 @@ that no size can be shown affordable. The remedy is to certify each target's exi
 after which its split becomes computable. Until then, any statement about those targets' phase
 membership is an assertion.
 
-**2. Radiance can certify nothing.** All 144 of its capsules declare `required_oracle_tiers`
-topping out at `L2`, so the cycle-accurate predicate fails for every one — 86 are priceable and
-therefore phase-2-only, 58 are neither. Radiance has the *larger* measured certification history of
-the two targets that have one (n=32), so this is not missing evidence; it is a corpus that never asks
-for the tier its evidence would support.
+**2. A required-tier list is not a ceiling, and reading it as one produced a confidently wrong
+finding.** An earlier revision of this note reported that one target "can certify nothing" because all
+of its capsules declare `required_oracle_tiers` topping out at `L2`. That was wrong.
+`required_oracle_tiers` is the MANDATORY set, not the runnable one: the tier ladder runs every
+registered adapter, that target's cycle-accurate results carry `"mandatory": false`, and its own runner
+states the policy outright — *"L3 is an RTL-cert tier that NEVER gates a capsule"*. It had certified 32
+members while being reported as certifying none. Corrected, it has 53 capsules serving both phases.
 
-**3. Where the split IS decided, `both` is the majority.** On gemmini 68 of 133 capsules serve both
-phases. That is the healthy state and it is what the cost arithmetic wants: certification cost is
+Target capability is therefore derived from evidence (`cycle_accurate_seen`, which reads the same
+per-capsule results the cost model reads) and answers `True` or `None`, never `False` — "nobody has run
+one here" and "this target cannot run one" are different facts, and only the second would justify
+excluding a whole corpus from phase 1.
+
+**3. Where the split IS decided, `both` is the majority.** On gemmini 61 of 121 capsules serve both
+phases, and on the corrected second target 53 of 132. That is the healthy state and it is what the cost arithmetic wants: certification cost is
 dominated by a per-member floor rather than by member size, so a member serving both phases costs one
 floor and yields two verdicts, while two disjoint corpora pay two floors for verdicts that never meet.
 
@@ -100,8 +106,8 @@ floor and yields two verdicts, while two disjoint corpora pay two floors for ver
 
 Gemmini is the only target whose reasons are all decidable, and they fall into two clean groups.
 
-**Phase-1 only is dominated by families that do not contract** — movement 9, elementwise_map 6,
-reduction 5, softmax 3, normalization 2: 25 of 31. These carry zero multiply-accumulate work, so they
+**Phase-1 only is dominated by families that do not contract** — movement, elementwise_map, reduction,
+softmax and normalization together account for most of it. These carry zero multiply-accumulate work, so they
 have no utilization to improve and cannot move a MAC-denominated objective. That is structural, not a
 defect: those families belong to phase 1 by their nature, and admitting them to a performance corpus
 would add members that cannot move the objective while still paying a full certification floor.

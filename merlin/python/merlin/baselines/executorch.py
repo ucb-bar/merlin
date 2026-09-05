@@ -966,8 +966,18 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # W8A8 quantization loses precision vs the fp32 golden — the fp32 gate (cos>=0.9999) is not the
     # right bar for an int8 result. Use an int8-appropriate gate so a genuinely-correct int8 run is
     # not spuriously marked fail (still honest: cos is the MEASURED int8-vs-fp32 cosine, not faked).
+    #
+    # And the int8 bar is DERIVED from this bundle's own quantization floor, not a constant. A flat
+    # rel <= 0.05 rejected ExecuTorch's tiny_llama qd8 arm at rel 0.106 — on a bundle whose own
+    # independent W8A8 reference sits at rel 0.958 from fp32 and flips the argmax. The arm was
+    # nearly ten times CLOSER to fp32 than quantizing the model at all is, and the constant called
+    # it broken. The rule is now the one our own gate already applies to us (deviate by at most
+    # QUANT_EXCESS_K times the model's own quantization noise), so both arms are judged the same
+    # way instead of by two absolute numbers that happened to differ. The derived bar never falls
+    # below the absolute one.
+    int8_bar = None
     if quantize:
-        cos_thr, rel_thr = 0.99, 5e-2
+        cos_thr, rel_thr = _bundle.FP32_TIER_MIN_COS, _bundle.ABSOLUTE_INT8_REL
     # Random-init models ship no reproducible weights, so their CAPTURED golden is unreachable by a
     # re-instantiated export: gating against it measures weight provenance, not the framework. Recompute
     # the reference from THIS instance (as the int8 path already does) and LABEL the cell — the cos then
@@ -990,6 +1000,10 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # that difference is not a speedup, and `compare.executorch_column.bundle_mismatch_reason`
     # refuses one unless BOTH sides record this.
     res.bundle_id = b.root.name
+    if quantize:
+        int8_bar = _bundle.int8_accuracy_bar(b.root)
+        res.cos_threshold, res.rel_threshold = int8_bar["cos_threshold"], int8_bar["rel_threshold"]
+        res.notes += f" int8 bar {int8_bar['basis']}."
     # WHICH int8 arithmetic this cell ran. Recorded from the SELECTED recipe, not inferred from the
     # variant string: `variant="int8"` alone has meant three different computations over this repo's
     # history, and only one of them reaches an int8 ukernel.

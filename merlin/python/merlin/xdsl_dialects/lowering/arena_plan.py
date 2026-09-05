@@ -7,15 +7,27 @@ ONE arena: it computes each intermediate buffer's live range over the (topo-orde
 DAG and greedy-colors non-overlapping buffers onto shared byte offsets, so the runtime binds
 ``arena_base() + offset`` with ZERO per-op allocation and bounded, reused memory.
 
-Pure analysis over :class:`~.dispatch_program.DispatchProgram` (no IR mutation). NOT YET WIRED: no
-caller consumes the resulting :class:`MemoryPlan`, and ``merlin_program.c`` -- named as its consumer
-here and in two other docstrings -- does not exist in the tree. What wiring it to the path we actually
-measure would take (a per-kernel emission path, that replay engine, a static-shape precondition) is
-written down in ``docs/design/static_arena_wiring.md``. The gap is stated plainly because the
-reverse impression is what makes a fail-open planner dangerous: every branch that cannot size a buffer
-now raises :class:`ArenaPlanError` rather than substituting a plausible number, and offsets are aligned
-to :data:`ARENA_ALIGN` (derived from the allocator the runtime actually uses), so whoever wires it gets
-an honest refusal instead of a short arena.
+Pure analysis over :class:`~.dispatch_program.DispatchProgram` (no IR mutation). What is wired, and
+what is not, precisely:
+
+* :func:`pack_disjoint` -- the placement core -- IS on the measured path. The LLVM-IR binder
+  (:mod:`merlin.llvmlower.arena_bind`, reached from ``lower_model(static_arena=True)``) uses it to
+  seat the allocations the whole-model build actually emits.
+* :func:`plan_arena` itself is still analysis only. It plans a ``DispatchProgram``, and the K1 build
+  lowers the monolithic ``@forward`` instead; ``merlin_program.c``, the replay engine two other
+  docstrings name as its consumer, does not exist in the tree. See
+  ``docs/design/static_arena_wiring.md``.
+
+The two planners also measure DIFFERENT liveness, and the difference is the whole gap between their
+numbers. :func:`plan_arena` ends a buffer's range at its last USE; the emitted binary frees every
+intermediate at the END of ``@forward`` (measured: all 112 deallocations of the deepjscc int8 build
+sit after the last compute), so the binder -- which may only trust the program's own ``free`` -- gets
+1.00x reuse where this planner reports 5.77x. The reuse figures here are what last-use deallocation
+placement would be worth, not what the binary does.
+
+Every branch that cannot size a buffer raises :class:`ArenaPlanError` rather than substituting a
+plausible number, and offsets are aligned to :data:`ARENA_ALIGN` (derived from the allocator the
+runtime actually uses), so a caller gets an honest refusal instead of a short arena.
 
 Args/weights are bound from the model arg table; results are bound to the caller's output buffer; both
 stay OUT of the arena.
@@ -106,6 +118,46 @@ def _buf_bytes(shape: list[int], dtype: str) -> int:
 
 def _align_up(n: int, a: int = ARENA_ALIGN) -> int:
     return ((int(n) + a - 1) // a) * a
+
+
+def pack_disjoint(order: "list[tuple[str, int]]",
+                  conflicts: "dict[str, set[str]]") -> tuple[dict[str, int], int]:
+    """Greedy first-fit placement of ``(id, aligned_size)`` blocks into one arena.
+
+    ``conflicts[x]`` is the set of ids that MAY be live at the same time as ``x`` and therefore may
+    not share a byte with it. The relation must be symmetric; it is read symmetrically here so a
+    caller that fills only one direction still gets a correct placement.
+
+    This is the shared core of both planners. The DAG planner (:func:`plan_arena`) derives conflicts
+    from live-range intervals over a topologically ordered dispatch program; the LLVM-IR binder
+    (:mod:`merlin.llvmlower.arena_bind`) derives them from CFG dominance, where "intervals" do not
+    exist because the order of two blocks in the text says nothing about the order they run in.
+    Sharing the placement means the property that matters -- two conflicting blocks never overlap --
+    is established once, and is checked once, for both.
+
+    Blocks are placed in the given ``order``; each takes the LOWEST offset that overlaps no already
+    placed block it conflicts with, rounded up to :data:`ARENA_ALIGN`. Returns
+    ``(offsets, arena_bytes)``.
+    """
+    offsets: dict[str, int] = {}
+    total = 0
+    for bid, size in order:
+        if size <= 0:
+            raise ArenaPlanError(f"block {bid!r} has non-positive size {size}")
+        against = conflicts.get(bid, set())
+        # every already-placed block this one may not share bytes with
+        busy = sorted((offsets[o], offsets[o] + sz)
+                      for o, sz in ((o, s) for o, s in order if o in offsets)
+                      if o in against or bid in conflicts.get(o, set()))
+        off = 0
+        for lo, hi in busy:
+            if off + size <= lo:
+                break                      # fits in the gap before this block
+            if hi > off:
+                off = _align_up(hi)        # push past it, to the next aligned boundary
+        offsets[bid] = off
+        total = max(total, off + size)
+    return offsets, _align_up(total)
 
 
 @dataclass
@@ -204,28 +256,22 @@ def plan_arena(prog: DispatchProgram) -> MemoryPlan:
     # process in definition order; tie-break larger-first so big buffers seat low and stable.
     order = sorted(arena_bufs, key=lambda b: (first_def.get(b.id, 0), -sizes[b.id]))
 
-    # live allocations: list of (offset, size, dies_at_node).
-    live: list[tuple[int, int, int]] = []
-    offsets: dict[str, int] = {}
-    arena_bytes = 0
-    for b in order:
-        d, u, sz = first_def.get(b.id, 0), last_use.get(b.id, 0), sizes[b.id]
-        # free allocations whose last use is strictly before this buffer's definition.
-        live = [(o, s, du) for (o, s, du) in live if du >= d]
-        # first-fit: lowest offset with no overlap against still-live allocations.
-        busy = sorted((o, o + s) for (o, s, _) in live)
-        off = 0
-        for lo, hi in busy:
-            if off + sz <= lo:
-                break                      # fits in the gap before this block
-            if hi > off:
-                off = _align_up(hi)        # push past this block, to the next aligned boundary
-        offsets[b.id] = off
-        assert off % ARENA_ALIGN == 0, (b.id, off)   # the invariant the C replay depends on
-        live.append((off, sz, u))
-        arena_bytes = max(arena_bytes, off + sz)
-
-    arena_bytes = _align_up(arena_bytes)
+    # Two buffers conflict when their [def, last_use] intervals meet. Handing the relation to
+    # `pack_disjoint` rather than open-coding the sweep is what makes this planner and the LLVM-IR
+    # binder share ONE placement routine -- and one place where "conflicting blocks never overlap"
+    # is established.
+    ranges = {b.id: (first_def.get(b.id, 0), last_use.get(b.id, 0)) for b in arena_bufs}
+    conflicts: dict[str, set[str]] = {b.id: set() for b in arena_bufs}
+    for i, b in enumerate(order):
+        db, ub = ranges[b.id]
+        for c in order[i + 1:]:
+            dc, uc = ranges[c.id]
+            if db <= uc and dc <= ub:
+                conflicts[b.id].add(c.id)
+                conflicts[c.id].add(b.id)
+    offsets, arena_bytes = pack_disjoint([(b.id, sizes[b.id]) for b in order], conflicts)
+    for bid, off in offsets.items():
+        assert off % ARENA_ALIGN == 0, (bid, off)    # the invariant the C replay depends on
     naive_total = sum(sizes[b.id] for b in arena_bufs)
     stats = {
         "n_intermediate_buffers": len(arena_bufs),
