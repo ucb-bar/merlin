@@ -69,9 +69,23 @@ def _stderr_cause(stderr: str, *, limit: int = 1800) -> str:
         return "(the worker wrote nothing to stderr)"
     marker = "Traceback (most recent call last)"
     idx = text.rfind(marker)
-    if idx >= 0:
-        return "--- last traceback ---\n" + text[idx:idx + limit]
-    return "--- stderr tail (no traceback found) ---\n" + text[-limit:]
+    if idx < 0:
+        return "--- stderr tail (no traceback found) ---\n" + text[-limit:]
+
+    # ⚠️ TRUNCATE FROM THE MIDDLE, NEVER FROM THE HEAD. `text[idx:idx + limit]` keeps the header and
+    # the stack frames and cuts off the LAST line -- which is the only line that names the error. A
+    # deep traceback therefore recorded a failure reason containing no error at all, just frames, and
+    # every diagnosis that started from one of these was slower than it needed to be. The exception
+    # line is the point of a traceback, so it is the part that is guaranteed to survive.
+    tb = text[idx:]
+    if len(tb) <= limit:
+        return "--- last traceback ---\n" + tb
+    head = limit // 3
+    tail = limit - head
+    return ("--- last traceback (middle elided; the exception line is kept) ---\n"
+            + tb[:head]
+            + f"\n    ... {len(tb) - limit} characters of frames elided ...\n"
+            + tb[-tail:])
 
 
 class M2MUnavailable(RuntimeError):
