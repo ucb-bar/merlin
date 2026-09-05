@@ -20,13 +20,18 @@ from pathlib import Path
 import yaml
 
 from merlin.targetgen.sandbox import bwrap, toolchain
-from merlin.targetgen.sandbox.answer_surfaces import (AnswerSurface, answer_surfaces, audit_tokens,
-                                                      golden_files, weight_files)
+from merlin.targetgen.sandbox.answer_surfaces import (AUDIT_ADVISORY_KINDS, AUDIT_VIOLATION_KINDS,
+                                                      AnswerSurface, answer_surfaces,
+                                                      audit_hit_is_violation, audit_tokens,
+                                                      declared_oracle_modules, golden_files,
+                                                      module_matches, module_name_for, weight_files)
 from merlin.targetgen.sandbox.toolchain import ToolProbe, required_tool_probes
 from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
 
 __all__ = ["Sandbox", "build_sandbox", "resolve_kind", "AnswerSurface", "ToolProbe",
-           "answer_surfaces", "audit_tokens", "golden_files", "weight_files", "required_tool_probes"]
+           "answer_surfaces", "audit_tokens", "golden_files", "weight_files", "required_tool_probes",
+           "AUDIT_ADVISORY_KINDS", "AUDIT_VIOLATION_KINDS", "audit_hit_is_violation",
+           "declared_oracle_modules", "module_matches", "module_name_for"]
 
 
 def resolve_kind(te: TargetExperiment) -> str | None:

@@ -1164,7 +1164,8 @@ def assemble_copy_workspace(bundle: dict, ws: Path) -> dict:
 #             merlin-arm leak — a callable route to the reference/simulator oracle, BOTH arms).
 # Matched against READ commands only — a mere mention (an integrity self-scan, or the repo path
 # containing "merlin") is NOT a violation.
-_AUDIT_TOKENS = __import__("merlin.targetgen.sandbox", fromlist=["audit_tokens"]).audit_tokens(_te())
+_AS = __import__("merlin.targetgen.sandbox", fromlist=["audit_tokens"])
+_AUDIT_TOKENS = _AS.audit_tokens(_te())
 _ANSWER_TOKENS = _AUDIT_TOKENS["answer"]
 _GRADER_TOKENS = _AUDIT_TOKENS["grader"]
 _ORACLE_SUBPATH_TOKENS = _AUDIT_TOKENS["oracle_subpath"]
@@ -1181,11 +1182,23 @@ _MERLIN_TOOL_TOKENS = ("targetgen/contract", "targetgen/synthesize", "targetgen/
 # NOTE: the raw command-trace decoder (targetgen/rocc_decode) is NOT exposed — it is a grader internal
 # (see ALLOWED_MERLIN_TOOLS.md FORBIDDEN). rtl_backend's lifter consumes a PRE-DECODED trace, so it does
 # not import the decoder; the agent gets the where/how spine, not the raw trace-decoding.
-# Oracle USE in agent-authored code / inline python: an actual `from merlin.runtime import ...` or a
+# Oracle USE in agent-authored code / inline python: an actual import of a DENIED oracle module, or a
 # call to the oracle. Flagged in Bash `python -c` and in Write/Edit of .py files (both arms — neither
 # may self-grade against the true oracle; the redacted QA verdict is the only allowed feedback).
-_ORACLE_CODE_TOKENS = ("from merlin.runtime", "import merlin.runtime", "reference_outputs(",
-                       "pipeline.execute(", "outputs_match(")
+#
+# The import half is NOT a package-prefix substring match. A bundle grants and denies at MODULE
+# granularity inside one package -- arm-4 GRANTS `merlin/python/merlin/runtime/commandbuffer.py` and
+# `.../runtime/tensor.py` while DENYING `.../runtime/reference.py` and `.../runtime/simulator.py` --
+# so a `from merlin.runtime` substring test accuses the agent of oracle use for importing a module the
+# bundle handed it (measured: run merlincirct_g4p1_20260905 round 3). The identity of "the oracle" is
+# therefore DERIVED, from two sources, deny-wins:
+#   * `answer_surfaces.declared_oracle_modules()` -- the harness-level declared registry (the same one
+#     the filesystem mask and the path tokens come from). Always denied, for every arm.
+#   * this arm's own bundle `denied_files.txt` / `allowed_files.txt` -- the per-arm grant, so the audit
+#     tracks the grant automatically instead of drifting from it.
+# Only the CALL tokens below stay literal: they name oracle entry points by their call syntax, which no
+# path list can express.
+_ORACLE_CALL_TOKENS = ("reference_outputs(", "pipeline.execute(", "outputs_match(")
 # Commands that READ file content (vs. ls/test/grep-of-own-sources).
 _READ_RE = re.compile(r"\b(cat|head|tail|less|more|sed|awk|cp|xxd|od|open\(|read_text|yaml\.safe_load|"
                       r"json\.load|np\.load|loadtxt|grep[^|]*?)\b")
@@ -1201,24 +1214,216 @@ def _path_tokens(arm: str) -> tuple:
     return toks
 
 
-def _is_answer_read(cmd: str, path_tokens: tuple) -> str | None:
-    """Return the token if some shell SEGMENT both names a withheld path AND reads its content.
-    Operating per-segment (split on ; && | newline) avoids conflating a self-scan or an `ls` boundary
-    probe with a real read elsewhere in the same compound command."""
+def _bundle_grants(arm: str, bundle: str | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``(allowed, denied)`` repo-relative path entries from THIS arm's input bundle.
+
+    The bundle IS the contract with the agent: what it lists is what the agent was handed and what it
+    was refused. Reading it here is what keeps the transcript audit in sync with the grant instead of
+    re-stating the grant as a second, drifting hand-list. Empty tuples when the bundle has no such file
+    (a legacy bundle) -- callers then fall back to the declared registry alone, which is fail-closed
+    because that registry names the real oracle for every target.
+
+    ``bundle`` is a bundle id under this target's ``input_bundles/`` or an absolute path to a bundle
+    directory (which is what lets a stored run, or a test, be audited against an explicit grant set)."""
+    if bundle and Path(bundle).is_absolute():
+        bdir = Path(bundle)
+    else:
+        bdir = C.BUNDLES / (bundle or RX.ARM_BUNDLE.get(arm, ""))
+
+    def _read(name: str) -> tuple[str, ...]:
+        f = bdir / name
+        if not f.is_file():
+            return ()
+        return tuple(ln.strip() for ln in f.read_text().splitlines()
+                     if ln.strip() and not ln.strip().startswith("#"))
+    return _read("allowed_files.txt"), _read("denied_files.txt")
+
+
+def _oracle_module_policy(arm: str, bundle: str | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``(denied_modules, granted_modules)`` as dotted python module prefixes, DERIVED.
+
+    ``denied`` = the declared oracle registry (always, for every arm) + every importable module this
+    arm's bundle denies. ``granted`` = every importable module the bundle allows, minus anything that
+    falls under the declared oracle registry -- the registry wins, so a mis-authored grant can never
+    launder the real oracle."""
+    allowed, denied = _bundle_grants(arm, bundle)
+    declared = _AS.declared_oracle_modules()
+    denied_mods = list(declared)
+    denied_mods += [m for m in (_AS.module_name_for(rel) for rel in denied) if m]
+    granted_mods = [m for m in (_AS.module_name_for(rel) for rel in allowed) if m
+                    and not any(_AS.module_matches(m, d) for d in declared)]
+    return tuple(dict.fromkeys(denied_mods)), tuple(dict.fromkeys(granted_mods))
+
+
+def _launders_a_withheld_path(rel: str) -> bool:
+    """True iff this granted path is really a WITHHELD surface wearing a grant.
+
+    The guard that stops a grant list from buying an exemption for the very thing it must not expose.
+    Path-shaped answer/oracle tokens are matched as substrings; the bare grader STEMS are matched
+    against the file's own stem only, because a stem is a word (``capsule_dram``) that appears inside
+    plenty of innocent names and would otherwise void half the grant list."""
+    stem = rel.rsplit("/", 1)[-1]
+    stem = stem[:-3] if stem.endswith(".py") else stem
+    if any(tok in rel for tok in _ANSWER_TOKENS + _ORACLE_SUBPATH_TOKENS):
+        return True
+    return stem in _GRADER_TOKENS
+
+
+def _granted_read_targets(arm: str, bundle: str | None = None) -> frozenset:
+    """The FILES this arm's bundle grants outright, as both their repo-relative path and their bare
+    name -- the set a flagged read may legitimately have been aimed at.
+
+    The arm-policy tokens in :func:`_path_tokens` are a COARSE stand-in for the grant: they flag the
+    merlin authoring tools for every arm whose name is not ``merlin_assisted``, while the
+    ``cpp_merlininfra`` bundles in fact grant ``merlin/python/merlin/targetgen/generate/*.py``. Reading
+    what your own bundle handed you is not a cheat, so a read aimed at a granted FILE is advisory.
+
+    DENY-WINS twice over, so this can never launder an answer surface: a granted entry is dropped if a
+    denied entry covers it, and dropped again if it is itself a withheld surface
+    (:func:`_launders_a_withheld_path`). Only FILE entries qualify -- a directory grant
+    (``merlin/contract/``) is exactly the broad bind that re-exposes masked goldens under it, and must
+    never exempt anything."""
+    allowed, denied = _bundle_grants(arm, bundle)
+    out: set[str] = set()
+    for rel in allowed:
+        if rel.endswith("/") or "/" not in rel:
+            continue
+        if any(rel == d.rstrip("/") or rel.startswith(d if d.endswith("/") else d + "/") for d in denied):
+            continue
+        if _launders_a_withheld_path(rel):
+            continue
+        out.add(rel)
+        out.add(rel.rsplit("/", 1)[-1])
+    return frozenset(out)
+
+
+def _is_granted_target(word: str, granted: frozenset) -> bool:
+    """True iff this command word names a file the bundle grants (by full path or by bare name)."""
+    w = word.strip().strip("'\"").lstrip("./")
+    return bool(w) and (w in granted or w.rsplit("/", 1)[-1] in granted)
+
+
+def _token_is_path_like(word: str, tok: str) -> bool:
+    """True iff the token match inside ``word`` looks like a PATH being named, not a search PATTERN.
+
+    Several withheld tokens are bare module stems (``capsule_dram``, ``capsule_grade``) precisely
+    because that is how the grader modules are identified. A bare stem also matches an agent's grep
+    PATTERN over its own granted sources -- measured: ``grep -n "capsule_dram\\|pad\\|DIM" commandbuffer.py``
+    was recorded as a content read of a withheld path when it read a GRANTED file. A stem therefore only
+    counts when the word carrying it is itself path-shaped (has a separator or a file suffix); a token
+    that already contains ``/`` or ``.`` is path-shaped on its own."""
+    if "/" in tok or "." in tok:
+        return True
+    return "/" in word or "." in word
+
+
+def _answer_read_match(cmd: str, path_tokens: tuple):
+    """Return ``(token, word)`` if some shell SEGMENT both names a withheld path AND reads its content.
+    ``word`` is the whitespace-separated command word the token was found in, which lets the classifier
+    tell a path operand from a search pattern. Operating per-segment (split on ; && | newline) avoids
+    conflating a self-scan or an `ls` boundary probe with a real read elsewhere in the same command."""
     for seg in re.split(r"[;&|\n]+", cmd):
+        reads = _READ_RE.search(seg)
         for tok in path_tokens:
             if tok not in seg:
                 continue
-            if _READ_RE.search(seg) or f"< {tok}" in seg or f"<{tok}" in seg:
-                return tok
+            if not (reads or f"< {tok}" in seg or f"<{tok}" in seg):
+                continue
+            word = next((w for w in seg.split() if tok in w), tok)
+            return tok, word
     return None
 
 
-def _is_oracle_code(text: str) -> str | None:
-    """Return the oracle-code token if `text` imports/calls the reference/simulator oracle."""
-    for tok in _ORACLE_CODE_TOKENS:
+def _is_answer_read(cmd: str, path_tokens: tuple) -> str | None:
+    """Back-compat wrapper: just the token of :func:`_answer_read_match`."""
+    m = _answer_read_match(cmd, path_tokens)
+    return m[0] if m else None
+
+
+def _import_statements(text: str):
+    """Yield ``(kw, remainder)`` for every ``from``/``import`` statement start in ``text``.
+
+    Parsed STRUCTURALLY (split + find on word boundaries) rather than by pattern: inline `python -c`
+    bodies arrive as one shell word with `;` separators and an opening quote glued to the first
+    statement, and any pattern narrow enough to be safe silently misses one of those spellings."""
+    for raw in text.replace(";", "\n").splitlines():
+        for kw in ("from ", "import "):
+            start = 0
+            while True:
+                i = raw.find(kw, start)
+                if i < 0:
+                    break
+                start = i + len(kw)
+                if i and (raw[i - 1].isalnum() or raw[i - 1] in "_."):
+                    continue                     # part of a longer identifier, not a statement
+                yield kw.strip(), raw[i + len(kw):]
+
+
+def _dotted_prefix(text: str) -> str:
+    """Leading run of dotted-identifier characters -- the module name at the head of ``text``."""
+    out = []
+    for ch in text:
+        if ch.isalnum() or ch in "._":
+            out.append(ch)
+        else:
+            break
+    return "".join(out).strip(".")
+
+
+def _imported_modules(text: str) -> list[tuple[str, ...]]:
+    """The candidate dotted modules of each import statement, least- to most-specific.
+
+    ``from merlin.runtime import reference`` yields ``("merlin.runtime", "merlin.runtime.reference")``
+    so the classifier can resolve which SUBMODULE of a mixed package was actually asked for."""
+    out: list[tuple[str, ...]] = []
+    for kw, rest in _import_statements(text):
+        if kw == "from":
+            head, sep, tail = rest.partition(" import ")
+            mod = _dotted_prefix(head.strip())
+            if not mod:
+                continue
+            cands = [mod]
+            if sep:
+                for piece in tail.split(","):
+                    name = _dotted_prefix(piece.strip())
+                    if name:
+                        cands.append(f"{mod}.{name}")
+            out.append(tuple(cands))
+        else:
+            for piece in rest.split(","):
+                mod = _dotted_prefix(piece.strip())
+                if mod:
+                    out.append((mod,))
+    return out
+
+
+def _is_oracle_code(text: str, arm: str = "raw_baseline", bundle: str | None = None) -> str | None:
+    """Return the offending token if ``text`` imports a DENIED oracle module or calls the oracle.
+
+    Import resolution is per STATEMENT, most-specific-wins, and fail-closed:
+      * any candidate module under a denied prefix -> oracle use (named by the module);
+      * else the most specific candidate under a GRANTED prefix -> not oracle use;
+      * else a bare package import that is a proper ancestor of a denied module (``import
+        merlin.runtime``, which resolves to nothing in particular but reaches the oracle) -> oracle use.
+    """
+    for tok in _ORACLE_CALL_TOKENS:
         if tok in text:
             return tok
+    denied, granted = _oracle_module_policy(arm, bundle)
+    for cands in _imported_modules(text):
+        hit = next((c for c in cands
+                    if any(_AS.module_matches(c, d) for d in denied)), None)
+        if hit:
+            return hit
+        deepest = cands[-1]
+        if any(_AS.module_matches(deepest, g) for g in granted):
+            continue
+        # An unresolved SUBpackage that reaches a denied module (`import merlin.runtime`) stays flagged:
+        # it names the package the oracle lives in and resolves to nothing more specific. The ROOT
+        # package is excluded -- `import merlin` is how the agent inspects its own environment, and
+        # every denied module is a descendant of it, so treating it as oracle use flags every self-scan.
+        if deepest.count(".") >= 1 and any(d.startswith(deepest + ".") for d in denied):
+            return deepest
     return None
 
 
@@ -1279,22 +1484,36 @@ def _read_was_blocked(result_text) -> bool:
 _PATHLIST_RE = re.compile(r"\b(find|locate|which|whereis|ls)\b|\bgrep\b[^|;&]*\s-\w*l\b")
 
 
-def _classify_bash_read(cmd: str, result_text, answer_tokens) -> str:
-    """Classify a flagged Bash read: 'blocked_probe' (masked -> empty result), 'recon_probe' (a path-listing
-    search that surfaced no answer path — e.g. the agent locating its OWN granted tool), or 'path_read' (a
-    content read that returned data, or a search that actually located an answer file). Only 'path_read' (and
-    oracle_use) break `clean`; the mask remains the real enforcement, this is defence-in-depth."""
+def _classify_bash_read(cmd: str, result_text, answer_tokens, word: str = "", tok: str = "",
+                       granted: frozenset = frozenset()) -> str:
+    """Classify a flagged Bash read, cheapest-and-most-benign explanation first:
+
+      'blocked_probe'   the mask returned nothing -> no withheld bytes reached the agent;
+      'recon_probe'     a path-LISTING search that surfaced no answer path (filenames, not content);
+      'granted_read'    the read target is a file this arm's own bundle GRANTS;
+      'pattern_mention' the token appeared as a search PATTERN, not as a path being read;
+      'path_read'       a content read of a withheld path that returned data.
+
+    Only 'path_read' (and oracle_use) break `clean`; the mask remains the real enforcement, this is
+    defence-in-depth."""
     if _read_was_blocked(result_text):
         return "blocked_probe"
     if _PATHLIST_RE.search(cmd) and not any(t in (result_text or "") for t in answer_tokens):
         return "recon_probe"
+    if word and _is_granted_target(word, granted):
+        return "granted_read"
+    if word and tok and not _token_is_path_like(word, tok):
+        return "pattern_mention"
     return "path_read"
 
 
-_ADVISORY_KINDS = frozenset({"blocked_probe", "recon_probe"})
+# The advisory/violation split is DECLARED once, in the same module the mask and the path tokens come
+# from, so the perf campaign's fail-closed gate consumes the identical vocabulary instead of
+# re-deriving it (a gate that instead demanded ZERO hits disqualified rounds this audit called clean).
+_ADVISORY_KINDS = _AS.AUDIT_ADVISORY_KINDS
 
 
-def audit_transcript(tpath: Path, arm: str = "raw_baseline") -> dict:
+def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None = None) -> dict:
     """Flag genuine READS of withheld answer/grader/oracle paths AND oracle USE in agent-authored
     code (defence-in-depth beyond the masked workspace). Self-scans of the submission and bare path
     mentions are NOT flagged. Arm-aware: the merlin arm's allowed tools are not treated as cheats.
@@ -1302,11 +1521,17 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline") -> dict:
     A withheld-path read whose RESULT was empty (the mask returned /dev/null) is recorded as an advisory
     ``blocked_probe`` — it does NOT break ``clean`` — since no answer content reached the agent. Only a read
     that actually returned content (a mask breach) or oracle USE breaks ``clean``. This stops a thorough
-    model that merely *probes* a masked golden (and gets nothing) from being falsely marked answer-unclean."""
+    model that merely *probes* a masked golden (and gets nothing) from being falsely marked answer-unclean.
+
+    Grant-aware: what counts as an oracle import, and which read targets are legitimate, are DERIVED from
+    this arm's own input bundle (``bundle`` overrides the arm's default, which is what lets a stored run
+    be re-audited against the bundle it actually ran under). Reading or importing what the bundle HANDED
+    the agent is not a cheat; the declared oracle registry still wins over any grant."""
     hits = []
     if not tpath.exists():
         return {"clean": True, "hits": [], "note": "no transcript"}
     path_tokens = _path_tokens(arm)
+    granted = _granted_read_targets(arm, bundle)
     results = _result_text_by_id(tpath)
     for line in tpath.read_text(errors="ignore").splitlines():
         try:
@@ -1324,17 +1549,24 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline") -> dict:
                 fp = inp.get("file_path") or ""
                 tok = next((t for t in path_tokens if t in fp), None)
                 if tok:
-                    kind = "blocked_probe" if _read_was_blocked(results.get(b.get("id"))) else "path_read"
+                    if _read_was_blocked(results.get(b.get("id"))):
+                        kind = "blocked_probe"
+                    elif _is_granted_target(fp, granted):
+                        kind = "granted_read"
+                    else:
+                        kind = "path_read"
                     hits.append({"tool": name, "kind": kind, "token": tok, "input": fp[:200]})
             elif name == "Bash":
                 cmd = inp.get("command") or ""
-                tok = _is_answer_read(cmd, path_tokens)
-                if tok:
-                    kind = _classify_bash_read(cmd, results.get(b.get("id")), _ANSWER_TOKENS)
+                match = _answer_read_match(cmd, path_tokens)
+                if match:
+                    tok, word = match
+                    kind = _classify_bash_read(cmd, results.get(b.get("id")), _ANSWER_TOKENS,
+                                               word=word, tok=tok, granted=granted)
                     hits.append({"tool": name, "kind": kind, "token": tok, "input": cmd[:200]})
                 # inline python that imports/calls the oracle (e.g. `python -c "from merlin.runtime..."`)
                 if _PYC_RE.search(cmd):
-                    otok = _is_oracle_code(cmd)
+                    otok = _is_oracle_code(cmd, arm, bundle)
                     if otok:
                         hits.append({"tool": name, "kind": "oracle_use", "token": otok,
                                      "input": cmd[:200]})
@@ -1344,16 +1576,18 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline") -> dict:
                     continue  # only executable sources can self-grade; prose mentions are not a cheat
                 blobs = [inp.get("content") or "", inp.get("new_string") or ""]
                 blobs += [ed.get("new_string") or "" for ed in (inp.get("edits") or [])]
-                otok = next((_is_oracle_code(t) for t in blobs if _is_oracle_code(t)), None)
+                otok = next((o for o in (_is_oracle_code(t, arm, bundle) for t in blobs) if o), None)
                 if otok:
                     hits.append({"tool": name, "kind": "oracle_use", "token": otok,
                                  "input": f"{fp}: {otok}"})
     # Advisory hits (a masked/blocked read, or a path-listing search that surfaced no answer path) do NOT
     # break `clean`; only an actual content leak or oracle USE does. Keep every hit in `hits` (still visible).
-    violations = [h for h in hits if h.get("kind") not in _ADVISORY_KINDS]
+    violations = [h for h in hits if _AS.audit_hit_is_violation(h)]
     return {"clean": len(violations) == 0, "hits": hits,
             "blocked_probes": sum(1 for h in hits if h.get("kind") == "blocked_probe"),
-            "recon_probes": sum(1 for h in hits if h.get("kind") == "recon_probe")}
+            "recon_probes": sum(1 for h in hits if h.get("kind") == "recon_probe"),
+            "granted_reads": sum(1 for h in hits if h.get("kind") == "granted_read"),
+            "pattern_mentions": sum(1 for h in hits if h.get("kind") == "pattern_mention")}
 
 
 def claude_runtime_binds() -> list[str]:

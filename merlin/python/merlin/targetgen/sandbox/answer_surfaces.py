@@ -230,6 +230,72 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     return out
 
 
+# ------------------------------------------------------------------ the audit's hit VOCABULARY
+# The transcript audit records every suspicious event, but only some of them mean the agent actually
+# SAW withheld content. Both the audit that produces the hits and every downstream gate that consumes
+# them (the perf campaign's fail-closed boundary) must agree on which is which, so the vocabulary is
+# declared ONCE here rather than duplicated per consumer -- a gate that re-derives the split by hand
+# is exactly how "no hits at all" became the accidental bar and disqualified conformant rounds.
+#
+# ADVISORY -- the protection WORKED (or nothing was read at all); these are recorded for visibility:
+#   blocked_probe   the mask returned nothing / an error, so no withheld bytes reached the agent
+#   recon_probe     a path-LISTING search that surfaced no answer path (filenames, not content)
+#   granted_read    the read target is a file the arm's own bundle GRANTS
+#   pattern_mention the withheld token appeared as a search PATTERN, not as a path being read
+# VIOLATION -- withheld content reached the agent, or agent code routes to the oracle:
+#   path_read       a content read of a withheld path that returned data
+#   oracle_use      agent-authored code imports/calls a denied oracle module
+AUDIT_ADVISORY_KINDS: frozenset[str] = frozenset({
+    "blocked_probe", "recon_probe", "granted_read", "pattern_mention"})
+AUDIT_VIOLATION_KINDS: frozenset[str] = frozenset({"path_read", "oracle_use"})
+
+
+def audit_hit_is_violation(hit: object) -> bool:
+    """True iff this audit hit means withheld content actually reached the agent.
+
+    FAIL CLOSED: anything that is not a well-formed hit carrying a kind from
+    :data:`AUDIT_ADVISORY_KINDS` counts as a violation. A new hit kind is therefore disqualifying
+    until it is deliberately declared advisory here -- never silently waved through.
+    """
+    if not isinstance(hit, dict):
+        return True
+    return hit.get("kind") not in AUDIT_ADVISORY_KINDS
+
+
+# ------------------------------------------------------- oracle IDENTITY as importable module names
+def module_name_for(rel_path: str) -> str | None:
+    """Dotted python module name for a repo-relative path inside the importable ``merlin`` package.
+
+    ``merlin/python/merlin/runtime/reference.py`` -> ``merlin.runtime.reference``;
+    ``merlin/python/merlin/verify/`` -> ``merlin.verify``. Returns ``None`` for a path that is not
+    importable (a contract dir, an artifact, a target data file), so callers can ignore it.
+    """
+    rel = str(rel_path).strip().strip("/")
+    prefix = "merlin/python/"
+    if not rel.startswith(prefix):
+        return None
+    rel = rel[len(prefix):]
+    if rel.endswith(".py"):
+        rel = rel[:-3]
+    parts = [seg for seg in rel.split("/") if seg and seg != "__init__"]
+    if not parts or parts[0] != "merlin":
+        return None
+    return ".".join(parts)
+
+
+def declared_oracle_modules() -> tuple[str, ...]:
+    """The DECLARED oracle registry as dotted module names -- the harness-level identity of "the
+    oracle", independent of any bundle. Importing one of these is oracle USE for EVERY arm, even if
+    some bundle's grant list were to name it."""
+    return tuple(dict.fromkeys(
+        m for m in (module_name_for(rel) for rel in ORACLE_MODULES) if m))
+
+
+def module_matches(module: str, prefix: str) -> bool:
+    """True iff dotted ``module`` IS ``prefix`` or lives underneath it."""
+    return module == prefix or module.startswith(prefix + ".")
+
+
 # --------------------------------------------------------------------------- transcript-audit tokens
 def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
     """The path-fragment tokens the transcript audit flags as answer/grader/oracle READS — DERIVED from
