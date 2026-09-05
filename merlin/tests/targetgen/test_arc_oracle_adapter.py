@@ -153,11 +153,22 @@ def test_qa_loop_gate_is_fastest_tier_only_for_chipyard():
 
 
 def test_qa_checkpoint_is_full_ladder_for_chipyard():
-    # gemmini/chipyard: the cycle-accurate checkpoint = spike (L2) + verilator (L3), same as before.
+    """gemmini/chipyard: the cycle-accurate checkpoint = spike (L2) + the elaborated-RTL tier (L3).
+
+    L3 is a FIDELITY, not a simulator. This used to assert the literal "verilator" and broke the day
+    the engine policy started resolving a faster engine of the same fidelity -- for a reason that had
+    nothing to do with what it was checking, which is the same mistake the closure-indexing note above
+    records. Which engine answers is an availability choice, so the expectation is derived from the
+    policy's own selection; what this test actually guards is that the ladder has both rungs, that L3
+    is an elaborated-RTL engine rather than a quietly demoted one, and that both adapters are bound to
+    the right target.
+    """
     ckpt = CR.qa_checkpoint_adapters("gemmini", "chipyard")
     assert set(ckpt) == {"L2", "L3"}
     assert _closed_over(ckpt["L2"]) == {"spike", "gemmini"}
-    assert _closed_over(ckpt["L3"]) == {"verilator", "gemmini"}
+    selected = CR.describe_l3_engine("gemmini", "chipyard")
+    assert selected["fidelity"] == "elaborated_rtl"
+    assert _closed_over(ckpt["L3"]) == {selected["engine"], "gemmini"}
 
 
 def test_qa_adapters_are_cyclotron_for_a_simt_target():
