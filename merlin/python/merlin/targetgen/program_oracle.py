@@ -39,6 +39,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from merlin.common.paths import ext_path
+from merlin.perf import cycle_trace as _CYCLE_TRACE
+from merlin.perf import observations as _OBS_KEYS
 
 
 class OracleUnavailable(RuntimeError):
@@ -783,21 +785,41 @@ _RTL_ENGINES: dict[str, tuple[str, str]] = {
 
 
 def _rtl_engine_dir(target: str, engine: str) -> Path | None:
-    """Where ``engine``'s build for ``target`` lives, or None when it registers none."""
+    """Where ``engine``'s build for ``target`` lives, or None when nothing registers one.
+
+    Two sources, in precedence order:
+
+    1. ``MERLIN_EXT_<TARGET>_<SUFFIX>`` (process env or ``.env``) — the machine-specific registration.
+    2. The DERIVED home ``out/build/rtl_engines/<target>/<engine>/``.
+
+    (2) is new and it is the point. Registration by env var alone means an engine that IS BUILT AND
+    WORKING on this machine is invisible to the policy until somebody adds a line to a gitignored file
+    — which is exactly what happened: a cycle-exact, 32x-faster GSIM engine sat beside its conventional
+    wrapper, fully built, and every cert ran on Verilator because no ``MERLIN_EXT_<TARGET>_GSIM`` line
+    existed. Nothing reported that; the engine was simply never considered. A derived home makes
+    "install it where it belongs" the way to register an engine, and the env var the exception.
+    """
     suffix, _ = _RTL_ENGINES[engine]
     try:
         return Path(ext_path(f"{target}_{suffix}"))
     except KeyError:
-        return None
+        pass
+    from .gsim_emulator import engine_home
+    derived = engine_home(target, engine)
+    return derived if derived.is_dir() else None
 
 
 def _rtl_engine_probe(target: str, engine: str):
     """``() -> (available, reason)`` for one engine: its dir must be registered AND hold its wrapper."""
     def probe():
+        from .gsim_emulator import engine_home
         _, fname = _RTL_ENGINES[engine]
         d = _rtl_engine_dir(target, engine)
         if d is None:
-            return False, f"no MERLIN_EXT_{target.upper()}_{_RTL_ENGINES[engine][0].upper()} registered"
+            # BOTH places, named. "not registered" alone sent every reader to the env var and none of
+            # them to the directory an engine can simply be installed into.
+            return False, (f"no MERLIN_EXT_{target.upper()}_{_RTL_ENGINES[engine][0].upper()} "
+                           f"registered and no build at {engine_home(target, engine)}")
         w = d / fname
         if not w.is_file():
             return False, f"{fname} absent under {d}"
@@ -861,17 +883,29 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
     # change on the sim side; the returned regions come back in the order they were requested.
     specs = _resolve_out_specs(target, cb, bundle)
     _kw: dict[str, Any] = {}
-    if per_cycle_csv:
-        # OPTIONAL, and only if THIS runner accepts it. A runner built before the per-cycle dump
-        # existed must keep working unchanged rather than raising a TypeError that would be recorded
-        # as the submission's crash -- the same "a harness limit reported as the agent's bug" class.
-        import inspect as _inspect
-        try:
-            if "per_cycle_csv" in _inspect.signature(runner.run_program).parameters:
-                Path(per_cycle_csv).parent.mkdir(parents=True, exist_ok=True)
-                _kw["per_cycle_csv"] = str(per_cycle_csv)
-        except (TypeError, ValueError):                       # unintrospectable runner: skip the dump
-            pass
+    _derived_trace: Path | None = None
+    _accepts_trace = False
+    # OPTIONAL, and only if THIS runner accepts it. A runner built before the per-cycle dump
+    # existed must keep working unchanged rather than raising a TypeError that would be recorded
+    # as the submission's crash -- the same "a harness limit reported as the agent's bug" class.
+    import inspect as _inspect
+    try:
+        _accepts_trace = "per_cycle_csv" in _inspect.signature(runner.run_program).parameters
+    except (TypeError, ValueError):                           # unintrospectable runner: skip the dump
+        _accepts_trace = False
+    if per_cycle_csv and _accepts_trace:
+        Path(per_cycle_csv).parent.mkdir(parents=True, exist_ok=True)
+        _kw["per_cycle_csv"] = str(per_cycle_csv)
+    elif _accepts_trace and _CYCLE_TRACE.load_declaration(Path(vsim_dir)) is not None:
+        # THE ENGINE DECLARED ITS ACTIVITY COLUMNS, so it HAS the timing capability -- it just
+        # computes the decomposition outside the simulator instead of inside it. Ask for the trace
+        # the reduction needs rather than reporting the engine as timing-blind, which is what made
+        # adopting a faster engine silently cost the campaign its per-capsule occupancy. Written into
+        # the run's own workdir and removed once folded, so this costs a bounded temporary file (one
+        # row per cycle) and never a number the caller did not ask for.
+        _derived_trace = Path(workdir) / "per_cycle_trace.csv"
+        _derived_trace.parent.mkdir(parents=True, exist_ok=True)
+        _kw["per_cycle_csv"] = str(_derived_trace)
     res = runner.run_program(words, preload=preload,
                              reads=[(int(s["base"]), _out_nbytes(s)) for s in specs.values()],
                              max_cycles=max_cycles, timeout=timeout, **_kw)
@@ -889,17 +923,76 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
     # The one tier here that runs the ELABORATED Verilog, so the only one entitled to say RTL.
     out: dict[str, Any] = {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
                            "oracle": {"kind": f"{target}-{engine}-rtl", "derived_from_rtl": True,
-                                      "fidelity": "elaborated_rtl", "engine": engine}}
+                                      "fidelity": "elaborated_rtl", "engine": engine,
+                                      "provenance": _engine_provenance(target, engine,
+                                                                       Path(vsim_dir))}}
     # WHATEVER FINER TIMING THIS ORACLE COULD SEE, carried instead of discarded. The run already paid
     # for it: the sim evaluated the RTL's own top-level activity ports on every cycle whether anyone
     # read them or not, so the marginal cost of keeping the decomposition is a load per cycle. A
     # runner with no timing capability sets nothing here and the result is byte-identical to before.
     _obs, _cap = _timing_block(res)
+    if _obs is None:
+        # The runner returned no block. If the engine DUMPED the same activity ports instead of
+        # accumulating them, the measurement exists and only the fold is missing -- so do the fold,
+        # from the engine's OWN declaration of what its columns are. Nothing is derived when the
+        # engine declares no columns or wrote no trace: an absent instrument stays absent.
+        _trace = _kw.get("per_cycle_csv")
+        if _trace:
+            _folded = _CYCLE_TRACE.block_from_trace(_trace, Path(vsim_dir))
+            if _folded is not None:
+                _obs, _cap = _timing_block(dict(_folded, **{
+                    _OBS_KEYS.ALIAS_COLLISIONS_KEY: res.get(_OBS_KEYS.ALIAS_COLLISIONS_KEY)}))
+    if _derived_trace is not None:
+        try:
+            _derived_trace.unlink()
+        except OSError:
+            pass
     if _obs:
         out["timing_observations"] = _obs
     if _cap:
         out["timing_capability"] = _cap
     return out
+
+
+def _engine_provenance(target: str, engine: str,
+                       engine_dir: "Path | None" = None) -> dict[str, Any]:
+    """Identify the engine BUILD that produced a number: its directory, its wrapper, and the digest of
+    whatever binary sits beside the wrapper.
+
+    A cert record pinned the RTL and the toolchain and said nothing about the simulator that actually
+    ran — which for an out-of-tree engine build is the one input tying the verdict to an elaboration.
+    Digest every non-source file in the engine home rather than naming one: merlin does not know an
+    engine's binary name and must not learn one. Cheap (a handful of files) and never raises; provenance
+    that cannot be established is recorded as absent, never invented.
+    """
+    rec: dict[str, Any] = {"engine": engine}
+    try:
+        # THE DIRECTORY THE RUNNER WAS ACTUALLY LOADED FROM, when the caller knows it. Re-resolving
+        # here instead was a real defect, caught end-to-end: the caller had been handed one engine dir
+        # explicitly while resolution returned a different registered one, and the cert recorded the
+        # digests of binaries that did not produce the number. A provenance block naming the wrong build
+        # is worse than none, because it reads as an answer.
+        d = Path(engine_dir) if engine_dir is not None else _rtl_engine_dir(target, engine)
+        if d is None:
+            return rec
+        rec["engine_dir"] = str(d)
+        rec["wrapper"] = _RTL_ENGINES[engine][1]
+        from merlin.common import provenance as _prov
+        binaries = {}
+        for f in sorted(d.iterdir()):
+            if f.is_file() and os.access(f, os.X_OK):
+                binaries[f.name] = _prov.file_digest(f)
+        if binaries:
+            rec["binaries"] = binaries
+        adoption = d / "provenance.json"
+        if adoption.is_file():
+            rec["adoption_record"] = {"path": str(adoption), "sha256": _prov.file_digest(adoption)}
+        else:
+            rec["lineage"] = ("no adoption record or build receipt beside this engine build — these "
+                              "bytes are not attributed to any RTL revision")
+    except Exception as exc:  # noqa: BLE001 — unestablished provenance is recorded, never invented
+        rec["error"] = f"{type(exc).__name__}: {exc}"
+    return rec
 
 
 def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None:
@@ -932,8 +1025,15 @@ def program_verilator_adapter(target: str, *, model_ext: str) -> Callable | None
         # a correct kernel that simply needed longer raised ProgramDidNotHalt -- which the runner books
         # as the SUBMISSION's defect. A harness limit must not be reported as an agent's bug, and the
         # asymmetry between two tiers of the same target had no reason behind it.
-        return run_program_verilator_oracle(target, model_ext=model_ext, vsim_dir=vsim_dir, cb=cb,
-                                            engine=engine,
-                                            kernel_s=ks, workdir=wd, timeout=timeout,
-                                            max_cycles=derive_cycle_budget(cb), per_cycle_csv=_csv)
+        res = run_program_verilator_oracle(target, model_ext=model_ext, vsim_dir=vsim_dir, cb=cb,
+                                           engine=engine,
+                                           kernel_s=ks, workdir=wd, timeout=timeout,
+                                           max_cycles=derive_cycle_budget(cb), per_cycle_csv=_csv)
+        # CARRY THE CHOICE, not just its outcome. `selection` records every engine considered and the
+        # reason each slower/faster one was passed over. Without it a cert that ran on Verilator because
+        # the fast engine was unregistered is indistinguishable from one that ran on Verilator because it
+        # was the only engine there is — and the first is a thing to fix while the second is not.
+        if isinstance(res.get("oracle"), dict):
+            res["oracle"]["selection"] = dict(selection)
+        return res
     return run

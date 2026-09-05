@@ -171,7 +171,64 @@ def verilator_muon_adapter() -> Callable:
     return _adapter("verilator")
 
 
-def gsim_muon_adapter() -> Callable:
+#: The env spelling this oracle has always honored, kept as an OVERRIDE. It used to be the ONLY way to
+#: reach a GSIM emulator, and `default_adapters` gated the whole L3 engine choice on it being set — so on
+#: every machine where nobody exported it, L3 was Verilator and nothing said why. The derived home under
+#: the build root (``out/build/rtl_engines/<target>/gsim/emulator``) is what normally answers now.
+GSIM_EMU_ENV = "MERLIN_MUON_GSIM_EMU"
+
+
+def gsim_status(target: str) -> tuple[bool, str]:
+    """``(available, reason)`` for this target's GSIM cert engine — BOTH halves of what it needs.
+
+    The emulator is resolved (and its build receipt checked) by the shared
+    :mod:`merlin.targetgen.gsim_emulator`; the rv64 SoC-fuse toolchain is this oracle's own extra
+    requirement, since the emitted model is driven with a fused SoC image. Reported as a sentence rather
+    than a bool because the two failures need different work, and the selection record is where anyone
+    finds out which one happened.
+    """
+    from merlin.targetgen import gsim_emulator as _gsim
+    ok, why = _gsim.probe(target, env_var=GSIM_EMU_ENV)
+    if not ok:
+        return False, why
+    if not (muon.soc_fuse_dir() / "fuse_rv32_into_rv64.sh").is_file() or muon.rv64_cross_prefix() is None:
+        return False, (f"{why}, but the rv64 SoC-fuse toolchain is absent — the emitted model is driven "
+                       f"with a fused SoC image, so GSIM cannot run without it")
+    return True, why
+
+
+def verilator_status(target: str) -> tuple[bool, str]:
+    """``(available, reason)`` for the Verilator cert engine, in the shape the engine policy consumes.
+
+    It exists so the SLOW engine also has to say why it was chosen: with only GSIM reporting, a run that
+    fell back read as though nothing had been decided.
+    """
+    try:
+        if muon.available("verilator"):
+            return True, f"Verilator RTL sim available for {target!r} (the slow elaborated-RTL engine)"
+    except Exception as exc:                    # noqa: BLE001 — a broken probe is not availability
+        return False, f"Verilator probe raised {type(exc).__name__}: {exc}"
+    return False, ("Verilator RTL sim unavailable (needs the sim binary, the dramsim ini, and the rv64 "
+                   "SoC-fuse toolchain)")
+
+
+def l3_selection(target: str) -> dict:
+    """Which elaborated-RTL engine certifies this SIMT target, routed through the SHARED cost policy.
+
+    This path used to make the choice inline — ``if MERLIN_MUON_GSIM_EMU: L3 = gsim`` — which is the same
+    decision the policy makes but with no record of it. Nothing downstream could tell a Verilator cert
+    chosen because GSIM was missing from one chosen because GSIM was never considered, and that is
+    precisely the question anyone asks of a cert that took 45 minutes a capsule.
+
+    Raises :class:`~merlin.targetgen.rtl_engine_policy.NoEngineAvailable` when neither can run — the
+    caller reports the tier absent rather than substituting a lesser one.
+    """
+    from merlin.targetgen import rtl_engine_policy as _pol
+    return _pol.select(target, {"gsim": lambda: gsim_status(target),
+                                "verilator": lambda: verilator_status(target)})
+
+
+def gsim_muon_adapter(target_name: str | None = None) -> Callable:
     """Certification oracle: the GSIM-emitted C++ cycle-accurate model of the RadianceGsimConfig SoC.
 
     GSIM compiles the design's FIRRTL to standalone C++ (an RTL-DERIVED simulator, like Verilator but
@@ -193,16 +250,18 @@ def gsim_muon_adapter() -> Callable:
     import subprocess
 
     def run(cb: dict, kernel_src: str, workdir: str | Path, timeout: int) -> dict:
-        emu = os.environ.get("MERLIN_MUON_GSIM_EMU", "").strip()
-        if not emu or not Path(emu).is_file() or not os.access(emu, os.X_OK):
-            raise muon.MuonUnavailable(
-                "GSIM emulator not available -- set MERLIN_MUON_GSIM_EMU to the emitted GSIM emu binary")
-        # The GSIM emu loads a fused rv64 SoC image (rv32 Muon kernel + rv64 Rocket carrier) via +loadmem,
-        # exactly like the Verilator path, so it needs the same SoC-fuse toolchain.
-        if not (muon.soc_fuse_dir() / "fuse_rv32_into_rv64.sh").is_file() or muon.rv64_cross_prefix() is None:
-            raise muon.MuonUnavailable("rv64 SoC-fuse toolchain not available for the GSIM oracle")
         flops = flops_from_cb(cb)
-        target = cb.get("target", "radiance")
+        target = target_name or cb.get("target", "radiance")
+        # The GSIM emu loads a fused rv64 SoC image (rv32 Muon kernel + rv64 Rocket carrier) via +loadmem,
+        # exactly like the Verilator path, so it needs the same SoC-fuse toolchain. Both requirements —
+        # and the emulator's own provenance — are checked by `gsim_status`, which resolves through the
+        # shared home (env override, then out/build/rtl_engines/<target>/gsim/emulator) and REFUSES an emulator whose
+        # build receipt describes different bytes rather than certifying against an unknown revision.
+        from merlin.targetgen import gsim_emulator as _gsim
+        _ok, _why = gsim_status(target)
+        if not _ok:
+            raise muon.MuonUnavailable(f"GSIM oracle unavailable: {_why}")
+        emu = str(_gsim.emulator_path(target, env_var=GSIM_EMU_ENV))
         from . import muon_harness as _mh
         t0 = time.perf_counter()
         # Build the graded ELF identically to the Verilator/cyclotron adapters (fork-free thesis path when
@@ -394,7 +453,7 @@ def arc_readback_adapter() -> Callable:
     return run
 
 
-def default_adapters() -> dict[str, Callable]:
+def default_adapters(target: str | None = None) -> dict[str, Callable]:
     """Tier -> adapter for the Muon runner. L2 = cyclotron (perf), L3 = VCS-RTL cert. The RTL-arc readback
     oracle (``arc_readback_adapter``) is the sim-independent, multi-warp-capable grade a real new target has
     (its RTL-compiled model); selected by the harness when a run needs memory-readback rather than console.
@@ -404,15 +463,32 @@ def default_adapters() -> dict[str, Callable]:
     (off by default) because it spends minutes of Verilator per capsule; when on, the runner records it as
     a non-mandatory, never-blocking ``executability`` tier (RTL-legality grounding for the L2 oracle)."""
     import os
-    adapters: dict[str, Callable] = {"L2": cyclotron_adapter(), "L3": verilator_muon_adapter()}
-    # When the GSIM emu is present, use the (much faster) RTL-derived GSIM model as the L3 cert. Both grade
-    # the SAME fork-free ELF on the SAME RTL completion contract; GSIM (FIRRTL->C++) is ~an order of magnitude
-    # faster than Verilator. When the env is unset, L3 stays Verilator and a normal grade is byte-identical.
-    # The Verilator cert is NOT kept alongside by default: the runner executes every adapter in the tier map,
-    # so a co-resident ``L3-verilator`` would run the slow Verilator sim on every capsule and erase GSIM's
-    # whole speed advantage. Opt in to the (advisory) cross-check with MERLIN_MUON_L3_VERILATOR_ALSO.
-    if os.environ.get("MERLIN_MUON_GSIM_EMU", "").strip():
-        adapters["L3"] = gsim_muon_adapter()
+    tgt = target or "radiance"
+    adapters: dict[str, Callable] = {"L2": cyclotron_adapter()}
+    # WHICH elaborated-RTL engine certifies L3 is a COST decision at equal fidelity, and the SHARED policy
+    # makes it (vcs > gsim > verilator) instead of an inline `if the env var is set`. GSIM and Verilator
+    # grade the SAME fork-free ELF on the SAME RTL completion contract; GSIM (FIRRTL->C++) is ~an order of
+    # magnitude faster. What changes here is not the outcome but the RECORD: the selection, and every
+    # engine passed over WITH the reason, is printed — so a Verilator cert can never again be mistaken for
+    # a considered choice when it was really "nobody exported the env var".
+    _engine_adapter = {"gsim": lambda: gsim_muon_adapter(tgt), "verilator": verilator_muon_adapter}
+    _selected_engine = ""
+    try:
+        from merlin.targetgen import rtl_engine_policy as _pol
+        _sel = l3_selection(tgt)
+        _selected_engine = _sel["engine"]
+        adapters["L3"] = _engine_adapter[_selected_engine]()
+        print(f"[oracle] {tgt} L3 engine: {_pol.describe(_sel)} — {_sel['reason']}", flush=True)
+        for _c in _sel["considered"]:
+            if not _c["available"]:
+                print(f"[oracle] {tgt} L3 passed over {_c['engine']}: {_c['reason']}", flush=True)
+    except Exception as exc:  # noqa: BLE001 — no elaborated-RTL engine: NO L3, never a silent demotion
+        print(f"[oracle] {tgt}: no elaborated-RTL engine for L3 — {exc}", flush=True)
+    # The Verilator cert is NOT kept alongside a GSIM one by default: the runner executes every adapter in
+    # the tier map, so a co-resident ``L3-verilator`` would run the slow Verilator sim on every capsule and
+    # erase GSIM's whole speed advantage. Opt in to the (advisory) cross-check with
+    # MERLIN_MUON_L3_VERILATOR_ALSO.
+    if _selected_engine == "gsim":
         if os.environ.get("MERLIN_MUON_L3_VERILATOR_ALSO", "").strip().lower() in ("1", "true", "yes", "on"):
             adapters["L3-verilator"] = verilator_muon_adapter()
     if os.environ.get("MERLIN_EXEC_SMOKE", "").strip().lower() in ("1", "true", "yes", "on"):

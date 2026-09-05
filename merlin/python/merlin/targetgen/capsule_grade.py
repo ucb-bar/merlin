@@ -774,6 +774,11 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                     "derived_from_rtl": _tier_field(_rec, "derived_from_rtl"),
                     "cycle_accurate": _tier_field(_rec, "cycle_accurate"),
                     "evidence": _tier_field(_rec, "evidence"),
+                    # The seconds in this block are the cost of ONE named engine. Carrying the name
+                    # beside them is what lets cert_cost fit a budget per engine instead of over a
+                    # mixture of two that differ by more than an order of magnitude.
+                    "engine": _tier_field(_rec, "engine"),
+                    "console_log": _tier_field(_rec, "console_log"),
                 }
             entry_tm["by_tier"] = per_tier
             score["timing_diagnostic"][r["capsule"]] = entry_tm
@@ -966,6 +971,17 @@ def emit_perf_ledger(results: list, *, target: str, runs_root: str | Path, versi
                 "capsule": capsule, "tier": tier, "status": rec.get("status"),
                 "cycles": rec.get("cycles"), "fidelity": rec.get("fidelity"),
                 "evidence": rec.get("evidence"),
+                # WHICH ENGINE produced these seconds and cycles, which BUILD of it, and where its
+                # console went. A perf ledger without the engine is a set of numbers from an unknown
+                # instrument: GSIM and Verilator run the same design at the same fidelity and cost
+                # ~20-30x apart, so a fit over rows that mix them silently averages two instruments.
+                # Until now the only trace of the engine was inside the `evidence` FILENAME, which
+                # every consumer here would have had to string-parse to recover.
+                "engine": rec.get("engine"),
+                "engine_selection": rec.get("engine_selection"),
+                "sim_provenance": rec.get("sim_provenance"),
+                "console_log": rec.get("console_log"),
+                "console_bytes": rec.get("console_bytes"),
                 # STATED, not inferred from the file's path. See TierResult.submission.
                 "submission": rec.get("submission"),
                 # A run taken before the stamp existed is MARKED, never retro-labelled: the

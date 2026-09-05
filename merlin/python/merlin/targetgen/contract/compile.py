@@ -103,6 +103,40 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
     return link_elf(cb, obj, work, target=target, inputs=inputs)
 
 
+def simulator_provenance(backend, simulator: str) -> dict[str, Any] | None:
+    """Identify the simulator BINARY an engine ran on: its path, its digest, and its recorded lineage.
+
+    A result that claims a hardware verdict must record which hardware revision it came from. A cert
+    record already pins the ELF, the RTL commits and the toolchain — and said nothing at all about the
+    prebuilt simulator that produced the numbers, which for GSIM is an out-of-tree build whose bytes are
+    the only thing tying the verdict to an elaboration. A stale or mis-provenanced emulator was therefore
+    undetectable after the fact, which is the same failure mode the binary provenance stamp was added to
+    catch on the ELF side.
+
+    Derived from the backend, not from a table: it is asked for ``<engine>_status()`` (a sentence about
+    how the engine resolved) and ``<engine>_path()`` (where its binary is), both DERIVED attribute names,
+    so an engine or a backend that does not publish them contributes nothing rather than a fabricated
+    entry. Never raises — provenance that cannot be established is recorded as absent.
+    """
+    from pathlib import Path as _Path
+    rec: dict[str, Any] = {"engine": simulator}
+    try:
+        getter = getattr(backend, f"{simulator}_path", None)
+        if callable(getter):
+            binary = _Path(str(getter()))
+            rec["binary"] = str(binary)
+            if binary.is_file():
+                from merlin.common import provenance as _prov
+                rec["sha256"] = _prov.file_digest(binary)
+        status = getattr(backend, f"{simulator}_status", None)
+        if callable(status):
+            _ok, _why = status()
+            rec["resolution"] = str(_why)
+    except Exception as exc:  # noqa: BLE001 — unestablished provenance is recorded, never invented
+        rec["error"] = f"{type(exc).__name__}: {exc}"
+    return rec if len(rec) > 1 else None
+
+
 def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str, target: str,
                   workdir: str | Path | None = None, timeout: int = 600,
                   inputs: dict | None = None) -> dict[str, Any]:
@@ -122,8 +156,17 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     console = backend.run_elf(elf, simulator=simulator, timeout=timeout)
     _t2 = time.perf_counter()
     outputs, raw = backend.parse_output(console)
+    # WHICH BUILD of the simulator answered — recorded beside the oracle's declared kind, not inferred
+    # afterwards. The tier record identifies the ELF, the RTL pins and the tools, and identified the one
+    # remaining input to the verdict not at all: the prebuilt simulator binary. Derived, never assumed:
+    # the backend is asked where its ``<engine>_path()`` is and the bytes there are digested. A backend
+    # that does not expose one contributes nothing rather than a guess.
+    _oracle = dict(backend.ORACLE[simulator])
+    _prov = simulator_provenance(backend, simulator)
+    if _prov:
+        _oracle["provenance"] = _prov
     result = {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles", 0),
-              "oracle": backend.ORACLE[simulator], "elf": str(elf), "console": console,
+              "oracle": _oracle, "elf": str(elf), "console": console,
               "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
                          "oracle_wait_s": 0.0}}
     # Counter markers are a target-independent wire protocol.  The event names/codes remain the

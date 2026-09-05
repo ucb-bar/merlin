@@ -145,6 +145,31 @@ class TierResult:
                                       # everything it refused. An unread signal is UNMEASURED, never
                                       # zero, and this is where that distinction is recorded.
 
+    engine: str | None = None         # WHICH SIMULATOR ANSWERED, as a first-class field.
+                                      # It was recorded nowhere: the only trace of it was the `evidence`
+                                      # FILENAME (`<engine>_console.log`), so telling a GSIM cert from a
+                                      # Verilator one meant string-parsing a path, and every consumer
+                                      # that did not (the verdict, the perf ledger, cert_cost) simply
+                                      # could not see which engine produced the seconds it was fitting.
+                                      # A cert tier is a fidelity, not a simulator -- which is exactly
+                                      # why the simulator has to be written down.
+    engine_selection: dict | None = None
+                                      # HOW that engine was chosen and what it was chosen OVER, from
+                                      # `rtl_engine_policy.select`: {engine, fidelity, reason,
+                                      # passed_over, considered}. Falling back to the slow engine was
+                                      # SILENT -- the run recorded a cert and not the fact that the fast
+                                      # one was unavailable, so nobody learned there was anything to fix.
+    sim_provenance: dict | None = None
+                                      # WHICH BUILD of that simulator: binary digest, and the build
+                                      # receipt binding it to an RTL revision when one exists. A result
+                                      # that claims a hardware verdict must record which hardware
+                                      # revision it came from, and a prebuilt simulator binary is the
+                                      # one input to that verdict nothing else in the record identifies.
+    console_log: str | None = None    # The sim console FILE (name under the capsule's artifacts dir) and
+    console_bytes: int | None = None  # its size. `evidence` already names it, but only by convention;
+                                      # a perf-tuning pass reading these records should not have to
+                                      # reconstruct the filename to find the log it needs.
+
     toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
                                       # scaled MX capsule is graded on the harness's own reference MX
                                       # kernel rather than the submission, so a pass there measures the
@@ -187,6 +212,19 @@ class TierResult:
         # a block-scaled MX capsule is graded on the reference MX kernel, not the submitted backend.
         if self.toolchain:
             d["toolchain"] = self.toolchain
+        # SIMULATOR TELEMETRY. Omitted when unset, so a record from an adapter that reports none is
+        # byte-identical to before; present, it is what a perf-tuning pass reads to know which engine
+        # produced these cycles and seconds, which build of it, and where its console went.
+        if self.engine:
+            d["engine"] = self.engine
+        if self.engine_selection:
+            d["engine_selection"] = dict(self.engine_selection)
+        if self.sim_provenance:
+            d["sim_provenance"] = dict(self.sim_provenance)
+        if self.console_log:
+            d["console_log"] = self.console_log
+        if self.console_bytes is not None:
+            d["console_bytes"] = self.console_bytes
         return d
 
 
@@ -286,14 +324,22 @@ def _did_not_halt_failure(msg: str) -> "CertFailure":
                        "halts.")
 
 
-def _spike_verilator_adapter(sim: str, target: str) -> Callable:
+def _spike_verilator_adapter(sim: str, target: str, selection: dict | None = None) -> Callable:
+    """Adapter for one declared chipyard sim engine. ``selection`` is the engine-policy record that
+    CHOSE this engine — carried into the result so the tier can record not just which simulator answered
+    but what it was chosen over and why. The choice was previously made, printed once to a log nobody
+    keeps, and then discarded; a cert that ran on the slow engine because the fast one was missing looked
+    exactly like one that ran on the slow engine because it was the only one."""
     def run(cb, llvm_text, workdir, timeout):
         from ..runtime.backends import base as _backends
         backend = _backends.get_backend(target)
         if not backend.available(sim):
             raise OracleUnavailable(f"{sim} not available")
-        return oot_compile.run_on_oracle(cb, llvm_text, simulator=sim, target=target,
-                                         workdir=workdir, timeout=timeout)
+        res = oot_compile.run_on_oracle(cb, llvm_text, simulator=sim, target=target,
+                                        workdir=workdir, timeout=timeout)
+        if selection and isinstance(res.get("oracle"), dict):
+            res["oracle"]["selection"] = dict(selection)
+        return res
     return run
 
 
@@ -479,12 +525,60 @@ def chipyard_l3_selection(target: str) -> dict:
 
     def _probe(engine: str):
         def run() -> tuple[bool, str]:
+            # A backend MAY answer with its own sentence via ``<engine>_status() -> (ok, reason)``. That
+            # is the whole difference between a readable selection record and an unreadable one: "gsim
+            # reports unavailable" does not distinguish a binary nobody has built yet from one that was
+            # REFUSED because its build receipt describes different bytes, and only the backend knows
+            # which. The attribute name is DERIVED from the engine, so a backend opts in by defining it
+            # and no shared code learns an engine or a target name.
+            detail = getattr(backend, f"{engine}_status", None)
+            if callable(detail):
+                ok, why = detail()
+                return bool(ok), str(why or "")
             ok = bool(backend.available(engine))       # may raise; the policy records that as a reason
             return (ok, f"{engine} reports available for {target!r}" if ok
                     else f"{engine} reports unavailable for {target!r}")
         return run
 
     return _pol.select(target, {e: _probe(e) for e in _pol.ENGINE_PRIORITY})
+
+
+def describe_l3_engine(target: str, sim_via: str | None = None) -> dict:
+    """Which elaborated-RTL engine would certify ``target`` right now, what it was chosen OVER, and why
+    each passed-over engine could not run — routed exactly the way :func:`oracle_adapters` routes.
+
+    THE POINT IS THE REPORT, not the choice. The policy has always chosen correctly; what was missing is
+    that the choice reached nobody. A run that certified on Verilator because the fast engine was absent
+    produced the same artifact as one that certified on Verilator because it is the only engine there is,
+    and no readiness output, verdict or record distinguished them — so a whole class of "why is this
+    taking 45 minutes a capsule" had no answer anywhere. This returns the answer in one shape whatever
+    the target's routing, including the failure shape: ``{"available": False, "reason": ...}``.
+    """
+    _ensure_sim_oracles_discovered()
+    if sim_via is None:
+        sim_via = _bespoke_sim_via(target)
+    try:
+        if sim_via == "chipyard":
+            sel = chipyard_l3_selection(target)
+        else:
+            so = _SIM_ORACLES.get(sim_via or "")
+            if so is not None and so.l3_selection is not None:
+                sel = so.l3_selection(target)          # the bespoke sim owns its own engine choice
+            elif so is not None and so.exclusive:
+                return {"available": False, "target": target, "sim_via": sim_via or "",
+                        "reason": (f"the {sim_via!r} sim oracle owns this target's cert tier and reports "
+                                   f"no engine selection")}
+            else:
+                from .program_oracle import select_rtl_engine
+                sel = select_rtl_engine(target)
+    except Exception as exc:  # noqa: BLE001 — "no engine" is an ANSWER here, not a crash
+        return {"available": False, "target": target, "sim_via": sim_via or "",
+                "reason": f"{type(exc).__name__}: {exc}"}
+    from . import rtl_engine_policy as _pol
+    out = dict(sel)
+    out.update({"available": True, "target": target, "sim_via": sim_via or "",
+                "summary": _pol.describe(sel)})
+    return out
 
 
 def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
@@ -507,7 +601,7 @@ def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
         # capsule's declared tiers), so a metadata entry would be read as a tier.
         from . import rtl_engine_policy as _pol
         print(f"[oracle] {target} L3 engine: {_pol.describe(sel)}", flush=True)
-        adapters["L3"] = _spike_verilator_adapter(sel["engine"], target)
+        adapters["L3"] = _spike_verilator_adapter(sel["engine"], target, selection=sel)
         return adapters
     return {}
 
@@ -529,6 +623,13 @@ class _SimOracle:
     exclusive: bool                                 # replaces (True) vs augments (False) the arc default
     has_memmap: bool = False                        # exposes an SoC memory map (DRAM base derivable from the build)
     is_compile_based: bool = False                  # lowers the kernel via an oracle-side compile toolchain (smoke-testable)
+    l3_selection: Callable[[str], dict] | None = None
+    #: target -> the rtl_engine_policy selection record for this sim's cert tier, when it has a CHOICE
+    #: of elaborated-RTL engine to make. Optional: a sim with exactly one engine has nothing to report.
+    #: It exists so :func:`describe_l3_engine` can ask the PLUGIN which engine it picked instead of
+    #: reaching into a named backend — the same eviction the adapters and the availability probe already
+    #: went through, for the same reason: a shared code path that knows one sim's backend by name is a
+    #: shared code path a second sim cannot be added to without editing it.
 
 
 def _chipyard_available(target: str) -> tuple[bool, str]:
@@ -572,14 +673,16 @@ def sim_oracle_caps(sim_via: str | None):
 
 def register_sim_oracle(sim_via: str, *, adapters: Callable[[str], dict],
                         available: Callable[[str], tuple[bool, str]], exclusive: bool,
-                        has_memmap: bool = False, is_compile_based: bool = False) -> None:
+                        has_memmap: bool = False, is_compile_based: bool = False,
+                        l3_selection: "Callable[[str], dict] | None" = None) -> None:
     """Register a bespoke-sim oracle under its ``sim_via`` engine name (idempotent) — the public seam a
     NEW simulator uses to plug into oracle routing without editing :func:`oracle_adapters` /
     :func:`oracle_available`. ``exclusive=True`` replaces the arc/program default (a self-hosted SIMT
     core graded on its own kernel ELF); ``exclusive=False`` layers additive tiers on top of the arc
     default (a chipyard-style sim). See :class:`_SimOracle`."""
     _SIM_ORACLES[sim_via] = _SimOracle(adapters=adapters, available=available, exclusive=exclusive,
-                                       has_memmap=has_memmap, is_compile_based=is_compile_based)
+                                       has_memmap=has_memmap, is_compile_based=is_compile_based,
+                                       l3_selection=l3_selection)
 
 
 _sim_oracle_env_seen: str | None = None
@@ -1141,6 +1244,60 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     return not dtype_absent
 
 
+
+
+def _engine_token(oracle_kind: str | None) -> str | None:
+    """The elaborated-RTL ENGINE named inside an oracle kind, or None.
+
+    An adapter reports a kind like ``rtl_gsim`` / ``rtl_verilator`` / ``rtl_gsim_<something>``; the
+    engine is one token inside it. Read STRUCTURALLY (split on the separator, test membership against
+    the policy's own declared engine vocabulary) rather than by pattern — a pattern that is slightly too
+    narrow silently reports "no engine" for a conformant spelling, which here would mean a cert whose
+    engine is unrecorded, i.e. the exact thing this field exists to prevent.
+    """
+    tokens = {t for part in str(oracle_kind or "").split("_") for t in part.split("-")}
+    from . import rtl_engine_policy as _pol
+    for engine in _pol.ENGINE_PRIORITY:
+        if engine in tokens:
+            return engine
+    return None
+
+
+def _sim_telemetry(oracle_meta, ev_name: str) -> dict:
+    """The simulator-identity fields for a TierResult, from what the adapter reported.
+
+    Kept as ONE extractor because the three tier paths that build a TierResult must not disagree about
+    what a record says the engine was — and because a field only some paths populate is worse than one
+    none of them do: a consumer reads the absence as "verilator", never as "unrecorded".
+    """
+    kind = _oracle_kind(oracle_meta) or ev_name
+    declared = oracle_meta.get("engine") if isinstance(oracle_meta, dict) else None
+    # The adapter's OWN word first. Deriving the engine from the kind string works and is the fallback,
+    # but an adapter that states its engine outright is the authority on which one it ran -- the same
+    # rule `derived_from_rtl` already follows, for the same reason.
+    out: dict = {"engine": str(declared) if declared else (_engine_token(kind) or kind)}
+    if isinstance(oracle_meta, dict):
+        if isinstance(oracle_meta.get("selection"), dict):
+            out["engine_selection"] = dict(oracle_meta["selection"])
+        if isinstance(oracle_meta.get("provenance"), dict):
+            out["sim_provenance"] = dict(oracle_meta["provenance"])
+    return out
+
+
+def _record_console(paths, name: str, console) -> tuple[str | None, int | None]:
+    """Write a sim console to the capsule's artifacts dir and return ``(filename, bytes)``.
+
+    One writer for all three tier paths, which each open-coded the same two lines and none of which
+    recorded the SIZE. Size is not decoration: a console is how an RTL verdict is read, and "the marker
+    is absent" and "the console was truncated before the marker" are the same bytes to a reader who
+    cannot tell how much there was.
+    """
+    if console is None:
+        return None, None
+    text = str(console)
+    fname = f"{name}_console.log"
+    (paths.artifacts_dir / fname).write_text(text, encoding="utf-8")
+    return fname, len(text.encode("utf-8"))
 
 
 def _oracle_kind(oracle_meta) -> str | None:
@@ -3506,15 +3663,14 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 # its verdict (legal/illegal) is informational only; ``mand`` is ignored here on purpose.
                 ex = res["executability"]
                 executability[tier] = ex
-                _sim_name = cfg.tier_sim.get(tier) or tier
-                if res.get("console") is not None:
-                    (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
-                        res["console"], encoding="utf-8")
+                _sim_name = _oracle_kind(res.get("oracle")) or cfg.tier_sim.get(tier) or tier
+                _clog, _cbytes = _record_console(paths, _sim_name, res.get("console"))
+                _tel = _sim_telemetry(res.get("oracle"), _sim_name)
                 tiers[tier] = TierResult(
                     tier, "pass" if ex.get("legal") else "fail", mandatory=False,
                     reason=ex.get("reason"), cycles=ex.get("cycles"), derived_from_rtl=True,
                     evidence=f"{_sim_name}_console.log", timing=_tm, not_applicable=True,
-                    concurrency=_conc)
+                    concurrency=_conc, console_log=_clog, console_bytes=_cbytes, **_tel)
                 continue
             if res.get("completion_only"):
                 # An RTL cert that ran the emitted kernel to completion but cannot surface its outputs
@@ -3538,9 +3694,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     _cg, _cp = _cperf.get("gflops"), _cperf.get("pct_fp_peak")
                     _cu = {k: v for k, v in _cperf.items()
                            if k not in ("gflops", "pct_fp_peak", "flops")} or None
-                if res.get("console") is not None:
-                    (paths.artifacts_dir / f"{_sim_name}_console.log").write_text(
-                        res["console"], encoding="utf-8")
+                _sim_name = _oracle_kind(res.get("oracle")) or _sim_name
+                _clog, _cbytes = _record_console(paths, _sim_name, res.get("console"))
+                _tel = _sim_telemetry(res.get("oracle"), _sim_name)
                 tiers[tier] = TierResult(
                     tier, "pass", mand,
                     reason="RTL completion + cycle-accurate perf cert (correctness gated by the "
@@ -3550,7 +3706,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu,
                     timing_observations=res.get("timing_observations"),
                     counters=res.get("counters"),
-                    timing_capability=res.get("timing_capability"), concurrency=_conc)
+                    timing_capability=res.get("timing_capability"), concurrency=_conc,
+                    console_log=_clog, console_bytes=_cbytes, **_tel)
                 continue
             if independent_float:
                 # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
@@ -3630,6 +3787,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # as reporting a score without the tier that produced it. Same rule as ``derived_from_rtl``
             # above: the oracle's own word outranks the declared name.
             _ev_name = _oracle_kind(_oracle_meta) or sim_name
+            _clog, _cbytes = _record_console(paths, _ev_name, res.get("console"))
+            _tel = _sim_telemetry(_oracle_meta, _ev_name)
             tiers[tier] = TierResult(
                 tier, "pass" if okt else "fail", mand,
                 reason=None if okt else _mismatch_reason,
@@ -3639,10 +3798,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 timing_observations=res.get("timing_observations"),
                 counters=res.get("counters"),
                 timing_capability=res.get("timing_capability"), fidelity=_fidelity,
-                concurrency=_conc)
-            if res.get("console") is not None:
-                (paths.artifacts_dir / f"{_ev_name}_console.log").write_text(
-                    res["console"], encoding="utf-8")
+                concurrency=_conc, console_log=_clog, console_bytes=_cbytes, **_tel)
             # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
             # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation
             # gaps) records its fail in the tiers dict but must NOT abort: aborting here would pre-empt the

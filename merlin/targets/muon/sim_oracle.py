@@ -25,7 +25,7 @@ def _cyclotron_adapters(target: str) -> dict:
     kernel. The muon adapters fail closed (MuonUnavailable) when the MERLIN_MUON_* toolchain env is
     unset, so an unwired target degrades honestly, never mis-grades."""
     from merlin.runtime.backends.base import get_backend
-    return get_backend("muon").muon_oracles.default_adapters()
+    return get_backend("muon").muon_oracles.default_adapters(target)
 
 
 def _cyclotron_available(target: str) -> tuple[bool, str]:
@@ -44,5 +44,18 @@ def _cyclotron_available(target: str) -> tuple[bool, str]:
 
 # Register the bespoke cyclotron oracle (exclusive: replaces the arc/program default for a self-hosted
 # SIMT core). Idempotent; runs at plugin import, which discovery triggers before oracle routing.
+def _cyclotron_l3_selection(target: str) -> dict:
+    """Which elaborated-RTL engine this sim's L3 cert tier resolved to, and what it was chosen over.
+
+    Contributed so the shared reporter (`capsule_runner.describe_l3_engine`) can ASK rather than reach
+    into a backend it names — a target routed through an exclusive bespoke sim never enters the chipyard
+    selection path, so before this the engine policy simply did not apply to it and nothing anywhere said
+    which simulator its cert ran on.
+    """
+    from merlin.runtime.backends.base import get_backend
+    return get_backend("muon").muon_oracles.l3_selection(target)
+
+
 register_sim_oracle("cyclotron", adapters=_cyclotron_adapters,
-                    available=_cyclotron_available, exclusive=True)
+                    available=_cyclotron_available, exclusive=True,
+                    l3_selection=_cyclotron_l3_selection)
