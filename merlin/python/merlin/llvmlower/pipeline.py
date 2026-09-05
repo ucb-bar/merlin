@@ -183,7 +183,15 @@ def _splice(passes: list[str]) -> str:
 
     The marker names *where* deallocation belongs in each pipeline (immediately after
     bufferization) so the position is visible in the pass list itself rather than computed by an
-    index that drifts when the list is edited."""
+    index that drifts when the list is edited.
+
+    The generalize/fuse reorder is applied HERE, at the one point every pipeline in this file passes
+    through, and AFTER ``apply_pipeline`` has spliced any feature-driven fusion stage -- so the
+    reorder reaches the ``fuse_elementwise_post_contraction`` feature's stage as well as the
+    ``MERLIN_FUSE_POST`` one, instead of only the copy that happens to be written in a literal list.
+    Default off; see :func:`_generalize_before_fuse`."""
+    if _generalize_before_fuse():
+        passes = _reorder_generalize_before_fuse(passes)
     out: list[str] = []
     for p in passes:
         out.extend(_dealloc_passes() if p == "__DEALLOC__" else [p])
@@ -304,6 +312,74 @@ module attributes {transform.with_named_sequence} {
 #     multiple of NR=8.
 #   * batch_matmul (B,M,N,K) -> B. Attention carries B=32 heads, far more parallelism than
 #     its N (8..64), and the schedule already tiles B by 1 so whole heads split cleanly.
+
+
+# --- Pass ORDER: generalization vs elementwise fusion ----------------------------------
+#: The two passes whose ORDER decides whether fusion can see a named op at all.
+#: Named once, because the swap below has to find the same pair in three different pass lists.
+_FUSE_ELEMENTWISE = "func.func(linalg-fuse-elementwise-ops)"
+_GENERALIZE_NAMED = "func.func(linalg-generalize-named-ops)"
+
+
+def _generalize_before_fuse() -> bool:
+    """Whether ``linalg-generalize-named-ops`` runs BEFORE ``linalg-fuse-elementwise-ops``.
+
+    Default OFF (``MERLIN_GENERALIZE_BEFORE_FUSE=1``), so every unflagged build -- including the
+    ``MERLIN_FUSE_POST`` / ``fuse_elementwise_post_contraction`` arm, whose in-tree numbers were all
+    measured in the current order -- is byte-identical to the frozen baseline.
+
+    WHY THE ORDER MATTERS, and it is not a style question. Upstream's ``FuseElementwiseOps`` pattern
+    is an ``OpRewritePattern<linalg::GenericOp>`` whose producer must ALSO be a ``linalg.GenericOp``
+    (``mlir/lib/Dialect/Linalg/Transforms/ElementwiseOpFusion.cpp``). A ``linalg.broadcast`` /
+    ``linalg.transpose`` / ``linalg.copy`` is therefore INVISIBLE to it: not declined, not counted --
+    never matched. So a fusion stage placed in front of the generalization is blind to exactly the ops
+    the stage exists to remove.
+
+    MEASURED on the three int8 recaptures, at the point in ``build_rvv_pipeline`` where the stage
+    runs: ``linalg-specialize-generic-ops`` turns 0 ``linalg.broadcast`` into 116 (deepjscc), 64
+    (small_llama) and 246 (lstmnetvit) -- and every one of them is a named op that the very next
+    pass, in the current order, cannot see.
+
+    Deliberately NOT auto-coupled to the fusion lever the way ``vectorize_non_contraction_generics``
+    is coupled to its self-copy erase. The self-copy erase CANCELS its lever's payoff, so shipping
+    them apart makes the lever inert; this one CHANGES what the fusion stage does, and every number
+    recorded for ``fuse_elementwise_post_contraction`` in ``impr_features`` was measured without it.
+    Silently re-ordering underneath that feature would invalidate its recorded evidence rather than
+    complete it, so the two are measured separately and coupled only once the board says which wins.
+    """
+    import os
+    return bool(os.environ.get("MERLIN_GENERALIZE_BEFORE_FUSE"))
+
+
+def _reorder_generalize_before_fuse(passes: list[str]) -> list[str]:
+    """Move ``linalg-generalize-named-ops`` in front of the ``linalg-fuse-elementwise-ops`` it follows.
+
+    One rule for all three pipelines, because the two spellings differ only in what sits between the
+    pair: the scalar/parallel lists have them adjacent, and ``build_rvv_pipeline`` has
+    ``fuse, canonicalize, cse, generalize``. Moving the GENERALIZE (rather than swapping in place)
+    keeps the ``canonicalize``/``cse`` attached to the fusion they clean up after -- which is not
+    incidental: ``impr_features.FUSE_ELEMENTWISE_STAGE`` records that most of the temporary collapse
+    is the cleanup, not the fusion.
+
+    A no-op on a list that has no such pair, or where the generalization already runs first, so it is
+    safe to apply to any pass list. Never moves a pass across ``transform-interpreter``: a
+    generalization hoisted in front of the schedule would leave ``ops{["linalg.matmul"]}`` nothing to
+    match (silent 0-vectorization), which is the failure the current order was written to avoid.
+    """
+    if _GENERALIZE_NAMED not in passes or _FUSE_ELEMENTWISE not in passes:
+        return list(passes)
+    gen = passes.index(_GENERALIZE_NAMED)
+    fuse = next((i for i, p in enumerate(passes) if p == _FUSE_ELEMENTWISE and i < gen), None)
+    if fuse is None:
+        return list(passes)                       # already generalize-then-fuse
+    if any("transform-interpreter" in p for p in passes[fuse:gen]):
+        raise ValueError(
+            "refusing to move linalg-generalize-named-ops across a transform-interpreter: the "
+            "schedule matches contractions by NAME and would then match nothing")
+    out = [p for i, p in enumerate(passes) if i != gen]
+    return [*out[:fuse], _GENERALIZE_NAMED, *out[fuse:]]
+
+
 def _fuse_post() -> bool:
     """Whether to run the post-contraction fusion stage.
 
@@ -357,9 +433,110 @@ def parallel_transform_schedule(n_harts: int, *, matmul_dim: str = "n",
             "}\n")
 
 
+#: Entry point of the library that runs the NON-CONTRACTION vectorize arms, before specialization.
+VEC_PRE_ENTRY = "__transform_vec_main"
+
+#: The skeleton the arms are spliced into. It is deliberately the SAME splice the package schedule
+#: gets (``impr_features.apply_schedule``), anchored on the same ``%f = ... ops{["func.func"]}`` line,
+#: so the arms in the pre-library and the arms in ``__transform_main`` are generated by one function
+#: at one lane width and cannot drift apart.
+_VEC_PRE_SKELETON = """\
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @%s(%%arg0: !transform.any_op {transform.readonly}) {
+    %%f = transform.structured.match ops{["func.func"]} in %%arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %%f {
+      transform.apply_patterns.vector.lower_shape_cast
+    } : !transform.any_op
+    transform.yield
+  }
+}
+""" % VEC_PRE_ENTRY
+
+
+def _vec_after_specialize() -> bool:
+    """Rebuild the OLD placement of the non-contraction arms (``MERLIN_VEC_AFTER_SPECIALIZE=1``).
+
+    An A/B escape hatch, for the reason :func:`_dealloc_passes` keeps ``MERLIN_NO_DEALLOC``: this
+    changes the emitted code for every build that names the lever, and the honest way to defend a
+    claim about it is to be able to rebuild both arms."""
+    import os
+    return bool(os.environ.get("MERLIN_VEC_AFTER_SPECIALIZE"))
+
+
+def vec_pre_schedule(features: "frozenset[str]") -> "str | None":
+    """The transform library that vectorizes the tagged non-contraction generics, or None.
+
+    WHY THIS EXISTS -- a COVERAGE bug, measured, not inferred. The prepare pass tags every
+    all-parallel ``linalg.generic`` it can vectorize with a discardable ``merlin.vec_r{rank}``
+    attribute, and ``vectorize_non_contraction_generics`` matches on it. But
+    ``func.func(linalg-specialize-generic-ops)`` -- which must run before the interpreter, so the
+    CONTRACTION arms can match named ``linalg.matmul``/``batch_matmul`` -- rewrites most of those
+    tagged generics into named ops (``linalg.broadcast`` above all) and a rewrite does not carry a
+    DISCARDABLE attribute onto the op it produces. The tag is gone, and with it the match.
+
+    MEASURED, tags present in the module at each stage (int8 recaptures, host lowering). Every tag
+    that reaches an arm is consumed -- the count after the interpreter is 0 in both placements -- so
+    "reaches" and "vectorized" are the same number here::
+
+        model         tagged   after canonicalize,cse   after specialize   reaching an arm
+                      by prep  (where the arms run now) (where they ran)   before -> after
+        deepjscc       93       85                       15                 15  ->  85  (16% -> 91%)
+        small_llama   107       84                       33                 33  ->  84  (31% -> 79%)
+        lstmnetvit    189      160                       36                 36  -> 160  (19% -> 85%)
+
+    So four fifths of the ops the lever was written for never reached an arm, while every tile the
+    remaining fifth produced paid the full loop and destination-buffer overhead -- which is the
+    coverage half of why the lever measured 1.28x SLOWER (the realization half, a ``memref.copy`` of
+    each tile onto itself, was fixed separately and is now implied by the feature).
+
+    The residual (93 -> 85, 107 -> 84, 189 -> 160) is the ``canonicalize``/``cse`` this pipeline
+    already ran before any of this: the generic count falls further than the tag count on all three
+    models, which is consistent with CSE merging duplicate ops rather than with tags being lost.
+
+    NOT A SPEED CLAIM. What is measured here is coverage and the emitted vector census (vector loads
+    108 -> 268 deepjscc, 134 -> 249 small_llama, 285 -> 560 lstmnetvit, with the malloc count FALLING
+    on all three). Whether that pays is a board measurement, and 1.28x is the number it has to beat.
+
+    THE FIX IS A PLACEMENT, NOT A PRESERVATION. Restoring the attribute across specialization would
+    need op identity to survive a rewrite that is not 1:1 -- specialize DECOMPOSES generics (deepjscc:
+    278 generics in, 199 generics + 116 broadcasts + 20 matmuls out), so there is no correspondence to
+    key a restore on. Running the arms BEFORE specialization needs no correspondence at all: the tags
+    are still on the ops that carry them. It is also the better IR to vectorize -- the pre-specialize
+    form is the FUSED one, so an arm tiles one elementwise chain instead of the broadcast + consumer
+    pair specialize would have split it into.
+
+    Realized as a SEPARATE library with its own entry point rather than by re-ordering
+    ``__transform_main``: ``transform-preload-library`` merges several files and the interpreter runs
+    once per entry point, so the package's own schedule -- and every ``impr_features`` edit that
+    anchors on ``__transform_main`` -- composes completely unchanged, and the contraction arms still
+    run exactly once, after specialization, on exactly the IR they run on today.
+
+    Returns None when the lever is off (then the pipeline string is byte-identical to the baseline),
+    when the feature set splices no arms, or under ``MERLIN_VEC_AFTER_SPECIALIZE``.
+    """
+    from .impr_features import (apply_schedule, ensure_vec_noncontraction,
+                                vec_noncontraction_lanes)
+    if _vec_after_specialize():
+        return None
+    lanes = vec_noncontraction_lanes(features)
+    if lanes is None:
+        return None
+    text = apply_schedule(_VEC_PRE_SKELETON, frozenset({ensure_vec_noncontraction(lanes)}))
+    if text == _VEC_PRE_SKELETON:
+        # The arms did not splice. Fail closed rather than preload a library whose entry point does
+        # nothing and report the lever as placed: that is the "enabled and changed nothing" failure
+        # this pipeline keeps re-learning.
+        raise PipelineError(
+            f"the non-contraction vectorize lever is enabled at {lanes} lanes but no arms spliced "
+            f"into the pre-specialization library skeleton; the anchor "
+            f"`%f = transform.structured.match ops{{[\"func.func\"]}}` it keys on is gone")
+    return text
+
+
 def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = True,
                        features: "frozenset[str]" = frozenset(),
-                       par_sched_path: "str | Path | None" = None) -> str:
+                       par_sched_path: "str | Path | None" = None,
+                       vec_sched_path: "str | Path | None" = None) -> str:
     """Whole-module pipeline with the transform vectorization stage spliced in after
     named-op generalization (vectorize on tensors) and before bufferization, plus the
     vector-lowering passes needed to reach LLVM. ``sched_path`` is the preloaded schedule.
@@ -368,6 +545,11 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
     enables the multicore variant: the parallel library is preloaded alongside the package
     schedule, its entry point runs FIRST (wrapping each contraction in an ``scf.forall``),
     and the loop-generation/LLVM stages gain the forall->parallel->OpenMP conversions.
+
+    ``vec_sched_path`` (default None -> byte-identical to the shipping pipeline) preloads the
+    non-contraction vectorize library alongside the package schedule and runs its entry point BEFORE
+    ``linalg-specialize-generic-ops``, which is the pass that drops the ``merlin.vec_r{rank}`` tags
+    those arms match on. See :func:`vec_pre_schedule`.
 
     ``hoist_static_allocs=False`` drops the ``hoist-static-allocs`` option of
     buffer-results-to-out-params so static intermediate buffers stay HEAP (memref.alloc) instead
@@ -383,17 +565,26 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
     # list) and run its entry point first, so each contraction is already wrapped in an
     # `scf.forall` when the package's `__transform_main` matches and vectorizes it.
     par = par_sched_path is not None
-    preload = (f"transform-preload-library{{transform-library-paths={par_sched_path},{sched_path}}}"
-               if par else
-               f"transform-preload-library{{transform-library-paths={sched_path}}}")
-    passes = [
-        "canonicalize", "cse",
+    libs = [str(p) for p in (vec_sched_path, par_sched_path, sched_path) if p is not None]
+    preload = f"transform-preload-library{{transform-library-paths={','.join(libs)}}}"
+    # THE NON-CONTRACTION ARMS RUN FIRST, before specialization eats their tags. `preload` moves up
+    # with them (it only loads libraries; it touches no IR), and specialization then runs on the IR
+    # those arms left behind, so the CONTRACTION arms below still see a fully specialized module and
+    # run exactly once. With the lever off `vec_sched_path` is None and this whole block is absent --
+    # the pass string, and the .ll, are byte-identical to the baseline. See :func:`vec_pre_schedule`.
+    vec = vec_sched_path is not None
+    specialize = [
         # Recover named contraction ops (matmul/batch_matmul) from the capture's generics so
         # the schedule can match them, THEN vectorize. Do NOT run linalg-fuse-elementwise-ops
         # before this — it folds matmuls into fused generics and the `ops{["linalg.matmul"]}`
         # match then finds nothing (silent 0-vectorization).
-        "func.func(linalg-specialize-generic-ops)",
-        preload,
+        "func.func(linalg-specialize-generic-ops)"]
+    head = ([preload, f"transform-interpreter{{entry-point={VEC_PRE_ENTRY}}}",
+             "canonicalize", "cse", *specialize]
+            if vec else [*specialize, preload])
+    passes = [
+        "canonicalize", "cse",
+        *head,
         *([f"transform-interpreter{{entry-point={PARALLEL_ENTRY}}}", "canonicalize", "cse"]
           if par else []),
         "transform-interpreter{entry-point=__transform_main}",
@@ -914,8 +1105,17 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
                 par_sched = work / "rvv_parallel_schedule.mlir"
                 par_sched.write_text(parallel_transform_schedule(parallel_harts),
                                      encoding="utf-8")
+            # The non-contraction arms, as their own preloaded library, so they run while the
+            # `merlin.vec_r{rank}` tags they match on are still on the ops. None (and no file) when
+            # the lever is off -- see `vec_pre_schedule`.
+            vec_sched = None
+            vec_text = vec_pre_schedule(feats)
+            if vec_text is not None:
+                vec_sched = work / "rvv_vec_pre_schedule.mlir"
+                vec_sched.write_text(vec_text, encoding="utf-8")
             pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs,
-                                          features=feats, par_sched_path=par_sched)
+                                          features=feats, par_sched_path=par_sched,
+                                          vec_sched_path=vec_sched)
         elif parallel:
             pipeline = _parallel_pipeline()   # multicore (OpenMP) scalar path — K1 big models
         else:
