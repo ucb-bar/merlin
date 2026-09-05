@@ -1593,6 +1593,65 @@ def spec(target: str, captures: dict[str, str | Path], *,
     }
 
 
+
+def _scope_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
+    """Which required CHAIN signatures no capsule in the corpus presents.
+
+    A capsule witnesses a chain when its own program contains that run of adjacent regions. Almost no
+    capsule does: the corpus is built one region at a time, which is exactly the finding. Reporting it as
+    a measured gap rather than leaving the rung empty is the point -- an unpopulated rung reads as "not
+    covered yet", while a measured zero against a derived requirement says the corpus cannot observe the
+    lever at all.
+
+    A capsule's chain is read from its own linalg when it ships one. A capsule with no linalg module
+    contributes NOTHING rather than counting as a chain of one: absence of a program is not evidence of
+    a single-region program, and treating it as one would manufacture coverage of the shortest chains.
+    """
+    import yaml
+
+    from merlin.common import mlir_query as mq
+    from merlin.targetgen import scope_census as SC
+
+    labels = set(labels or {"public"})
+    exclude = set(exclude or ())
+    roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
+    have: dict[str, list[str]] = {}
+    unreadable = 0
+    no_program = 0
+    for root in roots:
+        for cy in sorted(Path(root).glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") not in labels:
+                continue
+            name = str(cap.get("name") or cy.parent.name)
+            if name in exclude:
+                continue
+            linalg = cy.parent / "capsule.linalg.mlir"
+            if not linalg.is_file():
+                no_program += 1
+                continue
+            try:
+                for chain in SC.chains(mq.parse(linalg), max_length=64):
+                    have.setdefault(chain.signature, []).append(name)
+            except Exception:  # noqa: BLE001
+                unreadable += 1
+    want = [r["signature"] for r in (required or [])]
+    missing = [sig for sig in want if sig not in have]
+    return {
+        "required": len(want),
+        "covered": len(want) - len(missing),
+        "missing": missing,
+        "witnessed_by": {sig: sorted(set(v)) for sig, v in have.items() if sig in set(want)},
+        # Reported rather than folded into "missing": a capsule with no linalg module cannot be asked
+        # what chain it contains, and counting it as covering nothing is a different claim from counting
+        # it as containing nothing.
+        "capsules_without_a_program": no_program,
+        "capsules_unreadable": unreadable,
+    }
+
 def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None = None,
               exclude=None) -> dict:
     """Which required cells the corpus does NOT cover — the gate's question.
@@ -1643,6 +1702,13 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
                                            "--write to derive the requirement"}
     else:
         out["shape_geometry"] = _geometry_gap(geom_req, corpus_roots, labels=labels, exclude=exclude)
+
+    scope_req = (spec_doc.get("scope") or {}).get("required")
+    if scope_req is None:
+        out["scope"] = {"status": "not_measured",
+                        "reason": "the spec carries no scope axis, so adjacency coverage was not asked"}
+    else:
+        out["scope"] = _scope_gap(scope_req, corpus_roots, labels=labels, exclude=exclude)
 
     # THE NEGATIVE LANE, measured the same way and reported beside the others. A family the hardware
     # does not admit must be shown landing on the HOST -- and shown by a capsule built to prove it, not

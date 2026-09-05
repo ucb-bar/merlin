@@ -164,3 +164,29 @@ def test_an_unreadable_capture_is_named_rather_than_counted_as_no_chains(tmp_pat
     ax = C.scope_axis({"broken": bad}, "any_target", min_occurrences=1)
     assert ax["required"] == []
     assert "broken" in ax["captures_unreadable"]
+
+
+def test_a_capsule_with_no_program_covers_nothing_rather_than_covering_a_chain_of_one(tmp_path):
+    """Absence of a program is not evidence of a single-region program. Counting a capsule with no
+    linalg module as a one-region chain would manufacture coverage of the shortest obligations."""
+    from merlin.targetgen import conformance as C
+
+    root = tmp_path / "corpus"
+    (root / "A").mkdir(parents=True)
+    (root / "A" / "capsule.yaml").write_text("name: A\nlabel: public\n")
+    gap = C._scope_gap([{"signature": "contraction -> contraction"}], [root])
+    assert gap["covered"] == 0
+    assert gap["capsules_without_a_program"] == 1
+    assert gap["missing"] == ["contraction -> contraction"]
+
+
+def test_a_capsule_whose_program_contains_the_chain_witnesses_it(tmp_path):
+    from merlin.targetgen import conformance as C
+
+    root = tmp_path / "corpus"
+    (root / "A").mkdir(parents=True)
+    (root / "A" / "capsule.yaml").write_text("name: A\nlabel: public\n")
+    (root / "A" / "capsule.linalg.mlir").write_text(_CHAIN)
+    gap = C._scope_gap([{"signature": "contraction -> contraction -> contraction"}], [root])
+    assert gap["covered"] == 1 and gap["missing"] == []
+    assert gap["witnessed_by"]["contraction -> contraction -> contraction"] == ["A"]
