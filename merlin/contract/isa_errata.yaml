@@ -1,0 +1,223 @@
+# Reviewed ISA encoding errata — where a target's SHIPPED specification and its own HARDWARE disagree.
+#
+# WHY THIS FILE EXISTS. merlin derives a target's encoding by probing whatever ISA definition that target
+# ships. That honours "derive, never hardcode" only as far as the shipped definition is right about its
+# own hardware, and a shipped definition is a document: it can be wrong. When it is, every backend that
+# faithfully derives from it emits a word that ASSEMBLES CLEANLY AND DECODES TO SOMETHING ELSE. That
+# failure does not surface as an illegal instruction; it surfaces as wrong numbers, days later, with the
+# whole toolchain reporting success.
+#
+# WHAT AN ENTRY IS, AND IS NOT. An entry is a REVIEWED CORRECTION: it records what the spec declares, what
+# the machine does, which side is authoritative, and what still has to happen upstream. It is NOT an
+# allowlist for quieting `check_isa_matches_rtl.py`. Recording an entry is the same act that makes
+# `merlin.targetgen.isa_lint` warn a backend off the wrong bits, so "declare it and change nothing" does
+# not buy silence — it buys the warning reaching the consumer. Never add an entry to make a gate pass; add
+# it because someone read the three sources and decided which one is right.
+#
+# WE DO NOT EDIT THE VENDORED SPEC. A target's `isa_definition.py` / green card is somebody's hardware
+# deliverable. Silently patching it in place would hide a real upstream defect, make every downstream copy
+# disagree with ours, and destroy the evidence that the defect ever existed. The correction lives HERE,
+# beside the evidence, with an `upstream:` field naming where it has to go to actually be fixed.
+#
+# HOW A DISAGREEMENT IS ADJUDICATED. Sources are ranked by KIND, not counted:
+#   * EXTRACTED FROM THE MACHINE — Chisel `BitPat` decode literals, named opcode constants in the RTL, the
+#     decode fan-out our CIRCT/mlc extractor recovers from the ELABORATED hardware, and the extractor's own
+#     decoder-vs-shipped-header comparison.
+#   * AUTHORED ABOUT THE MACHINE — the vendor's green card, the shipped Python ISA model.
+# A document outvoted by two independent extractions is not a tie. `authoritative:` must be the side the
+# `sources_against_spec:` list actually supports; if the evidence is genuinely ambiguous, say `unresolved`
+# and do not let anything derive from either encoding.
+#
+# Schema per entry (target -> MNEMONIC):
+#   declared:              what the shipped spec encodes (as the check prints it)
+#   hardware:              what the machine's evidence encodes
+#   authoritative:         rtl | spec | unresolved
+#   sources_against_spec:  the evidence kinds that contradict the spec
+#   sources_for_spec:      the sources that back it (so a reader sees the whole vote)
+#   rationale:             why this side wins, in prose, citing the mechanism where known
+#   upstream:              where the real fix has to land; null while nobody has taken it
+#
+# Produced/checked by `build_tools/scripts/check_isa_matches_rtl.py` (which prints ready-to-paste YAML for
+# every undeclared disagreement) and read by `merlin.targetgen.isa_rtl_crosscheck`.
+
+version: 1
+
+# REVIEWED 2026-09-04. Each entry below was adjudicated against the sources named in it, not copied from
+# the checker's output. Two of the three atlas findings are corroborated by evidence OUTSIDE this repo's
+# RTL (the RISC-V base ISA for CSRRCI; the elaborated decode table for the VCUBE/VSQUARE pair), which is
+# what makes "the machine outranks the document" a finding rather than a preference.
+errata:
+  atlas:
+    DMA_CONFIG_CH0:
+      declared: '0x0200007f'
+      hardware: '0x0000007f'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        The decoder pins funct7=0000000 for DMA_CONFIG_ANY and funct7=0000001 for DMA_WAIT_ANY
+        (atlas/scalar/Instructions.scala:96-97). The shipped model declares funct7=0000001 for
+        BOTH, so a spec-derived DMA_CONFIG word decodes as DMA_WAIT: dmaBaseReg := rs1_data never
+        fires and the core takes dma_wait_stall instead. The correction clears only funct7; funct3
+        is a don't-care in the BitPat and carries the CHANNEL, so it is preserved (channel 0).
+      upstream: null
+    DMA_CONFIG_CH1:
+      declared: '0x0200107f'
+      hardware: '0x0000107f'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        The decoder pins funct7=0000000 for DMA_CONFIG_ANY and funct7=0000001 for DMA_WAIT_ANY
+        (atlas/scalar/Instructions.scala:96-97). The shipped model declares funct7=0000001 for
+        BOTH, so a spec-derived DMA_CONFIG word decodes as DMA_WAIT: dmaBaseReg := rs1_data never
+        fires and the core takes dma_wait_stall instead. The correction clears only funct7; funct3
+        is a don't-care in the BitPat and carries the CHANNEL, so it is preserved (channel 1).
+      upstream: null
+    DMA_CONFIG_CH2:
+      declared: '0x0200207f'
+      hardware: '0x0000207f'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        The decoder pins funct7=0000000 for DMA_CONFIG_ANY and funct7=0000001 for DMA_WAIT_ANY
+        (atlas/scalar/Instructions.scala:96-97). The shipped model declares funct7=0000001 for
+        BOTH, so a spec-derived DMA_CONFIG word decodes as DMA_WAIT: dmaBaseReg := rs1_data never
+        fires and the core takes dma_wait_stall instead. The correction clears only funct7; funct3
+        is a don't-care in the BitPat and carries the CHANNEL, so it is preserved (channel 2).
+      upstream: null
+    DMA_CONFIG_CH3:
+      declared: '0x0200307f'
+      hardware: '0x0000307f'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        The decoder pins funct7=0000000 for DMA_CONFIG_ANY and funct7=0000001 for DMA_WAIT_ANY
+        (atlas/scalar/Instructions.scala:96-97). The shipped model declares funct7=0000001 for
+        BOTH, so a spec-derived DMA_CONFIG word decodes as DMA_WAIT: dmaBaseReg := rs1_data never
+        fires and the core takes dma_wait_stall instead. The correction clears only funct7; funct3
+        is a don't-care in the BitPat and carries the CHANNEL, so it is preserved (channel 3).
+      upstream: null
+    DMA_CONFIG_CH4:
+      declared: '0x0200407f'
+      hardware: '0x0000407f'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        The decoder pins funct7=0000000 for DMA_CONFIG_ANY and funct7=0000001 for DMA_WAIT_ANY
+        (atlas/scalar/Instructions.scala:96-97). The shipped model declares funct7=0000001 for
+        BOTH, so a spec-derived DMA_CONFIG word decodes as DMA_WAIT: dmaBaseReg := rs1_data never
+        fires and the core takes dma_wait_stall instead. The correction clears only funct7; funct3
+        is a don't-care in the BitPat and carries the CHANNEL, so it is preserved (channel 4).
+      upstream: null
+    DMA_CONFIG_CH5:
+      declared: '0x0200507f'
+      hardware: '0x0000507f'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        The decoder pins funct7=0000000 for DMA_CONFIG_ANY and funct7=0000001 for DMA_WAIT_ANY
+        (atlas/scalar/Instructions.scala:96-97). The shipped model declares funct7=0000001 for
+        BOTH, so a spec-derived DMA_CONFIG word decodes as DMA_WAIT: dmaBaseReg := rs1_data never
+        fires and the core takes dma_wait_stall instead. The correction clears only funct7; funct3
+        is a don't-care in the BitPat and carries the CHANNEL, so it is preserved (channel 5).
+      upstream: null
+    DMA_CONFIG_CH6:
+      declared: '0x0200607f'
+      hardware: '0x0000607f'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        The decoder pins funct7=0000000 for DMA_CONFIG_ANY and funct7=0000001 for DMA_WAIT_ANY
+        (atlas/scalar/Instructions.scala:96-97). The shipped model declares funct7=0000001 for
+        BOTH, so a spec-derived DMA_CONFIG word decodes as DMA_WAIT: dmaBaseReg := rs1_data never
+        fires and the core takes dma_wait_stall instead. The correction clears only funct7; funct3
+        is a don't-care in the BitPat and carries the CHANNEL, so it is preserved (channel 6).
+      upstream: null
+    DMA_CONFIG_CH7:
+      declared: '0x0200707f'
+      hardware: '0x0000707f'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        The decoder pins funct7=0000000 for DMA_CONFIG_ANY and funct7=0000001 for DMA_WAIT_ANY
+        (atlas/scalar/Instructions.scala:96-97). The shipped model declares funct7=0000001 for
+        BOTH, so a spec-derived DMA_CONFIG word decodes as DMA_WAIT: dmaBaseReg := rs1_data never
+        fires and the core takes dma_wait_stall instead. The correction clears only funct7; funct3
+        is a don't-care in the BitPat and carries the CHANNEL, so it is preserved (channel 7).
+      upstream: null
+    CSRRCI:
+      declared: '0x00004073'
+      hardware: '0x00007073'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat]
+      sources_for_spec: []
+      rationale: >-
+        CSRRCI is a STOCK RISC-V Zicsr instruction, so this one is decidable without trusting the
+        target's RTL at all: Zicsr assigns SYSTEM funct3 001/010/011/101/110/111 to CSRRW/S/C and
+        their immediate forms, and the RTL matches that exactly (Instructions.scala:61-66). The
+        shipped model's 0b100 is not an assigned SYSTEM funct3 in the base ISA. That the error sits on
+        a STANDARD instruction, not a custom one, is itself the finding: the defect is not confined to
+        the vendor's custom surface.
+      upstream: null
+    VCUBE_BF16:
+      declared: '0x9e000057'
+      hardware: '0x8e000057'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat, rtl_decode_table]
+      sources_for_spec: [shipped_green_card]
+      rationale: >-
+        The only finding where the green card and the Python model AGREE and the RTL looks like
+        the outlier - which is why a two-source check would not have settled it. The ELABORATED
+        decode table breaks the tie independently of the Chisel source: the code
+        (0x47 << 7) | 87 = 9175 appears in legal_funct; the model's (0x4f << 7) | 87 = 10199
+        does not. Two independent EXTRACTIONS outrank two authored documents; sources are
+        ranked by kind, never counted.
+      upstream: the vendor green card also carries the wrong funct7 for this pair
+    VSQUARE_BF16:
+      declared: '0x9c000057'
+      hardware: '0x8c000057'
+      authoritative: rtl
+      sources_against_spec: [rtl_bitpat, rtl_decode_table]
+      sources_for_spec: [shipped_green_card]
+      rationale: >-
+        Same mechanism, same evidence and same funct7 bit (28) as VCUBE_BF16; decided with it.
+      upstream: the vendor green card also carries the wrong funct7 for this pair
+  gemmini:
+    funct=25:
+      declared: '25'
+      hardware: 'absent from the decoder'
+      authoritative: unresolved
+      sources_against_spec: [rtl_vs_shipped_headers]
+      sources_for_spec: []
+      rationale: >-
+        NOT a wrong encoding, and deliberately NOT resolved to rtl. The evidence is only that the
+        extractor's decoder fan-out never compares funct 25 while the shipped headers declare it.
+        Absence from ONE decoder's fan-out does not prove the machine lacks the instruction - it may
+        be handled by a module outside the extraction, which is exactly the reasoning
+        compare_decode_table applies when it reports NOT_COVERED rather than DISAGREE. There is also
+        no alternative encoding to correct TO, so no assembler-side correction exists. Resolving it
+        needs someone to establish whether any gemmini decoder implements funct 25; until then
+        nothing may derive from either reading.
+      upstream: null
+  mx_gemmini:
+    funct=25:
+      declared: '25'
+      hardware: 'absent from the decoder'
+      authoritative: unresolved
+      sources_against_spec: [rtl_vs_shipped_headers]
+      sources_for_spec: []
+      rationale: >-
+        The SAME instruction on the SAME hardware as the gemmini entry above - this target's decode
+        evidence is extracted from the same elaborated core - so it carries the same disposition and
+        the same reason, not a second independent judgement. Recorded separately because the registry
+        is keyed by target while the defect is a property of the machine; if one is ever resolved the
+        other must be resolved with it. See the gemmini entry for the full reasoning.
+      upstream: null
+

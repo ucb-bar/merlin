@@ -75,6 +75,45 @@ def _lint_fixed(model: IsaModel, words: list[int]) -> list[Finding]:
     return findings
 
 
+def _encoding_errata_findings(model: IsaModel, recs: list[Finding]) -> list[Finding]:
+    """Words whose mnemonic has an encoding this target's own hardware contradicts.
+
+    Reported per OCCURRENCE, at error severity, because the consequence is silent: the word assembles,
+    disassembles and executes — as a different instruction. The detail names the sources on each side so
+    the author can check the claim rather than take the linter's word for it.
+
+    Fails OPEN on an unavailable cross-check (no RTL reachable, no facts) and says nothing — a linter must
+    not block on an evidence source it cannot read. That silence is not a clean bill of health, which is
+    why the separate gate (``check_isa_matches_rtl.py``) fails CLOSED on the same condition."""
+    try:
+        from .isa_rtl_crosscheck import contradicted_mnemonics
+        bad = contradicted_mnemonics(model.target)
+    except Exception:                      # noqa: BLE001 — an unreachable cross-check is not a verdict
+        return []
+    if not bad:
+        return []
+    out: list[Finding] = []
+    for r in recs:
+        # `mnemonic`/`class` are the derived structural CLASS; `isa_mnemonic` is the ISA's own name, which
+        # is what an erratum is keyed by. `ambiguous_mnemonics` matters just as much: when the shipped
+        # definition gives two instructions the same identity bits, the word IS both, and the one the
+        # author did not mean is exactly the one the hardware will run.
+        names = [str(r.get("isa_mnemonic") or "")] + [str(x) for x in (r.get("ambiguous_mnemonics") or ())]
+        for name in dict.fromkeys(n for n in names if n):
+            row = bad.get(name)
+            if not row:
+                continue
+            against = ", ".join(row.get("hardware_against") or ()) or "this target's hardware"
+            ev = "; ".join(f"{k}={v}" for k, v in sorted((row.get("evidence") or {}).items()))
+            out.append({"rule": "encoding_contradicts_rtl", "severity": "error", "index": r["index"],
+                        "detail": f"{name} is encoded as this target's SHIPPED ISA definition describes it "
+                                  f"({row.get('declared')}), but {against} decodes those bits as a "
+                                  f"different instruction ({ev}). This word will assemble, disassemble and "
+                                  "execute — as something else, with no error anywhere. Emit the "
+                                  "hardware's encoding; see merlin/contract/isa_errata.yaml."})
+    return out
+
+
 def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype: str | None = None,
          epilogue: tuple[str, ...] = (), movement: bool = False) -> list[Finding]:
     """Lint an assembled word stream → a list of findings, each
@@ -130,6 +169,15 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
         findings.append({"rule": "halt_unknown", "severity": "info",
                          "detail": "termination could not be statically verified (no terminator op is derived "
                                    "for this target); confirm the kernel reaches the ISA terminator"})
+
+    # 2b) the encoding itself is wrong — the word is a PERFECTLY LEGAL member of this ISA as the shipped
+    #     definition describes it, and the hardware decodes it as a DIFFERENT instruction. Nothing above
+    #     can catch this: the word is not illegal, not ambiguous, and disassembles to exactly the
+    #     mnemonic the author intended. It has to be checked against the machine, not against the model,
+    #     which is what `isa_rtl_crosscheck` does. Measured case: a DMA *config* op carrying the funct7
+    #     its RTL assigns to DMA *wait*, so the DMA base register is never written and the kernel reads
+    #     garbage while every tool reports success.
+    findings.extend(_encoding_errata_findings(model, real))
 
     # 3) no recognized instructions — every word is illegal (or the kernel is empty). The program does
     #    nothing the ISA can execute; the output region is never written.

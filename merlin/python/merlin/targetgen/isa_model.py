@@ -15,7 +15,7 @@ the hardware uses — with no hand-authored, per-target field table.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 
@@ -196,7 +196,114 @@ def isa_model_from_encoding(target: str, fact: dict) -> IsaModel:
                     runtime_abi=runtime_abi or {})
 
 
-def isa_model_for_target(target: str) -> IsaModel:
+#: Entry keys that are not encoding-derived fields, so a correction leaves them alone.
+_ERRATA_KEEP = frozenset({"class", "role", "mnemonic", "fields", "fixed_mask", "fixed_value",
+                          "spec_fixed_value", "errata_applied", "errata_unresolved",
+                          "errata_dropped_fields"})
+
+
+#: Field spans of the 32-bit RISC-V instruction word, by the name the derived entry uses. These are
+#: positions of the ENCODING FORMAT, not values of any accelerator, and each is VERIFIED against the
+#: shipped word before it is used (:func:`_confirmed_span`) so a target encoded differently drops the
+#: field rather than having this layout assumed of it.
+_ERRATA_FIELD_SPANS = {  # derived-ok: candidate spans, each REJECTED unless it reproduces the
+    # target's own shipped field value in `_confirmed_span` — a target encoded differently drops the
+    # field instead of having this layout assumed of it. Positions of the 32-bit RISC-V instruction
+    # FORMAT, never a value; every funct/opcode VALUE still comes from the target's own definition.
+    # derived-ok: rejected unless it reproduces the target's own shipped field value
+    "opcode": (0, 7), "funct3": (12, 3), "funct2": (25, 2), "funct7": (25, 7)}  # derived-ok: verified per entry
+
+
+def _confirmed_span(name: str, declared_word: int, declared_value: int) -> tuple[int, int] | None:
+    """The span for ``name``, but only once it demonstrably explains the shipped word.
+
+    Recovering a field's position by searching for its VALUE does not work: small values such as
+    ``funct7=1`` or ``funct3=4`` read out of several spans, so the search either picks the wrong one or
+    gives up and leaves the stale value in place. The format's own layout is the right source, and
+    checking it reproduces the declared value is what keeps it a derivation rather than an assumption.
+    """
+    span = _ERRATA_FIELD_SPANS.get(name)
+    if span is None:
+        return None
+    lo, width = span
+    return span if ((declared_word >> lo) & ((1 << width) - 1)) == declared_value else None
+
+
+def _reviewed_errata(target: str) -> dict[str, dict]:
+    """This target's REVIEWED encoding corrections from ``merlin/contract/isa_errata.yaml``.
+
+    Absent file, unreadable file or no section for this target all mean "no corrections", never an
+    error: a target whose spec agrees with its hardware must be unaffected by this path existing."""
+    from .contract.schemas import contract_dir       # a missing helper is a BUG, not "no corrections"
+    registry = contract_dir() / "isa_errata.yaml"
+    if not registry.exists():
+        return {}
+    import yaml
+    doc = yaml.safe_load(registry.read_text()) or {}
+    section = ((doc.get("errata") or {}).get(target)) or {}
+    return {str(k): v for k, v in section.items() if isinstance(v, dict)}
+
+
+def apply_errata(model: IsaModel, errata: dict[str, dict]) -> IsaModel:
+    """Emit the encoding the MACHINE decodes, where a review has established the shipped spec is wrong.
+
+    merlin derives a target's encoding from whatever ISA definition that target ships, which honours
+    "derive, never hardcode" exactly as far as the shipped definition is right about its own hardware.
+    When it is not, every backend faithfully deriving from it emits a word that assembles cleanly and
+    decodes to a DIFFERENT instruction -- the failure no downstream check can see. This applies the
+    reviewed correction at the one seam that decides emitted bits (``isa_asm`` builds a word as
+    ``fixed_value | operands``), so a backend cannot emit the contradicted encoding by accident.
+
+    Only ``authoritative: rtl`` entries carrying a concrete ``hardware`` word change bits. An
+    ``unresolved`` entry deliberately changes nothing and is MARKED instead: the registry's rule is that
+    nothing may derive from either reading, which is a refusal to emit, not a silent choice of one side.
+    Every touched entry keeps its provenance so a disassembly can say why the bits differ from the spec.
+    """
+    if not errata:
+        return model
+    by_mnemonic = {k: dict(v) for k, v in (model.by_mnemonic or {}).items()}
+    for mnemonic, entry in errata.items():
+        target_entry = by_mnemonic.get(mnemonic)
+        if target_entry is None:
+            continue  # a registry key that names no instruction in THIS model (e.g. a raw funct row)
+        verdict = str(entry.get("authoritative") or "").strip().lower()
+        if verdict == "unresolved":
+            target_entry["errata_unresolved"] = str(entry.get("rationale") or "").strip()
+            continue
+        hardware = entry.get("hardware")
+        if verdict != "rtl" or hardware in (None, ""):
+            continue
+        corrected = int(str(hardware), 0)
+        declared_word = target_entry.get("fixed_value")
+        declared_word = int(str(declared_word), 0) if declared_word is not None else None
+        # A corrected word makes every field DERIVED FROM THE OLD ONE stale. Recompute a field when its
+        # position is unambiguously recoverable from the spec word, and otherwise DROP it: a field left
+        # holding the contradicted value is the same silent-wrong-bits failure this registry exists to
+        # stop, one level down. Never keep a stale default.
+        for fname, fvalue in list(target_entry.items()):
+            if fname in _ERRATA_KEEP or fvalue is None or not isinstance(fvalue, (int, str)):
+                continue
+            try:
+                old_field = int(str(fvalue), 0)
+            except ValueError:
+                continue
+            span = _confirmed_span(fname, declared_word, old_field) if declared_word is not None else None
+            if span is None:
+                target_entry[fname] = None
+                target_entry.setdefault("errata_dropped_fields", []).append(fname)
+                continue
+            lo, width = span
+            target_entry[fname] = (corrected >> lo) & ((1 << width) - 1)
+        target_entry["errata_applied"] = {
+            "declared": entry.get("declared"), "hardware": hardware,
+            "sources_against_spec": list(entry.get("sources_against_spec") or ()),
+        }
+        target_entry["spec_fixed_value"] = target_entry.get("fixed_value")
+        target_entry["fixed_value"] = corrected
+    return replace(model, by_mnemonic=by_mnemonic)
+
+
+def isa_model_for_target(target: str, *, apply_corrections: bool = True) -> IsaModel:
     """The IsaModel for a target, preferring the mlc-derived fixed-format encoding fact (from the RTL
     decoder) when present, else the shipped-ISA-definition probe (:func:`isa_model_for`). This is the seam a
     fixed-format wide-word target (e.g. a SIMT core) enters through; a variable-format self-hosted ISA falls
@@ -206,13 +313,14 @@ def isa_model_for_target(target: str) -> IsaModel:
         fact = mlc_bridge.isa_encoding_for(target)
     except Exception:  # noqa: BLE001 — mlc absent / cache missing -> fall back to the probe path
         fact = None
+    corrections = _reviewed_errata(target) if apply_corrections else {}
     if fact:
         m = isa_model_from_encoding(target, fact)
         if not m.is_empty() or m.is_fixed_format():
-            return m
+            return apply_errata(m, corrections)
     probed = isa_model_for(target)
     if not probed.is_empty():
-        return probed
+        return apply_errata(probed, corrections)
     # THIRD SOURCE: a RoCC-style accelerator has neither an mlc encoding fact nor a shipped ISA
     # definition, so both paths above return empty and the target reads as "ships no ISA definition"
     # -- which says we looked in two places, not that the ISA is unknown. Its RTL facts carry the
@@ -223,7 +331,7 @@ def isa_model_for_target(target: str) -> IsaModel:
         derived = isa_model_from_rocc_facts(target, _facts.load_facts(target) or {})
     except Exception:  # noqa: BLE001 - no facts bundle is an absence of evidence, not an error
         return probed
-    return derived if not derived.is_empty() else probed
+    return apply_errata(derived if not derived.is_empty() else probed, corrections)
 
 #: RISC-V base instruction-word field positions. A property of the 32-bit RISC-V encoding itself --
 #: field WIDTHS, not accelerator values -- and the same layout ``merlin.kernels.decode.rocc``

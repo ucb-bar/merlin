@@ -30,6 +30,14 @@ target: radiance
 # CIRCT arm its RTL-extracted facts while pointing at a path that can never exist.
 backend_package_dir: merlin/targets/muon
 
+# Registry pins (merlin/contract/hardware_pins.yaml) this target's hardware sources live behind.
+# Declared so a tool asking "where is this target's RTL" resolves it the same way every other target
+# does -- through the pin registry, which verifies BY CONTENT -- instead of carrying a path of its own.
+# Consumed by merlin.targetgen.isa_rtl_crosscheck.rtl_source_roots (the encoding cross-check reads this
+# target's Chisel decode patterns) and by the provenance recorder.
+hardware_pins:
+  - radiance_muon_rtl
+
 rtl:
   via: mlc            # facts via muon_introspect (RadianceMuonConfig RTL); arc-matmul discovery is N/A (SIMT)
 
