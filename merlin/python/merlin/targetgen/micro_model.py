@@ -284,6 +284,31 @@ _STATEMENT: dict[str, tuple[str | None, str]] = {
     "bias_add": ("self.b{i} = nn.Parameter(torch.zeros(E))", "x = x + self.b{i}"),
     "reduce_sum": (None, "x = x - x.sum(-1, keepdim=True) / E"),
     "movement": (None, "x = x.transpose(-1, -2).contiguous().transpose(-1, -2)"),
+    # THE ATTENTION FAMILY IS `attention_full`. Two near misses are worth naming, because both look
+    # right and neither works: `attention_qk` is classified as a CONTRACTION (`_op_family_map`) --
+    # Q@K^T is exactly that -- so it would leave the attention layer unwritable while quietly adding a
+    # second candidate to `contraction`; and `sdpa` is in the family but NOT in `available_ops()`,
+    # which admits only ops with a direct-MLIR builder or a PyTorch body. That leaves `attention_full`
+    # and `attention_mx`, and `attention_mx` is the one to avoid: its golden exists ONLY in the
+    # block-scaled engine, and radiance's cells are fp16/bf16/f32 -- generation died with "no SIMT
+    # golden for op 'attention_mx'" on six of them. Membership in this table IS the writability filter
+    # (`available_ops() & set(_STATEMENT)`), so naming `attention_full` alone steers away from it.
+    #
+    # The composed input is a SQUARE `(E, E)` (see `get_model_and_inputs`), read here as `E` tokens of
+    # width `E`, so attention returns `(E, E)` and the layer composes like every other statement. The
+    # scale is SDPA's own `1/sqrt(E)` -- this capsule's golden is `host_torch_eager`, i.e. the emitted
+    # source IS the reference, and it is graded at `atol 0.25 / rtol 0.02`, a band an unscaled E-term
+    # dot product would leave immediately.
+    # THE RESIDUAL IS LOAD-BEARING, not decoration. Attention is an averaging operator: softmax rows
+    # sum to 1, so the output is a convex combination of V rows and its spread is far below its input's.
+    # MEASURED on radiance's 28-layer inventory (6 attention layers): without the residual the composed
+    # model ran std 1.017 -> 0.072 -> ... -> 0.0002, roughly 3.5x lost per layer, and generation then
+    # failed the falsifiability gate ("the golden has too little spread to grade") -- a capsule whose
+    # tolerance band cannot separate a right answer from a wrong one. Every real attention block is
+    # residual for exactly this reason, so this is the faithful spelling as well as the gradeable one.
+    "attention_full": ("self.qkv{i} = nn.Parameter(torch.randn(3, E, E) * 0.05)",
+                       "x = x + torch.nn.functional.scaled_dot_product_attention("
+                       "x @ self.qkv{i}[0], x @ self.qkv{i}[1], x @ self.qkv{i}[2])"),
 }
 
 

@@ -562,9 +562,16 @@ def _float_golden(entry, binding):
     salt, dim = entry["name"], binding.tile_dim
     prov, outputs = {}, {}
 
-    def reg(name, shape):
+    def reg(name, shape, *, declared_shape=None):
+        """Register one input operand. ``shape`` is the 2-D shape the STIMULUS is built (and rigor-checked)
+        at; ``declared_shape`` is the shape the capsule declares for the same flat row-major bytes, when the
+        two differ. They differ for a rank-4 activation: `operand_values` builds a matrix, and an NHWC
+        image with N=1 IS the matrix [H*W, Ci] in row-major order -- so the rigor guarantee (distinct rows,
+        distinct columns, asymmetric) lands on exactly the axes a conv can get wrong, spatial position and
+        channel, instead of being skipped because the declared rank is not two."""
         raw, vals = _det_fp8(D, name, shape, salt, fmt_token, FP8)
-        prov[name] = {"shape": list(shape), "fp8_raw_hex": [f"0x{r:02x}" for r in raw], "decoded": vals}
+        prov[name] = {"shape": list(declared_shape or shape),
+                      "fp8_raw_hex": [f"0x{r:02x}" for r in raw], "decoded": vals}
         return raw
 
     def reg_acc(name, shape):
@@ -703,6 +710,51 @@ def _float_golden(entry, binding):
             for j in range(Kd):
                 kt[j * M + i] = k[i * Kd + j]
         outputs[entry.get("out", "Y0")] = floats(mm(q, (M, Kd), kt, (Kd, M)))
+    elif op == "conv2d":
+        # AN IM2COL CONV IS A CONTRACTION OVER GATHERED WINDOWS, and that is the whole of it: the device
+        # gathers [Ho*Wo, Kh*Kw*Ci] out of the NHWC activation and runs the same reduction the matmul
+        # branch runs. So the golden reuses `mm` over the runtime's OWN gather (`conv_im2col`, the single
+        # source of truth shared with the runner harness and the integer engine) rather than a second
+        # transcription of the window arithmetic -- a second transcription is how a golden and a harness
+        # come to disagree about which tap a window reads.
+        #
+        # The gather is a permutation-with-zero-fill of raw operand CODES, so it is dtype-blind: an
+        # out-of-bounds tap contributes code 0, which every float format here decodes to +0.0, exactly the
+        # zero-pad the integer engine applies. Nothing about this branch is target-specific; the geometry
+        # comes from the entry and the formats from the binding.
+        from merlin.runtime.commandbuffer import conv_im2col, conv_out_dims
+        from merlin.runtime.tensor import Tensor
+        if "maxpool" in [str(s) for s in (entry.get("epilogue") or [])]:
+            # Fail closed rather than emit an unpooled reference for a capsule that declares pooling: a
+            # golden that silently skipped the stage would agree with a backend that skipped it too.
+            raise ValueError(f"float conv2d golden: capsule {entry['name']!r} declares a maxpool "
+                             f"epilogue, which this engine does not model")
+        ci = int(entry.get("ci", entry.get("Cin", 4)))
+        cout = int(entry.get("N", entry.get("Cout", dim)))
+        Himg, Wimg = int(entry.get("Himg", 8)), int(entry.get("Wimg", 8))
+        kh, kw = int(entry.get("kh", 3)), int(entry.get("kw", 3))
+        stride = tuple(entry.get("stride", [1, 1]))
+        padding = tuple(entry.get("padding", [0, 0, 0, 0]))
+        dilation = tuple(entry.get("dilation", [1, 1]))
+        layout = entry.get("layout", "nhwc")
+        Ho, Wo = conv_out_dims(Himg, Wimg, kh, kw, stride, padding, dilation)
+        Kdim = kh * kw * ci
+        ifm_name, w_name = entry.get("ifm", "IFM"), entry.get("weight", "W")
+        # Stimulus built as the [H*W, Ci] matrix the NHWC image is in row-major order (see `reg`), so the
+        # operand rigor gate applies; declared to the capsule at its rank-4 shape.
+        ifm = reg(ifm_name, (Himg * Wimg, ci), declared_shape=(1, Himg, Wimg, ci))
+        w = reg(w_name, (Kdim, cout))
+        cols = conv_im2col(Tensor((1, Himg, Wimg, ci), list(ifm), "u8"),   # raw operand CODES, gathered
+                           kh=kh, kw=kw, ci=ci, stride=stride, padding=padding,
+                           dilation=dilation, layout=layout)
+        y = mm(cols.data, (Ho * Wo, Kdim), w, (Kdim, cout))
+        epi = entry.get("epilogue", [])
+        if "acc_scale" in epi:
+            s = Fraction(entry["acc_scale"]).limit_denominator(1 << 20)
+            y = [[rnd(D.decode_float_exact(v, BF16) * s) for v in row] for row in y]
+        if "relu" in epi:
+            y = [[v if D.decode_float(v, BF16) > 0 else 0 for v in row] for row in y]
+        outputs[entry.get("out", "Y0")] = floats(y)
     else:
         raise ValueError(f"no float golden for op {op!r}")
     return outputs, prov
@@ -1337,6 +1389,48 @@ def _simt_golden(entry, binding):
              + rot.astype(np.float32) * sin.astype(np.float32)).astype(np.float64)
         prov[entry.get("src", "X")] = {"shape": [M, K], "decoded": X.reshape(-1).tolist()}
         prov[entry.get("weight", "Wqkv")] = {"shape": [K, N], "decoded": Wqkv.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op == "conv2d":
+        # AN IM2COL CONV IS A CONTRACTION OVER GATHERED WINDOWS, exactly as in the float engine, and it
+        # reuses the runtime's OWN gather (`conv_im2col`) for the same reason that one does: a second
+        # transcription of the window arithmetic is how a golden and a harness come to disagree about
+        # which tap a window reads. The gather is a permutation-with-zero-fill and never arithmetic, so
+        # it carries already-format-rounded IEEE values through untouched and its out-of-bounds tap is a
+        # real +0.0 -- the same zero pad the integer and float engines apply.
+        from merlin.runtime.commandbuffer import conv_im2col, conv_out_dims
+        from merlin.runtime.tensor import Tensor
+        if "maxpool" in [str(s) for s in (entry.get("epilogue") or [])]:
+            # Fail closed rather than emit an unpooled reference for a capsule that declares pooling: a
+            # golden that silently skipped the stage would agree with a backend that skipped it too.
+            raise ValueError(f"SIMT conv2d golden: capsule {entry['name']!r} declares a maxpool "
+                             f"epilogue, which this engine does not model")
+        ci = int(entry.get("ci", entry.get("Cin", 4)))
+        cout = int(entry.get("N", entry.get("Cout", dim)))
+        Himg, Wimg = int(entry.get("Himg", 8)), int(entry.get("Wimg", 8))
+        kh, kw = int(entry.get("kh", 3)), int(entry.get("kw", 3))
+        stride = tuple(entry.get("stride", [1, 1]))
+        padding = tuple(entry.get("padding", [0, 0, 0, 0]))
+        dilation = tuple(entry.get("dilation", [1, 1]))
+        layout = entry.get("layout", "nhwc")
+        Ho, Wo = conv_out_dims(Himg, Wimg, kh, kw, stride, padding, dilation)
+        Kdim = kh * kw * ci
+        ifm_name, w_name = entry.get("ifm", "IFM"), entry.get("weight", "W")
+        # Built as the [H*W, Ci] matrix the NHWC image is in row-major order (so the operand rigor gate
+        # applies at a 2-D shape it understands); declared to the capsule at its rank-4 shape.
+        ifm = synth(ifm_name, (Himg * Wimg, ci))
+        Wt = synth(w_name, (Kdim, cout))
+        cols = conv_im2col(Tensor((1, Himg, Wimg, ci), ifm.reshape(-1).tolist(), tok),
+                           kh=kh, kw=kw, ci=ci, stride=stride, padding=padding,
+                           dilation=dilation, layout=layout)
+        A = np.array(cols.data, dtype=np.float64).reshape(Ho * Wo, Kdim)
+        y = (A.astype(np.float32) @ Wt.astype(np.float32)).astype(np.float64)
+        epi = entry.get("epilogue", [])
+        if "acc_scale" in epi:
+            y = y * float(entry["acc_scale"])
+        if "relu" in epi:
+            y = np.maximum(y, 0.0)
+        prov[ifm_name] = {"shape": [1, Himg, Wimg, ci], "decoded": ifm.reshape(-1).tolist()}
+        prov[w_name] = {"shape": [Kdim, cout], "decoded": Wt.reshape(-1).tolist()}
         outputs[entry.get("out", "Y0")] = rnd_out(y)
     else:
         raise ValueError(f"no SIMT golden for op {op!r}")
