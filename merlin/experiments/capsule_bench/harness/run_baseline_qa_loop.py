@@ -3124,39 +3124,33 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _emit_run_timing(run_dir: Path, rounds_summary: list) -> None:
-    """Write run_dir/timing_detailed.json: think+gen (dedup'd result events) vs tool/sim, + CIRCT skips."""
-    import glob as _glob
-    api_ms = total_ms = 0
-    # dedup result events per round (retried/resumed rounds emit multiple 'result's — take the LAST per file)
-    for tp in sorted(_glob.glob(str(run_dir / "rounds" / "round_*.transcript.jsonl"))):
-        last = None
-        for ln in Path(tp).read_text(errors="ignore").splitlines():
-            try:
-                o = json.loads(ln)
-            except Exception:
-                continue
-            if o.get("type") == "result":
-                last = o
-        if last:
-            api_ms += last.get("duration_api_ms", 0) or 0
-            total_ms += last.get("duration_ms", 0) or 0
-    # CIRCT gate skips (CIRCT arm)
+    """Write run_dir/timing_detailed.json: the think-vs-tool split, plus this arm's CIRCT gate counts.
+
+    The split is DERIVED from the transcript's arrival stamps by :mod:`timing_decomposition`. It used
+    to be `sum(result.duration_api_ms)` versus `duration_ms - api_ms`, which are fields only the
+    claude CLI's terminal result event carries: every codex run therefore recorded
+    ``think_generate_s: 0.0 / tool_and_wait_s: 0.0 / think_pct: 0.0`` -- no error, no gap marker, a
+    confident statement that the agent never thought. Measured on a real run, the true figures were
+    5131 s thinking and 10918 s of tool time. A quantity that cannot be derived now records null with
+    a written reason instead of a plausible zero.
+    """
+    import timing_decomposition as _TD
+
+    rec = _TD.decompose_run(run_dir)
+    # CIRCT gate counts stay here: they are this harness's own bookkeeping, not a property of the
+    # transcript, and something downstream already reads them.
     gate = run_dir / "circt_gate_log.jsonl"
     skips = ran = 0
     if gate.is_file():
         for ln in gate.read_text().splitlines():
             try:
                 r = json.loads(ln)
-            except Exception:
+            except Exception:  # noqa: BLE001 - a malformed line must not lose the rest
                 continue
-            skips += int(bool(r.get("sim_skipped"))); ran += int(not r.get("sim_skipped"))
-    (run_dir / "timing_detailed.json").write_text(json.dumps({
-        "think_generate_s": round(api_ms / 1000, 1),
-        "tool_and_wait_s": round(max(0.0, total_ms - api_ms) / 1000, 1),
-        "think_pct": round(100 * api_ms / max(total_ms, 1), 1),
-        "circt_gate": {"sims_skipped": skips, "sims_run": ran},
-        "note": "result events dedup'd per round (retries not double-counted). think+gen=duration_api_ms.",
-    }, indent=2))
+            skips += int(bool(r.get("sim_skipped")))
+            ran += int(not r.get("sim_skipped"))
+    rec["circt_gate"] = {"sims_skipped": skips, "sims_run": ran}
+    (run_dir / "timing_detailed.json").write_text(json.dumps(rec, indent=2))
 
 
 if __name__ == "__main__":

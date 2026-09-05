@@ -206,3 +206,60 @@ def test_the_cli_reported_split_is_kept_beside_the_derived_one_not_merged_into_i
     assert rec["tool_and_wait_s"] == 30.0          # derived from the stamps, unchanged
     assert rec["cli_reported"]["api_time_s"] == 50.0
     assert rec["cli_reported"]["non_api_time_s"] == 10.0
+
+
+# --- the WRITER, not just the library -----------------------------------------------------------
+def test_the_run_writer_records_a_derived_split_not_zeros(tmp_path):
+    """The library being right did not help while the writer still did the old arithmetic.
+
+    `_emit_run_timing` computed `sum(result.duration_api_ms)` vs `duration_ms - api_ms` -- fields only
+    the claude CLI's terminal result event carries -- so every codex run recorded 0.0/0.0/0.0: not an
+    error, not a gap marker, a confident claim that the agent never thought. This pins that the writer
+    uses the derived split and still emits the harness's own circt_gate counts.
+    """
+    import json
+    import sys
+    from merlin.common.paths import merlin_dir
+    sys.path.insert(0, str(merlin_dir() / "experiments/capsule_bench/harness"))
+    import run_baseline_qa_loop as L
+
+    run = tmp_path / "run"
+    (run / "rounds").mkdir(parents=True)
+    t = "2026-09-05T00:%02d:%02d+00:00"
+    rows = [
+        {"type": "assistant", "arrived_at": t % (0, 0), "message": {"content": [
+            {"type": "tool_use", "id": "a", "name": "Bash", "input": {"command": "ls"}}]}},
+        {"type": "user", "arrived_at": t % (0, 30), "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "a", "content": "ok"}]}},
+        {"type": "assistant", "arrived_at": t % (1, 30), "message": {"content": [
+            {"type": "tool_use", "id": "b", "name": "Bash", "input": {"command": "ls"}}]}},
+        {"type": "user", "arrived_at": t % (1, 40), "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "b", "content": "ok"}]}},
+    ]
+    (run / "rounds" / "round_00.transcript.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n")
+
+    L._emit_run_timing(run, [])
+    rec = json.loads((run / "timing_detailed.json").read_text())
+    assert rec["think_generate_s"], "the writer still reports no thinking time"
+    assert rec["tool_and_wait_s"], "the writer still reports no tool time"
+    assert rec.get("method") == "arrival_stamps"
+    assert "circt_gate" in rec, "the harness's own gate counts were dropped"
+
+
+def test_the_writer_says_unknown_rather_than_zero_without_stamps(tmp_path):
+    """No stamps must yield null + a reason, never a plausible 0.0."""
+    import json
+    import sys
+    from merlin.common.paths import merlin_dir
+    sys.path.insert(0, str(merlin_dir() / "experiments/capsule_bench/harness"))
+    import run_baseline_qa_loop as L
+
+    run = tmp_path / "run"
+    (run / "rounds").mkdir(parents=True)
+    (run / "rounds" / "round_00.transcript.jsonl").write_text(json.dumps(
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "a", "name": "Bash", "input": {"command": "ls"}}]}}) + "\n")
+    L._emit_run_timing(run, [])
+    rec = json.loads((run / "timing_detailed.json").read_text())
+    assert rec["think_generate_s"] is None and rec["think_pct"] is None
