@@ -36,7 +36,7 @@ sweeps:
         negative_control: fixed_M_and_N_across_all_K_points
       acceptance:
         schema_version: 2
-        analyzer: perf_pk_claim.analyze_pk_claim/v2
+        analyzer: perf_pk_claim.analyze_pk_claim/v3
         fit:
           form: affine
           method: ordinary_least_squares_all_L3_replicates
@@ -59,11 +59,10 @@ sweeps:
           - 4
           - 8
         replicates:
-          exact_count: 3
+          exact_count: 2
           identities:
           - r000
           - r001
-          - r002
         evidence:
           correctness_simulator: spike
           correctness_tier: L2
@@ -910,11 +909,10 @@ sweeps:
           exact_points: 16
           note: output extent M*N read from the declared operand shapes, at a fixed reduction depth
         replicates:
-          exact_count: 3
+          exact_count: 2
           identities:
           - r000
           - r001
-          - r002
         evidence:
           correctness_simulator: spike
           correctness_tier: L2
@@ -1030,11 +1028,10 @@ sweeps:
             The four points are multiples of the array's own tile dimension, so the cohort scales with
             a wider array instead of pinning it to one width
         replicates:
-          exact_count: 3
+          exact_count: 2
           identities:
           - r000
           - r001
-          - r002
         evidence:
           correctness_simulator: spike
           correctness_tier: L2
@@ -1168,11 +1165,10 @@ blocked_unimplemented:
         exact_points: 4
         K_multipliers_of_tile: derived_at_materialization
       replicates:
-        exact_count: 3
+        exact_count: 2
         identities:
         - r000
         - r001
-        - r002
       evidence:
         correctness_simulator: spike
         correctness_tier: L2

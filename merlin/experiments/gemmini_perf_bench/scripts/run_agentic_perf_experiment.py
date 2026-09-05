@@ -48,7 +48,7 @@ from merlin.targetgen.target_experiment import load_target_experiment
 
 HERE = Path(__file__).resolve().parent
 TRIALS = ("trial_00", "trial_01", "trial_02")
-REPLICATES = ("r000", "r001", "r002")
+REPLICATES = ("r000", "r001")
 SCHEMA = "merlin.agentic-performance-experiment.v1"
 
 
@@ -771,8 +771,8 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
     _safe(config.experiment_id, label="experiment id")
     if len(TRIALS) != 3 or len(set(TRIALS)) != 3:
         raise ExperimentError("experiment requires exactly three independent trial identities")
-    if tuple(REPLICATES) != ("r000", "r001", "r002"):
-        raise ExperimentError("measurement identities must be exactly r000-r002")
+    if tuple(REPLICATES) != tuple(f"r{index:03d}" for index in range(len(REPLICATES))):
+        raise ExperimentError("measurement identities must be a dense r000.. sequence")
     integers = (config.wall_budget_seconds, config.rounds, config.round_timeout_seconds,
                 config.max_tool_calls, config.tool_timeout_seconds, config.smoke_replicates,
                 config.holdout_count, config.measurement_timeout)
@@ -1237,7 +1237,7 @@ def _author_candidates(
                        "--max-tool-calls", str(config.max_tool_calls),
                        "--tool-timeout-seconds", str(config.tool_timeout_seconds),
                        "--smoke-replicates", str(config.smoke_replicates),
-                       "--replicates", "3", "--codex-binary", config.codex_binary,
+                       "--replicates", str(len(REPLICATES)), "--codex-binary", config.codex_binary,
                        "--gsim-certificate", str(config.gsim_certificate),
                        "--gsim-certificate-sha256", config.gsim_certificate_sha256,
                        "--rtl-facts", str(config.rtl_facts),

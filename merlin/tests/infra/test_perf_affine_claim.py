@@ -16,7 +16,7 @@ import perf_affine_claim as AF  # noqa: E402
 
 
 METRIC = "gsim_L3_cycles"
-REPLICATES = ("r000", "r001", "r002")
+REPLICATES = tuple(__import__("perf_pk_claim")._ACCEPTANCE_BASE["replicates"]["identities"])
 
 
 def _contract() -> dict:
@@ -36,7 +36,7 @@ def _contract() -> dict:
             "fixed_fields": ["operation", "operand_dtype", "accum_dtype"],
             "exact_points": 4,
         },
-        "replicates": {"exact_count": 3, "identities": list(REPLICATES)},
+        "replicates": {"exact_count": len(REPLICATES), "identities": list(REPLICATES)},
         "evidence": {
             "correctness_simulator": "spike", "correctness_tier": "L2",
             "timing_simulator": "gsim", "timing_tier": "L3",
@@ -131,7 +131,7 @@ def test_exact_affine_evidence_inside_every_bound_is_accepted(descriptors):
     assert measured["slope_cycles_per_unit"] == pytest.approx(3.0)
     assert measured["intercept_cycles"] == pytest.approx(200.0)
     assert measured["r_squared"] == pytest.approx(1.0)
-    assert measured["n_observations"] == len(descriptors) * len(REPLICATES) == 12
+    assert measured["n_observations"] == len(descriptors) * len(REPLICATES)
     assert measured["independent_variable"] == "output_elements"
     assert measured["distinct_x"] == [256.0, 512.0, 768.0, 1024.0]
 
@@ -195,7 +195,7 @@ def _assert_refuted_not_refused(result: dict) -> dict:
     assert result["verdict"] != AF.REFUSED, "a real refutation was downgraded to a refusal"
     assert "reason" not in result, "a refutation must not carry a refusal reason"
     assert result["reasons"], "a refutation must say which bound it missed"
-    assert result["measured"]["n_observations"] == 12
+    assert result["measured"]["n_observations"] == 4 * len(REPLICATES)
     return result
 
 

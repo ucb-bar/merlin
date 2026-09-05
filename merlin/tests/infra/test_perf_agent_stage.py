@@ -32,6 +32,10 @@ import perf_agent_stage as PAS  # noqa: E402
 import perf_campaign as PC  # noqa: E402
 import perf_pk_claim as PK  # noqa: E402
 
+#: The identities the shipped contract declares, read from it rather than retyped:
+#: this file hardcoded a triple, so a contract change had to be applied in six places.
+REPLICATE_IDS = tuple(PK._ACCEPTANCE_BASE["replicates"]["identities"])
+
 
 SHA_A = "a" * 64
 SHA_B = "b" * 64
@@ -89,7 +93,7 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
 
 def _record() -> dict:
     capsules = ["PK00_k16", "PK01_k32", "PK02_k64", "PK03_k128"]
-    replicas = ["r000", "r001", "r002"]
+    replicas = list(REPLICATE_IDS)
     cells = [{"family": "PK", "capsule": capsule, "simulator": simulator,
               "replicate": replicate}
              for capsule in capsules for replicate in replicas
@@ -121,7 +125,7 @@ def _record() -> dict:
     host_lane = {"target": "rvv", "package_id": "rvv_pkg", "package_path": "/bundle/rvv",
                  "package_sha256": SHA_D, "manifest_path": "/bundle/rvv/manifest.yaml",
                  "integration_seam": "host runner consumes schedule"}
-    facts = {"replicates": 3, "formal_replicate_identities": replicas,
+    facts = {"replicates": len(REPLICATE_IDS), "formal_replicate_identities": replicas,
              "formal_claim": formal_claim, "smoke_replicates": 1,
              "expected_cells": cells, "families": families,
              "budgets": {"wall_budget_seconds": 60, "rounds": 1,
@@ -200,7 +204,7 @@ def _record() -> dict:
             "agent_input_sha256": SHA_C,
             "agent_input_files": 1,
             "agent_input_bytes": 1,
-            "replicates": 3, "formal_replicate_identities": replicas,
+            "replicates": len(REPLICATE_IDS), "formal_replicate_identities": replicas,
             "formal_claim": formal_claim, "smoke_replicates": 1,
             "expected_cells": cells, "families": families,
         },
@@ -367,7 +371,7 @@ def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypat
     assert handoff.authoring_stage_sha256 == SHA_A
     assert handoff.telemetry_source_sha256 == dict(sorted(source_sha256.items()))
     assert handoff.functional_submission_sha256 == SHA_A
-    assert handoff.formal_replicate_identities == ("r000", "r001", "r002")
+    assert handoff.formal_replicate_identities == REPLICATE_IDS
     assert handoff.required_actions == ("candidate-parse", PAS.DEVELOPMENT_FEEDBACK_ACTION)
     assert handoff.transcript_audit["clean"] is True
 
@@ -486,18 +490,19 @@ def _pk_capsules() -> tuple[PAS.PerformanceCapsule, ...]:
     return tuple(rows)
 
 
-def test_formal_pk_claim_is_derived_from_frozen_acceptance_and_exact_three_replicas():
+def test_formal_pk_claim_is_derived_from_frozen_acceptance_and_its_declared_replicas():
     claim = PAS.prepare_formal_pk_claim(_pk_capsules())
     assert claim["status"] == "READY"
     assert claim["declaration"] == PK.supported_acceptance()
-    assert claim["cohort"]["replicates"] == ["r000", "r001", "r002"]
-    assert len(claim["expected_identities"]) == 24
+    assert claim["cohort"]["replicates"] == list(REPLICATE_IDS)
+    assert len(claim["expected_identities"]) == 4 * len(REPLICATE_IDS) * 2
     assert {row["simulator"] for row in claim["expected_identities"]} == {"spike", "gsim"}
     families = PAS._family_declarations(_pk_capsules(), claim)
     assert families[0].acceptance == PK.supported_acceptance()
 
-    with pytest.raises(PAS.StageGateError, match="exact_count=3"):
-        PAS.prepare_formal_pk_claim(_pk_capsules(), requested_replicates=2)
+    wrong = len(REPLICATE_IDS) + 1
+    with pytest.raises(PAS.StageGateError, match=f"exact_count={len(REPLICATE_IDS)}"):
+        PAS.prepare_formal_pk_claim(_pk_capsules(), requested_replicates=wrong)
 
 
 def test_formal_pk_claim_refuses_omitted_or_drifted_frozen_acceptance():
@@ -1432,10 +1437,8 @@ def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
             PAS.PP.PerfCell("PK", "PK00", "gsim", "r000"),
             PAS.PP.PerfCell("PK", "PK00", "spike", "r001"),
             PAS.PP.PerfCell("PK", "PK00", "gsim", "r001"),
-            PAS.PP.PerfCell("PK", "PK00", "spike", "r002"),
-            PAS.PP.PerfCell("PK", "PK00", "gsim", "r002"),
         ),
-        replicates=3, formal_replicate_identities=("r000", "r001", "r002"),
+        replicates=len(REPLICATE_IDS), formal_replicate_identities=REPLICATE_IDS,
         formal_claim={"status": "READY", "declaration": PK.supported_acceptance()},
         smoke_replicates=1, wall_budget_seconds=60, rounds=1,
         round_timeout_seconds=30, max_tool_calls=4, tool_timeout_seconds=10,
@@ -1459,7 +1462,7 @@ def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
     text = PAS.render_stage_prompt(inputs)
     assert "isolated authentication mount" in text
     assert "inner execution plane" in text
-    assert '"exact_count": 3' in text
+    assert f'"exact_count": {len(REPLICATE_IDS)}' in text
     assert '"capsule": "M2"' in text
 
 
