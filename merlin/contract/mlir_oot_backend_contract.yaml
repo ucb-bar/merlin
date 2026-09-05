@@ -62,7 +62,7 @@ kernel_abi:
   # Kept as a flat string because readers that implement only the resident-matmul shape consume this
   # key (merlin.llvmlower.device_shim.kernel_abi_for renders it into the emitted shim). It is the
   # resident_matmul row restated and MUST NOT be read as the rule for any other shape.
-  arg_order: "resident_matmul shape ONLY: [each group's resident weight, in resident-pack order] ++ [every group's matmul lhs, group-major] ++ [every group's commit output, group-major]. Other command shapes have a DIFFERENT order: see arg_order_by_command_shape."
+  arg_order: "resident_matmul shape ONLY: [each group's resident weight, in resident-pack order] ++ [every group's matmul lhs, group-major] ++ [every group's commit output, group-major] ++ [the bias of every commit declaring a fused bias stage, group-major -- empty when none does]. Other command shapes have a DIFFERENT order: see arg_order_by_command_shape."
   # Rows are tried TOP-DOWN and the FIRST matching `when` decides the ABI; this mirrors the dispatch a
   # runner-owned harness renderer performs, so a buffer that could match two rows is answered by the
   # earlier one. `order` is the machine-checkable form: a list of tokens from `arg_order_tokens`, each
@@ -89,12 +89,16 @@ kernel_abi:
     - shape: resident_matmul
       when: "otherwise - the RES_PACK / MATMUL(_RESIDENT) / COMMIT form, including a CONV2D the package
              itself lowers to that form (its derived im2col lhs then IS a pointer argument)"
-      signature: "void {target}_kernel(ptr weight_0 .. ptr weight_{G-1}, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1})"
-      order: [resident_weights_in_resident_pack_order, matmul_lhs_group_major, commit_outputs_group_major]
-      prose: "three contiguous blocks: [each resident weight, in resident-pack (first-use) order] ++
-              [every matmul lhs] ++ [every commit output]. Within the two per-matmul blocks the order is
+      signature: "void {target}_kernel(ptr weight_0 .. ptr weight_{G-1}, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1}, ptr bias_0 .. ptr bias_{B-1})"
+      order: [resident_weights_in_resident_pack_order, matmul_lhs_group_major, commit_outputs_group_major,
+              commit_biases_group_major]
+      prose: "up to four contiguous blocks: [each resident weight, in resident-pack (first-use) order] ++
+              [every matmul lhs] ++ [every commit output] ++ [the bias operand of every commit that
+              declares a fused bias epilogue stage]. Within the per-matmul blocks the order is
               GROUP-MAJOR: all of the first weight's matmuls in command order, then the second weight's.
-              With one resident weight - the common case - this is weight, lhs..., out...."
+              With one resident weight - the common case - this is weight, lhs..., out.... The bias block
+              is LAST and is EMPTY unless a commit declares a bias stage, so a buffer without one has
+              exactly the three-block signature it always had."
   # The token vocabulary the `order` lists are written in. One token, one resolution rule, resolved
   # against the command buffer; a token nobody can resolve is a REFUSAL, never a guessed position.
   arg_order_tokens:
@@ -108,6 +112,12 @@ kernel_abi:
       groups in resident-pack order, commands in buffer order within a group"
     commit_outputs_group_major: "the `dst` of the COMMIT that consumes each matmul's accumulator, in the
       same group-major order as matmul_lhs_group_major"
+    commit_biases_group_major: "the bias tensor named by each COMMIT that declares a bias epilogue
+      stage (`bias_add`/`bias`), in the same group-major order as matmul_lhs_group_major. A commit
+      with no bias stage contributes NOTHING, so this token expands to the empty list for every
+      buffer that declares no fused bias. The name is read from the commit's `attributes.bias` or
+      its `operands.bias` (both are legitimate; a stage that names neither is a REFUSAL, never a
+      skipped argument). The pointee is in the ACCUMULATOR's dtype, not the operand dtype."
   pointee_layout: "row-major, edge tiles zero-padded to a multiple of 16 (DIM); weight/out as packed per the i8/i32 readout"
 
 build:

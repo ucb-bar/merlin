@@ -105,7 +105,11 @@ def _probe_resident_matmul() -> dict:
          "W1": {"shape": [16, 16], "dtype": "i8", "role": "weight"},
          "A0": {"shape": [16, 16], "dtype": "i8", "role": "input"},
          "A1": {"shape": [16, 16], "dtype": "i8", "role": "input"},
-         "A2": {"shape": [16, 16], "dtype": "i8", "role": "input"}}
+         "A2": {"shape": [16, 16], "dtype": "i8", "role": "input"},
+         # A fused bias on exactly ONE of the three jobs — the middle one in group-major order — so the
+         # trailing bias block is exercised for both what it contains and what it leaves out. Its dtype
+         # is the accumulator's, which is what the contract's token says a bias pointee carries.
+         "BIAS2": {"shape": [16], "dtype": "i32", "role": "bias"}}
     cmds: list[dict] = [
         {"opcode": "RES_PACK", "operands": {"src": "W0", "dst": "R0"},
          "attributes": {"layout": "packed_rhs"}},
@@ -113,11 +117,13 @@ def _probe_resident_matmul() -> dict:
          "attributes": {"layout": "packed_rhs"}}]
     # Interleave the two groups in COMMAND order, so a group-major emitter and a command-order emitter
     # produce different lists and the token can only match one of them.
-    for acc, lhs, res, out in (("acc0", "A0", "R0", "Y0"), ("acc1", "A1", "R1", "Y1"),
-                               ("acc2", "A2", "R0", "Y2")):
+    for acc, lhs, res, out, bias in (("acc0", "A0", "R0", "Y0", None), ("acc1", "A1", "R1", "Y1", None),
+                                     ("acc2", "A2", "R0", "Y2", "BIAS2")):
         cmds.append({"opcode": "MATMUL_RESIDENT", "operands": {"lhs": lhs, "rhs": res, "dst": acc}})
-        cmds.append({"opcode": "COMMIT", "operands": {"src": acc, "dst": out},
-                     "attributes": {"epilogue": [], "output_dtype": "i32"}})
+        attrs: dict = {"epilogue": [], "output_dtype": "i32"}
+        if bias is not None:
+            attrs = {"epilogue": ["bias_add"], "output_dtype": "i32", "bias": bias}
+        cmds.append({"opcode": "COMMIT", "operands": {"src": acc, "dst": out}, "attributes": attrs})
     cmds.append({"opcode": "EVICT", "operands": {"handle": "R0"}})
     cmds.append({"opcode": "EVICT", "operands": {"handle": "R1"}})
     return {"abi_version": "0.1", "tensors": t, "commands": cmds}
@@ -194,6 +200,19 @@ def resolve_token(token: str, cb: dict) -> list[str]:
         return [lhs for _w, jobs in _resident_groups(cb) for lhs, _o in jobs]
     if token == "commit_outputs_group_major":
         return [out for _w, jobs in _resident_groups(cb) for _l, out in jobs]
+    if token == "commit_biases_group_major":
+        biased: dict[str, str] = {}
+        for cmd in cb.get("commands", []):
+            if cmd.get("opcode") != "COMMIT":
+                continue
+            ops, attrs = cmd.get("operands") or {}, cmd.get("attributes") or {}
+            if not any(s in ("bias_add", "bias") for s in (attrs.get("epilogue") or [])):
+                continue
+            dst, name = ops.get("dst"), (attrs.get("bias") or ops.get("bias"))
+            if not isinstance(dst, str) or not isinstance(name, str):
+                raise Unresolvable("a COMMIT declaring a bias stage names no dst and/or bias tensor")
+            biased[dst] = name
+        return [biased[out] for _w, jobs in _resident_groups(cb) for _l, out in jobs if out in biased]
     raise Unresolvable(f"unknown arg_order token {token!r} — this gate cannot certify a shape whose "
                        f"order it does not know how to resolve")
 

@@ -20,7 +20,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from .gemmini_codegen import _ceil_dim, _pad_rowmajor, _parse, CodegenError   # sibling — moves together
-from merlin.runtime.commandbuffer import (conv_out_dims, materialize_inputs, pool_params)
+from merlin.runtime.commandbuffer import (BIAS_STAGES, bias_tensor_name, conv_out_dims,
+                                          materialize_inputs, pool_params)
 from merlin.runtime.tensor import pool_out_dims
 
 GARBAGE = 0xFFFFFFFF                  # universal, not target-specific — no derivation needed
@@ -64,6 +65,12 @@ def _isa() -> SimpleNamespace:
     acc_store = address_space.store("accumulator")
     sp_rows = sp_store.total_rows if sp_store is not None else None
     acc_rows = acc_store.total_rows if acc_store is not None else None
+    # The CONTAINER the accumulator holds, derived from the same CIRCT memory fact that gives its row
+    # count (`array cols 16 x i32 (32 bits)`). A fused bias is moved INTO the accumulator, so its DRAM
+    # element width and C type are this dtype's — never the operand dtype, and never a literal 4. Absent
+    # -> None, and the bias path refuses rather than guessing a width for a DMA.
+    acc_dtype = acc_store.element_dtype if acc_store is not None else None
+    acc_bits = acc_store.element_bits if acc_store is not None else None
     config_code_of = {name: int(code) for code, name in enc.get("config_subtype", {}).items()}
     # The ISA bundle proves pooling is encodable; only the configuration which produced the RTL says
     # whether StoreController built it. Require a literal derived True. A human capability declaration,
@@ -86,6 +93,9 @@ def _isa() -> SimpleNamespace:
         C_ACC=rb["c_acc"],                  # 0xA0000000 full-i32 accumulator readout base
         ACC_ACCUM=rb["acc_accum"],          # 0x40000000 accumulate-onto for K-tiles after the first
         ACC_I8=rb["acc_i8"],                # 0x80000000 acc addr WITHOUT full_C: scaled i8 readout
+        FULL_C_BIT=rb["full_c_bit"],        # 0x20000000 selects the full-i32 (vs scaled-i8) readout
+        ACC_ELEM_DTYPE=acc_dtype,           # CIRCT-derived accumulator container ('i32'); None if absent
+        ACC_ELEM_BITS=acc_bits,             # ...and its width in bits; None if absent
         K_CONFIG=code_of["CONFIG"], K_MVIN=code_of["MVIN"], K_MVOUT=code_of["MVOUT"],
         K_COMPUTE_PRELOADED=code_of["COMPUTE_PRELOADED"], K_PRELOAD=code_of["PRELOAD"],
         K_FLUSH=code_of["FLUSH"],
@@ -112,8 +122,10 @@ def _isa() -> SimpleNamespace:
 _DERIVED = ("DIM", "ADDR_LEN", "F1", "C_ACC", "ACC_ACCUM", "ACC_I8", "K_CONFIG", "K_MVIN", "K_MVOUT",
             "K_COMPUTE_PRELOADED", "K_PRELOAD", "K_FLUSH", "CUSTOM_OPCODE", "FUNCT3",
             "CFG_EX_RS1", "CFG_EX_RS2", "CFG_LD_RS1", "SCRATCHPAD_ROWS", "ACCUMULATOR_ROWS",
-            "CONFIG_ST_TYPE", "MAX_POOL_SUPPORTED", "POOL_CAPABLE")
-_DERIVED_LAYOUTS = ("CONFIG_ST_LAYOUT",)
+            "CONFIG_ST_TYPE", "MAX_POOL_SUPPORTED", "POOL_CAPABLE",
+            "FULL_C_BIT", "ACC_ELEM_BITS")
+#: Derived names whose value is NOT an integer encoding (a packed-field layout, a dtype token).
+_DERIVED_LAYOUTS = ("CONFIG_ST_LAYOUT", "ACC_ELEM_DTYPE")
 
 
 def __getattr__(name: str):
@@ -154,6 +166,8 @@ class Job:
     output_dtype: str
     scale: float
     pool: PoolSpec | None
+    #: Name of the DRAM tensor a fused bias epilogue consumes, or None when the job has no bias stage.
+    bias: str | None = None
 
 
 _CONV2D_ATTRS = frozenset({
@@ -328,6 +342,57 @@ def _pool_config_rs1(pool: PoolSpec | None, *, acc_act: int) -> int:
     }, register="ConfigMvoutRs1")
 
 
+def _acc_base() -> int:
+    """The accumulator ADDRESS base — the acc-select bit alone, with the readout-width selector cleared.
+
+    A fused bias is moved into the accumulator BEFORE the contraction runs (the target's own
+    ``sp_tiled_matmul_ws`` does exactly this: ``D_sp_addr_start = 1 << (ADDR_LEN-1)``, an mvin with
+    neither the accumulate bit nor the full-C bit, after which every k-tile accumulates ONTO it). The
+    base is DERIVED by clearing the derived full-C selector out of the derived full-i32 readout base,
+    and cross-checked against the manifest's independently derived acc-only base. A mismatch means the
+    two encodings no longer describe one address space, and is a REFUSAL: writing a bias to the wrong
+    accumulator address does not fail, it silently biases someone else's tile.
+    """
+    isa = _isa()
+    base = isa.C_ACC & ~isa.FULL_C_BIT
+    if base != isa.ACC_I8:
+        raise CodegenError(
+            f"the target's derived accumulator encodings disagree: clearing full_C ({isa.FULL_C_BIT:#x}) "
+            f"from the full-i32 readout base ({isa.C_ACC:#x}) gives {base:#x}, but the acc-only base is "
+            f"{isa.ACC_I8:#x}; refusing to address the accumulator on a guess")
+    return base
+
+
+def _bias_container(dtype: str, *, op: str) -> tuple[int, str]:
+    """``(element bytes, C type)`` for a fused bias operand, derived from the ACCUMULATOR's container.
+
+    The command-buffer ABI is explicit that a bias is in the accumulator's dtype, not the operand's,
+    because that is where the hardware puts it. The width is therefore read off the CIRCT-derived
+    accumulator memory fact — never assumed to be four bytes — and the buffer's declared bias dtype must
+    AGREE with it. Fail closed on both an underived accumulator container and a disagreeing declaration:
+    an mvin issued with the wrong element width reads the right pointer with the wrong pitch, which
+    produces plausible-looking wrong numbers rather than an error.
+    """
+    isa = _isa()
+    acc_dtype, acc_bits = isa.ACC_ELEM_DTYPE, isa.ACC_ELEM_BITS
+    if not isinstance(acc_dtype, str) or not isinstance(acc_bits, int) or acc_bits <= 0:
+        raise CodegenError(
+            f"{op}: a fused bias lands in the accumulator, but this target's CIRCT facts do not derive "
+            f"an accumulator element container; refusing to pick a bias width")
+    if acc_bits % 8:
+        raise CodegenError(f"{op}: the derived accumulator container is {acc_bits} bits, which is not a "
+                           f"whole number of bytes a DMA can address")
+    if str(dtype) != acc_dtype:
+        raise CodegenError(
+            f"{op}: the bias operand is declared {dtype!r}, but a fused bias is moved into the "
+            f"accumulator, whose derived container is {acc_dtype!r} (command-buffer ABI: a bias is in "
+            f"the accumulator's dtype, not the operand dtype)")
+    if not acc_dtype.startswith("i") or not acc_dtype[1:].isdigit():
+        raise CodegenError(f"{op}: the derived accumulator container {acc_dtype!r} is not an integer "
+                           f"container this harness can declare")
+    return acc_bits // 8, f"int{acc_bits}_t"
+
+
 def _parse_groups(cb: dict):
     """Parse the cb into resident-weight GROUPS for the MLIR-faithful path (decoupled from the C-path
     _parse, which is full-i32-only). Returns ``[(weight, k, n, list[Job])]`` in resident-pack order,
@@ -377,8 +442,36 @@ def _parse_groups(cb: dict):
                 raise CodegenError("integer requant(shift) is a host-side op (round-half-up); "
                                    "Gemmini's i8 readout uses acc_scale (round-near-even) — use "
                                    "epilogue ['acc_scale'] (see results/gemmini/requant_status.yaml)")
-            if s not in ("relu", "acc_scale", "maxpool"):
-                raise CodegenError(f"unsupported epilogue stage {s!r} (have: relu, acc_scale, maxpool)")
+            if s not in ("relu", "acc_scale", "maxpool") and s not in BIAS_STAGES:
+                raise CodegenError(f"unsupported epilogue stage {s!r} (have: "
+                                   f"{', '.join((*BIAS_STAGES, 'relu', 'acc_scale', 'maxpool'))})")
+        # A fused bias is the accumulator's INITIAL value (mvin D, then accumulate A@B onto it), so it
+        # necessarily happens before every other stage. Declared anywhere but first, the emitted order
+        # would not be the declared order — refuse rather than silently reassociate someone's epilogue.
+        bias_stages = [s for s in epi if s in BIAS_STAGES]
+        bias = None
+        if bias_stages:
+            op_name = f"COMMIT {commit['operands']['dst']!r}"
+            if len(bias_stages) > 1:
+                raise CodegenError(f"{op_name}: declares {len(bias_stages)} bias stages {bias_stages}; "
+                                   f"the accumulator carries one initial value")
+            if epi[0] not in BIAS_STAGES:
+                raise CodegenError(
+                    f"{op_name}: a fused bias is the accumulator's initial value, so it can only be the "
+                    f"FIRST epilogue stage; declared epilogue is {epi}")
+            try:
+                bias = bias_tensor_name(commit.get("operands", {}), attrs, op=op_name)
+            except ValueError as exc:
+                raise CodegenError(str(exc)) from exc
+            spec = tensors.get(bias)
+            if not isinstance(spec, dict):
+                raise CodegenError(f"{op_name}: bias tensor {bias!r} is not declared in the buffer")
+            bshape = [int(x) for x in (spec.get("shape") or [])]
+            if bshape not in ([_n], [1, _n]):
+                raise CodegenError(
+                    f"{op_name}: bias {bias!r} has shape {bshape}, but a fused bias is one value per "
+                    f"OUTPUT COLUMN, broadcast over rows — expected [{_n}]")
+            _bias_container(str(spec.get("dtype")), op=op_name)     # derive-or-refuse, before emission
         out_dtype = attrs.get("output_dtype", "i32")
         scale = float(attrs.get("acc_scale", 1.0))
         pool = None
@@ -390,7 +483,7 @@ def _parse_groups(cb: dict):
                                      op=f"COMMIT {commit['operands']['dst']!r}")
             output_rows = pool.out_rows * pool.out_cols
         jobs_by_res[res].append(Job(lhs, commit["operands"]["dst"], tuple(epi), m,
-                                     output_rows, out_dtype, scale, pool))
+                                     output_rows, out_dtype, scale, pool, bias))
     groups = []
     for res in order:
         weight = res_to_weight[res]
@@ -428,7 +521,12 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     weights = [g[0] for g in groups]
     lhss = [j.lhs for g in groups for j in g[3]]
     outs = [j.out for g in groups for j in g[3]]
-    args = weights + lhss + outs
+    # Fused-bias operands are a FOURTH, TRAILING block, group-major like the other per-job blocks (see
+    # `kernel_abi.arg_order_by_command_shape` in the OOT backend contract). Trailing and skipped-when-
+    # absent: a buffer with no bias stage has the identical three-block signature it always had, so
+    # every already-certified kernel keeps its ABI byte for byte.
+    biases = [j.bias for g in groups for j in g[3] if j.bias is not None]
+    args = weights + lhss + outs + biases
     arg_decl = ", ".join(f"%a{i}: !llvm.ptr" for i in range(len(args)))
 
     body: list[str] = []
@@ -509,6 +607,18 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
             scale_bits = _f32_bits(scale) if i8_out else F1
             elt = 1 if i8_out else 4               # output element bytes
             read_base = ACC_I8 if i8_out else C_ACC  # i8 readout drops the full_C bit -> scale applies
+            # Bias element width comes from the CIRCT-derived ACCUMULATOR container (that is where the
+            # bias is moved to), validated against the buffer's declaration in _parse_groups.
+            bias_bytes = (0 if job.bias is None
+                          else _bias_container(cb["tensors"][job.bias]["dtype"],
+                                               op=f"COMMIT {out!r}")[0])
+
+            def c_row_of(mi: int, nj: int, _pool=pool, _mp=mp) -> int:
+                """Accumulator row this (mi, nj) output tile occupies. Without pooling every tile is
+                read out immediately and reuses row 0; pooling RETAINS whole planes, so each tile owns
+                its own rows. The bias mvin and the preload must name the SAME row."""
+                return nj * _mp + mi * DIM if _pool is not None else 0
+
             # Pooling reads a whole retained spatial plane from consecutive accumulator rows. One plane
             # per channel tile therefore needs ``mp`` rows; refuse rather than alias accumulator storage.
             if pool is not None:
@@ -526,20 +636,39 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
             for mi in range(Mt):
                 if panel_resident:
                     # Row-panel mvin: the Kt activation tiles of row mi, into Kt distinct slots, ONCE.
+                    # The stride is (re)asserted HERE rather than once before the loop nest, because a
+                    # fused bias reconfigures the load unit to a zero row stride between row panels.
+                    # Idempotent: when nothing intervened it emits nothing, so a buffer without a bias
+                    # is byte-identical to before.
+                    config_ld(kp)
                     for kt in range(Kt):
                         a_off = ((mi * DIM) * kp + kt * DIM)
                         rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot + kt * DIM)))
                 for nj in range(Nt):
+                    if job.bias is not None:
+                        # FUSED BIAS = the accumulator's initial value. One mvin of this output tile's
+                        # bias columns into the accumulator tile, with the DRAM row stride configured to
+                        # ZERO so all DIM accumulator rows read the SAME bias row — the target's own
+                        # repeating-bias move-in. The destination carries neither the accumulate bit
+                        # (this OVERWRITES the tile) nor the readout-width bit; the k-loop below then
+                        # keeps the accumulate bit set from k=0 so A@B lands ON TOP of it.
+                        config_ld(0)
+                        rocc(K_MVIN, addr(job.bias, nj * DIM * bias_bytes),
+                             konst(_pack(_acc_base() | c_row_of(mi, nj))))
                     for kt in range(Kt):
                         if panel_resident:
                             a_addr = a_slot + kt * DIM              # reuse the resident panel tile
                         else:
                             a_off = ((mi * DIM) * kp + kt * DIM)    # legacy: re-mvin per output column
+                            config_ld(kp)                           # see the panel branch: bias resets it
                             rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot)))
                             a_addr = a_slot
-                        c_row = nj * mp + mi * DIM if pool is not None else 0
+                        c_row = c_row_of(mi, nj)
                         cad = C_ACC | c_row
-                        if kt != 0:
+                        # Accumulate rather than overwrite for every k-tile after the first — and for
+                        # the first one TOO when a bias was moved in, so A@B lands on top of D instead
+                        # of erasing it (the target's own `no_bias_new_matrix` condition, inverted).
+                        if kt != 0 or job.bias is not None:
                             cad |= ACC_ACCUM                         # accumulator is always i32
                         rocc(K_PRELOAD, konst(_pack((kt * Nt + nj) * DIM)), konst(_pack(cad)))
                         rocc(K_COMPUTE_PRELOADED, konst(_pack(a_addr)), konst(_pack(GARBAGE)))
@@ -729,16 +858,21 @@ def _blob_asm(symbol: str, payload: Path, *, align: int, elems: int) -> str:
 
 
 def _const_operand(symbol: str, ctype: str, data: list, *, dtype: str,
-                   blobs: dict | None) -> str:
+                   blobs: dict | None, align_macro: str = "row_align(1)") -> str:
     """One constant operand: an initializer list, or an ``extern`` filled from a blob.
 
     ``blobs is None`` means the caller cannot link an extra object, so the inline form is the only
     legal one and a large operand is emitted as it always was -- slow, but never silently wrong.
+
+    ``align_macro`` is the target header's own row-alignment macro for this operand's CONTAINER
+    (``row_align`` is an operand-element row, ``row_align_acc`` an accumulator-element row). The blob
+    form already derived the same number from the element width, so the two forms agree; the default
+    keeps every operand that was emitted before this parameter existed byte-identical.
     """
     from merlin.runtime.tensor import DTYPE_BYTES
 
     if blobs is None or len(data) < _BLOB_MIN_ELEMS:
-        return (f"static const {ctype} {symbol}[{len(data)}] row_align(1) = "
+        return (f"static const {ctype} {symbol}[{len(data)}] {align_macro} = "
                 f"{{{','.join(str(int(v)) for v in data)}}};")
     width = int(DTYPE_BYTES[dtype])
     blobs[symbol] = {
@@ -776,6 +910,23 @@ def _harness_c(cb: dict, inputs: dict | None = None, *,
             ap = _pad_rowmajor(list(leaves[lhs].data), m, k, mp, kp)
             decls.append(_const_operand(f"T_{lhs}", "elem_t", ap,
                                         dtype=leaves[lhs].dtype, blobs=blobs))
+    # Fused-bias operands: one padded ROW of accumulator-container values per biased job, in the same
+    # group-major order the kernel's trailing argument block uses. Padded to the output's column tiling
+    # (like every other operand) so the zero-stride mvin reads a whole DIM-wide tile of real storage.
+    bias_decls = []
+    biases = []
+    for _weight, _k, n, jobs in groups:
+        np_ = _ceil_dim(n)
+        for job in jobs:
+            if job.bias is None:
+                continue
+            _width, ctype = _bias_container(cb["tensors"][job.bias]["dtype"],
+                                            op=f"COMMIT {job.out!r}")
+            bpad = _pad_rowmajor(list(leaves[job.bias].data), 1, n, 1, np_)
+            bias_decls.append(_const_operand(f"T_{job.bias}", ctype, bpad,
+                                             dtype=leaves[job.bias].dtype, blobs=blobs,
+                                             align_macro="row_align_acc(1)"))
+            biases.append(job.bias)
     for out, m, n, out_dtype in outs:
         np_ = _ceil_dim(n)
         mp = _ceil_dim(m)
@@ -790,7 +941,9 @@ def _harness_c(cb: dict, inputs: dict | None = None, *,
             # 4-byte readout halved every row (Y[i][j] read C[i][2j]) and zeroed the bottom half.
             decls.append(f"static int32_t T_{out}[{mp * np_}] row_align_acc(1);")
 
-    args = weights + lhss + [o[0] for o in outs]   # must mirror emit_kernel_mlir: weights + lhss + outs
+    decls.extend(bias_decls)
+    # must mirror emit_kernel_mlir: weights + lhss + outs + biases
+    args = weights + lhss + [o[0] for o in outs] + biases
     call = ", ".join(f"(void*)T_{a}" for a in args)
     prints = []
     for out, m, n, _ in outs:

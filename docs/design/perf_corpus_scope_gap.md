@@ -259,6 +259,17 @@ Do not re-litigate these here:
   no bias support will regenerate a corpus with `PF` blocked and a `_perf.yaml` that says so, and
   merging that over a branch which HAS the epilogue silently deletes six working members and a whole
   rung of coverage. The capability lives in the backend; the block record only reports it.
+
+  The BACKEND half landed later than the reference half, and until it did the distinction above was
+  invisible: the corpus and the reference engine both spoke `bias_add`, so `PF` looked live, while the
+  emitter's epilogue switch had no branch for the stage and every fused member died in code generation
+  as an opaque `tool_crash`. The reference emitter now lowers a fused bias as the accumulator's initial
+  value — a move-in to the accumulator base under a zero DRAM row stride, with the contraction's first
+  k-tile accumulating onto it instead of overwriting — and the bias arrives as a trailing pointer
+  argument the kernel ABI contract now names (`commit_biases_group_major`). What is still NOT lowered on
+  that backend is `BIAS_ADD` as a WHOLE OP standing on its own (`PF02`/`PF05`): that buffer carries no
+  contraction, so it is a movement-shaped program the resident-matmul emitter refuses. The fused half of
+  the comparison group is available; the unfused half is not.
 - **`PB` — `host_island_placement` (L4).** Blocked on `fused_single_elf`: the capsule path runs the
   accelerator on the target's oracle and the host lane in-process on the development machine, so a
   seam differential would price the workstation rather than the SoC. Until both lanes execute from

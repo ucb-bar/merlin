@@ -875,7 +875,8 @@ def expected_mvout_count(capsule: dict | None, rtl_facts: dict) -> tuple[int, st
     return count, f"{M}x{N} over {mr}x{mc} mesh (Mt*Nt)"
 
 
-def declared_outputs(capsule: dict | None) -> tuple[list[dict], str]:
+def declared_outputs(capsule: dict | None,
+                     command_buffer: dict | None = None) -> tuple[list[dict], str]:
     """Every DECLARED output's committed extent, in kernel-argument order — or ``([], reason)``.
 
     ``[{name, rows, cols, elem_bytes, arg_index}]``, derived only from the capsule's declaration:
@@ -887,9 +888,15 @@ def declared_outputs(capsule: dict | None) -> tuple[list[dict], str]:
     * a movement commits its declared source's extent;
     * any of those whose DECLARED epilogue contains a pooling stage pools the row axis down.
 
-    ``arg_index`` is the harness ABI: the harness calls ``<kernel>(<declared inputs, in order>,
-    <outputs>)``, so the j-th output is argument ``len(inputs) + j``. That order is the HARNESS's, not the
-    kernel's — the kernel does not get to choose it.
+    ``arg_index`` is the harness ABI. It is RESOLVED from the kernel-ABI contract for the buffer's own
+    command shape whenever ``command_buffer`` is given — the same single definition
+    :func:`resolve_kernel_arg_order` serves — and only falls back to "the declared inputs in order, then
+    the outputs" (``len(inputs) + j``) when no buffer is available to resolve against. The fallback is a
+    GUESS that happens to hold whenever the declared input list is exactly the kernel's leading pointer
+    block: a capsule declaring an operand the kernel does NOT take in declaration order (a fused bias,
+    which the contract puts in a TRAILING block) shifts every output by one under it, and the coverage
+    check then reports a perfectly good store as a dropped one. The order is the HARNESS's either way —
+    the kernel does not get to choose it.
 
     FAIL CLOSED: anything not derivable returns ``([], reason)`` and every consumer reports *skipped with
     that reason*, never a pass."""
@@ -960,8 +967,10 @@ def declared_outputs(capsule: dict | None) -> tuple[list[dict], str]:
         outs.append(rec)
     else:
         return [], f"declared op {op or '<absent>'!r} has no derived commit extent in this check"
+    resolved, _shape, _why = resolve_kernel_arg_order(command_buffer)
+    positions = {name: index for index, name in enumerate(resolved)}
     for j, rec in enumerate(outs):
-        rec["arg_index"] = base + j
+        rec["arg_index"] = positions.get(rec["name"], base + j)
     return outs, ""
 
 
@@ -1231,7 +1240,8 @@ def _check_pool_config(trace: dict, capsule: dict | None, rtl_facts: dict) -> Ch
                  got={f: want[f] for f in _POOL_CONFIG_FIELDS})
 
 
-def _check_output_store_coverage(trace: dict, capsule: dict | None, rtl_facts: dict) -> Check:
+def _check_output_store_coverage(trace: dict, capsule: dict | None, rtl_facts: dict,
+                                 command_buffer: dict | None = None) -> Check:
     """Every DECLARED output must be covered by stores in the emitted stream, and by no store past it.
 
     This is detectable with NO simulation, and it is the failure mode that reads as ``mismatch_count > 0``
@@ -1243,7 +1253,7 @@ def _check_output_store_coverage(trace: dict, capsule: dict | None, rtl_facts: d
 
     ANSWER-FREE: it says which part of the declared output nothing writes. It never reads, computes, or
     hints at a value."""
-    outs, why = declared_outputs(capsule)
+    outs, why = declared_outputs(capsule, command_buffer)
     if not outs:
         return Check("T0.output_store_coverage", "T0", "warn", "skipped",
                      f"declared output extent not derivable: {why}")
@@ -1533,6 +1543,29 @@ def _resolve_arg_order_token(token: str, cb: dict) -> list[str]:
         return [lhs for _w, jobs in _resident_groups(cb) for lhs, _o in jobs]
     if token == "commit_outputs_group_major":
         return [out for _w, jobs in _resident_groups(cb) for _l, out in jobs]
+    if token == "commit_biases_group_major":
+        # The bias operand of every commit that declares a fused bias stage, in the SAME group-major
+        # order the lhs/output blocks use. A commit without a bias stage contributes nothing, so this
+        # expands to [] for every buffer that declares no fused bias — which is why adding it to the
+        # resident_matmul row leaves that shape's signature unchanged for such buffers. A declared stage
+        # naming no tensor is a REFUSAL, never a skipped argument: a dropped bias is not a no-op, it
+        # shifts every output element by its own column's bias.
+        from merlin.runtime.commandbuffer import BIAS_STAGES, bias_tensor_name
+        by_out: dict[str, str] = {}
+        for cmd in cb.get("commands") or []:
+            if cmd.get("opcode") != "COMMIT":
+                continue
+            ops, attrs = cmd.get("operands") or {}, cmd.get("attributes") or {}
+            if not any(s in BIAS_STAGES for s in (attrs.get("epilogue") or [])):
+                continue
+            dst = ops.get("dst")
+            if not isinstance(dst, str):
+                raise _Unresolvable("a COMMIT declaring a bias stage names no dst")
+            try:
+                by_out[dst] = bias_tensor_name(ops, attrs, op=f"COMMIT {dst!r}")
+            except ValueError as exc:
+                raise _Unresolvable(str(exc)) from exc
+        return [by_out[out] for _w, jobs in _resident_groups(cb) for _l, out in jobs if out in by_out]
     raise _Unresolvable(f"the ABI contract names an arg_order token {token!r} this resolver does not "
                         f"know how to expand")
 
@@ -2129,7 +2162,7 @@ def screen(trace: dict, capsule: dict | None = None,
     # opt-in caller may use to skip an oracle run). A structurally-odd but conformant kernel must never
     # lose its oracle over an advisory finding.
     rep.checks.append(_check_pool_config(trace, capsule, facts))
-    rep.checks.append(_check_output_store_coverage(trace, capsule, facts))
+    rep.checks.append(_check_output_store_coverage(trace, capsule, facts, command_buffer))
     rep.checks.append(_check_extent_tile_legalization(trace, capsule, facts, target))
     rep.checks.append(_check_conv_lowering(trace, capsule, facts, target))
     rep.checks.append(_check_encoded_field_intent(trace, capsule, facts, command_buffer))
