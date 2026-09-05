@@ -421,7 +421,8 @@ def _obligation_key(capsule: Mapping[str, Any]) -> tuple:
 
 def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = None,
             budget_s: float | None = None,
-            cycle_accurate_available: "bool | None" = None) -> dict[str, Any]:
+            cycle_accurate_available: "bool | None" = None,
+            verify: bool = False, roots: Any = None) -> dict[str, Any]:
     """Pair every phase-2 member with the certified sibling it can rest on.
 
     The relation this computes is the one ``extends`` already declares and nothing verifies: a member
@@ -449,17 +450,46 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
         if not extensions:
             continue
         if certified:
-            anchor = max(certified, key=lambda cv: largest_operand_elements(cv[0]))
+            # DETERMINISTIC, ties broken on name. `max` alone picks whichever equal-sized witness the
+            # caller happened to enumerate first, so the same corpus yielded a different anchor -- and a
+            # different verification verdict -- depending on how its capsules were walked. Measured: the
+            # same corpus reported 6 verified from one enumeration and 0 from another.
+            anchor = max(certified, key=lambda cv: (largest_operand_elements(cv[0]),
+                                                    str(cv[0].get("name") or "")))
             for c, v in extensions:
-                paired.append({"member": str(c.get("name") or ""), "anchor": str(anchor[0].get("name") or ""),
-                               "obligation": key, "why": v.cert.reason})
+                row = {"member": str(c.get("name") or ""), "anchor": str(anchor[0].get("name") or ""),
+                       "obligation": key, "why": v.cert.reason}
+                if verify:
+                    # PAIRED IS NOT VERIFIED. That a certifiable sibling EXISTS is structural; that it
+                    # was CERTIFIED is evidential, and only the second entitles a member to rest on it.
+                    # tier_policy fails closed: a sibling with no deeper passing tier on disk records as
+                    # UNVERIFIED, which is a weaker claim than naming nobody, because an unchecked
+                    # `extends` reads as certified.
+                    from merlin.targetgen import tier_policy as TP
+
+                    probe = dict(c)
+                    probe["extends"] = row["anchor"]
+                    verdict = TP.verify_extends(target, probe, _deepest_declared(c), roots=roots)
+                    row["verified"] = bool(getattr(verdict, "verified", False))
+                    row["verification"] = str(getattr(verdict, "reason", ""))
+                paired.append(row)
         else:
             for c, v in extensions:
                 orphaned.append({"member": str(c.get("name") or ""), "obligation": key,
                                  "why": "no certifiable witness of this obligation exists on this target"})
-    return {"target": target, "n_obligations": len(by_ob),
-            "paired": paired, "orphaned": orphaned,
-            "n_paired": len(paired), "n_orphaned": len(orphaned)}
+    out = {"target": target, "n_obligations": len(by_ob),
+           "paired": paired, "orphaned": orphaned,
+           "n_paired": len(paired), "n_orphaned": len(orphaned)}
+    if verify:
+        out["n_verified"] = sum(1 for r in paired if r.get("verified"))
+        out["n_unverified"] = len(paired) - out["n_verified"]
+    return out
+
+
+def _deepest_declared(capsule: Mapping[str, Any]) -> "str | None":
+    """The deepest tier this capsule declares -- the ceiling it is screened at."""
+    tiers = [str(t) for t in (capsule.get("required_oracle_tiers") or ())]
+    return max(tiers) if tiers else None
 
 
 def cycle_accurate_seen(target: str, *, roots: Any = None) -> "bool | None":
@@ -483,3 +513,92 @@ def cycle_accurate_seen(target: str, *, roots: Any = None) -> "bool | None":
     except Exception:  # noqa: BLE001 - an unreadable run tree is "unknown", not "cannot"
         return None
     return True if records else None
+
+
+# ----------------------------------------------------- necessity, and whether a member is worth timing
+
+def covers_cell(capsule: Mapping[str, Any]) -> tuple:
+    """The conformance cell this capsule witnesses: ``(family, dtype, alignment-unknown)``.
+
+    Alignment is deliberately left out. It is a property the requirement computes from extents against
+    the target's tile, and re-deriving it here would be a second implementation that can disagree with
+    the first -- so this answers the two axes a capsule states about itself and lets the caller match on
+    those. A capsule stating neither is not a witness of anything and says so by returning ``()``.
+    """
+    sem = capsule.get("semantic") or {}
+    family = sem.get("semantic_family") or (capsule.get("operation") or {}).get("op")
+    dtypes = sorted({str(r.get("dtype")) for r in (capsule.get("inputs") or ())
+                     if isinstance(r, Mapping) and r.get("dtype")})
+    if not family or not dtypes:
+        return ()
+    return (str(family), tuple(dtypes))
+
+
+def necessary(capsule: Mapping[str, Any], required: "set[tuple] | None") -> Verdict:
+    """Does this capsule witness something the REQUIREMENT asks for?
+
+    Necessity is not the same question as either admission predicate, and conflating them is how a
+    corpus grows: a capsule can be perfectly certifiable and perfectly priceable and still witness no
+    obligation, in which case it costs a certification floor to tell us something nobody asked. It is
+    also not a licence to delete -- an unrequired capsule may be a deliberate edge case the requirement
+    cannot express -- so this REPORTS rather than condemns.
+    """
+    if required is None:
+        return Verdict(UNKNOWN, "the requirement for this target could not be derived, so necessity "
+                                "cannot be decided -- and an underived requirement is not an empty one")
+    cell = covers_cell(capsule)
+    if not cell:
+        return Verdict(UNKNOWN, "the capsule states neither a family nor an operand dtype, so what it "
+                                "witnesses cannot be read off it")
+    if cell in required:
+        return Verdict(YES, f"witnesses required cell {cell[0]}/{'+'.join(cell[1])}")
+    return Verdict(NO, f"witnesses {cell[0]}/{'+'.join(cell[1])}, which the requirement does not ask for")
+
+
+def worth_timing(capsule: Mapping[str, Any], *, share_of_achievable: float | None = None,
+                 band: float = 0.10) -> Verdict:
+    """Is there enough headroom in this member for a performance claim to be about anything?
+
+    THE MEASURED REASON THIS EXISTS. A campaign converged at roughly 0.2% while improving members with
+    zero regressions, because the members carrying almost all of its cycles were already at 0.59-0.94 of
+    achievable. Priceable and worth optimising are different properties, and a corpus that admits on the
+    first spends itself on members that cannot move.
+
+    ``band`` is the cost model's own uncertainty: a member within it of the achievable rate has nothing
+    a measurement could distinguish from noise. ``None`` is UNKNOWN, never "assume there is room".
+    """
+    if share_of_achievable is None:
+        return Verdict(UNKNOWN, "no measured share of the achievable rate for this member, so headroom "
+                                "is undecided -- assuming room is how a corpus admits members that "
+                                "cannot move its objective")
+    if share_of_achievable >= 1.0 - band:
+        return Verdict(NO, f"at {share_of_achievable:.0%} of the achievable rate, inside the {band:.0%} "
+                           "band, so any improvement is indistinguishable from noise")
+    return Verdict(YES, f"at {share_of_achievable:.0%} of achievable, {1 - share_of_achievable:.0%} of "
+                        "the rate is still on the table")
+
+
+def lever_is_reachable(capsule: Mapping[str, Any]) -> Verdict:
+    """Does the lever this member's family declares have an analyzer that can decide it?
+
+    The measured case: a family owning 92.4% of a corpus's cycles declared ``operand_residency`` while
+    every action the search could take moved tiling, hoisting or barriers. It was never improved once,
+    across three trials -- not because the search was weak but because nothing it could do reached the
+    thing the family was about.
+    """
+    perf = capsule.get("performance")
+    if not isinstance(perf, Mapping):
+        return Verdict(UNKNOWN, "declares no performance block, so it names no lever to reach")
+    try:
+        from merlin.perf import claim_reach as CR
+
+        reach = CR.family_reach(perf)
+    except Exception as exc:  # noqa: BLE001
+        return Verdict(UNKNOWN, f"the family's reach could not be derived ({type(exc).__name__})")
+    ok = getattr(reach, "reachable", None)
+    why = str(getattr(reach, "reason", "") or "")
+    if ok is True:
+        return Verdict(YES, why or f"the analyzer for lever {perf.get('lever')!r} resolves")
+    if ok is False:
+        return Verdict(NO, why or f"nothing reaches lever {perf.get('lever')!r}")
+    return Verdict(UNKNOWN, why or "the family declares a lever whose reach is not established")

@@ -82,6 +82,7 @@ def main() -> int:
     unexplained: list[str] = []
     undecided: list[str] = []
     orphaned: list[str] = []
+    unverified: list[str] = []
 
     for t in targets:
         caps = []
@@ -103,10 +104,14 @@ def main() -> int:
                      "single_phase_reasons": rep["single_phase_reasons"]}
 
         anc = PP.anchors(caps, target=t, fit=fit, budget_s=args.budget_s,
-                         cycle_accurate_available=ca)
+                         cycle_accurate_available=ca, verify=True)
         report[t]["obligations"] = anc["n_obligations"]
         report[t]["paired"] = anc["n_paired"]
         report[t]["orphaned"] = anc["n_orphaned"]
+        report[t]["verified"] = anc.get("n_verified", 0)
+        if anc.get("n_unverified"):
+            unverified.append(f"{t}: {anc['n_unverified']} of {anc['n_paired']} phase-2 member(s) name a "
+                              "sibling with no certification on disk")
         if anc["n_orphaned"]:
             orphaned.append(f"{t}: {anc['n_orphaned']} phase-2 member(s) rest on nothing "
                             f"({anc['orphaned'][0]['why']})")
@@ -122,13 +127,13 @@ def main() -> int:
         print(json.dumps(report, indent=1, default=str))
     else:
         print(f"{'target':<16}{'caps':>5}{'both':>6}{'p1':>5}{'p2':>5}{'neither':>9}{'undet':>7}"
-              f"{'oblig':>7}{'anchored':>10}{'orphan':>8}  cert-fit")
+              f"{'oblig':>7}{'anchored':>10}{'orphan':>8}{'verif':>7}  cert-fit")
         for t, r in report.items():
             c = r["counts"]
             n = r["cert_fit_samples"]
             print(f"{t:<16}{r['n_capsules']:>5}{c[PP.BOTH]:>6}{c[PP.PHASE1]:>5}{c[PP.PHASE2]:>5}"
                   f"{c[PP.NEITHER]:>9}{c[PP.UNDETERMINED]:>7}{r['obligations']:>7}{r['paired']:>10}"
-                  f"{r['orphaned']:>8}  {('n=%d' % n) if n else 'none'}")
+                  f"{r['orphaned']:>8}{r.get('verified', 0):>7}  {('n=%d' % n) if n else 'none'}")
 
     if unexplained:
         print("\n[FAIL] phase-split: a single-phase verdict with no recorded reason is indistinguishable "
@@ -143,6 +148,13 @@ def main() -> int:
               "that WAS certified; one resting on nothing is an L2 pass on a shape nothing ever "
               "certified cycle-accurately:")
         for line in orphaned:
+            print(f"  - {line}")
+
+    if unverified:
+        head = "[FAIL]" if args.strict else "[note]"
+        print(f"\n{head} phase-split: an unverified `extends` is a WEAKER claim than naming nobody, "
+              "because an unchecked one reads as certified:")
+        for line in unverified:
             print(f"  - {line}")
 
     if undecided:

@@ -545,7 +545,7 @@ def build_resume_cmd(ws: Path, *, model: str, effort: str, final_path: Path, san
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
               effort: str = "", prompt: str | None = None, continue_session: bool = False,
-              **_ignored) -> tuple[int, Path]:
+              effective_model: str | None = None, **_ignored) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
 
     ``continue_session`` makes ONE session span the whole ``timeout`` budget. It exists because
@@ -564,7 +564,13 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     it would make an arm look tiered when it was not.
     """
     codex_bin = os.environ.get("CODEX_BIN", "codex")
-    resolved = resolve_model(model)
+    # A rigorous caller may preflight model resolution and pass the content-addressed result.
+    # In that mode do NOT consult CODEX_MODEL_MAP a second time between the declaration and
+    # the process launch: a remap landing in between would run a model the run did not
+    # declare, and the transcript would name the declared one.
+    resolved = str(effective_model).strip() if effective_model is not None else resolve_model(model)
+    if not resolved:
+        raise ValueError("effective Codex model must be non-empty")
     rounds = run_dir / "rounds"
     rounds.mkdir(parents=True, exist_ok=True)
     tpath = rounds / f"round_{rnd:02d}.transcript.jsonl"
