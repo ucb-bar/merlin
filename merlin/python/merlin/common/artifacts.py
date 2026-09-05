@@ -252,9 +252,17 @@ def new_product(
         tmp = vdir / f".latest.{os.urandom(3).hex()}"
         os.symlink(pdir.name, tmp)   # RELATIVE target
         os.replace(tmp, link)        # atomic repoint
-    return ProductDir(path=pdir, manifest_path=pdir / "manifest.yaml", run_id=pdir.name,
+    prod = ProductDir(path=pdir, manifest_path=pdir / "manifest.yaml", run_id=pdir.name,
                       topic=generator, version=version, git_sha=sha, timestamp=ts,
                       target=target, sources=sources, notes=notes, _artifacts=[])
+    # WRITE THE MANIFEST NOW, not when the producer finishes. `check_artifact_layout` scans
+    # `out/artifacts/*/v*` on disk regardless of --staged (by design -- that is where reports live),
+    # so a product dir without one fails the gate for EVERY session on this shared tree, for as long
+    # as the producer runs. A long campaign or a killed run left exactly that, twice in one day.
+    # Callers still call `write_manifest()` again at the end to record the artifacts they added;
+    # this one is the placeholder that keeps the window closed.
+    prod.write_manifest()
+    return prod
 
 
 # ---- measurements: artifacts/measurements/<substrate>/<model>/<experiment>_v<ver>_<TS>_<sha7>/ ----
