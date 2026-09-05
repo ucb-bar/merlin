@@ -109,9 +109,11 @@ def main() -> int:
         report[t]["paired"] = anc["n_paired"]
         report[t]["orphaned"] = anc["n_orphaned"]
         report[t]["verified"] = anc.get("n_verified", 0)
+        report[t]["self_certified"] = anc.get("n_self_certified", 0)
         if anc.get("n_unverified"):
-            unverified.append(f"{t}: {anc['n_unverified']} of {anc['n_paired']} phase-2 member(s) name a "
-                              "sibling with no certification on disk")
+            reasons = sorted({r.get("verification", "") for r in anc["paired"] if not r.get("verified")})
+            unverified.append(f"{t}: {anc['n_unverified']} of {anc['n_paired']} phase-2 member(s) rest on "
+                              "an `extends` no result on disk backs: " + "; ".join(reasons[:3]))
         if anc["n_orphaned"]:
             orphaned.append(f"{t}: {anc['n_orphaned']} phase-2 member(s) rest on nothing "
                             f"({anc['orphaned'][0]['why']})")
@@ -127,13 +129,14 @@ def main() -> int:
         print(json.dumps(report, indent=1, default=str))
     else:
         print(f"{'target':<16}{'caps':>5}{'both':>6}{'p1':>5}{'p2':>5}{'neither':>9}{'undet':>7}"
-              f"{'oblig':>7}{'anchored':>10}{'orphan':>8}{'verif':>7}  cert-fit")
+              f"{'oblig':>7}{'anchored':>10}{'orphan':>8}{'verif':>7}{'selfcert':>9}  cert-fit")
         for t, r in report.items():
             c = r["counts"]
             n = r["cert_fit_samples"]
             print(f"{t:<16}{r['n_capsules']:>5}{c[PP.BOTH]:>6}{c[PP.PHASE1]:>5}{c[PP.PHASE2]:>5}"
                   f"{c[PP.NEITHER]:>9}{c[PP.UNDETERMINED]:>7}{r['obligations']:>7}{r['paired']:>10}"
-                  f"{r['orphaned']:>8}{r.get('verified', 0):>7}  {('n=%d' % n) if n else 'none'}")
+                  f"{r['orphaned']:>8}{r.get('verified', 0):>7}{r.get('self_certified', 0):>9}"
+                  f"  {('n=%d' % n) if n else 'none'}")
 
     if unexplained:
         print("\n[FAIL] phase-split: a single-phase verdict with no recorded reason is indistinguishable "
@@ -151,6 +154,10 @@ def main() -> int:
             print(f"  - {line}")
 
     if unverified:
+        # ⚠️ STRICT-FATAL, LIKE EVERY OTHER FINDING HERE. This branch printed and returned 0 even under
+        # --strict, so "29 of 29 unverified" was a note nobody gated on -- and raising the verified
+        # count would have improved a number that gates nothing. An unchecked `extends` reads as
+        # certified, which is precisely the claim this file refuses to let a corpus make for free.
         head = "[FAIL]" if args.strict else "[note]"
         print(f"\n{head} phase-split: an unverified `extends` is a WEAKER claim than naming nobody, "
               "because an unchecked one reads as certified:")
@@ -165,7 +172,7 @@ def main() -> int:
             print(f"  - {line}")
         if args.strict:
             return 1
-    if orphaned and args.strict:
+    if (orphaned or unverified) and args.strict:
         return 1
 
     print("\n[  ok] phase-split: every single-phase verdict carries a derived reason.")

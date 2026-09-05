@@ -255,3 +255,141 @@ def test_the_largest_certifiable_witness_is_chosen_as_the_anchor():
     big = _sized("big", 512, 512, 512, capped="L2")
     a = PP.anchors([tiny, mid, big], target="t", cycle_accurate_available=True)
     assert a["paired"][0]["anchor"] == "mid"
+
+
+# ------------------------------------------------- the anchor relation, VERIFIED against the evidence
+
+def _result(root, capsule, tier="L3", status="pass", cycle_accurate=True):
+    """One ``capsule_result.json`` under ``root``, shaped as a real run writes it."""
+    import json
+
+    d = root / capsule / tier
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "capsule_result.json").write_text(json.dumps({
+        "capsule": capsule,
+        "tiers": {tier: {"status": status, "cycles": 1000, "cycle_accurate": cycle_accurate,
+                         "derived_from_rtl": cycle_accurate,
+                         "timing": {"sim_active_s": 12.0}}},
+    }), encoding="utf-8")
+    return root
+
+
+def test_the_verified_anchor_is_the_one_the_capsule_DECLARES(tmp_path):
+    """THE REGRESSION. ``anchors`` overwrote the member's own ``extends`` with the anchor it had just
+    computed and verified THAT, so a member resting on a sibling with a passing cycle-accurate tier
+    reported UNVERIFIED because a different, never-run sibling was checked in its place. Measured on the
+    largest corpus here: five such members, every one of them wrong."""
+    # The declared sibling witnesses a DIFFERENT obligation, so it can never win the computed anchor
+    # race -- exactly the corpus shape that produced the false UNVERIFIED verdicts.
+    declared = _sized("declared_sibling", 32, 32, 32)
+    for row in declared["inputs"]:
+        row["dtype"] = "i16"
+    in_group = _sized("in_group_never_run", 64, 64, 64)      # the computed anchor, never certified
+    member = _sized("member", 512, 512, 512, capped="L2")
+    member["extends"] = "declared_sibling"
+    _result(tmp_path, "declared_sibling")
+
+    a = PP.anchors([declared, in_group, member], target="t", cycle_accurate_available=True,
+                   verify=True, roots=[tmp_path])
+    row = next(r for r in a["paired"] if r["member"] == "member")
+    assert row["anchor"] == "declared_sibling" and row["anchor_source"] == "declared"
+    assert row["computed_anchor"] == "in_group_never_run"
+    assert row["verified"] is True, row["verification"]
+    assert a["n_verified"] == 1
+
+
+def test_a_declared_extends_naming_an_uncertified_sibling_stays_unverified(tmp_path):
+    """THE MUTATION. Break the declared sibling's name and the verdict must go red -- verifying the
+    declared field is only worth anything if a wrong declaration can fail."""
+    declared = _sized("declared_sibling", 32, 32, 32)
+    member = _sized("member", 512, 512, 512, capped="L2")
+    member["extends"] = "no_such_sibling"
+    _result(tmp_path, "declared_sibling")
+
+    a = PP.anchors([declared, member], target="t", cycle_accurate_available=True,
+                   verify=True, roots=[tmp_path])
+    row = next(r for r in a["paired"] if r["member"] == "member")
+    assert row["verified"] is False
+    assert "no_such_sibling" in row["verification"]
+    assert a["n_verified"] == 0 and a["n_unverified"] == 1
+
+
+def test_the_computed_anchor_prefers_a_sibling_that_WAS_certified(tmp_path):
+    """Selection maximised a predicted cost and verification then read evidence, with no feedback
+    between them: on the corpus this was written against that picked a never-run sibling for 27 of 29
+    members while 45 certifiable siblings in the same group held a passing cycle-accurate tier."""
+    attested = _sized("attested_small", 32, 32, 32)
+    never_run = _sized("never_run_big", 64, 64, 64)
+    member = _sized("member", 512, 512, 512, capped="L2")     # declares no `extends`
+    _result(tmp_path, "attested_small")
+
+    a = PP.anchors([attested, never_run, member], target="t", cycle_accurate_available=True,
+                   verify=True, roots=[tmp_path])
+    row = next(r for r in a["paired"] if r["member"] == "member")
+    assert row["anchor_source"] == "computed"
+    assert row["anchor"] == "attested_small", "size outranked evidence in the anchor race"
+    assert row["verified"] is True, row["verification"]
+
+
+def test_a_member_that_ITSELF_certified_is_not_demanded_an_anchor(tmp_path):
+    """``certifiable`` is prospective -- it asks a cost fit what a budget affords -- and never asks
+    whether the member was in fact certified. Twelve members held a passing L3 on disk while the gate
+    demanded an ``extends`` from them: it was asking capsules that are themselves anchors to name one."""
+    sibling = _sized("sibling", 32, 32, 32)
+    member = _sized("member", 512, 512, 512, capped="L2")
+    _result(tmp_path, "member")
+
+    a = PP.anchors([sibling, member], target="t", cycle_accurate_available=True,
+                   verify=True, roots=[tmp_path])
+    assert [r["member"] for r in a["paired"]] == []
+    assert a["n_self_certified"] == 1
+    assert a["self_certified"][0]["member"] == "member"
+    assert a["self_certified"][0]["tier"] == "L3"
+
+
+def test_a_pass_that_does_not_declare_itself_cycle_accurate_is_not_a_certification(tmp_path):
+    """Fail closed on the record's own claim, never on the tier's NAME: one target's L3 is elaborated
+    RTL and another's is a model, and there is exactly one non-cycle-accurate L3 pass on disk today."""
+    sibling = _sized("sibling", 32, 32, 32)
+    member = _sized("member", 512, 512, 512, capped="L2")
+    _result(tmp_path, "member", cycle_accurate=False)
+
+    a = PP.anchors([sibling, member], target="t", cycle_accurate_available=True,
+                   verify=True, roots=[tmp_path])
+    assert a["n_self_certified"] == 0
+    assert [r["member"] for r in a["paired"]] == ["member"]
+
+
+def test_a_member_declaring_a_cycle_accurate_tier_for_ITSELF_cannot_be_verified(tmp_path):
+    """THE FAIL-OPEN TRAP. Such a member is screened at the deepest rung it declares, so nothing can be
+    deeper and no sibling corroborates it. Handing ``verify_extends`` a null cap instead would make ANY
+    passing tier verify -- an L0 functional pass reading as a certification -- so this stays UNVERIFIED
+    with the remedy in its reason."""
+    sibling = _sized("sibling", 32, 32, 32)
+    member = _sized("member", 1024, 1024, 1024)               # > the measured operand range, no cap
+    _result(tmp_path, "sibling")
+    _result(tmp_path, "sibling", tier="L0", cycle_accurate=False)
+
+    a = PP.anchors([sibling, member], target="t", cycle_accurate_available=True,
+                   verify=True, roots=[tmp_path])
+    row = next(r for r in a["paired"] if r["member"] == "member")
+    assert row["verified"] is False
+    assert "cap it" in row["verification"], row["verification"]
+
+
+def test_verification_does_not_depend_on_how_the_corpus_was_ENUMERATED(tmp_path):
+    """The determinism property, now exercised WITH ``verify=True``. The same corpus reported 6 verified
+    from one enumeration and 0 from another before the anchor race was given a total order, and no test
+    covered the verified count at all."""
+    caps = [_sized("attested_a", 32, 32, 32), _sized("attested_b", 32, 32, 32),
+            _sized("member", 512, 512, 512, capped="L2")]
+    _result(tmp_path, "attested_a")
+    _result(tmp_path, "attested_b")
+
+    forward = PP.anchors(caps, target="t", cycle_accurate_available=True, verify=True,
+                         roots=[tmp_path])
+    backward = PP.anchors(list(reversed(caps)), target="t", cycle_accurate_available=True,
+                          verify=True, roots=[tmp_path])
+    assert forward["paired"] == backward["paired"]
+    assert forward["n_verified"] == backward["n_verified"] == 1
+

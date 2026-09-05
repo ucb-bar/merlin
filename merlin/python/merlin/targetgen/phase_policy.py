@@ -432,10 +432,35 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
     nothing ever certified cycle-accurately is exactly the "read tier_reached, never a bare score"
     failure this corpus already has scar tissue for.
 
-    The anchor chosen is the LARGEST certifiable witness of the obligation, not the smallest. A bigger
+    EVIDENCE OVERRULES THE PREDICTION, in both directions:
+
+    * A member that has ITSELF passed a cycle-accurate tier on this target is certified, whatever
+      :func:`certifiable` predicts about its price, and is reported under ``self_certified`` rather than
+      demanded an anchor. ``certifiable`` is purely prospective -- it asks a cost fit what a budget
+      affords -- and on the corpus this was written against it declared 12 members uncertifiable while
+      their passing L3 records sat on disk. The gate was asking capsules that are themselves anchors to
+      name one.
+    * The anchor CHOSEN prefers a sibling with a certification on disk over one that is merely
+      predicted certifiable. Selecting on predicted cost and then verifying against evidence, with no
+      feedback between the two, picked a never-run sibling for 27 of 29 members while 45 certifiable
+      siblings in the same group held a passing cycle-accurate tier.
+
+    Among equally-attested candidates the anchor is the LARGEST witness of the obligation: a bigger
     anchor is a stronger guarantee for the same certification floor, and the floor is what dominates
     the cost.
     """
+    attested: dict[str, tuple[str, str]] = {}
+    if str(target):
+        try:
+            from merlin.targetgen import tier_policy as TP
+
+            attested = TP.certified_on_disk(str(target), roots=roots)
+        except Exception:                     # noqa: BLE001 - an unreadable run tree is no evidence
+            attested = {}
+
+    def _name(capsule: Mapping[str, Any]) -> str:
+        return str(capsule.get("name") or "")
+
     by_ob: dict[tuple, list[tuple[Mapping[str, Any], PhaseVerdict]]] = {}
     for c in capsules:
         v = phase_of(c, target=target, fit=fit, budget_s=budget_s,
@@ -444,20 +469,41 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
 
     paired: list[dict[str, Any]] = []
     orphaned: list[dict[str, Any]] = []
+    self_certified: list[dict[str, Any]] = []
     for key, members in sorted(by_ob.items(), key=lambda kv: str(kv[0])):
-        certified = [(c, v) for c, v in members if v.cert.value == YES]
-        extensions = [(c, v) for c, v in members if v.cert.value != YES and v.price.value == YES]
+        certified = [(c, v) for c, v in members
+                     if v.cert.value == YES or _name(c) in attested]
+        extensions = [(c, v) for c, v in members
+                      if v.cert.value != YES and _name(c) not in attested and v.price.value == YES]
+        # Only where EVIDENCE OVERRULED THE PREDICTION. A member the cost fit already calls certifiable
+        # and that also ran is unremarkable; the finding is the member priced out of certification that
+        # has nonetheless certified, because that is the one the gate would have demanded an anchor from.
+        for c, v in members:
+            if v.cert.value != YES and _name(c) in attested:
+                tier, source = attested[_name(c)]
+                self_certified.append({"member": _name(c), "tier": tier, "source": source,
+                                       "why": (f"priced out of certification ({v.cert.reason}) but has "
+                                               f"PASSED {tier}, a cycle-accurate tier, on this target")})
         if not extensions:
             continue
         if certified:
             # DETERMINISTIC, ties broken on name. `max` alone picks whichever equal-sized witness the
             # caller happened to enumerate first, so the same corpus yielded a different anchor -- and a
             # different verification verdict -- depending on how its capsules were walked. Measured: the
-            # same corpus reported 6 verified from one enumeration and 0 from another.
-            anchor = max(certified, key=lambda cv: (largest_operand_elements(cv[0]),
-                                                    str(cv[0].get("name") or "")))
+            # same corpus reported 6 verified from one enumeration and 0 from another. The attested
+            # flag leads the key so evidence outranks size, and the name still breaks every tie.
+            anchor = max(certified, key=lambda cv: (1 if _name(cv[0]) in attested else 0,
+                                                    largest_operand_elements(cv[0]), _name(cv[0])))
             for c, v in extensions:
-                row = {"member": str(c.get("name") or ""), "anchor": str(anchor[0].get("name") or ""),
+                computed = _name(anchor[0])
+                declared = str(c.get("extends") or "").strip()
+                row = {"member": _name(c), "anchor": declared or computed,
+                       "computed_anchor": computed,
+                       # WHICH SIBLING IS BEING CHECKED. Verifying the computed anchor while the capsule
+                       # declares a different one reports on a claim the capsule never made: measured,
+                       # five members whose own `extends` names a sibling with a passing L3 on disk read
+                       # as UNVERIFIED because the gate checked a computed sibling that had never run.
+                       "anchor_source": "declared" if declared else "computed",
                        "obligation": key, "why": v.cert.reason}
                 if verify:
                     # PAIRED IS NOT VERIFIED. That a certifiable sibling EXISTS is structural; that it
@@ -467,23 +513,59 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
                     # `extends` reads as certified.
                     from merlin.targetgen import tier_policy as TP
 
-                    probe = dict(c)
-                    probe["extends"] = row["anchor"]
-                    verdict = TP.verify_extends(target, probe, _deepest_declared(c), roots=roots)
-                    row["verified"] = bool(getattr(verdict, "verified", False))
-                    row["verification"] = str(getattr(verdict, "reason", ""))
+                    cap = _screened_at(c)
+                    if cap is None:
+                        row["verified"] = False
+                        row["verification"] = ("the tier this member is screened at cannot be read from "
+                                               "it -- it declares neither a `max_oracle_tier` cap nor a "
+                                               "required-tier list -- so no sibling can be shown to have "
+                                               "gone deeper")
+                    elif cap in _CYCLE_ACCURATE_TIERS:
+                        # NOT A VERIFICATION FAILURE OF THE SIBLING. The member declares a
+                        # cycle-accurate tier for ITSELF and is priced out of it, so there is no rung
+                        # deeper than the one it claims and no sibling can corroborate it. Passing a
+                        # null cap here instead would make `verify_extends` accept ANY passing tier --
+                        # an L0 pass reading as a certification -- which is fail-open, so the honest
+                        # answer is an unverified member with the remedy in its reason.
+                        row["verified"] = False
+                        row["verification"] = (
+                            f"declares {cap} for itself rather than capping below it, so no sibling can "
+                            f"pass a tier deeper than the one this member already claims; either certify "
+                            f"it or cap it (`max_oracle_tier`) and name the sibling it rests on")
+                    else:
+                        probe = dict(c)
+                        probe["extends"] = row["anchor"]
+                        verdict = TP.verify_extends(target, probe, cap, roots=roots)
+                        row["verified"] = bool(getattr(verdict, "verified", False))
+                        row["verification"] = str(getattr(verdict, "reason", ""))
                 paired.append(row)
         else:
             for c, v in extensions:
-                orphaned.append({"member": str(c.get("name") or ""), "obligation": key,
+                orphaned.append({"member": _name(c), "obligation": key,
                                  "why": "no certifiable witness of this obligation exists on this target"})
     out = {"target": target, "n_obligations": len(by_ob),
            "paired": paired, "orphaned": orphaned,
-           "n_paired": len(paired), "n_orphaned": len(orphaned)}
+           "self_certified": sorted(self_certified, key=lambda r: r["member"]),
+           "n_paired": len(paired), "n_orphaned": len(orphaned),
+           "n_self_certified": len(self_certified)}
     if verify:
         out["n_verified"] = sum(1 for r in paired if r.get("verified"))
         out["n_unverified"] = len(paired) - out["n_verified"]
     return out
+
+
+def _screened_at(capsule: Mapping[str, Any]) -> "str | None":
+    """The tier a member is SCREENED at -- the ceiling a sibling has to beat -- or ``None``.
+
+    The explicit cap wins, because that is the ceiling the capsule declares for itself; absent one, the
+    deepest tier it lists is the deepest it can be screened at. ``None`` is returned rather than a
+    stand-in when neither is stated: every caller here must fail closed on it, since a null cap makes
+    "deeper than the cap" vacuous and lets any passing tier verify.
+    """
+    from merlin.targetgen import tier_policy as TP
+
+    cap, _source = TP.declared_ceiling(capsule)
+    return str(cap) if cap else _deepest_declared(capsule)
 
 
 def _deepest_declared(capsule: Mapping[str, Any]) -> "str | None":

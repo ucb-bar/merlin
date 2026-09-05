@@ -468,6 +468,45 @@ def test_a_sibling_that_did_not_pass_deeper_carries_nothing(tmp_path):
         CC.reset_cache()
 
 
+def test_an_UNSTATED_cap_refuses_rather_than_verifying_against_anything(costly_history):
+    """THE FAIL-OPEN SHAPE. ``cap_rank`` is -1 when no cap is stated, after which the depth test is
+    never taken and ANY passing tier verifies -- an L0 functional pass would certify a member nobody
+    ran cycle-accurately, the exact inverse of this function's contract. So a null cap fails closed."""
+    for cap in (None, "", "   "):
+        v = TP.verify_extends(TARGET, _capsule(extends="H0_depth_200"), cap,
+                              declared_tiers=["L2", "L3"], roots=costly_history)
+        assert v.verified is False, f"a {cap!r} cap verified an extends against an unbounded ladder"
+        assert v.claim == TP.CLAIM_EXTENDS_UNVERIFIED
+        assert "screened at was not stated" in v.reason
+    # And the same sibling DOES verify once the cap is stated, so the refusal is about the cap and not
+    # about the evidence.
+    assert TP.verify_extends(TARGET, _capsule(extends="H0_depth_200"), "L2",
+                             declared_tiers=["L2", "L3"], roots=costly_history).verified is True
+
+
+def test_certified_on_disk_reads_the_records_CLAIM_of_cycle_accuracy(tmp_path):
+    """The evidence side of certifiability. A pass is a certification only where the record itself says
+    it was cycle-accurate: one target's L3 is elaborated RTL and another's is a model, so a name-based
+    test reads a functional pass as a certification."""
+    root = tmp_path / "mixed_fidelity"
+    _write_result(root, "C_certified", cycles=1000, seconds=90.0, engine="slow_rtl")
+    (root / "C_functional").mkdir(parents=True)
+    (root / "C_functional" / "capsule_result.json").write_text(json.dumps(
+        {"capsule": "C_functional", "status": "pass",
+         "tiers": {"L3": {"status": "pass", "cycle_accurate": False, "derived_from_rtl": False}}}),
+        encoding="utf-8")
+    (root / "C_failed").mkdir(parents=True)
+    (root / "C_failed" / "capsule_result.json").write_text(json.dumps(
+        {"capsule": "C_failed", "status": "fail",
+         "tiers": {"L3": {"status": "fail", "cycle_accurate": True, "derived_from_rtl": True}}}),
+        encoding="utf-8")
+    seen = TP.certified_on_disk(TARGET, roots=[root])
+    assert set(seen) == {"C_certified"}, "a functional pass or a failed run is not a certification"
+    assert seen["C_certified"][0] == "L3"
+    assert "capsule_result.json" in seen["C_certified"][1], "the record it was read from is cited"
+    assert TP.certified_on_disk(TARGET, roots=[tmp_path / "nothing_here"]) == {}
+
+
 def test_an_unverified_extends_is_recorded_as_unverified_on_the_tier(costly_history):
     """End to end: the emitted tier record must not let an unchecked claim read as a certification."""
     cap = _capsule("P0_rests_on_a_ghost", max_oracle_tier="L2", extends="A2_single_tile_matmul")

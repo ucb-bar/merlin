@@ -451,6 +451,17 @@ def verify_extends(target: str, capsule: Mapping, cap_tier: str | None, *,
     if not sibling:
         return ExtendsVerdict(None, False, reason=f"capsule declares no `{EXTENDS_FIELD}` sibling")
     sibling = str(sibling)
+    # ⚠️ A MISSING CAP IS REFUSED, NOT TREATED AS "NO FLOOR". `cap_rank` below is -1 when `cap_tier` is
+    # falsy, after which the depth test is never taken and ANY passing tier verifies -- an L0 functional
+    # pass would certify a member nobody ran cycle-accurately. That is the inverse of this function's
+    # whole contract, so an unstated cap fails closed here rather than verifying everything.
+    if not str(cap_tier or "").strip():
+        return ExtendsVerdict(sibling, False,
+                              reason=(f"the tier this capsule is screened at was not stated, so "
+                                      f"\"deeper than the cap\" has no meaning and sibling {sibling!r} "
+                                      f"cannot corroborate anything -- recorded as UNVERIFIED rather "
+                                      f"than accepting any passing tier, which would let an L0 pass "
+                                      f"read as a certification"))
     from . import tier_affordability as CC
 
     universe = list(declared_tiers) or list(capsule.get("required_oracle_tiers") or ())
@@ -491,6 +502,53 @@ def verify_extends(target: str, capsule: Mapping, cap_tier: str | None, *,
 def _json_loads(path):
     import json
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def certified_on_disk(target: str, *, roots=None) -> dict[str, tuple[str, str]]:
+    """``capsule -> (tier, source)`` for every capsule this target has ACTUALLY certified.
+
+    THE EVIDENCE SIDE OF A QUESTION THAT WAS ONLY EVER ASKED PROSPECTIVELY. ``phase_policy.certifiable``
+    predicts, from a cost fit, whether a member COULD be certified inside a budget; it never asks whether
+    one WAS. Measured on this repo's largest corpus, 12 of the 29 members the anchor gate demanded an
+    ``extends`` from already held a passing cycle-accurate tier on disk -- the gate was asking capsules
+    that are themselves anchors to name an anchor, and a prediction was overruling a measurement.
+
+    Cycle-accuracy is read from the record's own ``cycle_accurate`` / ``derived_from_rtl`` declaration
+    (:func:`tier_affordability._is_cycle_accurate`), never from the tier's NAME: one target's L3 is
+    elaborated RTL and another's is a model, so a name-based test reads a functional pass as a
+    certification. A pass that does not declare itself cycle-accurate is not counted -- there is exactly
+    one such L3 record on disk today, and counting it would be the same substitution in miniature.
+
+    Deterministic: the DEEPEST declared tier wins, ties broken on the sorted source path, so two runs of
+    the same tree agree on which record is cited.
+    """
+    from . import tier_affordability as CC
+
+    out: dict[str, tuple[str, str]] = {}
+    for base in CC._result_roots(str(target), roots):
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("capsule_result.json")):
+            try:
+                doc = _json_loads(path)
+            except (OSError, ValueError):
+                continue                                   # unreadable is not evidence
+            if not isinstance(doc, Mapping):
+                continue
+            name = str(doc.get("capsule") or "")
+            tiers = doc.get("tiers")
+            if not name or not isinstance(tiers, Mapping):
+                continue
+            universe = [str(t) for t in tiers]
+            for tier_name, rec in tiers.items():
+                if not isinstance(rec, Mapping) or rec.get("status") != "pass":
+                    continue
+                if not CC._is_cycle_accurate(dict(rec)):
+                    continue
+                prev = out.get(name)
+                if prev is None or _rank(str(tier_name), universe + [prev[0]]) > _rank(prev[0], universe + [prev[0]]):
+                    out[name] = (str(tier_name), str(path))
+    return out
 
 
 class Ceiling:
