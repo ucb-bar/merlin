@@ -83,6 +83,127 @@ def test_resolved_tool_id_mutation_refuses_resume(tmp_path):
             record, ws, run_dir, bundle_dir, (*tools, "rtl_generators"))
 
 
+def test_certified_resume_submission_identity_is_fail_closed(tmp_path):
+    loop = _loop()
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("language: python\n", encoding="utf-8")
+    expected = loop.C.hash_tree(submission)["sha256"]
+
+    observed = loop._require_submission_identity(
+        submission, expected, stage="resume preflight")
+    assert observed["sha256"] == expected
+
+    (submission / "compiler.py").write_text("print('changed')\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="prior certification is not applicable"):
+        loop._require_submission_identity(
+            submission, expected, stage="after authoring round 3")
+
+
+def test_fresh_seed_may_be_identity_pinned_before_first_agent_turn(tmp_path):
+    loop = _loop()
+    source = tmp_path / "preserved" / "submission"
+    source.mkdir(parents=True)
+    (source / "manifest.yaml").write_text("language: python\n", encoding="utf-8")
+    (source / "compiler.py").write_text("print('preserved')\n", encoding="utf-8")
+    expected = loop.C.hash_tree(source)["sha256"]
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    loop._validate_required_submission_mode(
+        expected, resume=False, seed_submission=str(source), legacy_continuous=False)
+    loop._seed_submission(ws, source, run_dir)
+    observed = loop._require_submission_identity(
+        ws / "submission", expected, stage="seeded fresh-run preflight")
+
+    assert observed["sha256"] == expected
+    assert (run_dir / "seed_submission.json").is_file()
+
+
+@pytest.mark.parametrize(
+    ("resume", "seed", "continuous", "message"),
+    [
+        (False, "", False, "requires either --resume or a fresh --seed-submission"),
+        (True, "/seed", False, "cannot be combined with --resume"),
+        (True, "", True, "checkpointed round loop"),
+    ],
+)
+def test_identity_pinned_launch_rejects_ambiguous_modes(resume, seed, continuous, message):
+    loop = _loop()
+    with pytest.raises(RuntimeError, match=message):
+        loop._validate_required_submission_mode(
+            "0" * 64, resume=resume, seed_submission=seed, legacy_continuous=continuous)
+
+
+def test_identity_evidence_prompt_requires_separate_read_only_workflow_calls():
+    loop = _loop()
+    import conformance
+
+    prompt = loop._identity_evidence_prompt("gemmini", "submission/m2_target.mlir")
+    commands = [line for line in prompt.splitlines()
+                if line.startswith(("python ", "python3 ", "jq "))]
+
+    assert "EVIDENCE-ONLY" in prompt
+    assert "Do not edit, chmod, delete, rename, replace" in prompt
+    assert "OWN separate shell tool call" in prompt
+    assert len(commands) == 8
+    assert all(conformance._executable(conformance._shell_tokens(command)) is not None
+               for command in commands)
+    assert commands[0] == "python cca_contract.py check-bijection gemmini"
+    assert commands[1] == (
+        "python action_catalog.py escalation-ladder spatial.dataflow gemmini")
+    assert any("derived_levers" in command for command in commands)
+    assert any("load_facts" in command for command in commands)
+    assert any("generate_skeleton" in command for command in commands)
+    assert "python isa_tools.py lint submission/m2_target.mlir" in commands
+    assert "jq '.rtl_checks' qa/verdict.json" in commands
+    assert commands[-1] == (
+        "python3 agent_selfcheck.py --submission submission --sim spike --capsules all")
+
+
+def test_identity_pinned_first_turn_receives_evidence_prompt(monkeypatch, tmp_path):
+    loop = _loop()
+    import agent_bridge
+    import codex_agent
+
+    ws = tmp_path / "workspace"
+    run_dir = tmp_path / "run"
+    ws.mkdir()
+    run_dir.mkdir()
+    (ws / "TASK.md").write_text("ordinary authoring task\n", encoding="utf-8")
+    (ws / "submission").mkdir()
+    (ws / "submission" / "derived.mlir").write_text("module {}\n", encoding="utf-8")
+    seen = {}
+
+    def capture(*_args, **kwargs):
+        seen.update(kwargs)
+        return 0, run_dir / "rounds" / "round_00.transcript.jsonl"
+
+    monkeypatch.setattr(loop, "_driver_for", lambda _model: "codex")
+    monkeypatch.setattr(loop, "_te", lambda: SimpleNamespace(target="gemmini"))
+    monkeypatch.setattr(agent_bridge, "bridged_name", lambda *_args: None)
+    monkeypatch.setattr(codex_agent, "run_round", capture)
+
+    loop.launch_agent(
+        ws, run_dir, "gpt-5.6-sol", "high", "none", {}, 0, 60,
+        arm="merlin_assisted", evidence_only=True)
+
+    assert seen["prompt"] == loop._identity_evidence_prompt(
+        "gemmini", "submission/derived.mlir")
+
+
+@pytest.mark.parametrize("digest", ["", "A" * 64, "0" * 63, "g" * 64])
+def test_certified_resume_rejects_malformed_submission_identity(digest, tmp_path):
+    loop = _loop()
+    submission = tmp_path / "submission"
+    submission.mkdir()
+
+    with pytest.raises(ValueError, match="64 lowercase hexadecimal"):
+        loop._require_submission_identity(submission, digest, stage="test")
+
+
 def _hidden_fixture(tmp_path: Path):
     loop = _loop()
     hidden = tmp_path / "bundle_inputs" / "repo" / "merlin" / "contract" / "capsules" / "hidden"

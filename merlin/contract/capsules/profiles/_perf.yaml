@@ -1,21 +1,10 @@
-# The one generated performance-corpus template. Target-owned profiles may
-# describe functional coverage only; applicability comes from the target's own
-# canonical merlin.perf.profile traits.
-#
-# Claim vocabulary is intentionally disjoint:
-#   RECOVERS     measured shipped reference / measured reference
-#   PREDICTS     predicted cycles for Merlin's kernel / its measured cycles
-#   DIFFERENTIAL same work and demand, one compiler lever changed
-# This template currently makes one PREDICTS family and two DIFFERENTIAL
-# declarations. It makes no RECOVERS claim.
-
 sweeps:
-
-# Minimum runnable coverage: a direct matmul capsule on the target's own
-# workload_gen/corpus-binding dtype. On Gemmini this resolves to int8 -> i32.
 - id: PK
-  fit_axes: [K]
-  comparison_roles: [prediction, measurement]
+  fit_axes:
+  - K
+  comparison_roles:
+  - prediction
+  - measurement
   base:
     cat: _perf
     kind: model_slice
@@ -31,43 +20,61 @@ sweeps:
       comparand:
         kind: fitted_prediction
         against: measured_cycles_same_member
-        cancels: [identical_M, identical_N, identical_datapath]
-        demand_equal: [operation, M, N, operand_dtype, accum_dtype]
+        cancels:
+        - identical_M
+        - identical_N
+        - identical_datapath
+        demand_equal:
+        - operation
+        - M
+        - N
+        - operand_dtype
+        - accum_dtype
       falsifier:
         observation: residual_cycles_by_K
         fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
         negative_control: fixed_M_and_N_across_all_K_points
-      # This is the claim decision, not a post-run tuning knob.  Three repeats
-      # are the smallest useful deterministic-simulator control: one repeat
-      # cannot expose instability and a fourth adds cost without changing the
-      # four-level affine fit.  The residual predicate gives integer-cycle
-      # phase effects an 8-cycle floor, then uses a 3% proportional allowance
-      # once that is larger.  R^2 >= 0.995 independently rejects a globally
-      # poor affine explanation even if one large point makes its local bound
-      # permissive.  Changing any value is a new experiment contract.
       acceptance:
-        schema_version: 1
-        analyzer: perf_pk_claim.analyze_pk_claim/v1
+        schema_version: 2
+        analyzer: perf_pk_claim.analyze_pk_claim/v3
         fit:
           form: affine
           method: ordinary_least_squares_all_L3_replicates
           independent_variable: K
-          dependent_metric: verilator_L3_cycles
+          dependent_metric: gsim_L3_cycles
         cohort:
           operation: matmul
-          fixed_shape_axes: [M, N]
-          fixed_fields: [operation, operand_dtype, accum_dtype, epilogue]
+          fixed_shape_axes:
+          - M
+          - N
+          fixed_fields:
+          - operation
+          - operand_dtype
+          - accum_dtype
+          - epilogue
           exact_points: 4
-          K_multipliers_of_tile: [1, 2, 4, 8]
+          K_multipliers_of_tile:
+          - 1
+          - 2
+          - 4
+          - 8
         replicates:
-          exact_count: 3
-          identities: [r000, r001, r002]
+          exact_count: 2
+          identities:
+          - r000
+          - r001
         evidence:
           correctness_simulator: spike
           correctness_tier: L2
-          timing_simulator: verilator
+          timing_simulator: gsim
           timing_tier: L3
           spike_cycles_citable: false
+          timing_oracle_kind: rtl_gsim
+          timing_fidelity: elaborated_rtl
+          required_identity_sha256_fields:
+          - simulator_binary_sha256
+          - elaborated_firrtl_sha256
+          - program_elf_sha256
         thresholds:
           slope_cycles_per_K_element_min_exclusive: 0.0
           r_squared_min_inclusive: 0.995
@@ -76,7 +83,8 @@ sweeps:
             absolute_floor_cycles: 8
             observed_cycle_fraction: 0.03
       gate:
-        traits: [structural_pipeline_depth]
+        traits:
+        - structural_pipeline_depth
         instrument: cycle_count
         capacity: four_distinct_reduction_depths
         on_missing: skip_with_evidence
@@ -86,26 +94,32 @@ sweeps:
       emitter:
         status: existing
         entry: merlin.targetgen.corpus_spec.build
-        knobs: {operation: matmul, varied_axis: K}
+        knobs:
+          operation: matmul
+          varied_axis: K
       cost:
         tier: 1
         runs: 4
         projected_cycles: derived_at_preflight
         basis: four_members_before_repetition
   axes:
-    M: [tile]
-    N: [tile]
-    K: [tile, 2*tile, 4*tile, 8*tile]
+    M:
+    - tile
+    N:
+    - tile
+    K:
+    - tile
+    - 2*tile
+    - 4*tile
+    - 8*tile
   name: '{id}{i:02d}_k{K}'
-  source_reference: >-
-    shared reduction-depth sweep at fixed single-tile parallel extents
-
-# Declared now so an inapplicable target leaves an evidence-bearing skip. Even
-# where the traits resolve true, admission remains blocked until the settle
-# lever is wired into capsule materialization.
+  source_reference: shared reduction-depth sweep at fixed single-tile parallel extents
 - id: PS
-  fit_axes: [K]
-  comparison_roles: [contract_settle, reduced_settle]
+  fit_axes:
+  - K
+  comparison_roles:
+  - contract_settle
+  - reduced_settle
   base:
     cat: _perf
     kind: model_slice
@@ -121,14 +135,25 @@ sweeps:
       comparand:
         kind: paired_run
         against: same_kernel_with_descending_settle
-        cancels: [operation, shape, operands, instruction_multiset]
-        demand_equal: [operation, M, N, K, operand_salt]
+        cancels:
+        - operation
+        - shape
+        - operands
+        - instruction_multiset
+        demand_equal:
+        - operation
+        - M
+        - N
+        - K
+        - operand_salt
       falsifier:
         observation: bit_exactness_and_cycle_delta
         fires_when: bit_exactness_fails_within_the_declared_settle_range
         negative_control: contract_settle_member
       gate:
-        traits: [self_hosted_program, explicit_completion]
+        traits:
+        - self_hosted_program
+        - explicit_completion
         instrument: per_class_completion_and_cycle_count
         capacity: at_least_two_settle_levels_per_class
         on_missing: skip_with_evidence
@@ -138,25 +163,53 @@ sweeps:
       emitter:
         status: new:settle_sweep_materializer
         entry: merlin.perf.workload_gen.plan_matmul
-        knobs: {varied_parameter: settle_by_instruction_class}
+        knobs:
+          varied_parameter: settle_by_instruction_class
       cost:
         tier: 1
         runs: 60
         projected_cycles: derived_at_preflight
         basis: three_classes_by_five_levels_by_four_salts
+      settle_range:
+        kind: derived_from_structural_pipeline_depth
+        declared_constant: null
+        lower_bound: the_smallest_settle_the_contract_admits
+        upper_bound: the_structural_pipeline_depth_derived_from_rtl_facts
+        predicate: bit_exactness_must_hold_at_every_settle_in_the_range_and_fail_below_the_lower_bound
+        on_underivable: skip_with_evidence
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - contract_settle
+        - reduced_settle
+        expected_faster: reduced_settle
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   axes:
-    M: [tile]
-    N: [tile]
-    K: [tile, 2*tile]
+    M:
+    - tile
+    N:
+    - tile
+    K:
+    - tile
+    - 2*tile
   name: '{id}{i:02d}_k{K}'
   source_reference: shared separation-floor declaration; emitter not yet admitted
-
-# Likewise: Gemmini's independent engine ports are established, but explicit
-# completion currently is not, so it must be a structured UNKNOWN skip rather
-# than a generated no-op overlap capsule.
 - id: PC
-  fit_axes: [K]
-  comparison_roles: [not_hoisted, hoisted]
+  fit_axes:
+  - K
+  comparison_roles:
+  - not_hoisted
+  - hoisted
   base:
     cat: _perf
     kind: model_slice
@@ -172,73 +225,74 @@ sweeps:
       comparand:
         kind: paired_run
         against: identical_dependence_chain_without_hoist
-        cancels: [operation, shape, operands, instruction_multiset]
-        demand_equal: [operation, M, N, K, separation_regime]
+        cancels:
+        - operation
+        - shape
+        - operands
+        - instruction_multiset
+        demand_equal:
+        - operation
+        - M
+        - N
+        - K
       falsifier:
         observation: paired_cycle_delta
         fires_when: hoisting_does_not_improve_any_declared_separation_regime
         negative_control: single_K_step_hoist
       gate:
-        traits: [independent_engine_ports, explicit_completion]
+        traits:
+        - independent_engine_ports
+        - explicit_completion
         instrument: per_engine_completion_and_cycle_count
         capacity: at_least_two_separation_regimes
         on_missing: skip_with_evidence
       regime:
         separation: fixed_within_each_pair_and_repeated_at_two_levels
         layout: real_producer_consumer_dependence
-      # EMITTER CORRECTED, not newly written. `perf.workload_gen.plan_matmul` was the wrong
-      # ARCHETYPE for this family: it allocates a scalar register file, encodes backward
-      # branches and emits assembly, and a command-driven target declares no self-hosted
-      # program at all -- gemmini ships no ISA definition, so no kernel can be encoded for
-      # it. Measured consequence: this family's traits are satisfied on gemmini ALONE, and
-      # gemmini was the one target that emitter could not reach, so the claim was
-      # unsatisfiable while reading as "not yet wired".
-      #
-      # `command_stream_gen` is the sibling for this archetype. It consumes the ORDERED
-      # command list the frozen interface grammar already carries and returns a PERMUTATION
-      # of it, so the two members are the same work by construction rather than by
-      # assertion, plus a negative control whose `identical_work` is false. Verified on
-      # isa/A6_resident_reuse: RES_PACK, MATMUL_RESIDENT, COMMIT, MATMUL_RESIDENT, COMMIT,
-      # EVICT -- with the second matmul hoisted from index 3 to 1 across two commits.
-      #
-      # The A/B is DERIVED FROM ONE CAPSULE at measurement time, so this sweep emits one
-      # member per shape and carries no `comparison_group`: the pair is two runs of one
-      # program, not two programs. `resident_reuse` is the op because a movable command
-      # needs a command list with something to move past.
       emitter:
         status: existing
         entry: merlin.perf.command_stream_gen.pair_from_interface
-        knobs: {transformation: hoist_a_command_above_ones_it_does_not_depend_on}
+        knobs:
+          transformation: hoist_a_command_above_ones_it_does_not_depend_on
       cost:
         tier: 1
         runs: derived_from_two_pairs_plus_negative_control
         projected_cycles: derived_at_preflight
         basis: paired_differential_at_two_separation_regimes
-  # TWO matmuls against the one resident weight, because a command list needs something to
-  # move past: this parses to RES_PACK, MATMUL_RESIDENT, COMMIT, MATMUL_RESIDENT, COMMIT,
-  # EVICT, and the second matmul is the movable command. One matmul would leave a list with
-  # no legal permutation and the pair would be the baseline twice.
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - not_hoisted
+        - hoisted
+        expected_faster: hoisted
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   variants:
   - matmuls:
-    - {lhs: A0, out: Y0, M_tiles: 1}
-    - {lhs: A1, out: Y1, M_tiles: 1}
+    - lhs: A0
+      out: Y0
+      M_tiles: 1
+    - lhs: A1
+      out: Y1
+      M_tiles: 1
   axes:
-    N: [4*tile]
-    K: [4*tile, 8*tile]
+    N:
+    - 4*tile
+    K:
+    - 4*tile
+    - 8*tile
   name: '{id}{i:02d}_k{K}'
-  source_reference: >-
-    shared inter-layer declaration: one resident weight, two matmuls, and the A/B is the
-    command list of THIS capsule permuted by command_stream_gen at measurement time
-
-# These families are contract-complete but are not sweeps: putting them under
-# `sweeps` would falsely claim their lever can be emitted. Generation persists
-# them as blocked_unimplemented with their fit axes and comparison roles.
-# The fusion pair, three members from ONE shape statement. Declared as a sweep
-# rather than blocked because the members ARE buildable: the fused capsule can
-# now name the bias operand its `bias_add` stage consumes, and the unfused half
-# has an op to be expressed as, so the comparison group has more than one
-# member. Both halves run at the target's OWN datapath dtype -- a bf16 stand-in
-# would have measured the host on an integer target, not the accelerator.
+  source_reference: 'shared inter-layer declaration: one resident weight, two matmuls, and the A/B is
+    the command list of THIS capsule permuted by command_stream_gen at measurement time'
 - id: PF
   fit_axes: [K]
   comparison_roles: [fused, part]
@@ -306,8 +360,11 @@ sweeps:
 # The promotion policy ("only passing tier-one members are promoted") is a RUN
 # ordering, not a materialization problem, and lives in `cost` where it always did.
 - id: PL
-  fit_axes: [K]
-  comparison_roles: [tile_regime, layer_regime]
+  fit_axes:
+  - K
+  comparison_roles:
+  - tile_regime
+  - layer_regime
   base:
     cat: _perf
     kind: model_slice
@@ -324,14 +381,21 @@ sweeps:
       comparand:
         kind: paired_regime
         against: same_lever_at_tile_and_layer_scale
-        cancels: [operation, datapath, lever]
-        demand_equal: [per_tile_pass_work, operand_dtype, accum_dtype]
+        cancels:
+        - operation
+        - datapath
+        - lever
+        demand_equal:
+        - per_tile_pass_work
+        - operand_dtype
+        - accum_dtype
       falsifier:
         observation: per_tile_pass_saving_by_regime
         fires_when: saving_changes_beyond_the_declared_band
         negative_control: tile_scale_member
       gate:
-        traits: [structural_pipeline_depth]
+        traits:
+        - structural_pipeline_depth
         instrument: cycle_count_and_preflight
         capacity: non_aliasing_DRAM_and_non_binding_IMEM
         on_missing: skip_with_evidence
@@ -341,49 +405,72 @@ sweeps:
       emitter:
         status: existing
         entry: merlin.targetgen.corpus_spec.build
-        knobs: {promotion: passing_tile_member_to_layer_sibling}
+        knobs:
+          promotion: passing_tile_member_to_layer_sibling
       cost:
         tier: 2
         runs: derived_after_tier_one_promotion
         projected_cycles: derived_at_preflight
         basis: only_passing_tier_one_members_are_promoted
-  # One matmul against the resident weight versus four. The per-tile shape is
-  # identical in both, so the only thing that changes is how many tiles amortize
-  # the single weight push -- the saving the claim is about.
+      noise_band:
+        kind: measured_replicate_dispersion
+        declared_constant: null
+        minimum_replicate_count: 2
+        predicate: a_saving_counts_iff_it_exceeds_the_measured_replicate_dispersion_of_its_own_pair
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - tile_regime
+        - layer_regime
+        expected_faster: layer_regime
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   variants:
   - matmuls:
-    - {lhs: A0, out: Y0, M_tiles: 1}
-    comparison_group: {name: 'amort_k{K}', role: tile_regime}
+    - lhs: A0
+      out: Y0
+      M_tiles: 1
+    comparison_group:
+      name: amort_k{K}
+      role: tile_regime
   - matmuls:
-    - {lhs: A0, out: Y0, M_tiles: 1}
-    - {lhs: A1, out: Y1, M_tiles: 1}
-    - {lhs: A2, out: Y2, M_tiles: 1}
-    - {lhs: A3, out: Y3, M_tiles: 1}
-    comparison_group: {name: 'amort_k{K}', role: layer_regime}
+    - lhs: A0
+      out: Y0
+      M_tiles: 1
+    - lhs: A1
+      out: Y1
+      M_tiles: 1
+    - lhs: A2
+      out: Y2
+      M_tiles: 1
+    - lhs: A3
+      out: Y3
+      M_tiles: 1
+    comparison_group:
+      name: amort_k{K}
+      role: layer_regime
   axes:
-    K: [tile, 2*tile]
+    K:
+    - tile
+    - 2*tile
   name: '{id}{i:02d}_k{K}'
-  source_reference: >-
-    shared cross-regime amortization pair: one pushed weight reused by one tile
-    versus by four, at identical per-tile work
-
-# ---------------------------------------------------------------------------------------------------
-# L6_global -- the ENCODING lever. The rung the ladder declared and nothing occupied.
-#
-# The global optimizations a whole-model compiler makes -- quantization, packing, operand encoding,
-# layout propagation -- all reduce to the same question at capsule scale: given a target that can
-# compute this contraction in more than one operand encoding, does the choice cost anything? That
-# question only EXISTS where there is a choice, which is why the gate is `multiple_operand_encodings`
-# and why a single-format machine is REFUTED rather than unestablished: "this target has one encoding"
-# is an answer, and a more useful one than "we could not tell".
-#
-# The members name their encodings POSITIONALLY (`encoding0`, `encoding1`), resolved against the
-# target's own declared contraction dtypes, so this shared template contains no dtype -- the same
-# discipline that keeps `tile` out of the extents. Each member's accumulator is derived for ITS OWN
-# operand, because an accumulator belongs to the datapath its operand feeds.
+  source_reference: 'shared cross-regime amortization pair: one pushed weight reused by one tile versus
+    by four, at identical per-tile work'
 - id: PG
-  fit_axes: [K]
-  comparison_roles: [encoding_a, encoding_b]
+  fit_axes:
+  - K
+  comparison_roles:
+  - encoding_a
+  - encoding_b
   base:
     cat: _perf
     kind: model_slice
@@ -398,14 +485,20 @@ sweeps:
       comparand:
         kind: group_arithmetic
         against: the_same_layer_in_the_other_encoding
-        cancels: [operation_shape, operands]
-        demand_equal: [M, N, K]
+        cancels:
+        - operation_shape
+        - operands
+        demand_equal:
+        - M
+        - N
+        - K
       falsifier:
         observation: encoding_a_cycles_minus_encoding_b_cycles
         fires_when: the_two_encodings_cost_the_same_within_the_noise_band
         negative_control: the_same_encoding_compared_against_itself
       gate:
-        traits: [multiple_operand_encodings]
+        traits:
+        - multiple_operand_encodings
         instrument: cycle_count
         capacity: two_encodings_of_one_identical_shape
         on_missing: skip_with_evidence
@@ -415,59 +508,60 @@ sweeps:
       emitter:
         status: existing
         entry: merlin.targetgen.corpus_spec.build
-        knobs: {encodings: [encoding0, encoding1]}
+        knobs:
+          encodings:
+          - encoding0
+          - encoding1
       cost:
         tier: 1
         runs: two_per_shape
         projected_cycles: derived_at_preflight
         basis: one_matmul_per_encoding
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - encoding_a
+        - encoding_b
+        expected_faster: either
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   variants:
   - op: matmul
     operand_dtype: encoding0
-    comparison_group: {name: 'enc_m{M}k{K}n{N}', role: encoding_a}
+    comparison_group:
+      name: enc_m{M}k{K}n{N}
+      role: encoding_a
   - op: matmul
     operand_dtype: encoding1
-    comparison_group: {name: 'enc_m{M}k{K}n{N}', role: encoding_b}
+    comparison_group:
+      name: enc_m{M}k{K}n{N}
+      role: encoding_b
   axes:
-    M: [tile]
-    N: [tile]
-    K: [tile, 2*tile]
+    M:
+    - tile
+    N:
+    - tile
+    K:
+    - tile
+    - 2*tile
   name: '{id}{i:02d}_{operand_dtype}_k{K}'
-  source_reference: >-
-    shared operand-encoding pair: one identical contraction computed in two of the
-    target's own declared encodings, so the cost of the encoding choice is isolated
-
-# ---------------------------------------------------------------------------------------------------
-# L2_intra_layer -- the RESIDENCY lever. The regime a fitted coefficient is allowed to be quoted in.
-#
-# Every other family here varies a shape or a compiler lever while the operands stay comfortably inside
-# the target's on-chip operand store, and a rate fitted there is a rate for a machine that never has to
-# re-load anything. Measured on the interlocked target: the whole `_perf` corpus classified
-# `fits_double` -- 16 of 16 members, the largest at 1.6% of the store -- while 96-97% of the CONTRACTION
-# regions in the real captures land in `spills`. So the model was fitted in the regime that carries
-# almost none of the work and asked to score the regime that carries nearly all of it.
-#
-# The claim is DIFFERENTIAL and not PREDICTS on purpose. The interesting quantity is not "cycles are
-# affine in K" -- PK already establishes that where everything fits -- but whether the per-K RATE
-# SURVIVES crossing a residency boundary. If it does, one global fit was always legitimate and the
-# regime axis costs nothing; if it does not, then quoting a `fits_double` coefficient against a
-# `spills` region is extrapolation, and the size of the break is how wrong it is.
-#
-# The depths are DERIVED, never written down. `axes.K` names a derivation rather than a list of tokens:
-# `memory_regime_reduction_depth` asks the target's own operand store which reduction depths land in
-# which residency band and returns several spread ACROSS each band, so the same declaration produces a
-# different (and correct) ladder on a store of a different size. A regime with no reachable depth comes
-# back with its REASON attached and is recorded on every member -- `fits_on_reuse` is always that case,
-# because a capsule's declared inputs are all live at once, so peak-live equals the total and the band
-# that separates them is empty by construction.
-#
-# Why K and not M or N: the drained output is M x N whatever K is, so every point in the ladder writes
-# back the same number of result bytes. That keeps the fixed fill/drain intercept the differential is
-# trying to see PAST genuinely fixed across the points, and it keeps the L3 timing cert affordable,
-# since its cost tracks output size rather than operand size.
+  source_reference: 'shared operand-encoding pair: one identical contraction computed in two of the target''s
+    own declared encodings, so the cost of the encoding choice is isolated'
 - id: PR
-  fit_axes: [K]
-  comparison_roles: [resident, spilling]
+  fit_axes:
+  - K
+  comparison_roles:
+  - resident
+  - spilling
   base:
     cat: _perf
     kind: model_slice
@@ -483,14 +577,28 @@ sweeps:
       comparand:
         kind: group_arithmetic
         against: the_same_affine_fit_in_a_different_residency_regime
-        cancels: [operation, M, N, operand_dtype, accum_dtype, epilogue, drained_output_bytes]
-        demand_equal: [operation, M, N, operand_dtype, accum_dtype]
+        cancels:
+        - operation
+        - M
+        - N
+        - operand_dtype
+        - accum_dtype
+        - epilogue
+        - drained_output_bytes
+        demand_equal:
+        - operation
+        - M
+        - N
+        - operand_dtype
+        - accum_dtype
       falsifier:
         observation: per_regime_fitted_rate_and_intercept
         fires_when: the_rates_fitted_in_different_residency_regimes_agree_within_the_noise_band
         negative_control: two_disjoint_depth_ranges_inside_one_regime
       gate:
-        traits: [managed_scratchpad, structural_pipeline_depth]
+        traits:
+        - managed_scratchpad
+        - structural_pipeline_depth
         instrument: cycle_count
         capacity: at_least_two_reduction_depths_inside_each_reachable_residency_band
         on_missing: skip_with_evidence
@@ -508,10 +616,9 @@ sweeps:
         tier: 2
         runs: three_depths_per_reachable_residency_band
         projected_cycles: derived_at_preflight
-        basis: >-
-          the spilling members are the most expensive capsules in this corpus and are paid on every
-          grade, so the top of the search is a declared multiple of the target's OWN capacity rather
-          than an unbounded sweep
+        basis: the spilling members are the most expensive capsules in this corpus and are paid on every
+          grade, so the top of the search is a declared multiple of the target's OWN capacity rather than
+          an unbounded sweep
       acceptance:
         schema_version: 1
         analyzer: perf_pr_claim.analyze_pr_claim/v1
@@ -537,9 +644,9 @@ sweeps:
         replicates:
           minimum_count: 2
           identities_authored_by: run
-          why: two replicates are the smallest set that MEASURES the dispersion this family's noise band is
-            read from; one replicate leaves it UNDETERMINABLE, and assuming it zero on a deterministic simulator
-            is the assumption this contract refuses
+          why: two replicates are the smallest set that MEASURES the dispersion this family's noise band
+            is read from; one replicate leaves it UNDETERMINABLE, and assuming it zero on a deterministic
+            simulator is the assumption this contract refuses
         evidence:
           correctness_simulator: spike
           correctness_tier: L2
@@ -552,103 +659,41 @@ sweeps:
           kind: measured_replicate_dispersion
           declared_constant: null
           predicate: fitted_rates_agree_iff_exactly_equal_when_the_measured_dispersion_is_zero
-          why: 'a constant written here would be a knob somebody can turn until the answer changes. The band
-            is read off the evidence instead: replicates that are observed IDENTICAL make the dispersion zero
-            by measurement, so agreement means exact rational equality. A member with one replicate has an UNDETERMINABLE
-            dispersion and its band is refused rather than assumed noiseless'
+          why: 'a constant written here would be a knob somebody can turn until the answer changes. The
+            band is read off the evidence instead: replicates that are observed IDENTICAL make the dispersion
+            zero by measurement, so agreement means exact rational equality. A member with one replicate
+            has an UNDETERMINABLE dispersion and its band is refused rather than assumed noiseless'
         transient_guard:
           module: merlin.perf.fill_transient.transient_verdict
           applied: per_residency_band
           on_in_fill_transient: refuse_the_band_and_quote_no_rate
-          why: the sibling reduction-depth family was refuted because every one of its depths lay inside the
-            machine's overlap fill transient. This family's cheapest band starts at the same depth, so a band
-            is put through the guard before any rate is quoted
+          why: the sibling reduction-depth family was refuted because every one of its depths lay inside
+            the machine's overlap fill transient. This family's cheapest band starts at the same depth,
+            so a band is put through the guard before any rate is quoted
   axes:
-    M: [tile]
-    N: [tile]
-    # Not a list of extents: a DERIVATION. `points_per_regime` is the claim decision -- two points
-    # separate a rate from an intercept, the third is what makes the separation checkable rather than
-    # exact-by-construction. `spills_max_fraction_of_capacity` is the COST decision: `spills` has no
-    # upper edge, so the ladder needs a declared ceiling, expressed against the target's own capacity.
+    M:
+    - tile
+    N:
+    - tile
     K:
       derive: memory_regime_reduction_depth
-      regimes: [fits_double, fits_single, fits_on_reuse, spills]
+      regimes:
+      - fits_double
+      - fits_single
+      - fits_on_reuse
+      - spills
       points_per_regime: 3
       spills_max_fraction_of_capacity: 2.0
   name: '{id}{i:02d}_{K_label}_k{K}'
-  source_reference: >-
-    shared operand-residency ladder: one deep-K contraction per derived residency band of the target's
-    own operand store, three depths spread across each band, at fixed single-tile parallel extents
-
-# ---------------------------------------------------------------------------------------------------
-# L2_intra_layer -- the BARRIER lever. Q for the dispatch QUEUE whose bookkeeping the barrier repeats.
-#
-# WHY THIS FAMILY EXISTS, and it is the sibling of a REFUTED result rather than a new guess. The
-# scheduling family (`PC`, and `merlin.perf.command_stream_gen`) rests on the theory that issue ORDER
-# is the lever a hardware-interlocked, command-driven accelerator gives a compiler. Measured on this
-# repo's command-driven target, it is not: a legal permutation of the same command multiset cost
-# EXACTLY ZERO cycles at two depths (3004 vs 3004 at K=64, 5442 vs 5442 at K=128), with the reorder
-# verified to reach the ELF and the counter verified to move with work but not with order.
-#
-# The same fact that kills the order lever creates this one. The dispatch queue tracks the dependence
-# itself -- which is why every legal order runs identically -- and therefore every barrier the compiler
-# inserts to enforce a dependence the queue already tracks is pure serialisation. What a compiler can
-# move on this machine is not the ORDER of the commands but the NUMBER OF BARRIERS between them.
-#
-# MEASURED, on the citable engine (`rtl_verilator`, `derived_from_rtl: true`), on gemmini_rtl
-# 8c3f9923 plus these bytes -- both gemmini pins verify False, so no number here is "pinned"; the full
-# verification record is in the artifact beside the rows. One tile of work per job, K = tile:
-#
-#         jobs  removed   once   per_job   saving  cyc/bar   ratio
-#            1        0    215       215        0      --  1.0000
-#            2        1    327       421       94    94.0  1.2875
-#            3        2    441       644      203   101.5  1.4603
-#            4        3    560       864      304   101.3  1.5429
-#            6        5    790      1276      486    97.2  1.6152
-#            8        7   1012      1700      688    98.3  1.6798
-#
-# saving = 97.76 x removed_barriers +3.07 cycles, R^2 = 0.99928. The alternative a two-job capsule
-# CANNOT exclude -- that the saving is a CONSTANT, one barrier's worth however many jobs the kernel has
-# -- has a residual sum of squares of 221876 against 159 for the per-barrier fit. The saving is per
-# barrier removed, at ~98 cycles each, and the ratio therefore GROWS with the job count: the
-# two-job kernel's 1.29x is the one-barrier case and a floor, not the headline.
-#
-# THE DEPTH CONTROL, at a fixed two jobs (exactly one barrier removed), says the cost is NOT a drain:
-#
-#            K  removed   once   per_job   saving  cyc/bar   ratio
-#           16        1    327       421       94    94.0  1.2875
-#           32        1    497       576       79    79.0  1.1590
-#           64        1    801       898       97    97.0  1.1211
-#
-# Over a 4x depth range the ONE removed barrier costs 94, 79 and 97 cycles while the kernel it sits in
-# grows from 327 to 801. A barrier that drained the work it waits on would track that growth; this one
-# does not. It is a fixed serialisation, so a SHALLOW member prices it as well as a deep one -- which
-# is why this family's members are shallow and why it competes for no deep-K slot. The depth axis is
-# carried as this control and nothing else; the axis that costs is the job count. (That axis also costs
-# WALL TIME: the L3 engine's cost tracks OUTPUT size, and a member drains one tile per job, so four
-# jobs is where this family stops.)
-#
-# ⚠️ WHY THE `cancels` LIST IS CREDIBLE, stated as the measurement that establishes it rather than as an
-# assertion. The neighbouring fusion family was found VACUOUS because it cancelled
-# `[operation_shape, operands, numeric_policy]` and never mentioned the invocation count, which was the
-# term that dominated. This family's two arms are ONE capsule emitted twice through the target's own
-# emitter at two settings of its retire knob, and the difference between the two LINKED ELFs was
-# counted per instruction mnemonic: at 1, 2 and 4 jobs the delta is `{}`, `{fence: 1}` and `{fence: 3}`
-# -- the removed barriers and NOTHING ELSE. The job count is held equal WITHIN a pair (it is what
-# indexes the members, not what separates the arms) and is named in `demand_equal` for that reason.
-#
-# ⚠️ THE NEGATIVE CONTROL IS TRUE BY CONSTRUCTION AND WAS STILL MEASURED. A one-job kernel has no
-# redundant barrier to remove, so both settings emit the byte-identical program; its differential must
-# be exactly zero, and it is (215 vs 215 cycles, identical driver digest, identical output digest). A
-# family whose control could only pass would not be a control.
-#
-# NO `acceptance` BLOCK, DELIBERATELY. A frozen acceptance contract names the analyzer that turns rows
-# into a verdict, and no analyzer for this family exists. Declaring one that does not is the reason the
-# sibling `PT` is blocked, and the residency family's author refused `PREDICTS` on the same grounds. The
-# family is satisfiable and undecidable-today, and those two states are reported separately.
+  source_reference: 'shared operand-residency ladder: one deep-K contraction per derived residency band
+    of the target''s own operand store, three depths spread across each band, at fixed single-tile parallel
+    extents'
 - id: PQ
-  fit_axes: [K]
-  comparison_roles: [minimum_barriers, barrier_after_every_job]
+  fit_axes:
+  - K
+  comparison_roles:
+  - minimum_barriers
+  - barrier_after_every_job
   base:
     cat: _perf
     kind: model_slice
@@ -665,23 +710,37 @@ sweeps:
       comparand:
         kind: paired_run
         against: the_same_capsule_emitted_with_a_barrier_after_every_job
-        # Established at the instruction level, not asserted: the two linked ELFs differ by the
-        # removed barrier instructions and by nothing else, at every job count.
-        cancels: [operation, M, N, K, job_count, operands, epilogue, operand_dtype, accum_dtype,
-                  movement_and_compute_command_multiset, scratchpad_and_accumulator_addressing,
-                  drained_output_bytes, emitted_instruction_multiset_except_the_barrier]
-        demand_equal: [operation, M, N, K, job_count, operand_dtype, accum_dtype, epilogue]
+        cancels:
+        - operation
+        - M
+        - N
+        - K
+        - job_count
+        - operands
+        - epilogue
+        - operand_dtype
+        - accum_dtype
+        - movement_and_compute_command_multiset
+        - scratchpad_and_accumulator_addressing
+        - drained_output_bytes
+        - emitted_instruction_multiset_except_the_barrier
+        demand_equal:
+        - operation
+        - M
+        - N
+        - K
+        - job_count
+        - operand_dtype
+        - accum_dtype
+        - epilogue
       falsifier:
         observation: paired_cycle_saving_by_removed_barrier_count
         fires_when: the_saving_does_not_grow_with_the_removed_barrier_count_beyond_the_declared_noise_band
         negative_control: the_single_job_member_whose_two_arms_are_the_byte_identical_program
       gate:
-        # Both derived True from this target's own elaborated FIRRTL. `explicit_completion` is what
-        # makes a barrier expressible at all (there is something to remove); `host_dispatched_queue`
-        # is what makes removing it CORRECT -- the decoupled command queue tracks the dependence, so
-        # the barrier bought nothing. A target with the first and not the second would be refuted
-        # here rather than measured, which is the right answer for it.
-        traits: [host_dispatched_queue, explicit_completion]
+        traits:
+        - host_dispatched_queue
+        - explicit_completion
         instrument: cycle_count
         capacity: at_least_two_removed_barrier_counts_across_the_members
         on_missing: skip_with_evidence
@@ -689,19 +748,22 @@ sweeps:
         separation: one_shape_per_pair_and_the_pair_is_two_emissions_of_that_one_capsule
         layout: identical_operands_and_identical_command_stream_plus_the_removed_barriers
       emitter:
-        # The pair is derived at MEASUREMENT time from one capsule, as in the scheduling family: the
-        # member is a single resident-reuse capsule and the arms are two emissions of it. The entry
-        # calls the TARGET'S OWN emitter twice and then PROVES the two sources are the same program
-        # plus one repeated inserted statement, refusing the pair when they are not -- a pair that
-        # differed by more than its lever would price the difference and call it the lever.
         status: existing
-        entry: merlin.perf.barrier_arms.pair_from_emitter
-        knobs: {transformation: emit_one_capsule_at_two_settings_of_the_target_emitters_retire_knob}
-      # MEASURED, never a constant. A constant written here is a knob somebody can turn until the
-      # answer changes; the band is read off this family's own replicates instead. Every replicate pair
-      # in the founding measurement was observed IDENTICAL, so the dispersion is zero BY OBSERVATION and
-      # a saving counts iff it is nonzero. A member with one replicate has an UNDETERMINABLE dispersion
-      # and its band is refused rather than assumed noiseless.
+        entry: merlin.perf.barrier_arms.paired_removal
+        knobs:
+          # THE TWO ARMS ARE THE TWO COMPILERS, not two settings of a corpus knob. The previous
+          # declaration named `pair_from_emitter` and a "retire knob" on the target emitter; neither
+          # exists -- there is no such entry point in the module and no such knob in any emitter --
+          # so this family declared `status: existing` against nothing and ten capsules measured one
+          # arm against no second arm. The expensive arm is what the BASELINE compiler already emits
+          # (a completion point after every unit of work) and the cheap arm is what an optimizing
+          # candidate emits instead, which is exactly the pair the measurement path already builds.
+          # So the emitter's honest job is to READ both emitted programs and count what each
+          # synchronizes. Verified on this corpus's own buffers: COMMIT count tracks the job count
+          # exactly (j=2 -> 2, j=8 -> 8, j=16 -> 16), and a buffer declaring no completion opcode
+          # yields UNKNOWN rather than a count of zero.
+          transformation: count_completion_points_in_the_baseline_and_candidate_emissions_of_one_capsule
+          removed_barrier_count: varies_across_members_because_the_job_count_does
       noise_band:
         kind: measured_replicate_dispersion
         declared_constant: null
@@ -711,65 +773,379 @@ sweeps:
         tier: 1
         runs: two_arms_by_two_replicates_per_member
         projected_cycles: derived_at_preflight
-        basis: >-
-          the members are deliberately SHALLOW: the measured per-barrier cost does not grow with the
-          reduction depth, so the shallowest point prices it conservatively and this family competes
-          for no deep-K slot. The expensive axis is the job count -- the L3 engine's wall cost tracks
-          OUTPUT size and a member drains one tile per job -- and four jobs is enough to separate a
-          per-barrier saving from a constant one
-  # The job count is what indexes the members, and it is spelled as the matmul list rather than as an
-  # extent because it is not one. The one-job member is the negative control and is NOT optional: it is
-  # the only member whose differential is zero by construction.
+        basis: 'the members are deliberately SHALLOW: the measured per-barrier cost does not grow with
+          the reduction depth, so the shallowest point prices it conservatively and this family competes
+          for no deep-K slot. The expensive axis is the job count -- the L3 engine''s wall cost tracks
+          OUTPUT size and a member drains one tile per job -- and four jobs is enough to separate a per-barrier
+          saving from a constant one'
+      acceptance:
+        schema_version: 1
+        analyzer: perf_paired_claim.analyze_paired_claim/v1
+        roles:
+        - minimum_barriers
+        - barrier_after_every_job
+        expected_faster: minimum_barriers
+        negative_control_capsule: null
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+          predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+        evidence:
+          timing_simulator: gsim
+          timing_tier: L3
+          correctness_simulator: spike
+          correctness_tier: L2
   variants:
   - jobs: 1
     matmuls:
-    - {lhs: A0, out: Y0, M_tiles: 1}
+    - lhs: A0
+      out: Y0
+      M_tiles: 1
   - jobs: 2
     matmuls:
-    - {lhs: A0, out: Y0, M_tiles: 1}
-    - {lhs: A1, out: Y1, M_tiles: 1}
+    - lhs: A0
+      out: Y0
+      M_tiles: 1
+    - lhs: A1
+      out: Y1
+      M_tiles: 1
   - jobs: 4
     matmuls:
-    - {lhs: A0, out: Y0, M_tiles: 1}
-    - {lhs: A1, out: Y1, M_tiles: 1}
-    - {lhs: A2, out: Y2, M_tiles: 1}
-    - {lhs: A3, out: Y3, M_tiles: 1}
-  # TWO depths, and they are a CONTROL rather than the claim: a barrier that drained the work it waits
-  # on would cost more at the deeper point, and it does not.
+    - lhs: A0
+      out: Y0
+      M_tiles: 1
+    - lhs: A1
+      out: Y1
+      M_tiles: 1
+    - lhs: A2
+      out: Y2
+      M_tiles: 1
+    - lhs: A3
+      out: Y3
+      M_tiles: 1
+  - jobs: 8
+    matmuls:
+    - lhs: A0
+      out: Y0
+      M_tiles: 1
+    - lhs: A1
+      out: Y1
+      M_tiles: 1
+    - lhs: A2
+      out: Y2
+      M_tiles: 1
+    - lhs: A3
+      out: Y3
+      M_tiles: 1
+    - lhs: A4
+      out: Y4
+      M_tiles: 1
+    - lhs: A5
+      out: Y5
+      M_tiles: 1
+    - lhs: A6
+      out: Y6
+      M_tiles: 1
+    - lhs: A7
+      out: Y7
+      M_tiles: 1
+  - jobs: 16
+    matmuls:
+    - lhs: A0
+      out: Y0
+      M_tiles: 1
+    - lhs: A1
+      out: Y1
+      M_tiles: 1
+    - lhs: A2
+      out: Y2
+      M_tiles: 1
+    - lhs: A3
+      out: Y3
+      M_tiles: 1
+    - lhs: A4
+      out: Y4
+      M_tiles: 1
+    - lhs: A5
+      out: Y5
+      M_tiles: 1
+    - lhs: A6
+      out: Y6
+      M_tiles: 1
+    - lhs: A7
+      out: Y7
+      M_tiles: 1
+    - lhs: A8
+      out: Y8
+      M_tiles: 1
+    - lhs: A9
+      out: Y9
+      M_tiles: 1
+    - lhs: A10
+      out: Y10
+      M_tiles: 1
+    - lhs: A11
+      out: Y11
+      M_tiles: 1
+    - lhs: A12
+      out: Y12
+      M_tiles: 1
+    - lhs: A13
+      out: Y13
+      M_tiles: 1
+    - lhs: A14
+      out: Y14
+      M_tiles: 1
+    - lhs: A15
+      out: Y15
+      M_tiles: 1
   axes:
-    K: [tile, 2*tile]
+    K:
+    - tile
+    - 2*tile
   name: '{id}{i:02d}_j{jobs}_k{K}'
-  source_reference: >-
-    shared barrier-removal pair: one resident weight reused by one, two and four jobs at two reduction
-    depths, where each member's A/B is that one capsule emitted at two settings of the target emitter's
-    retire knob
-
+  source_reference: 'barrier-count sweep: the same arithmetic issued as N independent jobs, once with
+    a barrier after every job and once with the minimum pair. Job counts span 1..16 rather than 1..4 because
+    the lever''s cost is per barrier and real kernels issue thousands of them -- a three-point sweep over
+    1,2,4 cannot separate a saving that grows with the removed barrier count from noise.'
+- id: PM
+  fit_axes:
+  - M
+  - N
+  comparison_roles:
+  - prediction
+  - measurement
+  base:
+    cat: _perf
+    kind: model_slice
+    op: matmul
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    K: tile
+    performance:
+      level: L1_tile
+      family: PM
+      lever: parallel_extents
+      claim: PREDICTS
+      comparand:
+        kind: fitted_prediction
+        against: measured_cycles_same_member
+        cancels:
+        - identical_K
+        - identical_datapath
+        - identical_numeric_policy
+        demand_equal:
+        - operation
+        - K
+        - operand_dtype
+        - accum_dtype
+      falsifier:
+        observation: residual_cycles_by_output_tile_count
+        fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+        negative_control: fixed_K_across_all_M_and_N_points
+      gate:
+        traits:
+        - structural_pipeline_depth
+        instrument: cycle_count
+        capacity: two_distinct_parallel_extents_on_each_of_M_and_N
+        on_missing: skip_with_evidence
+      regime:
+        separation: M_and_N_are_the_only_varied_shape_axes
+        layout: target_native_direct_corpus_builder
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs:
+          operation: matmul
+          varied_axes:
+          - M
+          - N
+      cost:
+        tier: 1
+        runs: 4
+        projected_cycles: derived_at_preflight
+        basis: four_members_before_repetition
+      acceptance:
+        schema_version: 1
+        analyzer: perf_affine_claim.analyze_affine_claim/v1
+        fit:
+          form: affine
+          method: ordinary_least_squares_all_L3_replicates
+          independent_variable: output_elements
+          variable_source:
+            kind: output_elements
+            lhs: A0
+            weight: W
+          dependent_metric: gsim_L3_cycles
+        cohort:
+          operation: matmul
+          fixed_fields:
+          - operation
+          - operand_dtype
+          - accum_dtype
+          exact_points: 16
+          note: output extent M*N read from the declared operand shapes, at a fixed reduction depth
+        replicates:
+          exact_count: 2
+          identities:
+          - r000
+          - r001
+        evidence:
+          correctness_simulator: spike
+          correctness_tier: L2
+          timing_simulator: gsim
+          timing_tier: L3
+          spike_cycles_citable: false
+        thresholds:
+          slope_min_exclusive: 0.0
+          r_squared_min_inclusive: 0.95
+          residual_bound:
+            predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+            absolute_floor_cycles: 64
+            observed_cycle_fraction: 0.1
+  axes:
+    M:
+    - tile
+    - 2*tile
+    - 3*tile
+    - 4*tile
+    N:
+    - tile
+    - 2*tile
+    - 3*tile
+    - 4*tile
+  name: '{id}{i:02d}_m{M}n{N}'
+  source_reference: output-tile sweep at a fixed reduction depth, over exact mesh multiples from one to
+    four tiles on each parallel extent; the aligned counterpart of the held-out PKG landmark tails. Four
+    points per axis rather than two because this family fits a law over M and N, and a two-point fit cannot
+    be refuted. Extents stay symbolic multiples of the derived mesh dimension, never literals.
+- id: PV
+  fit_axes:
+  - ci
+  comparison_roles:
+  - prediction
+  - measurement
+  base:
+    cat: _perf
+    kind: model_slice
+    op: conv2d
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    Himg: 8
+    Wimg: 8
+    kh: 3
+    kw: 3
+    performance:
+      level: L2_intra_layer
+      family: PV
+      lever: window_reuse_amplification
+      claim: PREDICTS
+      comparand:
+        kind: fitted_prediction
+        against: measured_cycles_same_member
+        cancels:
+        - identical_kernel_window
+        - identical_stride
+        - identical_datapath
+        - identical_image_size
+        demand_equal:
+        - operation
+        - kh
+        - kw
+        - N
+        - operand_dtype
+        - accum_dtype
+      falsifier:
+        observation: residual_cycles_by_contraction_depth
+        fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+        negative_control: fixed_window_image_size_and_output_channels_across_all_points
+      gate:
+        traits:
+        - structural_pipeline_depth
+        - managed_scratchpad
+        instrument: cycle_count
+        capacity: four_distinct_contraction_depths_at_one_spatial_extent
+        on_missing: skip_with_evidence
+      regime:
+        separation: input_channel_count_is_the_only_varied_axis
+        layout: target_native_direct_corpus_builder
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs:
+          operation: conv2d
+          varied_axes:
+          - ci
+      cost:
+        tier: 1
+        runs: 4
+        projected_cycles: derived_at_preflight
+        basis: four_distinct_channel_depths_before_repetition
+      acceptance:
+        schema_version: 1
+        analyzer: perf_affine_claim.analyze_affine_claim/v1
+        fit:
+          form: affine
+          method: ordinary_least_squares_all_L3_replicates
+          independent_variable: input_channels
+          variable_source:
+            kind: input_dim
+            input: IFM
+            axis: 3
+          dependent_metric: gsim_L3_cycles
+        cohort:
+          operation: conv2d
+          fixed_fields:
+          - operation
+          - operand_dtype
+          - accum_dtype
+          exact_points: 4
+          note: input channel count read from the declared IFM shape, at a fixed window and image size.
+            The four points are multiples of the array's own tile dimension, so the cohort scales with
+            a wider array instead of pinning it to one width
+        replicates:
+          exact_count: 2
+          identities:
+          - r000
+          - r001
+        evidence:
+          correctness_simulator: spike
+          correctness_tier: L2
+          timing_simulator: gsim
+          timing_tier: L3
+          spike_cycles_citable: false
+        thresholds:
+          slope_min_exclusive: 0.0
+          r_squared_min_inclusive: 0.95
+          residual_bound:
+            predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+            absolute_floor_cycles: 64
+            observed_cycle_fraction: 0.1
+  axes:
+    ci:
+    - tile
+    - 2*tile
+    - 3*tile
+    - 4*tile
+  name: '{id}{i:02d}_c{ci}'
+  source_reference: 'window-reuse amplification: convolution at a fixed 3x3 window and 8x8 image over
+    four input channel depths. Conv is the family with headroom on this machine -- measured at 3.3% of
+    the achievable ceiling against deep-K matmul''s ~100% -- so it is where a schedule change has room
+    to show. Channel depth is varied and everything else held fixed, so the fitted rate is cycles per
+    unit of contraction depth and nothing else moves under it.'
 blocked_unimplemented:
-# L4_boundary -- the host/accelerator SEAM, priced. Declared rather than omitted, because an absent
-# rung and an unaffordable one read the same in a ladder and only one of them is true.
-#
-# `M3_host_island_seam_gemmini` already proves the seam is CORRECT: an accelerator region, a host
-# island the hardware cannot admit, another accelerator region. What nothing measures is what that
-# island COSTS -- the H->A break-even, and whether an A->H->A round trip is worth avoiding.
-#
-# The blocker is measurement, not an emitter. A differential over the seam needs cycles attributed
-# PER LANE, and the capsule path has no per-lane accounting: it runs the accelerator on the target's
-# own oracle and the host lane in this process on the development machine, so a host-lane cycle count
-# would be this workstation's, not the SoC's. A number produced that way would be quoted as a
-# hardware result. Unblocking it needs the fused single-ELF path (merlin.system.place ->
-# llvmlower.device_build.routing_for_placement), where both lanes execute on one image under one
-# cycle counter.
 - family: PB
   status: blocked_unimplemented
-  reason: >-
-    per-lane cycle accounting does not exist: the capsule path runs the accelerator on the target's
-    oracle and the host lane in-process on the development machine, so a seam differential would
-    price this workstation rather than the SoC
-  fit_axes: [K]
-  comparison_roles: [island, no_island]
-  # The full claim contract, declared even though the family cannot run. A blocked rung that carried
-  # no contract would be indistinguishable from one nobody had thought about, and the contract is what
-  # makes the blocker checkable: the gate below names the trait, and the emitter names what is missing.
+  reason: 'per-lane cycle accounting does not exist: the capsule path runs the accelerator on the target''s
+    oracle and the host lane in-process on the development machine, so a seam differential would price
+    this workstation rather than the SoC'
+  fit_axes:
+  - K
+  comparison_roles:
+  - island
+  - no_island
   performance:
     level: L4_boundary
     family: PB
@@ -778,14 +1154,23 @@ blocked_unimplemented:
     comparand:
       kind: group_arithmetic
       against: the_same_layers_without_a_host_island_between_them
-      cancels: [operation_shape, operands, numeric_policy]
-      demand_equal: [M, N, K, operand_dtype, accum_dtype]
+      cancels:
+      - operation_shape
+      - operands
+      - numeric_policy
+      demand_equal:
+      - M
+      - N
+      - K
+      - operand_dtype
+      - accum_dtype
     falsifier:
       observation: island_cycles_minus_no_island_cycles
       fires_when: an_a_h_a_round_trip_costs_no_more_than_staying_on_the_accelerator
       negative_control: two_adjacent_accelerator_regions_with_no_host_work_between_them
     gate:
-      traits: [structural_pipeline_depth]
+      traits:
+      - structural_pipeline_depth
       instrument: per_lane_cycle_count
       capacity: both_lanes_executing_under_one_cycle_counter
       on_missing: skip_with_evidence
@@ -794,55 +1179,26 @@ blocked_unimplemented:
       layout: both_members_share_every_extent_and_differ_only_in_the_island
     emitter:
       status: blocked
-      entry: 'new:host_seam_differential'
-      knobs: {needs: per_lane_cycle_accounting, unblocked_by: fused_single_elf}
+      entry: new:host_seam_differential
+      knobs:
+        needs: per_lane_cycle_accounting
+        unblocked_by: fused_single_elf
     cost:
       tier: 2
       runs: two_per_shape
       projected_cycles: derived_at_preflight
       basis: one_island_member_and_one_without
-
-
-# ---------------------------------------------------------------------------------------------------
-# L1_tile -- the reduction-depth PREDICTS claim, RE-DECLARED IN THE SETTLED REGIME. PK's successor.
-#
-# PK is refuted, and not by a tolerance. All four of its declared depths (1, 2, 4 and 8 tiles) lie
-# inside the machine's overlap FILL TRANSIENT: measured on the interlocked target, realised overlap
-# rises 0.269 -> 0.372 -> 0.604 -> 0.770 across the cohort and is STILL RISING at its deepest point,
-# so the marginal cost per tile falls 72 -> 49 -> 33.25 and an affine law -- which asserts ONE constant
-# marginal cost -- is contradicted in FORM. No threshold repairs that, and PK's acceptance block says
-# in its own comment that changing any of its values is a new experiment contract. So this is a NEW
-# family with its own contract, and it inherits PK's two bounds UNCHANGED: r^2 >= 0.995 and residuals
-# within max(8 cycles, 3% of observed). Weakening either would accept the model the marginals
-# contradict. The repair is WHERE the cohort sits, not how much it is forgiven.
-#
-# What changes is one thing: the ladder does not START at one tile. It starts at the depth where THAT
-# TARGET's overlap has stopped rising, and that depth is DERIVED from a measurement of the target
-# rather than written down here. A number written here would repeat PK's own defect one rung up -- a
-# cohort placed by assumption rather than by evidence -- and it would overfit whichever machine
-# happened to be measured first.
-#
-# The blocker is the derivation, not the claim. `overlap_settled_reduction_depth` must consume a
-# recorded overlap probe for the target -- `merlin.perf.fill_transient.settling_depth` over a ladder
-# of RTL-derived combination-counter readings taken through THIS family's own emitter -- and return
-# points spread across the settled range that still share one residency band. The probe and its
-# analysis now exist; what does not exist is a materializer seam that lets an `axes` derivation read a
-# recorded measurement, and no capsule may be minted from a depth nobody measured.
 - family: PT
   status: blocked_unimplemented
-  reason: >-
-    the cohort's starting depth is a MEASURED property of the target -- the depth at which its
-    realised compute/movement overlap stops rising -- and no materializer can derive it without
-    consuming a recorded overlap probe. Minting the depths from a written-down number would repeat
-    PK's own defect, a cohort placed by assumption rather than by evidence, and would overfit the
-    first machine measured
-  fit_axes: [K]
-  comparison_roles: [prediction, measurement]
-  # The full claim contract, declared even though the family cannot yet be materialized. A blocked
-  # rung carrying no contract is indistinguishable from one nobody thought about, and the contract is
-  # what makes the blocker checkable: the gate names the capacity, and the emitter names what is
-  # missing. Deliberately NO `acceptance.analyzer`: none is written, and declaring one would make the
-  # family read as decidable today when nothing computes its verdict.
+  reason: the cohort's starting depth is a MEASURED property of the target -- the depth at which its realised
+    compute/movement overlap stops rising -- and no materializer can derive it without consuming a recorded
+    overlap probe. Minting the depths from a written-down number would repeat PK's own defect, a cohort
+    placed by assumption rather than by evidence, and would overfit the first machine measured
+  fit_axes:
+  - K
+  comparison_roles:
+  - prediction
+  - measurement
   performance:
     level: L1_tile
     family: PT
@@ -851,8 +1207,17 @@ blocked_unimplemented:
     comparand:
       kind: fitted_prediction
       against: measured_cycles_same_member
-      cancels: [identical_M, identical_N, identical_datapath, identical_residency_band]
-      demand_equal: [operation, M, N, operand_dtype, accum_dtype]
+      cancels:
+      - identical_M
+      - identical_N
+      - identical_datapath
+      - identical_residency_band
+      demand_equal:
+      - operation
+      - M
+      - N
+      - operand_dtype
+      - accum_dtype
     falsifier:
       observation: residual_cycles_by_K
       fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
@@ -866,26 +1231,28 @@ blocked_unimplemented:
         dependent_metric: verilator_L3_cycles
       cohort:
         operation: matmul
-        fixed_shape_axes: [M, N]
-        fixed_fields: [operation, operand_dtype, accum_dtype, epilogue, residency_regime]
+        fixed_shape_axes:
+        - M
+        - N
+        fixed_fields:
+        - operation
+        - operand_dtype
+        - accum_dtype
+        - epilogue
+        - residency_regime
         exact_points: 4
-        # Not a list. PK could write [1, 2, 4, 8] because it assumed where to look; this family may
-        # not, because where to look is the thing that was wrong. The depths are spread LINEARLY
-        # across the settled range rather than geometrically: geometric spacing puts almost all of an
-        # affine fit's leverage on its deepest point, which is how a cohort passes r^2 while saying
-        # nothing about the shallow end it also claims to cover.
         K_multipliers_of_tile: derived_at_materialization
       replicates:
-        exact_count: 3
-        identities: [r000, r001, r002]
+        exact_count: 2
+        identities:
+        - r000
+        - r001
       evidence:
         correctness_simulator: spike
         correctness_tier: L2
         timing_simulator: verilator
         timing_tier: L3
         spike_cycles_citable: false
-      # UNCHANGED from PK, deliberately and in full. The refutation was a statement about the cohort's
-      # PLACEMENT, so nothing about what counts as a good fit may move with it.
       thresholds:
         slope_cycles_per_K_element_min_exclusive: 0.0
         r_squared_min_inclusive: 0.995
@@ -893,11 +1260,6 @@ blocked_unimplemented:
           predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
           absolute_floor_cycles: 8
           observed_cycle_fraction: 0.03
-      # The precondition PK did not have, and the whole reason this is a separate family. Both bounds
-      # are claim decisions, not post-run knobs. `cohort_self_check` is the second negative control:
-      # a cohort admitted past a settling depth measured on some OTHER emitter, or some other RTL
-      # revision, is a cohort placed by citation, so its own runs must re-show the overlap flat
-      # across it before its fit may be quoted.
       settled_regime_precondition:
         instrument: rtl_derived_combination_counters
         quantity: realised_over_available_overlap
@@ -906,20 +1268,14 @@ blocked_unimplemented:
         decided_by: merlin.perf.fill_transient.settling_depth
         cohort_self_check: overlap_is_not_rising_across_the_cohorts_own_measured_points
         on_probe_absent: skip_with_evidence
-        # The region has TWO edges, and a cohort placed only from below straddles the far one.
-        # MEASURED on this target over a ten-point doubling ladder at fixed single-tile extents: the
-        # cost per extra reduction element holds inside the 3% band from K=64 to K=2048 -- four
-        # consecutive comparisons, 1.55%, 1.69%, 1.65%, 1.15% -- and then LEAVES it again, by 5.6% at
-        # K=4096 and 14.0% at K=8192, as the streamed operand outgrows the memory path. That is a
-        # second regime change, not more fill, and an affine law fitted across it is refuted by the
-        # same arithmetic that refuted PK. The ladder is therefore bounded above by where the marginal
-        # re-opens, not only below by where the overlap settles.
         marginal_constancy_band: 0.03
         marginal_constancy_decided_by: merlin.perf.fill_transient.marginal_settling_depth
         window_upper_edge: the_depth_at_which_the_marginal_cost_leaves_its_band_again
         cohort_must_fit_inside: one_contiguous_within_band_marginal_window
     gate:
-      traits: [structural_pipeline_depth, independent_engine_ports]
+      traits:
+      - structural_pipeline_depth
+      - independent_engine_ports
       instrument: cycle_count_and_combination_counters
       capacity: four_reduction_depths_past_the_measured_settling_depth_inside_one_residency_band
       on_missing: skip_with_evidence
@@ -928,7 +1284,7 @@ blocked_unimplemented:
       layout: target_native_direct_corpus_builder
     emitter:
       status: blocked
-      entry: 'new:overlap_settled_depth_materializer'
+      entry: new:overlap_settled_depth_materializer
       knobs:
         operation: matmul
         varied_axis: K
@@ -939,7 +1295,4 @@ blocked_unimplemented:
       tier: 1
       runs: 4
       projected_cycles: derived_at_preflight
-      # The measured reason this stays affordable at depths an order of magnitude past PK's: cost on
-      # the citable timing engine tracks the OUTPUT drained, and M and N are pinned at the tile edge,
-      # so every point writes back the same result tile however deep the reduction runs.
       basis: four_members_before_repetition_at_fixed_drained_output_bytes

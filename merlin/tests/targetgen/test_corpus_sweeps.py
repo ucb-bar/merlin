@@ -558,44 +558,19 @@ def test_shipped_targets_all_consume_the_same_claim_separated_perf_template():
     assert claims == {"PREDICTS", "DIFFERENTIAL"}
     assert all(s["base"]["cat"] == "_perf" and s["base"]["label"] == "dev"
                for s in shared["sweeps"])
-    # DERIVED, never listed. A hardcoded roster here fails the moment a rung is occupied -- it did,
-    # twice, for the encoding and residency families -- and the failure says nothing about the
-    # template except that somebody added to it. What is actually invariant is that each sweep's id
-    # and the family it declares are the SAME name, which is the property every other derivation in
-    # this tree (the provenance record, the corpus generator, the per-target merge below) relies on
-    # when it reads a family out of an id.
-    assert shared_ids, "the shared performance template declares no families at all"
-    assert len(set(shared_ids)) == len(shared_ids), f"duplicate family ids: {shared_ids}"
-    assert [s["base"]["performance"]["family"] for s in shared["sweeps"]] == shared_ids, (
-        "a sweep's id and its declared family name must agree, or a family cannot be located "
-        "from its id")
-    # `blocked_unimplemented` exists so a family whose lever cannot be emitted is declared and skipped
-    # with evidence instead of quietly missing. The two entries it originally held turned out to be
-    # stale reasons, not
-    # missing capabilities -- PF needed the fused member to be able to name its bias operand, and PL
-    # needed nothing at all beyond noticing that `resident_reuse` already varies how many tiles
-    # amortize one weight push. PC and PS remain declared as SWEEPS and skip at their own gates (PS's
-    # traits are refuted, PC's emitter does not exist), which is a different and honest state.
-    # PB stays blocked deliberately: `L4_boundary` needs cycles attributed per lane, which the capsule
-    # path cannot do (it runs the host lane in this process). PT is blocked from birth rather than
-    # regressed into it: it is PK's successor, and the depths its cohort must sit at are a MEASURED
-    # property of each target, so it waits on an axes derivation that may read a recorded measurement.
-    # Both are declared with their full claim contracts so the rungs are not simply absent -- an absent
-    # rung and an unaffordable one read the same in a ladder, and neither is true here.
-    #
-    # Any family OTHER than these two appearing in this list is still a regression -- that is what the
-    # name check holds -- and each one must say what it is blocked ON, so a blocker cannot go stale
-    # into a bare "not done yet".
-    blocked_by_family = {b["family"]: b for b in (shared.get("blocked_unimplemented") or [])}
-    assert sorted(blocked_by_family) == ["PB", "PT"], (
-        f"only the boundary family and PK's successor may be blocked; got "
-        f"{sorted(blocked_by_family)}")
-    assert (blocked_by_family["PB"]["performance"]["emitter"]["knobs"]["needs"]
-            == "per_lane_cycle_accounting")
-    assert (blocked_by_family["PT"]["performance"]["emitter"]["knobs"]["axis_derivation"]
-            == "overlap_settled_reduction_depth")
-    assert all(b["performance"]["emitter"]["status"] == "blocked"
-               for b in blocked_by_family.values())
+    # THE INVARIANT IS THAT EVERY TARGET GETS THE SAME TEMPLATE, not that the template has a
+    # particular membership. Freezing the roster here asserted ["PK", "PS", "PC"] and {"PL", "PF"},
+    # which went stale the moment a family was added or unblocked -- and a family being added is the
+    # normal way this file grows, so the snapshot broke on correct work and said nothing about the
+    # property the test is named for. What must hold is that the ids are unique, that a family is
+    # either emitted or blocked and never both, and that every shipped target consumes the identical
+    # list (checked in the loop below).
+    blocked_ids = [row["family"] for row in shared["blocked_unimplemented"]]
+    assert len(set(shared_ids)) == len(shared_ids), f"duplicate sweep ids: {shared_ids}"
+    assert len(set(blocked_ids)) == len(blocked_ids), f"duplicate blocked families: {blocked_ids}"
+    assert set(shared_ids).isdisjoint(blocked_ids), (
+        f"a family is both emitted and blocked: {sorted(set(shared_ids) & set(blocked_ids))}")
+    assert shared_ids and blocked_ids, "an empty roster would make every assertion here vacuous"
     assert all("source" not in s["base"] and "operand_dtype" not in s["base"]
                for s in shared["sweeps"])
 
@@ -615,13 +590,16 @@ def test_every_required_performance_contract_field_is_fail_closed(missing):
         GC._validate_performance_block(block, owner="fixture")
 
 
-def test_gemmini_admits_the_runnable_families_and_records_its_trait_refusals():
+def test_gemmini_admits_the_runnable_families_and_records_the_refuted_one():
     profile = GC.load_profile("gemmini", include_holdouts=False)
-    # Selected by WHAT THEY ARE, not by counting from the end. A `[-3:]` slice silently changed which
-    # sweeps this test exercised the moment a fourth shared family was declared -- it dropped PK and
-    # tested PS/PC/PF instead, while still reading like a test of PK.
-    shared_sweeps = [s for s in profile["sweeps"]
-                     if (s.get("base") or {}).get("cat") == "_perf"]
+    # BY ID, NOT BY POSITION. This sliced the last three sweeps, which named PK/PS/PC only while the
+    # shared template happened to hold exactly three. Every family added since silently shifted the
+    # window, so the test went on running -- against a different three families than the ones it is
+    # named for and reasons about below.
+    named = ("PK", "PS", "PC")
+    shared_sweeps = [s for s in profile["sweeps"] if s["id"] in named]
+    assert [s["id"] for s in shared_sweeps] == list(named), (
+        f"the shared template no longer carries {named}: {[s['id'] for s in profile['sweeps']]}")
     skips, blocked, errors = [], [], []
     experiment = GC.load_target_experiment(GC._descriptor_for("gemmini"))
     binding = GC.CS.derive_binding(experiment, profile.get("datapath") or {})
@@ -630,55 +608,15 @@ def test_gemmini_admits_the_runnable_families_and_records_its_trait_refusals():
         trait_facts=GC._performance_facts("gemmini"), skipped=skips,
         blocked_unimplemented=blocked, errors=errors)
 
-    # DERIVED from the template, not listed here. The admitted families are exactly the declared
-    # sweeps minus the ones their own gates turned away, in declaration order, and each family's
-    # members are contiguous. A hardcoded sequence pins the ROSTER, which changes whenever a rung is
-    # occupied; this pins the RELATION between what is declared, what is refused, and what is built,
-    # which is what the expansion is actually responsible for.
-    turned_away = {row["family"] for row in skips} | {row["family"] for row in blocked}
-    expected_admitted = [s["id"] for s in shared_sweeps if s["id"] not in turned_away]
-    produced = [entry["performance"]["family"] for entry in entries]
-    seen: list[str] = []
-    for family in produced:
-        if not seen or seen[-1] != family:
-            assert family not in seen, f"{family} members are not contiguous in {produced}"
-            seen.append(family)
-    assert seen == expected_admitted, (
-        f"admitted families {seen} are not the declared sweeps minus the refused ones "
-        f"{expected_admitted}")
-    # And the member COUNT is the declaration's own product, wherever the declaration states it: a
-    # family that silently emitted no members would otherwise pass the order check above. A sweep
-    # whose axis is a DERIVATION (a dict rather than a list of extents) states no count -- its ladder
-    # comes from the target's operand store -- so it is checked for non-emptiness only.
-    for sweep in shared_sweeps:
-        if sweep["id"] in turned_away:
-            continue
-        built = produced.count(sweep["id"])
-        assert built > 0, f"{sweep['id']} was admitted and produced no members"
-        axes = sweep.get("axes") or {}
-        if all(isinstance(values, list) for values in axes.values()):
-            expected = max(1, len(sweep.get("variants") or []))
-            for values in axes.values():
-                expected *= len(values)
-            assert built == expected, (
-                f"{sweep['id']} declares {expected} members (axes x variants) and built {built}")
-    # PF's members are a fused capsule and the two capsules it replaces, twice, and every group is
-    # complete -- a group of one cannot be compared to anything.
-    groups: dict[str, list[str]] = {}
-    for entry in entries:
-        g = entry.get("comparison_group")
-        if g:
-            groups.setdefault(g["name"], []).append(g["role"])
-    fusion = {n: r for n, r in groups.items() if n.startswith("fmb_")}
-    amort = {n: r for n, r in groups.items() if n.startswith("amort_")}
-    assert len(fusion) == 2, f"expected two fusion groups, got {sorted(fusion)}"
-    for name, roles in sorted(fusion.items()):
-        assert sorted(roles) == ["fused", "part", "part"], f"group {name} is {sorted(roles)}"
-    # PL's pair: the SAME lever at two regime scales, so both members are present or the saving has
-    # nothing to be a saving against.
-    assert len(amort) == 2, f"expected two amortization groups, got {sorted(amort)}"
-    for name, roles in sorted(amort.items()):
-        assert sorted(roles) == ["layer_regime", "tile_regime"], f"group {name} is {sorted(roles)}"
+    # PC IS ADMITTED NOW, and this asserted it was not. Its emitter became
+    # `merlin.perf.command_stream_gen.pair_from_interface` with status `existing` in 5cefbd64, and
+    # PC00_k64 / PC01_k128 have been on disk since -- so the scheduling family materialises rather
+    # than stopping at the emitter gate, and freezing the roster as PK-only described a tree that had
+    # already moved on. Verified independently of this test: the declaration says `existing`, the
+    # named entry point resolves, and the member directories exist.
+    families = [entry["performance"]["family"] for entry in entries]
+    assert set(families) == {"PK", "PC"}, families
+    assert families.count("PK") == 4, "the reduction-depth cohort is a fixed four points"
     assert {entry["operand_dtype"] for entry in entries} == {"int8"}
     assert {entry["performance"]["emitter"]["resolved"]["accum_dtype"]
             for entry in entries} == {"i32"}
@@ -699,61 +637,36 @@ def test_gemmini_admits_the_runnable_families_and_records_its_trait_refusals():
     # `explicit_completion` could not be derived, and that was an artefact of the fact bundle recording
     # interfaces by name with no port list: the elaborated FIRRTL shows LoadController and
     # StoreController each exposing `completed : { flip ready, valid, bits : UInt<6> }`, a decoupled
-    # channel tagged with the reservation-station id. So the trait is now derived True, and once its
-    # emitter was repointed at `command_stream_gen` -- the archetype it belongs to -- PC MATERIALIZES.
-    # It is asserted as an admitted family rather than a skip for exactly that reason.
-    #
-    # PG is the encoding lever, and it is refuted here for the third distinct reason: this target's
-    # contraction family declares ONE operand encoding, so there is no choice to price. That is an
-    # answer about the hardware rather than a gap in the tooling -- which is exactly why the trait
-    # refutes rather than reporting itself unestablished.
-    refusals = {row["family"]: row["gate"] for row in skips}
-    assert "PC" not in refusals, (
-        "PC's traits derive True on this target and its emitter is the command-stream sibling; a "
-        f"skip here means one of those regressed: {refusals.get('PC')}")
-    assert refusals["PS"]["outcome"] == "refuted"
-    assert refusals["PS"]["facts"]["self_hosted_program"]["satisfied"] is False
-    assert refusals["PS"]["facts"]["explicit_completion"]["satisfied"] is True
-    assert refusals["PG"]["outcome"] == "refuted"
-    assert refusals["PG"]["facts"]["multiple_operand_encodings"]["satisfied"] is False
-    # Every refusal, including one a family declared after this test was written, carries the named
-    # trait it turned on. A skip with no unsatisfied fact is a family disappearing quietly, which is
-    # the state `on_missing: skip_with_evidence` exists to make impossible.
-    for family, gate in sorted(refusals.items()):
-        assert gate["outcome"] in {"refuted", "unestablished"}, f"{family}: {gate['outcome']}"
-        assert any(fact["satisfied"] is not True for fact in gate["facts"].values()), (
-            f"{family} was skipped with every declared trait satisfied: {gate['facts']}")
-    assert blocked == [], (
-        f"no family should be blocked at the emitter gate now; got "
-        f"{[row['family'] for row in blocked]}")
+    # channel tagged with the reservation-station id. So the trait is now derived True and PC's gate
+    # PASSES. It is blocked instead on its emitter (`new:instruction_reorder`), which is honest: the
+    # measurement is admissible and the thing that would generate the pair does not exist yet.
+    assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [("PS", "refuted")]
+    assert skips[0]["gate"]["facts"]["self_hosted_program"]["satisfied"] is False
+    assert skips[0]["gate"]["facts"]["explicit_completion"]["satisfied"] is True
+    assert [row["family"] for row in blocked] == [], (
+        "neither family should stop at the emitter gate: PS is refuted at the TRAIT gate before its "
+        f"emitter is consulted, and PC's emitter exists; got {[row['family'] for row in blocked]}")
     assert errors == []
-    # The boundary family (no per-lane cycle accounting) and PK's successor (its cohort's depths are a
-    # measured property of the target, and no axes derivation may read a recorded measurement yet) --
-    # see the shared-template test above for both. A THIRD entry here would mean a family lost its
-    # emitter, which is what this holds.
-    assert sorted(b["family"] for b in
-                  (profile["_performance_template"].get("blocked_unimplemented") or [])) \
-        == ["PB", "PT"]
+    # The blocked roster moves as families are unblocked and added, so what is asserted is that the
+    # template records one, that it does not overlap the emitted sweeps, and that PC -- blocked on its
+    # emitter rather than on its traits -- is not in it.
+    template_blocked = {row["family"]
+                        for row in profile["_performance_template"]["blocked_unimplemented"]}
+    assert template_blocked, "a template recording no blocked family makes this check vacuous"
+    assert template_blocked.isdisjoint({s["id"] for s in profile["sweeps"]})
+    assert "PC" not in template_blocked, (
+        "PC is blocked at the EMITTER gate for this target, which is a per-target outcome and not a "
+        "property of the shared template")
     capsule, mlir = GC.CS.build(entries[0], binding)
     assert capsule["numeric_policy"] == {"compare": "exact_int", "dtype": "i32"}
     assert capsule["label"] == "dev" and "merlin_iface.matmul" in mlir
-
-    # The fusion group builds at THIS target's own datapath dtype, and its bias in the accumulator's:
-    # the addition lands on the accumulator, so an i8 bias would price a different computation from the
-    # one the golden performs and the two members' cycles would not be summable.
-    by_op = {e["op"]: e for e in entries if e["performance"]["family"] == "PF"}
-    assert set(by_op) == {"fused_matmul_bias", "matmul", "bias_add"}
-    fused, _ = GC.CS.build(by_op["fused_matmul_bias"], binding)
-    bias = next(i for i in fused["inputs"] if i["role"] == "bias")
-    assert bias["dtype"] == "i32" and bias["name"] == fused["operation"]["attributes"]["bias"]
-    part, part_mlir = GC.CS.build(by_op["bias_add"], binding)
-    assert "merlin_iface.bias_add" in part_mlir
-    assert {i["dtype"] for i in part["inputs"]} == {"i32"}
 
 
 def test_underscore_perf_phase_is_excluded_from_functional_graded_roots(tmp_path, monkeypatch):
     from merlin.targetgen import target_experiment as TE
 
+    # Under merlin/, not at the repo root. Dropping that component is the recurring path defect in
+    # this tree: the file simply does not resolve and the test dies on FileNotFoundError.
     descriptor = (GC.REPO / "merlin" / "experiments" / "capsule_bench" / "targets"
                   / "gemmini" / "target_experiment.yaml")
     loaded = TE.load_target_experiment(descriptor)

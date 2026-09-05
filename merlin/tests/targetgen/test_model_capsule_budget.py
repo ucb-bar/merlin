@@ -122,13 +122,14 @@ def _mesh_entry(ordinal: int, symbol: str) -> dict:
             "cert_run_id": identity["run_id"], "artifact_identity": identity,
             "trace_check": _trace(identity),
             "oracle_evidence": {"result": "pass", "derived_from_rtl": True,
-                                "cycle_accurate": True, "kind": "rtl_verilator"}}
+                                "cycle_accurate": True, "kind": "rtl_gsim",
+                                "engine": "gsim"}}
 
 
 def _tile(tag: str) -> dict:
     identity = _identity(tag)
     return {"status": "pass", "oracle_result": "pass", "derived_from_rtl": True,
-            "cycle_accurate": True, "artifact_identity": identity,
+            "cycle_accurate": True, "oracle_engine": "gsim", "artifact_identity": identity,
             "trace_check": _trace(identity)}
 
 
@@ -141,6 +142,7 @@ def _valid_model_row() -> dict:
                            "matmul_layers_host_fallback": 0,
                            "matmul_layers_oracle_unavailable": 0,
                            "matmul_layers_unrouted": 0,
+                           "simulator_requested": "gsim",
                            "mesh_route_symbols": ["mesh0", "mesh1"],
                            "dispatch_ledger": ledger},
         "mesh_tile_verification": {"n_tiles": 2, "n_passed": 2, "n_failed": 0,
@@ -186,6 +188,85 @@ def test_no_budget_runs_inline(monkeypatch):
     out = CR._grade_model_capsule({"name": "M0"}, target="t", timeout=7, budget_s=0)
     assert out["status"] == "pass"
     assert seen == {"capsule": "M0", "target": "t", "timeout": 7}
+
+
+def test_budgeted_grade_pins_capsule_assets_before_starting_child(tmp_path, monkeypatch):
+    """Cache GC may remove a materialized capsule while a long model child is still using it.
+
+    The child must receive a private immutable copy, not the cache generation's path.  This is the
+    production failure from ``merlincirct_arm4_func_20260901_codex1``: M3 started with a
+    ``.gemmini.build.*`` ``__dir__`` and later failed opening ``capsule.yaml`` after cache GC removed
+    that generation.
+    """
+    capsule = _copy_model_capsule(tmp_path / "source")
+    original = Path(capsule["__dir__"])
+    observed = {}
+
+    class _FinishedChild:
+        returncode = 0
+        pid = 1
+
+        def __init__(self, cmd, **_kwargs):
+            spec_path = Path(cmd[cmd.index("--model-grade") + 1])
+            out_path = Path(cmd[cmd.index("--model-grade-out") + 1])
+            spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            pinned = Path(spec["capsule"]["__dir__"])
+            observed.update(original=original, pinned=pinned)
+            assert pinned != original
+            shutil.rmtree(original)
+            assert (pinned / "capsule.yaml").is_file()
+            out_path.write_text(json.dumps({"capsule": capsule["name"], "status": "pass"}))
+
+        def communicate(self, timeout=None):
+            return ("", None)
+
+    import subprocess as sp
+    monkeypatch.setattr(sp, "Popen", _FinishedChild)
+    out = CR._grade_model_capsule_unlocked(
+        capsule, target="gemmini", timeout=10, budget_s=60)
+
+    assert out["status"] == "pass"
+    assert observed["pinned"].parent != observed["original"].parent
+
+
+def test_suite_pins_model_assets_before_build_and_op_grading(tmp_path, monkeypatch):
+    """The public-cache generation may be collected while the preceding op phase is still running.
+
+    Pinning only when the model child starts is too late: ``run_suite`` discovers every capsule first,
+    then can spend longer than the materializer's GC age building the package and grading ops before it
+    reaches the models.
+    """
+    source = tmp_path / "source" / "M"
+    source.mkdir(parents=True)
+    (source / "capsule.yaml").write_text("name: M\nkind: model\n", encoding="utf-8")
+    original = source.resolve()
+    model = {"name": "M", "kind": "model", "__dir__": str(original),
+             "gate": {"after_op_pass_fraction": 0.0}}
+    op = {"name": "A", "kind": "isa"}
+    observed = {}
+
+    monkeypatch.setattr(CR, "load_package", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(CR, "integrity_scan", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(CR, "build_package", lambda *_args, **_kwargs: shutil.rmtree(original))
+    monkeypatch.setattr(CR, "_split_ineligible", lambda caps, _target: (caps, []))
+    monkeypatch.setattr(CR._tier_policy, "covering_set", lambda _caps: [])
+
+    def _run(capsule, *_args, **_kwargs):
+        if capsule["name"] == "A":
+            return {"capsule": "A", "kind": "isa", "status": "pass"}
+        pinned = Path(capsule["__dir__"])
+        observed["pinned"] = pinned
+        assert pinned != original
+        assert (pinned / "capsule.yaml").is_file()
+        return {"capsule": "M", "kind": "model", "status": "pass"}
+
+    monkeypatch.setattr(CR, "run_capsule", _run)
+    out = CR.run_suite([op, model], tmp_path / "package", runs_root=tmp_path / "runs",
+                       target="gemmini", max_workers=1)
+
+    assert [row["status"] for row in out] == ["pass", "pass"]
+    assert "pinned" in observed
+    assert not observed["pinned"].exists(), "suite pin must be cleaned after the model result lands"
 
 
 @pytest.mark.parametrize("budget", [3.0])
@@ -302,6 +383,58 @@ def test_model_rows_use_execution_evidence_without_fabricating_an_instruction_tr
     assert model["model_execution_check"]["status"] == "pass"
 
 
+def test_grade_persists_and_withholds_a_model_pass_from_the_wrong_required_engine(
+        tmp_path, monkeypatch):
+    """Durable QA must not retain ``status/L3=pass`` when the in-memory proof rejects the engine."""
+    pkg, caps = tmp_path / "pkg", tmp_path / "caps"
+    pkg.mkdir(); caps.mkdir()
+    capsule = {
+        "name": "M3", "kind": "model", "label": "public",
+        "required_oracle_tiers": ["L3"],
+        "lanes": {"require": ["on_mesh", "scalar_rvv_lane"]},
+    }
+    result = {
+        "capsule": "M3", "kind": "model", "label": "public", "status": "pass",
+        "numeric": {"status": "pass"},
+        "tiers": {"L3": {"status": "pass", "mandatory": True,
+                           "derived_from_rtl": True, "cycle_accurate": True}},
+        **_valid_model_row(),
+    }
+    result["mesh_execution"]["simulator_requested"] = "verilator"
+    for entry in result["mesh_execution"]["dispatch_ledger"]:
+        if entry["lane"] == "on_mesh":
+            entry["oracle_evidence"].update(engine="verilator", kind="rtl_verilator")
+    for tile in result["mesh_tile_verification"]["per_tile"]:
+        tile.update(oracle_engine="verilator")
+
+    runs_root = tmp_path / "grade"
+    durable = runs_root / "runs" / "gemmini-capsule-bench" / "M3" / "capsule_result.json"
+    durable.parent.mkdir(parents=True)
+    durable.write_text(json.dumps(result))
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    monkeypatch.setattr(CGR, "load_package", lambda d, contract=None: _StubPkg())
+    monkeypatch.setattr(CGR, "integrity_scan", lambda p: None)
+    monkeypatch.setattr(CGR, "build_package", lambda p: None)
+    monkeypatch.setattr(CGR.CR, "discover_capsules", lambda *a, **k: [capsule])
+    monkeypatch.setattr(CGR.CR, "run_suite", lambda *a, **k: [result])
+    monkeypatch.setattr(CGR.CV, "aggregate", lambda *a, **k: {
+        "by_tier_reached": {}, "instruction_class_coverage": {}, "mode_coverage": {},
+        "unavailable": {}, "acceleratable_coverage": {},
+    })
+
+    score = CGR.grade(str(pkg), capsules_root=str(caps), runs_root=str(runs_root),
+                      target="gemmini", contract=None, oracle_adapters={})
+    persisted = json.loads(durable.read_text())
+
+    assert persisted["model_execution_check"]["status"] == "fail"
+    assert "model_requested_oracle_engine_differs_from_required_engine" in \
+        persisted["model_execution_check"]["violations"]
+    assert persisted["status"] == "incomplete"
+    assert persisted["tiers"]["L3"]["status"] == "unavailable"
+    assert score["functional_pass"] == 0
+    assert score["gradeable"] is False
+
+
 def test_model_execution_evidence_fails_closed_on_unmeasured_layer():
     row = _valid_model_row()
     row["mesh_execution"]["matmul_layers_oracle_unavailable"] = 1
@@ -345,6 +478,12 @@ def test_model_execution_evidence_rejects_structural_mutations(mutation, capsule
      "model_call_artifact_identity_digest_mismatch"),
     (lambda r: r["mesh_execution"]["dispatch_ledger"][0]["oracle_evidence"].update(
         {"cycle_accurate": False}), "model_call_oracle_fidelity_missing_or_invalid"),
+    (lambda r: r["mesh_execution"]["dispatch_ledger"][0]["oracle_evidence"].update(
+        {"engine": "verilator"}), "model_call_oracle_engine_mismatch"),
+    (lambda r: r["mesh_tile_verification"]["per_tile"][0].update(
+        {"oracle_engine": "verilator"}), "model_tile_oracle_engine_mismatch"),
+    (lambda r: r["mesh_execution"].update({"simulator_requested": "verilator"}),
+     "model_call_oracle_engine_mismatch"),
     (lambda r: r["mesh_execution"].update({"matmul_layers_on_mesh": 3}),
      "model_mesh_counter_ledger_mismatch"),
     (lambda r: r["mesh_tile_verification"]["per_tile"][0]["trace_check"].update(
@@ -360,6 +499,31 @@ def test_model_dynamic_proof_rejects_spoofed_missing_or_mutated_evidence(mutatio
         row, {"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}})
     assert check["status"] == "fail"
     assert reason in check["violations"]
+
+
+def test_gsim_is_classified_as_cycle_accurate_rtl_tool():
+    from merlin.targetgen import oot_runner
+
+    assert "gsim" in oot_runner._CYCLE_ACCURATE_SIMULATORS
+
+
+def test_required_gsim_prevents_mixed_engine_model_cycle_rollup(monkeypatch):
+    row = _valid_model_row()
+    for entry in row["mesh_execution"]["dispatch_ledger"]:
+        if entry["lane"] == "on_mesh":
+            entry["oracle_evidence"]["cycles"] = 17
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+
+    clean = CR._model_tier_evidence(
+        row["mesh_execution"], row["mesh_tile_verification"])
+    row["mesh_execution"]["dispatch_ledger"][0]["oracle_evidence"]["engine"] = "verilator"
+    mixed = CR._model_tier_evidence(
+        row["mesh_execution"], row["mesh_tile_verification"])
+
+    assert clean["cycles"] == 34 and clean["cycle_accurate"] is True
+    assert clean["measurement_conditions"]["single_engine_cycle_authority"] is True
+    assert mixed["cycles"] is None and mixed["cycle_accurate"] is False
+    assert mixed["measurement_conditions"]["single_engine_cycle_authority"] is False
 
 
 def test_exact_cert_identity_changes_when_emitted_artifact_mutates(tmp_path):

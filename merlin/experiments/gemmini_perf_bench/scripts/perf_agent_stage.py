@@ -36,7 +36,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -70,6 +70,69 @@ _HOST_FEEDBACK_SENTINEL = "__host_owned_tuning_gsim_feedback__"
 #: time to discover. This prices the agent's own emitted artifacts instead: no oracle, no goldens,
 #: no holdout, so it can be called as often as the agent likes and can leak nothing.
 ANALYSIS_ACTION = "analyze-command-buffers"
+
+#: The exit code a round returns when its own deadline killed it, as opposed to failing. A round
+#: that spent its whole budget and a round that crashed are different events and are classified
+#: differently below; every other non-zero code stays a refusal.
+ROUND_DEADLINE_EXIT = 124
+
+#: Declared operations whose required work this stage can derive from the capsule's own shapes.
+#: These are the emitted ABI's operation names, carried by the corpus rather than assumed about any
+#: device. An operation outside this set yields no declared work and says so, rather than a zero.
+#: The declared operation whose work depends on a GEOMETRY rather than only on operand shapes, so it
+#: is priced through its own branch below.
+_CONV_OPERATION = "conv2d"
+_WORK_OPERATIONS = ("matmul", "resident_reuse", _CONV_OPERATION)
+
+#: How many member measurements the sweep may run at once. DECLARED, never guessed: this is a shared
+#: host, and the fan-out a measurement ran at is stamped on its own result. Default 1, so a launch
+#: that says nothing behaves exactly as the sequential sweep did.
+#:
+#: Parallelism is sound here for a measured reason. Cycles on this stack are concurrency-invariant --
+#: verified identical serial and at 16 workers, and independently over 392 repeated measurements of
+#: identical bytes with zero disagreement -- while WALL times are not. This sweep cites cycles. Wall
+#: time is used only for the cheapest-first ordering, which is why `harvest_member_cost` ignores
+#: rows measured under fan-out.
+SWEEP_WORKERS_ENV = "MERLIN_PERF_SWEEP_WORKERS"
+
+
+def _sweep_workers() -> int:
+    """The declared sweep fan-out, or 1. Refuses a value it cannot read rather than guessing one."""
+    raw = (os.environ.get(SWEEP_WORKERS_ENV) or "").strip()
+    if not raw:
+        return 1
+    try:
+        workers = int(raw)
+    except ValueError:
+        raise StageGateError(
+            f"{SWEEP_WORKERS_ENV}={raw!r} is not an integer; refusing to guess a fan-out") from None
+    if workers < 1:
+        raise StageGateError(f"{SWEEP_WORKERS_ENV}={workers} is not a positive fan-out")
+    return workers
+
+#: How a member's per-arm workspace is named. The ceiling harvest globs on this rather than parsing
+#: the runner's run-id, so the writer below and the reader in `harvest_baseline_points` cannot drift.
+_ARM_WORKSPACE = "m{index:03d}_{arm}"
+_BASELINE_ARM_GLOB = "m*_baseline"
+
+#: The verdict every command-buffer-readable ordering signal earned, and the evidence behind it.
+#: Held out by workload: parameters fitted on one half, every rate below measured on the other.
+#: Regenerate with `validate_ordering_signals.py`; do not edit these by hand to match a hope.
+ORDERING_REFUSED = "refused_no_signal_beat_chance"
+ORDERING_EVIDENCE = {
+    "held_out_pairs": 478,
+    "held_out_workloads": 18,
+    "artifact": "out/artifacts/perf-bench/<target>/ordering_signal_validation.json",
+    "agreement": {
+        # signal: (agreed, decided, why it was refused)
+        "depgraph_makespan": [226, 452, "0.500 -- exactly chance"],
+        "command_count": [198, 421, "0.470 -- below chance"],
+        "tile_pressure": [203, 279, "0.728 overall, but 0.273 on one workload with 33 decided "
+                                    "pairs, where it points backwards"],
+        "barrier_count": [24, 37, "0.649 on too few decided pairs, from a single slice"],
+        "depgraph_critical_path": [17, 27, "0.630 on too few decided pairs, from a single slice"],
+    },
+}
 _HOST_ANALYSIS_SENTINEL = "__host_owned_command_buffer_analysis__"
 _HEX = frozenset("0123456789abcdef")
 _HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
@@ -321,6 +384,22 @@ class DevelopmentGsimFeedback:
     peak_basis: str = ""
     achievable_macs_per_cycle: float | None = None
     achievable_basis: str = ""
+    # Spread of the achievable rate across the points that established it. It is what "already at
+    # the ceiling" tolerates, and it is MEASURED so that judgement is not a constant anyone can
+    # turn until the answer changes. None when fewer than two points price, which refuses.
+    achievable_dispersion: float | None = None
+    #: The phase-1 functional points the ceiling starts from, kept so it can be RE-DERIVED over a
+    #: wider set once this run's own frozen-baseline measurements exist. Phase 1's corpus is not
+    #: this corpus: measured 2026-09-04, its ceiling was 80.01 MACs/cycle while four performance
+    #: members already ran ABOVE it at baseline, and its dispersion of 0.472 put the "already at the
+    #: ceiling" line at 42.25 -- so 14 of 38 members were told they had no headroom left.
+    seed_points: tuple = ()
+    functional_run_id: str = ""
+    #: Median measured simulation seconds per capsule, and how the ordering was arrived at. Used to
+    #: sweep cheapest-first, so a losing candidate is refuted before the corpus's slowest members
+    #: are paid for. Empty means no history: the declared order stands and the basis says so.
+    member_cost: Mapping[str, float] = field(default_factory=dict)
+    member_cost_basis: str = ""
     tuning_call_budget: int | None = None
     #: Total candidate cycles over the comparable members, one entry per feedback invocation. The
     #: stop conditions read the SHAPE of this history, not any single measurement.
@@ -331,6 +410,8 @@ class DevelopmentGsimFeedback:
     _spend: "list[tuple[str, float]] | None" = None
     executor: Callable[..., Mapping[str, Any]] | None = None
     _baseline_cache: dict[tuple[str, str], dict[str, Any]] | None = None
+    #: Rows a wave measured ahead of the loop that consumes them, keyed by (member index, arm).
+    _prefetched: dict = field(default_factory=dict)
 
     def _execute(self, *, arm: str, package: Path, package_sha256: str,
                  member: PerformanceCapsule, decision: GATE.EvaluationDecision,
@@ -354,7 +435,7 @@ class DevelopmentGsimFeedback:
             gsim_certificate=self.certificate)
         return PAIR.run_execution(
             spec, workspace, timeout_s, self.target_experiment, self.rtl_identity,
-            hardware_counters=False)
+            hardware_counters=False, workers=_sweep_workers())
 
     @staticmethod
     @staticmethod
@@ -414,6 +495,34 @@ class DevelopmentGsimFeedback:
                 f"development GSIM {arm}/{family}/{capsule} lacks a positive certified cycle count")
         return {"correct": correct, "gsim_cycles": cycles}
 
+
+    #: A losing prefix must be this long before it may stop the sweep. One member is an anecdote --
+    #: the cheapest member is also the one most dominated by fixed per-invocation cost, where a
+    #: schedule change shows least -- so a single loss is not allowed to end a measurement.
+    MINIMUM_REFUTING_PREFIX = 3
+
+    def _refuted_so_far(self, cells: "Sequence[Mapping[str, Any]]", index: int, total: int) -> bool:
+        """Is this candidate already behind on every comparable member measured so far?
+
+        ONE-DIRECTIONAL BY CONSTRUCTION. True only when every comparable cell measured has the
+        candidate strictly slower than the baseline. It never returns True on a tie, never on an
+        incomparable cell, and never before the minimum prefix -- so the sweep can be cut short only
+        for a candidate that has lost everywhere it has been asked, which is the one conclusion no
+        further member can overturn.
+
+        Returns False whenever it cannot tell: too few comparable cells, any cell not comparable, or
+        the last member (where stopping saves nothing). Absence of evidence never stops a sweep.
+        """
+        if index + 1 >= total:
+            return False                      # nothing left to save
+        comparable = [c for c in cells if c.get("comparable")]
+        if len(comparable) < self.MINIMUM_REFUTING_PREFIX or len(comparable) != len(cells):
+            return False                      # an incomparable member means the picture is partial
+        for cell in comparable:
+            delta = cell.get("candidate_minus_baseline_cycles")
+            if not isinstance(delta, (int, float)) or isinstance(delta, bool) or delta <= 0:
+                return False                  # a tie or a win anywhere: keep measuring
+        return True
 
     def _stopping(self, cells: Sequence[Mapping[str, Any]], *,
                   label: str, elapsed_s: float) -> dict[str, Any]:
@@ -487,23 +596,155 @@ class DevelopmentGsimFeedback:
                                     else attainable / best_total),
             "budget": budget.to_dict(),
             "verdicts": [v.to_dict() for v in verdicts],
+            # WHICH CONDITIONS COULD NOT BE ANSWERED AT ALL. A condition that cannot contribute
+            # reports `fired: false` exactly like one that was checked and said no, so without this
+            # roll-up a reader counts four judges when one of them has never been able to speak.
+            "inapplicable": [v.name for v in verdicts if not v.evaluable],
         }
+
+    def _take_prefetched(self, index: int, arm: str) -> "dict | None":
+        """A row a wave already measured, or None. A recorded failure RAISES here, in member order,
+        so a member that could not be measured is refused exactly where the serial sweep would have
+        refused it -- rather than silently becoming a missing cell."""
+        row = getattr(self, "_prefetched", {}).pop((index, arm), None)
+        if isinstance(row, Mapping) and "__error__" in row:
+            raise StageGateError(f"development GSIM {arm} measurement failed: {row['__error__']}")
+        return row
+
+    def _prefetch_wave(self, wave, *, candidate: Path, candidate_before: str, call_root: Path,
+                       deadline: float, workers: int) -> dict:
+        """Measure a wave of members concurrently and return ``{(index, arm): redacted row}``.
+
+        Concurrency is threads, not processes, because every heavy step here already runs in its own
+        subprocess -- the fan-out is over waiting, not over Python. That is only safe because
+        `perf_campaign.boxed_entrypoints` keeps its policy per THREAD: it used to save and restore
+        two module globals, which does not compose, and the interleaving left one thread's package
+        execution running with no sandbox at all.
+
+        A member that raises is RECORDED against its slot rather than propagated. One member failing
+        used to unwind the whole sweep, which is how a measurement with every member run was thrown
+        away; here the caller turns a missing row into an unmeasured cell with the reason.
+        """
+        import concurrent.futures                                           # noqa: PLC0415
+
+        def one(index: int, member: Any, arm: str) -> dict:
+            decision = self.decisions.get((member.family, member.capsule))
+            remaining = int(deadline - time.monotonic())
+            if remaining <= 0:
+                raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
+            package = self.baseline if arm == "baseline" else candidate
+            digest = self.baseline_sha256 if arm == "baseline" else candidate_before
+            raw = self._execute(
+                arm=arm, package=package, package_sha256=digest, member=member, decision=decision,
+                workspace=call_root / _ARM_WORKSPACE.format(index=index, arm=arm),
+                timeout_s=remaining)
+            return self._redact_execution(
+                raw, decision, arm=arm, family=member.family, capsule=member.capsule,
+                required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
+
+        jobs: dict = {}
+        rows: dict = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            # LONGEST FIRST inside the wave, so the tail of the wave is its cheap members and the
+            # makespan is not set by a slow member that was submitted last.
+            for index, member in sorted(
+                    wave, key=lambda im: -float(self.member_cost.get(im[1].capsule, 0.0))):
+                if (member.family, member.capsule) not in self._baseline_cache:
+                    jobs[pool.submit(one, index, member, "baseline")] = (index, "baseline")
+                jobs[pool.submit(one, index, member, "candidate")] = (index, "candidate")
+            for future in concurrent.futures.as_completed(jobs):
+                slot = jobs[future]
+                try:
+                    rows[slot] = future.result()
+                except Exception as exc:  # noqa: BLE001 - recorded against its slot, never fatal
+                    rows[slot] = {"__error__": f"{type(exc).__name__}: {str(exc)[:300]}"}
+        return rows
+
+    def _refresh_achievable(self) -> None:
+        """Re-derive the ceiling and its tolerance over every measurement the agent did not author.
+
+        Phase 1's corpus is not phase 2's. Measured 2026-09-04: the ceiling harvested from the
+        functional run alone was 80.01 MACs/cycle while four performance members already ran ABOVE
+        it at baseline (PC01_k128 99.79, PR01 94.06, PR03 88.33, PR02 87.96), and that set's
+        dispersion of 0.472 put "already at the ceiling" at 42.25 -- so 14 of 38 members were being
+        told they had no headroom left. Over the widened set the ceiling is 99.79 and the dispersion
+        0.245, and 6 members read as finished. The tolerance MUST come from the same points as the
+        ceiling: a wide-set ceiling with a narrow-set spread is not a measurement of anything.
+
+        Widening can only ever RAISE the ceiling -- the rate is a max over the points, so it is
+        monotone under union, and a point with positive cycles cannot falsify `demand/rate <= busy`.
+        A higher ceiling makes every consumer stricter: shares fall, `no_headroom` fires less, and
+        the attainment stop condition fires less. There is no direction in which this flatters a
+        candidate.
+
+        BASELINE ARMS ONLY, and that is the entire safety argument. The baseline package is phase
+        1's submission, sha-pinned before the first member runs; its cycles cannot depend on
+        anything the agent wrote. Admitting candidate arms would let the agent raise its own
+        ceiling, pinning its candidate near 1.0 by construction while pushing every other member
+        down -- a target the agent authors is not a target.
+        """
+        import perf_model as PMODEL                                         # noqa: PLC0415
+        import perf_capsule_verdict as CV                                   # noqa: PLC0415
+
+        baseline_points = harvest_baseline_points(self.work_root)
+        points = list(self.seed_points) + list(baseline_points)
+        if not points:
+            return
+        ceiling = PMODEL.achievable_ceiling(points, provenance="functional and frozen baseline")
+        if not ceiling.known:
+            return                      # never downgrade a known ceiling to an absent one
+        self.achievable_macs_per_cycle = float(ceiling.value)
+        self.achievable_dispersion = CV.ceiling_dispersion(
+            [{"macs": p.macs, "cycles": p.cycles} for p in points])
+        self.achievable_basis = (
+            f"best rate over {len(points)} measured point(s): {len(self.seed_points)} from the "
+            f"phase-1 functional run {self.functional_run_id} and {len(baseline_points)} from the "
+            f"frozen-baseline arm of the performance corpus (baseline arms only; no candidate "
+            f"measurement contributes to this ceiling)")
 
     def evaluate(self, candidate: Path, *, round_index: int, call_index: int,
                  timeout_s: int) -> dict[str, Any]:
         candidate = Path(candidate).resolve(strict=True)
-        candidate_before = str(hash_tree(candidate)["sha256"])
         if self._baseline_cache is None:
             self._baseline_cache = {}
         call_root = self.work_root / f"round_{round_index:02d}" / f"call_{call_index:03d}"
         if call_root.exists() or call_root.is_symlink():
             raise StageGateError(f"development GSIM feedback workspace is not fresh: {call_root}")
         call_root.mkdir(parents=True)
+        # MEASURE A SNAPSHOT, NOT THE AGENT'S LIVE TREE. This sweep runs for over an hour while the
+        # agent keeps working, and it used to hash the live tree at both ends and refuse if the two
+        # differed. Measured 2026-09-04: every one of 38 members ran and passed, and the whole
+        # eighty-minute result was thrown away because the agent appended to `iteration_notes.md`
+        # while the last member was finishing -- a file the prompt TELLS it to keep, which no
+        # measurement reads. The check was aimed at a real property, that the cycles belong to the
+        # bytes that produced them, and a snapshot gives that property outright instead of turning a
+        # note into a voided campaign. Every run below reads the copy, so a concurrent edit cannot
+        # change what was measured, and `candidate_sha256` names the bytes actually executed.
+        measured_candidate = call_root / "_measured_candidate"
+        shutil.copytree(candidate, measured_candidate, symlinks=True)
+        candidate_before = str(hash_tree(measured_candidate)["sha256"])
+        candidate = measured_candidate
         members = sorted(self.corpus.capsules, key=lambda row: (row.family, row.capsule))
         if not members:
             raise StageGateError("development GSIM feedback has zero frozen tuning members")
         cells: list[dict[str, Any]] = []
         started = time.monotonic()
+        # CHEAPEST MEASURED MEMBER FIRST. A candidate behind on every member measured so far is
+        # behind; paying for the corpus's slowest members to confirm it spends the budget on a
+        # conclusion already reached.
+        members, order_basis = order_members_by_cost(members, self.member_cost)
+        stopped_after: int | None = None
+        # WAVES, so a declared fan-out does not cost the early stop its meaning. The first wave is
+        # exactly the prefix the stop rule needs before it may fire, which makes wave 0's decision
+        # identical to the sequential sweep's; after that the waves are the fan-out wide. What a
+        # wave can waste is the members it launched past the point the sequential sweep would have
+        # stopped -- bounded, and cheapest-first, so the boundary nearest the decision is the
+        # cheapest members. `_prefetched` is consumed by the loop body below in place of executing.
+        workers = _sweep_workers()
+        deadline = started + timeout_s
+        self._prefetched = {}
+        pending = list(enumerate(members))
+        wave_sizes = [self.MINIMUM_REFUTING_PREFIX] if workers > 1 else []
         for index, member in enumerate(members):
             key = (member.family, member.capsule)
             decision = self.decisions.get(key)
@@ -512,12 +753,19 @@ class DevelopmentGsimFeedback:
             remaining = timeout_s - int(time.monotonic() - started)
             if remaining <= 0:
                 raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
-            baseline = self._baseline_cache.get(key)
+            if workers > 1 and (index, "candidate") not in self._prefetched and pending:
+                take = wave_sizes.pop(0) if wave_sizes else workers
+                wave, pending = pending[:take], pending[take:]
+                self._prefetched.update(self._prefetch_wave(
+                    wave, candidate=candidate, candidate_before=candidate_before,
+                    call_root=call_root, deadline=deadline, workers=workers))
+            baseline = self._baseline_cache.get(key) or self._take_prefetched(index, "baseline")
             if baseline is None:
                 raw = self._execute(
                     arm="baseline", package=self.baseline, package_sha256=self.baseline_sha256,
                     member=member, decision=decision,
-                    workspace=call_root / f"m{index:03d}_baseline", timeout_s=remaining)
+                    workspace=call_root / _ARM_WORKSPACE.format(index=index, arm="baseline"),
+                    timeout_s=remaining)
                 baseline = self._redact_execution(
                     raw, decision, arm="baseline", family=member.family, capsule=member.capsule,
                     required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
@@ -525,13 +773,16 @@ class DevelopmentGsimFeedback:
             remaining = timeout_s - int(time.monotonic() - started)
             if remaining <= 0:
                 raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
-            raw = self._execute(
-                arm="candidate", package=candidate, package_sha256=candidate_before,
-                member=member, decision=decision,
-                workspace=call_root / f"m{index:03d}_candidate", timeout_s=remaining)
-            candidate_row = self._redact_execution(
-                raw, decision, arm="candidate", family=member.family, capsule=member.capsule,
-                required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
+            candidate_row = self._take_prefetched(index, "candidate")
+            if candidate_row is None:
+                raw = self._execute(
+                    arm="candidate", package=candidate, package_sha256=candidate_before,
+                    member=member, decision=decision,
+                    workspace=call_root / _ARM_WORKSPACE.format(index=index, arm="candidate"),
+                    timeout_s=remaining)
+                candidate_row = self._redact_execution(
+                    raw, decision, arm="candidate", family=member.family, capsule=member.capsule,
+                    required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
             comparable = baseline["correct"] and candidate_row["correct"]
             bcycles, ccycles = baseline["gsim_cycles"], candidate_row["gsim_cycles"]
             # UTILIZATION against a ceiling this machine's own RTL derives. Cycles alone say nothing
@@ -571,10 +822,54 @@ class DevelopmentGsimFeedback:
                 "candidate_utilization": _utilization(ccycles),
                 "baseline_share_of_achievable": _share(bcycles),
                 "candidate_share_of_achievable": _share(ccycles),
+                **_capsule_verdict_fields(
+                    capsule=member.capsule, declared_macs=spec_macs,
+                    achievable_rate=self.achievable_macs_per_cycle,
+                    baseline_cycles=bcycles, candidate_cycles=ccycles if comparable else None,
+                    dispersion=self.achievable_dispersion),
+                "measured": True, "skip_reason": None,
             })
+            # STOP ONLY A LOSING CANDIDATE, NEVER PROMOTE A WINNING ONE. The rule is one-directional
+            # on purpose: a candidate behind on every comparable member measured so far cannot be
+            # rescued by a member it has not reached, because the objective is fewer cycles on the
+            # SAME work and it is already behind on all of it. The converse is false -- a candidate
+            # ahead on the cheap prefix may still lose on a member it has not paid for -- so a
+            # winning prefix buys nothing and the full sweep is measured.
+            if self._refuted_so_far(cells, index, len(members)):
+                stopped_after = index + 1
+                break
+        for member in members[stopped_after:] if stopped_after is not None else ():
+            # RECORDED, not omitted. A missing cell and an unmeasured one are different claims.
+            cells.append(_unmeasured_cell(
+                member, reason=("the sweep is ordered cheapest-measured-first and this candidate "
+                                "was already behind on every comparable member measured before "
+                                "this one; the remaining members were not paid for")))
+        # The snapshot must still be the bytes the runs read: nothing here may edit it, and a
+        # difference now would mean the measurement mutated its own input rather than that the agent
+        # kept working. That is a real defect and still refuses.
+        # THE CEILING IS RE-DERIVED FROM THE BASELINES THIS SWEEP JUST MEASURED, then every field
+        # that depends on it is recomputed. Doing it only at prepare time would leave round 0 -- the
+        # round that sets the agent's whole plan -- scored against phase 1's corpus, which is the
+        # case that was actually wrong.
+        self._refresh_achievable()
+        rate = self.achievable_macs_per_cycle
+        if rate:
+            for row in cells:
+                if not row.get("measured") or not row.get("declared_macs"):
+                    continue            # an unmeasured cell keeps its nulls
+                ideal = float(row["declared_macs"]) / float(rate)
+                row["baseline_share_of_achievable"] = ideal / row["baseline_gsim_cycles"]
+                row["candidate_share_of_achievable"] = (
+                    ideal / row["candidate_gsim_cycles"] if row["comparable"] else None)
+                row.update(_capsule_verdict_fields(
+                    capsule=row["capsule"], declared_macs=row["declared_macs"],
+                    achievable_rate=rate, baseline_cycles=row["baseline_gsim_cycles"],
+                    candidate_cycles=(row["candidate_gsim_cycles"] if row["comparable"] else None),
+                    dispersion=self.achievable_dispersion))
+
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
-            raise StageGateError("development GSIM evaluation mutated the candidate compiler")
+            raise StageGateError("development GSIM evaluation mutated the candidate snapshot")
         comparable = [row for row in cells if row["comparable"]]
         return validate_redacted_feedback({
             "schema_version": 1,
@@ -594,7 +889,9 @@ class DevelopmentGsimFeedback:
                         "peak_macs_per_cycle": self.peak_macs_per_cycle,
                         "peak_basis": self.peak_basis,
                         "achievable_macs_per_cycle": self.achievable_macs_per_cycle,
-                        "achievable_basis": self.achievable_basis},
+                        "achievable_basis": self.achievable_basis,
+                        "recoverable": recoverable_cycles(
+                            cells, self.achievable_macs_per_cycle)},
         })
 
 
@@ -1415,9 +1712,113 @@ _PLACEHOLDER = re.compile(r"\{([A-Za-z][A-Za-z0-9_]*)\}")
 
 
 
+#: What a barrier count reports when the stream cannot be read. Never zero: "no barriers found" and
+#: "cannot see barriers" are different claims, and only one of them is evidence.
+BARRIER_UNKNOWN = "UNKNOWN"
+
+
+def _demand_lower_bound(buffer: Mapping[str, Any], peak_macs_per_cycle: int | None) -> dict[str, Any]:
+    """Cycles this arm cannot beat, from its own declared work and operands.
+
+    A bound, not a prediction. Compute demand is the priced MAC count over the structural peak;
+    movement demand is the operand bytes the buffer itself declares. Both are floors -- a spilling
+    schedule re-fetches, so real movement is only ever larger -- which keeps the result honestly a
+    lower bound rather than an estimate that could flatter a candidate.
+    """
+    if not peak_macs_per_cycle:
+        return {"status": "unavailable", "reason": "no derived structural peak for this target"}
+    from merlin.perf.work_volume import work_from_command_buffer            # noqa: PLC0415
+    work = work_from_command_buffer(buffer)
+    macs = int(getattr(work, "known_macs", 0) or 0)
+    tensors = buffer.get("tensors")
+    if not macs or not isinstance(tensors, Mapping):
+        return {"status": "unavailable", "reason": "the buffer declares no work or no tensors"}
+    width = {"i8": 1, "u8": 1, "i16": 2, "bf16": 2, "f16": 2, "i32": 4, "f32": 4}
+    operand_bytes = 0
+    for spec in tensors.values():
+        if not isinstance(spec, Mapping):
+            continue
+        shape, dtype = spec.get("shape"), str(spec.get("dtype") or "")
+        if not isinstance(shape, Sequence) or dtype not in width:
+            return {"status": "unavailable",
+                    "reason": f"an operand declares no shape or an unpriced dtype {dtype!r}"}
+        count = 1
+        for extent in shape:
+            count *= int(extent)
+        operand_bytes += count * width[dtype]
+    return {"status": "derived",
+            "compute_floor_cycles": macs / float(peak_macs_per_cycle),
+            "declared_operand_bytes": operand_bytes,
+            "exact": not bool(getattr(work, "is_lower_bound", False)),
+            "licence": "a floor the arm cannot beat; never an estimate of what it will cost"}
+
+
+def _command_events(buffer: Mapping[str, Any]) -> dict[str, float] | None:
+    """Count the emitted commands by the kind a calibrated cost model prices.
+
+    The cost model is fitted per COMMAND KIND, so what it needs is a histogram of the buffer's own
+    opcodes mapped onto the event names it was calibrated against. Returns None when the buffer
+    declares an opcode outside that vocabulary -- an unrecognised command means the histogram is
+    incomplete, and an incomplete histogram priced as if it were whole would understate the arm.
+    """
+    rows = buffer.get("commands")
+    if not isinstance(rows, Sequence) or not rows:
+        return None
+    # The ABI opcode -> calibrated event name. Both vocabularies are declared, not guessed: the
+    # left side is what the emitted buffer contains, the right is what the model was fitted on.
+    mapping = {"RES_PACK": "mvin2_B", "MATMUL_RESIDENT": "compute", "MATMUL": "compute",
+               "COMMIT": "mvout", "EVICT": "mvout", "FENCE": "fence", "BIAS_ADD": "compute",
+               "VECTOR_MAP": "compute", "VREDUCE": "compute", "CONV2D": "compute",
+               "MOVEMENT": "mvin_A", "ATTENTION_QK": "compute", "ATTENTION_PV": "compute"}
+    events: dict[str, float] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            return None
+        event = mapping.get(str(row.get("opcode") or ""))
+        if event is None:
+            return None
+        events[event] = events.get(event, 0.0) + 1.0
+    return events
+
+
+def _calibrated_estimate(target: str, buffer: Mapping[str, Any]) -> dict[str, Any]:
+    """A calibrated cycle estimate for one arm, with its measured error band -- or a refusal.
+
+    SCREENING ONLY. This model is order-blind: it prices a histogram of commands, so it separates
+    candidates that change WHAT is issued (tiling, blocking, how many barriers) and is blind to
+    candidates that only change the ORDER. It may eliminate a candidate; it may never certify one,
+    and its number never enters a result. The band is reported with the value because a point
+    estimate quoted without its error is the over-claim this whole layer exists to prevent.
+    """
+    events = _command_events(buffer)
+    if events is None:
+        return {"status": "unavailable",
+                "reason": "the buffer declares a command outside the calibrated vocabulary, so its "
+                          "event histogram is incomplete and pricing it would understate this arm"}
+    try:
+        from merlin.cost_model.linear import LinearCostModel                # noqa: PLC0415
+        model = LinearCostModel.load(_cost_model_artifact(target))
+        cycles, band = model.predict_with_band(events)
+    except Exception as exc:  # noqa: BLE001 - an uncalibrated target screens nothing, and says so
+        return {"status": "unavailable",
+                "reason": f"no calibrated cost model for {target!r}: {type(exc).__name__}"}
+    return {"status": "derived", "cycles": float(cycles), "band": float(band), "events": events,
+            "basis": "per-command coefficients calibrated against the cycle-accurate engine",
+            "licence": "screening only; order-blind; never a certified cycle count"}
+
+
+def _cost_model_artifact(target: str) -> Path | None:
+    """The target's calibrated coefficients, resolved by NAME rather than hardcoded per target."""
+    from merlin.common.paths import merlin_dir                              # noqa: PLC0415
+    candidate = merlin_dir() / "python" / "merlin" / "cost_model" / f"{target}_cost_coeffs.json"
+    return candidate if candidate.is_file() else None
+
+
 def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
+                            candidate_root: Path | None = None,
                             peak_macs_per_cycle: int | None,
-                            achievable_macs_per_cycle: float | None) -> dict[str, Any]:
+                            achievable_macs_per_cycle: float | None,
+                            target: str = "") -> dict[str, Any]:
     """Price two emitted command buffers against each other -- ORDERING ONLY, and free.
 
     WHY THIS EXISTS. The measured feedback is the only judge the agent had, and it costs ~110 s a
@@ -1434,9 +1835,21 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     from merlin.perf.work_volume import work_from_command_buffer          # noqa: PLC0415
 
     def _load(path: Path) -> Mapping[str, Any]:
+        # A RELATIVE PATH HERE HAD NO BASE, and this action runs in the HOST process rather than
+        # under the sandbox's --chdir, so a relative argument resolved against a directory the agent
+        # has never seen. Three bases were live in one tool: the agent's shell sees
+        # `submission/performance/...`, a brokered subprocess is chdir'd into the submission so it
+        # sees `performance/...`, and this host action saw neither. Measured: the agent spent two
+        # calls discovering that, having been taught the second convention by the emit action one
+        # call earlier, and the refusal it got back said "absent or linked" -- a claim about the
+        # filesystem, when the actual fault was the base.
         resolved = Path(path)
+        if not resolved.is_absolute():
+            resolved = (candidate_root / resolved) if candidate_root else resolved
         if resolved.is_symlink() or not resolved.is_file():
-            raise StageGateError(f"command buffer is absent or linked: {resolved}")
+            hint = ("" if Path(path).is_absolute() or candidate_root is None else
+                    f" (a relative path is resolved against the candidate root {candidate_root})")
+            raise StageGateError(f"command buffer is absent or linked: {resolved}{hint}")
         return json.loads(resolved.read_text(encoding="utf-8"))
 
     out: dict[str, Any] = {"schema_version": 1, "kind": "host_owned_command_buffer_analysis",
@@ -1462,19 +1875,100 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     out["peak_macs_per_cycle"] = peak_macs_per_cycle
     out["achievable_macs_per_cycle"] = achievable_macs_per_cycle
 
+    # THREE FREE SIGNALS, none of which may certify. Each reads the candidate's own emitted
+    # artifacts, so none can leak a golden or a holdout, and none costs oracle time. Together they
+    # let a bad candidate be ELIMINATED before a measurement is spent on it -- the measured rule is
+    # that a cheap tier which REFUTES is sound (12/12) while one that PASSES certifies nothing.
+    buffers = {arm: _load(path)
+               for arm, path in (("baseline", baseline_json), ("candidate", candidate_json))}
+
+    # NO CALIBRATED CYCLE ESTIMATE IS OFFERED, and the reason is measured, not cautious.
+    #
+    # The per-command cost model is accurate on absolute magnitude for in-distribution shapes
+    # (MAPE 8.1%), and it is ANTI-predictive for the comparison this action exists to make.
+    # Measured over 774 within-capsule ordered pairs drawn from 115 distinct emitted programs, its
+    # ordering agreement with the cycle oracle is 39.3% -- materially WORSE than the 50% a coin
+    # gets, and worse than spike's 46.1%. The mechanism is structural: within one capsule the work
+    # is fixed, so the `compute` term never varies between two candidates, and the only terms left
+    # that do vary (config, mvin, fence counts) anti-correlate with measured cycles. Reporting it
+    # here would not be a weak signal, it would be a signal pointing the wrong way, and the agent
+    # would follow it. Absolute magnitude is a different question from ordering; do not let a good
+    # answer to the first be quoted as an answer to the second.
+
+    # 2. synchronization: how many completion points the candidate removed
+    try:
+        from merlin.perf import barrier_arms as BARRIER                     # noqa: PLC0415
+        out["barriers"] = BARRIER.paired_removal(buffers["baseline"], buffers["candidate"])
+    except Exception as exc:  # noqa: BLE001 - an uncountable stream is UNKNOWN, never zero
+        out["barriers"] = {"status": BARRIER_UNKNOWN,
+                           "reason": f"barrier counting failed: {type(exc).__name__}"}
+
+    # 3. a LOWER BOUND on cycles from declared demand alone: what this arm cannot beat
+    out["lower_bound"] = {arm: _demand_lower_bound(buffer, peak_macs_per_cycle)
+                          for arm, buffer in buffers.items()}
+
+    # 4. STRUCTURAL INEFFICIENCIES, TAGGED BY THE LEVEL THEY LIVE AT. The corpus can only measure
+    # the levels it has capsules for -- tile and intra-layer here, two inter-layer members, and
+    # nothing at the boundary, fusion or global rungs. An agent scored on measured cycles alone is
+    # therefore steered to ignore whole classes of inefficiency simply because nothing asks about
+    # them. These findings are free, read from the emitted buffer, and name an inefficiency that is
+    # PRESENT; none of them is a cycle count and none may be cited as a saving.
+    # Measured on this corpus: all 78 emitted buffers report zero findings, because these capsules
+    # commit each accumulator once and never read it back. So on today's corpus this is a
+    # REGRESSION guard -- it fires when a restructuring introduces a round trip, re-stages a value,
+    # or leaves a fusable producer unfused.
+    try:
+        from merlin.perf import structural_levels as LEVELS                 # noqa: PLC0415
+        out["structural_levels"] = {arm: LEVELS.findings(buffer)
+                                    for arm, buffer in buffers.items()}
+    except Exception as exc:  # noqa: BLE001 - an unreadable buffer is UNKNOWN, never "clean"
+        out["structural_levels"] = {
+            "status": BARRIER_UNKNOWN,
+            "reason": f"structural level analysis failed: {type(exc).__name__}"}
+
     b, c = arms["baseline"]["macs"], arms["candidate"]["macs"]
     if b and c and b != c:
         out["work_delta"] = {"candidate_over_baseline": c / b,
                              "note": ("the candidate does a DIFFERENT amount of arithmetic; a cycle "
                                       "comparison between these two is not a schedule comparison")}
-    try:
-        from merlin.perf import differential as DIFF                       # noqa: PLC0415
-        verdict = DIFF.compare(arms["baseline"], arms["candidate"])
-        out["differential"] = {"basis": str(getattr(verdict, "basis", "")),
-                               "reason": str(getattr(verdict, "reason", "") or "")}
-    except Exception as exc:  # noqa: BLE001 - the analyzer's own refusal is the answer here
-        out["differential"] = {"basis": "REFUSED",
-                               "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    # NO DIFFERENTIAL VERDICT IS ATTEMPTED HERE, and saying so is the point.
+    #
+    # This previously called `differential.compare(arms["baseline"], arms["candidate"])` on the two
+    # plain dicts built just above. `compare` takes two `envelope.Composed` bounds and reads
+    # `.operator` off them, so on a dict it raised AttributeError on EVERY call, the bare `except`
+    # swallowed it, and the action reported a hardcoded `{"basis": "REFUSED"}` -- a refusal that
+    # looked like the analyzer's considered verdict but was only a type error. A stale claim that
+    # reads like evidence is worse than no claim, because it gets cited.
+    #
+    # The honest reason is structural, not incidental: this action compares DEMAND (the work each
+    # command buffer declares) and never builds a composed envelope or per-resource demands, so it
+    # has nothing a cycle-level differential could be computed from. The measurement path is what
+    # carries a differential verdict.
+    # WHICH OF TWO ORDERINGS IS FASTER IS NOT ANSWERED HERE, and the refusal is measured. Every
+    # cheap signal available to this action was scored on the exact comparison the search makes --
+    # two programs for the SAME workload, which the oracle timed faster -- over held-out workloads,
+    # by `validate_ordering_signals.py`. None qualified. The numbers travel with the refusal so a
+    # reader can see it is a measurement rather than caution, and so a later change is checked
+    # against them rather than against a memory of them.
+    out["ordering_signals"] = {
+        "status": ORDERING_REFUSED,
+        "basis": ("held-out within-workload ordering agreement against the cycle oracle, "
+                  f"{ORDERING_EVIDENCE['held_out_pairs']} pair(s) over "
+                  f"{ORDERING_EVIDENCE['held_out_workloads']} workload(s)"),
+        "measured": dict(ORDERING_EVIDENCE["agreement"]),
+        "reason": ("no signal readable from a command buffer orders two schedules of the same "
+                   "workload better than chance, so none is offered for that purpose. Use this "
+                   "action to eliminate a candidate that does MORE declared work, adds completion "
+                   "points, or cannot beat its own lower bound -- all of which are decidable here. "
+                   "Which of two legal orderings is faster is decidable only by measurement."),
+        "artifact": ORDERING_EVIDENCE["artifact"],
+    }
+    out["differential"] = {
+        "basis": "not_attempted",
+        "reason": ("this action prices declared WORK from the command buffers; a cycle-level "
+                   "differential needs a composed envelope and per-resource demands per arm, "
+                   "which it never builds. Read the measurement path for a differential verdict."),
+    }
     return out
 
 
@@ -1520,14 +2014,111 @@ def build_action_registry(candidate: Path,
     actions.append(BrokerAction(
         ANALYSIS_ACTION, (_HOST_ANALYSIS_SENTINEL, "{baseline_json}", "{candidate_json}"),
         ("baseline_json", "candidate_json"),
-        "host-owned ORDERING-ONLY comparison of two emitted command buffers: work volume, the "
-        "derived ceilings, and a differential verdict. Costs no oracle time -- use it to screen a "
-        "candidate BEFORE spending a measurement on it",
+        "host-owned comparison of two emitted command buffers from the buffers alone: declared work "
+        "volume per arm, the derived ceilings, the change in completion points (barriers), and a "
+        "cycle LOWER BOUND per arm, and structural inefficiencies tagged by the optimisation level "
+        "they live at. Costs no oracle time -- use it to ELIMINATE a candidate before "
+        "spending a measurement on it. It cannot certify one: nothing here predicts which of two "
+        "orderings is faster, and the block it returns says so",
         False))
     names = [action.name for action in actions]
     if len(names) != len(set(names)):
         raise StageGateError("broker action registry contains duplicate names")
     return tuple(actions)
+
+
+def _record_host_refusal(stage: Any, exc: BaseException, *, round_index: Any, call_index: Any) -> None:
+    """Write the full reason for a host-side refusal where the HOST can read it.
+
+    Deliberately not on the agent's path and deliberately best-effort: a failure to record a failure
+    must not replace it with a different one. It lands beside the evaluator's own work root, which is
+    host-private, so nothing here widens what the agent can see.
+    """
+    try:
+        import traceback                                                    # noqa: PLC0415
+
+        evaluator = getattr(stage, "feedback_evaluator", None)
+        root = Path(getattr(evaluator, "work_root", "")) / "host_refusals"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / f"round_{round_index}_call_{call_index}.txt").write_text(
+            f"{type(exc).__name__}: {exc}\n\n"
+            + "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            encoding="utf-8")
+    except Exception:  # noqa: BLE001 - recording is never allowed to mask the thing being recorded
+        pass
+
+
+def _capsule_verdict_fields(**kwargs: Any) -> dict[str, Any]:
+    """Decide one member, and never let a failure to decide read as a decision."""
+    try:
+        import perf_capsule_verdict as CV                                   # noqa: PLC0415
+        row = CV.capsule_verdict(**kwargs)
+        return {"verdict": row.get("verdict"), "verdict_reason": row.get("reason")}
+    except Exception as exc:  # noqa: BLE001 - an undecidable member is refused, never assumed
+        return {"verdict": "refused",
+                "verdict_reason": f"the verdict could not be computed: {type(exc).__name__}"}
+
+
+#: How many members the ranked recoverable list names. Enough to show where the objective actually
+#: lives without turning the summary into a second copy of the cell table.
+RECOVERABLE_RANK_LIMIT = 8
+
+
+def recoverable_cycles(cells: Sequence[Mapping[str, Any]],
+                       achievable_macs_per_cycle: float | None) -> dict[str, Any]:
+    """Which members hold the cycles, ranked, and what fraction of the objective each one is.
+
+    ⚠️ WHY THIS EXISTS, measured on a completed campaign. The corpus total was 171,739 cycles and the
+    search converged at ~0.2%. It was not a search failure: the agent improved 9-14 members a trial
+    with ZERO regressions. It was an Amdahl problem nobody had told it about. Seven deep-K residency
+    members were **92.4% of all cycles**, already at 0.59-0.94 of the achievable rate, while the 18
+    members with real headroom were **7.2% of the total** -- so perfecting every member the agent
+    could reach was worth at most 4.64%. One member, the deepest spilling one, held 21,500 recoverable
+    cycles by itself: **12.5% of the entire objective**, more than every small member combined.
+
+    Every number above was already derivable from the cells: the agent was given `declared_macs`,
+    `baseline_gsim_cycles` and `share_of_achievable` per member and would have had to multiply,
+    subtract and rank across 38 rows to find it. It never did, and three trials of search went into
+    7% of the objective. Reporting a share of the ACHIEVABLE rate tells a member how it is doing;
+    reporting recoverable CYCLES tells the corpus where its time is. Those are different questions and
+    only the second one orders the work.
+
+    Recoverable is measured against the achievable rate, never the structural peak: no program on this
+    machine has reached the peak (31.3% is the best observed), so pricing headroom against it would
+    hand back a number that does not exist. A member already at or past the achievable rate recovers
+    nothing rather than a negative amount.
+    """
+    if not achievable_macs_per_cycle or achievable_macs_per_cycle <= 0:
+        return {"status": "unavailable",
+                "reason": "no achievable rate was derived, so headroom cannot be priced in cycles",
+                "ranked": [], "corpus_total_cycles": None}
+    priced, total = [], 0.0
+    for row in cells:
+        macs, cycles = row.get("declared_macs"), row.get("baseline_gsim_cycles")
+        if not row.get("measured") or not isinstance(macs, int) or not isinstance(cycles, int):
+            continue
+        total += float(cycles)
+        ideal = float(macs) / float(achievable_macs_per_cycle)
+        priced.append({"family": row["family"], "capsule": row["capsule"],
+                       "baseline_cycles": int(cycles),
+                       "recoverable_cycles": max(0.0, float(cycles) - ideal)})
+    if not priced or total <= 0:
+        return {"status": "unavailable",
+                "reason": "no measured member declares the work its headroom would be priced from",
+                "ranked": [], "corpus_total_cycles": None}
+    for row in priced:
+        row["share_of_corpus_cycles"] = row["baseline_cycles"] / total
+        row["recoverable_share_of_corpus"] = row["recoverable_cycles"] / total
+    ranked = sorted(priced, key=lambda row: -row["recoverable_cycles"])[:RECOVERABLE_RANK_LIMIT]
+    recoverable_total = sum(row["recoverable_cycles"] for row in priced)
+    return {"status": "derived", "corpus_total_cycles": total,
+            "total_recoverable_cycles": recoverable_total,
+            "total_recoverable_share": recoverable_total / total,
+            "ranked": ranked, "ranked_members": len(ranked), "priced_members": len(priced),
+            "basis": ("baseline cycles minus the cycles this member's own declared work would take at "
+                      "the best rate anything on this machine has reached"),
+            "licence": ("where the objective's cycles are, not a prediction that they are reachable; "
+                        "a member's lever may not exist")}
 
 
 def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
@@ -1555,7 +2146,15 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
                    "candidate_minus_baseline_cycles", "baseline_over_candidate", "comparable",
                    "declared_macs", "declared_work_basis", "ideal_cycles_at_peak",
                    "baseline_utilization", "candidate_utilization",
-                   "baseline_share_of_achievable", "candidate_share_of_achievable"}
+                   "baseline_share_of_achievable", "candidate_share_of_achievable",
+                   # Whether this member is FINISHED, better, or still owes cycles. Everything
+                   # above is a number the reader has to interpret; without this the cell records
+                   # a measurement and states no position on it, which is how a member at 3% of
+                   # the achievable rate and one at 100% came to read identically.
+                   "verdict", "verdict_reason",
+                   # A cell the sweep did not pay for says so, rather than being omitted. Omitting
+                   # it would let a short sweep read as a complete one.
+                   "measured", "skip_reason"}
     identities: set[tuple[str, str]] = set()
     for index, row in enumerate(cells):
         if not isinstance(row, Mapping) or set(row) != cell_fields:
@@ -1564,6 +2163,31 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
         if (not isinstance(family, str) or not family or not isinstance(capsule, str)
                 or not capsule or (family, capsule) in identities):
             raise StageGateError(f"development feedback cell {index} has an invalid identity")
+        identities.add((family, capsule))
+        # AN UNMEASURED CELL HAS NULLS WHERE A MEASURED ONE HAS NUMBERS, and demanding numbers from
+        # it is not strictness -- it discards the whole sweep. Measured 2026-09-04: a sweep that
+        # walks members cheapest-first and stops once a candidate is already losing emits a cell for
+        # each member it did not pay for; every one carried null correctness and null cycles, this
+        # check rejected the first of them, and an eighty-minute measurement in which all 38 members
+        # ran was thrown away with nothing recorded but an exception type. An absent number must
+        # read as absent. What is still demanded is that the cell say so: `measured` False with a
+        # reason, `comparable` False, and no derived delta -- so a short sweep can never be read as
+        # a complete one, which is the failure this null was introduced to prevent.
+        if not isinstance(row.get("measured"), bool):
+            raise StageGateError(f"development feedback cell {index} does not say whether it ran")
+        measured = bool(row["measured"])
+        if not measured:
+            if row.get("comparable") is not False or not str(row.get("skip_reason") or ""):
+                raise StageGateError(
+                    f"development feedback cell {index} was not measured but claims a comparison "
+                    f"or gives no reason")
+            for field in ("baseline_correct", "candidate_correct", "baseline_gsim_cycles",
+                          "candidate_gsim_cycles", "candidate_minus_baseline_cycles",
+                          "baseline_over_candidate"):
+                if row.get(field) is not None:
+                    raise StageGateError(
+                        f"development feedback cell {index} was not measured but carries {field}")
+            continue
         # Utilization is derived or it is null. A ratio outside (0, 1] would mean the program beat a
         # ceiling its own RTL says is unreachable, which is a broken derivation, not a fast program.
         macs = row.get("declared_macs")
@@ -1579,10 +2203,25 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
                 raise StageGateError(
                     f"development feedback cell {index} has an invalid {field}")
-            if (field.endswith("_utilization") or field.endswith("_share_of_achievable")) and value > 1:
+            # TWO RATIOS, TWO DIFFERENT CEILINGS, AND ONLY ONE OF THEM IS A BOUND.
+            #
+            # `utilization` is taken against the STRUCTURAL peak, which the target's own RTL derives
+            # from its array geometry. Nothing can exceed it, so a value above 1 is a broken
+            # derivation and is still refused.
+            #
+            # `share_of_achievable` is taken against the best rate any MEASURED program has been
+            # observed to reach. That is an empirical best-so-far, not a bound, and a better program
+            # is exactly the thing that beats it. Refusing it here discarded an entire 38-member
+            # sweep: measured 2026-09-04, the ceiling harvested from the functional run was 80.01
+            # MACs/cycle while four members of the PERF corpus already ran above it -- PC01_k128 at
+            # 99.79 (share 1.247), PR01 at 94.06, PR03 at 88.33, PR02 at 87.96 -- because the perf
+            # corpus carries larger, more efficient shapes than the corpus the ceiling came from.
+            # An eighty-minute measurement in which every member ran and passed was thrown away for
+            # reporting the good news that the ceiling was too low.
+            if field.endswith("_utilization") and value > 1:
                 raise StageGateError(
-                    f"development feedback cell {index} reports {field} above the derived peak")
-        identities.add((family, capsule))
+                    f"development feedback cell {index} reports {field} above the derived "
+                    f"structural peak, which no program can exceed")
         if any(not isinstance(row.get(field), bool)
                for field in ("baseline_correct", "candidate_correct", "comparable")):
             raise StageGateError(f"development feedback cell {index} has invalid correctness")
@@ -1607,10 +2246,18 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
     if (not isinstance(summary, Mapping)
             or set(summary) != {"members", "comparable", "all_correct",
                                 "peak_macs_per_cycle", "peak_basis",
-                                "achievable_macs_per_cycle", "achievable_basis"}
+                                "achievable_macs_per_cycle", "achievable_basis",
+                                # WHERE THE OBJECTIVE'S CYCLES ARE. Derivable from the cells all
+                                # along and never derived: a campaign converged at 0.2% because 92.4%
+                                # of its cycles sat in members the agent never aimed at. Required, so
+                                # a future summary cannot quietly stop saying it.
+                                "recoverable"}
             or summary.get("members") != len(cells)
             or summary.get("comparable") != sum(bool(row["comparable"]) for row in cells)
-            or summary.get("all_correct") != (summary.get("comparable") == len(cells))):
+            # "all correct" is a claim about what was MEASURED. Counting a member the sweep never
+            # paid for as a failure reports a correctness problem that nothing observed.
+            or summary.get("all_correct") != (
+                summary.get("comparable") == sum(1 for row in cells if row.get("measured")))):
         raise StageGateError("development feedback summary is inconsistent")
     # Exact schemas above already exclude goldens, outputs, paths, shapes, and
     # Verilator.  This serialized audit makes that boundary easy to regression-test.
@@ -1659,8 +2306,9 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
     Shapes come from the capsule's declared operands, so this stays a statement about the workload.
     """
     operation = descriptor.get("operation")
-    if not isinstance(operation, Mapping) or operation.get("op") != "matmul":
-        return None, f"declared work is derived for matmul only, not {(operation or {}).get('op')!r}"
+    if not isinstance(operation, Mapping) or operation.get("op") not in _WORK_OPERATIONS:
+        return None, (f"declared work is derived for {sorted(_WORK_OPERATIONS)} only, not "
+                      f"{(operation or {}).get('op')!r}")
     attributes = operation.get("attributes")
     if not isinstance(attributes, Mapping):
         return None, "the declared operation carries no operand attributes"
@@ -1672,9 +2320,76 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
         if (isinstance(shape, Sequence) and not isinstance(shape, (str, bytes))
                 and all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in shape)):
             shapes[str(row.get("name"))] = [int(v) for v in shape]
-    lhs = shapes.get(str(attributes.get("lhs")))
     weight = shapes.get(str(attributes.get("weight")))
-    if lhs is None or weight is None or len(lhs) != 2 or len(weight) != 2:
+    if weight is None or len(weight) != 2:
+        return None, "the declared weight operand is not a rank-2 shape"
+
+    # A CONVOLUTION'S WORK IS ITS OUTPUT EXTENT, WHICH ITS OPERAND SHAPES DO NOT CARRY. The other
+    # operations read M from an activation row count; a conv's output rows are Ho x Wo, a function of
+    # the image, the window, the stride, the padding and the dilation -- so a member whose geometry
+    # differs does different work at identical operand shapes. Priced as None until now, which cost
+    # the whole conv family its utilization, its share of the achievable rate and its verdict, and
+    # disabled the corpus-wide attainment stop condition for every other member too (one unpriced
+    # member is enough).
+    #
+    # The extent is DERIVED through the same helper the golden and the harness use, never recomputed
+    # here: a second implementation of this arithmetic is a second thing to keep in sync, and it would
+    # be wrong in exactly the padded and strided cases this pricing was added to reach.
+    if operation.get("op") == _CONV_OPERATION:
+        ifm = shapes.get(str(attributes.get("ifm")))
+        if ifm is None or len(ifm) != 4:
+            return None, "the declared convolution input is not a rank-4 NHWC shape"
+        for field in ("ci", "kh", "kw"):
+            if not isinstance(attributes.get(field), int) or isinstance(attributes.get(field), bool):
+                return None, f"the declared convolution carries no integer {field}"
+        ci, kh, kw = int(attributes["ci"]), int(attributes["kh"]), int(attributes["kw"])
+        if ifm[3] != ci:
+            return None, (f"the declared input channel count {ifm[3]} disagrees with the declared "
+                          f"ci {ci}")
+        if weight[0] != kh * kw * ci:
+            return None, (f"the packed weight's {weight[0]} rows are not the {kh}x{kw}x{ci} window "
+                          f"the declaration names, so the two do not describe one convolution")
+        from merlin.runtime.commandbuffer import conv_out_dims  # noqa: PLC0415
+        try:
+            rows, cols = conv_out_dims(int(ifm[1]), int(ifm[2]), kh, kw,
+                                       list(attributes.get("stride") or [1, 1]),
+                                       list(attributes.get("padding") or [0, 0, 0, 0]),
+                                       list(attributes.get("dilation") or [1, 1]))
+        except Exception as exc:  # noqa: BLE001 - an underivable extent refuses, never defaults
+            return None, f"the declared convolution geometry has no output extent ({exc})"
+        if rows <= 0 or cols <= 0:
+            return None, (f"the declared convolution geometry leaves no output position "
+                          f"({rows}x{cols})")
+        return rows * cols * weight[0] * weight[1], (
+            f"declared convolution geometry: {rows}x{cols} output positions x {weight[0]} window taps "
+            f"x {weight[1]} output channels")
+
+    # A REUSED WEIGHT IS STILL DECLARED WORK. Twelve of the thirty-eight corpus members declare one
+    # resident weight and a LIST of activations sharing it, and reading only a single `lhs` left
+    # every one of them with no declared work: no utilization, no share of the achievable rate, no
+    # verdict -- a third of the corpus with no headroom signal at all. It also left the corpus-wide
+    # attainable total UNKNOWN, which silently disabled the attainment stop condition. The rule is
+    # the same rule, summed: each reuse contracts the same weight, so each contributes its own
+    # M x K x N and the total is what the specification demands however a compiler emits it.
+    reuses = attributes.get("matmuls")
+    if isinstance(reuses, Sequence) and not isinstance(reuses, (str, bytes)):
+        total = 0
+        for index, row in enumerate(reuses):
+            if not isinstance(row, Mapping):
+                return None, f"reuse {index} of the declared operation is not a mapping"
+            lhs = shapes.get(str(row.get("lhs")))
+            if lhs is None or len(lhs) != 2:
+                return None, f"reuse {index} declares no rank-2 activation shape"
+            if lhs[1] != weight[0]:
+                return None, (f"reuse {index} does not contract: lhs {lhs} against weight {weight}")
+            total += lhs[0] * lhs[1] * weight[1]
+        if not total:
+            return None, "the declared operation reuses the weight zero times"
+        return total, ("declared operand shapes, summed over the "
+                       f"{len(reuses)} reuse(s) of one resident weight (M x K x N each)")
+
+    lhs = shapes.get(str(attributes.get("lhs")))
+    if lhs is None or len(lhs) != 2:
         return None, "the declared matmul operands are not two rank-2 shapes"
     if lhs[1] != weight[0]:
         return None, ("the declared operand shapes do not contract: "
@@ -1798,6 +2513,113 @@ def functional_emission_guard(baseline: Path, candidate: Path,
             "offenders": offenders, "rows": rows}
 
 
+#: Fields an unmeasured cell carries. It is the same shape as a measured one so the redacted
+#: schema stays exact, with every measurement-valued field null -- an absent number is never a zero.
+def _unmeasured_cell(member: Any, *, reason: str) -> dict[str, Any]:
+    return {
+        "family": member.family, "capsule": member.capsule,
+        "baseline_correct": None, "candidate_correct": None,
+        "baseline_gsim_cycles": None, "candidate_gsim_cycles": None,
+        "candidate_minus_baseline_cycles": None, "baseline_over_candidate": None,
+        "comparable": False,
+        "declared_macs": None, "declared_work_basis": None, "ideal_cycles_at_peak": None,
+        "baseline_utilization": None, "candidate_utilization": None,
+        "baseline_share_of_achievable": None, "candidate_share_of_achievable": None,
+        "verdict": "refused", "verdict_reason": reason,
+        "measured": False, "skip_reason": reason,
+    }
+
+
+def harvest_baseline_points(work_root: Path) -> list:
+    """Measured points from the FROZEN-BASELINE arm of this run, and nothing else.
+
+    The baseline package is phase 1's submission, sha-pinned before the first member runs and
+    re-executed unchanged for every one, so these points cannot depend on anything the agent wrote.
+    CANDIDATE arms are excluded by construction and that exclusion is the whole safety argument: a
+    ceiling the agent can raise is a target the agent authors, and `share_of_achievable` would then
+    pin its own candidate near 1.0 while pushing every other member down.
+
+    Scoped to ONE run's work root on purpose. Harvesting across stages would make the objective
+    depend on what happens to be on disk at launch -- two trials of one configuration would be
+    scored differently, and clearing `out/` would silently move the target.
+
+    The filter is the workspace directory THIS module creates, not a parse of the runner's run-id:
+    that name is minted in another module and matching it would be exactly the brittleness the
+    no-regex rule exists to prevent.
+    """
+    import perf_model as PMODEL                                             # noqa: PLC0415
+
+    root = Path(work_root)
+    if not root.is_dir():
+        return []
+    found: dict[str, Any] = {}
+    for arm_dir in sorted(root.glob(f"round_*/call_*/{_BASELINE_ARM_GLOB}")):
+        for point in PMODEL.harvest_measured_points(arm_dir)[0]:
+            found.setdefault(point.capsule, point)
+    return sorted(found.values(), key=lambda p: p.capsule)
+
+
+def harvest_member_cost(roots: "Sequence[Path]") -> dict[str, float]:
+    """Median measured simulation seconds per capsule, from runs already on disk.
+
+    ORDER THE SWEEP BY WHAT IT COSTS, and derive that from measurement rather than from a proxy.
+    Declared MACs are the obvious proxy and they are WRONG here: measured on this corpus, a
+    262144-MAC deep-K member simulates in 74.9 s while a 65536-MAC wide-M/N member takes 178.5 s --
+    the proxy inverts on exactly the pair it would need to get right. Simulation cost tracks the
+    shape of the program, not the size of its arithmetic, so it is read from prior runs.
+
+    Absent history yields an empty table and the caller keeps the declared order, saying so. An
+    empty table is never a claim that every member costs the same.
+    """
+    seconds: dict[str, list[float]] = {}
+    for root in roots:
+        if not root or not Path(root).is_dir():
+            continue
+        for path in Path(root).rglob("capsule_result.json"):
+            try:
+                document = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001 - an unreadable result contributes no cost, not a zero
+                continue
+            capsule = str(document.get("capsule") or "")
+            tier = ((document.get("tiers") or {}).get("L3") or {})
+            active = ((tier.get("timing") or {}).get("sim_active_s"))
+            # A WALL TIME MEASURED UNDER FAN-OUT DOES NOT PRICE THE MEMBER. Cycles are
+            # concurrency-invariant on this stack; wall times are emphatically not -- the same query
+            # measured 3.7 s serial and 23.4 s at 16 workers, a 6.3x spread. Mixing those into the
+            # median would inflate exactly the members that happened to run beside others and
+            # silently corrupt the cheapest-first ordering the early stop depends on. The runner
+            # stamps the fan-out it ran at; a row that does not say, or says more than one, is not
+            # a price.
+            fanout = ((tier.get("concurrency") or {}).get("workers"))
+            if fanout is not None and fanout != 1:
+                continue
+            if capsule and isinstance(active, (int, float)) and not isinstance(active, bool) and active > 0:
+                seconds.setdefault(capsule, []).append(float(active))
+    table: dict[str, float] = {}
+    for capsule, values in seconds.items():
+        values.sort()
+        middle = len(values) // 2
+        table[capsule] = (values[middle] if len(values) % 2
+                          else 0.5 * (values[middle - 1] + values[middle]))
+    return table
+
+
+def order_members_by_cost(members: "Sequence[Any]", cost: Mapping[str, float]) -> tuple[tuple, str]:
+    """Cheapest measured member first; unpriced members last, so absence never looks cheap.
+
+    Returns the ordering and the basis, because an ordering nobody can account for is one nobody
+    can check. A member with no recorded cost sorts AFTER every priced one: it might be the most
+    expensive in the corpus, and guessing it is cheap would put the slowest member first.
+    """
+    if not cost:
+        return tuple(members), "declared order; no measured simulation cost is on record"
+    ordered = sorted(members, key=lambda m: (cost.get(m.capsule) is None,
+                                             cost.get(m.capsule, 0.0), m.family, m.capsule))
+    priced = sum(1 for m in members if m.capsule in cost)
+    return tuple(ordered), (f"ascending median measured simulation seconds "
+                            f"({priced}/{len(members)} members priced; unpriced sort last)")
+
+
 def prepare_development_feedback(
         *, certificate_path: Path | None, certificate_sha256: str | None,
         rtl_facts_path: Path | None, corpus: FrozenPerformanceCorpus, baseline: Path,
@@ -1823,13 +2645,27 @@ def prepare_development_feedback(
         # gemmini), so optimising toward it is chasing a number that does not exist. The achievable
         # ceiling is the best rate anything on this machine actually reached, and it is what the
         # agent is asked to close on. Underivable -> None with a reason, never a substituted number.
+        # Ordering the sweep by measured cost needs history; absent it the declared order stands
+        # and the basis says so, rather than a proxy silently standing in for a measurement.
+        member_cost: dict[str, float] = harvest_member_cost(
+            [Path(functional_run_dir).parent] if functional_run_dir is not None else [])
+        _, member_cost_basis = order_members_by_cost((), member_cost)
         achievable_macs, achievable_basis = None, "no functional run was supplied to harvest"
+        achievable_dispersion: float | None = None
+        seed_points: tuple = ()
         if functional_run_dir is not None:
             try:
                 import perf_model as PMODEL  # noqa: PLC0415
                 points, _skipped = PMODEL.harvest_measured_points(Path(functional_run_dir))
                 ceiling = PMODEL.achievable_ceiling(
                     points, provenance=f"measured cycles harvested from {Path(functional_run_dir).name}")
+                try:
+                    import perf_capsule_verdict as CV                        # noqa: PLC0415
+                    achievable_dispersion = CV.ceiling_dispersion(
+                        [{"macs": p.macs, "cycles": p.cycles} for p in points])
+                except Exception:  # noqa: BLE001 - an underivable spread refuses, never defaults
+                    achievable_dispersion = None
+                seed_points = tuple(points)
                 if ceiling.known:
                     achievable_macs = float(ceiling.value)
                     achievable_basis = (f"best rate over {ceiling.n_samples} measured points in "
@@ -1846,6 +2682,12 @@ def prepare_development_feedback(
             workload = PAIR._gsim_workload(member)
             decision = GATE.plan_evaluation(
                 certificate, workload, phase="development_correctness", gsim_available=True)
+            # THE GATE GRANTS A DEVELOPMENT-ONLY REFERENCE-ENGINE FALLBACK HERE AND THIS REFUSES IT
+            # ANYWAY, deliberately. Taking it would put a reference-engine cycle count into the
+            # agent-visible feedback document, and that document's redaction boundary forbids naming
+            # that engine at all -- a cell would either carry the forbidden name or hide which engine
+            # timed it, and hiding it is worse. An out-of-envelope member is therefore admitted by
+            # PAYING for its certificate offline, not by relaxing what a development cell may say.
             if (not decision.admitted or not decision.eligible
                     or decision.selected_engine != "gsim" or not decision.use_gsim):
                 raise GATE.GsimGateError(
@@ -1861,6 +2703,9 @@ def prepare_development_feedback(
         rtl_identity, Path(work_root), decisions,
         peak_macs_per_cycle=peak_macs, peak_basis=peak_basis,
         achievable_macs_per_cycle=achievable_macs, achievable_basis=achievable_basis,
+        achievable_dispersion=achievable_dispersion, seed_points=seed_points,
+        functional_run_id=(Path(functional_run_dir).name if functional_run_dir is not None else ""),
+        member_cost=member_cost, member_cost_basis=member_cost_basis,
         tuning_call_budget=tuning_call_budget)
 
 
@@ -2380,14 +3225,19 @@ class _Broker:
                            rendered: dict[str, str], raw_argv: list[str], call_index: int,
                            timeout_s: int, started: float) -> dict[str, Any]:
         feedback_document: dict[str, Any] | None = None
+        # set when the search reports it has converged; distinct from `refusal`, which is a NO-GO
+        self.stop_verdict = getattr(self, "stop_verdict", None)
         if action_name == ANALYSIS_ACTION:
             try:
                 evaluator = self.feedback_evaluator
                 document = analyze_command_buffers(
                     Path(rendered["baseline_json"]), Path(rendered["candidate_json"]),
+                    candidate_root=Path(self.candidate),
                     peak_macs_per_cycle=getattr(evaluator, "peak_macs_per_cycle", None),
                     achievable_macs_per_cycle=getattr(
-                        evaluator, "achievable_macs_per_cycle", None))
+                        evaluator, "achievable_macs_per_cycle", None),
+                    target=str(getattr(
+                        getattr(evaluator, "target_experiment", None), "target", "") or ""))
                 result = {"returncode": 0,
                           "stdout": _canonical_json(document).decode("utf-8"), "stderr": "",
                           "elapsed_s": round(time.monotonic() - started, 3)}
@@ -2404,9 +3254,28 @@ class _Broker:
                     self.candidate, round_index=self.feedback_round, call_index=call_index,
                     timeout_s=timeout_s))
                 stdout = _canonical_json(feedback_document).decode("utf-8")
+                # THE SEARCH'S OWN VERDICT, kept so the round loop can end on evidence. It was
+                # computed and recorded and read by nothing, so a converged search looked exactly
+                # like one that had merely run out of rounds.
+                stopping = feedback_document.get("stopping")
+                if isinstance(stopping, Mapping) and stopping.get("status") == "stop":
+                    fired = [str(v.get("name")) for v in (stopping.get("verdicts") or [])
+                             if isinstance(v, Mapping) and v.get("fired")]
+                    self.stop_verdict = {"conditions": fired,
+                                         "share_of_attainable": stopping.get("share_of_attainable"),
+                                         "queries": stopping.get("queries")}
                 result = {"returncode": 0, "stdout": stdout, "stderr": "",
                           "elapsed_s": round(time.monotonic() - started, 3)}
             except Exception as exc:  # noqa: BLE001 - receipt the refusal; never expose raw evaluator data
+                # THE AGENT MAY NOT SEE WHY, BUT THE HOST MUST RECORD IT. What the agent gets stays
+                # the exception's type and nothing else, because the refusal reason names gate
+                # internals. What was written nowhere was the reason itself: the receipt keeps only
+                # a DIGEST of that one-line string, so a refusal after a full sweep left the type
+                # and no message, no traceback and no cell. Measured 2026-09-04: an eighty-minute
+                # measurement in which all 38 members ran was thrown away, and recovering the cause
+                # meant brute-forcing the exception name against the receipt's stderr digest.
+                _record_host_refusal(self, exc, round_index=self.feedback_round,
+                                     call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
                           "stderr": ("development GSIM feedback refused by the host-owned "
                                      f"evaluator ({type(exc).__name__})"),
@@ -3519,7 +4388,8 @@ def validate_candidate_record(document: Mapping[str, Any], *, require_consumable
                 or broker.get("all_required_succeeded") is not True
                 or any(row.get("feedback_successes", 0) < 1 for row in receipt_rows)
                 or len(receipt_rows) != rounds_requested
-                or any(row.get("agent_exit_code") != 0 for row in round_rows)):
+                or any(row.get("agent_exit_code") not in (0, ROUND_DEADLINE_EXIT)
+                       for row in round_rows)):
             raise StageGateError(f"performance candidate is not consumable: {admission.get('refusal')}")
     return dict(document)
 
@@ -4347,6 +5217,7 @@ def run_stage(
     probe_results: list[dict[str, Any]] | None = None
     last_outer: AgentSandboxPolicy | None = None
     refusal: str | None = None
+    stopped_by: dict[str, Any] | None = None
     total_calls = 0
     receipt_records: list[dict[str, Any]] = []
     last_actions: tuple[BrokerAction, ...] = ()
@@ -4354,7 +5225,15 @@ def run_stage(
     for round_index in range(rounds):
         remaining = int(deadline - time.monotonic())
         if remaining <= 0:
-            refusal = "performance stage wall-clock budget expired before the next round"
+            # Spending the declared wall budget is the run finishing, not failing. This wrote into
+            # the refusal channel, so the launcher's claim that the wall check "ends the run
+            # cleanly" was true for no value of `rounds`. A round that already sealed a candidate
+            # keeps it; with nothing sealed yet there is nothing to admit and it stays a refusal.
+            if round_records:
+                stopped_by = {"conditions": ["wall_budget"], "round": round_index,
+                              "reason": "the stage spent its declared wall-clock budget"}
+            else:
+                refusal = "performance stage wall-clock budget expired before the first round"
             break
         workspace = stage_root / "agent_workspaces" / f"round_{round_index:02d}"
         candidate = fresh_round_workspace(previous_submission, workspace, previous_digest)
@@ -4453,6 +5332,22 @@ def run_stage(
         last_inner = inner
         last_actions = actions
         previous_submission, previous_digest = candidate, observed
+        # A ROUND THAT SPENT ITS BUDGET IS FINISHED, NOT BROKEN -- provided it left the evidence a
+        # finished round leaves. Treating the deadline as a crash discards everything: a session
+        # that ran eleven hours, measured the corpus repeatedly and sealed a valid candidate was
+        # thrown away whole, because the same branch handled a spawn failure, a crash and an expiry.
+        # The budget is the run's declared size; reaching it is the expected end of a search that
+        # did not converge first, and the post-freeze formal grade still decides the verdict.
+        #
+        # It is admitted ONLY on the evidence a clean round already had to produce: a clean
+        # answer/tool-access audit, a sealable candidate, and at least one successful mandatory
+        # feedback call -- all three are checked above and any of them failing has already written
+        # `refusal`. Anything else non-zero stays a refusal, because a crash is not a budget.
+        if rc == ROUND_DEADLINE_EXIT and refusal is None and audit["clean"]:
+            stopped_by = {"conditions": ["round_deadline"], "round": round_index,
+                          "reason": ("the round reached its declared deadline with a clean audit "
+                                     "and a sealed candidate; the search did not converge first")}
+            break
         if rc != 0:
             refusal = f"Codex round {round_index} exited with rc={rc}"
             break
@@ -4460,6 +5355,14 @@ def run_stage(
             break
         if not audit["clean"]:
             refusal = f"Codex round {round_index} failed the answer/tool-access audit"
+            break
+        # STOPPING ON EVIDENCE IS A SUCCESS, NOT A REFUSAL. `refusal` is the NO-GO channel: anything
+        # placed in it makes the run unconsumable and returns 2. A converged search must therefore
+        # end through its own variable, and the consumability tests below have to admit a run that
+        # ended early because it was finished rather than because it broke.
+        if getattr(broker, "stop_verdict", None) is not None:
+            stopped_by = dict(broker.stop_verdict)
+            stopped_by["round"] = round_index
             break
 
     if (not round_records or not transcript_paths or last_outer is None or last_inner is None
@@ -4489,7 +5392,12 @@ def run_stage(
     after = PC.check_fork(fork, base)
     if after.ok is not True:
         refusal = f"functional base fork changed during authoring: {after.reason}"
-    exits_clean = all(row["agent_exit_code"] == 0 for row in round_records)
+    # A round that reached its declared deadline counts as a clean exit only when the loop above
+    # classified it that way -- which it does only with a clean audit and a sealed candidate, and
+    # which it records in `stopped_by`. Without that, the deadline is still a refusal.
+    _admitted_exits = ({0, ROUND_DEADLINE_EXIT}
+                       if (stopped_by or {}).get("conditions") == ["round_deadline"] else {0})
+    exits_clean = all(row["agent_exit_code"] in _admitted_exits for row in round_records)
     delta = candidate_delta(base, previous_submission)
     if not delta["execution_relevant_changed_files"]:
         refusal = "Codex produced no execution-relevant candidate change"
@@ -4513,7 +5421,11 @@ def run_stage(
         refusal = "combined Codex transcript contains zero command evidence"
     elif not combined_audit["clean"]:
         refusal = "combined Codex transcript failed the answer/tool-access audit"
-    receipts_clean = (len(receipt_records) == rounds and all(
+    # A converged run has FEWER round records than `rounds`, by design. Requiring exact equality
+    # would mark the search unconsumable for having finished early, which is the outcome the stop
+    # rule exists to produce.
+    expected_rounds = len(round_records) if stopped_by is not None else rounds
+    receipts_clean = (len(receipt_records) == expected_rounds and all(
         row.get("all_required_succeeded") is True and row.get("feedback_successes", 0) >= 1
         for row in receipt_records))
     if not receipts_clean:
@@ -4536,7 +5448,8 @@ def run_stage(
             + (f": {', '.join(kinds)}" if kinds else "") + ")")
     functional_guard_clean = functional_guard.get("status") == "clean"
     consumable = (refusal is None and audits_clean and exits_clean and receipts_clean
-                  and functional_guard_clean and len(round_records) == rounds)
+                  and functional_guard_clean and len(round_records) == expected_rounds
+                  and len(round_records) >= 1)
     receipt_manifest = stage_root / "control" / "receipt_manifest.json"
     _write_json(receipt_manifest, {"schema_version": 1, "rounds": receipt_records})
     receipt_manifest.chmod(0o444)
@@ -4709,6 +5622,9 @@ def run_stage(
         "admission": {
             "consumable": consumable,
             "refusal": refusal,
+            # Distinct from `refusal` on purpose: this names a run that ended because the search
+            # reported it was finished, which must not be readable as a failure.
+            "stopped_by": stopped_by,
             "development_feedback_performed_by_stage": True,
             "evaluation_performed_by_stage": False,
             "success_declared_by_stage": False,

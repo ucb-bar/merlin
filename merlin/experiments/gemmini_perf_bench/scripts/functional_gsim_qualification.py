@@ -351,11 +351,45 @@ def _completion(root: Path, declaration_sha256: str, source: GATE.CertificateRec
     return path, digest
 
 
+def reusable_certificate(root: Path, source: GATE.CertificateRecord) -> tuple[Path, str] | None:
+    """A finished certificate in ``root`` that this run would only reproduce, or None.
+
+    Phase 1 pays for the functional evidence once. Rebuilding it on every launch re-pays for a
+    result that cannot differ: the certificate is keyed on the frozen submission, and the only other
+    thing that can move it is the GSIM build it pins -- which the coordinator independently requires
+    to equal the tuning certificate's (`_require_same_gsim_build`). So the reuse condition is exactly
+    "would that check pass", and it is checked here rather than assumed.
+
+    Fails closed in every direction: no completion receipt (an interrupted run left the root behind),
+    an unreadable or digest-mismatched certificate, or ANY pin differing from the source certificate
+    all yield None and a full rebuild. Reuse is never inferred from the directory existing.
+    """
+    if not root.is_dir():
+        return None
+    completions = sorted(root.glob("completion.*.json"))
+    certificates = sorted(root.glob("functional-certificate.*.json"))
+    if not completions or not certificates:
+        return None                     # written last, so its absence means the run did not finish
+    path = certificates[-1]
+    digest = _sha_file(path)
+    try:
+        record = GATE.load_certificate(path, expected_sha256=digest)
+    except Exception:                   # noqa: BLE001 - an unloadable certificate is not reusable
+        return None
+    if record.target != source.target:
+        return None
+    for name in GATE.REQUIRED_PINS:
+        if record.pins.get(name, {}).get("sha256") != source.pins.get(name, {}).get("sha256"):
+            return None                 # a different engine or RTL: the evidence is not this run's
+    return path, digest
+
+
 def produce_functional_certificate(
         *, descriptor: Path, functional_base: Path, functional_base_sha256: str,
         source_certificate: Path, source_certificate_sha256: str, root: Path,
         timeout: int = 3600, workers: int = 2, gsim_max_cycles: int | None = None,
-        reuse_source_captures: bool = True, target_experiment: Any | None = None,
+        reuse_source_captures: bool = True, reuse_completed_certificate: bool = True,
+        target_experiment: Any | None = None,
         cohort: ORCH.FunctionalGradeCohort | None = None,
         lowerer: Callable[..., Path] = HQUAL.lower_with_functional_baseline,
         capturer: Callable[..., Mapping[str, Any]] = PRODUCER.capture_case,
@@ -371,6 +405,10 @@ def produce_functional_certificate(
     functional_base = _readonly_baseline(Path(functional_base), functional_base_sha256)
     source = GATE.load_certificate(
         source_certificate, expected_sha256=source_certificate_sha256)
+    if reuse_completed_certificate:
+        existing = reusable_certificate(Path(root), source)
+        if existing is not None:
+            return existing
     _build_receipt(source)
     target_experiment = target_experiment or load_target_experiment(descriptor)
     if getattr(target_experiment, "target", None) != source.target:
@@ -482,6 +520,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--gsim-max-cycles", type=int)
     parser.add_argument("--no-reuse-source-captures", action="store_true")
+    parser.add_argument("--force-refresh", action="store_true",
+                        help="rebuild even when a finished certificate with identical pins exists")
     return parser
 
 
@@ -493,7 +533,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         source_certificate=Path(args.source_certificate),
         source_certificate_sha256=args.source_certificate_sha256, root=Path(args.root),
         timeout=args.timeout, workers=args.workers, gsim_max_cycles=args.gsim_max_cycles,
-        reuse_source_captures=not args.no_reuse_source_captures)
+        reuse_source_captures=not args.no_reuse_source_captures,
+        reuse_completed_certificate=not args.force_refresh)
     print(GATE.canonical_json({"path": str(path), "sha256": digest}))
     return 0
 

@@ -30,6 +30,56 @@ import freeze_run  # noqa: E402
 FORMAL_REQUIRED_TIER = "L3"
 
 
+def _formal_model_simulator(target: str) -> dict:
+    """Resolve the concrete engine for formal whole-model certification.
+
+    A tier names fidelity, not a binary.  Chipyard operator grading already resolves its elaborated-RTL
+    engine through the availability/cost policy; whole-model grading must make the identical decision.
+    Falling back to the manifest's historical tier binding on that path silently pinned models to
+    Verilator even when GSIM was selected for every operator capsule.
+    """
+    cfg = CR._config_for_target(target, None, "i8xi8_i32")
+    if FORMAL_REQUIRED_TIER not in cfg.rtl_tiers:
+        raise RuntimeError(
+            f"formal tier {FORMAL_REQUIRED_TIER} is not an RTL tier for target {target}"
+        )
+    sim_via = CR._bespoke_sim_via(target)
+    if sim_via == "chipyard":
+        selected = dict(CR.chipyard_l3_selection(target))
+        if (not selected.get("engine")
+                or selected.get("fidelity") != "elaborated_rtl"):
+            raise RuntimeError(
+                f"formal chipyard selection for {target} did not resolve to elaborated_rtl: "
+                f"{selected!r}"
+            )
+        selected["selection"] = "chipyard_l3_policy"
+        return selected
+
+    engine = cfg.tier_sim.get(FORMAL_REQUIRED_TIER)
+    if not engine:
+        raise RuntimeError(
+            f"formal tier {FORMAL_REQUIRED_TIER} has no simulator binding for target {target}"
+        )
+    return {
+        "engine": engine,
+        "fidelity": "elaborated_rtl",
+        "reason": f"target manifest binds {FORMAL_REQUIRED_TIER} through {sim_via or 'default'}",
+        "selection": "target_manifest",
+    }
+
+
+def _install_formal_model_simulator(target: str) -> tuple[dict, str | None]:
+    """Select and install the trusted model-tile engine, returning prior ambient state for audit."""
+    selected = _formal_model_simulator(target)
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+    if required is not None and selected.get("engine") != required:
+        raise RuntimeError(
+            f"formal model engine {selected.get('engine')!r} differs from required {required!r}")
+    inherited = os.environ.get("MERLIN_MESH_SIM")
+    os.environ["MERLIN_MESH_SIM"] = selected["engine"]
+    return selected, inherited
+
+
 def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUIRED_TIER) -> tuple[bool, list[str]]:
     """Fail-closed completion predicate for one official grading phase.
 
@@ -238,13 +288,11 @@ def main(argv: list[str] | None = None) -> int:
     # target's own manifest.  An inherited MERLIN_MESH_SIM=spike must not silently turn an L3 claim into
     # a functional-model result; each tile also records and is checked for derived_from_rtl and
     # cycle_accurate evidence by capsule_grade.model_execution_check.
-    _runner_cfg = CR._config_for_target(C.TARGET, None, "i8xi8_i32")
-    _formal_mesh_sim = _runner_cfg.tier_sim.get(FORMAL_REQUIRED_TIER)
-    if FORMAL_REQUIRED_TIER not in _runner_cfg.rtl_tiers or not _formal_mesh_sim:
-        raise SystemExit(f"formal tier {FORMAL_REQUIRED_TIER} is not bound to an RTL simulator for "
-                         f"target {C.TARGET}")
-    _inherited_mesh_sim = os.environ.get("MERLIN_MESH_SIM")
-    os.environ["MERLIN_MESH_SIM"] = _formal_mesh_sim
+    try:
+        _formal_mesh_selection, _inherited_mesh_sim = _install_formal_model_simulator(C.TARGET)
+    except Exception as exc:  # noqa: BLE001 — formal grading must fail closed, never demote fidelity
+        raise SystemExit(f"cannot resolve formal whole-model simulator: {exc}") from exc
+    _formal_mesh_sim = _formal_mesh_selection["engine"]
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
@@ -346,6 +394,10 @@ def main(argv: list[str] | None = None) -> int:
             "required_tier": FORMAL_REQUIRED_TIER,
             "simulator": _formal_mesh_sim,
             "inherited_value_overridden": _inherited_mesh_sim,
+            "fidelity": _formal_mesh_selection.get("fidelity"),
+            "selection": _formal_mesh_selection.get("selection"),
+            "reason": _formal_mesh_selection.get("reason"),
+            "passed_over": _formal_mesh_selection.get("passed_over", []),
         },
     }
     (run_dir / "run_manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))

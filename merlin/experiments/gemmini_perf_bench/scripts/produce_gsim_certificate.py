@@ -474,9 +474,20 @@ def encode_declared_outputs(outputs: Any, command_buffer: Mapping[str, Any]) \
 
 def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str | Path,
                  workdir: str | Path, artifacts: ArtifactPaths, timeout: int = 3600,
+                 reference_timeout: int | None = None,
                  backend: Any = None,
                  build_elf: Callable[[Mapping[str, Any], str, Path], Path] | None = None) -> dict[str, Any]:
     """Build one ELF and run that exact file on Verilator and GSIM through the backend seam.
+
+    THE TWO ENGINES NEED DIFFERENT DEADLINES, and giving them one is how a capture dies on a member
+    that was working. The reference engine executes a small multiple of a hundred cycles a second
+    while the candidate engine is more than an order of magnitude faster, so a deadline sized for
+    the fast one kills the slow one on exactly the deep members a certificate is most wanted for:
+    measured here, a deep-K member ran to the 3600 s default on the reference leg, under an outer
+    cap of six hours that never got to apply. ``reference_timeout`` sizes the reference leg on its
+    own; left None it falls back to ``timeout``, which is the previous behaviour and is stated
+    rather than silently reintroduced. Keeping the candidate leg tight stays useful: a run there
+    that takes an hour is hung, not slow.
 
     Injection points keep the smoke test offline.  The default path uses the same contract compiler and
     backend ``run_elf``/``parse_output`` methods as capsule grading.
@@ -511,7 +522,9 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
             raise ProducerError(f"{engine} is unavailable; absent execution is not agreement")
         if _sha_file(elf) != elf_digest:
             raise ProducerError("shared ELF changed before the second engine ran")
-        console = backend.run_elf(elf, simulator=engine, timeout=timeout)
+        deadline = timeout if side != "reference" else (
+            timeout if reference_timeout is None else int(reference_timeout))
+        console = backend.run_elf(elf, simulator=engine, timeout=deadline)
         if _sha_file(elf) != elf_digest:
             raise ProducerError(f"shared ELF changed while {engine} ran")
         try:
@@ -682,7 +695,11 @@ def _parser() -> argparse.ArgumentParser:
     capture.add_argument("--capsule-manifest", required=True)
     capture.add_argument("--artifact-dir", required=True)
     capture.add_argument("--workdir", required=True)
-    capture.add_argument("--timeout", type=int, default=3600)
+    capture.add_argument("--timeout", type=int, default=3600,
+                         help="deadline for the candidate (fast) engine")
+    capture.add_argument("--reference-timeout", type=int, default=None,
+                         help="deadline for the reference (cycle-accurate, much slower) engine; "
+                              "defaults to --timeout")
     _add_artifact_args(capture)
     capture.add_argument("--output", required=True)
 
@@ -742,7 +759,7 @@ def main(argv: list[str] | None = None) -> int:
         report = capture_case(
             target=args.target, capsule_manifest=args.capsule_manifest,
             artifact_dir=args.artifact_dir, workdir=args.workdir, artifacts=artifacts,
-            timeout=args.timeout)
+            timeout=args.timeout, reference_timeout=args.reference_timeout)
     elif args.action == "certificate":
         report = produce_certificate(
             target=args.target, captures=args.capture, artifacts=artifacts,

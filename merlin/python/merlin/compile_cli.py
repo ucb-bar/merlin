@@ -384,6 +384,8 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
 
     ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
     accelerator mesh (host dispatch runtime, each matmul injected onto the mesh oracle)."""
+    import os
+
     import numpy as np
     from .mining import k1
     from .mining.registry import load_rvv_package
@@ -503,6 +505,11 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
             from .common.provenance import UNKNOWN as _UNKNOWN
             out["mesh_execution"] = {
                 "target": mesh_target,
+                # Trusted formal grading overwrites MERLIN_MESH_SIM from its selected/pinned L3 engine.
+                # Carry the request beside each call's observed engine so the ledger checker can reject
+                # a fallback or a mixed-engine result rather than inferring provenance from fidelity.
+                "simulator_requested": (os.environ.get("MERLIN_MESH_SIM")
+                                        or os.environ.get("MERLIN_REQUIRED_RTL_ENGINE")),
                 "matmul_layers_routed": res.get("mesh_routed", _UNKNOWN),
                 "matmul_layers_on_mesh": res.get("mesh_ran", _UNKNOWN),
                 "matmul_layers_host_fallback": res.get("mesh_fell_back", _UNKNOWN),
@@ -1228,6 +1235,47 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout) -> di
     return rec
 
 
+def _requested_mesh_simulator(simulator: str | None = None) -> str | None:
+    """Return the caller/legacy mesh-simulator request, without inventing a default."""
+    import os
+
+    requested = simulator if simulator is not None else os.environ.get("MERLIN_MESH_SIM")
+    return str(requested).strip() if requested is not None and str(requested).strip() else None
+
+
+def _resolve_oot_mesh_simulator(target: str, simulator: str | None = None) -> str:
+    """Resolve the simulator for a real OOT mesh invocation through the L3 policy.
+
+    ``MERLIN_MESH_SIM`` predates dynamic elaborated-RTL engine selection and remains an explicit
+    functional-bootstrap override (notably ``spike``).  It must never override a campaign-wide
+    ``MERLIN_REQUIRED_RTL_ENGINE`` pin.  With no explicit request, the shared Chipyard L3 policy chooses
+    an available equal-fidelity engine; this is intentionally not a hidden Verilator fallback.
+    """
+    import os
+
+    requested = _requested_mesh_simulator(simulator)
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+    if required is not None and requested is not None and requested != required:
+        raise RuntimeError(
+            f"required RTL engine {required!r} conflicts with requested mesh simulator {requested!r}")
+
+    # An unpinned explicit request is deliberate (e.g. Spike bootstrap), so preserve it.  A required
+    # engine, even when repeated in MERLIN_MESH_SIM, is still availability-checked by the central policy.
+    if required is None and requested is not None:
+        return requested
+
+    from .targetgen.capsule_runner import chipyard_l3_selection
+
+    selected = chipyard_l3_selection(target)
+    engine = str(selected.get("engine") or "").strip()
+    if not engine:
+        raise RuntimeError(f"{target}: chipyard L3 policy returned no RTL engine")
+    if required is not None and engine != required:
+        raise RuntimeError(
+            f"{target}: selected RTL engine {engine!r} differs from required RTL engine {required!r}")
+    return engine
+
+
 def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) -> dict:
     """Execute each mesh-routed matmul as a single systolic tile on the target's REAL mesh oracle.
 
@@ -1249,7 +1297,15 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
 
     pkg_dir = package or _default_oot_package(target)
     out: dict = {"n_tiles": 0, "n_passed": 0, "n_failed": 0, "n_unavailable": 0,
-                 "n_unsynthesizable": 0, "package": pkg_dir, "per_tile": []}
+                 "n_unsynthesizable": 0, "package": pkg_dir, "per_tile": [],
+                 # CHEAPEST-FIRST, for a model exactly as for an operator capsule. Every tile runs the
+                 # target's declared screen tier BEFORE its cert tier, and a tile that fails the screen
+                 # never reaches the expensive oracle. Without this leg a model capsule declared
+                 # `required_oracle_tiers: [L0, L1, L2, L3]` and was graded on L3 alone -- it reached the
+                 # cert tier without earning the tier below it, which is the one ordering every operator
+                 # capsule obeys.
+                 "n_screened": 0, "n_screen_passed": 0, "n_screen_failed": 0,
+                 "n_screen_unavailable": 0}
     if pkg_dir is None:
         out["status"] = "not_run"
         out["reason"] = (f"no default OOT backend package for target {target!r}; pass --mesh-package "
@@ -1264,6 +1320,21 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
     _via_oot = not (_so is not None and _so.exclusive) and _endpoint in (
         None, "inline_asm_insn", "upstream_target")
     out["certified_via"] = "oot_cert" if _via_oot else "endpoint_executor"
+    # Resolve before even building the OOT package: a conflicting campaign pin is a configuration
+    # refusal, not an expensive build followed by a late simulator error.
+    sim = _resolve_oot_mesh_simulator(target) if _via_oot else None
+    # The screen is named by the TARGET'S CONTRACT (tier_sim minus rtl_tiers), never by a "spike"
+    # literal here -- a tier is a fidelity and which simulator answers at it is the contract's business.
+    # A target that declares no cheap tier yields None and the screen is reported UNAVAILABLE rather
+    # than skipped, because "nobody could tell" and "nothing to tell" are different facts.
+    from .targetgen.capsule_runner import _screen_tiers_of
+    _screens = _screen_tiers_of(target) if _via_oot else ()
+    screen_tier, screen_sim = _screens[-1] if _screens else (None, None)
+    out["screen_tier"], out["screen_sim"] = screen_tier, screen_sim
+    if _via_oot and screen_sim is None:
+        out["n_screened"] = None          # absent must never read as 0
+        out["screen_reason"] = (f"{target} declares no oracle tier below its RTL tiers, so its tiles "
+                                f"cannot be screened before the cert tier")
     if _via_oot:
         # Build the OOT backend ONCE up front so a broken build is a single honest not_run, not a per-tile
         # storm. certify re-runs an incremental (no-op) build per tile — harmless.
@@ -1274,10 +1345,6 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             out["reason"] = f"OOT backend build failed: {type(e).__name__}: {str(e)[-400:]}"
             return out
 
-    # Real RTL oracle by default (verilator); MERLIN_MESH_SIM can select spike (functional bootstrap) or
-    # verilator (cycle-accurate RTL). The whole point of on-hardware validation is the RTL, not the ISS.
-    import os
-    sim = os.environ.get("MERLIN_MESH_SIM", "verilator")
     rr = runs_root(target, "mesh_verify")
     for i, r in enumerate(plan.get("mesh", [])):
         d = r.demand
@@ -1346,6 +1413,57 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             with tempfile.TemporaryDirectory(prefix="mesh_tile_") as td:
                 iface = Path(td) / f"{entry['name']}.interface.mlir"
                 iface.write_text(mlir, encoding="utf-8")
+                # THE SCREEN RUNG, run first and gating the cert rung. Same tile, same package, same
+                # three-way gate -- only the oracle is the cheap one. Measured on the gemmini corpus, a
+                # tile's functional screen costs ~0.4 s against ~17 s for the cycle-accurate rung, so
+                # screening every tile is far cheaper than one wasted cert.
+                if screen_sim is not None:
+                    try:
+                        scr = oot_runner.certify(pkg_dir, iface, runs_root=str(rr),
+                                                 run_id=f"{entry['name']}_screen_{screen_tier}",
+                                                 simulator=screen_sim, target=target, timeout=timeout,
+                                                 require_accelerator_trace=True)
+                    except Exception as e:  # noqa: BLE001 — a screen crash is unavailable, never a pass
+                        scr = {"status": "error", "oracle": {"result": "skipped"},
+                               "failure": {"detail": f"{type(e).__name__}: {str(e)[-300:]}"}}
+                    _so_ = scr.get("oracle") or {}
+                    rec["screen"] = {
+                        "tier": screen_tier, "sim": screen_sim,
+                        "oracle_kind": _so_.get("kind"), "oracle_engine": _so_.get("engine"),
+                        "oracle_result": _so_.get("result"),
+                        "derived_from_rtl": _so_.get("derived_from_rtl"),
+                        "cycle_accurate": _so_.get("cycle_accurate"),
+                        "cycles": _so_.get("cycles"),
+                        "trace_check": scr.get("trace_check"),
+                        "artifact_identity": scr.get("artifact_identity"),
+                    }
+                    out["n_screened"] += 1
+                    if _so_.get("result") == "skipped":
+                        out["n_screen_unavailable"] += 1
+                        rec["screen"]["status"] = "oracle_unavailable"
+                        rec["screen"]["reason"] = ((scr.get("failure") or {}).get("detail")
+                                                   or f"{screen_sim} screen oracle unavailable")
+                    elif scr.get("status") == "pass":
+                        out["n_screen_passed"] += 1
+                        rec["screen"]["status"] = "pass"
+                    else:
+                        out["n_screen_failed"] += 1
+                        rec["screen"]["status"] = "fail"
+                        rec["screen"]["reason"] = (scr.get("failure") or {}).get("detail")
+                    # GATEKEEPING: a tile that did not clear the screen does not get the cert oracle.
+                    # Spending the expensive rung on a tile the cheap rung already refused is how a
+                    # cert tier comes to stand alone, and refusing here is what makes the screen a gate
+                    # rather than a decoration. The tile is counted a FAILURE, not skipped: its layer
+                    # is unproven either way, and an excluded tile would leave n_passed == n_tiles.
+                    if rec["screen"]["status"] != "pass":
+                        out["n_tiles"] += 1
+                        out["n_failed"] += 1
+                        rec["status"] = "screen_not_cleared"
+                        rec["reason"] = (f"did not clear the {screen_tier} {screen_sim} screen "
+                                         f"({rec['screen']['status']}), so the cert tier was not run: "
+                                         f"{rec['screen'].get('reason')}")
+                        out["per_tile"].append(rec)
+                        continue
                 res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=entry["name"],
                                          simulator=sim, target=target, timeout=timeout,
                                          require_accelerator_trace=True)
@@ -1355,7 +1473,8 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
             rec["gate"] = res.get("gate")
         oracle = res.get("oracle") or {}
         out["n_tiles"] += 1
-        rec.update(oracle_kind=oracle.get("kind"), oracle_result=oracle.get("result"),
+        rec.update(oracle_kind=oracle.get("kind"), oracle_engine=oracle.get("engine"),
+                   oracle_result=oracle.get("result"),
                    # Preserve the oracle's own fidelity assertion.  A functional Spike pass and a
                    # cycle-accurate RTL pass are both useful, but they cannot carry the same formal
                    # whole-model claim merely because this record later lands under a tier named L3.
@@ -1397,7 +1516,10 @@ def _mesh_verify(plan: dict, *, target: str, package: str | None, timeout: int) 
         "the largest D-aligned unit whose weight+activation working "
         "set fits the target's DERIVED scratchpad capacity (n_subtiles = how many tile it into the layer); "
         f"{_gate_note}. A fit tile that certifies proves the layer runs on the "
-        "mesh once tiled. The remaining gap is the single SPLICED image (all layers' mesh kernels + the "
+        "mesh once tiled. Each tile is run CHEAPEST-FIRST: it must clear the target's declared screen "
+        "tier (" + (f"{screen_tier}/{screen_sim}" if screen_sim else "none declared") + ") before the "
+        "cert oracle is spent on it, so a model earns the tier below its cert tier rather than being "
+        "graded on the cert tier alone. The remaining gap is the single SPLICED image (all layers' mesh kernels + the "
         "scalar/RVV remainder co-scheduled in one binary with activations handed between layers) — see "
         "compile_model's docstring.")
     return out
@@ -1845,11 +1967,10 @@ def _matmul_via_oot_cert(target, mlir, A, W, *, simulator, package, timeout,
     The ``capacity_fit`` obligation is evaluated by the caller (``run_matmul_on_mesh``) BEFORE any mesh
     path runs, so that if the backend then aborts we can say which contract predicate it failed instead
     of reporting an unreachable oracle. It lived here once, which left every non-RoCC path unchecked."""
-    import os
     import tempfile
     from .benchharness import runs_root
     from .targetgen import capsule_common as CC, oot_runner
-    sim = simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")
+    sim = _resolve_oot_mesh_simulator(target, simulator)
     pkg = package or _default_oot_package(target)
     if pkg is None:
         return None
@@ -2109,7 +2230,8 @@ def run_whole_model_on_mesh(target: str, module, *, in_fmt: str = "f32",
     base = {"target": target, "ref_target": ref_target, "ref_kind": ref_kind,
             "n_steps": len(program.steps), "n_mesh": program.n_mesh(),
             "n_scalar": program.n_scalar(), "output_id": program.output, "per_layer": per_layer,
-            "simulator_requested": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator")}
+            "simulator_requested": (_requested_mesh_simulator(simulator)
+                                    or os.environ.get("MERLIN_REQUIRED_RTL_ENGINE"))}
     def _executors() -> list:
         """The DISTINCT executors the mesh layers actually ran on (empty when no layer reached one)."""
         return sorted({e for e in (lay.get("executed_on") for lay in per_layer) if e})
@@ -2186,7 +2308,8 @@ def run_int8_chain_on_mesh(target: str, A0: list, weights: list, *, acc_scale: f
     return {"target": target, "status": "pass" if exact else "fail", "exact": exact,
             "n_layers": len(weights), "acc_scale": acc_scale, "per_layer": per_layer,
             "final_shape": [int(d) for d in a.shape],
-            "simulator": simulator or os.environ.get("MERLIN_MESH_SIM", "verilator"),
+            "simulator": (_requested_mesh_simulator(simulator)
+                          or os.environ.get("MERLIN_REQUIRED_RTL_ENGINE")),
             "note": "int8 matmul chain on the real mesh oracle with the per-layer acc_scale requant handoff "
                     "(each layer's i8 output feeds the next mesh layer); gated bit-exact vs the host int8 "
                     "chain reference at EVERY layer."}

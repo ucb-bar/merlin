@@ -1,22 +1,28 @@
-"""Demonstrate the RTL pre-screen's iteration-saving by MUTATION TESTING vs the real RTL sim (verilator).
+"""One-time Verilator qualification of the RTL pre-screen by mutation testing.
 
 The honest gap (from corroboration on 383 real runs): the corpus had no real RTL-tier codegen failures, so
 the pre-screen was proven *safe* (0 false-rejects) but never shown *catching* a real RTL failure cheaply.
 Here we inject realistic codegen-bug classes into a known-good kernel, and for each mutant run BOTH:
   * the real RTL sim (verilator) — the ground-truth verdict + wall time it costs, and
   * the RTL pre-screen — verdict + wall time (ms),
-showing the pre-screen rejects the genuine RTL failures in ms (saving the verilator run), passes the
+showing the pre-screen rejects the genuine RTL failures in ms (saving the Verilator run), passes the
 unmutated original (0 false-positive), and HONESTLY misses a pure-numerical mutation (needs the oracle).
+
+This is a tooling-qualification demonstration, not campaign evidence and not a performance timing
+authority.  It requires an explicit opt-in flag and refuses to run inside an experiment pinned to a
+different RTL engine; in particular, its output can never be represented as GSIM-certified evidence.
 
 Both the ELF (for verilator) and the decoded trace (for the pre-screen) derive from one artifact —
 `generated/lowered.llvm.mlir` — so a single text mutation propagates consistently to both.
 
-Usage: demo_prescreen_mutation.py [--pkg <dir with command_buffer.json+lowered.llvm.mlir>] [--timeout 400]
+Usage: demo_prescreen_mutation.py --one-time-verilator-qualification
+       [--pkg <dir with command_buffer.json+lowered.llvm.mlir>] [--timeout 400]
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -133,6 +139,29 @@ MUTATORS = [
 ]
 
 
+def _authorize_verilator_qualification(explicit_opt_in: bool) -> dict:
+    """Fail closed unless this legacy Verilator-only probe is explicitly and compatibly requested."""
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+    if required is not None and required != "verilator":
+        raise RuntimeError(
+            "this qualification-only Verilator probe is forbidden in a "
+            f"{required.upper()}-required experiment; it is not {required.upper()}-certified evidence"
+        )
+    if not explicit_opt_in:
+        raise RuntimeError(
+            "refusing implicit Verilator execution: pass explicit --one-time-verilator-qualification; "
+            "the resulting artifact qualifies only the pre-screen and is not campaign evidence"
+        )
+    return {
+        "engine": "verilator",
+        "evidence_scope": "one_time_prescreen_mutation_qualification_only",
+        "campaign_evidence": False,
+        "performance_timing_authority": False,
+        "gsim_certified_evidence": False,
+        "required_rtl_engine": required,
+    }
+
+
 # ------------------------------------------------------------------------------------- evaluators
 def prescreen_verdict(mlir: str, capsule: dict, fc: str | None):
     t0 = time.perf_counter()
@@ -173,7 +202,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--pkg", default=str(DEFAULT_PKG))
     ap.add_argument("--timeout", type=int, default=400)
+    ap.add_argument("--one-time-verilator-qualification", action="store_true",
+                    help="explicitly authorize this qualification-only Verilator mutation probe")
     a = ap.parse_args(argv)
+    try:
+        qualification = _authorize_verilator_qualification(a.one_time_verilator_qualification)
+    except RuntimeError as exc:
+        ap.error(str(exc))
     pkg = Path(a.pkg)
     cb = json.loads((pkg / "command_buffer.json").read_text())
     base_mlir = (pkg / "lowered.llvm.mlir").read_text()
@@ -199,7 +234,7 @@ def main(argv=None):
     structural = [r for r in rows if r["mutant"] not in ("original",) and r["caught_before_rtl"]]
     saved = sum(float(r["verilator_s"]) for r in structural)
     fp = [r for r in rows if r["mutant"] == "original" and r["prescreen"] != "ok"]
-    out = {"package": str(pkg), "rows": rows,
+    out = {"package": str(pkg), "qualification": qualification, "rows": rows,
            "summary": {"structural_failures_caught_pre_RTL": len(structural),
                        "verilator_seconds_saved_est": round(saved, 1),
                        "false_positive_on_original": len(fp),

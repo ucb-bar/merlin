@@ -70,13 +70,49 @@ def counters():
     return HC.derive_occupancy_counters(COUNTER_HEADER)
 
 
+def partition(header: str = COUNTER_HEADER) -> dict:
+    """Elaborated CIRCT in which the derived counters really DO partition busy time.
+
+    An overlap reading is only a measurement once the counters are proved mutually exclusive and
+    exhaustive from the RTL -- a header's naming convention does not establish it. Real evidence for
+    that is a target's own elaborated artifact, which a unit test has no business shipping, so the
+    partition is CONSTRUCTED here from the counter set the module under test derived: each event is
+    the conjunction of its own engines' busy bits with every other engine's negated, which is exactly
+    the one-hot structure the verifier looks for. Nothing about the engines is typed -- they are read
+    back out of the derivation, so this stays a test of the derivation rather than of a spelling.
+
+    The same construction, for the same reason, backs ``merlin/tests/dse/test_hw_counters.py``.
+    """
+    derived = HC.derive_occupancy_counters(header)
+    codes = HC.event_codes(header)
+    busy = {engine: f"%busy_{index}" for index, engine in enumerate(derived.engines)}
+    idle: dict[str, str] = {}
+    lines = ["hw.module @Device() {"]
+    for index, engine in enumerate(derived.engines):
+        idle[engine] = f"%not_{index}"
+        lines.append(f"  %not_{index} = comb.xor bin {busy[engine]}, %true : i1")
+    event = {}
+    for index, (combo, _name) in enumerate(
+            sorted(derived.by_combination.items(), key=lambda item: sorted(item[0]))):
+        event[combo] = f"%event_{index}"
+        operands = [busy[engine] if engine in combo else idle[engine]
+                    for engine in derived.engines]
+        lines.append(f"  %event_{index} = comb.and bin {', '.join(operands)} : i1")
+    ports = [f"io_event_io_event_signal_{codes[name]}: {event[combo]}: i1"
+             for combo, name in derived.by_combination.items()]
+    lines.append(f'  %unused = hw.instance "meter" @Meter({", ".join(ports)}) -> (x: i1)')
+    lines.append("}")
+    return {"status": "available", "hw_text": "\n".join(lines), "codes": codes,
+            "module": "Device", "counter_module": "Meter", "source": "synthetic.mlir"}
+
+
 def readings() -> dict:
     return {name: dict(values) for name, (_axis, _cycles, values) in MEASURED.items()}
 
 
 def points() -> list[FT.Point]:
-    derived = counters()
-    return [FT.point_from_counter_values(name, axis, cycles, values, derived)
+    derived, proof = counters(), partition()
+    return [FT.point_from_counter_values(name, axis, cycles, values, derived, partition=proof)
             for name, (axis, cycles, values) in MEASURED.items()]
 
 
@@ -195,20 +231,23 @@ def test_a_point_with_no_overlap_reading_is_unknown_and_not_zero_overlap():
 
 def test_a_saturated_cohort_is_not_reported_as_a_transient():
     """The verdict must be able to come out the other way, or it is not measuring anything."""
-    derived = counters()
+    derived, proof = counters(), partition()
     settled = [
         FT.point_from_counter_values("A", 16, 300, {"MAIN_EX_CYCLES": 60, "MAIN_LD_CYCLES": 60,
                                                     "MAIN_ST_CYCLES": 0, "MAIN_LD_EX_CYCLES": 40,
                                                     "MAIN_ST_EX_CYCLES": 0, "MAIN_LD_ST_CYCLES": 0,
-                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived),
+                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived,
+                                            partition=proof),
         FT.point_from_counter_values("B", 32, 340, {"MAIN_EX_CYCLES": 60, "MAIN_LD_CYCLES": 60,
                                                     "MAIN_ST_CYCLES": 0, "MAIN_LD_EX_CYCLES": 80,
                                                     "MAIN_ST_EX_CYCLES": 0, "MAIN_LD_ST_CYCLES": 0,
-                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived),
+                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived,
+                                            partition=proof),
         FT.point_from_counter_values("C", 64, 420, {"MAIN_EX_CYCLES": 60, "MAIN_LD_CYCLES": 60,
                                                     "MAIN_ST_CYCLES": 0, "MAIN_LD_EX_CYCLES": 80,
                                                     "MAIN_ST_EX_CYCLES": 0, "MAIN_LD_ST_CYCLES": 0,
-                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived),
+                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived,
+                                            partition=proof),
     ]
     verdict = FT.transient_verdict(settled)
 
@@ -219,20 +258,23 @@ def test_a_saturated_cohort_is_not_reported_as_a_transient():
 
 
 def test_overlap_that_falls_somewhere_refuses_rather_than_calling_the_cohort_settled():
-    derived = counters()
+    derived, proof = counters(), partition()
     unordered = [
         FT.point_from_counter_values("A", 16, 300, {"MAIN_EX_CYCLES": 60, "MAIN_LD_CYCLES": 60,
                                                     "MAIN_ST_CYCLES": 0, "MAIN_LD_EX_CYCLES": 80,
                                                     "MAIN_ST_EX_CYCLES": 0, "MAIN_LD_ST_CYCLES": 0,
-                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived),
+                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived,
+                                            partition=proof),
         FT.point_from_counter_values("B", 32, 340, {"MAIN_EX_CYCLES": 60, "MAIN_LD_CYCLES": 60,
                                                     "MAIN_ST_CYCLES": 0, "MAIN_LD_EX_CYCLES": 20,
                                                     "MAIN_ST_EX_CYCLES": 0, "MAIN_LD_ST_CYCLES": 0,
-                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived),
+                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived,
+                                            partition=proof),
         FT.point_from_counter_values("C", 64, 420, {"MAIN_EX_CYCLES": 60, "MAIN_LD_CYCLES": 60,
                                                     "MAIN_ST_CYCLES": 0, "MAIN_LD_EX_CYCLES": 90,
                                                     "MAIN_ST_EX_CYCLES": 0, "MAIN_LD_ST_CYCLES": 0,
-                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived),
+                                                    "MAIN_LD_ST_EX_CYCLES": 0}, derived,
+                                            partition=proof),
     ]
     verdict = FT.transient_verdict(unordered)
 

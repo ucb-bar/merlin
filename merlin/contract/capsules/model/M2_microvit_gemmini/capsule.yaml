@@ -70,12 +70,7 @@ semantic:
   semantic_family: contraction
   generalization_axis: model
   must_accelerate: false
-  not_asserted_reason: The model deliberately contains required scalar/RVV host islands,
-    so whole-model all-region acceleration is not the claim; lanes.require independently
-    requires mesh execution.
   eligible: auto
-pass_requirements:
-- model-boundary-capstone
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125

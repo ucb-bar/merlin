@@ -198,7 +198,28 @@ def _allowed_sims() -> tuple[str, ...]:
     is NOT forwarded to the self-check. Without this, such a target's agent could reach no oracle from
     inside the sandbox while every gate reported the sandbox healthy.
     """
-    return ("spike", "verilator", "vcs") if _sim_via() == "chipyard" else (_NEUTRAL_SIM,)
+    if _sim_via() != "chipyard":
+        return (_NEUTRAL_SIM,)
+    # DERIVE the elaborated-RTL engines from the engine policy instead of restating one ladder here.
+    # The policy is the single place that knows which engines exist and in what order; a second literal
+    # tuple in this file is how `gsim` came to be unreachable from inside the sandbox after the backend
+    # already supported it. The screen tier (spike) is not an elaborated-RTL engine, so it is named
+    # separately. Fail CLOSED: if the policy cannot be imported, offer only what was always offered --
+    # never widen the allowlist on an error path (this list is load-bearing isolation).
+    try:
+        from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+    except Exception:  # noqa: BLE001 -- no policy module: keep the historical ladder, do not widen
+        engines = ("vcs", "verilator")
+    else:
+        engines = tuple(ENGINE_PRIORITY)
+    # A campaign-wide engine pin is stronger than this agent-controlled request surface.  Spike remains
+    # a correctness-only screen; an RTL request may name only the exact required engine.  Previously the
+    # inherited pin reached the child but `_adapters` directly constructed whichever engine the request
+    # named, so a GSIM-only run could still launch Verilator from the sandbox broker.
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
+    if required:
+        return ("spike", required) if required in engines else ("spike",)
+    return ("spike",) + engines
 
 
 _NEUTRAL_SIM = "contract"
@@ -277,7 +298,11 @@ def main(argv=None):
                 # kept instead of discarded. Without this the capsule stays `pending` forever and the
                 # same bytes are re-certified on the next loop verdict.
                 try:
-                    _TP.record_cert(ws, out, _CERT_TIER, sys.stderr)
+                    # Forward the identity the promotion was ENQUEUED for, so the result lands on the
+                    # exact record it belongs to even when the verdict reader produced no per-capsule
+                    # artifact identity. Absent (a request written before this field existed) it is
+                    # None, and the recorder keeps its previous attribution rule.
+                    _TP.record_cert(ws, out, _CERT_TIER, sys.stderr, identity=j.get("identity"))
                 except Exception as _re:  # noqa: BLE001 -- recording must never gate a run either
                     print(f"[promote] record skipped: {type(_re).__name__}: {_re}",
                           file=sys.stderr, flush=True)
@@ -353,7 +378,9 @@ def main(argv=None):
                 proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
                                         env=_sim_env(), stdout=job_log, stderr=subprocess.STDOUT)
                 running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim,
-                                "promoted": bool(r.get("promoted")), "log": job_log}
+                                "promoted": bool(r.get("promoted")), "log": job_log,
+                                # which tier-state record this promotion was launched for (see the reap)
+                                "identity": r.get("identity")}
                 claimed.add(jid)
         time.sleep(a.poll)
     # drain on STOP

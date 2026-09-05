@@ -33,7 +33,7 @@ def _inputs():
     cells = tuple(
         PP.PerfCell("PK", capsule, simulator, replicate)
         for capsule in ("pk_k2", "pk_k4")
-        for simulator in ("spike", "verilator")
+        for simulator in ("spike", "gsim")
         for replicate in ("r000", "r001")
     )
     return PP.PerfPromptInputs(
@@ -63,8 +63,8 @@ def _inputs():
                          "enumerate compiler levers", True),
             PP.ToolGrant("rtl-facts", "python3 perf_broker.py request rtl-facts",
                          "derive target facts", True),
-            PP.ToolGrant("verilator", "python3 perf_broker.py request probe-verilator",
-                         "harness-owned L3 simulator"),
+            PP.ToolGrant("gsim", "python3 perf_broker.py request probe-gsim",
+                         "harness-owned elaborated-RTL L3 simulator"),
         ),
         allowed_paths=(frozen, submission, workload, manifest, host, host_manifest,
                        "perf_broker.py", receipts, "perf_selfcheck.py", "cca_contract.py", "rtl_facts.py"),
@@ -100,7 +100,7 @@ def test_prompt_is_deterministic_and_carries_every_campaign_boundary() -> None:
         inputs.host_lane.package_sha256,
         "hidden host lowering",
         "Spike is a correctness screen only",
-        "Verilator is performance certification",
+        "GSIM is performance certification",
         "cycles must be recorded as `null`/absent",
         "(family, capsule, simulator, replicate)",
         "measured negative-control result",
@@ -160,7 +160,7 @@ def test_completion_identity_requires_exact_l2_l3_pairs_without_duplicates() -> 
     inputs = _inputs()
     without_l3 = tuple(cell for cell in inputs.expected_cells
                        if not (cell.capsule == "pk_k2" and cell.replicate == "r000"
-                               and cell.simulator == "verilator"))
+                               and cell.simulator == "gsim"))
     with pytest.raises(PP.PerfPromptContractError, match="both the L2 and L3"):
         PP.render_initial_prompt(replace(inputs, expected_cells=without_l3))
     with pytest.raises(PP.PerfPromptContractError, match="repeats a cell"):
@@ -210,3 +210,22 @@ def test_network_is_available_and_is_not_a_launch_isolation_gate() -> None:
     assert "--unshare-net" not in prompt
     assert "Do not access the network" not in prompt
     assert "network is unshared" not in prompt.lower()
+
+
+def test_the_prompt_documents_every_summary_field_the_feedback_actually_carries() -> None:
+    """A field the document carries and the prompt never names is a field nobody reads.
+
+    Measured: the agent was given declared work, baseline cycles and share-of-achievable per member
+    and would have had to multiply, subtract and rank across every row to see that seven members held
+    92.4% of the objective. It never did, and three trials of search went into the other 7%. The
+    ranking is now computed for it -- this pins that the prompt says so, and that it says what the
+    ranking may NOT be read as.
+    """
+    prompt = PP.render_initial_prompt(_inputs())
+    for field in ("summary.recoverable", "recoverable_cycles", "share_of_corpus_cycles",
+                  "recoverable_share_of_corpus", "total_recoverable_share"):
+        assert field in prompt, f"the feedback carries {field} and the prompt never names it"
+    # The two things it must NOT be read as. Both are refusals, and a prompt that reported the
+    # ranking without them would read as a licence to work only the top row.
+    assert "not a claim that the cycles are reachable" in prompt
+    assert "not permission to ignore small members" in prompt

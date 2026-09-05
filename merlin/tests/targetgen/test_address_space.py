@@ -132,48 +132,43 @@ def test_a_target_with_no_facts_reports_unknown_and_never_zero():
     assert 0 not in (d["separate_accumulator_space"], d["array"]), "an unread quantity is not a zero"
 
 
-def test_the_states_the_shipped_artifacts_actually_show():
-    """Corroborate the synthetic cases above against whatever this checkout really ships.
+def test_a_target_whose_facts_name_no_memory_list_stays_undeterminable():
+    """UNKNOWN on a real artifact, not just a synthetic one: this target's facts carry no ``memories``
+    key at all (mlc discovers 39 SRAMs for it and declines to classify any of them), so the capacity
+    obligation is undecidable there -- correctly. ABSENT vs UNKNOWN is pinned against synthetic facts
+    above, because which real target shows which state depends on what has been extracted in this
+    checkout and that is not a property of this module."""
+    target = "atlas"
+    if not rtl_facts.rtl_facts_path(target).is_file():
+        pytest.skip(f"no RTL-facts artifact for {target!r} in this checkout")
+    sp = derive_address_space(target)
+    assert sp.stores_status == UNKNOWN, [u.to_dict() for u in sp.unknowns]
+    assert sp.stores == () and sp.separate_accumulator_space is None
 
-    This used to pin two targets BY NAME as the examples -- muon for ABSENT, atlas for UNKNOWN -- which
-    made it a test of a deficiency rather than of the deriver. Both were fixed on 2026-09-04 (muon gained
-    a committed facts pin, atlas gained a port-derived VMEM), and the test failed for the reason we most
-    wanted to be true: the extractor now derives a store for both. A test that names a target as the
-    example of a gap breaks the moment the gap is closed, and its failure reads as a regression.
 
-    So derive the examples. UNKNOWN must still occur somewhere in the shipped set -- it is the honest
-    answer for a target whose facts cannot state a capacity, and if nothing shows it any more, the
-    interesting fact is that the state became unreachable on real inputs, not that this file is stale.
-    ABSENT is asserted synthetically above; it is not required of any shipped target.
+def test_a_simt_target_derives_a_lane_granular_store_whose_row_is_a_lane_count():
+    """The SIMT store is the case ``lane_granular`` exists for. This target has no systolic array, so
+    its access width comes from a LANE COUNT rather than from an array edge plus a datapath element --
+    and that is why it has ``row_elems`` while ``row_bytes`` stays None: the row holds whatever element
+    the program puts in it, so the BYTE width is what varies, not the element count.
 
-    Re-pointed on 2026-09-04, exactly as the paragraph above asks: mx_gemmini was the shipped UNKNOWN,
-    and it stopped being one when the facts resolver started honouring the target's own declared facts
-    source (it is a config variant of another target's generator, so its structural facts are that
-    target's -- see ``merlin.targetgen.rtl.facts.facts_alias``). The spatial tile joined the set at the
-    same time, deriving its MRF from the state manifest instead of nothing. The composite host+
-    accelerator target is the honest UNKNOWN now: nothing elaborates under its name, so no capacity can
-    be read, and its artifact says so.
-    """
-    seen: dict = {}
-    for target in ("gemmini", "atlas", "radiance", "muon", "mx_gemmini", "saturn_opu",
-                   "saturn_opu_mxv256d128", "saturn_opu_mxv256d128_rvv"):
-        if not rtl_facts.rtl_facts_path(target).is_file():
-            continue
-        sp = derive_address_space(target)
-        seen.setdefault(sp.stores_status, []).append(target)
-    assert seen, "no shipped target has a facts artifact; this assertion would pass vacuously"
-    # A derived store must carry its stores; an undecidable one must carry none and never a zero.
-    for status, targets in seen.items():
-        for target in targets:
-            sp = derive_address_space(target)
-            if status == "derived":
-                assert sp.stores, f"{target} reports derived with no store"
-            else:
-                assert sp.stores == (), f"{target} reports {status} yet lists stores"
-                assert 0 not in (sp.to_dict()["separate_accumulator_space"],), "an unread quantity is not a zero"
-    assert UNKNOWN in seen, (
-        "no shipped target reports UNKNOWN any more. That may be good news -- but this corroboration is "
-        f"now vacuous, so re-point or retire it deliberately. States seen: { {k: v for k, v in seen.items()} }")
+    The distinction is load-bearing. A store whose element width merely could not be LINKED to a
+    datapath also has no ``element_bits``, and treating that as lane-granular would answer "16 elements
+    per row" for a store whose row width is genuinely unknown. Only a store that SAYS it is lane-granular
+    may answer, which is why ``elems_per_row()`` is checked here and not inferred from the None."""
+    target = "muon"
+    if not rtl_facts.rtl_facts_path(target).is_file():
+        pytest.skip(f"no RTL-facts artifact for {target!r} in this checkout")
+    sp = derive_address_space(target)
+    assert sp.stores_status == DERIVED, [u.to_dict() for u in sp.unknowns]
+    assert len(sp.stores) == 1, sp.stores
+    store = sp.stores[0]
+    assert store.lane_granular is True
+    assert store.row_bytes is None and store.row_elems, store.to_dict()
+    assert store.elems_per_row() == store.row_elems
+    # No datapath, so no element width -- and the module says so rather than substituting a byte.
+    assert store.element_bits is None
+    assert "element_bits" in sp.unknown_quantities()
 
 
 def test_an_unlinkable_element_width_leaves_the_row_unknown_not_assumed():

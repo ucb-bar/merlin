@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import merlin_dir, repo_root
 
 
 def _load():
@@ -71,3 +72,71 @@ def test_empty_notes_prompts_creation(tmp_path):
 
     # never leaks a golden value: the brief only ever contains counts/planes, never expected outputs
     assert "golden" not in brief.lower() or "no goldens" in brief.lower()
+
+
+def test_prelaunch_refresh_delivers_late_erratum_and_preserves_resume_note(tmp_path):
+    """An operator erratum written after the last grade must still reach the resumed agent turn."""
+    RB = _load()
+    harness = repo_root() / "merlin" / "experiments" / "capsule_bench" / "harness"
+    sys.path.insert(0, str(harness))
+    try:
+        import resume_on_quota as ROQ
+    finally:
+        sys.path.remove(str(harness))
+
+    run_dir, ws = tmp_path / "run", tmp_path / "ws"
+    notes = ws / "submission" / "docs" / "iteration_notes.md"
+    notes.parent.mkdir(parents=True, exist_ok=True)
+    notes.write_text("old advice: use logical packed stride\n", encoding="utf-8")
+    _write_round(run_dir, 0, _verdict(1, {"spike": 1}, [0]))
+
+    # This is the measured ordering: a grade wrote the brief, a cut-short turn added RESUME, and the
+    # operator authored ERRATA.md only afterwards.  Before the fix, the next launch reads a stale brief.
+    RB.write(run_dir, ws, 0)
+    ROQ.prepend_resume_note(ws, ROQ.REASON_TIMEOUT)
+    erratum = "## RETRACTION — derive physical stride again"
+    (run_dir / "ERRATA.md").write_text(erratum + "\n", encoding="utf-8")
+
+    RB.refresh_before_launch(run_dir, ws, 0)
+    first = (ws / "qa" / "round_brief.md").read_text(encoding="utf-8")
+    assert first.startswith("> ## RESUME")
+    assert first.count("> ## RESUME") == 1
+    assert first.count(erratum) == 1
+    assert first.index(erratum) < first.index("Your iteration_notes.md")
+    assert "old advice: use logical packed stride" in first
+
+    # Relaunch retries can call the refresh repeatedly without accumulating either injected section.
+    RB.refresh_before_launch(run_dir, ws, 0)
+    assert (ws / "qa" / "round_brief.md").read_text(encoding="utf-8") == first
+
+
+def test_fresh_prelaunch_refresh_builds_brief_with_erratum_before_notes(tmp_path):
+    RB = _load()
+    run_dir, ws = tmp_path / "run", tmp_path / "ws"
+    run_dir.mkdir(parents=True)
+    (run_dir / "ERRATA.md").write_text("## RETRACTION — re-derive\n", encoding="utf-8")
+    notes = ws / "submission" / "docs" / "iteration_notes.md"
+    notes.parent.mkdir(parents=True)
+    notes.write_text("prior finding\n", encoding="utf-8")
+
+    RB.refresh_before_launch(run_dir, ws, 0)
+    brief = (ws / "qa" / "round_brief.md").read_text(encoding="utf-8")
+    assert brief.index("## RETRACTION") < brief.index("Your iteration_notes.md")
+
+
+def test_every_qa_loop_agent_launch_refreshes_the_brief_first():
+    src = (repo_root()
+           / "merlin/experiments/capsule_bench/harness/run_baseline_qa_loop.py").read_text(
+               encoding="utf-8")
+    launches = []
+    start = 0
+    while True:
+        pos = src.find("launch_agent(", start)
+        if pos < 0:
+            break
+        if not src[max(0, pos - 5):pos].endswith("def "):
+            launches.append(pos)
+        start = pos + 1
+    assert len(launches) == 3, "new launch paths must join the pre-launch brief refresh contract"
+    for pos in launches:
+        assert "refresh_before_launch(run_dir, ws," in src[max(0, pos - 250):pos]

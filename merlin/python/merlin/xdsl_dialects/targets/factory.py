@@ -30,9 +30,9 @@ from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, StringAttr
 # to remove (the per-target dialects it replaced were ~90% hand-copied).
 from merlin.xdsl_dialects.interface import missing_pool_props
 
-# Must stay aligned with interface.KNOWN_EPILOGUE and the runtime engine (`maxpool` included:
-# see that module for why a windowed stage belongs in the accepted set).
-KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu", "maxpool"}
+# The epilogue vocabulary is DERIVED from the one definition the ABI, its JSON validator and the three
+# engines share -- not restated here (this copy had drifted from both of the other two).
+from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET as KNOWN_EPILOGUE  # noqa: E402
 # Must stay aligned with interface.KNOWN_{COMBINE,ACTIVATION,REDUCE} and the runtime engine.
 KNOWN_COMBINE = {"add", "mul", "identity"}
 KNOWN_ACTIVATION = {"relu"}

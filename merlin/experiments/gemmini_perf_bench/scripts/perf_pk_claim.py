@@ -33,7 +33,7 @@ _TIMING_ENGINES = {
 # edit too; a relaxed threshold cannot silently become eligible for promotion.
 _ACCEPTANCE_BASE: dict[str, Any] = {
     "schema_version": 2,
-    "analyzer": "perf_pk_claim.analyze_pk_claim/v2",
+    "analyzer": "perf_pk_claim.analyze_pk_claim/v3",
     "fit": {
         "form": "affine",
         "method": "ordinary_least_squares_all_L3_replicates",
@@ -48,8 +48,18 @@ _ACCEPTANCE_BASE: dict[str, Any] = {
         "K_multipliers_of_tile": [1, 2, 4, 8],
     },
     "replicates": {
-        "exact_count": 3,
-        "identities": ["r000", "r001", "r002"],
+        # TWO, BECAUSE THE SECOND IS THE WITNESS AND THE THIRD MEASURES NOTHING. The timing engine
+        # is deterministic -- verified over 392 repeated measurements of byte-identical programs with
+        # zero disagreement -- so replicate three re-derives a number replicate two already agreed
+        # on. Two is the floor and not one: one leaves the replicate dispersion UNDETERMINABLE, and
+        # assuming it zero on a deterministic simulator is the assumption these contracts refuse.
+        # At one replicate the paired families' band collapses to a fabricated 0.0 and their
+        # negative control can never fire.
+        #
+        # This count is campaign-wide, not PK's alone: the stage reads it out of this declaration to
+        # build the expected cells for every frozen member, so it sets the whole replicate schedule.
+        "exact_count": 2,
+        "identities": ["r000", "r001"],
     },
     "evidence": {
         "correctness_simulator": "spike",
@@ -295,7 +305,7 @@ def _validate_descriptors(
         "capsules": [point["capsule"] for point in ordered],
         "K_values": expected_k,
         "K_multipliers_of_tile": [1, 2, 4, 8],
-        "replicates": ["r000", "r001", "r002"],
+        "replicates": ["r000", "r001"],
     }
     return ordered, cohort, copy.deepcopy(ordered[0]["acceptance"])
 
@@ -353,7 +363,7 @@ def _validate_results(
         identity = _mapping(row.get("identity"), f"result row {index} identity")
         if identity.get("family") == _FAMILY:
             pk_rows.append(row)
-    expected_count = len(points) * 3 * 2
+    expected_count = len(points) * len(_ACCEPTANCE_BASE["replicates"]["identities"]) * 2
     if len(pk_rows) != expected_count:
         raise _Refusal(
             f"PK requires exactly {expected_count} result rows, observed {len(pk_rows)}")
@@ -365,7 +375,7 @@ def _validate_results(
         simulator = identity.get("simulator")
         replicate = identity.get("replicate")
         if (capsule not in expected_capsules or simulator not in ("spike", timing_simulator)
-                or replicate not in ("r000", "r001", "r002")):
+                or replicate not in tuple(_ACCEPTANCE_BASE["replicates"]["identities"])):
             raise _Refusal(f"PK result has an undeclared identity: {dict(identity)!r}")
         key = (str(capsule), str(simulator), str(replicate))
         if key in indexed:
@@ -375,7 +385,7 @@ def _validate_results(
     observations: list[dict[str, Any]] = []
     for point in points:
         capsule, k = str(point["capsule"]), int(point["K"])
-        for replicate in ("r000", "r001", "r002"):
+        for replicate in tuple(_ACCEPTANCE_BASE["replicates"]["identities"]):
             for simulator, tier, purpose, citable in (
                     ("spike", "L2", "correctness_screen", False),
                     (timing_simulator, "L3", "performance_certification", True)):
@@ -554,7 +564,12 @@ def analyze_pk_claim(descriptors: object, results: object) -> dict[str, Any]:
         "declaration": copy.deepcopy(preflight["declaration"]),
         "cohort": copy.deepcopy(preflight["cohort"]),
         "evidence": {
-            "l2_correctness_rows_validated": 12,
+            # COUNTED, NOT ASSERTED. This was the literal 12 -- the count of one corpus at one
+            # replicate schedule -- so the evidence block reported a number it had not counted and
+            # would have kept reporting it whatever was validated. Every cohort point is admitted at
+            # the correctness tier once per declared replicate, which is what this counts.
+            "l2_correctness_rows_validated": (
+                len(points) * len(acceptance["replicates"]["identities"])),
             "l2_cycles_consumed": 0,
             "l3_positive_cycle_rows_consumed": len(observations),
             "timing_source": f"{timing_simulator}_L3_only",

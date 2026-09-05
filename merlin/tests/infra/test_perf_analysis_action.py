@@ -104,14 +104,36 @@ def test_it_prices_two_buffers_against_the_derived_ceilings(tmp_path):
 
 
 def test_it_never_claims_an_absolute_cycle_count(tmp_path):
-    """Ordering-only is the licence the corpus-calibrated model actually has."""
+    """This action prices declared work; it must not imply a cycle number it cannot derive."""
     stage = _stage()
     a = _buffer(tmp_path, "a.json", (16, 16, 16))
     out = stage.analyze_command_buffers(a, a, peak_macs_per_cycle=256,
                                         achievable_macs_per_cycle=80.0)
     flat = json.dumps(out)
     assert "predicted_cycles" not in flat and "cycles_estimate" not in flat
-    assert out["differential"]["basis"] in ("EXACT", "ORDERING_ONLY", "REFUSED")
+
+
+def test_it_does_not_pass_off_a_type_error_as_a_differential_verdict(tmp_path):
+    """The action must SAY it computed no differential, not report a refusal it never reached.
+
+    This assertion is written against the differential module's own constants on purpose. The
+    previous version compared to the uppercase literals ("EXACT", "ORDERING_ONLY", "REFUSED")
+    while the module's constants are lowercase, so a real verdict could never have satisfied it --
+    it passed only because the call raised AttributeError on every invocation and the handler
+    hardcoded the uppercase string. A test that can only pass on the failure path is not a test.
+    """
+    from merlin.perf import differential as DIFF
+
+    stage = _stage()
+    a = _buffer(tmp_path, "a.json", (16, 16, 16))
+    out = stage.analyze_command_buffers(a, a, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0)
+    basis = out["differential"]["basis"]
+    assert basis == "not_attempted"
+    # it must not borrow the vocabulary of a verdict it did not compute
+    assert basis not in (DIFF.EXACT, DIFF.ORDERING_ONLY, DIFF.REFUSED, DIFF.INCOMPARABLE)
+    reason = out["differential"]["reason"]
+    assert reason and "Error" not in reason, "a swallowed exception is not a reason"
 
 
 def test_an_unreadable_buffer_refuses_rather_than_crashing(tmp_path):
@@ -121,3 +143,50 @@ def test_an_unreadable_buffer_refuses_rather_than_crashing(tmp_path):
     with pytest.raises(Exception):
         stage.analyze_command_buffers(missing, good, peak_macs_per_cycle=256,
                                       achievable_macs_per_cycle=80.0)
+
+
+# --------------------------------------------------------------------------------------
+# Signals the free screen must NOT carry, and structural facts it must.
+
+def test_it_offers_no_calibrated_cycle_estimate(tmp_path):
+    """The per-command cost model is ANTI-predictive for within-capsule ordering.
+
+    Measured over 774 within-capsule ordered pairs from 115 distinct emitted programs: its
+    agreement with the cycle oracle is 39.3%, worse than a coin flip and worse than spike's 46.1%.
+    Within one capsule the work is fixed, so its `compute` term never varies between candidates and
+    the terms that do vary anti-correlate with measured cycles. It is accurate on absolute
+    magnitude (MAPE 8.1%) and that is a different question. Exposing it here would hand the agent a
+    signal pointing the wrong way, so this asserts it stays out.
+    """
+    stage = _stage()
+    a = _buffer(tmp_path, "a.json", (16, 16, 16))
+    b = _buffer(tmp_path, "b.json", (16, 16, 32))
+    out = stage.analyze_command_buffers(a, b, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0, target="gemmini")
+    assert "calibrated_estimate" not in out
+    flat = json.dumps(out)
+    assert "predicted_cycles" not in flat and "estimated_cycles" not in flat
+
+
+def test_the_lower_bound_is_a_floor_and_says_so(tmp_path):
+    stage = _stage()
+    a = _buffer(tmp_path, "a.json", (16, 16, 16))
+    out = stage.analyze_command_buffers(a, a, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0, target="gemmini")
+    bound = out["lower_bound"]["baseline"]
+    if bound["status"] == "derived":
+        assert bound["compute_floor_cycles"] > 0
+        assert "floor" in bound["licence"] and "never an estimate" in bound["licence"]
+
+
+def test_an_uncountable_barrier_stream_is_unknown_not_zero(tmp_path):
+    """"no barriers found" and "cannot see barriers" must never read alike."""
+    stage = _stage()
+    a = _buffer(tmp_path, "a.json", (16, 16, 16))
+    out = stage.analyze_command_buffers(a, a, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0, target="gemmini")
+    barriers = out["barriers"]
+    assert barriers["status"] in ("counted", stage.BARRIER_UNKNOWN)
+    if barriers["status"] != "counted":
+        assert barriers.get("reason")
+        assert "removed" not in barriers

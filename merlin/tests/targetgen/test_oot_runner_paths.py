@@ -18,6 +18,7 @@ import textwrap
 
 import pytest
 
+from merlin.targetgen import oot_runner
 from merlin.targetgen.oot_runner import CertFailure, _resolve_argv, load_package, run_entrypoint
 
 
@@ -101,3 +102,19 @@ def test_the_known_placeholders_do_not_trip_the_guard(tmp_path):
     pkg = _pkg(tmp_path, '["python3", "{tool}", "{input_mlir}", "{output_json}"]')
     argv = _resolve_argv(pkg, "parse", tmp_path / "in.mlir", tmp_path / "o.json")
     assert not any("{" in a for a in argv), argv
+
+
+def test_cli_accepts_gsim_as_a_cycle_accurate_oracle(monkeypatch):
+    """GSIM's internal adapter is useless to automation if argparse rejects its public spelling."""
+    observed = {}
+
+    def fake_certify(*_args, **kwargs):
+        observed.update(kwargs)
+        return {"status": "pass"}
+
+    monkeypatch.setattr(oot_runner, "certify", fake_certify)
+    assert oot_runner.main([
+        "--package", "submission", "--input", "case.interface.mlir", "--run-id", "g0",
+        "--simulator", "gsim",
+    ]) == 0
+    assert observed["simulator"] == "gsim"

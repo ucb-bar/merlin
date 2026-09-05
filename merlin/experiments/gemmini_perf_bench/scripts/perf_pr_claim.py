@@ -35,6 +35,7 @@ import string
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from merlin.perf import fill_transient as FT
 from merlin.perf import residency_claim as RC
 
 _FAMILY = "PR"
@@ -486,9 +487,25 @@ def _counter_set(counters: Any) -> Any:
                              by_combination=by_combination)
 
 
-def _member(capsule: str, record: Mapping[str, Any], counters: Any) -> RC.Member:
-    """One :class:`~merlin.perf.residency_claim.Member`, with its overlap reading or its reason."""
+def _member(capsule: str, record: Mapping[str, Any], counters: Any, partition: Any) -> RC.Member:
+    """One :class:`~merlin.perf.residency_claim.Member`, with its overlap reading or its reason.
+
+    ``partition`` is the target's CIRCT counter-partition evidence (:data:`FT.PARTITION_FIELDS`).
+    This module is a pure decision procedure over frozen descriptors and sealed result rows, so it
+    holds no RTL artifact of its own and cannot derive that evidence -- the caller reads it off the
+    target boundary and hands it in. Absent or malformed evidence produces a member with NO overlap
+    reading and the reason attached, which its band reports as ``BAND_OVERLAP_UNDETERMINABLE``. It is
+    never substituted for, and it never reaches the report as a bare exception string.
+    """
     from merlin.perf.hw_counters import eta_from_counters
+
+    try:
+        proof = FT.partition_kwargs(partition)
+    except FT.PartitionEvidenceError as exc:
+        return RC.Member(
+            label=capsule, band=str(record["band"]), axis=int(record["K"]),
+            replicate_cycles=tuple(record["replicate_cycles"]),
+            overlap_detail=str(exc))
 
     readings = list(record["counter_readings"])
     absent = [index for index, values in enumerate(readings) if not isinstance(values, Mapping)]
@@ -506,7 +523,14 @@ def _member(capsule: str, record: Mapping[str, Any], counters: Any) -> RC.Member
             replicate_cycles=tuple(record["replicate_cycles"]),
             overlap_detail=("the replicates disagree about their own combination counters, so this "
                             "member has no single overlap reading to attribute"))
-    reading = eta_from_counters(dict(normalised[0]), counters)
+    # THE COUNTER WINDOW, and why it is the SMALLEST replicate rather than an average or the first.
+    # The readings above are already known identical across replicates; the cycle counts need not be,
+    # and a member whose replicates disagree is refused by its band rather than collapsed here. The
+    # exclusive partition has to fit inside EVERY window it was read in, so the binding one is the
+    # shortest. Taking a longer window would let a partition that overflowed one replicate's run pass
+    # the delegate's corruption check.
+    window = min(int(value) for value in record["replicate_cycles"])
+    reading = eta_from_counters(dict(normalised[0]), counters, measurement_cycles=window, **proof)
     if reading.get("state") != "measured":
         return RC.Member(
             label=capsule, band=str(record["band"]), axis=int(record["K"]),
@@ -520,15 +544,37 @@ def _member(capsule: str, record: Mapping[str, Any], counters: Any) -> RC.Member
         overlap_detail=str(reading.get("note") or ""))
 
 
-def analyze_pr_claim(descriptors: object, results: object, *, replicates: Sequence[str],
-                     counters: Any) -> dict[str, Any]:
+def analyze_pr_claim(descriptors: object, results: object, *,
+                     replicates: Sequence[str] | None = None,
+                     counters: Any = None, partition: Any = None) -> dict[str, Any]:
     """Decide PR from exact frozen descriptors, exact run-authored rows, and derived counters.
 
     ``counters`` is the combination-counter set derived from the target's OWN shipped header
     (:func:`merlin.perf.hw_counters.counters_for_target`). It is REQUIRED: without it the per-band
     fill-transient guard cannot run, and a rate quoted past a guard that did not run is exactly the
     result that refuted the sibling family. Absent counters is a refusal, never a skipped check.
+
+    ``partition`` is that target's CIRCT counter-partition evidence -- the elaborated HW text, the
+    header's event codes, and the two module identities -- which
+    :func:`merlin.perf.hw_counters.eta_from_counters` requires before it will call an overlap reading
+    measured. A counter block's NAMES only suggest that it partitions busy time; the proof is in the
+    RTL, and without it every member would report UNKNOWN overlap and every band would be refused for
+    a reason that pointed at the instrument rather than at the missing artifact. So it is refused
+    up-front, by name, and the reason says exactly which input the run did not supply.
+
+    ⚠️ **The three of them default to ``None`` so that a caller which cannot supply them gets a
+    VERDICT rather than a TypeError.** :mod:`perf_claim_dispatch` routes every family as
+    ``analyzer(descriptors, results)``, which is a shape this family does not fit -- it needs the
+    run's replicate schedule and the target's counter evidence, and neither is recoverable from the
+    descriptors. Nothing is invented to fill the gap: each absence is refused by the name of the input
+    that is missing, so a run whose PR family went undecided says WHICH artifact it lacked. That is
+    also why the defaults are not an excuse to omit them; they are the report of an omission.
     """
+    if replicates is None:
+        return _refused(
+            "the run's replicate schedule was not supplied; PR declares no replicate count of its "
+            "own and one cannot be invented here, because this family's noise band IS the measured "
+            "dispersion across the identities the run actually executed")
     preflight = preflight_pr_claim(descriptors, replicates=replicates)
     if preflight["status"] != "READY":
         return _refused(str(preflight["refusal_reasons"][0]), preflight=preflight)
@@ -538,13 +584,23 @@ def analyze_pr_claim(descriptors: object, results: object, *, replicates: Sequen
             "fill-transient guard cannot run; a rate quoted without that guard repeats the "
             "refutation this family was built to avoid", preflight=preflight)
     try:
+        FT.partition_kwargs(partition)
+    except FT.PartitionEvidenceError as exc:
+        return _refused(str(exc), preflight=preflight)
+    try:
         counters = _counter_set(counters)
         points, _cohort = _validate_descriptors(descriptors)
         observed = _validate_results(results, points, list(preflight["replicates"]))
-        members = [_member(str(point["capsule"]), observed[str(point["capsule"])], counters)
+        members = [_member(str(point["capsule"]), observed[str(point["capsule"])], counters,
+                           partition)
                    for point in points]
         verdict = RC.residency_verdict(members)
-    except (KeyError, TypeError, ValueError) as exc:
+    # NARROW ON PURPOSE. These two are the analyzer's own refusal vocabulary: `_Refusal` is every
+    # contract/evidence rejection raised above, and `ResidencyEvidenceError` is the arithmetic
+    # module's. A `KeyError`/`TypeError`/`ValueError` from anywhere else is a PROGRAMMING error, and
+    # catching those here is how a call made with the wrong arity was reported for a whole family as
+    # a considered REFUSED whose reason was the text of a TypeError. It must crash instead.
+    except (_Refusal, RC.ResidencyEvidenceError) as exc:
         return _refused(str(exc), preflight=preflight)
 
     status = verdict["status"]
@@ -594,7 +650,8 @@ def decision_boundary(decision: Mapping[str, Any] | None) -> dict[str, Any]:
     return {
         "module": "perf_pr_claim",
         "identity_bridge":
-            "analyze_pr_claim(frozen_descriptors,sealed_result_rows,derived_counters)",
+            "analyze_pr_claim(frozen_descriptors,sealed_result_rows,derived_counters,"
+            "circt_counter_partition)",
         "promotion_integration": "integrated",
         "promotion_status": promotion_status(decision),
         "reason": str((decision.get("verdict") or {}).get("reason")

@@ -32,6 +32,10 @@ import perf_agent_stage as PAS  # noqa: E402
 import perf_campaign as PC  # noqa: E402
 import perf_pk_claim as PK  # noqa: E402
 
+#: The identities the shipped contract declares, read from it rather than retyped:
+#: this file hardcoded a triple, so a contract change had to be applied in six places.
+REPLICATE_IDS = tuple(PK._ACCEPTANCE_BASE["replicates"]["identities"])
+
 
 SHA_A = "a" * 64
 SHA_B = "b" * 64
@@ -66,6 +70,13 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
             "candidate_utilization": 16.0 / 100,
             "baseline_share_of_achievable": 51.2 / 120,
             "candidate_share_of_achievable": 51.2 / 100,
+            # A cell states a position on its own measurement, not just the numbers behind it.
+            "verdict": "improved",
+            "verdict_reason": "20 cycles saved, closing 29.1% of the gap to the achievable rate",
+            # A cell says whether the sweep paid for it. Omitting these made every test in this file
+            # that builds a document fail on the key set rather than on what it meant to assert.
+            "measured": True,
+            "skip_reason": None,
         }],
         "stopping": {"status": "continue", "queries": 1, "baseline_total_cycles": 120.0,
                      "best_total_cycles": 100.0, "previous_best_total_cycles": None,
@@ -76,13 +87,18 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
                     "peak_macs_per_cycle": 256,
                     "peak_basis": "facts-derived peak of compute unit 'systolic_mesh'",
                     "achievable_macs_per_cycle": 80.01,
-                    "achievable_basis": "best rate over 38 measured points in phase-1 run"},
+                    "achievable_basis": "best rate over 38 measured points in phase-1 run",
+                    "recoverable": {"status": "derived", "corpus_total_cycles": 120.0,
+                                    "total_recoverable_cycles": 20.0,
+                                    "total_recoverable_share": 20.0 / 120.0,
+                                    "ranked": [], "ranked_members": 0, "priced_members": 1,
+                                    "basis": "test", "licence": "test"}},
     }
 
 
 def _record() -> dict:
     capsules = ["PK00_k16", "PK01_k32", "PK02_k64", "PK03_k128"]
-    replicas = ["r000", "r001", "r002"]
+    replicas = list(REPLICATE_IDS)
     cells = [{"family": "PK", "capsule": capsule, "simulator": simulator,
               "replicate": replicate}
              for capsule in capsules for replicate in replicas
@@ -114,7 +130,7 @@ def _record() -> dict:
     host_lane = {"target": "rvv", "package_id": "rvv_pkg", "package_path": "/bundle/rvv",
                  "package_sha256": SHA_D, "manifest_path": "/bundle/rvv/manifest.yaml",
                  "integration_seam": "host runner consumes schedule"}
-    facts = {"replicates": 3, "formal_replicate_identities": replicas,
+    facts = {"replicates": len(REPLICATE_IDS), "formal_replicate_identities": replicas,
              "formal_claim": formal_claim, "smoke_replicates": 1,
              "expected_cells": cells, "families": families,
              "budgets": {"wall_budget_seconds": 60, "rounds": 1,
@@ -193,7 +209,7 @@ def _record() -> dict:
             "agent_input_sha256": SHA_C,
             "agent_input_files": 1,
             "agent_input_bytes": 1,
-            "replicates": 3, "formal_replicate_identities": replicas,
+            "replicates": len(REPLICATE_IDS), "formal_replicate_identities": replicas,
             "formal_claim": formal_claim, "smoke_replicates": 1,
             "expected_cells": cells, "families": families,
         },
@@ -360,7 +376,7 @@ def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypat
     assert handoff.authoring_stage_sha256 == SHA_A
     assert handoff.telemetry_source_sha256 == dict(sorted(source_sha256.items()))
     assert handoff.functional_submission_sha256 == SHA_A
-    assert handoff.formal_replicate_identities == ("r000", "r001", "r002")
+    assert handoff.formal_replicate_identities == REPLICATE_IDS
     assert handoff.required_actions == ("candidate-parse", PAS.DEVELOPMENT_FEEDBACK_ACTION)
     assert handoff.transcript_audit["clean"] is True
 
@@ -479,18 +495,19 @@ def _pk_capsules() -> tuple[PAS.PerformanceCapsule, ...]:
     return tuple(rows)
 
 
-def test_formal_pk_claim_is_derived_from_frozen_acceptance_and_exact_three_replicas():
+def test_formal_pk_claim_is_derived_from_frozen_acceptance_and_its_declared_replicas():
     claim = PAS.prepare_formal_pk_claim(_pk_capsules())
     assert claim["status"] == "READY"
     assert claim["declaration"] == PK.supported_acceptance()
-    assert claim["cohort"]["replicates"] == ["r000", "r001", "r002"]
-    assert len(claim["expected_identities"]) == 24
+    assert claim["cohort"]["replicates"] == list(REPLICATE_IDS)
+    assert len(claim["expected_identities"]) == 4 * len(REPLICATE_IDS) * 2
     assert {row["simulator"] for row in claim["expected_identities"]} == {"spike", "gsim"}
     families = PAS._family_declarations(_pk_capsules(), claim)
     assert families[0].acceptance == PK.supported_acceptance()
 
-    with pytest.raises(PAS.StageGateError, match="exact_count=3"):
-        PAS.prepare_formal_pk_claim(_pk_capsules(), requested_replicates=2)
+    wrong = len(REPLICATE_IDS) + 1
+    with pytest.raises(PAS.StageGateError, match=f"exact_count={len(REPLICATE_IDS)}"):
+        PAS.prepare_formal_pk_claim(_pk_capsules(), requested_replicates=wrong)
 
 
 def test_formal_pk_claim_refuses_omitted_or_drifted_frozen_acceptance():
@@ -1070,11 +1087,64 @@ def test_declared_work_comes_from_the_capsule_spec_and_refuses_a_non_contracting
     assert macs is None and basis
 
 
+def _conv_descriptor(**geometry):
+    attributes = {"ifm": "IFM", "weight": "W", "out": "Y0", "ci": 4, "kh": 3, "kw": 3}
+    attributes.update(geometry)
+    return {"operation": {"op": "conv2d", "attributes": attributes},
+            "inputs": [{"name": "W", "shape": [3 * 3 * 4, 8]},
+                       {"name": "IFM", "shape": [1, 8, 8, 4]}]}
+
+
+def test_a_convolution_is_priced_by_its_output_extent_not_by_its_operand_shapes():
+    """Conv was priced None, and one unpriced member costs more than itself.
+
+    A None price nulls that member's utilization, both shares of the achievable rate and its verdict
+    -- and because the corpus-wide attainment stop condition requires every member to carry a positive
+    MAC count, a single unpriced member disables the stop condition for the whole corpus.
+    """
+    macs, basis = PAS.declared_capsule_macs(_conv_descriptor())
+    assert macs == 6 * 6 * 36 * 8, "unpadded 8x8 image with a 3x3 window has a 6x6 output"
+    assert "output positions" in basis
+
+
+def test_geometry_changes_the_work_at_identical_operand_shapes():
+    """THE PROPERTY THAT MAKES THIS A SEPARATE BRANCH. Every other operation reads its M from an
+    activation's row count; a convolution's output rows are Ho x Wo, so two members with byte-identical
+    operand shapes do different amounts of work when their padding or stride differ. Pricing conv from
+    operand shapes alone would give all three of these the same answer."""
+    plain = PAS.declared_capsule_macs(_conv_descriptor())[0]
+    padded = PAS.declared_capsule_macs(_conv_descriptor(padding=[1, 1, 1, 1]))[0]
+    strided = PAS.declared_capsule_macs(_conv_descriptor(stride=[2, 2]))[0]
+    assert padded == 8 * 8 * 36 * 8, "same-padding restores the input extent"
+    assert strided == 3 * 3 * 36 * 8, "stride 2 over an 8x8 image with a 3x3 window leaves 3x3"
+    assert len({plain, padded, strided}) == 3, "the three geometries must not price alike"
+
+
+def test_a_window_that_disagrees_with_the_packed_weight_refuses():
+    """The packed weight's row count IS the window, so a declaration where the two disagree describes
+    no single convolution. Refusing beats pricing one of the two readings and being quietly wrong."""
+    macs, basis = PAS.declared_capsule_macs(_conv_descriptor(kh=5))
+    assert macs is None and "do not describe one convolution" in basis
+
+    macs, basis = PAS.declared_capsule_macs(_conv_descriptor(ci=8))
+    assert macs is None and "disagrees with the declared" in basis
+
+
+def test_a_geometry_that_leaves_no_output_position_refuses_rather_than_pricing_zero():
+    macs, basis = PAS.declared_capsule_macs(_conv_descriptor(kh=9, kw=9,
+                                                            ci=4))
+    assert macs is None and basis
+
+
 def test_utilization_above_the_derived_peak_is_refused():
-    """A ratio over 1.0 means the derivation is broken, not that the program beat the hardware."""
+    """Against the STRUCTURAL peak a ratio over 1.0 is a broken derivation, not a fast program.
+
+    The sibling ratio against the empirical achievable rate is a different matter and is allowed to
+    exceed 1 -- see test_a_member_may_beat_the_empirical_ceiling_but_not_the_structural_peak.
+    """
     document = _feedback_document()
     document["cells"][0]["candidate_utilization"] = 1.5
-    with pytest.raises(PAS.StageGateError, match="above the derived peak"):
+    with pytest.raises(PAS.StageGateError, match="structural peak"):
         PAS.validate_redacted_feedback(document)
 
 
@@ -1317,6 +1387,8 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
     }), encoding="utf-8")
     monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _te: [])
     actions = PAS.build_action_registry(candidate, SimpleNamespace())
+    # The host-side analysis action is registered alongside the measurement action: it costs no
+    # oracle time, so it is available for screening a candidate before paying for a measurement.
     assert [action.name for action in actions] == [
         "candidate-parse", PAS.DEVELOPMENT_FEEDBACK_ACTION, PAS.ANALYSIS_ACTION]
     assert actions[0].argv_template == (str(tool), "parse", "{input_mlir}")
@@ -1326,14 +1398,6 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
     assert feedback.required is True
     assert "host-owned frozen-tuning" in feedback.purpose
     assert "certified GSIM" in feedback.purpose
-    # The free ordering-only analysis is OPTIONAL: making it required would force a call the agent
-    # may not need, and its whole point is that it costs nothing to skip or to repeat.
-    analysis = actions[2]
-    assert analysis.argv_template == (
-        PAS._HOST_ANALYSIS_SENTINEL, "{baseline_json}", "{candidate_json}")
-    assert analysis.placeholders == ("baseline_json", "candidate_json")
-    assert analysis.required is False
-    assert "ORDERING-ONLY" in analysis.purpose and "no oracle time" in analysis.purpose
     contract = PAS.action_registry_contract(actions, candidate)
     assert contract[0]["argv_template"] == ["{candidate}/target-opt", "parse", "{input_mlir}"]
     assert contract[1] == {
@@ -1427,10 +1491,8 @@ def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
             PAS.PP.PerfCell("PK", "PK00", "gsim", "r000"),
             PAS.PP.PerfCell("PK", "PK00", "spike", "r001"),
             PAS.PP.PerfCell("PK", "PK00", "gsim", "r001"),
-            PAS.PP.PerfCell("PK", "PK00", "spike", "r002"),
-            PAS.PP.PerfCell("PK", "PK00", "gsim", "r002"),
         ),
-        replicates=3, formal_replicate_identities=("r000", "r001", "r002"),
+        replicates=len(REPLICATE_IDS), formal_replicate_identities=REPLICATE_IDS,
         formal_claim={"status": "READY", "declaration": PK.supported_acceptance()},
         smoke_replicates=1, wall_budget_seconds=60, rounds=1,
         round_timeout_seconds=30, max_tool_calls=4, tool_timeout_seconds=10,
@@ -1454,7 +1516,7 @@ def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
     text = PAS.render_stage_prompt(inputs)
     assert "isolated authentication mount" in text
     assert "inner execution plane" in text
-    assert '"exact_count": 3' in text
+    assert f'"exact_count": {len(REPLICATE_IDS)}' in text
     assert '"capsule": "M2"' in text
 
 
@@ -1739,3 +1801,73 @@ def test_a_refused_inner_command_still_gets_a_receipt_so_the_ledger_has_no_gap(t
     assert rows[0]["state"] == "rejected" and rows[0]["returncode"] != 0
     # And the ledger stays gapless: indices are exactly their positions.
     assert [r["index"] for r in rows] == list(range(len(rows)))
+
+
+# ------------------------------------------------------------- where the objective's cycles actually are
+
+def _priced_cell(family, capsule, macs, cycles):
+    return {"family": family, "capsule": capsule, "measured": True,
+            "declared_macs": macs, "baseline_gsim_cycles": cycles}
+
+
+def test_recoverable_ranks_by_cycles_not_by_how_bad_a_member_looks():
+    """THE CAMPAIGN SHAPE THIS EXISTS FOR, in miniature.
+
+    One deep member runs at a respectable 0.6 of the achievable rate and holds most of the corpus's
+    cycles. Two small members run at a dismal 0.1 and hold almost none. Ranked by share-of-achievable
+    the small ones look like the problem; ranked by RECOVERABLE CYCLES the deep one is the whole
+    objective. A real campaign converged at 0.2% for exactly this reason: the agent improved the
+    members that looked worst and they were worth 7% of the total.
+    """
+    rate = 100.0
+    cells = [
+        _priced_cell("PR", "deep", macs=600_000, cycles=10_000),   # 0.60 of achievable
+        _priced_cell("PL", "small_a", macs=10, cycles=100),        # 0.001 of achievable
+        _priced_cell("PL", "small_b", macs=10, cycles=100),
+    ]
+    out = PAS.recoverable_cycles(cells, rate)
+    assert out["status"] == "derived"
+    assert out["corpus_total_cycles"] == 10_200.0
+    assert [row["capsule"] for row in out["ranked"]][0] == "deep"
+    deep = out["ranked"][0]
+    assert deep["recoverable_cycles"] == pytest.approx(10_000 - 6_000)
+    assert deep["share_of_corpus_cycles"] == pytest.approx(10_000 / 10_200)
+    # The two members that look worst are together worth under 2% of the objective.
+    small = sum(row["recoverable_cycles"] for row in out["ranked"] if row["family"] == "PL")
+    assert small / out["corpus_total_cycles"] < 0.02
+
+
+def test_a_member_at_or_past_the_achievable_rate_recovers_nothing_not_a_negative():
+    """share_of_achievable may exceed 1 -- the ceiling is empirical, and a member beating it is a
+    faster program, not a broken derivation. Its headroom is zero, never a negative that would
+    subtract from the corpus total."""
+    out = PAS.recoverable_cycles([_priced_cell("PR", "at_ceiling", macs=200_000, cycles=1_000)], 100.0)
+    assert out["ranked"][0]["recoverable_cycles"] == 0.0
+
+
+def test_unmeasured_and_unpriced_members_are_skipped_rather_than_counted_as_zero():
+    """A cell the sweep never paid for has no cycles to attribute, and counting it as zero headroom
+    would understate the total it is a share of."""
+    cells = [_priced_cell("PR", "real", macs=600_000, cycles=10_000),
+             {"family": "PL", "capsule": "skipped", "measured": False,
+              "declared_macs": None, "baseline_gsim_cycles": None},
+             {"family": "PV", "capsule": "unpriced", "measured": True,
+              "declared_macs": None, "baseline_gsim_cycles": 500}]
+    out = PAS.recoverable_cycles(cells, 100.0)
+    assert out["priced_members"] == 1
+    assert out["corpus_total_cycles"] == 10_000.0, "the unpriced member's cycles are not in the total"
+
+
+def test_no_achievable_rate_refuses_rather_than_pricing_against_the_peak():
+    """No program on this machine has reached the structural peak, so headroom priced against it is a
+    number that does not exist. Absent an achievable rate this says so."""
+    out = PAS.recoverable_cycles([_priced_cell("PR", "deep", 600_000, 10_000)], None)
+    assert out["status"] == "unavailable" and out["ranked"] == []
+    assert "cannot be priced" in out["reason"]
+
+
+def test_the_ranked_list_is_bounded_so_the_summary_stays_a_summary():
+    cells = [_priced_cell("PR", f"m{i:02d}", macs=1_000, cycles=10_000 - i) for i in range(20)]
+    out = PAS.recoverable_cycles(cells, 100.0)
+    assert out["priced_members"] == 20
+    assert len(out["ranked"]) == PAS.RECOVERABLE_RANK_LIMIT

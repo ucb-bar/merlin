@@ -412,7 +412,11 @@ of different size. Each tuning verdict therefore also reports, per member:
   (0, 1]. A value above 1 is refused as a broken derivation rather than reported as a fast program.
 
 - `achievable_macs_per_cycle` (in `summary`) -- the best rate any MEASURED program on this machine
-  actually reached, harvested from the functional run's own cycle counts. On this target it is a
+  actually reached, harvested from the functional run's cycle counts AND from the frozen-baseline
+  arm of this performance corpus. Baseline arms only: none of your own candidate measurements
+  contributes to it, so it is a target you cannot move by authoring a fast candidate. It may refine
+  UPWARD between feedback calls as more baselines are measured -- `summary.achievable_basis` says how
+  many points it came from and from where. On this target it is a
   small fraction of the structural peak, and the difference is a fact about the machine, not about
   your compiler: no program reaches the peak, so optimising toward it is chasing a number that does
   not exist.
@@ -421,18 +425,165 @@ of different size. Each tuning verdict therefore also reports, per member:
   demonstrated headroom, because something on this machine ran that fast; a member near 1.0 has none
   left to find without moving the ceiling itself.
 
+  **This ratio may exceed 1.0, and that is a result rather than an error.** The achievable rate is
+  the best any measured program has been OBSERVED to reach, not a bound -- unlike the structural
+  peak, which the RTL derives and nothing can beat. A member above 1.0 is running faster than
+  anything previously seen on this machine and has just moved the ceiling. Do not treat it as
+  headroom to close, and do not chase the remaining members up to it as though 1.0 were the target:
+  the ceiling was harvested from a different corpus and is simply too low for that member's shape.
+  Say so in `iteration_notes.md` and spend your effort on the members far below it.
+
 **Optimise toward the ACHIEVABLE ceiling, and report both.** Quote utilization against the structural
 peak for context only.
+
+### Where the objective's cycles are: `summary.recoverable`
+
+A share of achievable tells you how ONE member is doing. It does not tell you what that member is
+WORTH, and those are different questions -- a member at 3% of achievable holding 40 cycles is worth
+less than a member at 60% holding fifty thousand. `summary.recoverable` answers the second one:
+
+- `ranked` -- members ordered by `recoverable_cycles`, the baseline cycles minus what that member's
+  own declared work would cost at the achievable rate. Each carries `share_of_corpus_cycles` (how
+  much of the total it IS) and `recoverable_share_of_corpus` (how much of the total you would win by
+  perfecting it).
+- `total_recoverable_share` -- the whole corpus's headroom, as a fraction of its cycles.
+
+**Read this before choosing what to work on.** It is reported because the last campaign did not have
+it: the objective was concentrated so that seven members held 92.4% of all cycles while the eighteen
+members that looked worst held 7.2%, and a search that improved fourteen of those eighteen, with no
+regressions, moved the total by 0.2%. Every number needed to see that was already in the cells, and
+deriving it required multiplying and ranking across every row.
+
+Two things it does NOT say. It is not a claim that the cycles are reachable -- a member may top this
+list because its lever is one the compiler cannot express, and finding that out and SAYING so in
+`iteration_notes.md` is a real result. And it is not permission to ignore small members: a cheap fix
+that generalises is worth more than its own row.
+
+### The free screen: `analyze-command-buffers`
+
+`baseline_json` and `candidate_json` are paths to emitted command buffers. **A relative path is
+resolved against your submission root** -- the same base the brokered compile commands use, so
+`performance/out.command_buffer.json` works and an absolute path always works. Your own shell sits
+one level above that, so a path that works in `bash` may need its leading `submission/` dropped here.
+
+This action costs **no oracle time and no measurement budget**. It reads two emitted command buffers
+and nothing else -- no golden, no holdout, no simulator -- so you may call it as often as you like,
+and you should call it before spending a measurement. It returns, per arm:
+
+- `arms.<arm>.macs` and `.exact` -- the arithmetic each buffer's commands actually declare. `exact`
+  is false when a command could not be priced, which makes the number a floor rather than a total.
+- `barriers` -- how many completion points the candidate removed or added versus the baseline, or
+  UNKNOWN when the stream carries no countable completion opcode. UNKNOWN is not zero.
+- `lower_bound.<arm>` -- cycles this arm cannot go below, from its declared demand against the
+  derived ceiling.
+- `work_delta` -- present only when the two arms do DIFFERENT amounts of arithmetic, in which case a
+  cycle comparison between them is not a schedule comparison and you should say so.
+
+**What it may decide, and what it may not.** Use it to ELIMINATE: a candidate that declares more work
+than the baseline, that adds completion points, or whose own lower bound already exceeds the
+baseline's measured cycles is worse without measuring it. Use it that way freely -- an elimination
+here is sound, and it is free.
+
+It may **never certify**. A candidate this action likes has not been shown to be faster; it has only
+failed to be shown slower. Which of two legal ORDERINGS of the same commands runs faster is not
+answered here, and the `ordering_signals` block says so with the numbers: every signal readable from
+a command buffer was scored against the cycle oracle on exactly that comparison, held out by
+workload, and none beat chance -- the dependence-graph makespan landed on 0.500, a raw command count
+on 0.470, and a tile-pressure heuristic that reads 0.728 overall points BACKWARDS (0.273) on one
+workload with 33 decided pairs. Do not substitute your own reasoning for that measurement: if you
+believe an ordering is faster, the only thing that settles it is a measurement.
 
 **Drive candidate utilization UP, and never below the baseline's, on every member.** Utilization falling
 while a fit improves is the signature of a change that traded the machine away for a nicer curve; say
 so and go back. Where a value is null, the host could not derive it -- treat that as missing evidence
 and report it, never as permission to assume.
 
+### `verdict` -- whether a member is finished, and the only honest way to give up on one
+
+Every cell carries `verdict` and `verdict_reason`. This is the per-member counterpart to the
+corpus-wide `stopping` block, and it is what tells you where the remaining work is:
+
+- `no_headroom` -- the member is at the achievable ceiling within that ceiling's own measured
+  dispersion. **This is the signal to stop working on this capsule.** It is not a judgement that the
+  member is fast in absolute terms; it means nothing on this machine has been shown to run this
+  shape faster, so further effort here has no demonstrated target to aim at.
+- `headroom_open` -- something on this machine reached a rate this member is not reaching. The gap
+  is real and measured, and this is where your effort belongs.
+- `improved` / `regressed` -- the candidate beat or lost to the baseline by more than the oracle's
+  own replicate dispersion. The oracle here is a deterministic cycle-accurate simulator, so that
+  dispersion is zero and **every cycle counts** -- a one-cycle regression is a regression.
+- `refused` -- an input needed to decide was not derivable. It is NOT a pass, and it is not a fail;
+  it means this member was not decided and you should say so rather than reading it either way.
+
+The tolerance for `no_headroom` is measured, not declared: it is the spread of the achievable rate
+across the points that established it, so a member is never called finished because of a constant
+someone picked.
+
+**Use it to allocate effort, not to justify stopping early.** A corpus of `no_headroom` members with
+three at `headroom_open` tells you exactly which three to work on. A member you cannot improve is
+worth recording as such, with what you tried, so the next run does not re-pay for the same lever.
+
+The feedback document also carries a `stopping` block, and it is evidence about YOUR SEARCH rather
+than about the machine. Read it:
+
+- `stopping.status` is `stop` when the harness judges further search unlikely to pay, and `continue`
+  otherwise. `stopping.verdicts[]` gives each condition by `name`, whether it `fired`, its `reason`,
+  and whether it was `evaluable` at all. **A condition with `evaluable: false` could not be answered
+  in this configuration** -- it is not a check that keeps passing, it is a judge that cannot speak,
+  and `stopping.inapplicable` lists them. Do not read the count of conditions that did not fire as
+  agreement between that many independent checks; `stopping.share_of_attainable` is how close the corpus total already sits to the
+  conservative attainable total, and `stopping.budget` is what your measurement budget has left.
+- When `status` is `stop`, finish: write your report on the evidence you already have, and do not
+  open a new lever. A verdict that fired is a measurement, not a suggestion.
+- When `status` is `continue`, a plateau verdict that has NOT fired is not permission to keep
+  paying for the same lever -- your own abandonment condition still governs.
+- A `stop` on the very first queries means the search never had room, not that you succeeded. Say
+  so plainly rather than reporting a win.
+
 Low utilization is information about WHERE the cycles went. If utilization climbs with problem size,
 a fixed per-invocation cost dominates the small members and the lever is that overhead, not the inner
 loop. If it is flat and low, the machine is starved and the lever is the feed. Say which of these your
 measurements support before choosing a lever.
+
+### The optimisation ladder, including the rungs this corpus cannot measure
+
+Optimisation on this machine has levels, and the corpus does not cover them evenly. Being explicit
+about that is the point: a level nothing asks you about is a level you will not look at.
+
+| rung | what lives there | measurable here |
+|---|---|---|
+| `L1_tile` | tile shape, parallel extents, contraction depth | **yes** -- PK, PM |
+| `L1_separation_floor` | the irreducible separation between dependent commands | yes -- PS |
+| `L2_intra_layer` | staging, residency, spills, synchronization inside one layer | **yes** -- PL, PQ, PR |
+| `L3_inter_layer` | keeping a value on chip across dependent operations | **barely** -- PC, 2 members |
+| `L4_boundary` | what crosses the host/accelerator boundary, and when | **no capsules** |
+| `L5_fusion` | folding an elementwise stage into a producer's epilogue | **no capsules** |
+| `L6_global` | whole-program choices, e.g. operand encoding | **no capsules** -- this target declares one encoding, so there is nothing to choose |
+
+**What this means for what you may claim.** A cycle number here only ever comes from a measured
+member, so a change aimed at an unmeasured rung has no cell to prove it and **must not be reported
+as a speedup**. That is a limit on the CLAIM, not permission to ignore the rung.
+
+**What you should still do about the unmeasured rungs.** Three things, in order:
+
+1. **Do not regress them.** A change that improves a measured tile-level number by introducing a
+   memory round trip, re-staging a value, or splitting a fusable pair has bought a measured win with
+   an unmeasured loss. The free screen reports these directly, per arm, under `structural_levels`,
+   tagged with the rung they sit at -- check it before and after every change you make.
+2. **Report what you see.** Where the emitted code shows an inefficiency at a rung this corpus
+   cannot measure, say so in `iteration_notes.md` with the evidence you read it from, and say
+   plainly that it is unmeasured here. A named, unmeasured inefficiency is useful to the next run;
+   a silent one is lost.
+3. **Say what would measure it.** For each such observation, state the capsule that would settle it
+   -- the shapes, the two arms, and what would have to differ between them. That is the concrete
+   output of noticing something you cannot yet prove.
+
+`structural_levels.<arm>.findings` is a list of structural observations, each with a `level`, a
+`kind` and the value it concerns. On the current corpus it is EMPTY for every member, because these
+capsules commit each accumulator once and never read it back -- so treat a finding as a signal that
+YOUR change introduced something, not as a pre-existing defect to hunt. `by_level` reports every
+rung including the zeros, so silence about a rung is visible rather than absent. A count is never a
+cycle saving.
 
 ### Choose the cheapest change that can express the improvement
 

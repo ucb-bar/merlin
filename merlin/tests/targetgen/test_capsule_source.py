@@ -12,6 +12,27 @@ import pytest
 from merlin.targetgen import capsule_source as CSrc
 
 
+def test_explicit_model_loader_is_repository_relative(monkeypatch, tmp_path):
+    repo = tmp_path / "merlin-repo"
+    loader = repo / "merlin/contract/capsules/model/M2/capsule.pytorch.py"
+    loader.parent.mkdir(parents=True)
+    loader.write_text("def get_model_and_inputs(): pass\n", encoding="utf-8")
+    monkeypatch.setattr(CSrc, "repo_root", lambda: repo)
+
+    resolved = CSrc.resolve_model_loader(
+        {"loader": "merlin/contract/capsules/model/M2/capsule.pytorch.py"},
+        m2m_dir=tmp_path / "model2MLIR",
+    )
+
+    assert resolved == loader
+
+
+def test_implicit_model_loader_remains_model2mlir_relative(tmp_path):
+    assert CSrc.resolve_model_loader(
+        {"model": "small_llama"}, m2m_dir=tmp_path / "model2MLIR"
+    ) == tmp_path / "model2MLIR/workloads/small_llama/loader.py"
+
+
 def test_supported_ops_all_render():
     """Every op template renders to valid python source (no torch needed) with a Model + loader."""
     for op in CSrc.supported_ops():

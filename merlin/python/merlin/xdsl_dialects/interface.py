@@ -21,14 +21,15 @@ OPS = ["resident_pack", "resident_evict", "matmul", "elementwise", "accumulator.
 TYPES = ["resident_tensor", "streaming_tile", "accumulator", "committed_tensor",
          "event", "fifo", "command"]
 
-# Epilogue stages `interface.commit` accepts — must stay aligned with the runtime
-# engine's COMMIT semantics (merlin/python/merlin/runtime/simulator.py).
-# `maxpool` is the windowed-reduction stage the store path fuses: unlike the other four it CHANGES
-# the committed extent (the accumulator's rows unflatten to a plane and pool down), which is why the
-# geometry rides on the op's own attributes and why the result type of a pooled commit is not the
-# accumulator's shape. Rejecting it here while the runtime implemented it would let a module verify
-# and then compute something the verifier had declared impossible.
-KNOWN_EPILOGUE = {"bias", "bias_add", "requant", "relu", "maxpool"}
+# Epilogue stages `interface.commit` accepts. DERIVED, not restated: the vocabulary is
+# `merlin.runtime.commandbuffer.EPILOGUE_STAGES`, the single definition the command-buffer ABI, its JSON
+# validator and the three engines all read (see that constant for why it is not derived from RTL facts).
+# This module used to carry its own copy, and the copy had drifted in BOTH directions: it admitted
+# `maxpool`, which the JSON validator rejected, and it rejected `acc_scale`, which the validator and both
+# ABI documents admit and every engine implements. Rejecting a stage here that the runtime implements
+# lets a module verify and then compute something the verifier declared impossible; admitting one no
+# engine implements is the mirror defect.
+from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET as KNOWN_EPILOGUE  # noqa: E402
 
 #: The properties a ``maxpool`` epilogue stage needs to be executable. Checked by NAME on the raw
 #: property dict rather than declared as ``opt_prop_def``s: the op's declared property set is part of

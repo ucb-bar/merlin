@@ -28,6 +28,7 @@ from merlin.common.paths import repo_root
 
 sys.path.insert(0, str(repo_root() / "merlin" / "experiments" / "capsule_bench" / "harness"))
 RL = pytest.importorskip("_ratelimit")
+LOOP = pytest.importorskip("run_baseline_qa_loop")
 
 
 def _write(tmp_path, events):
@@ -105,3 +106,26 @@ class TestTheLoopActsOnIt:
         # and it must checkpoint so --resume retries THIS round rather than skipping it
         seg = src[i_check:i_grade]
         assert "_checkpoint(rnd)" in seg and "break" in seg
+
+    def test_dead_launch_does_not_replace_last_live_conformance_evidence(self, tmp_path):
+        """A zero-turn round file is transport telemetry, not authoring evidence.
+
+        This is the exact post-run failure observed in the Gemmini functional
+        QA run: round 02 had tool evidence, then round 03 was a 0.19-second
+        Codex launch failure.  Final conformance used the lexically latest
+        file and incorrectly reported ``n_calls: 0``.
+        """
+        live = _write(tmp_path, [
+            {"type": "assistant", "message": {"model": "gpt-5.6-sol", "content": [
+                {"type": "tool_use", "name": "Bash", "id": "t1", "input": {}}]}},
+            {"type": "result", "is_error": False, "result": "ok"},
+        ])
+        live = live.rename(tmp_path / "round_02.transcript.jsonl")
+        dead = _write(tmp_path, [
+            {"type": "system", "subtype": "init", "driver": "codex", "round": 3},
+            {"type": "codex_summary", "turns_started": 0, "exit_code": 1},
+            {"type": "result", "is_error": True, "result": "codex exited 1"},
+        ]).rename(tmp_path / "round_03.transcript.jsonl")
+
+        assert RL.agent_turn_dead(dead)[0] is True
+        assert LOOP._latest_live_authoring_transcript([live, dead]) == live

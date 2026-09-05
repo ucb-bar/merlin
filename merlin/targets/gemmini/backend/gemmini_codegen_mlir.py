@@ -1,13 +1,11 @@
-"""Merlin-FAITHFUL Gemmini codegen: the full (non-requant) RoCC sequence emitted as MLIR
+"""Merlin-FAITHFUL Gemmini codegen: the native RoCC sequence emitted as MLIR
 (llvm-dialect `llvm.inline_asm` `.insn` ops), lowered by merlin's compiler — NOT C.
 
-Generalizes the C0 proof to the whole non-requant conformance battery: 1 RES_PACK (resident
-weight, mvin'd once), N MATMUL_RESIDENT (each tiled into 16x16 blocks with K-accumulation,
-zero-padded edges), N COMMIT (empty epilogue or [relu]), full-i32 mvout. Every Gemmini
-instruction is a custom-3 (0x7b) `.insn` op with operands packed exactly per `gemmini.h`
-(verified against the libgemmini macros and the Verilator RTL). DRAM tile addresses are
-compile-time pointer-offset arithmetic on the func's pointer args; the tile sequence is
-unrolled (shapes are static).
+Generalizes the C0 proof to resident matmul groups, including relu/acc-scale readout and the target's
+native int8 max-pooling store path. CONV2D uses the same backend after a shared im2col materialization.
+Every Gemmini instruction is a custom-3 (0x7b) `.insn` op; target-specific encodings and packed pooling
+fields come from the capability manifest and RTL facts. DRAM tile addresses are compile-time
+pointer-offset arithmetic on the function's pointer args; the tile sequence is unrolled (shapes static).
 
 requant (C2/C3) is intentionally rejected — Gemmini's acc_scale is not bit-exact with merlin's
 integer requant (see docs/gemmini_requant_reconciliation.md). The kernel is pure llvm-dialect
@@ -15,12 +13,15 @@ MLIR lowered via `lower_to_llvm_ir` -> object; a thin C harness embeds data + ca
 """
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
 
 from .gemmini_codegen import _ceil_dim, _pad_rowmajor, _parse, CodegenError   # sibling — moves together
-from merlin.runtime.commandbuffer import materialize_inputs
+from merlin.runtime.commandbuffer import (conv_out_dims, materialize_inputs, pool_params)
+from merlin.runtime.tensor import pool_out_dims
 
 GARBAGE = 0xFFFFFFFF                  # universal, not target-specific — no derivation needed
 
@@ -37,20 +38,50 @@ GARBAGE = 0xFFFFFFFF                  # universal, not target-specific — no de
 @cache
 def _isa() -> SimpleNamespace:
     from merlin.targetgen.target_experiment import load_capability_manifest
+    from merlin.targetgen.address_space import derive_address_space
     from merlin.targetgen.rtl.facts import load_facts
     m = load_capability_manifest("gemmini")
     enc, rb = m.encoding, m.encoding["readout_bits"]
     code_of = {cls: code for code, cls in enc["semantic_class"].items()}
-    facts = load_facts("gemmini")["facts"]
+    facts_rec = load_facts("gemmini")
+    facts = facts_rec["facts"]
     fd = next(i for i in facts["interfaces"] if i.get("name") == "funct_decode_table")
+    layouts = next((i for i in facts["interfaces"]
+                    if i.get("name") == "register_bundle_layouts"), {})
+    build_features = next((i for i in facts["interfaces"]
+                           if i.get("name") == "elaborated_rtl_features"), {})
     # DIM (systolic mesh dimension) is a CIRCT-extracted FACT, not a hand-declared manifest field.
     mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
     # On-chip operand-store depth (scratchpad rows) is a CIRCT-extracted memory FACT — it bounds how
     # much of an operand can be kept resident (see the capacity-fit residency in emit_kernel_mlir).
     # Fail-closed: absent -> None (no capacity-fit residency, the per-tile schedule stands).
-    sp = next((mem for mem in facts.get("memories", []) if mem.get("name") == "scratchpad"), {})
+    # A memory fact's ``depth`` is per bank. LocalAddr indexes the banked space as one flat row range,
+    # so code generation must use the address-space derivation's TOTAL rows (bytes / RTL-derived row
+    # width), not the per-bank depth. Using depth rejected valid retained pool planes and made operand
+    # residency four times more conservative on the pinned 4-bank scratchpad.
+    address_space = derive_address_space("gemmini", facts=facts_rec)
+    sp_store = address_space.store("scratchpad")
+    acc_store = address_space.store("accumulator")
+    sp_rows = sp_store.total_rows if sp_store is not None else None
+    acc_rows = acc_store.total_rows if acc_store is not None else None
+    config_code_of = {name: int(code) for code, name in enc.get("config_subtype", {}).items()}
+    # The ISA bundle proves pooling is encodable; only the configuration which produced the RTL says
+    # whether StoreController built it. Require a literal derived True. A human capability declaration,
+    # an absent fact, or an UNKNOWN extraction can no longer enable code generation.
+    max_pool_supported = ((build_features.get("features") or {}).get("max_pool")
+                          if build_features.get("status") == "derived" else None)
+    if not isinstance(max_pool_supported, bool):
+        max_pool_supported = None
+    pool_capable = max_pool_supported is True
+    mesh_rows, mesh_cols = mesh.get("rows"), mesh.get("cols")
+    if not isinstance(mesh_rows, int) or not isinstance(mesh_cols, int) or mesh_rows <= 0 or mesh_cols <= 0:
+        raise CodegenError("CIRCT facts do not contain a positive mesh row/column geometry; refusing "
+                           "to substitute a conventional tile dimension")
+    if mesh_rows != mesh_cols:
+        raise CodegenError(f"this emitter requires a square mesh, but CIRCT derived "
+                           f"{mesh_rows}x{mesh_cols}; a single DIM cannot represent it")
     isa = SimpleNamespace(
-        DIM=mesh.get("rows", 16), ADDR_LEN=enc["addr_len"],
+        DIM=mesh_rows, ADDR_LEN=enc["addr_len"],
         F1=rb["f1"],                        # float 1.0 bits
         C_ACC=rb["c_acc"],                  # 0xA0000000 full-i32 accumulator readout base
         ACC_ACCUM=rb["acc_accum"],          # 0x40000000 accumulate-onto for K-tiles after the first
@@ -60,7 +91,12 @@ def _isa() -> SimpleNamespace:
         K_FLUSH=code_of["FLUSH"],
         CUSTOM_OPCODE=fd["custom_opcode"],  # RoCC custom-3 (0x7b)
         FUNCT3=fd["funct3"],                # 0x3
-        SCRATCHPAD_ROWS=sp.get("depth"),    # on-chip operand-store depth (rows); None if underived
+        SCRATCHPAD_ROWS=sp_rows,             # total banked operand-store rows; None if underived
+        ACCUMULATOR_ROWS=acc_rows,           # total banked accumulator rows for a retained output plane
+        CONFIG_ST_TYPE=config_code_of.get("CONFIG_ST"),
+        CONFIG_ST_LAYOUT=(layouts.get("bundles") or {}).get("ConfigMvoutRs1"),
+        MAX_POOL_SUPPORTED=max_pool_supported,
+        POOL_CAPABLE=pool_capable,
     )
     # config_ex (WS, no activation, shift 0, identity scales, strides 1) and config_ld RS1 (block
     # stride defaults to DIM + pixel_repeats 1 — the RTL LoadController asserts block_stride>=rows).
@@ -75,18 +111,22 @@ def _isa() -> SimpleNamespace:
 #: implementation change, not an API change.
 _DERIVED = ("DIM", "ADDR_LEN", "F1", "C_ACC", "ACC_ACCUM", "ACC_I8", "K_CONFIG", "K_MVIN", "K_MVOUT",
             "K_COMPUTE_PRELOADED", "K_PRELOAD", "K_FLUSH", "CUSTOM_OPCODE", "FUNCT3",
-            "CFG_EX_RS1", "CFG_EX_RS2", "CFG_LD_RS1", "SCRATCHPAD_ROWS")
+            "CFG_EX_RS1", "CFG_EX_RS2", "CFG_LD_RS1", "SCRATCHPAD_ROWS", "ACCUMULATOR_ROWS",
+            "CONFIG_ST_TYPE", "MAX_POOL_SUPPORTED", "POOL_CAPABLE")
+_DERIVED_LAYOUTS = ("CONFIG_ST_LAYOUT",)
 
 
 def __getattr__(name: str):
-    if name in _DERIVED:
+    if name in _DERIVED or name in _DERIVED_LAYOUTS:
         return getattr(_isa(), name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def _pack(addr: int) -> int:
+def _pack(addr: int, *, cols: int | None = None, rows: int | None = None) -> int:
     isa = _isa()
-    return (isa.DIM << (isa.ADDR_LEN + 16)) | (isa.DIM << isa.ADDR_LEN) | (addr & 0xFFFFFFFF)
+    cols = isa.DIM if cols is None else int(cols)
+    rows = isa.DIM if rows is None else int(rows)
+    return (rows << (isa.ADDR_LEN + 16)) | (cols << isa.ADDR_LEN) | (addr & 0xFFFFFFFF)
 
 
 def _f32_bits(scale: float) -> int:
@@ -94,9 +134,203 @@ def _f32_bits(scale: float) -> int:
     return struct.unpack("<I", struct.pack("<f", float(scale)))[0]
 
 
+@dataclass(frozen=True)
+class PoolSpec:
+    in_rows: int
+    in_cols: int
+    size: int
+    stride: int
+    out_rows: int
+    out_cols: int
+
+
+@dataclass(frozen=True)
+class Job:
+    lhs: str
+    out: str
+    epilogue: tuple[str, ...]
+    input_rows: int
+    output_rows: int
+    output_dtype: str
+    scale: float
+    pool: PoolSpec | None
+
+
+_CONV2D_ATTRS = frozenset({
+    "kernel", "stride", "padding", "dilation", "layout", "epilogue", "output_dtype",
+    "acc_scale", "requant_shift", "pool_in_dims", "pool_size", "pool_stride", "pool_padding",
+    "pool_pad_value", "semantic",
+})
+
+
+def _normalize_command_buffer(cb: dict) -> dict:
+    """Lower a whole-op CONV2D to the same im2col/resident-matmul/commit path used by matmul capsules.
+
+    The im2col recipe is executed by :func:`materialize_inputs`, whose gather is shared with the command
+    simulator and capsule golden. This transformation changes only the target codegen representation; it
+    does not invent a second convolution geometry or a host fallback.
+    """
+    if not any(c.get("opcode") == "CONV2D" for c in cb.get("commands", [])):
+        return cb
+    out = deepcopy(cb)
+    tensors = out.setdefault("tensors", {})
+    params = out.setdefault("params", {})
+    recipes = params.setdefault("im2col_recipes", [])
+    packed = {c.get("operands", {}).get("dst"): c.get("operands", {}).get("src")
+              for c in out.get("commands", []) if c.get("opcode") == "RES_PACK"}
+    commands: list[dict] = []
+    conv_index = 0
+    for command in out.get("commands", []):
+        if command.get("opcode") != "CONV2D":
+            commands.append(command)
+            continue
+        ops, attrs = command.get("operands", {}), command.get("attributes", {})
+        unknown = sorted(set(attrs) - _CONV2D_ATTRS)
+        if unknown:
+            raise CodegenError(f"CONV2D does not implement attribute(s) {unknown}")
+        ifm, rhs, dst = ops.get("ifm"), ops.get("weight"), ops.get("dst")
+        if rhs not in packed:
+            raise CodegenError(f"CONV2D weight {rhs!r} is not a resident-packed handle")
+        spec = tensors.get(ifm, {})
+        shape = spec.get("shape")
+        if not isinstance(shape, list) or len(shape) != 4:
+            raise CodegenError(f"CONV2D activation {ifm!r} must be rank-4 NHWC, got {shape!r}")
+        batch, height, width, channels = (int(x) for x in shape)
+        if batch != 1:
+            raise CodegenError(f"CONV2D native v1 requires batch 1, got {batch}")
+        kernel = attrs.get("kernel")
+        if not isinstance(kernel, list) or len(kernel) != 4:
+            raise CodegenError(f"CONV2D requires kernel = [kh, kw, ci, co], got {kernel!r}")
+        kh, kw, ci, co = (int(x) for x in kernel)
+        if channels != ci:
+            raise CodegenError(f"CONV2D channel mismatch: activation has {channels}, kernel declares {ci}")
+        if attrs.get("layout", "nhwc") != "nhwc":
+            raise CodegenError(f"CONV2D native v1 requires layout 'nhwc', got {attrs.get('layout')!r}")
+        stride = [int(x) for x in attrs.get("stride", [1, 1])]
+        padding = [int(x) for x in attrs.get("padding", [0, 0, 0, 0])]
+        dilation = [int(x) for x in attrs.get("dilation", [1, 1])]
+        if len(stride) != 2 or len(padding) != 4 or len(dilation) != 2:
+            raise CodegenError("CONV2D stride/dilation must have two entries and padding four entries")
+        try:
+            ho, wo = conv_out_dims(height, width, kh, kw, stride, padding, dilation)
+        except (TypeError, ValueError, ZeroDivisionError) as exc:
+            raise CodegenError(f"CONV2D {dst!r} has invalid geometry: {exc}") from exc
+        if ho <= 0 or wo <= 0:
+            raise CodegenError(f"CONV2D geometry produces invalid output extent {ho}x{wo}")
+        if "maxpool" in (attrs.get("epilogue") or []):
+            try:
+                declared = pool_params(attrs, op=f"CONV2D {dst!r}")["pool_in_dims"]
+            except ValueError as exc:
+                raise CodegenError(str(exc)) from exc
+            if declared != (ho, wo):
+                raise CodegenError(
+                    f"CONV2D {dst!r} pool_in_dims {list(declared)} disagrees with derived [{ho}, {wo}]")
+        lhs = f"{ifm}__im2col_{conv_index}"
+        acc = f"__conv_acc_{conv_index}"
+        conv_index += 1
+        tensors[lhs] = {"shape": [batch * ho * wo, kh * kw * ci],
+                        "dtype": spec.get("dtype", "i8"), "role": "input"}
+        recipes.append({"source": ifm, "target": lhs, "kh": kh, "kw": kw, "ci": ci,
+                        "stride": stride, "padding": padding, "dilation": dilation, "layout": "nhwc"})
+        commands.extend([
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": lhs, "rhs": rhs, "dst": acc}},
+            {"opcode": "COMMIT", "operands": {"src": acc, "dst": dst},
+             "attributes": {k: deepcopy(v) for k, v in attrs.items()
+                            if k in {"epilogue", "output_dtype", "acc_scale", "requant_shift",
+                                     "pool_in_dims", "pool_size", "pool_stride", "pool_padding",
+                                     "pool_pad_value"}}},
+        ])
+    out["commands"] = commands
+    return out
+
+
+def _structurally_empty(cb: dict) -> bool:
+    """Recognise only the explicit zero-tensor, zero-command calibration input."""
+    tensors, commands = cb.get("tensors"), cb.get("commands")
+    return isinstance(tensors, dict) and not tensors and isinstance(commands, list) and not commands
+
+
+def _native_pool_spec(attrs: dict, *, rows: int, output_dtype: str, op: str) -> PoolSpec:
+    """Validate and derive the exact native CONFIG_ST pooling subset."""
+    if output_dtype != "i8":
+        raise CodegenError(f"{op}: native maxpool requires i8 output, got {output_dtype!r}")
+    try:
+        params = pool_params(attrs, op=op)
+    except ValueError as exc:
+        raise CodegenError(str(exc)) from exc
+    h, w = params["pool_in_dims"]
+    ph, pw = params["pool_size"]
+    sh, sw = params["pool_stride"]
+    padding = params["pool_padding"]
+    if ph != pw:
+        raise CodegenError(f"{op}: native v1 requires square pool_size, got {[ph, pw]}")
+    if sh != sw:
+        raise CodegenError(f"{op}: native v1 requires square pool_stride, got {[sh, sw]}")
+    if any(padding):
+        raise CodegenError(f"{op}: native v1 requires zero pool_padding, got {list(padding)}")
+    if ph <= 0 or sh <= 0:
+        raise CodegenError(f"{op}: pool size and stride must be positive")
+    plane = h * w
+    if plane <= 0 or rows % plane:
+        raise CodegenError(f"{op}: {rows} rows are not whole {h}x{w} planes")
+    batch = rows // plane
+    if batch != 1:
+        raise CodegenError(f"{op}: native v1 requires batch 1, got {batch}")
+    ho, wo = pool_out_dims(h, w, (ph, pw), (sh, sw), padding)
+    if ho <= 0 or wo <= 0:
+        raise CodegenError(f"{op}: pool geometry produces invalid output extent {ho}x{wo}")
+    return PoolSpec(h, w, ph, sh, ho, wo)
+
+
+def _pack_register_fields(layout: dict | None, values: dict[str, int], *, register: str) -> int:
+    if not layout or not isinstance(layout.get("fields"), dict):
+        raise CodegenError(f"{register} packed-field layout is absent from the target RTL facts")
+    fields = layout["fields"]
+    unknown = sorted(set(values) - set(fields))
+    if unknown:
+        raise CodegenError(f"{register} RTL layout has no field(s) {unknown}")
+    packed = 0
+    for name, value in values.items():
+        spec = fields[name]
+        width, offset = int(spec["width"]), int(spec["offset"])
+        value = int(value)
+        if value < 0 or value >= (1 << width):
+            raise CodegenError(
+                f"{register}.{name}={value} does not fit the RTL-derived {width}-bit field")
+        packed |= value << offset
+    return packed
+
+
+def _pool_config_rs1(pool: PoolSpec | None, *, acc_act: int) -> int:
+    isa = _isa()
+    if pool is None:
+        if isa.CONFIG_ST_TYPE is None:
+            raise CodegenError("CONFIG_ST subtype is absent from the target capability manifest")
+        return (int(acc_act) << 2) | int(isa.CONFIG_ST_TYPE)
+    if isa.MAX_POOL_SUPPORTED is False:
+        raise CodegenError("exact elaborated RTL facts show native max-pool was compiled out")
+    if isa.MAX_POOL_SUPPORTED is not True:
+        raise CodegenError("exact elaborated RTL facts do not establish native max-pool capability")
+    if isa.CONFIG_ST_TYPE is None:
+        raise CodegenError("CONFIG_ST subtype is absent from the target capability manifest")
+    return _pack_register_fields(isa.CONFIG_ST_LAYOUT, {
+        "cmd_type": isa.CONFIG_ST_TYPE,
+        "activation": acc_act,
+        "pool_stride": pool.stride,
+        "pool_size": pool.size,
+        "upad": 0,
+        "lpad": 0,
+        "pool_out_dim": pool.out_cols,
+        "porows": pool.out_rows,
+        "pocols": pool.out_cols,
+        "orows": pool.in_rows,
+        "ocols": pool.in_cols,
+    }, register="ConfigMvoutRs1")
+
+
 def _parse_groups(cb: dict):
     """Parse the cb into resident-weight GROUPS for the MLIR-faithful path (decoupled from the C-path
-    _parse, which is full-i32-only). Returns ``[(weight, k, n, jobs)]`` in resident-pack (command) order,
+    _parse, which is full-i32-only). Returns ``[(weight, k, n, list[Job])]`` in resident-pack order,
     each with ``jobs = [(lhs, out, epi, m, out_dtype, scale)]`` — the matmuls that reuse THAT weight.
 
     Supports MULTIPLE resident weights (a real multi-layer model): the emitter processes the groups
@@ -104,6 +338,7 @@ def _parse_groups(cb: dict):
     a whole model is ONE co-scheduled kernel rather than one kernel per layer. relu + acc_scale epilogues
     and i8/i32 readout; integer requant(shift) is host-side (round-half-up) — NOT a Gemmini readout — so it
     is rejected here in favour of acc_scale."""
+    cb = _normalize_command_buffer(cb)
     cmds = cb.get("commands", [])
     packs = [c for c in cmds if c["opcode"] == "RES_PACK"]
     matmuls = [c for c in cmds if c["opcode"] in ("MATMUL_RESIDENT", "MATMUL")]
@@ -142,11 +377,20 @@ def _parse_groups(cb: dict):
                 raise CodegenError("integer requant(shift) is a host-side op (round-half-up); "
                                    "Gemmini's i8 readout uses acc_scale (round-near-even) — use "
                                    "epilogue ['acc_scale'] (see results/gemmini/requant_status.yaml)")
-            if s not in ("relu", "acc_scale"):
-                raise CodegenError(f"unsupported epilogue stage {s!r} (have: relu, acc_scale)")
+            if s not in ("relu", "acc_scale", "maxpool"):
+                raise CodegenError(f"unsupported epilogue stage {s!r} (have: relu, acc_scale, maxpool)")
         out_dtype = attrs.get("output_dtype", "i32")
         scale = float(attrs.get("acc_scale", 1.0))
-        jobs_by_res[res].append((lhs, commit["operands"]["dst"], epi, m, out_dtype, scale))
+        pool = None
+        output_rows = m
+        if "maxpool" in epi:
+            if epi[-1] != "maxpool":
+                raise CodegenError("native maxpool must be the final epilogue stage")
+            pool = _native_pool_spec(attrs, rows=m, output_dtype=out_dtype,
+                                     op=f"COMMIT {commit['operands']['dst']!r}")
+            output_rows = pool.out_rows * pool.out_cols
+        jobs_by_res[res].append(Job(lhs, commit["operands"]["dst"], tuple(epi), m,
+                                     output_rows, out_dtype, scale, pool))
     groups = []
     for res in order:
         weight = res_to_weight[res]
@@ -163,6 +407,13 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     resident weights — each weight group is mvin'd, matmul'd, and mvout in turn, reusing the scratchpad,
     so a whole multi-layer model lowers to ONE co-scheduled kernel.
     """
+    cb = _normalize_command_buffer(cb)
+    if _structurally_empty(cb):
+        # This is still compiled and called by the production harness.  It executes no accelerator
+        # command, so its measured window is a legitimate shared runner/compiler baseline.
+        return ('module {\n  llvm.func @gemmini_kernel() {\n'
+                '    llvm.inline_asm has_side_effects "fence", "" : () -> ()\n'
+                '    llvm.return\n  }\n}\n'), []
     isa = _isa()
     # Bind the RTL-derived facts as LOCALS. They used to be module-level constants; the lazy refactor
     # moved them behind a PEP 562 module __getattr__, which serves `gemmini_codegen_mlir.DIM` from
@@ -173,10 +424,10 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     ACC_ACCUM, ACC_I8, SCRATCHPAD_ROWS = isa.ACC_ACCUM, isa.ACC_I8, isa.SCRATCHPAD_ROWS
     K_CONFIG, K_MVIN, K_MVOUT = isa.K_CONFIG, isa.K_MVIN, isa.K_MVOUT
     K_PRELOAD, K_COMPUTE_PRELOADED = isa.K_PRELOAD, isa.K_COMPUTE_PRELOADED
-    groups = _parse_groups(cb)                  # [(weight, k, n, jobs)], jobs: (lhs,out,epi,m,odt,scale)
+    groups = [] if _structurally_empty(cb) else _parse_groups(cb)
     weights = [g[0] for g in groups]
-    lhss = [j[0] for g in groups for j in g[3]]
-    outs = [j[1] for g in groups for j in g[3]]
+    lhss = [j.lhs for g in groups for j in g[3]]
+    outs = [j.out for g in groups for j in g[3]]
     args = weights + lhss + outs
     arg_decl = ", ".join(f"%a{i}: !llvm.ptr" for i in range(len(args)))
 
@@ -248,7 +499,9 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
         # the depth is underived) we keep the per-(mi,nj) single-slot schedule, byte-identical to before.
         panel_resident = SCRATCHPAD_ROWS is not None and (Kt * Nt + Kt) * DIM <= SCRATCHPAD_ROWS
 
-        for (lhs, out, epi, m, out_dtype, scale) in jobs:
+        for job in jobs:
+            lhs, out, epi = job.lhs, job.out, job.epilogue
+            m, out_dtype, scale, pool = job.input_rows, job.output_dtype, job.scale, job.pool
             mp = _ceil_dim(m)
             Mt = mp // DIM
             i8_out = out_dtype == "i8"              # i8 readout = Gemmini float acc_scale + clamp
@@ -256,8 +509,20 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
             scale_bits = _f32_bits(scale) if i8_out else F1
             elt = 1 if i8_out else 4               # output element bytes
             read_base = ACC_I8 if i8_out else C_ACC  # i8 readout drops the full_C bit -> scale applies
-            # config_st: RS1=(acc_act<<2)|CONFIG_ST ; RS2=(acc_scale_bits<<32)|out_row_stride_bytes
-            rocc(K_CONFIG, konst((acc_act << 2) | 2), konst((scale_bits << 32) | (np_ * elt)))
+            # Pooling reads a whole retained spatial plane from consecutive accumulator rows. One plane
+            # per channel tile therefore needs ``mp`` rows; refuse rather than alias accumulator storage.
+            if pool is not None:
+                needed = Nt * mp
+                if isa.ACCUMULATOR_ROWS is None:
+                    raise CodegenError("native maxpool needs an RTL-derived accumulator row capacity")
+                if needed > int(isa.ACCUMULATOR_ROWS):
+                    raise CodegenError(
+                        f"native maxpool needs {needed} retained accumulator rows, target has "
+                        f"{isa.ACCUMULATOR_ROWS}")
+            # config_st RS1 field placement is derived from ConfigMvoutRs1 in the target's Chisel ISA.
+            # RS2 retains the established acc-scale/out-row-stride layout.
+            rocc(K_CONFIG, konst(_pool_config_rs1(pool, acc_act=acc_act)),
+                 konst((scale_bits << 32) | (np_ * elt)))
             for mi in range(Mt):
                 if panel_resident:
                     # Row-panel mvin: the Kt activation tiles of row mi, into Kt distinct slots, ONCE.
@@ -272,11 +537,24 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
                             a_off = ((mi * DIM) * kp + kt * DIM)    # legacy: re-mvin per output column
                             rocc(K_MVIN, addr(lhs, a_off), konst(_pack(a_slot)))
                             a_addr = a_slot
-                        cad = C_ACC if kt == 0 else (C_ACC | ACC_ACCUM)   # accumulator is always i32
+                        c_row = nj * mp + mi * DIM if pool is not None else 0
+                        cad = C_ACC | c_row
+                        if kt != 0:
+                            cad |= ACC_ACCUM                         # accumulator is always i32
                         rocc(K_PRELOAD, konst(_pack((kt * Nt + nj) * DIM)), konst(_pack(cad)))
                         rocc(K_COMPUTE_PRELOADED, konst(_pack(a_addr)), konst(_pack(GARBAGE)))
-                    c_off = ((mi * DIM) * np_ + nj * DIM) * elt
-                    rocc(K_MVOUT, addr(out, c_off), konst(_pack(read_base)))
+                    if pool is None:
+                        c_off = ((mi * DIM) * np_ + nj * DIM) * elt
+                        rocc(K_MVOUT, addr(out, c_off), konst(_pack(read_base)))
+            if pool is not None:
+                # StoreController walks the configured HxW plane from localaddr and emits the Ho*Wo
+                # result. Its pooling path requires a single channel block (rows is ignored there; the
+                # target header's own pool call passes zero), hence one MVOUT per channel tile.
+                for nj in range(Nt):
+                    channels = min(DIM, n - nj * DIM)
+                    c_base = read_base | (nj * mp)
+                    rocc(K_MVOUT, addr(out, nj * DIM * elt),
+                         konst(_pack(c_base, cols=channels, rows=0)))
 
     body.append('    llvm.inline_asm has_side_effects "fence", "" : () -> ()')
     text = ("module {\n  llvm.func @gemmini_kernel(" + arg_decl + ") {\n"
@@ -303,10 +581,26 @@ def rocc_instruction_count(obj: str | Path) -> int:
                if ".insn" in ln and len(ln.split()) > 1 and ln.split()[1].endswith("7b"))
 
 
-#: How many counter slots this target's config register addresses (its index field is three bits, and
-#: the RTL's counter bundle carries an eight-wide `external_values` array). Stated here rather than
-#: assumed inside the emitter, which refuses when a counter set does not fit.
-_COUNTER_SLOTS = 8
+@cache
+def _counter_slots() -> dict:
+    """Physical counter capacity, extracted from this target's elaborated CIRCT HW.
+
+    The identifiers below select the target-owned counter structure, just as a top-module name selects
+    an RTL design.  The capacity itself is never copied here: the generic reader cross-checks three
+    independently elaborated state families and returns no number when they are absent or inconsistent.
+    """
+    from merlin.perf.hw_counters import counter_slots_from_circt
+    from merlin.targetgen.rtl import mlc_bridge
+
+    path = mlc_bridge.core_hw_mlir("gemmini")
+    if path is None or not Path(path).is_file():
+        return {"status": "unknown", "slots": None,
+                "why": "the elaborated CIRCT core HW artifact could not be located"}
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return counter_slots_from_circt(
+        text, module="CounterFile",
+        state_families=("counter_config", "counter_snapshot", "counters"),
+        source=str(path))
 
 
 def _counters_requested() -> bool:
@@ -320,17 +614,99 @@ def _counters_requested() -> bool:
     return str(os.environ.get("MERLIN_HW_COUNTERS", "")).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _counter_unit_requested() -> str | None:
+    """Optional unit family selected from the target's own counter names (for example ``BYTES``)."""
+    import os
+
+    value = str(os.environ.get("MERLIN_HW_COUNTER_UNIT", "")).strip().upper()
+    return value or None
+
+
+def _read_discovered_counter_header(discovery: dict) -> str:
+    """Read once and verify the discovery-time digest before using mutable external headers."""
+    import hashlib
+
+    text = Path(discovery["header"]).read_text(encoding="utf-8", errors="replace")
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if digest != discovery.get("header_sha256"):
+        raise CodegenError("counter header changed after discovery; refusing mixed campaign evidence")
+    return text
+
+
+def _cache_state_requested() -> str:
+    """Select a requested pre-measurement protocol, without claiming cache-state observability."""
+    import os
+
+    state = str(os.environ.get("MERLIN_CACHE_STATE", "cold")).strip().lower()
+    if state not in ("cold", "warm"):
+        raise CodegenError(f"unsupported cache-state measurement condition {state!r}")
+    return state
+
+
+def _measurement_c_fragments(warmup_work: str) -> dict[str, str]:
+    """Counter and cache-condition fragments shared by every target-owned harness shape."""
+    cpro, cepi, include = "", "", ""
+    if _counters_requested():
+        try:
+            from merlin.perf import hw_counters as hc
+
+            discovered = hc.counters_for_target("gemmini")
+            if discovered.get("status") != "derived":
+                raise CodegenError(discovered.get(
+                    "why", "the requested counter header was not derived"))
+            text = _read_discovered_counter_header(discovered)
+            codes = hc.event_codes(text)
+            unit = _counter_unit_requested()
+            capacity = _counter_slots()
+            if capacity.get("status") != "derived":
+                raise CodegenError(capacity.get(
+                    "why", "counter capacity is not derivable from CIRCT"))
+            disabled_code = codes.get("DISABLE")
+            if (isinstance(disabled_code, bool) or not isinstance(disabled_code, int)
+                    or disabled_code < 0):
+                raise CodegenError(
+                    "the target counter header does not derive a non-negative DISABLE event code")
+            if unit is None:
+                selected = hc.derive_occupancy_counters(text)
+                bracket = hc.counter_bracket_c(
+                    selected, codes, slots=int(capacity["slots"]), padding_code=disabled_code)
+            else:
+                selected = hc.counters_with_unit(text, unit)
+                if not selected:
+                    raise CodegenError(
+                        f"the target counter header declares no {unit!r} unit counters")
+                bracket = hc.counter_bracket_for_names(
+                    tuple(selected), codes, slots=int(capacity["slots"]),
+                    padding_code=disabled_code)
+            cpro = (f'  printf("{hc.COUNTER_SCHEMA_MARKER} '
+                    f'{discovered["header_sha256"]}\\n");\n' + bracket["prologue"])
+            cepi = bracket["epilogue"]
+            include = '#include "include/gemmini_counter.h"\n'
+        except Exception as exc:                    # noqa: BLE001 — normalize requested-instrumentation failure
+            raise CodegenError(f"requested counter instrumentation unavailable: {exc}") from exc
+    warmup = ""
+    if _cache_state_requested() == "warm":
+        warmup = warmup_work.rstrip() + "\n  // merlin: warmup completed outside the measured/counter window.\n"
+    requested = _cache_state_requested()
+    return {"include": include, "prologue": cpro, "epilogue": cepi, "warmup": warmup,
+            "cache_state": "unknown", "cache_state_observed": False,
+            "cache_protocol": ("one_unmeasured_predecessor" if requested == "warm"
+                               else "fresh_elf_process"),
+            "requested_cache_condition": requested}
+
+
 def _harness_c(cb: dict, inputs: dict | None = None) -> str:
     """Thin C harness: embed padded leaf data, call the MLIR kernel, print outputs (cropped).
 
     ``inputs`` (name -> nested-list) INJECTS explicit operand values so the device runs the model's real
     activations/weights; absent, each leaf is materialized deterministically from its name (reproducible)."""
-    groups = _parse_groups(cb)                  # [(weight, k, n, jobs)]
+    cb = _normalize_command_buffer(cb)
+    groups = [] if _structurally_empty(cb) else _parse_groups(cb)
     leaves = materialize_inputs(cb, inputs)
     weights = [g[0] for g in groups]
-    lhss = [j[0] for g in groups for j in g[3]]
-    # (out_name, m, n, out_dtype) — n rides along so the printed column count is the group's own n.
-    outs = [(j[1], j[3], g[2], j[4]) for g in groups for j in g[3]]
+    lhss = [j.lhs for g in groups for j in g[3]]
+    # (out_name, committed rows, n, out_dtype) — pooling changes the committed row extent.
+    outs = [(j.out, j.output_rows, g[2], j.output_dtype) for g in groups for j in g[3]]
 
     decls = []
     for weight, k, n, jobs in groups:
@@ -338,7 +714,8 @@ def _harness_c(cb: dict, inputs: dict | None = None) -> str:
         wpad = _pad_rowmajor(list(leaves[weight].data), k, n, kp, np_)
         decls.append(f"static const elem_t T_{weight}[{kp * np_}] row_align(1) = "
                      f"{{{','.join(str(int(v)) for v in wpad)}}};")
-        for lhs, _, _, m, _, _ in jobs:
+        for job in jobs:
+            lhs, m = job.lhs, job.input_rows
             mp = _ceil_dim(m)
             ap = _pad_rowmajor(list(leaves[lhs].data), m, k, mp, kp)
             decls.append(f"static const elem_t T_{lhs}[{mp * kp}] row_align(1) = "
@@ -382,28 +759,17 @@ def _harness_c(cb: dict, inputs: dict | None = None) -> str:
     # the set exceeds the hardware's slots. Measured through this path on real RTL: eta 0.8207 against
     # 0.7717 for a bit-exact reordering of the same work, which is the comparison a correctness gate
     # cannot make.
-    cpro, cepi, cinc = "", "", ""
-    if _counters_requested():
-        try:
-            from merlin.perf import hw_counters as _hc
-            from pathlib import Path as _P
-            _r = _hc.counters_for_target("gemmini")
-            if _r.get("status") == "derived":
-                _txt = _P(_r["header"]).read_text(encoding="utf-8")
-                _oc = _hc.derive_occupancy_counters(_txt)
-                _b = _hc.counter_bracket_c(_oc, _hc.event_codes(_txt), slots=_COUNTER_SLOTS)
-                cpro, cepi = _b["prologue"], _b["epilogue"]
-                cinc = '#include "include/gemmini_counter.h"\n'
-        except Exception as _e:                    # noqa: BLE001 — never break a graded harness for a
-            cpro = f"  /* merlin: counters unavailable: {type(_e).__name__} */\n"   # diagnostic extra
+    measured_call = f"  gemmini_kernel({call});\n  gemmini_fence();"
+    fragments = _measurement_c_fragments(measured_call)
     return ("#include <stdint.h>\n#include <stdio.h>\n#include \"include/gemmini_testutils.h\"\n"
-            + cinc +
+            + fragments["include"] +
             "extern void gemmini_kernel();\n" + "\n".join(decls) + "\nint main() {\n"
-            + cpro +
+            + fragments["warmup"] +
+            fragments["prologue"] +
             "  uint64_t c0 = read_cycles();\n"
-            f"  gemmini_kernel({call});\n  gemmini_fence();\n"
+            + measured_call + "\n"
             "  uint64_t c1 = read_cycles();\n"
-            + cepi +
+            + fragments["epilogue"] +
             '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
             '  printf("METRIC cycle_window_gemmini_region 1\\n");\n'
             + "\n".join(prints) + "\n"
@@ -418,6 +784,7 @@ def run_on_spike(cb: dict, workdir: str | Path | None = None, *, simulator: str 
     from . import gemmini as gem
     from merlin.runtime.reference import outputs_match, reference_outputs
 
+    cb = _normalize_command_buffer(cb)
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="gemmini_mlir_run_"))
     work.mkdir(parents=True, exist_ok=True)
     obj = build_object(cb, work)
@@ -438,6 +805,54 @@ def run_on_spike(cb: dict, workdir: str | Path | None = None, *, simulator: str 
         raise gem.GemminiError(f"link failed:\n{proc.stderr[-2000:]}")
     console = gem.run_elf(elf, simulator=simulator, timeout=timeout)
     outputs, raw = gem.parse_output(console)
-    return {"outputs": outputs, "correct": outputs_match(outputs, reference_outputs(cb)),
-            "metrics": {"cycles": raw.get("cycles", 0)}, "path": "mlir_inline_asm_rocc",
-            "oracle": gem.ORACLE[simulator], "elf": str(elf), "console": console}
+    result = {"outputs": outputs, "correct": outputs_match(outputs, reference_outputs(cb)),
+              "metrics": {"cycles": raw.get("cycles", 0)}, "path": "mlir_inline_asm_rocc",
+              "oracle": gem.ORACLE[simulator], "elf": str(elf), "console": console,
+              "measurement_conditions": {
+                  "cache_state": "unknown", "cache_state_observed": False,
+                  "cache_protocol": ("one_unmeasured_predecessor"
+                                     if _cache_state_requested() == "warm" else "fresh_elf_process"),
+                  "requested_cache_condition": _cache_state_requested(),
+                  "cycle_window": "gemmini_region"}}
+    if _counters_requested():
+        from merlin.perf import hw_counters as hc
+
+        discovery = hc.counters_for_target("gemmini")
+        selected_unit = _counter_unit_requested()
+        counter_report = {"discovery": discovery, "capacity": _counter_slots(),
+                          "selection": {"kind": "unit" if selected_unit else "joint_occupancy",
+                                        "unit": selected_unit},
+                          "readings": hc.parse_counter_output(console)}
+        measured_schema = hc.parse_counter_schema(console)
+        counter_report["measured_header_sha256"] = measured_schema
+        if (discovery.get("status") == "derived"
+                and measured_schema == discovery.get("header_sha256")):
+            header = _read_discovered_counter_header(discovery)
+            if selected_unit is None:
+                occupancy = hc.derive_occupancy_counters(header)
+                counter_report["occupancy"] = occupancy.to_dict()
+                partition = gem.counter_partition_inputs()
+                if partition.get("status") == "available":
+                    counter_report["overlap"] = hc.eta_from_counters(
+                        counter_report["readings"], occupancy,
+                        hw_text=partition["hw_text"], codes=hc.event_codes(header),
+                        module=partition["module"], counter_module=partition["counter_module"],
+                        measurement_cycles=raw.get("cycles"),
+                        source=partition["source"])
+                else:
+                    counter_report["overlap"] = {
+                        "state": "unknown", "eta": None,
+                        "why": partition.get("why", "CIRCT partition evidence is unavailable")}
+            else:
+                counter_report["selected_counters"] = hc.counters_with_unit(header, selected_unit)
+                counter_report["overlap"] = {
+                    "state": "not_measured", "eta": None,
+                    "why": f"this run selected the {selected_unit} counter family, not joint occupancy"}
+        else:
+            counter_report["overlap"] = {
+                "state": "unknown", "eta": None,
+                "why": (discovery.get("why", "the target counter set was not derived")
+                        if discovery.get("status") != "derived" else
+                        "the measured ELF counter-schema digest does not match current discovery")}
+        result["counters"] = counter_report
+    return result

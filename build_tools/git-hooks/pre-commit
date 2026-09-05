@@ -25,6 +25,19 @@ echo "[pre-commit] no-assumed-constants (staged)…"
 echo "[pre-commit] overfit register (tree)…"
 "$PY" build_tools/scripts/check_overfit_register.py
 
+# Whole-tree: the claim is that ONE definition of the command-buffer epilogue vocabulary reaches the
+# validator, both ABI documents and the dialect verifiers. A commit that edits any one of them must fail
+# even when the drift arrives from a file it did not stage. ~0.2 s.
+echo "[pre-commit] epilogue vocabulary (tree)…"
+"$PY" build_tools/scripts/check_epilogue_vocabulary.py
+
+# Whole-tree, same reason: the claim is that ONE definition of the kernel ABI's argument order reaches
+# every runner-owned harness path. It renders each backend's real harness for a probe buffer of every
+# declared command shape and compares the emitted entry call with the contract's tokens, so a commit
+# that edits either side must fail even when the drift arrives from a file it did not stage. ~0.4 s.
+echo "[pre-commit] kernel ABI argument order (tree)…"
+"$PY" build_tools/scripts/check_kernel_abi_arg_order.py
+
 echo "[pre-commit] no-answer-keys (tracked)…"
 "$PY" build_tools/scripts/check_no_answer_keys.py
 

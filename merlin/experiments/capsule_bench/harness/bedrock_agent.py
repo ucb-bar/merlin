@@ -198,6 +198,14 @@ def _write_file(ws: Path, rel: str, content: str) -> str:
     p = (ws / rel).resolve()
     if not str(p).startswith(str(ws.resolve())):
         return f"[refused] path escapes the workspace: {rel}"
+    # Bedrock's structured write_file is a host-side operation rather than a shell inside bwrap. Mirror
+    # the pinned-resume mount policy here so this one tool cannot bypass the otherwise read-only compiler
+    # subtree. run_bash/read_file still go through bwrap.full_argv and its real --ro-bind guard.
+    from merlin.targetgen.sandbox import bwrap as _BW
+    submission = (ws / "submission").resolve()
+    if (os.environ.get(_BW.PINNED_SUBMISSION_READ_ONLY_ENV, "").strip() == "1"
+            and (p == submission or p.is_relative_to(submission))):
+        return f"[refused] certified submission is read-only: {rel}"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
     return f"wrote {len(content)} bytes to {rel}"
@@ -274,7 +282,7 @@ def _run_subagent(cli, sub_mid: str, ws: Path, te, bundle: dict, sandbox: str, s
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
               max_iters: int = 120, cmd_timeout: int = 120,
-              max_tokens: int = 8000) -> tuple[int, Path]:
+              max_tokens: int = 8000, prompt: str | None = None) -> tuple[int, Path]:
     """Drive ONE capsule-bench round with a non-Anthropic model. Returns (rc, transcript_path) — the same
     contract as ``launch_agent``'s claude path. Writes a claude-compatible transcript so the driver grades
     + accounts it identically."""
@@ -365,8 +373,9 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
             "~20 lines of mechanical output or read a large file end-to-end, delegate it with a precise "
             "`subtask` plus the minimal `context` (paths + the exact encoding facts it needs). Keep ONLY "
             "the hard reasoning — encoding/lowering choices and the halt/terminator sequence — for yourself.")
-    messages = [{"role": "user", "content": [{"text": task + feedback +
-                 "\n\nYour workspace is the current directory. Begin now."}, _CACHE_POINT]}]
+    assigned = prompt if prompt is not None else (
+        task + feedback + "\n\nYour workspace is the current directory. Begin now.")
+    messages = [{"role": "user", "content": [{"text": assigned}, _CACHE_POINT]}]
 
     from botocore.config import Config as _BotoConfig
     # A large generation can exceed boto3's default 60s read timeout mid-stream (observed:

@@ -14,9 +14,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
+from merlin.common.paths import merlin_dir
 from merlin.targetgen import corpus_spec as CS
 from merlin.targetgen import isa_taxonomy as IT
+from merlin.targetgen.rtl.mlc_bridge import _coarse_of_hand_class
 
 
 class _Enc:
@@ -131,3 +134,39 @@ def test_the_rocc_encoding_regime_is_unchanged():
                              "config_subtype": {"a": "CONFIG_EX", "b": "CONFIG_LD"}}}
     got = CS._classes_source(None, contract)(op="matmul")
     assert got == ["CONFIG_EX", "CONFIG_LD", "MVIN", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
+
+
+def test_rocc_movement_does_not_inherit_matrix_compute_classes():
+    """A DMA-only movement uses the target's config/load/store/barrier classes, never its matrix pipe.
+
+    The RoCC fallback used to ignore ``op`` and ``movement`` and return the same full matmul sequence for
+    every capsule.  That made tail movement capsules demand PRELOAD/COMPUTE even though their ABI defines
+    an identity load-to-store round trip and the canonical aligned movement capsule forbids matrix work.
+    """
+    contract = {"encoding": {
+        "semantic_class": {
+            "0": "CONFIG", "2": "MVIN", "3": "MVOUT", "4": "COMPUTE_PRELOADED",
+            "5": "COMPUTE_ACCUMULATE", "6": "PRELOAD", "7": "FLUSH",
+        },
+        "config_subtype": {"0": "CONFIG_EX", "1": "CONFIG_LD", "2": "CONFIG_ST"},
+    }}
+
+    got = CS._classes_source(None, contract)(op="movement", movement=True)
+
+    assert got == ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "MVOUT"]
+
+
+@pytest.mark.parametrize("name", ["FT00_movement_tail_15x15", "FT01_movement_tail_17x15"])
+def test_shipped_tail_movement_coverage_matches_its_generated_mirror(name):
+    """The public manifest and its answer-surface mirror must describe one DMA-only obligation."""
+    root = merlin_dir() / "contract/capsules/isa" / name
+    capsule = yaml.safe_load((root / "capsule.yaml").read_text(encoding="utf-8"))
+    mirror = yaml.safe_load(
+        (root / "expected_instruction_coverage.yaml").read_text(encoding="utf-8")
+    )
+
+    assert capsule["expected"] == mirror
+    assert all(
+        _coarse_of_hand_class(label) != "compute"
+        for label in mirror["instruction_classes"]
+    )
