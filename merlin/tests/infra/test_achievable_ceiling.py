@@ -192,10 +192,22 @@ def test_every_shipped_perf_capsule_declares_work_it_can_be_scored_against():
 
     from merlin.common.paths import repo_root as _root
 
-    undecided = []
+    undecided, elementwise = [], []
     for path in sorted(_glob.glob(str(_root() / "merlin/contract/capsules/_perf/*/capsule.yaml"))):
         descriptor = _yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         macs, basis = PAS.declared_capsule_macs(descriptor)
+        # AN ELEMENTWISE MEMBER HAS NO MACs, and that is a fact about the workload rather than a gap
+        # in the pricing. It ships as the "part" arm of the fusion comparison, so what scores it is
+        # the paired difference against the fused member, not a utilization ratio. Demanding a MAC
+        # count of it would invent a denominator; the assertion below instead pins that it stays
+        # unpriced, so if it ever starts pricing, this exemption is reported as stale rather than
+        # silently covering a real number.
+        if (descriptor.get("operation") or {}).get("op") in PAS._ELEMENTWISE_OPERATIONS:
+            elementwise.append(Path(path).parent.name)
+            assert not macs, f"{Path(path).parent.name} is elementwise yet priced {macs} MACs"
+            continue
         if not macs:
             undecided.append(f"{Path(path).parent.name}: {basis}")
     assert not undecided, "capsules with no declared work: " + "; ".join(undecided)
+    assert elementwise, ("no elementwise member was found, so the exemption above is either stale or "
+                         "matching nothing -- check it still names the shipped op spelling")

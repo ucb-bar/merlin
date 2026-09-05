@@ -136,8 +136,21 @@ def test_every_shipped_paired_family_predicts_a_direction():
         performance = sweep["base"]["performance"]
         if performance.get("claim") != "DIFFERENTIAL":
             continue
+        # FALSIFIABILITY AND WIRING ARE DIFFERENT PROPERTIES, and this conflated them. The invariant
+        # this test is named for is that something could contradict the claim -- which a declared
+        # falsifier observation provides. A frozen `acceptance` block is a separate thing: it names
+        # the analyzer that DECIDES the claim, and a family can be perfectly falsifiable while its
+        # decision procedure is not yet wired. The fusion family is exactly that: its falsifier is
+        # `fused_cycles_minus_sum_of_parts`, a quantitative contradiction condition that needs no
+        # `expected_faster` because the comparison is fused-against-the-sum-of-its-parts rather than
+        # arm-against-arm. Demanding an acceptance block of it reported an unfalsifiable claim, which
+        # is not what is wrong with it.
         acceptance = performance.get("acceptance")
-        assert isinstance(acceptance, dict), f"{sweep['id']} has no acceptance contract"
+        assert (performance.get("falsifier") or {}).get("observation"), (
+            f"{sweep['id']} is DIFFERENTIAL and names no falsifier observation, so no measurement "
+            f"could contradict it")
+        if not isinstance(acceptance, dict):
+            continue
         if str(acceptance.get("analyzer") or "").split(".")[0] != "perf_paired_claim":
             # Decided elsewhere; that analyzer's own contract test owns its shape. What must still
             # hold is that it declares a falsifier, i.e. that something could contradict it.

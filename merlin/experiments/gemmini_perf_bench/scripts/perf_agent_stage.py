@@ -82,7 +82,15 @@ ROUND_DEADLINE_EXIT = 124
 #: The declared operation whose work depends on a GEOMETRY rather than only on operand shapes, so it
 #: is priced through its own branch below.
 _CONV_OPERATION = "conv2d"
-_WORK_OPERATIONS = ("matmul", "resident_reuse", _CONV_OPERATION)
+#: A contraction with its bias epilogue forced on. The bias is an elementwise add on the readout path
+#: and contributes no multiply-accumulate, so the declared work is the contraction's alone -- the same
+#: M x K x N the plain matmul branch computes.
+_FUSED_CONTRACTION = "fused_matmul_bias"
+#: An ELEMENTWISE member, priced separately below because it has no MACs at all. It exists as the
+#: "part" arm of the fusion comparison, and its verdict is that paired difference rather than a
+#: utilization ratio, so pricing it in MACs would be a category error rather than a missing number.
+_ELEMENTWISE_OPERATIONS = ("bias_add",)
+_WORK_OPERATIONS = ("matmul", "resident_reuse", _CONV_OPERATION, _FUSED_CONTRACTION)
 
 #: How many member measurements the sweep may run at once. DECLARED, never guessed: this is a shared
 #: host, and the fan-out a measurement ran at is stamped on its own result. Default 1, so a launch
@@ -2394,7 +2402,11 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
     if lhs[1] != weight[0]:
         return None, ("the declared operand shapes do not contract: "
                       f"lhs {lhs} against weight {weight}")
-    return lhs[0] * lhs[1] * weight[1], "declared matmul operand shapes (M x K x N)"
+    basis = "declared matmul operand shapes (M x K x N)"
+    if operation.get("op") == _FUSED_CONTRACTION:
+        basis = ("declared contraction operand shapes (M x K x N); the fused bias epilogue is an "
+                 "elementwise add on the readout path and contributes no multiply-accumulate")
+    return lhs[0] * lhs[1] * weight[1], basis
 
 
 _GUARD_UNCHANGED = "unchanged"
