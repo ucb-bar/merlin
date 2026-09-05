@@ -524,6 +524,64 @@ def test_contract_provenance():
              "declared_only": f"registry resolves none; using the declared {rel(declared)}"}[verdict])
 
 
+def test_isa_encoding_agrees_with_rtl():
+    """K. The encoding the agent is told to derive from must be the one the HARDWARE decodes.
+
+    merlin derives this target's encoding by probing whatever ISA definition it ships, which is right
+    only as far as that shipped definition is right about its own hardware. When it is not, the failure
+    is invisible by construction: the emitted word assembles, disassembles to the intended mnemonic, and
+    executes as a DIFFERENT instruction. Measured here -- a DMA *config* op carrying the funct7 its RTL
+    assigns to DMA *wait*, so the DMA base register is never written and a round is spent fighting data
+    that was never loaded.
+
+    UNKNOWN is a FAIL, not an N/A. `_na` is for a check the target's own facts show does not apply; "no
+    evidence source was reachable" is not that -- it is this gate being unable to run, and letting it
+    read as GO is the exact shape that has cost this repo days before.
+    """
+    section("K. ISA encoding vs RTL (the derived encoding is the one the hardware decodes)")
+    from merlin.targetgen import isa_rtl_crosscheck as X
+    rep = X.crosscheck(TARGET)
+    usable = [s.kind for s in rep.sources if s.usable]
+    _ok("this target's encoding has a hardware evidence source",
+        bool(usable) and bool(rep.covered_mnemonics),
+        f"usable: {', '.join(usable) or 'NONE'}; compared {len(rep.covered_mnemonics)} instruction(s), "
+        f"{len(rep.uncovered_mnemonics)} not covered"
+        + (" — nothing was verified; this is not a pass" if not rep.covered_mnemonics else ""))
+
+    undeclared = X.undeclared_disagreements(rep)
+    _ok("no instruction's declared encoding is contradicted by this target's hardware",
+        not undeclared,
+        (f"{len(undeclared)} undeclared: " + "; ".join(
+            f"{m} spec={r['declared']} vs {sorted(r['evidence'].values())}"
+            for m, r in sorted(undeclared.items())[:6])
+         + f"  -> resolve or record in {X.errata_path().relative_to(REPO)} "
+           f"(build_tools/scripts/check_isa_matches_rtl.py --target {TARGET})")
+        if undeclared else
+        f"{len(rep.covered_mnemonics)} compared against {', '.join(usable)}")
+
+    # The consumer seam, exercised rather than assumed: an erratum that never reaches the linter tells
+    # the agent nothing, and a promotion path that is wrapped in try/except is indistinguishable from an
+    # idle one until something asserts it fired.
+    bad = X.contradicted_mnemonics(TARGET)
+    if bad:
+        from merlin.targetgen.isa_model import isa_model_for_target
+        from merlin.targetgen import isa_lint
+        model = isa_model_for_target(TARGET)
+        mnem = next((m for m in bad if m in (model.by_mnemonic or {})), None)
+        if mnem is None:
+            _na("the linter warns a backend off a contradicted encoding",
+                "the contradicted entries are not per-mnemonic for this target, so no word can carry one")
+        else:
+            word = int((model.by_mnemonic[mnem] or {}).get("fixed_value") or 0)
+            rules = [f["rule"] for f in isa_lint.lint(model, [word])]
+            _ok("the linter warns a backend off a contradicted encoding",
+                "encoding_contradicts_rtl" in rules,
+                f"emitting the shipped encoding of {mnem} raises: {', '.join(sorted(set(rules))) or 'nothing'}")
+    else:
+        _na("the linter warns a backend off a contradicted encoding",
+            "this target has no contradicted encoding to warn about")
+
+
 def test_bundles():
     section("F. bundle integrity (6 bundles parse; prompt APIs import)")
     # conditions DERIVED from the target's materialized bundles (gemmini kernel+nokernel; atlas
@@ -958,6 +1016,26 @@ def test_oracles_endtoend():
                 {"verilator_per_capsule_s": round(dt, 1), "config": "GemminiRocketConfig",
                  "measured_by": "readiness_check"}))
             _ok("wrote .oracle_timing.json (T_obs for the driver timeout)", True, f"T_obs={dt:.0f}s")
+        # WHICH ENGINE WOULD CERTIFY, AND WHAT IT WAS CHOSEN OVER — reported, never gated.
+        #
+        # Gating would be wrong: any elaborated-RTL engine is a valid L3, so a target with only Verilator
+        # is READY, just slow. What was wrong was the silence. Verilator is ~20-30x the cost of GSIM per
+        # capsule, and every run that fell back to it looked identical to one that chose it, in the
+        # readiness output and in the run record alike -- so "why does the cert tier cost hours" was
+        # unanswerable and the fast engine stayed unbuilt/unregistered for months at a time. Printing the
+        # passed-over reasons puts the actionable sentence ("no GSIM build at <path>") in front of the
+        # person running readiness, which is the only moment anyone is looking.
+        _eng = CR.describe_l3_engine(TARGET)
+        if _eng.get("available"):
+            _ok(f"L3 elaborated-RTL engine: {_eng['summary']}", True, _eng.get("reason", ""))
+            for _c in _eng.get("considered", []):
+                if not _c.get("available"):
+                    print(f"         passed over {_c['engine']}: {_c['reason']}")
+        else:
+            # Not a FAIL either: a target may legitimately certify through a non-chipyard oracle. It is
+            # a fact the report must carry rather than omit.
+            _na("L3 elaborated-RTL engine", _eng.get("reason", "no engine resolved"))
+
         # NEGATIVE: an empty submission must produce 0 capsules / error -> the abc7 signature is caught
         empt = Path(_tf.mkdtemp()) / "sub"; empt.mkdir(parents=True)   # honours TMPDIR
         ne = _grade(empt, "spike", 60)
@@ -1023,16 +1101,55 @@ def test_semantic_coverage_measurable():
         f"an ARR computed over the remainder should not be quoted alone")
 
 
+# ---- L. the launch interpreter runs THIS checkout ---------------------------------------------------
+def test_the_launch_interpreter_runs_this_checkout():
+    """The interpreter that will RUN the experiment must import merlin from this repo.
+
+    Readiness is not evidence for this. ``main()`` puts ``REPO/merlin/python`` at the front of its OWN
+    ``sys.path``, so every other check here exercises this checkout's code by construction -- while the
+    run itself is launched as ``REPO/.venv/bin/python``, a separate process whose ``merlin`` comes from
+    whatever that venv's editable install points at. The two can disagree, and when they do readiness
+    reports GO for code that never executes.
+
+    Measured 2026-09-04: this repo's own ``.venv`` carried
+    ``__editable__.merlin-0.0.1.pth -> /scratch/.../oscar-merlin-arm4-v4-functional-final/merlin/python``
+    -- a DIFFERENT checkout. Every ``.venv/bin/python`` invocation here silently ran that tree's library,
+    so a fix committed in this one would have had no effect on the run that was graded against it.
+
+    Same shape as the sandbox-grant lesson: assert the property where the RUN experiences it, in the
+    process that will do the work, never in the checker's own interpreter.
+    """
+    section("L. the launch interpreter runs this checkout")
+    if not Path(PY).exists():
+        _ok("the launch interpreter exists", False, f"{PY} is missing")
+        return
+    probe = "import merlin, sys; sys.stdout.write(merlin.__file__)"
+    r = subprocess.run([PY, "-c", probe], capture_output=True, text=True)
+    if r.returncode != 0:
+        _ok("the launch interpreter can import merlin", False,
+            (r.stderr or "").strip().splitlines()[-1][:160] if r.stderr else f"rc={r.returncode}")
+        return
+    resolved = Path((r.stdout or "").strip()).resolve()
+    try:
+        inside = resolved.is_relative_to(REPO.resolve())
+    except AttributeError:  # pragma: no cover - Python < 3.9
+        inside = str(resolved).startswith(str(REPO.resolve()))
+    _ok("the launch interpreter imports merlin from THIS checkout", inside,
+        f"{PY} -> {resolved}" + ("" if inside else f"  (expected under {REPO})"))
+
+
 def main() -> int:
     sys.path.insert(0, str(REPO / "merlin" / "python"))
     print("READINESS CHECK — exercising all tooling (no agent launched)")
     for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
                test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
-               test_graded_path_is_the_declared_one, test_contract_provenance, test_bundles,
+               test_graded_path_is_the_declared_one, test_contract_provenance,
+               test_isa_encoding_agrees_with_rtl, test_bundles,
                test_sandbox_authoring_tools,
                test_every_declared_grant_resolves,
                test_every_grant_survives_the_assembled_sandbox,
-               test_semantic_coverage_measurable):
+               test_semantic_coverage_measurable,
+               test_the_launch_interpreter_runs_this_checkout):
         try:
             fn()
         except Exception as e:
