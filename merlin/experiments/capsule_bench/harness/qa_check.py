@@ -233,7 +233,12 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
 
 
 def _execution_digest_from_result(capsule_result: Path) -> str | None:
-    """Best-effort bridge to the shared promotion identity; absence keeps legacy invalidation."""
+    """Best-effort bridge to the shared promotion identity; absence keeps legacy invalidation.
+
+    Callers (this reader and ``agent_selfcheck``) put the value on every verdict row, so this MUST stay
+    importable: dropping it turned the self-check into an AttributeError that printed no verdict JSON at
+    all, and every consumer -- readiness section G included -- reported ``n=None`` as if the oracle had
+    not run."""
     try:
         from tier_promote import execution_digest
         return execution_digest(capsule_result)
