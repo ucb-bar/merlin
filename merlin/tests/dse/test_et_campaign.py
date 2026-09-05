@@ -641,20 +641,30 @@ def test_a_refused_cell_still_shows_a_reference_wall_that_was_measured():
 
 
 def test_a_declared_blocker_that_was_overtaken_is_removed_not_kept():
-    """lstmnetvit's declared qd8-export blocker was retired once the cell produced a verdict.
+    """Two entries have now been retired this way -- lstmnetvit's, then smolvla's.
 
     A stale entry is worse than no entry: `expectation_status` turns every refusal of a declared
     model into `expected_refusal`, so a NEW and unrelated failure on that cell would read as the
     old known one and draw no attention.
+
+    smolvla is the sharper case, and the reason this test is worth keeping. Its entry claimed
+    "ExecuTorch cannot run this model at int8 at all" because AOT export died on an unbacked
+    symint. That was true of the exporter as configured, not of ExecuTorch: with the vision
+    embedding's data-dependent mask write replaced by a shape-preserving equivalent, the export
+    succeeds, the runner loads the program on the board, and it now fails LATER and ELSEWHERE (a
+    bf16 output dtype the portable dequantize kernel does not handle). Had the entry stayed, that
+    completely different failure would have been labelled the expected one.
+
+    No replacement entry is declared for the bf16 failure while a fix for it is in flight --
+    declaring a blocker that is about to be retired is the same defect in the other direction.
     """
-    assert "lstmnetvit" not in ec.KNOWN_REFERENCE_BLOCKERS
-    assert ec.expectation_status("lstmnetvit", "refused") == "unexpected_refusal"
-    # smolvla is the live one: ExecuTorch produces no .pte for it at all.
-    b = ec.known_blocker("smolvla")
-    assert b and b["stage"] == "executorch_export" and "u31" in b["reason"]
-    assert "CAPABILITY" in b["not_a_fallback"], (
-        "running a model the reference cannot export is not a speedup, and the row must say so")
-    assert ec.expectation_status("smolvla", "measured") == "stale_expectation"
+    for retired in ("lstmnetvit", "smolvla"):
+        assert retired not in ec.KNOWN_REFERENCE_BLOCKERS
+        assert ec.expectation_status(retired, "refused") == "unexpected_refusal"
+    # spectformer is a live one: export works, the runner cannot load the result.
+    b = ec.known_blocker("spectformer")
+    assert b and b["stage"] == "executorch_runner_load"
+    assert ec.expectation_status("spectformer", "measured") == "stale_expectation"
 
 
 # --- a score is never published without the fraction of the output it covers ----------------------
