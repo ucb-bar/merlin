@@ -760,7 +760,8 @@ def _board_free_bytes() -> int | None:
 
 def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
                   *, num_executions: int = 1, timeout: int = 1200,
-                  mmap_model: bool = False, etdump: bool = False) -> BoardRun:
+                  mmap_model: bool = False, etdump: bool = False,
+                  cpu_threads: int | None = None) -> BoardRun:
     """Push runner + .pte + .ptd + input(s) to the K1, run under the board lock, dump the output.
 
     Uses the stock executor_runner's ``--model_path`` / ``--data_path`` (external weights) /
@@ -802,6 +803,15 @@ def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
         argv = [remote_runner, f"--model_path={remote_pte}",
                 f"--num_executions={num_executions}",
                 f"--output_file={remote_out}", "--print_output=none"]
+        # HOW MANY CORES THE REFERENCE MAY USE. Left unset, its threadpool takes every online CPU
+        # -- 8 on this board -- while our arm runs on one, so an unpinned ratio is a system
+        # comparison, not a compiler one. The count is NOT discoverable from the build flags:
+        # extension/threadpool/CMakeLists.txt takes the USE_PERFORMANCE_CORES branch regardless of
+        # how that option is set, cpuinfo_utils reads an ARM64-only sysfs node and returns 0 on
+        # RISC-V, and pthreadpool then falls back to sysconf(_SC_NPROCESSORS_ONLN). Measured on the
+        # board: 8 OS threads by default, 1 with --cpu_threads=1.
+        if cpu_threads is not None:
+            argv.append(f"--cpu_threads={int(cpu_threads)}")
         if mmap_model:
             # mmap the (multi-GB) program so its const weight pages demand-load and stay evictable
             # under the board RAM ceiling instead of being read fully-resident by FileDataLoader.
@@ -916,6 +926,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
               full_fidelity: bool = True,
               export_env: dict[str, str] | None = None,
               num_executions: int = 1, etdump: bool = False,
+              cpu_threads: int | None = None,
               runner_override: Path | None = None) -> BaselineResult:
     """Run one (model, variant) through the ExecuTorch+XNNPACK arm end-to-end -> BaselineResult.
 
@@ -1122,7 +1133,8 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     do_board = k1_exec.board_available() if run_board is None else run_board
     if do_board:
         try:
-            _do_board(res, runner, exp, etdump=etdump, mmap_model=mmap_model, num_executions=num_executions)
+            _do_board(res, runner, exp, etdump=etdump, mmap_model=mmap_model,
+                      num_executions=num_executions, cpu_threads=cpu_threads)
         except k1_exec.BoardUnavailable as e:
             res.gap_reason = res.gap_reason or f"K1 board run failed: {str(e)[:250]}"
         except Exception as e:  # noqa: BLE001
@@ -1136,14 +1148,14 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
 
 def _do_board(res: BaselineResult, runner: Path, exp: "ExportResult",
               *, mmap_model: bool = False, num_executions: int = 1,
-              etdump: bool = False) -> None:
+              etdump: bool = False, cpu_threads: int | None = None) -> None:
     """Run on the board and fill correctness + E2E/region profile from the executor_runner run."""
     # num_executions is threaded so a COMPARISON can match protocols. It defaults to 1, which is
     # what every historical cell used -- but a single execution against an ours-side min-of-n is not
     # apples-to-apples, and min-of-n favours whichever side gets it. Matching them is the only way the
     # ratio means anything at the few-percent level this comparison now sits at.
     br = _run_on_board(res, runner, exp, mmap_model=mmap_model, num_executions=num_executions,
-                       etdump=etdump)
+                       etdump=etdump, cpu_threads=cpu_threads)
     res.etdump = br.etdump
     # Load time is kept, not discarded: XNNPACK prepacks weights into its blocked layout at delegate
     # init, so a framework's AOT work lands here while the ratio we quote is taken against execute.

@@ -82,6 +82,8 @@ def _instrument_command(plan, a) -> list:
            "--compile-timeout-s", str(a.compile_timeout_s)]
     if a.parallel_harts:
         cmd += ["--parallel-harts", str(a.parallel_harts)]
+    if a.ref_cpu_threads:
+        cmd += ["--ref-cpu-threads", str(a.ref_cpu_threads)]
     if a.features is not None:
         cmd += ["--features", a.features]
     if a.also_weight_only:
@@ -178,6 +180,9 @@ def main() -> int:
     ap.add_argument("--et-n-hi", type=int, default=6)
     ap.add_argument("--also-weight-only", action="store_true")
     ap.add_argument("--cell-timeout", type=int, default=7200, help="seconds per cell")
+    ap.add_argument("--ref-cpu-threads", type=int, default=None,
+                    help="cores the REFERENCE arm may use; unset means its threadpool takes every "
+                         "online CPU (8 here). Pass 1 for a per-core comparison.")
     ap.add_argument("--parallel-harts", type=int, default=None,
                     help="cores OUR arm may use (default 1). The board has 8 and the reference's "
                          "runner links pthreadpool, so the default compares our one core against "

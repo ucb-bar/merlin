@@ -186,7 +186,8 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
             "rvv": rvv_cov}
 
 
-def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int) -> dict:
+def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int,
+           cpu_threads: int | None = None) -> dict:
     """ExecuTorch at two Ns so the WARM cost is a slope, not a cold shot.
 
     ``BaselineResult.e2e_wall_ns`` is already normalised per-inference by the producer, so the totals
@@ -199,6 +200,7 @@ def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int) -> dict:
         cond_before = _conditions()
         try:
             r = et.run_model(model, "int8", qd8=qd8, int8_whole_model=(not qd8) or None,
+                             cpu_threads=cpu_threads,
                              num_executions=n, run_board=True, write=True)
             per_inf = getattr(r, "e2e_wall_ns", None)
             rec = {"n": n, "status": r.status(), "per_inference_ns": per_inf,
@@ -322,6 +324,12 @@ def main() -> None:
     ap.add_argument("--also-weight-only", action="store_true",
                     help="additionally measure ExecuTorch's weight-only recipe as a LABELLED second "
                          "column (it is not int8 compute; kept because it is the historical cell)")
+    ap.add_argument("--ref-cpu-threads", type=int, default=None,
+                    help="cores the REFERENCE arm may use (its --cpu_threads). Left unset its "
+                         "threadpool takes every online CPU -- 8 on this board -- and the count is "
+                         "NOT readable from the build flags, so an unpinned ratio silently compares "
+                         "our core count against theirs. Pass 1 alongside a 1-core ours arm for a "
+                         "per-core comparison, or match it to --parallel-harts.")
     ap.add_argument("--parallel-harts", type=int, default=None,
                     help="cores OUR arm may use (default: 1, single-threaded). The board has 8, and "
                          "the reference is built with pthreadpool ON and a shared XNNPACK "
@@ -429,7 +437,9 @@ def main() -> None:
                  # different core counts is a system comparison, not a compiler one, and the row has
                  # to carry enough for a reader to tell which it is looking at.
                  "cores": {"ours": int(a.parallel_harts) if a.parallel_harts else 1,
-                           "reference": "UNKNOWN (pthreadpool default; not pinned by this harness)"}}
+                           "reference": (int(a.ref_cpu_threads) if a.ref_cpu_threads
+                                         else "UNKNOWN (pthreadpool default = every online CPU, "
+                                              "8 on this board; not pinned by this run)")}}
 
     # INTERLEAVED, ours first, so a board that drifts during the session moves both arms rather than
     # landing the drift entirely on one of them.
@@ -437,10 +447,10 @@ def main() -> None:
     rec["ours"] = ours_arm(md, pkg, refs, work, n=a.n, warmup=a.warmup, iters=a.iters,
                            parallel_harts=a.parallel_harts)
     print("== executorch qd8 (the matching arithmetic) ==", flush=True)
-    rec["executorch_qd8"] = et_arm(a.model, qd8=True, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
+    rec["executorch_qd8"] = et_arm(a.model, cpu_threads=a.ref_cpu_threads, qd8=True, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
     if a.also_weight_only:
         print("== executorch weight-only (LABELLED: not int8 compute) ==", flush=True)
-        rec["executorch_weight_only"] = et_arm(a.model, qd8=False, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
+        rec["executorch_weight_only"] = et_arm(a.model, cpu_threads=a.ref_cpu_threads, qd8=False, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
     print("== ours (second pass, brackets the ET arms) ==", flush=True)
     rec["ours_after"] = ours_arm(md, pkg, refs, work, n=a.n, warmup=a.warmup, iters=a.iters,
                                  parallel_harts=a.parallel_harts,
