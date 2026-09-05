@@ -67,7 +67,7 @@ compute class and the other six have none**, and the per-class split that took b
 18.9x has a single class to work with.
 
 That is not a classifier defect. A capsule named for a convolution lowers THROUGH im2col: the buffer
-for ``GH1_conv2d_i8_hidden`` carries ``params.im2col_recipes`` and emits
+for a held-out convolution capsule carries ``params.im2col_recipes`` and emits
 ``RES_PACK / MATMUL_RESIDENT / COMMIT / EVICT``, and attention projections lower to matmuls the same
 way. At the command-buffer level this target's whole certified corpus is resident matmul.
 

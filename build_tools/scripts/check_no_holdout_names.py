@@ -139,7 +139,7 @@ def _ratchet() -> dict[str, str]:
 
 
 def _allowed(rel: str) -> str | None:
-    for prefix, why in _ALLOWED.items():
+    for prefix, why in _holdout_stores().items():
         if rel == prefix or rel.startswith(prefix + "/"):
             return why
     return None

@@ -19,4 +19,3 @@ out/artifacts/capsule-bench/gemmini/full_suite_audit.json  # audit output over t
 out/artifacts/capsule-bench/gemmini/full_suite_audit.md  # rendered form of the above.
 out/artifacts/capsule-bench/gemmini/numerical_correctness_report.md  # published numerical report; hidden rows named.
 merlin/experiments/gemmini_perf_bench/scripts/perf_campaign.py  # a docstring names one holdout as an example. Fix by using a placeholder, as cert_cost.py did.
-merlin/python/merlin/perf/rate_table.py  # a docstring names one holdout while explaining the leak it fixes. Same remedy; owned by another session's in-flight work at time of writing.
