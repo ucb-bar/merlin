@@ -2007,13 +2007,18 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
         shutil.rmtree(cand.parent)
     _lok, _lwhy = _language_ok(ws / "submission")
     if not (ws / "submission" / "manifest.yaml").exists():
-        verdict = {"all_pass": False, "n_passed": 0, "n_capsules": 4,
+        # ZERO, NOT A PLACEHOLDER. These two stubs are "nothing was graded", and they used to say
+        # `n_capsules: 4`, which reads as a real cohort of four: `0/4` appears in the round log
+        # identically to a genuine grade, and `per_capsule: []` is the only thing distinguishing them.
+        # Measured cost of that: a reader tracked a live run for an hour believing its graded
+        # denominator had collapsed from 96 to 4. A count of nothing graded is 0.
+        verdict = {"all_pass": False, "n_passed": 0, "n_capsules": 0,
                    "package_failure": {"plane": "schema", "detail": "no submission/manifest.yaml"},
                    "per_capsule": [], "note": "write submission/manifest.yaml first."}
     elif not _lok:
         # ENFORCE the arm language mandate: a merlin arm must build with the xDSL kit, not a C++ tool.
         # A non-compliant submission gets a failing verdict with the fix reason (never silently graded).
-        verdict = {"all_pass": False, "n_passed": 0, "n_capsules": 4,
+        verdict = {"all_pass": False, "n_passed": 0, "n_capsules": 0,
                    "package_failure": {"plane": "language", "detail": _lwhy},
                    "per_capsule": [], "note": f"language mandate: {_lwhy}. Use the xDSL/Python kit "
                    "(oot_starterkit + xdsl_dialects), declare language: python, no C++/cmake build."}
