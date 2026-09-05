@@ -387,6 +387,13 @@ def golden_coverage(root: Path) -> dict:
     }
 
 
+def quantization_floor(root: Path) -> dict:
+    """How far this bundle's own W8A8 reference sits from its fp32 golden, and whether the fp32 tier
+    is reachable here at all. Delegates to :func:`merlin.baselines.bundle.quantization_floor` so the
+    campaign and the reference arm read ONE definition of the floor."""
+    return _bundle.quantization_floor(root)
+
+
 # --- W8A8 reference provenance ------------------------------------------------------------------
 
 
@@ -485,6 +492,9 @@ class CellPlan:
     footprint: dict
     #: What the fp32 golden can decide: output-arity coverage and reference degeneracy.
     golden_coverage: dict = field(default_factory=dict)
+    #: How far this bundle's own W8A8 reference sits from fp32 -- the yardstick an int8 arm is
+    #: fairly judged against, and whether the fp32 tier is reachable here at all.
+    quantization_floor: dict = field(default_factory=dict)
     refusals: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -503,6 +513,7 @@ class CellPlan:
             "bundle_layout_equivalence": self.layout_equivalence,
             "goldens": self.goldens, "w8a8_reference": self.w8a8_reference,
             "footprint": self.footprint, "golden_coverage": dict(self.golden_coverage),
+            "quantization_floor": dict(self.quantization_floor),
             "refusals": list(self.refusals),
             "notes": list(self.notes), "runnable": self.runnable,
         }
@@ -613,6 +624,10 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
         notes.append(f"golden.npy on {ours_id} could not be read ({gcov['read_error']}); its tier "
                      "decides nothing.")
 
+    qfloor = quantization_floor(ours_root) if ours_root.is_dir() else {}
+    if qfloor.get("note"):
+        notes.append(qfloor["note"])
+
     w8 = w8a8_reference(ours_root, source_bundle_id=ref_id if ours_id != ref_id else "",
                         recaptures_root=recaptures_root)
     if w8.get("note"):
@@ -637,7 +652,7 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
                     ours_bundle_root=ours_root, layout_equivalence=eq,
                     goldens={"fp32": have_fp32, "w8a8": have_w8a8, "model_mlir": have_mlir},
                     w8a8_reference=w8, footprint=fp, golden_coverage=gcov,
-                    refusals=refusals, notes=notes)
+                    quantization_floor=qfloor, refusals=refusals, notes=notes)
 
 
 def plan_campaign(models, **kwargs) -> list[CellPlan]:
