@@ -161,6 +161,28 @@ class CaptureBundle:
 
     def require(self) -> "CaptureBundle":
         """Raise if the essential inputs (mlir + golden) are missing — fail-closed."""
+        session_contract = self.root / "session_contract.yaml"
+        if session_contract.is_file():
+            from merlin.common.yaml import load_yaml
+
+            session = load_yaml(session_contract)
+            if isinstance(session, dict) and int(session.get("version", 0)) == 2:
+                programs = session.get("programs", ()) or ()
+                missing_programs = []
+                if not isinstance(programs, list):
+                    missing_programs.append("<invalid-program-list>")
+                for program in programs if isinstance(programs, list) else ():
+                    if not isinstance(program, dict):
+                        missing_programs.append("<invalid-program-record>")
+                        continue
+                    child = self.root / str(program.get("bundle", ""))
+                    if not (child / "model.mlir").is_file() or not (child / "golden.npy").is_file():
+                        missing_programs.append(str(program.get("name", "<unnamed>")))
+                if not programs or missing_programs:
+                    raise FileNotFoundError(
+                        f"multi-program capture bundle {self.model}/{self.variant} at {self.root} "
+                        f"has missing program artifacts {missing_programs or ['<no-programs>']}")
+                return self
         missing = [p.name for p in (self.mlir, self.golden) if not p.is_file()]
         if missing:
             raise FileNotFoundError(
@@ -168,15 +190,32 @@ class CaptureBundle:
         return self
 
 
-def _dirname(model: str, variant: str) -> str:
-    return f"{model}_{variant}_consistent"
+def _dirname(model: str, variant: str, suffix: str = "consistent") -> str:
+    return f"{model}_{variant}_{suffix}"
 
 
 # K1-runnable set: models whose int8 footprint fits the 3.8 GB board (~3.4 GB usable). The three
 # 7B-class VLAs (openvla, molmoact, pi05) are RAM-infeasible for whole-model on-board runs even at int8
 # (fp32 embeddings dominate) — attempt+RAM-gap, never a false fit. From the full-fidelity recapture.
+#: Capture-directory suffixes, in the order `resolve` prefers them. `_full` is the real/native
+#: architecture and wins; `_consistent` is the older truncated capture; `_w8a8_consistent` is a
+#: separate activation-quantized capture family that no baseline arm could previously see at all.
+_BUNDLE_SUFFIXES: tuple[str, ...] = ("full", "consistent", "w8a8_consistent")
+
 K1_RUNNABLE: frozenset[str] = frozenset(
     {"tiny_llama", "smolvla", "bitvla", "groot_n1d7", "rdt", "rdt2", "xr0", "small_llama"})
+# resnet50_v1_5 is not here YET, and the reason has changed. The max-pool blocker is FIXED: its
+# `aten.max_pool2d.default` was captured as a linalg.generic whose map (d0,d1,d2*2+d4,d3*2+d5) leaves
+# d4/d5 unbound, so linalg's verifier rejected it as non-invertible IN THE READER, before any pass
+# ran. The window extent is not recoverable downstream (a 114-wide padded input at stride 2 giving 56
+# outputs fits both a 3- and a 4-tall window, which compute different maxima), so the repair is a
+# shape-only window operand emitted at capture, as upstream linalg.pooling_* does. The FP32 bundle
+# now lowers and gates clean: fp32_cos 1.0, rel 5.05e-07, argmax True.
+#
+# What still blocks the INT8 bundle is unrelated: its W8A8 capture leaves
+# `torchao.choose_qparams_affine` / `torchao.quantize_affine` as opaque external calls (m2m has a
+# decomposition for `dequantize_affine` only), which nothing in merlin defines. So the fp32 bundle is
+# the realistic CNN cell today, and int8 needs those two decompositions first.
 K1_RAM_INFEASIBLE: frozenset[str] = frozenset({"openvla", "molmoact", "pi05"})
 
 # Full-fidelity capture env (the exact loader settings the recapture used to build the REAL/native
@@ -191,6 +230,11 @@ FULL_FIDELITY_ENV: dict[str, dict[str, str]] = {
     "rdt2": {"M2M_RDT2_DEPTH": "14"},                   # native depth
     "xr0": {"XR0_DIT_LAYERS": "16"},                    # real DiT-head depth
     "small_llama": {},                                  # synthetic toy reference (no real counterpart)
+    # Declared by the bundle's own session_contract.yaml: input_source synthetic_seed_20260830,
+    # synthetic_inputs true, checkpoint torchvision/resnet50/IMAGENET1K_V2, full_checkpoint true.
+    # M2M_RESNET_RANDOM selects that synthetic seeded stream; weights stay PRETRAINED unless
+    # M2M_RESNET_PRETRAINED=0. Without it the loader raises and the cell cannot be built at all.
+    "resnet50_v1_5": {"M2M_RESNET_RANDOM": "1"},
     "openvla": {},                                      # real Llama-2-7B+ViT config (RAM-infeasible on K1)
     "molmoact": {"M2M_MOLMOACT_LAYERS": "48", "M2M_MOLMOACT_VOCAB": "152064"},  # real 7B (RAM-infeasible)
     "pi05": {},                                         # full PaliGemma+expert 3.6B (RAM-infeasible)
@@ -245,8 +289,14 @@ def resolve(model: str, variant: str = "fp32") -> CaptureBundle:
     if variant not in _VARIANTS:
         raise ValueError(f"unknown variant {variant!r}; expected one of {_VARIANTS}")
     rd = recaptures_dir()
-    full = rd / f"{model}_{variant}_full"
-    root = full if full.is_dir() else rd / _dirname(model, variant)
+    # Suffix preference. `w8a8_consistent` is LAST deliberately: promoting it would silently
+    # re-point lstmnetvit and tiny_llama at a DIFFERENT bundle mid-campaign (their two goldens
+    # disagree at cos 0.949), so it is reached only when a model has no other bundle for the
+    # variant. Verified strictly additive: every model that resolved before resolves to the same
+    # directory, and `resnet50_v1_5` / `smolvla` newly resolve instead of being invisible to every
+    # baseline arm.
+    root = next((c for c in (rd / _dirname(model, variant, s) for s in _BUNDLE_SUFFIXES)
+                 if c.is_dir()), rd / _dirname(model, variant))
     return CaptureBundle(model=model, variant=variant, root=root)
 
 
