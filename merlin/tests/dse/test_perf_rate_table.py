@@ -192,3 +192,50 @@ class TestTheGateOnUsingTheseRatesAtAll:
         result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=self._ladder(24))
         assert result["median_band_width"] is not None and result["median_band_width"] > 1.0
         assert "order of magnitude" in result["width_note"]
+
+
+class TestASerializedTableIsNotAnAnswerKey:
+    """MEASURED LEAK, not caution. A sibling cost fit emitted the run paths its samples came from;
+    those runs include the grading passes over the HELD-OUT capsules, and a writer that embedded the
+    dict verbatim published ten holdout capsule names and 238 local absolute paths into the tree every
+    graded arm can read. This table is harvested from the very same runs.
+
+    The first artifact this module wrote carried 8 holdout capsule names and 497 absolute paths.
+    """
+
+    def _leaky_table(self) -> RT.RateTable:
+        buf = _resident_buffer(jobs=2)
+        p = _program("H0_matmul_hidden", buf, 400.0)
+        p.submissions.add("/scratch/someone/out/runs/t/capsule-bench/_holdout_codex/sub")
+        p.measured.add(500.0)                       # force a disagreement row too
+        table = _table([p])
+        table.refusals.append({
+            "what": "cycle count", "reason": "the stage reached status 'fail'",
+            "where": "/scratch/someone/out/runs/t/grading_hidden/H3_movement_hidden/result.json"})
+        return table
+
+    def test_paths_and_workload_identities_are_withheld_by_default(self):
+        blob = __import__("json").dumps(self._leaky_table().to_dict())
+        assert "_hidden" not in blob, "a held-out capsule name is an answer key"
+        assert "/scratch/" not in blob, "a public artifact carries no local absolute path"
+        assert "_holdout" not in blob
+
+    def test_the_reason_survives_redaction_because_that_is_the_actionable_part(self):
+        doc = self._leaky_table().to_dict()
+        assert any("status" in r.get("reason", "") for r in doc["refusals"])
+        assert all("where" not in r for r in doc["refusals"])
+
+    def test_a_local_caller_can_still_ask_for_provenance(self):
+        blob = __import__("json").dumps(self._leaky_table().to_dict(include_provenance=True))
+        assert "/scratch/" in blob, "withholding must be a default, not a capability removal"
+
+    def test_the_acceptance_gate_redacts_on_the_same_terms(self):
+        """`undecided` names the workload it could not decide, and that name can be a holdout."""
+        programs = {}
+        for i in range(8):
+            buf = _resident_buffer(jobs=1 + i, m=16 + i)
+            nm = "H3_movement_hidden" if i % 2 else f"w{i}"
+            pr = _program(nm, buf, (1 + i) * (16 + i) * 256 / 40.0)
+            programs[pr.digest] = pr
+        doc = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
+        assert "_hidden" not in __import__("json").dumps(doc)

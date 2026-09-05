@@ -102,6 +102,34 @@ _CYCLES_UNIT = "cycles"
 _PASS = "pass"
 
 
+#: Keys whose values are a filesystem path or a workload identity. WITHHELD by default when a table
+#: is serialized, and the reason is a measured leak rather than caution: a sibling cost fit emitted the
+#: run paths its samples came from, those runs include the grading passes over the HELD-OUT capsules,
+#: and a writer that embedded the dict verbatim published ten holdout capsule names and 238 local
+#: absolute paths into the tree every graded arm can read. This table is harvested from exactly the
+#: same runs, so it carries exactly the same hazard.
+#:
+#: Two separate rules are being obeyed. An answer key must never reach a graded agent -- a run
+#: directory named `..._hidden` or `_holdout_...` names a holdout capsule in its path. And a public
+#: artifact carries no local absolute paths. Withholding satisfies both, and a caller doing local
+#: diagnosis can still ask for them.
+_PROVENANCE_KEYS = ("where", "source", "sources", "workload", "slowest_from",
+                    "submissions", "submission", "slowest_from_workload")
+
+
+def _redact_rows(rows: "Sequence[Mapping[str, Any]]",
+                 include_provenance: bool) -> list[dict[str, Any]]:
+    """Rows with every path- or identity-bearing field dropped unless explicitly requested.
+
+    The REASON survives redaction. A refusal that keeps its reason and loses its location still tells
+    a reader what could not contribute and why, which is the part that is actionable; the path is only
+    useful to someone standing on this filesystem, and that someone can pass the flag.
+    """
+    if include_provenance:
+        return [dict(r) for r in rows]
+    return [{k: v for k, v in r.items() if k not in _PROVENANCE_KEYS} for r in rows]
+
+
 def program_digest(buffer: Mapping[str, Any]) -> str:
     """Identity of the emitted PROGRAM, independent of where it was written.
 
@@ -154,15 +182,17 @@ class ClassRate:
     cycles_min: float
     cycles_max: float
 
-    def to_dict(self) -> dict[str, Any]:
-        return {"compute_class": self.compute_class,
+    def to_dict(self, *, include_provenance: bool = False) -> dict[str, Any]:
+        out: dict[str, Any] = {"compute_class": self.compute_class,
                 "slowest_macs_per_cycle": self.slowest_macs_per_cycle,
-                "slowest_from": self.slowest_from,
                 "fastest_macs_per_cycle": self.fastest_macs_per_cycle,
                 "n_programs": self.n_programs,
                 "cycles_min": self.cycles_min, "cycles_max": self.cycles_max,
                 "licence": ("an EMPIRICAL bound over the cycle domain stated here; a program outside "
                             "that domain is not covered by this rate and must not be priced with it")}
+        if include_provenance:
+            out["slowest_from"] = self.slowest_from
+        return out
 
 
 @dataclass
@@ -193,14 +223,15 @@ class RateTable:
 
         return tuple(k for k in CE.COMPUTE_CLASSES if k not in self.rates)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, include_provenance: bool = False) -> dict[str, Any]:
         return {"target": self.target, "peak_macs_per_cycle": self.peak_macs_per_cycle,
-                "rates": {k: v.to_dict() for k, v in sorted(self.rates.items())},
+                "rates": {k: v.to_dict(include_provenance=include_provenance)
+                          for k, v in sorted(self.rates.items())},
                 "n_programs_seen": self.n_programs_seen,
                 "n_classes_rated": len(self.rates),
                 "unpriced_classes": list(self.unpriced_classes),
-                "disagreements": self.disagreements,
-                "refusals": self.refusals,
+                "disagreements": _redact_rows(self.disagreements, include_provenance),
+                "refusals": _redact_rows(self.refusals, include_provenance),
                 "provenance": {
                     "derived_from": "phase-1 certification runs, via merlin.perf.harvest",
                     "kind": "trace_derived",
@@ -344,7 +375,8 @@ def rates_for(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
 
 def holdout_containment(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
                         roots: Sequence[Path] | None = None,
-                        programs: Mapping[str, Program] | None = None) -> dict[str, Any]:
+                        programs: Mapping[str, Program] | None = None,
+                        include_provenance: bool = False) -> dict[str, Any]:
     """Do rates derived from HALF the programs produce bands containing the other half?
 
     This is the acceptance gate on using a rate table to price anything, and it is the same reasoning
@@ -404,8 +436,12 @@ def holdout_containment(target: str, *, peak_macs_per_cycle: float, authority: A
             "n_train": len(train), "n_test": len(test), "n_decided": decided,
             "contained": inside, "below_floor": below, "above_ceiling": above,
             "containment_rate": (inside / decided) if decided else None,
-            "n_undecided": len(undecided), "undecided": undecided[:20],
-            "rates_used": {k: v.to_dict() for k, v in sorted(table.rates.items())},
+            "n_undecided": len(undecided),
+            # An undecided row names the WORKLOAD it could not decide, and a held-out capsule's name
+            # is an answer key. Redacted on the same terms as the table's own rows.
+            "undecided": _redact_rows(undecided[:20], include_provenance),
+            "rates_used": {k: v.to_dict(include_provenance=include_provenance)
+                           for k, v in sorted(table.rates.items())},
             "unpriced_classes": list(table.unpriced_classes),
             "licence": ("a containment rate over programs the rates were NOT derived from; a band "
                         "may eliminate a candidate and may never certify one")}
