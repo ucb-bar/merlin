@@ -129,7 +129,54 @@ def sweep(target: str, *, timeout_ms: int = 300_000, acc_width: int = 32,
         "timeout_ms": timeout_ms,
         "results": results,
         "cell_omissions": omissions,
+        "shape_space": {
+            "formal": {
+                "shapes_proved": len(verified),
+                "quantifier": "every integer input at each shape",
+            },
+            "dynamic": witnesses_graded(target),
+            "note": ("The two numbers measure different things and neither subsumes the other: the "
+                     "dynamic ladder is the only layer that touches hardware, and the formal sweep "
+                     "says nothing about it. What the formal side adds is the quantifier -- all "
+                     "inputs rather than one stimulus -- at the shapes it can reach."),
+        },
     }
+
+
+def witnesses_graded(target: str) -> dict[str, Any]:
+    """How many capsules the dynamic ladder grades for this target, and at how many distinct shapes.
+
+    The comparison this supports is the quantified answer to "the capsules are very case-specific":
+    the dynamic ladder grades N witnesses, each on ONE stimulus; the formal sweep proves M shapes over
+    EVERY input. Both numbers are counted here rather than asserted, and the shape count is what makes
+    the comparison fair -- several capsules can share a shape, so a raw capsule count would overstate
+    the dynamic side's shape coverage.
+    """
+    import yaml
+
+    from merlin.targetgen.target_experiment import TargetExperiment  # noqa: F401  (import guard)
+
+    from merlin.common.paths import merlin_dir
+
+    root = merlin_dir() / "contract" / "capsules"
+    if not root.is_dir():
+        return {"capsules": 0, "distinct_shapes": 0, "note": "no corpus tree in this checkout"}
+    capsules, shapes = 0, set()
+    for path in root.rglob("capsule.yaml"):
+        if "hidden" in path.parts:
+            continue
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+        capsules += 1
+        for spec in (doc.get("inputs") or []):
+            shape = spec.get("shape")
+            if shape:
+                shapes.add(tuple(shape))
+    return {"capsules": capsules, "distinct_shapes": len(shapes),
+            "note": "counted from tracked capsule.yaml files, excluding hidden/; each is graded on "
+                    "one deterministic stimulus"}
 
 
 def _lattice_source(spec: dict[str, Any]) -> str:
@@ -151,6 +198,15 @@ def render(rec: dict[str, Any]) -> str:
     out.append(f"               (alignment is expressed by the extent, not by a separate query)")
     out.append(f"  points       {rec['points_verified']} verified / {rec['points_refuted']} REFUTED "
                f"/ {rec['points_abstained']} abstained  (of {rec['points_total']})")
+    ss = rec.get("shape_space") or {}
+    if ss:
+        d = ss.get("dynamic") or {}
+        out.append("")
+        out.append(f"  shape space  formal: {ss['formal']['shapes_proved']} shape(s) proved over "
+                   f"{ss['formal']['quantifier']}")
+        out.append(f"               dynamic: {d.get('capsules', 0)} capsule(s) across "
+                   f"{d.get('distinct_shapes', 0)} distinct shape(s), one stimulus each")
+        out.append("               (different questions -- only the dynamic ladder touches hardware)")
     if rec["points_refuted"]:
         out.append("")
         out.append("  REFUTED — the compiled program disagrees with the declared contraction:")
@@ -174,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="cap the extents swept (for a quick pass); the record says what was capped")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--write", action="store_true")
+    ap.add_argument("--emit-counterexamples", action="store_true",
+                    help="write refuted shapes as corpus profile entries so the bench grades them")
     args = ap.parse_args(argv)
 
     rec = sweep(args.target, timeout_ms=args.timeout_ms, reuse=args.reuse,
@@ -181,8 +239,36 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(rec, indent=1) if args.json else render(rec))
     if args.write:
         _write(rec)
+    if args.emit_counterexamples:
+        emit_counterexamples(rec)
     # A refutation is a failure; an abstention is not.
     return 1 if rec["points_refuted"] else 0
+
+
+def emit_counterexamples(rec: dict[str, Any]) -> None:
+    """Turn every refuted point into a corpus entry, and its values into untracked evidence.
+
+    Nothing is written when nothing was refuted — an empty profile sidecar would suggest the sweep
+    found something and lost it.
+    """
+    from .counterexamples import counterexample_entry, write_evidence, write_profile
+
+    refuted = [r for r in rec["results"] if r["status"] == "sat"]
+    if not refuted:
+        print("\nno refuted points: nothing to add to the corpus")
+        return
+    target = rec["target"]
+    entries = [counterexample_entry(target=target, m=r["m"], k=r["k"], n=r["n"],
+                                    dtype=r.get("dtype", "i8"),
+                                    family=str(r["cell"]).split("/")[0],
+                                    bound_ms=rec.get("timeout_ms"))
+               for r in refuted]
+    write_profile(target, entries, provenance={"lattice_source": rec["lattice_source"]})
+    path = write_evidence(target, refuted)
+    if path:
+        print(f"counterexample values: {path}")
+    print("run `python -m merlin.contract.capsules.generate_corpus --target "
+          f"{target}` to materialise them as capsules")
 
 
 def _write(rec: dict[str, Any]):
