@@ -121,7 +121,8 @@ def test_an_unreplayable_commit_is_reported_and_never_counted_as_a_miss():
         "both unreplayable paths (missing parent files, shadow that will not run) must be recorded")
     rendered = replay.render({
         "population_size": 101, "sample_size": 2, "seed": 1,
-        "baseline": {}, "detected_of_replayable": "0/1",
+        "population_definition": {"ref": "0" * 40},
+        "baseline": {"a-layer": "green"}, "detected_of_replayable": "0/1",
         "detected_of_replayable_historical": "0/1", "layers_landed": "abc12345",
         "counts": {"missed": 1, "unreplayable": 1},
         "results": [
@@ -151,3 +152,27 @@ def test_a_fix_that_postdates_the_layers_is_flagged_and_excluded_from_the_citabl
     head = subprocess.run(("git", "rev-parse", "HEAD"), cwd=repo_root(),
                           capture_output=True, text=True, check=True).stdout.strip()
     assert head not in hist, "HEAD postdates the layers; it must not count as historical"
+
+
+def test_every_declared_layer_can_actually_run():
+    """A layer wired to a name that does not exist reports `red` or `error` and is then disqualified.
+
+    That happened twice: `merlin.verify.replay_lit` and `merlin/tests/ir/test_golden_engines_agree.py`
+    were both invented in the LAYERS table and never created, and both runs quietly measured three
+    layers while the surrounding text described five. This resolves each entry to a real file or
+    importable module without running it, so the mistake fails here in milliseconds instead of an hour
+    into a sweep.
+    """
+    import importlib.util
+
+    from merlin.verify.replay import LAYERS
+
+    for name, argv in LAYERS.items():
+        argv = list(argv)
+        if argv[:2] == ["-m", "pytest"]:
+            target = repo_root() / argv[-1]
+            assert target.is_file(), f"layer {name!r} runs {argv[-1]}, which does not exist"
+        else:
+            assert argv[0] == "-m", f"layer {name!r} has an unrecognised invocation: {argv}"
+            assert importlib.util.find_spec(argv[1]), (
+                f"layer {name!r} runs module {argv[1]!r}, which cannot be imported")

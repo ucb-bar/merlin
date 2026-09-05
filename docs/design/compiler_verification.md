@@ -1297,6 +1297,65 @@ stops rejecting anything.
 Suite: 10 tests, all passing (7 core pass tests, the positive grammar test, `invalid.mlir` with its 10
 split cases, and `unchecked_by_irdl.mlir` with its 3).
 
+### 2026-09-05 — the detection rate, measured: 1 of 21, and not by the formal layer
+
+The honest replacement for "six of seven hand-picked fixes caught". That number was a demonstration
+chosen after the layers existed by someone who knew what they check; it is not a rate and should never
+be cited as one.
+
+**Method.** Population fixed before any draw: every `fix(` commit touching a path a layer can observe
+(`runtime/`, `xdsl_dialects/`, `capsule_golden.py`, `corpus_spec.py`, `verify/`) — 102 commits at
+`a8a89545`. Sample of 25 drawn by a seeded shuffle-then-take, so raising `n` extends the sample rather
+than replacing it and a disappointing result cannot be quietly rerolled. The layers did not exist when
+these commits landed, so the defect is brought forward instead: the parent's version of each file the
+commit touched is written over a copy of the package and the five layers run against that copy.
+
+**Result.**
+
+| | |
+|---|---|
+| replayable | 24 of 25 (1 commit's parent files no longer exist; reported, not dropped) |
+| detected, all commits | 2 / 24 |
+| **detected, fixes predating the layers** | **1 / 21** |
+
+The single historical detection is `6314d4fc fix(runtime): stop dropping a declared bias epilogue in
+silence`, and the attribution matters more than the count: **all five layers caught it, including the
+numeric golden that already existed.** The formal layer added nothing there. Across 21 historical
+fixes, the number caught by the formal layer and not by the pre-existing dynamic check is **zero**.
+
+**What this means, stated plainly.** The layers model one thing — whether a command buffer computes what
+its interface program specified — and most of this repo's `fix(` history is not that. Reading the missed
+list: nested OpenMP regions, worker stack sizing, a Zephyr vector-state enable, gate thresholds, tier
+record shapes, a discovery sentinel, weight selection by linked footprint. None of those is a semantic
+divergence in the lowering, and no layer here claims to see one. The claim this work supports is about a
+CLASS of defect, and this measurement is what bounds the claim.
+
+**The refinement that is not allowed yet.** The obvious response is to narrow the population to defects
+in the modelled surface, which would raise the rate. Choosing that scope now, after seeing 1/21, is
+exactly the move the whole design guards against. If it is worth running it is worth pre-registering:
+write the narrower `OBSERVED_ROOTS` down, commit it, then draw. Both records then stand side by side
+rather than one replacing the other.
+
+**Three instrument bugs found on the way, each of which had produced a number.** Worth recording because
+every one of them made the instrument look like it was working.
+
+1. `repo_root()` resolves from the merlin package's own file location, so inside the shadow it pointed
+   at the temp directory — no capsule corpus, no lit suite, no llvm-build. Every layer found nothing to
+   check and exited clean, and 25 commits were recorded as misses for defects nothing had looked at.
+   Caught by running the shadow at the parent of the COMMIT readout fix, a defect whose effect is known
+   and large, and getting green from everything.
+2. Two of the five layers were wired to names that were never created (`merlin.verify.replay_lit`,
+   `test_golden_engines_agree.py`). Both reported `red`/`error` at baseline, were disqualified, and the
+   run reported a rate for the remaining three while the surrounding text said five. `render` now warns
+   loudly when any layer is unusable, and a test resolves every `LAYERS` entry to a real file or
+   importable module.
+3. The population grows as work lands, and the sample is a shuffle of the population, so two runs
+   minutes apart drew different commits. The population is pinned to a resolved commit now and the sha
+   is in the record.
+
+Each is the same shape as the failure this package exists to prevent: a check that could not run,
+reporting success.
+
 ---
 
 ## 7. Reproducing what is claimed here

@@ -95,13 +95,16 @@ def _ancestors_of_layers(repo: Path) -> set[str]:
     return {line.strip() for line in out.splitlines() if line.strip()}
 
 
-def population(repo: Path) -> list[tuple[str, str, list[str]]]:
+def population(repo: Path, ref: str = "HEAD") -> list[tuple[str, str, list[str]]]:
     """Every `fix(` commit touching an observed path, newest first, with its observed files.
 
-    Deterministic: git log order is a total order, and the filter is a prefix test on the commit's own
-    file list. Nothing here depends on the sample, so the population can be recomputed and compared.
+    Deterministic given ``ref``: git log order is a total order and the filter is a prefix test on the
+    commit's own file list. ``ref`` is not cosmetic -- the population GROWS as work lands, and since
+    the sample is drawn by shuffling the population, a run a few commits later draws a different 25.
+    The record stores the resolved sha so a rerun reproduces exactly the same sample rather than
+    approximately the same one.
     """
-    out = _git("log", "--format=%H%x00%s", "--name-only", "--grep=^fix(", "--", *OBSERVED_ROOTS,
+    out = _git("log", ref, "--format=%H%x00%s", "--name-only", "--grep=^fix(", "--", *OBSERVED_ROOTS,
                cwd=repo)
     entries: list[tuple[str, str, list[str]]] = []
     sha = subject = ""
@@ -141,7 +144,16 @@ def _shadow(repo: Path, sha: str, files: list[str], dest: Path) -> list[str]:
     pkg = dest / "merlin"
     if pkg.exists():
         shutil.rmtree(pkg)
-    shutil.copytree(repo / PACKAGE, pkg, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    # `_data` is EXCLUDED, and that is deliberate rather than an optimisation. It is the packaging
+    # mirror of `merlin/contract`, read only when merlin is installed as a wheel; the shadow runs from
+    # source with MERLIN_REPO_ROOT pinned at the real checkout, so nothing in it is reachable. It is
+    # also the one volatile part of the tree -- a mirror of symlinks that another session can be
+    # rebuilding while this copy walks it, which took two whole replay runs down with a bare
+    # "No such file or directory" on a path that exists. symlinks=True copies links AS links for the
+    # rest, so the shadow stays a faithful copy rather than a materialized one, and stays cheap: this
+    # runs once per sampled commit.
+    shutil.copytree(repo / PACKAGE, pkg, symlinks=True, ignore_dangling_symlinks=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "_data"))
     failed: list[str] = []
     for rel in files:
         proc = subprocess.run(("git", "show", f"{sha}^:{rel}"), cwd=repo,
@@ -174,11 +186,11 @@ LAYERS: dict[str, tuple[str, ...]] = {
     "compilation-validation": _PYTEST + ("merlin/tests/ir/test_compilation_validation.py",),
     # The static layer: one pass, one module, assert what it did. This is where a lowering defect
     # shows, and it was missing from the first run.
-    "lit-pass-tests": ("-m", "merlin.verify.replay_lit"),
+    "lit-pass-tests": ("-m", "merlin.verify.replay_layers", "lit"),
     # The numeric oracle over the real corpus -- the pre-existing dynamic check the formal layers sit
     # beside. Included so a detection can be attributed: a defect BOTH catch is not evidence for the
     # new layer, and only this comparison can tell the two apart.
-    "numeric-golden": _PYTEST + ("merlin/tests/ir/test_golden_engines_agree.py",),
+    "numeric-golden": ("-m", "merlin.verify.replay_layers", "oracle"),
 }
 
 
@@ -211,9 +223,11 @@ def _run_layers(repo: Path, pythonpath: str, timeout: int) -> dict[str, str]:
     return verdicts
 
 
-def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300) -> dict:
+def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300,
+           ref: str = "HEAD") -> dict:
     """Draw a sample, replay each defect, and return the record. Never raises on one bad commit."""
-    pool = population(repo)
+    resolved = _git("rev-parse", ref, cwd=repo).strip()
+    pool = population(repo, resolved or ref)
     sample = draw(pool, n, seed)
 
     baseline = _run_layers(repo, str(repo / "merlin" / "python"), timeout)
@@ -259,7 +273,8 @@ def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300) ->
     return {
         "schema": "verify_historical_replay/v1",
         "population_size": len(pool),
-        "population_definition": {"grep": "^fix(", "observed_roots": list(OBSERVED_ROOTS)},
+        "population_definition": {"grep": "^fix(", "observed_roots": list(OBSERVED_ROOTS),
+                                  "ref": resolved or ref},
         "sample_size": len(sample),
         "seed": seed,
         "baseline": baseline,
@@ -275,8 +290,10 @@ def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300) ->
 
 
 def render(rec: dict) -> str:
+    unusable = {k: v for k, v in rec["baseline"].items() if v != "green"}
     lines = [
-        f"population {rec['population_size']} fix( commits touching an observed path",
+        f"population {rec['population_size']} fix( commits touching an observed path, "
+        f"at {rec['population_definition']['ref'][:8]}",
         f"sample     {rec['sample_size']} drawn with seed {rec['seed']} (shuffle-then-take)",
         f"baseline   {rec['baseline']}",
         f"detected   {rec['detected_of_replayable']} of the REPLAYABLE commits",
@@ -284,6 +301,12 @@ def render(rec: dict) -> str:
         f"layers ({rec['layers_landed']}) -- the citable rate",
         "",
     ]
+    if unusable:
+        # Loud, because a layer that did not run silently NARROWS the instrument, and the rate then
+        # describes a smaller thing than the sentence around it claims. Twice now a layer was wired to
+        # a module name that did not exist and the run reported a number for the remaining three.
+        lines.insert(3, f"WARNING   {len(unusable)} of {len(rec['baseline'])} layers were not usable "
+                        f"and could detect nothing: {unusable}")
     for r in rec["results"]:
         mark = {"detected": "CAUGHT", "missed": "missed", "unreplayable": "n/a  ",
                 "disqualified": "dq   "}[r["outcome"]]
@@ -306,10 +329,12 @@ def main(argv=None) -> int:
     ap.add_argument("--n", type=int, default=20, help="sample size")
     ap.add_argument("--seed", type=int, default=20260905)
     ap.add_argument("--timeout", type=int, default=300, help="per-layer seconds")
+    ap.add_argument("--ref", default="HEAD",
+                    help="commit the population is taken from; pin it to reproduce a sample exactly")
     ap.add_argument("--write", action="store_true", help="write the record as a versioned product")
     a = ap.parse_args(argv)
 
-    rec = replay(repo_root(), n=a.n, seed=a.seed, timeout=a.timeout)
+    rec = replay(repo_root(), n=a.n, seed=a.seed, timeout=a.timeout, ref=a.ref)
     print(render(rec))
     if a.write:
         from merlin.common.artifacts import new_product
