@@ -56,7 +56,7 @@ triton = ["triton==3.7.1"]
 
 [project.scripts]
 merlin-opt = "merlin.xdsl_dialects.opt:main"
-merlin-verify = "merlin.verify.evaluate:main"
+merlin-verify = "merlin.verify.cli:main"
 merlin-lit-suite = "merlin.targetgen.lit_suite:main"
 kernel-index = "merlin.kernels.cli_index:main"
 kernel-extract = "merlin.kernels.cli_extract:main"
