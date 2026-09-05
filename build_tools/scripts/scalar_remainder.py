@@ -255,6 +255,33 @@ def _innermost_extent(ty: str | None) -> int | None:
     return int(last) if last.isdigit() else None
 
 
+#: Operators that make an affine map result a COMPOUND expression rather than a bare dimension. A
+#: `vector.transfer_read` needs a projected permutation, so ``structured.vectorize`` cannot build one
+#: for a compound result and FAILS THE PIPELINE rather than declining the op -- which is why this is
+#: a refusal in the tagger and a class here. It is how a convolution's im2col window arrives: an
+#: all-parallel generic whose body only yields its input (so the body-level gather test sees nothing)
+#: and whose input map is ``(d0..d5) -> (d3, d0, d4 + d1, d5 + d2)``.
+_COMPOUND_AFFINE_OPS = ("+", "*", " floordiv ", " mod ", " ceildiv ")
+
+
+def _has_compound_indexing_map(head: str) -> bool:
+    """True if any ``affine_map<...>`` on the op's first line has a compound result expression."""
+    rest = head
+    while True:
+        i = rest.find("affine_map<")
+        if i < 0:
+            return False
+        arrow = rest.find("->", i)
+        if arrow < 0:
+            return False
+        close = rest.find(")>", arrow)
+        if close < 0:
+            return False
+        if any(tok in rest[arrow:close] for tok in _COMPOUND_AFFINE_OPS):
+            return True
+        rest = rest[close + 2:]
+
+
 def structural_class(op_text: list[str], *, mlir_op: str, result_type: str | None,
                      lanes: int) -> dict:
     """Classify one top-level op by its OWN IR, and say whether the vectorize tagger would take it.
@@ -283,6 +310,7 @@ def structural_class(op_text: list[str], *, mlir_op: str, result_type: str | Non
     rank = n_red + n_par
     has_math = "math." in body
     has_gather = ("tensor.extract" in body) or ("memref.load" in body)
+    compound_map = _has_compound_indexing_map(head)
     has_mul = ("arith.mulf" in body) or ("arith.muli" in body) or ("arith.extsi" in body)
 
     if mlir_op != "linalg.generic":
@@ -291,7 +319,7 @@ def structural_class(op_text: list[str], *, mlir_op: str, result_type: str | Non
         cls = "contraction_multi_reduction" if has_mul else "reduction_multi_dim"
     elif n_red == 1:
         cls = "contraction_single_reduction" if has_mul else "reduction_single_dim"
-    elif has_gather:
+    elif has_gather or compound_map:
         cls = "gather"
     elif has_math:
         cls = "transcendental"
@@ -318,6 +346,8 @@ def structural_class(op_text: list[str], *, mlir_op: str, result_type: str | Non
         refusals.append("rank-outside-2..4")
     if has_gather:
         refusals.append("data-dependent-gather")
+    if compound_map:
+        refusals.append("compound-affine-indexing-map")
     if has_math:
         refusals.append("transcendental-body")
     if ext is None or ext % lanes:
