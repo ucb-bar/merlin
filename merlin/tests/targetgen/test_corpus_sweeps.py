@@ -558,8 +558,19 @@ def test_shipped_targets_all_consume_the_same_claim_separated_perf_template():
     assert claims == {"PREDICTS", "DIFFERENTIAL"}
     assert all(s["base"]["cat"] == "_perf" and s["base"]["label"] == "dev"
                for s in shared["sweeps"])
-    assert [s["id"] for s in shared["sweeps"]] == ["PK", "PS", "PC"]
-    assert {row["family"] for row in shared["blocked_unimplemented"]} == {"PL", "PF"}
+    # THE INVARIANT IS THAT EVERY TARGET GETS THE SAME TEMPLATE, not that the template has a
+    # particular membership. Freezing the roster here asserted ["PK", "PS", "PC"] and {"PL", "PF"},
+    # which went stale the moment a family was added or unblocked -- and a family being added is the
+    # normal way this file grows, so the snapshot broke on correct work and said nothing about the
+    # property the test is named for. What must hold is that the ids are unique, that a family is
+    # either emitted or blocked and never both, and that every shipped target consumes the identical
+    # list (checked in the loop below).
+    blocked_ids = [row["family"] for row in shared["blocked_unimplemented"]]
+    assert len(set(shared_ids)) == len(shared_ids), f"duplicate sweep ids: {shared_ids}"
+    assert len(set(blocked_ids)) == len(blocked_ids), f"duplicate blocked families: {blocked_ids}"
+    assert set(shared_ids).isdisjoint(blocked_ids), (
+        f"a family is both emitted and blocked: {sorted(set(shared_ids) & set(blocked_ids))}")
+    assert shared_ids and blocked_ids, "an empty roster would make every assertion here vacuous"
     assert all("source" not in s["base"] and "operand_dtype" not in s["base"]
                for s in shared["sweeps"])
 
@@ -579,9 +590,16 @@ def test_every_required_performance_contract_field_is_fail_closed(missing):
         GC._validate_performance_block(block, owner="fixture")
 
 
-def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
+def test_gemmini_admits_the_runnable_families_and_records_the_refuted_one():
     profile = GC.load_profile("gemmini", include_holdouts=False)
-    shared_sweeps = profile["sweeps"][-3:]
+    # BY ID, NOT BY POSITION. This sliced the last three sweeps, which named PK/PS/PC only while the
+    # shared template happened to hold exactly three. Every family added since silently shifted the
+    # window, so the test went on running -- against a different three families than the ones it is
+    # named for and reasons about below.
+    named = ("PK", "PS", "PC")
+    shared_sweeps = [s for s in profile["sweeps"] if s["id"] in named]
+    assert [s["id"] for s in shared_sweeps] == list(named), (
+        f"the shared template no longer carries {named}: {[s['id'] for s in profile['sweeps']]}")
     skips, blocked, errors = [], [], []
     experiment = GC.load_target_experiment(GC._descriptor_for("gemmini"))
     binding = GC.CS.derive_binding(experiment, profile.get("datapath") or {})
@@ -590,7 +608,15 @@ def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
         trait_facts=GC._performance_facts("gemmini"), skipped=skips,
         blocked_unimplemented=blocked, errors=errors)
 
-    assert [entry["performance"]["family"] for entry in entries] == ["PK"] * 4
+    # PC IS ADMITTED NOW, and this asserted it was not. Its emitter became
+    # `merlin.perf.command_stream_gen.pair_from_interface` with status `existing` in 5cefbd64, and
+    # PC00_k64 / PC01_k128 have been on disk since -- so the scheduling family materialises rather
+    # than stopping at the emitter gate, and freezing the roster as PK-only described a tree that had
+    # already moved on. Verified independently of this test: the declaration says `existing`, the
+    # named entry point resolves, and the member directories exist.
+    families = [entry["performance"]["family"] for entry in entries]
+    assert set(families) == {"PK", "PC"}, families
+    assert families.count("PK") == 4, "the reduction-depth cohort is a fixed four points"
     assert {entry["operand_dtype"] for entry in entries} == {"int8"}
     assert {entry["performance"]["emitter"]["resolved"]["accum_dtype"]
             for entry in entries} == {"i32"}
@@ -617,11 +643,20 @@ def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
     assert [(row["family"], row["gate"]["outcome"]) for row in skips] == [("PS", "refuted")]
     assert skips[0]["gate"]["facts"]["self_hosted_program"]["satisfied"] is False
     assert skips[0]["gate"]["facts"]["explicit_completion"]["satisfied"] is True
-    assert [row["family"] for row in blocked] == ["PC"], (
-        "PC must reach the emitter gate, not be turned away at the trait gate")
+    assert [row["family"] for row in blocked] == [], (
+        "neither family should stop at the emitter gate: PS is refuted at the TRAIT gate before its "
+        f"emitter is consulted, and PC's emitter exists; got {[row['family'] for row in blocked]}")
     assert errors == []
-    assert {row["family"] for row in profile["_performance_template"]["blocked_unimplemented"]} == {
-        "PL", "PF"}
+    # The blocked roster moves as families are unblocked and added, so what is asserted is that the
+    # template records one, that it does not overlap the emitted sweeps, and that PC -- blocked on its
+    # emitter rather than on its traits -- is not in it.
+    template_blocked = {row["family"]
+                        for row in profile["_performance_template"]["blocked_unimplemented"]}
+    assert template_blocked, "a template recording no blocked family makes this check vacuous"
+    assert template_blocked.isdisjoint({s["id"] for s in profile["sweeps"]})
+    assert "PC" not in template_blocked, (
+        "PC is blocked at the EMITTER gate for this target, which is a per-target outcome and not a "
+        "property of the shared template")
     capsule, mlir = GC.CS.build(entries[0], binding)
     assert capsule["numeric_policy"] == {"compare": "exact_int", "dtype": "i32"}
     assert capsule["label"] == "dev" and "merlin_iface.matmul" in mlir
@@ -630,7 +665,9 @@ def test_gemmini_admits_only_runnable_PK_and_records_PS_PC_trait_skips():
 def test_underscore_perf_phase_is_excluded_from_functional_graded_roots(tmp_path, monkeypatch):
     from merlin.targetgen import target_experiment as TE
 
-    descriptor = (GC.REPO / "experiments" / "capsule_bench" / "targets"
+    # Under merlin/, not at the repo root. Dropping that component is the recurring path defect in
+    # this tree: the file simply does not resolve and the test dies on FileNotFoundError.
+    descriptor = (GC.REPO / "merlin" / "experiments" / "capsule_bench" / "targets"
                   / "gemmini" / "target_experiment.yaml")
     loaded = TE.load_target_experiment(descriptor)
     functional = tmp_path / "isa"
