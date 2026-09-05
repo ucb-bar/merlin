@@ -9,6 +9,15 @@
             "command": ".venv/bin/python .claude/hooks/guard_artifact_writes.py"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/bin/python .claude/hooks/guard_process_kills.py"
+          }
+        ]
       }
     ],
     "Stop": [
