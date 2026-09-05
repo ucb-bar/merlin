@@ -482,6 +482,10 @@ CHECKS = [
 ]
 
 
+#: How many findings one check may print before the rest are counted rather than listed.
+_MAX_DETAIL = 8
+
+
 def main() -> int:
     print("=== verify_no_cheat — static anti-cheat + moat gate ===")
     all_ok = True
@@ -489,8 +493,14 @@ def main() -> int:
         ok, probs = fn()
         all_ok = all_ok and ok
         print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
-        for p in probs[:8]:
+        # ⚠️ SAY WHAT WAS ELIDED. The list is capped so one broken check cannot bury the other six, but
+        # a silent cap understates the exposure: this printed 8 holdout names out of the 10 a leaked
+        # conformance spec actually carried, and the two that did not fit read as not leaked.
+        for p in probs[:_MAX_DETAIL]:
             print(f"        - {p}")
+        if len(probs) > _MAX_DETAIL:
+            print(f"        - … and {len(probs) - _MAX_DETAIL} more (listed detail is truncated, "
+                  f"not exhaustive)")
     print("\n" + ("✅ VERIFY_NO_CHEAT: PASS — tooling is answer-free and the arm contrast is honest."
                   if all_ok else "❌ VERIFY_NO_CHEAT: FAIL — DO NOT launch until the above are resolved."))
     return 0 if all_ok else 1

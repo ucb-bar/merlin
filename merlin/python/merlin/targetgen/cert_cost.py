@@ -107,15 +107,32 @@ class CostFit:
             return 0
         return int(self.intercept_s / self.per_element_s)
 
-    def to_dict(self) -> dict:
-        return {
+    def to_dict(self, *, with_sources: bool = False) -> dict:
+        """The fit as data. ``sources`` is WITHHELD unless explicitly asked for.
+
+        ⚠️ THE SOURCE LIST NAMES HOLDOUT CAPSULES AND LOCAL ABSOLUTE PATHS. Each entry is the run file a
+        sample came from, e.g. ``/scratch/.../grading_hidden/runs/.../H0_matmul_hidden/
+        capsule_result.json``. This dict is embedded in the TRACKED conformance spec, which every arm
+        reads, so emitting it by default published 10 holdout names and 60 more through the per-class
+        fits -- caught by `verify_no_cheat`, which failed both targets on it. A held-out capsule's NAME
+        is an answer key: knowing which shapes are graded privately is most of the advantage the
+        holdout exists to deny.
+
+        The counts stay, because they are what makes the fit auditable: how many samples, over what
+        range, at what r2. A caller that genuinely needs the provenance -- a local diagnostic, never a
+        tracked artifact -- passes ``with_sources=True``.
+        """
+        out = {
             "target": self.target, "intercept_s": round(self.intercept_s, 3),
             "per_element_s": round(self.per_element_s, 6), "r2": round(self.r2, 4),
             "n_samples": self.n_samples,
             "measured_range_elements": [self.elements_min, self.elements_max],
-            "metric": self.metric, "sources": list(self.sources),
+            "metric": self.metric,
             "floor_dominates_below_elements": self.floor_dominates_below,
         }
+        if with_sources:
+            out["sources"] = list(self.sources)
+        return out
 
 
 def _linalg_result_elements(mlir_text: str) -> int:
@@ -172,16 +189,36 @@ def capsule_output_elements(interface_mlir_text: str) -> int:
     priced 85 of 295 L3-demanding capsules at zero -- reporting "commits nothing measurable" for
     capsules that plainly write a 16x16 tensor.
 
-    Summed rather than maximised, because a capsule that writes twice pays for both. A contraction's
-    extent comes from the grammar's own ``_commit_out_shape`` (so a pooled commit contributes its
-    POOLED extent, and this file does not become a second copy of that formula); every other terminal
-    write takes the extent of the operand it reads, which is what an elementwise stage produces.
+    Summed rather than maximised, because a capsule that writes twice pays for both.
+
+    ⚠️ EACH WRITE'S EXTENT IS THE ONE THE MODULE DECLARES, never one inferred from what the command
+    READ. This function used to take the extent of the operand under the first of a fixed set of keys
+    (``src``/``lhs``/``q``/``ifm``/``a``) -- an inference that is only correct for a shape-preserving op,
+    and this corpus is full of ops that are not one. Measured against the corpus's own goldens, the
+    inferred extent was wrong for 43 of 452 capsules and raised on a 44th:
+
+    * a strided convolution was priced by its INPUT IMAGE. ``SY_conv_k16x16_s16x16`` writes a 4x4x16
+      result (256 elements, 89 s) and was priced at 16,384 elements and 7,177 s -- 80x -- because the
+      window axis sizes the image from the kernel, so the operand grows while the output is fixed. Its
+      k8x8 and k4x4 siblings were over budget for the same reason, and four other conv members were
+      priced UNDER their true cost by the same inference.
+    * a batched matmul was priced by its stacked operand (``2x16x32`` read as 1,024 against a 32x16
+      result), and a per-channel conv sweep by its activation.
+    * seven flash-attention capsules were priced at ZERO -- they end on ``attention_pv``, whose operand
+      key ``p`` was not in the list -- so they reported "commits nothing measurable" and were reported
+      unpriceable rather than cheap or dear.
+
+    The declared result types agree with the goldens for 450 of those 452, so this is not a different
+    guess; it is the number the module is under contract to produce. See
+    ``interface_emit.declared_result_elements``.
+
+    FAILS CLOSED: a terminal write whose result type the grammar cannot read raises, so the caller
+    reports the capsule as unpriceable rather than pricing it by something it did not write.
     """
     from merlin.targetgen.contract import interface_emit as IE
 
     cb = IE.parse_interface_mlir(interface_mlir_text)
     commands = list(cb.get("commands") or ())
-    tensors = cb.get("tensors") or {}
     if not commands:
         # A LINALG-ON-TENSORS capsule, not a merlin_iface program: the two grammars are both first
         # class here, and 54 of 295 L3-demanding capsules are the linalg kind. Its outputs are the
@@ -193,6 +230,7 @@ def capsule_output_elements(interface_mlir_text: str) -> int:
         ops.pop("dst", None)
         return {str(v) for v in ops.values() if isinstance(v, str)}
 
+    declared = IE.declared_result_elements(interface_mlir_text)
     total = 0
     for i, cmd in enumerate(commands):
         dst = (cmd.get("operands") or {}).get("dst")
@@ -200,23 +238,12 @@ def capsule_output_elements(interface_mlir_text: str) -> int:
             continue                               # a lifetime op writes nothing
         if any(dst in _read_names(later) for later in commands[i + 1:]):
             continue                               # an intermediate, not an output
-        if cmd.get("opcode") == "COMMIT":
-            src = (cmd.get("operands") or {}).get("src")
-            if src:
-                m, n = IE._commit_out_shape(cb, src, cmd.get("attributes") or {})
-                total += int(m) * int(n)
-                continue
-        # Every other terminal write produces the extent of what it read.
-        for key in ("src", "lhs", "q", "ifm", "a"):
-            name = (cmd.get("operands") or {}).get(key)
-            spec = tensors.get(name) if name else None
-            shape = (spec or {}).get("shape")
-            if shape:
-                n = 1
-                for d in shape:
-                    n *= int(d)
-                total += n
-                break
+        if dst not in declared:
+            raise ValueError(
+                f"terminal write {dst!r} ({cmd.get('opcode')}) declares no readable result type, so "
+                f"what it writes is UNKNOWN; pricing it by an operand it read is what this refusal "
+                f"replaces")
+        total += int(declared[dst])                # 0 for device state (a resident handle / an acc)
     return total
 
 
@@ -665,14 +692,22 @@ class CycleCostFit:
     n_ratio_samples: int = 0
     sources: tuple[str, ...] = ()
 
-    def to_dict(self) -> dict:
-        return {"target": self.target, "intercept_s": round(self.intercept_s, 3),
-                "per_cycle_s": round(self.per_cycle_s, 6), "r2": round(self.r2, 4),
-                "n_samples": self.n_samples,
-                "measured_range_cycles": [self.cycles_min, self.cycles_max],
-                "functional_to_cycle_accurate_ratio": (round(self.functional_ratio, 3)
-                                                       if self.functional_ratio else None),
-                "n_ratio_samples": self.n_ratio_samples, "sources": list(self.sources)}
+    def to_dict(self, *, with_sources: bool = False) -> dict:
+        """The fit as data. ``sources`` is WITHHELD unless explicitly asked for, for the same reason
+        :meth:`CostFit.to_dict` withholds it: these entries are run paths under ``grading_hidden/`` and
+        they name holdout capsules. This fit has no tracked-artifact writer today, which is exactly why
+        it is worth closing now -- the sibling fit did not have one either until the conformance spec
+        started embedding it, and the leak was found in a tracked file rather than in review."""
+        out = {"target": self.target, "intercept_s": round(self.intercept_s, 3),
+               "per_cycle_s": round(self.per_cycle_s, 6), "r2": round(self.r2, 4),
+               "n_samples": self.n_samples,
+               "measured_range_cycles": [self.cycles_min, self.cycles_max],
+               "functional_to_cycle_accurate_ratio": (round(self.functional_ratio, 3)
+                                                      if self.functional_ratio else None),
+               "n_ratio_samples": self.n_ratio_samples}
+        if with_sources:
+            out["sources"] = list(self.sources)
+        return out
 
 
 def _cycle_records(target: str, root: Path | None = None, extra_roots=()) -> dict[str, dict]:
