@@ -23,6 +23,11 @@ Issues = "https://github.com/ucb-bar/merlin/issues"
 [project.optional-dependencies]
 dev = ["pytest", "pytest-timeout", "pytest-xdist", "pyyaml", "pydantic", "rich"]
 xdsl = ["xdsl>=0.68"]
+# Compiler-pass verification (docs/design/compiler_verification.md): the static lit/FileCheck
+# layer needs only the in-tree LLVM build, but the formal layer solves with z3. z3 previously
+# arrived only as a TRANSITIVE dep of exo-lang -- an undeclared dependency whose absence turns a
+# verification into a silent skip, which is the one thing this layer must never do.
+verify = ["xdsl>=0.68", "z3-solver"]
 # targetgen contract validation (fail-closed JSON-Schema checks in targetgen.contract).
 targetgen = ["jsonschema"]
 # Board / simulator / RTL-cert flows (spike, verilator, K1, chipyard, clang-23, model2MLIR, …) have
@@ -50,6 +55,9 @@ telemetry = ["aet"]
 triton = ["triton==3.7.1"]
 
 [project.scripts]
+merlin-opt = "merlin.xdsl_dialects.opt:main"
+merlin-verify = "merlin.verify.evaluate:main"
+merlin-lit-suite = "merlin.targetgen.lit_suite:main"
 kernel-index = "merlin.kernels.cli_index:main"
 kernel-extract = "merlin.kernels.cli_extract:main"
 kernel-audit = "merlin.kernels.audit:main"
