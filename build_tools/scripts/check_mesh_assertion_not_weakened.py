@@ -28,11 +28,14 @@ Modes, mirroring the sibling gates here:
   --target NAME        restrict to one target (repeatable)
   --json               machine-readable
   --ratchet PATH       pre-existing debt that MAY ONLY SHRINK, keyed `<target>/<capsule>` because a
-                       bare name is not unique across targets
-  --fail-on-weakened   exit non-zero when an admitted capsule declines the demand with no reason
-  --fail-on-unresolved
-                       exit non-zero when a target's contract cannot be read, since then nothing about
-                       its capsules has been established either way
+                       bare name is not unique across targets (default: mesh_assertion_ratchet.txt)
+  --no-ratchet         report every finding as new -- what the debt list is hiding
+  --advisory           print and exit 0 (inventory mode; NOT for a hook)
+
+EXIT CODE BY DEFAULT. 1 when an admitted capsule declines the demand with no reason and is not in the
+ratchet; 2 when a target's contract cannot be read, since then nothing about its capsules has been
+established either way. Both used to require an opt-in flag that nothing passed, and the script was
+wired into no hook and no CI job, so it printed 25 un-ratcheted weakenings and exited 0.
 """
 from __future__ import annotations
 
@@ -65,12 +68,24 @@ def _operand_dtype(doc: dict) -> str | None:
     return None
 
 
-def _target_of(path: Path) -> str | None:
+def _target_of(path: Path, target_dirs: frozenset[str] = frozenset()) -> str | None:
     """The target a capsule belongs to, from its position under the corpus root.
 
     A capsule directly under a category (`isa/`, `layers/`, ...) belongs to the default target, which
     is not named here: the caller resolves it from the descriptors, because a target literal in this
     file is exactly the overfit the repo's cardinal rule forbids.
+
+    THE BUG THIS REPLACES. The old rule was `rest[0] if len(rest) > 2`, which is true for BOTH layouts
+    -- `<target>/<category>/<capsule>/capsule.yaml` (4 parts) and the default target's
+    `<category>/<capsule>/capsule.yaml` (3). So every default-target capsule resolved to its CATEGORY
+    (`isa`, `hidden`, `model`, `_perf`, `layers`, `model_slices`), no contract exists under those
+    names, and all 133 of them landed in `unresolved_targets` -- one sixth of the corpus, silently
+    establishing nothing, while the gate printed a summary and exited 0.
+
+    ``target_dirs`` is the set of corpus subdirectories that a descriptor names as a target; it is
+    DERIVED by the caller from `targets/*/target_experiment.yaml`, never listed here. The depth rule
+    is kept as the fallback for a target directory that has no descriptor yet, so an undeclared target
+    is still read as a target rather than folded into the default.
     """
     parts = path.parts
     try:
@@ -78,7 +93,11 @@ def _target_of(path: Path) -> str | None:
     except ValueError:
         return None
     rest = parts[i + 1:]
-    return rest[0] if len(rest) > 2 else None
+    if not rest:
+        return None
+    if rest[0] in target_dirs:
+        return rest[0]
+    return rest[0] if len(rest) > 3 else None      # <target>/<category>/<capsule>/capsule.yaml
 
 
 def audit(targets=()) -> dict:
@@ -109,6 +128,9 @@ def audit(targets=()) -> dict:
     # descriptor directory name is not itself a directory under the corpus.
     dir_names = {p.name for p in root.iterdir() if p.is_dir()}
     default = next((declared for d, declared in default_targets if d not in dir_names), None)
+    # Corpus subdirectories a descriptor claims as a target. Derived, never listed: a target literal
+    # in this file is the overfit the cardinal rule forbids.
+    target_dirs = frozenset(d for d, _ in default_targets if d in dir_names)
 
     weakened, unresolved, checked = [], {}, 0
     for cy in sorted(root.rglob("capsule.yaml")):
@@ -120,7 +142,7 @@ def audit(targets=()) -> dict:
         fam = sem.get("semantic_family")
         if not fam:
             continue
-        dir_target = _target_of(cy)
+        dir_target = _target_of(cy, target_dirs)
         declared = next((d for n, d in default_targets if n == dir_target), dir_target) or default
         if not declared:
             continue
@@ -131,7 +153,13 @@ def audit(targets=()) -> dict:
             unresolved[declared] = why
             continue
         dtype = _operand_dtype(doc)
-        dtypes = {str(x) for x in (adm.get(str(fam)) or ())}
+        # ONE SPELLING AUTHORITY. The capability manifest declares canonical tokens (`int8`, `fp32`);
+        # a capsule's `inputs[].dtype` carries the capsule spelling (`i8`, `f32`). Comparing the two
+        # raw made 103 of the default target's 133 capsules read as "cell not admitted -- a fallback is
+        # the right answer" purely because `i8` != `int8`, so the gate examined them and established
+        # nothing. `conformance.capsule_dtype` is the mapping the rest of the repo already routes
+        # through (an unmapped token comes back unchanged, so it surfaces rather than vanishing).
+        dtypes = {CF.capsule_dtype(str(x)) for x in (adm.get(str(fam)) or ())}
         if not dtypes or (dtype and dtype not in dtypes):
             continue                               # not admitted: a fallback is the right answer
         checked += 1
@@ -150,6 +178,10 @@ def audit(targets=()) -> dict:
             "weakened": sorted(weakened, key=lambda r: (not r["hand_authored"], r["capsule"]))}
 
 
+#: Pre-existing debt, beside the script like every sibling gate's ratchet. MAY ONLY SHRINK.
+_RATCHET = _HERE.parent / "mesh_assertion_ratchet.txt"
+
+
 def _load_ratchet(p: Path | None) -> set[str]:
     if not p or not p.is_file():
         return set()
@@ -166,44 +198,82 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", action="append", default=None)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--ratchet", type=Path, default=None)
-    ap.add_argument("--fail-on-weakened", action="store_true")
-    ap.add_argument("--fail-on-unresolved", action="store_true")
+    ap.add_argument("--ratchet", type=Path, default=None,
+                    help=f"accepted debt, `<target>/<capsule>` per line (default: {_RATCHET.name}). "
+                         f"It MAY ONLY SHRINK.")
+    ap.add_argument("--no-ratchet", action="store_true",
+                    help="report every finding as new (what the debt list is hiding)")
+    # Kept for callers that already pass them; both behaviours are now the DEFAULT. A gate whose exit
+    # code only reflected its finding when the caller opted in is a gate that reports and cannot
+    # enforce -- this one printed 25 unratcheted weakenings and exited 0, wired into no hook.
+    ap.add_argument("--fail-on-weakened", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--fail-on-unresolved", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--advisory", action="store_true",
+                    help="print the findings and exit 0 (inventory mode; NOT for a hook)")
+    ap.add_argument("--stop-hook", action="store_true",
+                    help="session Stop hook: JSON-only on stdout, blocks via {'decision': 'block'} "
+                         "rather than the exit status")
     a = ap.parse_args(argv)
 
     rep = audit(tuple(a.target or ()))
-    ratchet = _load_ratchet(a.ratchet)
+    ratchet = set() if a.no_ratchet else _load_ratchet(a.ratchet or _RATCHET)
     new = [r for r in rep["weakened"] if f"{r['target']}/{r['capsule']}" not in ratchet]
-    hand = [r for r in new if r["hand_authored"]]
+    hand_all = [r for r in rep["weakened"] if r["hand_authored"]]
+    hand_new = [r for r in new if r["hand_authored"]]
+
+    if a.stop_hook:
+        # A Claude Code Stop hook BLOCKS through {"decision": "block"} on stdout; a non-zero exit is a
+        # NON-blocking error there, and stdout must carry nothing but the JSON.
+        if rep["unresolved_targets"]:
+            print(json.dumps({"decision": "block", "reason":
+                              f"mesh assertion: {len(rep['unresolved_targets'])} target(s) have no "
+                              f"resolvable contract, so their capsules established nothing: "
+                              + ", ".join(sorted(rep["unresolved_targets"]))}))
+        elif new:
+            print(json.dumps({"decision": "block", "reason":
+                              f"{len(new)} capsule(s) decline must_accelerate on work their target's "
+                              f"contract admits, with no not_asserted_reason "
+                              f"({len(hand_new)} hand-authored):\n- "
+                              + "\n- ".join(f"{r['target']}/{r['capsule']} "
+                                            f"({r['family']}/{r['dtype']})" for r in new[:40])}))
+        else:
+            print(json.dumps({}))
+        return 0  # stop-hook signals via JSON, not exit code
 
     if a.json:
-        print(json.dumps({"report": rep, "new": new}, indent=2))
+        print(json.dumps({"report": rep, "new": new, "n_ratchet_entries": len(ratchet)}, indent=2))
     else:
-        print(f"== mesh assertion vs declared capability")
+        print("== mesh assertion vs declared capability")
         print(f"   capsules whose cell the hardware admits : {rep['n_admitted_capsules_checked']}")
+        # Both counts are over the SAME population. They used to be over two ("25 (0 of them
+        # HAND-AUTHORED)" put the total beside the un-ratcheted hand-authored count), which read as
+        # "none of the weakenings are hand-authored" while nine of them were.
         print(f"   declining the demand with no reason     : {len(rep['weakened'])}"
-              f"  ({len(hand)} of them HAND-AUTHORED)")
+              f"  ({len(hand_all)} of them HAND-AUTHORED)")
+        print(f"   of those, NOT in the ratchet            : {len(new)}"
+              f"  ({len(hand_new)} HAND-AUTHORED)   [ratchet: {len(ratchet)} entr(y|ies)]")
         for r in rep["weakened"][:25]:
             mark = " " if f"{r['target']}/{r['capsule']}" in ratchet else "*"
             tag = "HAND" if r["hand_authored"] else "    "
             print(f"   {mark} {tag} {r['capsule']:36s} {r['target']:12s} "
                   f"{r['family']}/{r['dtype']} must_accelerate={r['must_accelerate']}")
+        if len(rep["weakened"]) > 25:
+            print(f"   … and {len(rep['weakened']) - 25} more (--json for all)")
         if rep["unresolved_targets"]:
             print(f"   UNRESOLVED ({len(rep['unresolved_targets'])}) — nothing established either way:")
             for t, why in rep["unresolved_targets"].items():
                 print(f"     ? {t}: {why[:90]}")
 
-    rc = 0
-    if a.fail_on_weakened and new:
-        print(f"\nFAIL: {len(new)} capsule(s) decline must_accelerate on work their target's "
-              f"contract admits, with no not_asserted_reason ({len(hand)} hand-authored)",
-              file=sys.stderr)
-        rc = 1
-    if a.fail_on_unresolved and rep["unresolved_targets"]:
+    if rep["unresolved_targets"]:
         print(f"\nCANNOT DECIDE: {len(rep['unresolved_targets'])} target(s) have no resolvable "
               f"contract, so their capsules established nothing", file=sys.stderr)
-        return 2
-    return rc
+        return 0 if a.advisory else 2
+    if new:
+        print(f"\nFAIL: {len(new)} capsule(s) decline must_accelerate on work their target's "
+              f"contract admits, with no not_asserted_reason ({len(hand_new)} hand-authored). "
+              f"Fix them, or state a reason; {_RATCHET.name} may only SHRINK.", file=sys.stderr)
+        return 0 if a.advisory else 1
+    return 0
 
 
 if __name__ == "__main__":

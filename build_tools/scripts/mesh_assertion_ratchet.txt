@@ -15,29 +15,92 @@
 #
 # THE FIX IS NOT NECESSARILY `true`: a capsule may decline, but it owes a reason saying which.
 
+# RE-SEALED 2026-09-05, after the gate was fixed. Two defects made it blind to two thirds of its own
+# population, so this list is what it should always have held, not new decay:
+#   * `_target_of` returned the CATEGORY (`isa`, `hidden`, `model`, `_perf`, `layers`,
+#     `model_slices`) for the 133 default-target capsules, which resolve to no contract, so all of
+#     them landed in `unresolved_targets` and established nothing;
+#   * admitted dtypes were compared in the MANIFEST spelling (`int8`) against the CAPSULE spelling
+#     (`i8`), so every int8 cell read as "not admitted -- a fallback is the correct answer".
+# Admitted capsules examined went 199 -> 433 and the finding went 25 -> 76 (32 hand-authored). The
+# 51 newly visible rows are almost all `saturn_opu` contraction/i8, including 23 HAND-AUTHORED OPU
+# capsules -- the reference set, on the one unit those capsules exist to exercise.
+#
+# THIS FILE MAY ONLY SHRINK. Initial count after the re-seal: 76.
+
 mx_gemmini/M0_mxfp8_single_tile    # HAND-AUTHORED, contraction/mxfp8
 mx_gemmini/M1_mxfp8_k_accum    # HAND-AUTHORED, contraction/mxfp8
 mx_gemmini/M2_mxfp8_rect    # HAND-AUTHORED, contraction/mxfp8
 mx_gemmini/M3_mxfp4_single_tile    # HAND-AUTHORED, contraction/mxfp4
 mx_gemmini/M4_mxfp4_k_accum    # HAND-AUTHORED, contraction/mxfp4
 mx_gemmini/M5_mxfp6_single_tile    # HAND-AUTHORED, contraction/mxfp6
-mx_gemmini/MH0_mxfp8_hidden    # HAND-AUTHORED, contraction/mxfp8
-mx_gemmini/MH1_mxfp4_hidden    # HAND-AUTHORED, contraction/mxfp4
-mx_gemmini/MH2_mxfp6_hidden    # HAND-AUTHORED, contraction/mxfp6
 mx_gemmini/MB0_mxfp8_linear    # contraction/mxfp8
 mx_gemmini/MF5_gemv_batched_bf16_pt    # contraction/bf16
 mx_gemmini/MF7_fused_matmul_bias_bf16_pt    # contraction/bf16
+mx_gemmini/MH0_mxfp8_hidden    # HAND-AUTHORED, contraction/mxfp8
+mx_gemmini/MH1_mxfp4_hidden    # HAND-AUTHORED, contraction/mxfp4
+mx_gemmini/MH2_mxfp6_hidden    # HAND-AUTHORED, contraction/mxfp6
 mx_gemmini/MHA00_mxfp8_hidden_48x32x32    # contraction/mxfp8
 mx_gemmini/MHA01_mxfp8_hidden_48x64x32    # contraction/mxfp8
 mx_gemmini/MHB00_mxfp4_hidden_32x32x64    # contraction/mxfp4
 mx_gemmini/MHB01_mxfp4_hidden_32x64x64    # contraction/mxfp4
 mx_gemmini/PG00_encoding0_k16    # contraction/bf16
+mx_gemmini/PG01_encoding1_k16    # contraction/i8
 mx_gemmini/PG02_encoding0_k32    # contraction/bf16
+mx_gemmini/PG03_encoding1_k32    # contraction/i8
 mx_gemmini/SY_contraction_bf16_aligned    # contraction/bf16
 mx_gemmini/SY_contraction_bf16_partial    # contraction/bf16
+mx_gemmini/SY_contraction_bf16_sub_tile    # contraction/bf16
+mx_gemmini/SY_contraction_i8_aligned    # contraction/i8
+mx_gemmini/SY_contraction_i8_partial    # contraction/i8
+mx_gemmini/SY_contraction_i8_sub_tile    # contraction/i8
 mx_gemmini/SY_contraction_mxfp4_aligned    # contraction/mxfp4
-mx_gemmini/SY_contraction_mxfp4_partial    # contraction/mxfp4
 mx_gemmini/SY_contraction_mxfp6_aligned    # contraction/mxfp6
-mx_gemmini/SY_contraction_mxfp6_partial    # contraction/mxfp6
 mx_gemmini/SY_contraction_mxfp8_aligned    # contraction/mxfp8
-mx_gemmini/SY_contraction_mxfp8_partial    # contraction/mxfp8
+mx_gemmini/SY_geometry_gemv_like    # contraction/i8
+mx_gemmini/SY_geometry_odd_tail_heavy    # contraction/i8
+mx_gemmini/SY_geometry_squareish_gemm    # contraction/i8
+mx_gemmini/SY_geometry_tall_skinny    # contraction/i8
+mx_gemmini/SY_kdepth_certified    # contraction/i8
+mx_gemmini/SY_rank_contraction_batched    # contraction/bf16
+saturn_opu_mxv256d128/OP0_narrow_m_1    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP10_asymmetric_m_gt_n    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP11_asymmetric_n_gt_m    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP12_full_range_int8    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP13_requant_square    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP14_requant_narrow_m    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP15_requant_narrow_n    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP16_requant_tail    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP17_requant_saturating    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP18_relu_epilogue    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP1_narrow_n_1    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP20_resident_reuse    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP2_narrow_both_1    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP3_m_below_tile    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP4_m_over_tile    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP5_n_below_tile    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP6_n_over_tile    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP7_k_1    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP8_k_odd    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OP9_k_long    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OPH0_narrow_m_hidden    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OPH1_tail_hidden    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OPH2_requant_hidden    # HAND-AUTHORED, contraction/i8
+saturn_opu_mxv256d128/OPHR00_ragged_hidden_23x83x37    # contraction/i8
+saturn_opu_mxv256d128/OPHR01_ragged_hidden_23x135x37    # contraction/i8
+saturn_opu_mxv256d128/OPL0_quantized_linear    # contraction/i8
+saturn_opu_mxv256d128/OPL1_linear_requant    # contraction/i8
+saturn_opu_mxv256d128/OPM0_ffn_up    # contraction/i8
+saturn_opu_mxv256d128/OPM1_ffn_down    # contraction/i8
+saturn_opu_mxv256d128/OPM2_attn_proj    # contraction/i8
+saturn_opu_mxv256d128/OPM3_patch_embed    # contraction/i8
+saturn_opu_mxv256d128/OPM4_classifier    # contraction/i8
+saturn_opu_mxv256d128/SY_contraction_i8_aligned    # contraction/i8
+saturn_opu_mxv256d128/SY_contraction_i8_partial    # contraction/i8
+saturn_opu_mxv256d128/SY_contraction_i8_sub_tile    # contraction/i8
+saturn_opu_mxv256d128/SY_geometry_gemv_like    # contraction/i8
+saturn_opu_mxv256d128/SY_geometry_odd_tail_heavy    # contraction/i8
+saturn_opu_mxv256d128/SY_geometry_squareish_gemm    # contraction/i8
+saturn_opu_mxv256d128/SY_geometry_tall_skinny    # contraction/i8
+saturn_opu_mxv256d128/SY_kdepth_certified    # contraction/i8
+saturn_opu_mxv256d128/SY_rank_contraction_batched    # contraction/i8

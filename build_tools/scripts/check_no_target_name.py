@@ -166,8 +166,12 @@ def _scan_file(path: Path) -> list[tuple[int, str, str]]:
 
 def _iter_targets(staged: bool) -> list[Path]:
     if staged:
+        # FAIL CLOSED on an unreadable index. This gate's entire work list comes from `git`, so a `git`
+        # that cannot run (bad GIT_DIR, no repo, no binary) yielded an EMPTY list and the gate printed
+        # OK -- a green that could not have gone red. `check=True` turns that into an exception the
+        # caller reports; see check_no_answer_keys.py, which fixed the same shape first.
         out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                             cwd=ROOT, capture_output=True, text=True).stdout
+                             cwd=ROOT, capture_output=True, text=True, check=True).stdout
         rels = [ln for ln in out.splitlines() if ln.strip()]
     else:
         rels = []
@@ -291,6 +295,27 @@ def coupling_inventory(staged: bool = False) -> list[str]:
     return out
 
 
+#: This gate's name in its own messages.
+_GATE = "no-target-name"
+
+
+def _unexaminable(stop_hook: bool, exc: BaseException) -> int:
+    """Refuse when the work list could not be read.
+
+    "We could not look" is not "there is nothing to find". A `git` failure used to yield an empty
+    work list and a printed OK, so an unreadable tree was indistinguishable from a clean one.
+    Reported in whichever dialect the caller speaks (a Stop hook BLOCKS via JSON on stdout, not via
+    the exit status), so the two cannot drift apart.
+    """
+    reason = (f"{_GATE}: could not list the files to examine ({exc}); NOTHING was examined, which is "
+              f"not the same as clean. Fix the tree/index and re-run.")
+    if stop_hook:
+        print(json.dumps({"decision": "block", "reason": reason}))
+        return 0  # stop-hook signals via JSON, not exit code
+    print(f"[FAIL] {reason}", file=sys.stderr)
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     staged = "--staged" in argv
@@ -299,8 +324,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if "--coupling" in argv:
         # The full inventory, for populating the overfit register. Advisory by design: this debt predates
-        # the check and printing it is the point, so it exits 0 and lets the caller decide.
-        found = coupling_inventory(staged)
+        # the check and printing it is the point, so it exits 0 and lets the caller decide. An
+        # unreadable work list is still a refusal: an empty inventory would read as "no coupling".
+        try:
+            found = coupling_inventory(staged)
+        except (OSError, subprocess.CalledProcessError) as exc:
+            return _unexaminable(stop_hook, exc)
         if not found:
             print("[  ok] target-coupling: no generic module depends on a specific target.")
             return 0
@@ -317,7 +346,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     violations: list[str] = []
-    for rel in _iter_targets(staged):
+    try:
+        targets = _iter_targets(staged)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        return _unexaminable(stop_hook, exc)
+    for rel in targets:
         relstr = rel.as_posix()
         if _allowed(relstr, exact, prefixes):
             continue

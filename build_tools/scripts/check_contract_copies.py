@@ -157,16 +157,34 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--staged", action="store_true",
-                    help="pre-commit mode: identical checks, quieter output")
-    ap.add_argument("--stop-hook", action="store_true", help="session Stop hook mode")
+                    help="pre-commit mode: IDENTICAL checks (both copies are always compared in "
+                         "full), only the success line is suppressed")
+    ap.add_argument("--stop-hook", action="store_true",
+                    help="session Stop hook mode: JSON-only on stdout, blocks via {'decision': "
+                         "'block'} rather than the exit status")
     a = ap.parse_args(argv)
 
     rep = audit()
     if rep.get("missing_packaged_tree"):
-        print(f"contract-copies: no packaged contract tree at {rep['packaged']} — an installed wheel "
-              f"would ship no contract at all. Reported as UNKNOWN, not as clean.")
+        reason = (f"contract-copies: no packaged contract tree at {rep['packaged']} — an installed "
+                  f"wheel would ship no contract at all. Reported as UNKNOWN, not as clean.")
+        if a.stop_hook:
+            print(json.dumps({"decision": "block", "reason": reason}))
+            return 0  # stop-hook signals via JSON, not exit code
+        print(reason)
         return 1
     bad = rep["differing"] + rep["only_in_source"] + rep["only_in_packaged"] + rep["unreadable"]
+    if a.stop_hook:
+        # A Claude Code Stop hook BLOCKS through {"decision": "block"} on stdout; a non-zero exit is a
+        # NON-blocking error there. This flag was parsed and never read, so the gate could report and
+        # not enforce — and stdout had to stay JSON-only, which the human printing below breaks.
+        if bad:
+            print(json.dumps({"decision": "block",
+                              "reason": ("The two copies of the frozen contract DISAGREE "
+                                         f"({len(bad)} file(s)):\n- " + "\n- ".join(bad))}))
+        else:
+            print(json.dumps({}))
+        return 0
     if a.json:
         print(json.dumps(rep, indent=2))
     elif bad:
@@ -181,7 +199,9 @@ def main(argv=None) -> int:
         for k in rep["unreadable"]:
             print(f"  ? unreadable     : {k}  (UNKNOWN, not equal)")
         print("  fix: make the two copies identical; do not pick one and hope.")
-    else:
+    elif not a.staged:
+        # --staged is pre-commit mode: the checks are identical (both copies are compared in full --
+        # a partial compare would be a different, weaker claim), the OK line is just suppressed.
         print(f"[  ok] contract-copies: {rep['n_compared']} file(s) identical across both copies "
               f"({', '.join(sorted(_EXEMPT))} exempt).")
     return 1 if bad else 0
