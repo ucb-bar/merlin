@@ -347,16 +347,23 @@ class CommandBufferEncoder:
         return Tensor(a.rows, a.cols, a.width, out)
 
     def _narrow(self, t: Tensor, attrs: dict, *, default: str) -> Tensor:
-        """The readout narrow, mirroring the reference's rule: an EXACT "i8" match, nothing else.
+        """The readout narrow, mirroring ``_narrow_int_readout`` in both engines.
 
-        The default differs per opcode in the reference (COMMIT defaults to i8, the vector and
-        attention family to i32), so it is passed in rather than assumed. Mirroring either wrongly
-        would refute a correct backend.
+        SIGNEDNESS COMES FROM THE SPELLING, not from an assumption. This saturated to the signed range
+        for every width, so a ``u8`` readout was clamped to [-128, 127] where all three engines clamp
+        it to [0, 255] -- the encoder disagreeing with its own oracle, which refutes a correct backend.
+        The engines derive the range from the ``i``/``u`` prefix; so does this now.
+
+        The default is passed in rather than assumed because it is a property of the opcode, and the
+        docstring here used to say COMMIT defaulted to ``i8``. It does not any more: every narrowing
+        opcode defaults to ``i32`` (absent means do not narrow), and `validate_command_buffer` refuses
+        an absent declaration outright, so the default is a backstop rather than a policy.
         """
-        bits = _narrow_bits(str(attrs.get("output_dtype", default)))
-        if bits is None:
+        rng = _narrow_range(str(attrs.get("output_dtype", default)))
+        if rng is None:
             return t
-        return self.enc.saturate(t, -(1 << (bits - 1)), (1 << (bits - 1)) - 1, bits)
+        lo, hi, bits = rng
+        return self.enc.saturate(t, lo, hi, bits)
 
     # -- helpers ---------------------------------------------------------------------------------
     def _bias_name(self, operands: dict, attrs: dict, dst: str) -> str:
@@ -396,17 +403,23 @@ def _why_not_encodable(index: int, op: str) -> str:
             f"command silently changes what the query is about.")
 
 
-def _narrow_bits(dtype: str) -> int | None:
-    """Bits to saturate to, or None when nothing narrows — mirroring ``_narrow_int_readout``.
+def _narrow_range(dtype: str) -> tuple[int, int, int] | None:
+    """``(lo, hi, bits)`` to saturate to, or None when nothing narrows — mirroring the engines.
 
-    Derived from the spelling rather than tested against "i8", so a target narrowing to i16/i4/u8 is
-    handled instead of silently passed through. A width at or above the accumulator has nothing to
-    narrow; a non-integer spelling is not this function's business (floats are refused earlier).
+    Derived entirely from the spelling rather than tested against "i8", so a target narrowing to
+    i16/i4/u8 is handled instead of silently passed through, and an UNSIGNED container gets the
+    unsigned range instead of the signed one. A width at or above the accumulator has nothing to
+    narrow; a non-integer spelling is not this function's business (floats are refused earlier, and
+    both engines pass one through unchanged).
     """
     if not dtype or dtype[0] not in ("i", "u") or not dtype[1:].isdigit():
         return None
-    bits = int(dtype[1:])
-    return None if bits >= 32 else bits
+    bits, signed = int(dtype[1:]), dtype[0] == "i"
+    if bits >= 32:
+        return None
+    if signed:
+        return -(1 << (bits - 1)), (1 << (bits - 1)) - 1, bits
+    return 0, (1 << bits) - 1, bits
 
 
 def _width_of(dtype: str, name: str) -> int:

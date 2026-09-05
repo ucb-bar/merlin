@@ -124,6 +124,13 @@ def load_command_buffer(path: str | Path) -> dict[str, Any]:
 
 REQUIRED_KEYS = ("abi_version", "target", "commands")
 
+#: Opcodes whose readout NARROWS the i32 accumulator into a declared container. Kept beside the
+#: engines that do the narrowing (``simulator``/``reference`` both route these through
+#: ``_narrow_int_readout``; the golden routes them through ``_apply_epilogue``), and asserted equal to
+#: that set by ``merlin/tests/ir/test_readout_dtype_divergence.py`` so the list cannot drift away from
+#: the engines it describes.
+NARROWING_OPCODES = frozenset({"COMMIT", "CONV2D", "BIAS_ADD", "ATTENTION_QK", "ATTENTION_PV"})
+
 
 def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
     """Return a list of problems (empty == valid).
@@ -149,6 +156,32 @@ def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
     cmds = cb.get("commands") or []
     referenced = sorted({str(v) for c in cmds for v in (c.get("operands") or {}).values()
                          if isinstance(v, str) and v})
+    # A NARROWING COMMAND MUST DECLARE ITS OUTPUT CONTAINER, BY NAME.
+    #
+    # The attribute is optional in the JSON schema and every engine has a default, so omitting it has
+    # always produced a well-formed buffer that computes SOMETHING. The trouble is which something: the
+    # runtime engines defaulted to `i8` and narrowed on an exact match while the golden defaulted to
+    # `i32` and narrowed any width, and the two disagreed for 77 days -- a correct backend that simply
+    # left the attribute out failed L0 on 85 of 130 capsules, with a message blaming the backend. The
+    # engines agree now, but agreement on a DEFAULT is a weaker guarantee than a declaration: it makes
+    # the buffer's meaning depend on a convention the submission never stated, and the next divergence
+    # would be just as silent as the last.
+    #
+    # So this is reported as a problem rather than defaulted. It names the command index and the
+    # opcode, because the failure this replaces was a numeric mismatch hundreds of lines downstream
+    # with nothing pointing back at the omission. All 421 narrowing ops in the shipped corpus already
+    # declare it, so this states an invariant that already holds rather than imposing a new one.
+    for i, cmd in enumerate(cmds):
+        if str(cmd.get("opcode")) in NARROWING_OPCODES:
+            attrs = cmd.get("attributes") or {}
+            if "output_dtype" not in attrs:
+                problems.append(
+                    f"command {i} ({cmd.get('opcode')}) narrows the accumulator but declares no "
+                    f"'output_dtype'. The attribute decides the readout width, every engine has to "
+                    f"agree about it, and a default is a convention this buffer never stated -- "
+                    f"declare it (e.g. \"i32\" to read the accumulator out whole, \"i8\" to "
+                    f"saturate to a byte)")
+
     if referenced and not (cb.get("tensors") or {}) and not cb.get("declined"):
         problems.append(
             f"commands reference operand name(s) {referenced[:6]}"

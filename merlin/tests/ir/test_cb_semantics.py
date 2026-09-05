@@ -238,10 +238,10 @@ def _null_encoder():
 
 
 @pytest.mark.parametrize("mutate,label", [
-    (lambda cb: [c["attributes"].pop("output_dtype", None)
-                 for c in cb["commands"] if c["opcode"] == "COMMIT"], "output_dtype ABSENT"),
     (lambda cb: [c["attributes"].__setitem__("output_dtype", "i16")
                  for c in cb["commands"] if c["opcode"] == "COMMIT"], "output_dtype i16"),
+    (lambda cb: [c["attributes"].__setitem__("output_dtype", "u8")
+                 for c in cb["commands"] if c["opcode"] == "COMMIT"], "output_dtype u8"),
 ])
 def test_the_encoder_tracks_the_engine_on_readout_variants(mutate, label):
     """The differential test above only ever saw a DECLARED i32, so it could not see this.
@@ -251,6 +251,12 @@ def test_the_encoder_tracks_the_engine_on_readout_variants(mutate, label):
     in-tree pipeline always declares the attribute. An encoder silently holding an older opinion than
     the engine it mirrors refutes correct backends, which is the one outcome that makes this tool
     worse than nothing. These cases exercise the readout paths the pipeline never produces.
+
+    The ABSENT case used to be here and has moved to
+    `test_the_encoders_default_matches_the_engines_default` below: `validate_command_buffer` now
+    refuses a narrowing command that declares no container, so an absent-dtype buffer cannot reach
+    `simulate` and the end-to-end differential has nothing to compare against. The property still needs
+    checking, so it is checked where it now lives — on the constant itself.
     """
     from xdsl.builder import ImplicitBuilder
     from xdsl.dialects import builtin, smt
@@ -303,3 +309,26 @@ def test_the_encoder_tracks_the_engine_on_readout_variants(mutate, label):
     assert verdict.status == "unsat", (
         f"with {label} the encoder disagrees with merlin.runtime.simulate "
         f"(status={verdict.status}). The encoder must MIRROR the engine, whatever it says.")
+
+
+def test_the_encoders_default_matches_the_engines_default():
+    """The absent-dtype half of the differential above, which can no longer run end to end.
+
+    `validate_command_buffer` refuses a narrowing command with no declared container, so a buffer that
+    omits `output_dtype` raises before either engine reads it. That is the stronger contract, but it
+    also removes the only path that used to compare the encoder's default against the engines' — and
+    the defect this guards against (the encoder holding "i8" for weeks after the engines moved to i32)
+    lived in exactly that constant. Asserted directly instead, against the engines' own source rather
+    than a number repeated here.
+    """
+    import inspect
+
+    from merlin.runtime import reference, simulator
+    from merlin.verify.cb_semantics import _COMMIT_DEFAULT_DTYPE
+
+    for module in (simulator, reference):
+        src = inspect.getsource(module)
+        assert f'attrs.get("output_dtype", "{_COMMIT_DEFAULT_DTYPE}")' in src, (
+            f"the encoder defaults an absent output_dtype to {_COMMIT_DEFAULT_DTYPE!r} but "
+            f"{module.__name__} does not; an encoder that disagrees with the engine it mirrors "
+            f"refutes correct backends")

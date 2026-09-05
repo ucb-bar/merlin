@@ -49,7 +49,10 @@ def test_the_message_says_what_an_operand_slot_actually_holds():
 
 def test_a_conformant_buffer_is_untouched():
     cb = _cb(tensors={"A0": {"shape": [2, 2], "dtype": "f32"}}, commands=[_matmul()])
-    assert not [p for p in structural(cb) if "declares no" in p]
+    # Filtered on the tensors complaint SPECIFICALLY. "declares no" alone also matches the readout
+    # check added later ("declares no 'output_dtype'"), which this buffer legitimately trips and which
+    # is not what this test is about.
+    assert not [p for p in structural(cb) if "declares no 'tensors'" in p]
 
 
 def test_a_produced_intermediate_need_not_be_a_declared_tensor():
@@ -57,13 +60,19 @@ def test_a_produced_intermediate_need_not_be_a_declared_tensor():
     cb = _cb(tensors={"A0": {"shape": [2, 2], "dtype": "f32"}},
              commands=[{"opcode": "MATMUL", "operands": {"lhs": "A0", "dst": "acc0"}},
                        {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}}])
-    assert not [p for p in structural(cb) if "declares no" in p]
+    # Filtered on the tensors complaint SPECIFICALLY. "declares no" alone also matches the readout
+    # check added later ("declares no 'output_dtype'"), which this buffer legitimately trips and which
+    # is not what this test is about.
+    assert not [p for p in structural(cb) if "declares no 'tensors'" in p]
 
 
 def test_a_declined_buffer_may_carry_no_tensors():
     """Declining is a legitimate answer and carries no commands to satisfy."""
     cb = _cb(commands=[], declined={"reason": "unsupported shape", "shape": [9], "op": "matmul"})
-    assert not [p for p in structural(cb) if "declares no" in p]
+    # Filtered on the tensors complaint SPECIFICALLY. "declares no" alone also matches the readout
+    # check added later ("declares no 'output_dtype'"), which this buffer legitimately trips and which
+    # is not what this test is about.
+    assert not [p for p in structural(cb) if "declares no 'tensors'" in p]
 
 
 def test_the_contract_validator_refuses_what_the_runner_will_refuse():

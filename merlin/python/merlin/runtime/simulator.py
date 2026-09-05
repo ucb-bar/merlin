@@ -246,8 +246,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             a = env[src]
             b = env[bias_tensor_name(ops, attrs, op=f"BIAS_ADD {dst!r}")]
             t = a.add_bias(b)
-            if attrs.get("output_dtype", "i32") == "i8":
-                t = t.to_i8()
+            t = _narrow_int_readout(t, str(attrs.get("output_dtype", "i32")), "BIAS_ADD")
             env[dst] = t
             outputs[dst] = t.to_list()
             metrics.bytes_read += a.nbytes + b.nbytes
@@ -364,8 +363,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
                     t = t.relu()
                 else:
                     raise SimulationError(f"unknown epilogue stage '{stage}'")
-            if attrs.get("output_dtype", "i32") == "i8":
-                t = t.to_i8()
+            t = _narrow_int_readout(t, str(attrs.get("output_dtype", "i32")), "ATTENTION_QK")
             env[dst] = t
             outputs[dst] = t.to_list()
             metrics.dispatch_count += 1
@@ -399,8 +397,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
                     t = t.relu()
                 else:
                     raise SimulationError(f"unknown epilogue stage '{stage}'")
-            if attrs.get("output_dtype", "i32") == "i8":
-                t = t.to_i8()
+            t = _narrow_int_readout(t, str(attrs.get("output_dtype", "i32")), "ATTENTION_PV")
             env[dst] = t
             outputs[dst] = t.to_list()
             metrics.dispatch_count += 1

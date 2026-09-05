@@ -103,9 +103,7 @@ def _attention_epilogue(t: Tensor, attrs: dict[str, Any], default_shift: int, op
             raise ValueError(
                 f"{op} declares epilogue stage {stage!r}, which this reference engine does not "
                 f"implement (implemented: acc_scale, requant, relu)")
-    if attrs.get("output_dtype", "i32") == "i8":
-        t = t.to_i8()
-    return t
+    return _narrow_int_readout(t, str(attrs.get("output_dtype", "i32")), op)
 
 
 def _conv2d(ifm_name: str, ifm: Tensor, weight_name: str, weight: Tensor, dst: str,
@@ -282,8 +280,7 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             # to be the unfused equivalent of, and the fusion comparison would then be measuring
             # two different arithmetics rather than one lever.
             t = env[ops["src"]].add_bias(env[bias_tensor_name(ops, attrs, op=f"BIAS_ADD {ops.get('dst')!r}")])
-            if attrs.get("output_dtype", "i32") == "i8":
-                t = t.to_i8()
+            t = _narrow_int_readout(t, str(attrs.get("output_dtype", "i32")), "BIAS_ADD")
             env[ops["dst"]] = t
             outputs[ops["dst"]] = t.to_list()
         elif op == "ATTENTION_QK":

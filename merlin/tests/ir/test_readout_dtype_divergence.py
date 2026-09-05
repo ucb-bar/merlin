@@ -30,6 +30,14 @@ had silently passed through for as long as they had existed. The rule is not "be
 with the golden", and `test_all_three_engines_agree_on_every_declared_dtype` now covers `f32`/`bf16`
 so a future strictness argument fails the suite instead of the corpus.
 
+**And the first pass at collapsing the rules only collapsed two of five.** `COMMIT` and `CONV2D` were
+routed through the shared helper in both engines and the work was reported as done, while `BIAS_ADD`,
+`ATTENTION_QK` and `ATTENTION_PV` kept the exact-`i8` test — three more opcodes carrying the identical
+divergence, on paths the golden narrows at any width through its one `_apply_epilogue`. They were found
+by deriving the narrowing set from the engines instead of trusting the earlier claim. All five now route
+through `_narrow_int_readout`, and `test_no_engine_keeps_a_private_readout_rule` fails on the next one
+that does not.
+
 One site is deliberately untouched: `runtime/backends/rvv_codegen.py` still carries the old inline
 test. That file is under another workstream's lock. It is named here rather than left to be
 rediscovered.
@@ -68,28 +76,52 @@ def test_all_three_engines_agree_on_every_declared_dtype(dtype, expected):
         f"correct backend is graded against a rule no single engine implements")
 
 
-def test_an_absent_output_dtype_does_not_silently_clamp():
-    """Absent must mean "do not narrow". The opposite default destroyed wide results for 77 days."""
+def test_an_absent_output_dtype_is_refused_rather_than_defaulted():
+    """The contract moved past this test's original claim, and the stronger form is worth stating.
+
+    It used to assert that an absent `output_dtype` means "do not narrow" — true, and the fix for the
+    77-day divergence. But agreement on a DEFAULT is weaker than a declaration: it makes the buffer's
+    meaning depend on a convention the submission never stated, so the next divergence would be as
+    silent as the last. `validate_command_buffer` now refuses a narrowing command that declares no
+    container, by opcode and command index, and `simulate` raises rather than guessing.
+
+    The engine-level guarantee is kept below, because it is what protects any buffer that reaches the
+    engines by another route.
+    """
     import copy
 
+    import pytest
+
     from merlin.runtime import simulate
-    from merlin.runtime.reference import reference_outputs
+    from merlin.runtime.simulator import SimulationError
     from merlin.verify.evaluate import _finish_lowering, _lower_to_interface
 
     # K large enough that the accumulator leaves the i8 range, or the test proves nothing.
     iface, tc = _lower_to_interface(4, 64, 4, 1)
     cb = _finish_lowering(iface, tc)
+    assert simulate(cb)["outputs"], "the declared buffer must still run"
+
     absent = copy.deepcopy(cb)
     for command in absent["commands"]:
         if command["opcode"] == "COMMIT":
             command["attributes"].pop("output_dtype", None)
+    with pytest.raises(SimulationError, match="output_dtype"):
+        simulate(absent)
 
-    declared_sim, declared_ref = simulate(cb)["outputs"], reference_outputs(cb)
-    absent_sim, absent_ref = simulate(absent)["outputs"], reference_outputs(absent)
-    assert absent_sim == absent_ref, "the two engines still disagree when the attribute is absent"
-    assert absent_sim == declared_sim, (
-        "omitting output_dtype changed the result -- absent must mean 'do not narrow', not 'clamp "
-        "to i8'; that difference is what failed 85 of 130 capsules for correct backends")
+
+def test_the_engines_still_agree_on_absent_if_one_reaches_them():
+    """Defence in depth: the refusal above is a gate, and gates get bypassed.
+
+    Both engines default to `i32` — absent means DO NOT NARROW — which is the direction that cannot
+    destroy a wide result. The opposite default silently clamped one, and that is what failed 85 of 130
+    integer contraction capsules for a correct backend.
+    """
+    from merlin.runtime.tensor import Tensor
+
+    gold, ref, sim = _engines()
+    t = Tensor((1, 1), [74192], "i32")
+    assert (gold(t, "i32").data[0], ref(t, "i32", "COMMIT").data[0], sim(t, "i32", "COMMIT").data[0]) \
+        == (74192, 74192, 74192)
 
 
 def test_every_shipped_capsule_still_declares_output_dtype():
@@ -131,3 +163,75 @@ def test_the_one_unfixed_site_is_named_rather_than_forgotten():
     assert 'attrs.get("output_dtype", "i8") == "i8"' in inspect.getsource(rvv_codegen), (
         "rvv_codegen no longer carries the old readout rule -- if it was fixed, delete this test and "
         "the note in the module docstring above")
+
+
+def test_no_engine_keeps_a_private_readout_rule():
+    """The invariant the collapse was supposed to establish, asserted instead of claimed.
+
+    Reporting "the rules are collapsed" after collapsing two of five is what happened the first time.
+    The exact-i8 test is a literal, so its absence is checkable: if a sixth narrowing site appears, or
+    an existing one is reverted to its own opinion, this fails.
+    """
+    import inspect
+
+    from merlin.runtime import reference, simulator
+
+    for module in (simulator, reference):
+        src = inspect.getsource(module)
+        assert 'output_dtype", "i32") == "i8"' not in src, (
+            f"{module.__name__} carries a private exact-i8 readout rule again; route it through "
+            f"_narrow_int_readout so it cannot disagree with the golden about i16/i4/u8")
+
+
+def test_the_validator_demands_a_declared_container_for_exactly_the_narrowing_opcodes():
+    """`NARROWING_OPCODES` must be the set the engines actually narrow, not a list someone typed.
+
+    Derived from the simulator's own source: every opcode passed to `_narrow_int_readout` is one whose
+    readout depends on `output_dtype`, and the validator has to demand the attribute for exactly those.
+    A validator that demanded it for fewer would leave the silent case open; one that demanded it for
+    more would reject correct buffers.
+    """
+    import inspect
+
+    from merlin.runtime import simulator
+    from merlin.runtime.commandbuffer import NARROWING_OPCODES
+
+    narrowed = set()
+    for line in inspect.getsource(simulator).splitlines():
+        head, sep, tail = line.partition('_narrow_int_readout(')
+        if not sep or "def " in head:
+            continue
+        # the op name is the last quoted argument on the line
+        parts = tail.split('"')
+        if len(parts) >= 2:
+            narrowed.add(parts[-2])
+    assert narrowed, "no narrowing call sites found; this test would be vacuous"
+    assert narrowed == set(NARROWING_OPCODES), (
+        f"the simulator narrows {sorted(narrowed)} but the validator demands output_dtype for "
+        f"{sorted(NARROWING_OPCODES)}; the two must be the same set")
+
+
+def test_a_narrowing_command_without_output_dtype_is_a_named_problem():
+    """The failure this replaces was a numeric mismatch hundreds of lines downstream."""
+    from merlin.runtime.commandbuffer import validate_command_buffer
+
+    cb = {"abi_version": "0.1", "target": "t", "tensors": {"A": {}},
+          "commands": [{"opcode": "COMMIT", "operands": {"src": "A", "dst": "Y"},
+                        "attributes": {}}]}
+    problems = validate_command_buffer(cb)
+    assert any("output_dtype" in p and "COMMIT" in p for p in problems), (
+        f"an undeclared readout container must be reported by opcode: {problems}")
+
+    cb["commands"][0]["attributes"]["output_dtype"] = "i32"
+    assert not validate_command_buffer(cb), "a declared container must validate cleanly"
+
+
+def test_a_non_narrowing_command_is_not_asked_for_one():
+    """MOVEMENT copies bytes; demanding a readout width from it would reject correct buffers."""
+    from merlin.runtime.commandbuffer import NARROWING_OPCODES, validate_command_buffer
+
+    assert "MOVEMENT" not in NARROWING_OPCODES
+    cb = {"abi_version": "0.1", "target": "t", "tensors": {"A": {}},
+          "commands": [{"opcode": "MOVEMENT", "operands": {"src": "A", "dst": "Y"},
+                        "attributes": {}}]}
+    assert not validate_command_buffer(cb)

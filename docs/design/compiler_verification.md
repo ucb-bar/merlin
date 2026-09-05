@@ -1356,6 +1356,44 @@ every one of them made the instrument look like it was working.
 Each is the same shape as the failure this package exists to prevent: a check that could not run,
 reporting success.
 
+### 2026-09-05 — "the rules are collapsed" was true of two of five
+
+Closing out the `output_dtype` contract item. The earlier entries said both runtime engines now route
+their readout through one shared `_narrow_int_readout`. That was true of `COMMIT` and `CONV2D`, and I
+reported it as done. Deriving the narrowing set from the engines instead of from that claim found three
+more sites still carrying the exact-`i8` test: `BIAS_ADD`, `ATTENTION_QK` and `ATTENTION_PV`, two in
+`simulator.py` and one shared `_attention_epilogue` in `reference.py`.
+
+They carry the identical divergence. All three route through the golden's single `_apply_epilogue`,
+which ends in `_narrow_to_dtype(t, attrs.get("output_dtype", "i32"))` and narrows at ANY integer width,
+while the runtime narrowed only on an exact `"i8"` — so an `i16` or `u8` readout on an attention or
+bias-add path saturated in the oracle and passed through in the engines graded against it. All five sites
+now share the rule, and `test_no_engine_keeps_a_private_readout_rule` fails on the sixth: the exact-i8
+test is a literal, so its absence is checkable rather than assertable only by reading.
+
+**The declaration, not the default.** `validate_command_buffer` now reports a narrowing command that
+declares no `output_dtype` as a problem, naming the command index and the opcode, and `simulate` raises
+rather than guessing. Agreement on a default is a weaker guarantee than a declaration: it makes the
+buffer's meaning depend on a convention the submission never stated, and the next divergence would be
+as silent as the last. All 421 narrowing ops in the shipped corpus already declare it, so this states an
+invariant that already holds. `NARROWING_OPCODES` is pinned by a test to the set the simulator actually
+passes to `_narrow_int_readout` — demanding it for fewer leaves the silent case open, for more rejects
+correct buffers.
+
+**And the change found a live encoder bug.** Adding a `u8` case to the encoder's differential against
+`merlin.runtime.simulate` failed immediately: `cb_semantics._narrow` derived the WIDTH from the dtype
+spelling but always saturated to the SIGNED range, so a `u8` readout was clamped to [-128, 127] where
+all three engines clamp it to [0, 255]. The encoder disagreeing with its own oracle is the one outcome
+that makes this tool worse than nothing — it refutes correct backends. Signedness now comes from the
+`i`/`u` prefix, as it does in the engines.
+
+Two incidental breakages, both repaired rather than worked around. `test_a_produced_intermediate_need_not_be_a_declared_tensor`
+filtered problems on the substring `"declares no"`, which the new readout message also matches; it now
+filters on `"declares no 'tensors'"`, the complaint it actually means. And the encoder's ABSENT
+differential case can no longer run end to end, since such a buffer is refused before either engine
+reads it — so the property it protected (the encoder's default equals the engines') is asserted directly
+against the engines' source instead of being dropped.
+
 ---
 
 ## 7. Reproducing what is claimed here
