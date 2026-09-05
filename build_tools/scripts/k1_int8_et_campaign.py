@@ -90,11 +90,33 @@ def _instrument_command(plan, a) -> list:
         cmd += ["--parallel-harts", str(a.parallel_harts)]
     if a.ref_cpu_threads:
         cmd += ["--ref-cpu-threads", str(a.ref_cpu_threads)]
-    if a.features is not None:
-        cmd += ["--features", a.features]
+    feats = model_features(plan.model, a)
+    if feats is not None:
+        cmd += ["--features", feats]
     if a.also_weight_only:
         cmd.append("--also-weight-only")
     return cmd
+
+
+def model_features(model: str, a) -> str | None:
+    """The feature string for ``model``: its ``--model-features`` override, else ``--features``.
+
+    An override REPLACES the global set for that model; it does not merge. Merging would make the
+    effective set depend on two places at once, and the point of this flag is that a row can say
+    exactly what it ran. The chosen string is recorded on the row by the instrument itself (it
+    echoes ``[features] ... (from --features)``), so the ledger never has to be trusted to
+    reconstruct it.
+
+    Raises on a malformed entry rather than ignoring it: a typo'd model name that silently fell
+    back to the global set would produce a cell attributed to the wrong feature set.
+    """
+    overrides: dict[str, str] = {}
+    for item in getattr(a, "model_features", []) or []:
+        name, sep, feats = item.partition(":")
+        if not sep or not name.strip():
+            raise SystemExit(f"--model-features {item!r}: expected MODEL:f1,f2")
+        overrides[name.strip()] = feats.strip()
+    return overrides.get(model, a.features)
 
 
 def _dirty(paths) -> list:
@@ -179,6 +201,13 @@ def main() -> int:
                     help="measure ours on a declared LAYOUT-ONLY derivative of the resolved bundle "
                          "(read from its own bundle.rewrites.json, never from a name rule)")
     ap.add_argument("--features", default=None, help="compiler features for OUR arm")
+    ap.add_argument("--model-features", action="append", default=[], metavar="MODEL:f1,f2",
+                    help="per-model override of --features, repeatable. A feature that CANNOT "
+                         "apply to a model (resnet50_v1_5 has no hoistable weight transposes, so "
+                         "prepack_weight_layout refuses and the whole cell is lost) is named out "
+                         "here EXPLICITLY rather than dropped silently -- a harness that quietly "
+                         "discards a refused feature would report a cell measured under a feature "
+                         "set it never ran.")
     ap.add_argument("--n", type=int, default=3)
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--iters", type=int, default=5)
