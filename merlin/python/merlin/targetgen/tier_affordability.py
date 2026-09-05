@@ -24,8 +24,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 __all__ = ["AFFORDABLE", "TOO_EXPENSIVE", "UNKNOWN", "EXTRAPOLATION_MARGIN", "MIN_SAMPLES",
-           "ENGINE_UNATTRIBUTED", "CycleCostFit", "Affordability", "Sample",
-           "fits_for", "fit_for", "measured_cycles", "affordability", "reset_cache"]
+           "ENGINE_UNATTRIBUTED", "CycleCostFit", "Affordability", "Sample", "IntakeCensus",
+           "fits_for", "fit_for", "measured_cycles", "affordability", "reset_cache",
+           "intake_census"]
 
 #: How far past the largest measured cycle count a prediction is still honest, as a multiple. A fit is
 #: a local linearisation of a simulator's behaviour, not a law; beyond this the answer is "unknown".
@@ -49,6 +50,48 @@ UNKNOWN = "UNKNOWN"
 #: whichever answers first becomes the bucket key, VERBATIM. This module attaches no meaning to the
 #: value -- it is an opaque discriminator, so a target adding an engine needs no change here.
 _ENGINE_FIELDS = ("engine", "sim", "simulator", "oracle", "evidence")
+
+
+@dataclass(frozen=True)
+class IntakeCensus:
+    """What this target's records on disk actually offered, and what the intake could use.
+
+    A fit needs a (cycles, seconds) PAIR per record. A target whose records carry one half of that
+    pair yields no fit -- and without this census it is indistinguishable from a target that never
+    certified anything, because both produce an empty mapping. They are not the same claim: the first
+    is a gap in what the runner recorded, the second is a real absence of evidence. Reporting the
+    second when the first is true blames the target for a plumbing gap, and sends a reader looking
+    for runs that are already there.
+
+    Measured when this was written: one target held 1501 cycle-accurate records of which 0 carried
+    ``timing.sim_active_s``, and another held 36 of which 0 carried ``cycles``.
+    """
+
+    #: Cycle-accurate tier records seen, before any usability test.
+    records: int = 0
+    #: Of those, how many were dropped for each missing half of the pair.
+    no_seconds: int = 0
+    no_cycles: int = 0
+    #: Records that yielded a usable sample.
+    usable: int = 0
+
+    @property
+    def starved(self) -> bool:
+        """Records exist, but none was usable. The case that must not read as "no history"."""
+        return self.records > 0 and self.usable == 0
+
+    def shortfall(self) -> str:
+        """A phrase naming what the records lacked, for a refusal a reader will act on."""
+        missing = []
+        if self.no_seconds:
+            missing.append(f"{self.no_seconds} lack timing.sim_active_s")
+        if self.no_cycles:
+            missing.append(f"{self.no_cycles} lack cycles")
+        return "; ".join(missing) or "no usable (cycles, seconds) pair"
+
+    def to_dict(self) -> dict:
+        return {"records": self.records, "no_seconds": self.no_seconds,
+                "no_cycles": self.no_cycles, "usable": self.usable, "starved": self.starved}
 
 
 @dataclass(frozen=True)
@@ -208,14 +251,19 @@ def _result_roots(target: str, roots: Iterable[Path] | None) -> list[Path]:
     return [artifacts_dir() / "capsule-bench" / str(target), runs_dir() / str(target)]
 
 
-def _samples(target: str, roots: Iterable[Path] | None = None) -> list[Sample]:
-    """Every cycle-accurate cost observation on disk for ``target``.
+def _scan(target: str, roots: Iterable[Path] | None = None) -> tuple[list[Sample], IntakeCensus]:
+    """Every cycle-accurate cost observation on disk for ``target``, WITH a census of what was dropped.
 
     A run that never reached a cycle-accurate tier contributes NOTHING rather than its functional
     time -- a fit that absorbed those reads a near-zero cost for a capsule nobody certified, which is
     the "zero reads as free" error this module exists to prevent.
+
+    The census counts the records that WERE cycle-accurate but carried only half of the (cycles,
+    seconds) pair. Those are still dropped -- half a pair cannot be fitted -- but they are dropped
+    LOUDLY, so the refusal downstream can say what was missing instead of reporting an empty disk.
     """
     out: list[Sample] = []
+    seen = no_secs = no_cyc = 0
     for base in _result_roots(target, roots):
         if not base.is_dir():
             continue
@@ -244,18 +292,28 @@ def _samples(target: str, roots: Iterable[Path] | None = None) -> list[Sample]:
             for tier_name, rec in tiers.items():
                 if not isinstance(rec, dict) or not _is_cycle_accurate(rec):
                     continue
+                seen += 1
                 timing = rec.get("timing") if isinstance(rec.get("timing"), dict) else {}
                 seconds = timing.get("sim_active_s")
                 cycles = rec.get("cycles")
-                if not (isinstance(seconds, (int, float)) and seconds > 0):
-                    continue
-                if not (isinstance(cycles, int) and cycles > 0):
+                ok_s = isinstance(seconds, (int, float)) and seconds > 0
+                ok_c = isinstance(cycles, int) and cycles > 0
+                if not ok_s:
+                    no_secs += 1
+                if not ok_c:
+                    no_cyc += 1
+                if not (ok_s and ok_c):
                     continue
                 out.append(Sample(capsule=str(name), tier=str(tier_name),
                                   engine=_engine_key(rec), seconds=float(seconds),
                                   cycles=int(cycles), functional_cycles=functional,
                                   source=str(path)))
-    return out
+    return out, IntakeCensus(records=seen, no_seconds=no_secs, no_cycles=no_cyc, usable=len(out))
+
+
+def _samples(target: str, roots: Iterable[Path] | None = None) -> list[Sample]:
+    """Every usable cycle-accurate cost observation on disk for ``target``."""
+    return _scan(target, roots)[0]
 
 
 def _ordinary_least_squares(xs: list[int], ys: list[float]) -> "tuple[float, float, float] | None":
@@ -278,6 +336,7 @@ def _ordinary_least_squares(xs: list[int], ys: list[float]) -> "tuple[float, flo
 
 _CACHE: dict[tuple, dict[tuple[str, str], CycleCostFit]] = {}
 _CYCLES_CACHE: dict[tuple, dict[tuple[str, str, str], int]] = {}
+_CENSUS_CACHE: dict[tuple, IntakeCensus] = {}
 _LOCK = threading.Lock()
 
 
@@ -286,6 +345,7 @@ def reset_cache() -> None:
     with _LOCK:
         _CACHE.clear()
         _CYCLES_CACHE.clear()
+        _CENSUS_CACHE.clear()
 
 
 def _cache_key(target: str, roots) -> tuple:
@@ -293,11 +353,13 @@ def _cache_key(target: str, roots) -> tuple:
 
 
 def _build(target: str, roots) -> tuple[dict[tuple[str, str], CycleCostFit],
-                                        dict[tuple[str, str, str], int]]:
-    """Fit every ``(tier, engine)`` bucket, and index each capsule's largest measured cycle count."""
+                                        dict[tuple[str, str, str], int], IntakeCensus]:
+    """Fit every ``(tier, engine)`` bucket, index each capsule's largest measured cycle count, and
+    carry the intake census so a refusal can name what the records lacked."""
     buckets: dict[tuple[str, str], list[Sample]] = {}
     cycles: dict[tuple[str, str, str], int] = {}
-    for s in _samples(target, roots):
+    samples, census = _scan(target, roots)
+    for s in samples:
         buckets.setdefault((s.tier, s.engine), []).append(s)
         key = (s.capsule, s.tier, s.engine)
         # LARGEST measured, not the mean: a repeat measurement of the same capsule bounds what the next
@@ -307,23 +369,23 @@ def _build(target: str, roots) -> tuple[dict[tuple[str, str], CycleCostFit],
             fk = (s.capsule, "", "")
             cycles[fk] = max(cycles.get(fk, 0), s.functional_cycles)
     fits: dict[tuple[str, str], CycleCostFit] = {}
-    for (tier, engine), samples in buckets.items():
-        xs = [s.cycles for s in samples]
-        ys = [s.seconds for s in samples]
+    for (tier, engine), bucket_samples in buckets.items():
+        xs = [s.cycles for s in bucket_samples]
+        ys = [s.seconds for s in bucket_samples]
         if len(xs) < MIN_SAMPLES or len(set(xs)) < 2:
             continue                           # too little to fit; the caller gets UNKNOWN
         line = _ordinary_least_squares(xs, ys)
         if line is None:
             continue
         intercept, slope, r2 = line
-        ratios = [s.cycles / s.functional_cycles for s in samples if s.functional_cycles]
+        ratios = [s.cycles / s.functional_cycles for s in bucket_samples if s.functional_cycles]
         fits[(tier, engine)] = CycleCostFit(
             target=str(target), tier=tier, engine=engine, intercept_s=intercept,
             per_cycle_s=slope, r2=r2, n_samples=len(xs), cycles_min=min(xs), cycles_max=max(xs),
             functional_ratio=statistics.median(ratios) if ratios else None,
             n_ratio_samples=len(ratios),
-            sources=tuple(sorted({s.source for s in samples})))
-    return fits, cycles
+            sources=tuple(sorted({s.source for s in bucket_samples})))
+    return fits, cycles, census
 
 
 def fits_for(target: str, *, roots=None, tier: str | None = None,
@@ -342,10 +404,11 @@ def fits_for(target: str, *, roots=None, tier: str | None = None,
     with _LOCK:
         cached = _CACHE.get(key)
     if cached is None:
-        fits, cycles = _build(str(target), roots)
+        fits, cycles, census = _build(str(target), roots)
         with _LOCK:
             _CACHE[key] = fits
             _CYCLES_CACHE[key] = cycles
+            _CENSUS_CACHE[key] = census
         cached = fits
     out = dict(cached)
     if tier is not None:
@@ -354,6 +417,23 @@ def fits_for(target: str, *, roots=None, tier: str | None = None,
         want = str(engine).strip().lower()
         out = {k: v for k, v in out.items() if want and want in k[1].lower()}
     return out
+
+
+def intake_census(target: str, *, roots=None) -> IntakeCensus:
+    """What ``target``'s cycle-accurate records offered the intake, and what it could use.
+
+    Populated as a side effect of fitting, so this costs nothing beyond the read :func:`fits_for`
+    already did. Its purpose is to let a refusal distinguish "no runs" from "runs that recorded only
+    half of the pair a fit needs" -- see :class:`IntakeCensus`.
+    """
+    key = _cache_key(target, roots)
+    with _LOCK:
+        cached = _CENSUS_CACHE.get(key)
+    if cached is None:
+        fits_for(target, roots=roots)          # populates every cache for this key
+        with _LOCK:
+            cached = _CENSUS_CACHE.get(key)
+    return cached or IntakeCensus()
 
 
 def fit_for(target: str, tier: str, *, engine: str | None = None,
@@ -423,12 +503,24 @@ def affordability(target: str, tier: str, *, budget_s: float | None, capsule: st
     fit = fit_for(target, tier, engine=engine, roots=roots)
     if fit is None:
         every = fits_for(target, roots=roots)
+        if every:
+            basis_note = f"; priced buckets here: {sorted({f'{t}/{e}' for t, e in every})}"
+        else:
+            census = intake_census(target, roots=roots)
+            if census.starved:
+                # The distinction this branch exists to make: the disk is NOT empty. Saying it is
+                # sends a reader hunting for runs that already ran, and blames the target for a gap
+                # in what the runner wrote down.
+                basis_note = (f"; this target HAS {census.records} cycle-accurate record(s) on disk "
+                              f"but none is usable for a fit ({census.shortfall()}), so the blocker "
+                              f"is the recorded fields, not a missing run")
+            else:
+                basis_note = "; this target has no cycle-accurate run on disk to fit"
         return Affordability(
             UNKNOWN,
             (f"no measured certification cost for tier {tier} on this target"
              + (f" for engine {engine!r}" if engine else "")
-             + (f"; priced buckets here: {sorted({f'{t}/{e}' for t, e in every})}" if every
-                else "; this target has no cycle-accurate run on disk to fit")
+             + basis_note
              + f". A fit needs at least {MIN_SAMPLES} samples at two distinct cycle counts; UNKNOWN is "
                "reported rather than assuming the tier is affordable."),
             budget_s=budget_s)
