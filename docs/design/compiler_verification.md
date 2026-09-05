@@ -798,6 +798,112 @@ true regression test rather than red against a pass nobody agreed to change — 
 intent/behaviour mismatch as **VER-29** for the owner of `merlin/python/merlin/llvmlower/`. It is a
 small defect. It is also the first production pass anyone checked, and it did not survive the check.
 
+### 2026-09-05 (the seam) — we were checking the wrong side of it
+
+Everything above validates the ``interface`` plane. But ``interface`` is the **input** a backend
+receives, produced by our own pass ``merlin-materialize-interface``; a capsule-bench agent writes the
+code **downstream** of it. So the formal layer verified our passes and said nothing about the compiler
+actually under evaluation. That is the gap this entry closes, and it is the difference between a
+tooling result and a paper result.
+
+**Why the command buffer, and not the `runtime` dialect.** There are two backend paths and they are
+not the same shape. The in-tree ``TargetPackage`` path lowers ``interface -> target -> runtime ->
+command_buffer`` with the ``runtime.*`` ops constructed by core code. The capsule-bench path — what an
+agent actually writes — is a **subprocess** with CLI entrypoints that emits ``command_buffer.json``
+DIRECTLY, and ``target_dialect_contract.yaml`` states in so many words that the intermediate MLIR is
+*"a recommendation, not a gate"*. A checker built on the ``runtime`` dialect would therefore have been
+structurally unable to see the thing we want to check. The command buffer is the ABI both paths
+converge on, it is schema-validated, and the in-tree path yields it free via ``emit_command_buffer``.
+
+**What it does.** ``merlin/python/merlin/verify/cb_semantics.py`` symbolically executes the buffer,
+mirroring ``runtime/simulator.py`` opcode for opcode, and ``refine.validate_compilation`` encodes the
+interface program and the buffer over the SAME symbolic leaves and asks whether any declared output
+can differ. ``unsat`` means the backend's buffer computes what the program specified, for every
+integer input at that shape.
+
+Measured, on the in-tree pipeline's own buffer at 2x2x2:
+
+| command buffer | verdict |
+|---|---|
+| unmutated | ``unsat`` — no false positive |
+| ``lhs``/``rhs`` swapped on a MATMUL | ``sat``, 8-element counterexample |
+| ``output_dtype`` narrowed to i8 | ``sat``, 8-element counterexample |
+| second COMMIT reads the first accumulator | ``sat``, 12-element counterexample |
+| a MATMUL deleted | **abstained** — the buffer references an undefined tensor, i.e. it is malformed rather than semantically wrong, and saying "refuted" would mischaracterise it |
+
+**The differential test is the load-bearing one.** A checker that disagrees with the engine the corpus
+actually grades against would refute CORRECT backends, which is worse than not checking at all. So
+before any refutation is trusted, the encoder is pinned against ``merlin.runtime.simulate``: bind every
+symbolic leaf to the concrete value the simulator was given, assert the encoded output differs from
+what it actually produced, and require ``unsat``. Any disagreement is an encoder bug until proven
+otherwise.
+
+**A soundness trap, and its guard.** ``Tensor.matmul`` documents "accumulated in i32" but accumulates
+in **unbounded Python ints** — it tags the dtype without enforcing it — while this encoder wraps mod
+2^32. The two agree exactly while no sum leaves the accumulator's range, which is a derivable side
+condition, not a hope: ``K <= (2^(acc-1) - 1) / 2^(2w-2)``, i.e. **K <= 131071** for i8 into i32.
+Beyond it the honest verdict is an abstention, because the two engines are then answering different
+questions. ``safe_k_bound`` computes it and the encoder refuses rather than guessing.
+
+**Two more findings the layer surfaced.** ``capsule_golden._apply_epilogue`` defaults ``output_dtype``
+to ``i32`` and narrows any width, while ``simulator.py`` and ``reference.py`` default to ``i8`` and
+narrow on ``i8`` only. They agree on every dtype the corpus currently emits and diverge on an absent
+attribute or ``i16`` — a latent inconsistency between two engines that both claim to define the same
+readout. Separately, ``merlin_iface`` capsule MLIR has no Python round-trip (custom assembly, no xDSL
+parser), so the ``compile`` CLI accepts the in-tree ``interface`` plane and a capsule's own file cannot
+be passed to it today.
+
+### 2026-09-05 (correction) — what a counterexample capsule actually contributes
+
+An earlier claim in ``verify/witness.py``, and in how this work was described, was **wrong**:
+that a counterexample witness "carries the values that actually break the program, so it cannot be
+degenerate by construction". It does not, and three facts settle it:
+
+* ``capsule.schema.json``'s ``inputs[]`` has no values field and sets ``additionalProperties: false``;
+* ``capsule_golden.materialize_capsule_leaves`` fills every leaf unconditionally with
+  ``Tensor.deterministic(name, shape, dtype)``;
+* nothing outside this package's own tests reads ``counterexample_inputs.json``.
+
+So a counterexample capsule contributes the **shape and configuration** the corpus was missing, and is
+then graded on the corpus's own deterministic fill — which is the degenerate stimulus. Carrying the
+solver's values into grading needs a stimulus channel in ``capsule_runner``. The docstring is corrected
+in place and the correction recorded here, because the claim was load-bearing for "the capsules stop
+being case-specific": the SHAPES stop being hand-picked; the VALUES do not, yet.
+
+### 2026-09-05 (lattice) — the verified set is generated, not curated
+
+``Boundaries.extent_probes()`` has always emitted extents that straddle each real hardware boundary —
+the degenerate 1, a mostly-empty tile (edge/4), edge/2, the tail (edge-1), the exact tile, the overflow
+(edge+1), two tiles — and **nothing iterated them**: ``corpus_synth.extents_for`` reads only the
+``edge``. ``merlin/python/merlin/verify/lattice.py`` sweeps them, verifying the compilation at each.
+
+For gemmini the lattice is ``[1, 4, 8, 15, 16, 17, 32]``, derived from ``mesh_dim=16`` in that target's
+own RTL facts. The cost is affordable for the reason established earlier: sweeping a lattice means
+verifying CORRECT programs, which is the cheap ``unsat`` direction.
+
+**The count is deliberately not inflated.** The three ``contraction`` cells differ only by ALIGNMENT —
+aligned / partial / sub_tile — and alignment is exactly what the extent expresses (16 is the aligned
+tile, 15 the partial tail, 4 a sub-tile occupancy). Sweeping each cell separately would issue the
+identical query three times and report three verified points for one solved query. They are grouped,
+and the record says how many distinct query groups produced the coverage. Cells whose family has no
+program builder are recorded with that reason rather than dropped.
+
+### 2026-09-05 (advisory) — the checker an agent runs on its own output
+
+``merlin-verify compile --interface <f.mlir> --command-buffer <cb.json>`` needs no in-tree lowering and
+no simulator, so it works on a submission from a backend nobody has seen. Three exit codes, and the
+middle one is why this is safe to put in front of an agent: 0 verified, 1 refuted **with the concrete
+inputs printed**, 2 abstained — and an abstention is explicitly reported as a limitation of the
+checker, not a defect in the backend. Refuting correct work because our encoder is incomplete is the
+one outcome that would make this worse than useless.
+
+Measured: the in-tree pipeline's own buffer exits 0; the same buffer with a MATMUL's operands swapped
+exits 1 and prints the eight input values that expose it.
+
+Feedback is **advisory by design** — the agent sees the verdict and can still submit. That measures
+whether the signal helps without changing what counts as a pass, and avoids confounding the arm
+comparison. A blocking mode would attach in the locked harness, and is deliberately not built.
+
 ---
 
 ## 7. Reproducing what is claimed here
