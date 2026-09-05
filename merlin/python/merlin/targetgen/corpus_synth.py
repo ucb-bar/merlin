@@ -1076,7 +1076,27 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     _emitted = {str(e.get("name")) for e in entries}
     for _req in (geom_block.get("required") or ()):
         klass = str(_req.get("class") or "")
-        if not klass or klass == "unknown":
+        # A SKIP THAT SAYS NOTHING READS AS COVERAGE. Both of these are refusals to emit, and both
+        # used to be a bare `continue` -- so the class left the requirement without leaving a trace,
+        # and `geometry_classes_unsynthesizable` (whose whole contract is "a class silently absent
+        # here reads downstream as a geometry the corpus covers") did not name it. Measured on this
+        # repo's own gemmini census: the residual `unknown` class carries 36 regions and 4.6% of all
+        # contraction MAC work -- more than two of the classes that DID get a capsule -- and nothing
+        # anywhere recorded that it had been dropped.
+        if not klass:
+            unsized_geometry.append(
+                "<unnamed> (a requirement row carries no class, so there is no aspect ratio to "
+                "synthesize and no name to report it under)")
+            continue
+        if klass == "unknown":
+            # Deliberately not emitted, and that is a judgement rather than a wall: `unknown` is the
+            # taxonomy's RESIDUAL label, not an aspect ratio, so the regions behind it share no ratio
+            # and one capsule cannot represent them. Recorded because the mass is real.
+            unsized_geometry.append(
+                f"{klass} (the taxonomy's residual label, not an aspect ratio: {_req.get('n_regions')} "
+                f"region(s) carrying {_req.get('mac_fraction')} of all contraction MAC work match no "
+                f"named class, so they share no geometry one capsule could represent -- a member named "
+                f"after the fall-through would claim a coverage the classifier never asserted)")
             continue
         if not geom_op or not geom_dtype:
             unsized_geometry.append(f"{klass} (no contraction op gradeable at any admitted dtype)")

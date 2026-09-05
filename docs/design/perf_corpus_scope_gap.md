@@ -393,3 +393,63 @@ A wrong "blocked" record is worse than no record, because it reads as a settled 
    by trusting a grep over the working tree instead of resolving the name.
    `test_perf_family_satisfiability.py::test_an_emitter_declared_existing_actually_exists` is that
    something; it imports the module and getattrs the name, and it catches the drift either way.
+
+## What the FUNCTIONAL corpus can hold at census extents (measured 2026-09-05)
+
+The sections above are about `OBJECTIVE` perf members. The same census also drives the **functional**
+side, where `corpus_synth`'s geometry axis mints one `SY_geometry_<class>` member per reachable class
+at that class's own recorded extents. That side moved: the emitter now links a large constant operand
+as a binary blob rather than spelling it as a C initializer list, so a census-sized member is
+buildable at all. Three are minted for this target, and all three were **built and run against the
+reference on the functional oracle**:
+
+| member | class re-derived from its own operands | M × K × N | written output | largest tensor | spike |
+|---|---|---|---:|---:|---|
+| `SY_geometry_projection_like` | `projection_like` | 56 × 480 × 160 | 8,960 | 76,800 | correct, 8,586 cycles |
+| `SY_geometry_squareish_gemm` | `squareish_gemm` | 256 × 768 × 192 | 49,152 | 196,608 | correct, 68,871 cycles |
+| `SY_geometry_odd_tail_heavy` | `odd_tail_heavy` | 196 × 256 × 768 | 150,528 | 196,608 | correct, 55,270 cycles |
+
+The class is re-derived from the capsule's declared operands rather than from the requirement row
+that produced it (`perf.member_geometry.stamp_for`); all three agree with the class they are named
+for and all three report `in_census: true`.
+
+**None of the three can be certified, and the numbers are the reason rather than an excuse.** The
+budget is 300 s. The measured element fit (`intercept 80.66 s`, `0.2505 s/element`, `r² 0.490`,
+domain 240 … 1,024 elements) affords **875 written elements** and, with `_EXTRAPOLATION_MARGIN = 2.0`,
+**refuses to predict at all** past 2,048 — so every one of the three returns `None` rather than a
+number. Pricing them through the cycle fit instead (`intercept 54.93 s`, `0.2292 s/cycle`, `r² 0.821`,
+domain 159 … 1,174 cycles, measured functional-to-cycle-accurate ratio 6.22) gives **3.4 h**
+(`projection_like`), **21.9 h** (`odd_tail_heavy`) and **27.3 h** (`squareish_gemm`) — 41× to 328×
+the budget. That is why the axis caps each of them at the loop tier and names the certified sibling
+it rests on; the cap is a measurement, not a preference.
+
+### The classes that could not be admitted, and the wall that stopped each
+
+The scaling search shrinks a class's heaviest region by a **common** factor on all three extents
+until its largest tensor fits the 262,144-element operand store, with a floor of
+`min(original, tile edge 16)` per extent so the result is still a problem rather than a degenerate
+one. Three classes have no factor that satisfies both, and in every case **the floor is what stops
+the search, not the ceiling**:
+
+| class | heaviest region | largest tensor | mac_fraction | stopped at |
+|---|---|---:|---:|---|
+| `gemv_like` | 3 × 400 × 4096 | 1,638,400 | 0.00001 | factor 2: `M` → 1, below its floor of 3 (a GEMV's `M` is 1 in the application, so its floor is its own extent and it cannot shrink at all) |
+| `tall_skinny` | 12288 × 64 × 1024 | 12,582,912 | 0.035248 | factor 5: `K` → 12, below the tile edge. Factor 4 (3072 × 16 × 256) is still 786,432 elements — 3× the store |
+| `wide_skinny` | 128 × 2304 × 256000 | 589,824,000 | 0.821837 | factor 9: `M` → 14, below the tile edge. Factor 8 (16 × 288 × 32000) is still 512,000 elements |
+
+These are recorded, with these reasons, in the census itself (`shape_geometry.required[].unreachable`)
+and in the corpus profile's `provenance.geometry_classes_unsynthesizable` — the point being that a
+class that gets no member has to be *named*, because a class silently absent from that list reads
+downstream as a geometry the corpus covers.
+
+A fourth class was absent from both, which is the defect this pass fixed. `classify_geometry`'s
+residual label `unknown` covers **36 regions carrying 4.6% of all contraction MAC work** on this
+target — more than two of the classes that *did* get a member — and the synthesizer skipped it with a
+bare `continue`, so nothing anywhere recorded the hole. It still gets no member (the residual label is
+not an aspect ratio: the regions behind it share no ratio, and a member named after the fall-through
+would claim a coverage the classifier never asserted), but it is now reported with its mass.
+
+⚠️ The reachability verdicts above are a function of the recapture store and move with it. An earlier
+census on this same branch resolved `tall_skinny` at 1024 × 256 × 128 and `gemv_like` at 1 × 256 ×
+1000; both became unreachable when the store gained captures whose heaviest region in those classes is
+larger. Read the class list from `conformance/<target>.yaml`, never from this table.

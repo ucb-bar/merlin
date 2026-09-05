@@ -121,3 +121,76 @@ class TestALargeOperandMovesOutOfLine:
         assert len(inline) > 500_000
         assert len(blobbed) < 2_000
         assert blobs["T_A0"]["elems"] == 1024 * 256
+
+
+class TestTheCensusShapesTheCorpusActuallyMints:
+    """The claim this emitter exists to support, checked against the shapes the corpus really carries.
+
+    The shapes are READ from the minted geometry members rather than typed here: the census is
+    re-derived whenever the recapture store changes, and a hardcoded shape would keep passing after
+    the corpus moved off it -- which is precisely the "member represents nothing" failure the geometry
+    axis was added to expose.
+
+    MEASURED end-to-end through ``run_on_spike`` on this checkout (spike, functional oracle), each
+    against the reference outputs:
+
+    ======================  =============  =============  =============
+    member                  M x K x N      out elements   spike
+    ======================  =============  =============  =============
+    projection_like         56x480x160     8,960          correct, 8,586 cycles
+    squareish_gemm          256x768x192    49,152         correct, 68,871 cycles
+    odd_tail_heavy          196x256x768    150,528        correct, 55,270 cycles
+    ======================  =============  =============  =============
+
+    Those runs are not repeated here (they need a RISC-V toolchain and minutes of wall time); what is
+    pinned is the property that makes them possible at all -- every operand of every minted member
+    leaves the C source.
+    """
+
+    def _members(self):
+        import yaml
+        from merlin.perf.member_geometry import stamp_for
+        from merlin.targetgen.corpora import graded_capsule_roots
+        from merlin.targetgen.corpus_synth import SYNTH_PREFIX
+
+        target = "gemmini"                      # this bucket's tests are ABOUT this target
+        prefix = f"{SYNTH_PREFIX}_geometry_"
+        out = []
+        for root in graded_capsule_roots(target):
+            for path in sorted(root.glob(f"{prefix}*/capsule.yaml")):
+                doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                stamp = stamp_for(doc, target=target)
+                if stamp:
+                    out.append((str(doc.get("name")), stamp))
+        return out
+
+    def test_every_operand_of_every_minted_census_member_leaves_the_c_source(self):
+        """One C initializer per element is not slow at these sizes, it is unbuildable: the smallest
+        of the three carries 76,800 operand elements and the largest 196,608."""
+        gm = _codegen()
+        members = self._members()
+        if not members:
+            pytest.skip("this target mints no geometry members")
+        for name, stamp in members:
+            blobs: dict = {}
+            source = gm._harness_c(_cb(m=stamp["M"], k=stamp["K"], n=stamp["N"]), blobs=blobs)
+            assert set(blobs) == {"T_W", "T_A0"}, (
+                f"{name} ({stamp['M']}x{stamp['K']}x{stamp['N']}): an operand still spelled in C")
+            assert "static const elem_t" not in source, f"{name}: an operand is defined twice"
+            assert len(source) < 4_000, (
+                f"{name}: the harness is {len(source)} bytes, so something is still inline")
+
+    def test_the_blob_holds_the_padded_operand_the_kernel_will_read(self):
+        """A blob shorter than the padded extent is not a build error -- it is a DMA reading past the
+        end of the object, which spike will happily do and the golden will not notice."""
+        gm = _codegen()
+        members = self._members()
+        if not members:
+            pytest.skip("this target mints no geometry members")
+        for name, stamp in members:
+            blobs: dict = {}
+            gm._harness_c(_cb(m=stamp["M"], k=stamp["K"], n=stamp["N"]), blobs=blobs)
+            m, k, n = (gm._ceil_dim(stamp["M"]), gm._ceil_dim(stamp["K"]), gm._ceil_dim(stamp["N"]))
+            assert blobs["T_W"]["elems"] == k * n, f"{name}: weight blob is not the padded K x N"
+            assert blobs["T_A0"]["elems"] == m * k, f"{name}: activation blob is not the padded M x K"
+            assert len(blobs["T_W"]["bytes"]) == k * n, f"{name}: one byte per i8 element"
