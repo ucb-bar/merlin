@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=none
+title: Stateful Inference Session Contract
+purpose: >-
+  Capture-owned mapping from semantic inference steps to the compiled forward ABI. Declares stage
+  semantics, output-to-input state carry, and per-observation input streams. The generic runtime
+  validates shapes and dtypes before emitting a session harness. The paper study separately declares
+  how many complete sessions are repeated; observation count is never reused as a statistical repeat.
+required_top_level_fields:
+  - version
+  - kind
+  - paper_ready
+  - stages
+  - states
+  - streams
+  - quality
+example: |
+  version: 1
+  kind: recurrent_frames
+  paper_ready: true
+  stages: [visual_encode, recurrent_step, predict]
+  steps: 256
+  stage_schedule:
+    - {name: visual_encode, steps: 1, execution: compiled, timed: true}
+    - {name: recurrent_step, steps: 256, execution: compiled_recurrent, timed: true}
+    - {name: predict, steps: 256, execution: compiled_recurrent, timed: true}
+  parameters: {batch: 1, sequence_length: 256}
+  inputs: session_inputs.npz
+  states:
+    - {name: hidden_state, input_arg: 1, output_index: 1}
+    - {name: cell_state, input_arg: 2, output_index: 2}
+  streams:
+    - {name: frame, input_arg: 0, key: frames}
+  correctness: {scope: trajectory, golden: session_goldens.npz, key: output0,
+                output_index: 0, reference: eager_same_precision, reference_sha256: <sha256>}
+  quality: {scope: trajectory, golden: session_quality_fp32.npz, key: output0,
+            output_index: 0, reference: eager_fp32, reference_sha256: <sha256>}
