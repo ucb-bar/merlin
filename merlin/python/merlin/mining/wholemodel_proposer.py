@@ -97,15 +97,18 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     ("promote_buffers_to_stack", False),
     ("perop_nr_fill_register", False),
     ("fuse_transpose_b", False),                          # transpose: 38% byte-traffic, measured -6.5% openvla
-    # The general form of the fold above, and the reason the matmul-only one measured inert on the
-    # int8 models. `fuse_transpose_b` matches `linalg.matmul`; the integer datapath emits its
-    # contraction as a `linalg.generic`, so on small_llama int8 it fuses ZERO of the 25 transposes
-    # while the per-op board profile puts transpose at 45.9% of the attributed op time. This lever
-    # folds a loop-invariant weight transpose into EVERY linalg consumer's indexing_maps: MEASURED
-    # 25 -> 10 transposes (the same 15 an offline pre-transposed bundle hoists, which is 1.61x on the
-    # K1), host object 241,872 -> 221,392 bytes, output BIT-IDENTICAL. Board runtime UNMEASURED --
-    # which is what the beam is for.
-    ("fold_weight_transpose", False),                     # transpose: 45.9% of the int8 op profile
+    # `fold_weight_transpose` IS NOT LISTED, and that is a result rather than an omission. It is the
+    # general form of the fold above -- it folds a weight transpose into any linalg consumer's maps,
+    # so unlike `fuse_transpose_b` it does fire on a quantized model (15 of small_llama int8's 25
+    # transposes, the same 15 an offline pre-transposed bundle hoists). MEASURED on the K1 anyway,
+    # interleaved on top of this list's own winner: 3,594,824 ns without it, 3,994,718 ns with it --
+    # 1.09x SLOWER at bit-identical output. A map fold can only FLIP which axis is contiguous, and on
+    # an n-vectorized contraction the flip lands on the vectorized axis: the B read goes from
+    # tensor<1x16xi8> (16 consecutive n) to tensor<16x1xi8> (16 n, 128 B apart). The feature now
+    # refuses any fold that increases the stride along a consumer's fastest-varying output dim, which
+    # on this model means it folds 0 of 25 -- so ranking it would buy the beam a whole-model lowering
+    # to rediscover that it does nothing here. It stays registered and selectable for models whose
+    # permutations leave the hot axis alone.
     ("accumulator_resident_wholemodel_vf_mrpad", True),   # matmul MR register block: 1.49x rdt2 matmul bucket
     ("vectorize_reduction", True),                        # reduce/softmax: 2nd byte-traffic family, was unvectorized
     ("erase_self_copy", False),                           # envelope: per-tile memrefCopy elimination

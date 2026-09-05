@@ -43,42 +43,79 @@ end state the offline pre-transposed bundle reaches, without touching the stored
 
 WHAT IT REFUSES TO DO (fail closed)
 -----------------------------------
-Three structural preconditions, each checked and each counted when it fails; nothing is guessed:
+Four structural preconditions, each checked and each counted when it fails; nothing is guessed:
 
 1. **Loop-invariant source.** The transpose's input must be a ``func.func`` entry-block argument or
    a constant. This is a COST criterion, not a soundness one (SSA tensors are immutable, so the map
    composition is sound for any source): a transpose of a value the function computes is not a
-   stored-layout conversion, and folding it would trade one materialization for strided reads inside
-   the consumer with no evidence that wins. Measured here: the 10 activation permutes are excluded
-   by this rule and would be excluded by rule 2 anyway (``tensor.extract_slice`` consumers).
+   stored-layout conversion.
 2. **Every consumer states its access as a map.** All uses of the transpose result must be operands
    of ops carrying ``indexing_maps`` with one map per operand. A use this pass cannot rewrite (a
    ``tensor.extract_slice``, a ``func.return``, a copy) means the transposed value is genuinely
-   needed, so the transpose stays -- rewriting only SOME uses would leave the transpose alive and
-   buy nothing.
+   needed, so the transpose stays -- rewriting only SOME uses would leave it alive and buy nothing.
 3. **Input operands only.** A DPS ``outs`` operand is WRITTEN. Permuting its map would change where
    results land, so an ``outs`` use is a refusal, not a rewrite.
+4. **The vectorized axis may not get worse.** See below -- the one the board taught us.
+
+THE HOT AXIS, AND WHY THE FIRST VERSION OF THIS PASS REGRESSED THE WALL
+-----------------------------------------------------------------------
+Removing the transpose is not free: the permutation has to go somewhere, and where it goes is the
+consumer's access stride. The consumer wanted ``[K, N]``; after the fold the only buffer left is the
+argument in ``[N, K]``, so the map MUST become ``(n, k)``. There is no third option -- keeping the
+consumer reading ``(k, n)`` with no transpose op would need the bytes to actually BE in ``[K, N]``,
+which means either materializing them (the transpose just deleted) or storing them that way (the
+offline bundle rewrite, which changes the stored weights and is out of reach for an immutable
+function argument). A map fold can only ever flip which axis is contiguous.
+
+That flip is a win when it lands on the reduction and a loss when it lands on the vectorized axis.
+MEASURED on the K1, interleaved same-session on top of the search's own winner
+(``perop_register_block, promote_buffers_to_stack, expand_memref_copy, cse_through_provenance``):
+3,594,824 ns without this feature, 3,994,718 ns with it -- **1.09x SLOWER**, at bit-identical output.
+
+The mechanism, read off the IR after the transform schedule (which tiles the parallel dims 4x16 and
+vectorizes the innermost OUTPUT dim, n)::
+
+    baseline  %s = tensor.extract_slice %transposed[%k, 0] [1, 16] [1, 1]  ->  tensor<1x16xi8>
+              vector.transfer_read %s : tensor<1x16xi8>, vector<1x16xi8>    # 16 CONSECUTIVE n
+
+    folded    %s = tensor.extract_slice %arg2[0, %k] [16, 1] [1, 1]        ->  tensor<16x1xi8>
+              vector.transfer_read %s : tensor<16x1xi8>, vector<16x1xi8>    # 16 n, 128 B APART
+
+The fold turned the contraction's B read from a ROW of the vectorized axis into a COLUMN of it. No
+static count could show this: op count fell, transposes fell 25 -> 10, the object SHRANK 241,872 ->
+221,392 bytes, and the whole-object vector-load census got *better* (40 -> 102 ``vle8.v``, 15 -> 13
+``vlse8.v``, 223 -> 96 scalar byte loads), with bit-identical output. Only the wall moved, and only
+on the in-order board -- an interleaved host A/B measured 1.008x, inside noise.
+
+So precondition 4 PRICES the axis instead of hoping. For each consumer the pass derives the loop dim
+that is fastest-varying in the OUTPUT map -- the axis the vectorizer makes contiguous -- and computes
+the operand's row-major stride along it before and after the fold. A fold that would INCREASE that
+stride is refused, with both strides reported. Derived from the maps and the static shapes; it needs
+no knowledge of the schedule, the target or the model.
+
+WHAT THAT LEAVES
+----------------
+On ``small_llama_int8_consistent`` the guard refuses all 15 weight relayouts (``d1`` stride 1 -> 128,
+or 1 -> 344 for the down-projection), so the feature folds **0 of 25** and the lowering is once again
+byte-identical to the baseline. It is not vacuous in general: a permutation that leaves the
+fastest-varying axis alone -- ``[0, 2, 1, 3]`` on a 4-D tensor, the shape of an attention head permute
+-- still folds, because it moves no data onto the hot axis.
+
+For a transposed weight feeding an n-vectorized contraction this transform is a DEAD END, and
+structurally so rather than for a missing case: the only map it can produce is the one that strides
+the vectorized axis. Closing that cost in the compiler needs a different lever -- a micro-kernel that
+vectorizes along k and reduces horizontally (the NT-GEMM form a transpose-b BLAS kernel uses), for
+which ``(n, k)`` is the RIGHT layout. That is a schedule change, not a map fold, and it is unmeasured.
 
 Structure-keyed throughout: no op name beyond ``linalg.transpose``, no shape, no model, no target,
 no provenance tag. Default OFF, so the frozen baseline (empty feature set) lowers byte-identically.
 
-MEASURED (small_llama int8 capture, whole model, HOST lowering + execution):
+MEASURED (small_llama int8 capture, whole model):
 
-  * 25 ``linalg.transpose`` before, 10 after -- the 15 weight relayouts fold, the 10 activation
-    head-permutes are refused (their sources are computed, and two of the three uses of each are
-    ``tensor.extract_slice``, which states no map). Those same 15 are exactly what the offline
-    ``hoist_weight_transposes`` bundle rewrite pre-applies to the stored weights, reached here
-    without touching a single stored byte.
-  * emitted host object 241,872 -> 221,392 bytes; ``model.ll`` 452,612 -> 429,736; sha256 of the
-    object changes (``b3e7ba50d4ccca67`` -> ``4f25241fb4ca263c``, first 16).
-  * the model's f32 output is BIT-IDENTICAL to the baseline's, and both arms gate ``ok=True`` on
-    ``tiers=['fp32', 'w8a8']`` with the same ``tier_ok``.
-
-The BOARD runtime effect is UNMEASURED here (this session had no access to the K1). What is
-established statically is that a whole pass over each weight disappears and the access that remains
-is contiguous rather than N-strided; the offline pre-transposed bundle, which reaches a strictly
-weaker end state (it removes the pass but leaves the contraction reading B ``(k, n)``), measures
-1.61x on that board.
+  * unguarded, this folded 15 of 25 -- exactly the 15 the offline ``hoist_weight_transposes`` bundle
+    rewrite pre-applies -- with bit-identical output and both goldens gating ok=True on
+    ``tiers=['fp32', 'w8a8']``, and it still cost 1.09x on the board (numbers above).
+  * guarded, it folds 0 of 25 here and the emitted object is byte-identical to the baseline.
 """
 from __future__ import annotations
 
@@ -144,6 +181,69 @@ def _wt_loop_invariant(value):
         except (AttributeError, ValueError, TypeError):
             return False
     return _wt_op_name(getattr(value, "owner", None)) in ("arith.constant", "memref.get_global")
+
+
+def _wt_dim_position(expr):
+    """The loop-dim index of `expr` when it is a bare dim (`d3`), else None.
+
+    A map result that is anything else -- a constant (`(d0, 0, d2)`), a sum, a floordiv -- is not a
+    dimension this pass can price a stride along, so it reports None and the caller fails closed."""
+    from torch_mlir import ir as _wtir
+    try:
+        return _wtir.AffineDimExpr(expr).position
+    except (ValueError, TypeError):
+        return None
+
+
+def _wt_static_shape(value):
+    """The operand's static shape, or None if any extent is dynamic/unranked (fail closed)."""
+    from torch_mlir import ir as _wtir
+    try:
+        st = _wtir.ShapedType(value.type)
+        if not st.has_static_shape:
+            return None
+        return list(st.shape)
+    except (ValueError, TypeError):
+        return None
+
+
+def _wt_stride(results, shape, dim):
+    """Element stride of a row-major operand of `shape`, read through `results`, along loop `dim`.
+
+    Varying loop dim `dim` by one moves the linear offset by the row-major stride of whichever
+    operand axis that dim indexes. A dim the map never mentions leaves the operand invariant -> 0.
+    Returns None when the access is not a plain permutation of bare dims (fail closed)."""
+    for j, e in enumerate(results):
+        pos = _wt_dim_position(e)
+        if pos is None:
+            return None
+        if pos == dim:
+            stride = 1
+            for extent in shape[j + 1:]:
+                stride *= int(extent)
+            return stride
+    return 0
+
+
+def _wt_hot_dim(op, maps):
+    """The loop dim the vectorizer will make contiguous: the FASTEST-VARYING axis of the output.
+
+    MEASURED, and the reason this guard exists. The frozen RVV schedule tiles the contraction's
+    parallel dims and vectorizes the innermost OUTPUT dim -- on small_llama int8 the B operand is
+    read as `tensor<1x16xi8>`, a row of 16 consecutive n. Folding a `[1, 0]` weight transpose into
+    that map turns the same read into `tensor<16x1xi8>`: 16 elements 128 bytes apart, a strided
+    read on exactly the axis being vectorized. Statically that is invisible -- same op count, same
+    vector shape count, fewer instructions -- and on the K1 it cost 1.09x.
+
+    Returns None when the output map's last result is not a bare dim, so the caller refuses."""
+    n_outs = len(op.results)
+    if n_outs < 1 or len(maps) <= n_outs:
+        return None
+    out = maps[len(maps) - n_outs].value          # first output operand's map
+    results = list(out.results)
+    if not results:
+        return None
+    return _wt_dim_position(results[-1])
 
 
 def _wt_indexing_maps(op):
@@ -215,9 +315,35 @@ def _fold_weight_transposes(module, ctx):
                 reason = "used as an `outs` operand of %s (written, not read)" % owner.name
                 break
             m = maps[idx].value
-            if len(m.results) != len(perm):
+            old_results = list(m.results)
+            if len(old_results) != len(perm):
                 reason = ("consumer %s map has %d results, permutation has %d"
-                          % (owner.name, len(m.results), len(perm)))
+                          % (owner.name, len(old_results), len(perm)))
+                break
+            hot = _wt_hot_dim(owner, maps)
+            if hot is None:
+                reason = ("consumer %s has no bare fastest-varying output dim, so the axis the "
+                          "vectorizer makes contiguous cannot be derived" % owner.name)
+                break
+            t_shape = _wt_static_shape(top.results[0])
+            w_shape = _wt_static_shape(src)
+            if t_shape is None or w_shape is None:
+                reason = "operand shape is dynamic or unranked, so the access stride is unpriceable"
+                break
+            new_results = list(old_results)
+            for t, dst in enumerate(perm):
+                new_results[dst] = old_results[t]
+            before = _wt_stride(old_results, t_shape, hot)
+            after = _wt_stride(new_results, w_shape, hot)
+            if before is None or after is None:
+                reason = ("consumer %s reads a non-permutation access this pass cannot price"
+                          % owner.name)
+                break
+            if after > before:
+                reason = ("folding would move the vectorized axis d%d of %s from stride %d to "
+                          "stride %d -- the fold removes a pass over the weight but makes the "
+                          "contiguous vector read a strided one, which MEASURED 1.09x SLOWER on "
+                          "the K1" % (hot, owner.name, before, after))
                 break
             plan.append((owner, idx))
         if reason:
@@ -278,19 +404,19 @@ def _feature():
         action_class="PASS",
         description=(
             "fold a loop-invariant weight `linalg.transpose` into the indexing_maps of EVERY linalg "
-            "consumer that reads it, then erase it -- so the re-layout costs no op, no buffer and no "
-            "data movement. Generalizes `fuse_transpose_b`, which matches `linalg.matmul` and "
-            "therefore fires ZERO times on a quantized model: the integer datapath emits its "
-            "contraction as a `linalg.generic` (measured on the small_llama int8 capture: 25 "
-            "linalg.transpose, 0 linalg.matmul, 280 linalg.generic, with transpose at 45.9% of the "
-            "board profile). Composing the contraction's B map (m,n,k)->(k,n) with [1,0] also turns "
-            "the strided weight read into a contiguous one. Fails closed and counts the reason when "
-            "the source is computed rather than stored, when any consumer does not state its access "
-            "as a per-operand map, or when the value feeds an `outs` operand. Structure-keyed "
-            "(loop-invariance, all-uses-foldable, static permutation). MEASURED on that capture: 25 "
-            "transposes -> 10, host object 241,872 -> 221,392 bytes, output BIT-IDENTICAL and both "
-            "arms gate ok on fp32+w8a8; board runtime UNMEASURED. Default-off, baseline "
-            "byte-identical."
+            "consumer that reads it, then erase it -- so the re-layout costs no op and no buffer. "
+            "Generalizes `fuse_transpose_b`, which matches `linalg.matmul` and therefore fires ZERO "
+            "times on a quantized model (measured: small_llama int8 has 25 linalg.transpose, 0 "
+            "linalg.matmul, 280 linalg.generic). GUARDED on the vectorized axis: a map fold can only "
+            "flip which axis is contiguous, and flipping the one the schedule vectorizes MEASURED "
+            "1.09x SLOWER on the K1 (3,594,824 -> 3,994,718 ns interleaved, bit-identical output) -- "
+            "the contraction's B read went from tensor<1x16xi8> to tensor<16x1xi8>. The pass derives "
+            "each consumer's fastest-varying output dim and refuses any fold that increases the "
+            "operand's stride along it, reporting both strides. With that guard it folds 0 of 25 on "
+            "small_llama int8 and the object is byte-identical; a permutation leaving the hot axis "
+            "alone still folds. Fails closed and counts the reason for a computed source, a consumer "
+            "stating no per-operand map, an `outs` use, and an unpriceable or dynamic access. "
+            "Default-off, baseline byte-identical."
         ),
     )
 
