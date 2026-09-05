@@ -338,3 +338,85 @@ def _record(verdict, **shape) -> None:
     except Exception:
         # Recording must never gate a verification run; a missing log is a REPORTED state upstream.
         pass
+
+
+def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32,
+                         timeout_ms: int = 60_000) -> Verdict:
+    """Do two command buffers denote the same function, for every input at this shape?
+
+    The reason this exists beside :func:`validate_compilation` is a parser gap, not a new idea. A
+    capsule hands its backend an ``input.interface.mlir`` written in the ``merlin_iface`` contract
+    grammar, which has custom assembly that xDSL cannot parse — ``cli._load_interface`` says so in its
+    own docstring. But :func:`merlin.targetgen.contract.interface_emit.parse_interface_mlir` reads
+    that grammar into a command-buffer dict, so the specification can be brought to the same encoder
+    the submission goes through. That makes every archived submission checkable without any in-tree
+    lowering.
+
+    Example, over an archived capsule-bench submission::
+
+        from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+        spec  = parse_interface_mlir((unit / "generated/input.interface.mlir").read_text())
+        agent = json.loads((unit / "generated/command_buffer.json").read_text())
+        validate_equivalence(spec, agent).status      # 'unsat' | 'sat' | 'unknown'
+
+    **This is weaker than :func:`validate_compilation`, and the difference must not be blurred.**
+    There, the spec side goes through ``encode_interface`` and the target side through
+    ``encode_command_buffer`` — two encoders, so a bug in one does not cancel. Here both sides go
+    through ``encode_command_buffer``. A defect in the shared encoder cancels wherever the two
+    structures coincide, and cancels *completely* when the two buffers are identical. The theorem is
+    therefore exactly: **the two buffers denote the same function under our shared bitvector
+    semantics** — not "the submission is correct".
+
+    A caller measuring coverage must exclude structurally identical pairs, or it will count ``X == X``
+    as verification. Measured on the archived corpus, 2,500 of 4,111 submissions were identical to the
+    program they were handed, so that exclusion is 61% of the material rather than a corner case; see
+    :func:`merlin.verify.ablation.classify`.
+
+    Abstains (raises :class:`UnsupportedSemantics`) rather than refuting whenever the two sides cannot
+    be compared at all — a differing output count or a shape mismatch means they are not the same
+    program, which is a real disagreement but not one an equality check is entitled to characterise.
+    """
+    if not HAS_XDSL:
+        raise UnsupportedSemantics("xDSL is not installed")
+    from xdsl.builder import ImplicitBuilder
+    from xdsl.dialects import builtin, smt
+    from xdsl.ir import Block, Region
+
+    from .cb_semantics import encode_command_buffer
+    from .smt_ops import SolverOp
+
+    blk = Block()
+    with ImplicitBuilder(blk):
+        enc = Encoder()
+
+        # SPEC side first: it declares the leaves, because it is the artifact whose tensors define
+        # the program's inputs. The submission is then encoded over those same symbols.
+        spec_out, leaves = encode_command_buffer(enc, spec_cb, acc_width=acc_width)
+        if not spec_out:
+            raise UnsupportedSemantics(
+                "the interface program commits no outputs; there is nothing to validate against")
+        agent_out, _ = encode_command_buffer(enc, agent_cb, shared=leaves, acc_width=acc_width)
+
+        spec_names, agent_names = sorted(spec_out), sorted(agent_out)
+        if len(spec_names) != len(agent_names):
+            raise UnsupportedSemantics(
+                f"the interface program commits {len(spec_names)} output(s) {spec_names} but the "
+                f"submitted buffer commits {len(agent_names)} ({agent_names}); they are not the "
+                f"same program")
+
+        diffs = []
+        for s_name, a_name in zip(spec_names, agent_names):
+            a, b = spec_out[s_name], agent_out[a_name]
+            if (a.rows, a.cols) != (b.rows, b.cols):
+                raise UnsupportedSemantics(
+                    f"output {s_name!r} is {(a.rows, a.cols)} in the interface program but "
+                    f"{a_name!r} is {(b.rows, b.cols)} in the submitted buffer")
+            diffs.append(enc.any_differs(a, b))
+        term = diffs[0]
+        for d in diffs[1:]:
+            term = smt.OrOp(term, d).results[0]
+        smt.AssertOp(term)
+        smt.YieldOp()
+
+    mod = builtin.ModuleOp([SolverOp.from_region(Region([blk]))])
+    return check_module(mod, timeout_ms=timeout_ms)
