@@ -239,8 +239,16 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
                     f"engine does not implement (implemented: bias_add/bias, requant, acc_scale, relu, "
                     f"maxpool). It is not skipped: a silently dropped stage would make the golden and "
                     f"the reference agree on a value neither of them computed")
-        if attrs.get("output_dtype", "i8") == "i8":
-            t = t.to_i8()
+        # The readout is the SHARED rule, not an inline i8 test. Two things were wrong here.
+        # The default was "i8", so a COMMIT that simply omitted output_dtype had its result
+        # CLAMPED to [-128,127] -- while capsule_golden, the authority at L2/L3, defaulted to
+        # "i32" and did not narrow at all. The two disagreed from 2026-06-20, and a correct
+        # backend omitting the attribute failed L0 on 85 of 130 integer capsules with a
+        # message blaming the agent. The exact "== i8" test also could not express i16/i4/u8
+        # at all, so any future target narrowing to a non-i8 width was silently mis-graded.
+        # Defaulting to i32 is the safe direction: absent means DO NOT narrow, which cannot
+        # destroy a wide result, and it matches the engine that decides correctness.
+        t = _narrow_int_readout(t, str(attrs.get("output_dtype", "i32")), "COMMIT")
         outputs[ops["dst"]] = t.to_list()
         # Register the committed tensor so a CHAINED consumer (the next layer's matmul lhs, a
         # vector op) resolves it — a whole model's intermediate activations flow through env.
