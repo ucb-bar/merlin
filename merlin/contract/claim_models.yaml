@@ -18,12 +18,20 @@
 # names the artifact classes that carry those facts.
 schema_version: 1
 
-# Held out from derivation; used ONLY to measure coverage. These are the four models the experiment
-# claims to support end to end.
+# Held out from derivation; used ONLY to measure coverage. These are the models the experiment claims
+# to support end to end.
+#
+# ⚠️ WHY THIS SET SHRANK FROM FOUR TO TWO. Holding out all four left the corpus with no model-shaped
+# evidence to derive FROM, and a corpus derived from nothing model-shaped cannot contain a layer, a
+# chunk, or a model -- measured, `workload_spec.applications` produced zero capsules on every target and
+# every spec on disk read `declared_applications: 0`. The claim is only as broad as the models it is
+# MEASURED on, so the two we grade against stay held out and the other two became derivation sources:
+# `smolvla` and `lstmnetvit` now drive the requirement (nine bundles already in the store), and the
+# corpus is built from them. Narrowing the claim set is the honest direction -- it makes the claim
+# smaller and the evidence real, rather than leaving a wide claim resting on a corpus that never saw
+# a model.
 claim_models:
   - resnet50_v1_5
-  - lstmnetvit
-  - smolvla
   - tiny_llama
 
 # Everything else under `out/artifacts/recaptures/` derives the requirement. Named as a policy rather
@@ -45,14 +53,18 @@ exclusion:
 # ⚠️ EXCLUDING A CLAIM MODEL REMOVES ITS EVIDENCE FROM THE REQUIREMENT, AND THAT IS THE POINT -- but it
 # leaves real gaps that must be filled by a DIFFERENT model rather than papered over. Known:
 #
-#   convolution: resnet50_v1_5 is the only convolution-dominated capture, so with it held out the
-#   conv/pool/depthwise branch of the requirement is underived. That is exactly why
-#   `layers/B3_conv2d_im2col_i8` and `layers/B4_conv2d_relu_i8` are hand-authored: someone had to type
-#   what no capture demanded. The fix is a conv-dominated derivation model, not re-admitting resnet50.
+#   convolution: resnet50_v1_5 remains a claim model, so the conv/pool/depthwise branch is still not
+#   demanded by any model-scale claim capture. It is now derived from `deepjscc_int8_consistent`
+#   instead -- 178 convolution regions, derivation-eligible -- whose geometry is recovered
+#   STRUCTURALLY, since torch-mlir emits im2col and a captured convolution carries no padding/stride/
+#   dilation attribute to read. The fix was a conv-dominated derivation model, exactly as this note
+#   predicted; it was not re-admitting resnet50.
 known_derivation_gaps:
   - family: contraction
     shape_class: convolution
     reason: >-
-      the only convolution-dominated capture is a claim model, so no derivation capture demands the
-      conv branch; two gemmini conv capsules are hand-authored to stand in for it
+      no claim-eligible convolution capture may be read, so the conv branch is derived from
+      deepjscc_int8_consistent's 178 convolution regions, with the window geometry recovered from the
+      affine maps and insert_slice offsets rather than from absent op attributes
+    derived_from: [deepjscc_int8_consistent]
     stood_in_by: [layers/B3_conv2d_im2col_i8, layers/B4_conv2d_relu_i8]

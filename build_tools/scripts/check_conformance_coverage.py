@@ -48,30 +48,73 @@ from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
 from merlin.targetgen import conformance as CF  # noqa: E402
 
 
+class ClaimModelInApplications(Exception):
+    """A target named a CLAIM model as one of its applications.
+
+    Raised rather than filtered. Silently dropping the entry would leave a target declaring five
+    applications and deriving from four, with the difference visible nowhere -- and the thing being
+    dropped is precisely the circularity `claim_models.yaml` exists to prevent, so it must be loud.
+    """
+
+
 def _applications(te) -> dict:
     """The target's DECLARED applications, as ``{label: model.mlir}``.
 
-    A target says which exported models it is for via ``workload_spec.applications`` -- a directory
-    of ingested bundles. Unlike ``_captures`` below, which globs the whole recapture store and is
-    therefore the same evidence for every target, this is per-target BY CONSTRUCTION: it is the set
-    the target's own descriptor names.
+    A target says which exported models it is FOR via ``workload_spec.applications``. Unlike
+    ``_captures`` below, which globs the whole recapture store and is therefore the same evidence for
+    every target, this is per-target BY CONSTRUCTION: it is the set the target's own descriptor names.
 
-    Empty for every target that declares none, which is every target today, so the application axis
-    stays inert until somebody points it at something.
+    TWO SPELLINGS, because they answer different questions. A **list** names bundles in the recapture
+    store, and is what a target should normally declare: the descriptor states which models it is for,
+    the statement is reviewable in the diff, and it does not depend on a generated directory happening
+    to contain the right subdirectories. A **string** is a directory of ingested bundles, which is what
+    ``ingest_applications.py`` produces and is kept working for it.
+
+    ⚠️ A CLAIM MODEL MAY NEVER APPEAR HERE. The application axis is a derivation source -- it decides
+    which capsules exist -- so admitting a claim model would build the corpus from the model it is then
+    said to generalize to, which is the exact circularity `claim_models.yaml` forbids. Checked here,
+    where the set is named, rather than downstream where the bundles have already become shapes and the
+    model they came from is no longer visible.
     """
+    from merlin.common.artifacts import recaptures_dir
     from merlin.common.paths import repo_root
+    from merlin.targetgen import claim_models as CM
 
     spec = dict(getattr(te, "workload_spec", None) or {})
     declared = spec.get("applications")
     if not declared:
         return {}
-    root = Path(declared)
-    if not root.is_absolute():
-        root = repo_root() / root
-    if not root.is_dir():
-        return {}
-    return {d.name: d / "model.mlir" for d in sorted(root.iterdir())
-            if (d / "model.mlir").is_file()}
+
+    if isinstance(declared, (list, tuple)):
+        store = Path(recaptures_dir())
+        found, missing = {}, []
+        for name in declared:
+            d = store / str(name)
+            if (d / "model.mlir").is_file():
+                found[d.name] = d / "model.mlir"
+            else:
+                missing.append(str(name))
+        if missing:
+            # Not silently skipped: a declared application whose bundle is absent means the axis is
+            # deriving from less than the descriptor claims, and that difference has to be visible.
+            print(f"[note] applications declared but not in the recapture store: {missing}",
+                  file=sys.stderr)
+    else:
+        root = Path(declared)
+        if not root.is_absolute():
+            root = repo_root() / root
+        if not root.is_dir():
+            return {}
+        found = {d.name: d / "model.mlir" for d in sorted(root.iterdir())
+                 if (d / "model.mlir").is_file()}
+
+    offending = sorted(n for n in found if CM.is_claim_bundle(n))
+    if offending:
+        raise ClaimModelInApplications(
+            f"{offending} named as application(s), but they are CLAIM models. The application axis "
+            f"decides which capsules exist, so reading a claim model here would build the corpus from "
+            f"the model it is then said to generalize to. Claim models: {list(CM.claim_models())}")
+    return found
 
 
 def _cert_budget_s(te) -> "float | None":

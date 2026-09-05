@@ -1332,19 +1332,65 @@ def _parse_spec_ref(spec_ref: str) -> tuple[str, str]:
     return gen, op
 
 
+def _covers(node) -> list[str]:
+    """The op/claim symbols a coverage node DECLARES it covers, from its ``refs`` dictionary.
+
+    The linkage lives in node refs rather than in the flat attrs, which is why an earlier reader said
+    it could not be followed and surfaced every one of the gen's declarations for every op. It can be
+    followed: ``refs`` is a ``DictionaryAttr`` whose ``covers`` entry is an array of ``SymbolRefAttr``.
+    """
+    refs = getattr(node, "refs", None)
+    table = getattr(refs, "data", None)
+    # NOT `isinstance(table, dict)`: xDSL's DictionaryAttr holds an `immutabledict`, which is a Mapping
+    # and NOT a dict subclass. The isinstance form looked like careful defensive coding and silently
+    # returned "covers nothing" for every node, which disables the op-scoping this function exists to
+    # do -- a guard that cannot pass is the same defect as a check that cannot fail.
+    if table is None or not hasattr(table, "get"):
+        return []
+    covers = table.get("covers")
+    out: list[str] = []
+    for elem in getattr(covers, "data", ()) or ():
+        sym = getattr(elem, "root_reference", None)
+        name = getattr(sym, "data", None) if sym is not None else None
+        if name:
+            out.append(str(name))
+    return out
+
+
+def declared_ops(module) -> list[str]:
+    """Every ``spec.op`` this gen declares, by name (``op.matmul``, ``op.isa_flush``, ...).
+
+    The op vocabulary a cell cannot express: 13 for one target, 11 for another, all of them collapsed
+    into ``contraction``/``movement`` by the cell key.
+    """
+    from specir.graph import all_nodes, name_of
+
+    return [str(name_of(n)) for n in all_nodes(module)
+            if (getattr(n, "name", "") or "") == "spec.op"]
+
+
 def _coverage_goals(module, op: str) -> list[dict]:
-    """The spec's declared ``spec.coverage_goal`` / ``spec.test_intent`` nodes (the acceptance/coverage
-    contract for this gen) — read structurally off the projected module via the flat attrs specir exposes.
-    Never raises; a spec without them just yields []. ``op`` is recorded for reference (the covers linkage
-    lives in node refs, not the flat attrs, so we surface all of the gen's coverage declarations)."""
+    """The spec's ``spec.coverage_goal`` / ``spec.test_intent`` nodes that cover ``op``.
+
+    ⚠️ OP-SCOPED, AND IT WAS NOT. Every declaration in the gen was returned for every op, so a matmul
+    capsule carried a transcendental's test intent -- the wrong oracle and the wrong tolerance, stated
+    with the same confidence as the right ones. The ``covers`` linkage is followed by :func:`_covers`.
+
+    A node covering NOTHING is still returned: a gen-wide coverage goal with no ``covers`` list applies
+    to the whole gen by construction, and dropping it would lose a real obligation. What is dropped is
+    a node that names other ops and not this one.
+    """
     from specir.graph import all_nodes, attrs_of, name_of
     goals: list[dict] = []
     for n in all_nodes(module):
         mnem = getattr(n, "name", "") or ""
         if mnem not in ("spec.coverage_goal", "spec.test_intent"):
             continue
+        covers = _covers(n)
+        if covers and op not in covers:
+            continue                               # authored for other ops; not this capsule's contract
         a = attrs_of(n) or {}
-        goals.append({"node": name_of(n), "kind": mnem,
+        goals.append({"node": name_of(n), "kind": mnem, "covers": covers,
                       "text": a.get("text"), "oracle": a.get("oracle"),
                       "tolerance": a.get("tolerance"), "test_type": a.get("test_type")})
     return goals
@@ -1418,6 +1464,21 @@ class SpecRefSource:
         spec_path = Path(_SPEC_ROOT) / entry["spec"]
         gen_dir = spec_path.parent
         module = parse_spec_file(spec_path)
+
+        # ⚠️ THE OP TOKEN WAS IGNORED, AND THE REF FAILED OPEN. Measured: `gemmini:op.matmul`,
+        # `gemmini:op.isa_flush` and `gemmini:op.TOTALLY_BOGUS` returned a BYTE-IDENTICAL command
+        # buffer, golden and coverage goal, because the emitter takes `op` and never reads it. A
+        # typo'd or renamed spec_ref therefore silently produced a matmul capsule and called it
+        # whatever the ref said. Deriving from a source that fails open is worse than not deriving
+        # from it, so the token is checked against the gen's own declared ops before anything is
+        # emitted. (The emitter's own indifference to `op` is an upstream defect; this makes it
+        # unreachable from here rather than pretending it is fixed.)
+        ops = declared_ops(module)
+        if op not in ops:
+            raise SpecProgramUnavailable(
+                f"{gen} declares no {op!r}; it declares {sorted(ops)}. The program emitter does not "
+                f"read the op token, so an unchecked ref here would emit a DIFFERENT op's program "
+                f"under this name")
         cov = _coverage_goals(module, op)
 
         # (1) RoCC command-buffer program (systolic int datapath, e.g. gemmini) — bit-exact int golden.

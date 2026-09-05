@@ -326,6 +326,20 @@ def corpus_presented_pairs(corpus_roots, *, labels=None) -> "Counter":
             fam = ((cap.get("semantic") or {}).get("semantic_family"))
             if not fam:
                 continue
+            # ⚠️ A WHOLE MODEL'S `inputs[]` IS ITS ENTRY TENSOR, NOT AN OPERAND. A language model is
+            # entered with a token-id vector -- i64 -- and computes in none of that: it declares what it
+            # computes in separately, at `operation.attributes.dtype`. Reading the entry tensor as an
+            # operand dtype minted a `contraction/i64` host-lane obligation on all three targets, for
+            # arithmetic no capsule performs and no hardware was ever asked to take. Measured: 24
+            # capsules declare a compute dtype, 20 of them disagree with their own `inputs[]`, and ALL
+            # 20 are `kind: model`.
+            #
+            # So a DECLARED compute dtype wins outright. It is the capsule's own statement about its
+            # arithmetic, and where it exists there is nothing to infer.
+            declared = str(((cap.get("operation") or {}).get("attributes") or {}).get("dtype") or "")
+            if declared:
+                out[(str(fam), declared)] += 1
+                continue
             for t in (cap.get("inputs") or []):
                 if t.get("dtype") and t.get("role") in ("input", "weight"):
                     out[(str(fam), str(t["dtype"]))] += 1
@@ -1531,6 +1545,12 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # upper rungs are about adjacent ones, and until this nothing observed adjacency at all,
         # so those rungs could not be required rather than merely being unpopulated.
         "scope": scope_axis(captures, target),
+        # THE CONVOLUTION-WINDOW AXIS. A cell says a contraction runs at int8; it cannot say that the
+        # contraction is a 3x3 stride-2 convolution whose border is padded, and the padded border is
+        # where a lost padding identity is wrong and nowhere else. Derived structurally because
+        # torch-mlir emits im2col: the captured program has a gather and a matmul and no convolution
+        # op, so there is no `padding` attribute anywhere to read. See `conv_geometry`.
+        "conv_geometry": _conv_geometry_axis(captures),
         "memory_mapping": {
             "required": mem.get("by_regime") or {},
             "region_counts": mem.get("region_counts") or {},
@@ -1592,6 +1612,160 @@ def spec(target: str, captures: dict[str, str | Path], *,
                   for c, o in sorted(cells.items(), key=lambda kv: kv[0].key())],
     }
 
+
+
+def _conv_geometry_axis(captures: dict) -> dict:
+    """The convolution windows this target's captures contain, as an obligation set.
+
+    Kept out of the cell cross-product deliberately, for the same reason the geometry and composition
+    axes are: crossing windows with dtypes would demand a 7x7 reflection-padded convolution at every
+    format the target admits, and no model contains that.
+    """
+    from merlin.targetgen import conv_geometry as CG
+
+    return CG.geometry_classes(captures)
+
+
+def _conv_geometry_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
+    """Which required convolution windows no capsule in the corpus presents.
+
+    A capsule declares its window as attributes -- there is no im2col to read on this side, because a
+    capsule is authored as a convolution rather than captured as one. The two are brought into the same
+    vocabulary by building a :class:`conv_geometry.ConvGeometry` from the declaration and taking its
+    signature, so "the corpus covers this window" means the same thing on both sides of the comparison.
+
+    A capsule declaring a window but no padding is ``pad_known=True`` with zero padding: unlike the
+    capture side, where an unreadable producer means the padding could not be seen, here the absence of
+    a padding attribute is the capsule AUTHOR saying there is none.
+    """
+    import yaml
+
+    from merlin.targetgen.conv_geometry import ConvGeometry
+
+    labels = set(labels or {"public"})
+    exclude = set(exclude or ())
+    roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
+
+    def _pair(v, default):
+        if v is None:
+            return (default, default)
+        if isinstance(v, (list, tuple)):
+            vals = [int(x) for x in v]
+            return (vals[0], vals[-1]) if vals else (default, default)
+        return (int(v), int(v))
+
+    have: dict[str, list[str]] = {}
+    for root in roots:
+        for cy in sorted(Path(root).glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") not in labels:
+                continue
+            name = str(cap.get("name") or cy.parent.name)
+            if name in exclude:
+                continue
+            a = ((cap.get("operation") or {}).get("attributes")) or {}
+            if not isinstance(a, dict):
+                continue
+            kh, kw = a.get("kh"), a.get("kw")
+            if kh is None and kw is None:
+                pool = a.get("pool_size")
+                if pool is None:
+                    continue
+                kh, kw = _pair(pool, 1)
+            kernel = (int(kh if kh is not None else kw), int(kw if kw is not None else kh))
+            stride = _pair(a.get("stride") if a.get("stride") is not None else a.get("pool_stride"), 1)
+            dilation = _pair(a.get("dilation"), 1)
+            pad = _pair(a.get("padding") if a.get("padding") is not None else a.get("pool_padding"), 0)
+            g = ConvGeometry(kernel=kernel, stride=stride, dilation=dilation,
+                             pad_before=pad, pad_after=pad, input_dilation=(1, 1),
+                             pad_known=True, in_spatial=(), out_spatial=(),
+                             channels_in=0, dtype=str(a.get("dtype") or ""))
+            have.setdefault(g.signature(), []).append(name)
+
+    want = [str(r["signature"]) for r in (required or [])]
+    missing = [sig for sig in want if sig not in have]
+    return {
+        "status": "ok",
+        "n_required": len(want),
+        "n_covered": len(set(want) & set(have)),
+        "uncovered": missing,
+        "covered_by": {k: sorted(v) for k, v in sorted(have.items()) if k in set(want)},
+        "corpus_windows": sorted(have),
+        "note": ("a required window no capsule presents means a lowering that loses the padding "
+                 "identity, mis-steps the stride, or mis-spaces the dilation is wrong only in rows "
+                 "this corpus never computes. A `padUNKNOWN` obligation is a window whose padding the "
+                 "capture applies by a route this reader cannot see -- a reflection pad, for one -- "
+                 "and it is a real obligation: its identity is NOT zero"),
+    }
+
+
+def _epilogue_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
+    """Which required epilogue STAGES no capsule in the corpus demands.
+
+    A cell says which arithmetic the datapath runs; it cannot say which stage rides the contraction. So
+    a corpus derived from cells alone can fuse one stage, pass, and report the whole fusion capability
+    covered -- which is how a missing per-column bias and a missing standalone requantization both
+    reached a bundle as omissions rather than as failures.
+
+    TWO WAYS A CAPSULE DEMANDS A STAGE, and both count, because the defect presented in each shape. The
+    ordinary one is a contraction naming the stage in ``operation.attributes.epilogue``. The other is a
+    capsule that IS the stage standing alone -- a bare requant or bias member -- which is the form that
+    catches a backend with no lowering for it at all, as opposed to one that cannot fuse it.
+
+    ``fused_by``/``standalone_by`` are kept apart rather than summed. A stage evidenced ONLY standalone
+    says the lowering exists and the fusion is untested, which is a different remedy from a stage
+    evidenced only fused, and one number cannot carry both.
+    """
+    import yaml
+
+    labels = set(labels or {"public"})
+    exclude = set(exclude or ())
+    roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
+    want = {str(r["stage"]) for r in (required or []) if r.get("stage")}
+
+    fused: dict[str, list[str]] = {}
+    standalone: dict[str, list[str]] = {}
+    for root in roots:
+        for cy in sorted(Path(root).glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") not in labels:
+                continue
+            name = str(cap.get("name") or cy.parent.name)
+            if name in exclude:
+                continue
+            op = cap.get("operation") or {}
+            attrs = op.get("attributes") if isinstance(op.get("attributes"), dict) else {}
+            for stage in (attrs or {}).get("epilogue") or ():
+                if str(stage) in want:
+                    fused.setdefault(str(stage), []).append(name)
+            # The stage as the whole operation. Compared against the DECLARED stage names rather than
+            # against a spelling table, so a target that names its stages differently is measured by its
+            # own vocabulary instead of by ours.
+            opname = str(op.get("op") or "")
+            for stage in want:
+                if opname == stage or opname.endswith(f"_{stage}") or opname == f"{stage}_add":
+                    standalone.setdefault(stage, []).append(name)
+
+    proven = set(fused) | set(standalone)
+    return {
+        "status": "ok",
+        "n_required": len(want),
+        "n_covered": len(want & proven),
+        "uncovered": sorted(want - proven),
+        "fused_by": {k: sorted(v) for k, v in sorted(fused.items())},
+        "standalone_by": {k: sorted(v) for k, v in sorted(standalone.items())},
+        "fused_only": sorted(set(fused) - set(standalone)),
+        "standalone_only": sorted(set(standalone) - set(fused)),
+        "note": ("a required epilogue stage no capsule demands means a backend that cannot emit it "
+                 "fails nothing here; a stage evidenced only standalone means its lowering is tested "
+                 "and its FUSION is not"),
+    }
 
 
 def _scope_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
@@ -1761,6 +1935,42 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
                      "whose OWN family is that one -- not merely by a capsule that contains a host "
                      "stretch, which every routing-shaped capsule does"),
         }
+
+    # THE HOST-LANE AXIS. The cell vocabulary is `admitted INTERSECT observed`, so by construction it
+    # can never contain a pair the hardware does not admit -- and the work in such a pair is not
+    # out-of-scope, it is work the compiler must place on the HOST. The spec derives that lane pair by
+    # pair and, until now, nothing read it back: 12 obligations on one target, written into every spec
+    # and checked by nobody. A requirement that is derived, recorded and never measured is
+    # indistinguishable from one that is met.
+    from merlin.targetgen import boundary as BD
+
+    out["host_lane"] = BD.host_lane_coverage(spec_doc, corpus_roots, labels=labels, exclude=exclude)
+
+    # THE EPILOGUE AXIS. A cell says WHICH arithmetic rides the datapath and cannot say which stage
+    # rides the contraction, so a corpus derived from cells alone fuses one stage and reports the whole
+    # fusion capability covered. Measured the way the corpus declares it -- a capsule either names the
+    # stage in `operation.attributes.epilogue` or IS that stage standing alone -- because a standalone
+    # requant member is how the missing-lowering defect actually presented.
+    epi_req = (spec_doc.get("epilogue") or {}).get("required")
+    if epi_req is None:
+        out["epilogue"] = {"status": "not_measured",
+                           "detail": "this spec predates the epilogue axis; regenerate it with --write "
+                                     "to derive the requirement"}
+    else:
+        out["epilogue"] = _epilogue_gap(epi_req, corpus_roots, labels=labels, exclude=exclude)
+
+    # THE CONVOLUTION-WINDOW AXIS, measured against what the corpus's capsules DECLARE. A capsule
+    # states its window in `operation.attributes` (kh/kw, stride, padding, dilation); it is compared to
+    # the required signature through the same `ConvGeometry` used to derive it, so a capsule and an
+    # obligation cannot be written in two different vocabularies and read as agreeing.
+    conv_req = (spec_doc.get("conv_geometry") or {}).get("required")
+    if conv_req is None:
+        out["conv_geometry"] = {"status": "not_measured",
+                                "detail": "this spec predates the convolution-window axis; regenerate "
+                                          "it with --write to derive the requirement"}
+    else:
+        out["conv_geometry"] = _conv_geometry_gap(conv_req, corpus_roots, labels=labels,
+                                                  exclude=exclude)
 
     mem_req = (spec_doc.get("memory_mapping") or {}).get("required")
     if mem_req is None:

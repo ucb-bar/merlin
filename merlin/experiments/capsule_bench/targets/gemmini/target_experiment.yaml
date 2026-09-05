@@ -242,7 +242,29 @@ host:
 # axes no required cell pins; it is filtered against the admitted set and can never widen it, and a
 # token that does not survive is reported rather than silently ignored.
 workload_spec:
-  models: [resnet50, lstmnetvit, smolvla, tiny_llama]
+  # THE GRADED ROSTER — the models this target's generalization CLAIM is measured on, and the
+  # denominator `report_generalization_claim` computes over. Both are claim models: held out of
+  # derivation entirely, so the corpus is never built from what it is then said to generalize to.
+  # `smolvla` and `lstmnetvit` left this list when they became derivation sources below; counting a
+  # model you derived FROM as a model you generalize TO is the circularity the holdout exists to stop.
+  models: [resnet50, tiny_llama]
+  # THE DERIVATION APPLICATIONS — the exported models this target is FOR, whose real contraction shapes
+  # the corpus is built from. Named as bundles in the recapture store rather than as a directory, so the
+  # statement is reviewable here instead of depending on which subdirectories a generated tree happens
+  # to hold. `check_conformance_coverage._applications` raises if any of these is a claim model.
+  #
+  # The pretransposed variants are deliberately absent: they are layout rewrites of the captures below,
+  # not separate applications, and the layout they differ in is already a class axis.
+  applications:
+    - smolvla_fp32_consistent
+    - smolvla_int8_consistent
+    - smolvla_denoise_step_fp32_app
+    - lstmnetvit_fp8_consistent
+    - lstmnetvit_int8_consistent
+    - lstmnetvit_int8_w8a8_consistent
+  # Seconds one cycle-accurate certification may take. DECLARED, so the application axis records
+  # `budget_source: declared` rather than silently inheriting a default nobody chose.
+  cert_budget_s: 300
   precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
   max_synthesized_capsules: 160
 
