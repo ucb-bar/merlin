@@ -1,0 +1,78 @@
+# Inert capabilities that MAY ONLY SHRINK.
+#
+# Each line is `<kind> <id>` -- a capability that is DECLARED and cannot fire.
+# NEVER ADD A LINE. A new entry means a new feature that does nothing and says
+# nothing; fix it, or delete the declaration. Regenerate with:
+#   build_tools/scripts/check_inert_capabilities.py --write-ratchet
+#
+# count: 70
+unchecked-subprocess-input build_tools/scripts/check_artifact_layout.py:_tracked
+unchecked-subprocess-input build_tools/scripts/check_fact_provenance.py:_iter_targets
+unchecked-subprocess-input build_tools/scripts/check_no_assumed_constants.py:_iter_targets
+unchecked-subprocess-input build_tools/scripts/check_no_regex.py:_iter_targets
+unchecked-subprocess-input build_tools/scripts/check_no_target_name.py:_iter_targets
+unchecked-subprocess-input build_tools/scripts/k1_int8_fair_compare.py:main
+unchecked-subprocess-input build_tools/scripts/k1_intrinsic_microkernel.py:_objdump_vsetvli
+unchecked-subprocess-input merlin/python/merlin/baselines/tvm_board/board_tune.py:make_board_runner
+unchecked-subprocess-input merlin/python/merlin/baselines/tvm_board/board_tune.py:run
+unchecked-subprocess-input merlin/python/merlin/verify/evaluate.py:_ver
+unchecked-subprocess-input merlin/python/merlin/verify/evaluate.py:_write_product
+self-comparison merlin/python/merlin/dse_guidance/insight_mining.py:2575:art_names == art_names
+always-empty-field build_tools/scripts/check_docs_freshness.py:drift
+always-empty-field merlin/python/merlin/dse_guidance/contract.py:dse_knobs
+always-empty-field merlin/python/merlin/dse_guidance/mapspace.py:roles
+always-empty-field merlin/python/merlin/kernels/space.py:coords
+always-empty-field merlin/python/merlin/plotting/cpu_host_experiment_figures.py:actions
+always-empty-field merlin/python/merlin/targetgen/isa_corpus_coverage.py:covered
+always-empty-field merlin/python/merlin/targetgen/isa_corpus_coverage.py:uncovered
+always-empty-field merlin/python/merlin/targetgen/mesh_program_run.py:A0
+always-empty-field merlin/python/merlin/xdsl_dialects/lowering/passes.py:requirements
+registry-asymmetry impr-features/ranked-levers:registered-not-consumed:fuse_elementwise_after_generalize
+registry-asymmetry impr-features/ranked-levers:registered-not-consumed:opu_matmul
+registry-asymmetry impr-features/ranked-levers:registered-not-consumed:vectorize_non_contraction_generics
+unproduced-member merlin/python/merlin/baselines/executorch_session.py:_MARKER_KINDS:AFFINITY
+unproduced-member merlin/python/merlin/baselines/executorch_session.py:_MARKER_KINDS:REPEAT
+unproduced-member merlin/python/merlin/baselines/executorch_session.py:_MARKER_KINDS:RSS
+unproduced-member merlin/python/merlin/baselines/executorch_session.py:_MARKER_KINDS:THREADS
+unproduced-member merlin/python/merlin/compare/executorch_packages.py:_ALLOWED_INHERITED_ENV_KEYS:CMAKE_GENERATOR
+unproduced-member merlin/python/merlin/compare/executorch_packages.py:_ALLOWED_INHERITED_ENV_KEYS:PYTHONHASHSEED
+unproduced-member merlin/python/merlin/dse_guidance/section_select.py:_LAYER_TOKENS:transformer_blocks
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:dispatch_begin
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:dispatch_end
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:engine_idle
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:engine_stall
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:host_compute
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:local_load
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:local_store
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:queue_wait
+unproduced-member merlin/python/merlin/llvmlower/passes_xdsl.py:_DEQUANT_KINDS:quant_ext.dequantize_per_group
+unproduced-member merlin/python/merlin/llvmlower/passes_xdsl.py:_DEQUANT_KINDS:quant_ext.dequantize_per_tensor
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:dtype_known
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:layout_known
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:reuse_known
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:shape_static
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:stable_over_lifetime
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:accumulator_not_user_visible
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:epilogue_consumes_accumulator
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:event_token_support
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:lhs_immutable
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:runtime_persistent_handle
+unproduced-member merlin/python/merlin/xdsl_dialects/schedule.py:KNOWN_INTERFACES:command_region
+unproduced-member merlin/python/merlin/xdsl_dialects/schedule.py:KNOWN_INTERFACES:event_token_queue
+unproduced-member merlin/python/merlin/xdsl_dialects/schedule.py:KNOWN_INTERFACES:producer_consumer_fifo
+dead-env-knob MERLIN_DRAM_BASE
+unreferenced-def build_tools/scripts/check_contract_copies.py:_build_excluded_suffixes
+unreferenced-def build_tools/scripts/k1_int8_recipe_ab.py:_instret
+unreferenced-def merlin/python/merlin/baselines/exo.py:_venv_python
+unreferenced-def merlin/python/merlin/compare/paper_report.py:_attribution_records
+unreferenced-def merlin/python/merlin/dse_guidance/presentation_plots.py:_r_primitive_coverage
+unreferenced-def merlin/python/merlin/runtime/backends/zephyr_model.py:_zephyr_sw_root
+unreferenced-def merlin/python/merlin/targetgen/capability_discovery.py:_identifiers
+unreferenced-def merlin/python/merlin/targetgen/corpus_synth.py:_sf_primitives
+unreferenced-def merlin/python/merlin/targetgen/generate_prompt.py:_corpus_uses_independent_float_goldens
+unreferenced-def merlin/python/merlin/targetgen/isa_direction.py:_base_operands
+unreferenced-def merlin/python/merlin/targetgen/program_oracle.py:_load_verilator_runner
+unreferenced-def merlin/python/merlin/targetgen/rtl/gen_rocc_replay.py:_arg_roles
+unreferenced-def merlin/python/merlin/targetgen/rtl/introspect.py:_fir_lines
+unreferenced-def merlin/python/merlin/verify/faults.py:_cb_drop_requant
+unreferenced-def merlin/python/merlin/xdsl_dialects/lowering/gather_specialization.py:_defining_op
