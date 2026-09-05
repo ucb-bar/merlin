@@ -7,6 +7,19 @@ datapath:
   semantic_defaults: {must_accelerate: true}
   compare: exact_int
   requant_output_dtype: i8
+  # The round-half-up arithmetic shift the ABI's INTEGER `requant` epilogue stage applies (the ABI's
+  # own definition of the stage; NOT this device's float ACC_SCALE readout, which is the `acc_scale`
+  # stage and rounds half-to-even). Declared here so ONE number reaches both sides: the capsule's
+  # golden reads it from the operation attributes, and the backend reads it from the emitted
+  # `merlin_iface.commit`. It was undeclared, and the golden, the reference and the simulator each
+  # carried their own fallback of 4 -- so they agreed with each other while a backend was handed a
+  # stage whose one parameter nobody had stated.
+  #
+  # DELIBERATELY NOT 4. Four is exactly the value those three engines fall back to, so a capsule
+  # declaring 4 cannot tell a backend that READ the declaration from one that ignored it and used its
+  # own default -- the capsule would pass either way, which is the coincidence this declaration exists
+  # to remove.
+  requant_shift: 3
   required_oracle_tiers:
   - L0
   - L1

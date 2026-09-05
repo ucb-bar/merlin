@@ -1089,9 +1089,17 @@ def _geometry_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
     }
 
 
-#: Epilogue stages the capsule builder can actually emit. Not a guess about hardware -- it is the
-#: writer's vocabulary, and a stage outside it could be required and never written.
-_BUILDER_EPILOGUE_STAGES = ("relu", "acc_scale", "bias_add", "maxpool")
+def _builder_epilogue_stages() -> tuple[str, ...]:
+    """Epilogue stages the capsule builder can actually emit. Not a guess about hardware -- it is the
+    writer's vocabulary, and a stage outside it could be required and never written.
+
+    READ FROM THE BUILDER, not re-typed here. This was a local tuple annotated as mirroring
+    ``corpus_synth._EPILOGUE_STAGES``, which was annotated as mirroring this one, and the pair drifted
+    from the builders they describe: ``requant`` was in the ABI, the schema, all three engines and the
+    interface verifier, and in neither copy -- so the one epilogue stage an external hard-kernel campaign
+    actually found dropped could not be demanded by any capsule.
+    """
+    return _cs().BUILDER_EPILOGUE_STAGES
 
 
 
@@ -1184,7 +1192,7 @@ def _epilogue_axis(target: str) -> dict:
         taxonomy = None
 
     required, rejected = [], []
-    for stage in _BUILDER_EPILOGUE_STAGES:
+    for stage in _builder_epilogue_stages():
         family = sf.from_op(stage)
         by_manifest = family in fused_families
         classes: list = []

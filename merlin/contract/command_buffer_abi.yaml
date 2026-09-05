@@ -42,7 +42,7 @@ opcodes:
       epilogue: "ordered subset of [bias_add, bias, requant, acc_scale, relu, maxpool]"
       output_dtype: "i32 (full readout) | i8 (scaled/clamped readout)"
       acc_scale: "f32; applied as clamp_i8(round_near_even(acc * scale)); required iff acc_scale in epilogue"
-      requant_shift: "int; only for the integer requant stage (round-half-up arithmetic shift)"
+      requant_shift: "int; the integer requant stage's round-half-up arithmetic shift; REQUIRED iff requant in epilogue, defaulted by nothing -- an omitted shift is not 4, it is a stage whose one parameter nobody stated, and every engine would then apply its own"
       # Pooling geometry -- REQUIRED iff "maxpool" is in epilogue, defaulted by nothing. These are the
       # store-path configuration fields (config_st's pool_size / pool_stride / orows / ocols / upad /
       # lpad), which is where this class of target fuses pooling, so they ride on the command that

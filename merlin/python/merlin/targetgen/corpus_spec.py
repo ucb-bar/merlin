@@ -80,6 +80,13 @@ class CorpusBinding:
     rtol: float | None = None
     scaling: str | None = None  # compute-unit SCALE_KIND (block_e8m0 -> the MX numeric regime) or None
     requant_output_dtype: str | None = None   # narrow output an acc_scale epilogue requants to (e.g. i8)
+    # The round-half-up arithmetic shift the ABI's INTEGER ``requant`` epilogue stage applies. Declared
+    # per target in the profile's ``datapath`` block (a capsule entry may override it); ``None`` means the
+    # target has not declared one, and a capsule asking for the stage then FAILS TO BUILD rather than
+    # inheriting a default. That is the point: three engines (golden, reference, simulator) each carry
+    # their own fallback of 4, so an undeclared shift makes them agree with each other by coincidence
+    # while the backend under test sees no shift at all and cannot know what to emit.
+    requant_shift: int | None = None
     # Does the compute unit admit SUBNORMAL operands, or does it see zero where the operand's exponent
     # field is zero? A measured property of the datapath, declared per target in the profile's
     # ``datapath`` block; the float golden engine decodes operands the same way the hardware does.
@@ -325,7 +332,7 @@ def _classes_source(te, contract: dict) -> Callable[..., list[str]]:
 #: datapath fact added to the profile later reaches every consumer by default -- which is the failure this
 #: whole change is about.
 _DATAPATH_AUTHORING_KEYS = frozenset({"required_oracle_tiers", "inapplicable_oracle_tiers",
-                                      "semantic_defaults", "requant_output_dtype"})
+                                      "semantic_defaults", "requant_output_dtype", "requant_shift"})
 
 
 def profile_datapath(target: str, *, numeric_only: bool = False) -> dict:
@@ -390,6 +397,8 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
         scaling=(scaling if scaling and scaling != "none" else None),
         scale_block=_scale_block_elems(c),
         requant_output_dtype=datapath.get("requant_output_dtype"),
+        requant_shift=(None if datapath.get("requant_shift") is None
+                       else int(datapath["requant_shift"])),
         subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
         inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
         semantic_defaults=dict(datapath.get("semantic_defaults") or {}),
@@ -485,11 +494,77 @@ def _numeric_policy(binding: CorpusBinding, output_dtype: str, acc_scale: float 
     return np_
 
 
+#: The epilogue stages that COMMIT THE ACCUMULATOR BACK TO A NARROW WIDTH. ``acc_scale`` scales the i32
+#: accumulator by a float and reads it out; ``requant`` shifts it right (round-half-up). Different
+#: arithmetic, one structural consequence -- the committed dtype is the target's declared
+#: ``requant_output_dtype``, not the accumulator's -- so they are named together rather than tested for
+#: one at a time.
+REQUANTIZING_STAGES: tuple[str, ...] = ("acc_scale", "requant")
+
+#: The epilogue stages the capsule BUILDERS in this module can actually carry onto a contraction. Not a
+#: guess about hardware and not the ABI vocabulary (:data:`merlin.runtime.commandbuffer.EPILOGUE_STAGES`
+#: is that, and is wider): it is the writer's vocabulary, and a stage outside it could be required by a
+#: target's conformance spec and then never written into a capsule.
+#:
+#: ONE DEFINITION, read by both consumers. It used to be two hand-kept copies -- one in
+#: ``conformance._epilogue_axis`` (which decides WHICH stages a target is required to fuse) and one in
+#: ``corpus_synth._fused_carrier`` (which decides which stage carries a fused-only family) -- each
+#: annotated "mirrors the other". They drifted in the way two copies do: ``requant`` was in the ABI, in
+#: the schema, in all three engines and in the interface verifier, and in neither of these tuples, so the
+#: one epilogue stage an external campaign actually found dropped was the one no capsule could demand.
+BUILDER_EPILOGUE_STAGES: tuple[str, ...] = ("relu", "acc_scale", "bias_add", "maxpool", "requant")
+
+
+def requant_shift_for(entry: dict, binding: CorpusBinding, epilogue: list[str], *, op: str) -> int | None:
+    """The integer ``requant`` shift a capsule DECLARES, or ``None`` when it has no requant stage.
+
+    FAIL CLOSED IN BOTH DIRECTIONS, for the same reason :func:`_pool_epilogue` does.
+
+    * A ``requant`` stage with no declared shift raises. It would not have raised anywhere downstream:
+      the golden engine, the reference and the simulator each carry their OWN fallback of 4, so the
+      capsule's golden and the value the reference computes from the backend's command buffer would
+      agree -- with each other, by coincidence -- while the backend under test was handed a stage whose
+      one parameter nobody told it. The capsule passes, and it passes for the wrong reason.
+    * A declared shift with no stage raises. A parameter read by nothing is the same silent-wrong-answer
+      shape pointing the other way: the capsule looks like it requants and commits the raw accumulator.
+
+    The value is the ENTRY's when it declares one, else the target's own ``datapath.requant_shift``. One
+    declared number reaches the golden (via the capsule's operation attributes) and the reference (via
+    the emitted interface, hence the backend's commit) -- never two defaults that happen to match.
+    """
+    declared = entry.get("requant_shift")
+    staged = "requant" in epilogue
+    if not staged:
+        if declared is not None:
+            raise ValueError(
+                f"{op}: {entry.get('name', op)!r} declares requant_shift={declared!r} but its epilogue "
+                f"{list(epilogue)} has no 'requant' stage. The shift would be read by nothing and the "
+                f"capsule would commit the raw accumulator while looking like it requantized")
+        return None
+    shift = declared if declared is not None else binding.requant_shift
+    if shift is None:
+        raise ValueError(
+            f"{op}: {entry.get('name', op)!r} declares a 'requant' epilogue stage but neither the entry "
+            f"nor target {binding.target!r}'s datapath declares requant_shift. The stage is NOT given a "
+            f"default here: the golden, the reference and the simulator each fall back to their own "
+            f"shift, so an undeclared one makes them agree with each other while the backend under test "
+            f"is handed a stage with no parameter -- a pass earned by coincidence")
+    return int(shift)
+
+
 def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str],
                           entry: dict | None = None) -> str:
-    """Output dtype: the entry's own declaration if it makes one, else the accumulate dtype, unless an
-    acc_scale epilogue requants to a narrow output (the target declares that narrow dtype in its
-    datapath as ``requant_output_dtype``, e.g. i8 for gemmini).
+    """Output dtype: the entry's own declaration if it makes one, else the accumulate dtype, unless a
+    REQUANTIZING epilogue narrows the accumulator (the target declares that narrow dtype in its datapath
+    as ``requant_output_dtype``, e.g. i8 for an integer mesh).
+
+    BOTH requantizing stages narrow, and reading only one of them was a real gap. ``acc_scale`` (the
+    float readout multiply) and ``requant`` (the integer round-half-up shift) are two spellings of the
+    same handoff -- commit the wide accumulator back to the operand's narrow width -- and only
+    ``acc_scale`` was consulted here. A capsule declaring the integer stage therefore committed an i32
+    output: it declared the WIDE dtype for the one stage whose whole job is to narrow, so the property
+    under test was absent from the capsule that was supposed to test it, and a backend that dropped the
+    narrowing would have matched the declaration exactly.
 
     **An entry's declaration wins, and that ordering is the fix for a real defect.** This function used
     to read only the epilogue, so a profile entry that explicitly declared ``output_dtype: i8`` had the
@@ -500,7 +575,8 @@ def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str],
     native max-pool that is not an i8 store (pooling runs in the store DMA at the input width, not over
     the full-width accumulator container), so the capsules became uncompilable and 16 tests went red.
 
-    Only ``acc_scale`` has a derivable answer here -- the target *declares* its requant output width.
+    Only the requantizing stages have a derivable answer here -- the target *declares* its requant
+    output width.
     Every other reason a commit narrows is a property of the capsule, which is why the entry has to be
     able to say so, and why a declaration it makes must not be second-guessed. Unknown tokens raise
     (``dtype_info``) rather than falling back, so a typo is a generation failure and not another
@@ -510,7 +586,7 @@ def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str],
     if declared:
         dtype_info(str(declared))          # raises on an unknown token -- fail closed, never fall back
         return str(declared)
-    if "acc_scale" in epilogue and binding.requant_output_dtype:
+    if binding.requant_output_dtype and any(st in epilogue for st in REQUANTIZING_STAGES):
         return binding.requant_output_dtype
     if "maxpool" in epilogue:
         # A fused max-pool is not an accumulator-side stage: it runs in the STORE DMA, which reads the
@@ -705,6 +781,11 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     # carries no spatial extent of its own, so the entry declares pool_in_dims (see _pool_epilogue).
     pool_attrs, commit_rows = _pool_epilogue(entry, rows=M, in_dims=None, op=op)
     attrs.update(pool_attrs)
+    # The integer requant stage's one parameter. Declared on the capsule so the golden reads the SAME
+    # number the emitted interface hands the backend (and hence the reference), never two defaults.
+    requant_shift = requant_shift_for(entry, binding, epilogue, op=op)
+    if requant_shift is not None:
+        attrs["requant_shift"] = requant_shift
     if acc_scale is not None:
         attrs["acc_scale"] = acc_scale
     if entry.get("semantic"):
@@ -730,7 +811,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     mlir = MSE.emit_interface_mlir(
         lhs=lhs, weight=weight, out=out, M=M, K=K, N=N, epilogue=epilogue, output_dtype=odt,
         acc_scale=acc_scale, comment=entry.get("comment", ""),
-        pool_attrs=pool_attrs or None, commit_rows=commit_rows,
+        pool_attrs=pool_attrs or None, commit_rows=commit_rows, requant_shift=requant_shift,
         bias=bias, bias_dtype=(binding.mlir_dtype(binding.accum_dtype) if bias else None),
         target=binding.target, operand_dtype=binding.mlir_dtype(binding.operand_dtype),
         acc_dtype=binding.mlir_dtype(binding.accum_dtype),
@@ -1252,6 +1333,9 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     # simulator pooling the same image. The result extent below is the POOLED one.
     pool_attrs, out_rows = _pool_epilogue(entry, rows=Ho * Wo, in_dims=(Ho, Wo), op="conv2d")
     attrs.update(pool_attrs)
+    requant_shift = requant_shift_for(entry, binding, epilogue, op="conv2d")
+    if requant_shift is not None:
+        attrs["requant_shift"] = requant_shift
     cap = {
         "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
         "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
@@ -1276,7 +1360,9 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'  %{out} = merlin_iface.conv2d %{ifm}, %{weight}_res {{kernel = [{kh}, {kw}, {ci}, {cout}], '
         f'stride = [{stride[0]}, {stride[1]}], padding = [{padding[0]}, {padding[1]}, {padding[2]}, {padding[3]}], '
         f'dilation = [{dilation[0]}, {dilation[1]}], name = "{out}", epilogue = [{epi}], '
-        f'output_dtype = "{odt}", layout = "nhwc"{_pool_mlir_attrs(pool_attrs)}}} '
+        f'output_dtype = "{odt}"'
+        + (f', requant_shift = {requant_shift} : i64' if requant_shift is not None else '')
+        + f', layout = "nhwc"{_pool_mlir_attrs(pool_attrs)}}} '
         f': (tensor<1x{H}x{W}x{ci}x{midt}>, !merlin_iface.resident) -> tensor<{out_rows}x{cout}x{modt}>',
         f'  merlin_iface.evict %{weight}_res : (!merlin_iface.resident) -> ()', "}"]
     return cap, "\n".join(L) + "\n"

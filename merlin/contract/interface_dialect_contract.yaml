@@ -33,6 +33,7 @@ dialect:
         epilogue: "ordered subset of [bias_add, bias, requant, acc_scale, relu, maxpool]"
         output_dtype: "enum[i32,i8]"
         acc_scale: "f32 (required iff acc_scale in epilogue)"
+        requant_shift: "int (required iff requant in epilogue; no default) -- the round-half-up arithmetic shift the integer requant stage applies"
         pool_in_dims: "[H, W] (required iff maxpool in epilogue) -- the extent the M rows unflatten to"
         pool_size: "[ph, pw] (required iff maxpool in epilogue; no default)"
         pool_stride: "[sh, sw] (required iff maxpool in epilogue; no default)"

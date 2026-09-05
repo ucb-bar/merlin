@@ -327,6 +327,11 @@ epilogue:
     evidenced_by:
     - manifest_composed_with
     isa_classes: []
+  - stage: requant
+    family: elementwise_map
+    evidenced_by:
+    - manifest_composed_with
+    isa_classes: []
   rejected: []
   axis_basis: the epilogue stages this target can fuse onto a contraction, evidenced by its capability
     manifest declaring the stage's family fused-only OR by its own instruction taxonomy resolving a class

@@ -35,7 +35,8 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
                         acc_dtype: str = "i32", scale_block: int | None = None,
                         scale_dtype: str = "i8", pool_attrs: dict[str, Any] | None = None,
                         commit_rows: int | None = None, bias: str | None = None,
-                        bias_dtype: str | None = None) -> str:
+                        bias_dtype: str | None = None,
+                        requant_shift: int | None = None) -> str:
     """Emit a single-matmul merlin_iface module (weight-stationary). ``target``/``operand_dtype``/
     ``acc_dtype`` default to the gemmini integer path (so existing callers are byte-identical); pass the
     target's derived MLIR dtype spellings (e.g. ``f8E4M3FN``/``bf16`` for a float MXU) to emit its ISA.
@@ -52,7 +53,15 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
     bytes. ``bias_dtype`` defaults to ``acc_dtype`` because that is the domain the addition happens in --
     the bias lands on the accumulator, before any requant -- so declaring it in the operand dtype would
     describe a different computation from the one the golden performs. Omitted (None) leaves the module
-    byte-identical for a capsule with no bias stage."""
+    byte-identical for a capsule with no bias stage.
+
+    ``requant_shift`` is the integer ``requant`` stage's round-half-up shift, and it is declared for the
+    same reason the bias operand is: ``epilogue = ["requant"]`` says the accumulator is shifted but not
+    by how much, and the three engines that grade the result each carry their own fallback -- so an
+    undeclared shift makes the golden and the reference agree with each other while the backend is handed
+    a stage with no parameter. The interface dialect's own verifier already refuses this pairing
+    (``interface.commit epilogue has 'requant' but no 'requant_shift'``); it is checked here too so the
+    module is refused where it is WRITTEN rather than wherever it is next parsed."""
     epi = ", ".join(f'"{e}"' for e in epilogue)
     commit_attrs = f'name = "{out}", epilogue = [{epi}], output_dtype = "{output_dtype}"'
     if acc_scale is not None:
@@ -62,6 +71,21 @@ def emit_interface_mlir(*, lhs: str, weight: str, out: str, M: int, K: int, N: i
         # (`capsule_golden._apply_epilogue` -> `attrs["bias"]`), so a module that declares the stage
         # without it and a golden that adds nothing would agree with each other and both be wrong.
         commit_attrs += f', bias = "{bias}"'
+    # ⚠️ SAME PAIRING RULE AS THE POOL GEOMETRY BELOW, and the same two silent wrong answers when it is
+    # broken: a shift with no stage is a parameter nothing reads, a stage with no shift is a parameter
+    # every engine invents for itself.
+    _requanted = "requant" in epilogue
+    if requant_shift is not None and not _requanted:
+        raise ValueError(
+            f"requant_shift={requant_shift} was given but the epilogue {epilogue} declares no 'requant' "
+            f"stage: the commit would carry a shift nothing applies")
+    if _requanted and requant_shift is None:
+        raise ValueError(
+            "a 'requant' epilogue needs its requant_shift declared; without it the golden, the reference "
+            "and the simulator each fall back to their own shift and agree by coincidence while the "
+            "backend is handed a stage whose one parameter nobody stated")
+    if _requanted:
+        commit_attrs += f", requant_shift = {int(requant_shift)} : i64"
     # A POOLING epilogue is the one stage that changes the committed extent: the accumulator's rows
     # unflatten to a plane and pool down, so the commit result type is `commit_rows`, not M. Both the
     # geometry and the row count are passed in (computed once by the corpus builder) rather than

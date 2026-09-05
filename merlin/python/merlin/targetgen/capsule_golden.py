@@ -53,15 +53,18 @@ def im2col(ifm: Tensor, ci: int, kh: int, kw: int, *, stride, padding, dilation,
 # --------------------------------------------------------------------------------------------
 # epilogue application (matches runtime/reference.py)
 # --------------------------------------------------------------------------------------------
-# Back-compat requant DEFAULTS — the numerics a capsule inherits when it declares no override. These
-# are DEFAULTS, not the only path: a capsule that declares a different integer shift, a different
-# acc_scale rounding mode, or a different narrow output dtype gets THAT value instead. Keeping them as
-# named, overridable parameters (sourced from the capsule's declared operation attributes) rather than
-# inline literals is what lets a differently-rounding / differently-narrowing integer target be
-# expressed without editing this function — the point of the de-overfit. A capsule that omits them
-# reproduces the historical behavior byte-for-byte.
-_DEFAULT_REQUANT_SHIFT = 4              # round-half-up integer shift when a ``requant`` stage omits it
-_DEFAULT_ACC_SCALE_ROUND = "half_even"  # gemmini ACC_SCALE / ROUND_NEAR_EVEN float readout rounding
+# Back-compat epilogue DEFAULT — the readout rounding a capsule inherits when it declares no override.
+# It is a DEFAULT, not the only path: a capsule that declares a different acc_scale rounding mode or a
+# different narrow output dtype gets THAT value instead. Keeping it as a named, overridable parameter
+# (sourced from the capsule's declared operation attributes) rather than an inline literal is what lets a
+# differently-rounding / differently-narrowing integer target be expressed without editing this function
+# — the point of the de-overfit.
+#
+# THE INTEGER REQUANT SHIFT IS DELIBERATELY NOT HERE. A rounding MODE this engine cannot reproduce raises
+# below, so an unmatched default is surfaced; a SHIFT would have been applied silently, and the 4 that
+# used to sit here was the same literal the reference, the simulator and the RVV emitter each carry —
+# four independent defaults agreeing with each other and with nothing the backend under test was told.
+_DEFAULT_ACC_SCALE_ROUND = "half_even"  # ACC_SCALE / ROUND_NEAR_EVEN float readout rounding
 
 
 def _int_dtype_bits(dtype: str) -> tuple[int, bool] | None:
@@ -108,7 +111,16 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor],
         if stage in BIAS_STAGES:
             t = t.add_bias(env[bias_tensor_name(operands or {}, attrs, op="epilogue")])
         elif stage == "requant":
-            t = t.requant(int(attrs.get("requant_shift", _DEFAULT_REQUANT_SHIFT)))
+            # FAIL CLOSED ON AN UNDECLARED SHIFT — see the note above the defaults.
+            shift = attrs.get("requant_shift")
+            if shift is None:
+                raise ValueError(
+                    "a 'requant' epilogue stage is declared but the capsule names no requant_shift. The "
+                    "stage is NOT applied with a default: the golden, the reference and the simulator "
+                    "each carry their own fallback shift, so an undeclared one makes them agree with "
+                    "each other while the backend is handed a stage with no parameter — and the capsule "
+                    "then passes for a reason unrelated to what it tests")
+            t = t.requant(int(shift))
         elif stage == "acc_scale":
             # The acc_scale readout rounding mode is a named, overridable parameter (default the gemmini
             # round-half-even). The Tensor engine reproduces half-even exactly; a capsule that declares a
