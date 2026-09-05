@@ -350,6 +350,52 @@ def fix_bool_sitofp(module) -> int:
     return n
 
 
+def fix_bool_fptosi(module) -> int:
+    """Rewrite a float->``i1`` ``arith.fptosi``/``arith.fptoui`` into ``x != 0``; returns the count.
+
+    The mirror image of :func:`fix_bool_sitofp`, and far worse than a sign flip. model2MLIR emits
+    a cast to a bool tensor (``aten._to_copy`` with ``prov.orig_dtype = "bool"``) as
+    ``arith.fptosi %x : f32 to i1``. Signed ``i1`` holds only ``{-1, 0}``, so *every* float whose
+    truncation is not one of those two values — ``1.0`` included — is **poison** in LLVM, not a
+    wrong number. mlir-translate emits ``fptosi float 1.0 to i1``, instcombine folds it to
+    ``poison``, and the poison propagates out of the bool tensor into whatever consumes it.
+
+    Where that lands is not local. In smolvla the poisoned mask feeds a masked-select whose result
+    count sizes a ``malloc`` and bounds a data-dependent loop, so ``br i1 poison`` becomes a
+    self-branch, ``simplifycfg`` deletes every block after it, and ``forward`` compiles to 3,654
+    bytes with a call set of ``malloc``/``memset``/``roundevenf`` — a whole 500M-parameter model
+    erased while the link succeeds and the build reports success.
+
+    PyTorch's bool cast is ``x != 0`` (NaN included, which is why the predicate is the *unordered*
+    ``une``), so that is what replaces it. ``module.walk()`` recurses into linalg.generic bodies.
+    Apply before outlining/lowering.
+    """
+    from xdsl.dialects import arith
+    from xdsl.dialects.builtin import AnyFloat, FloatAttr, IntegerType
+
+    n = 0
+    for op in list(module.walk()):
+        if op.name not in ("arith.fptosi", "arith.fptoui"):
+            continue
+        res_t = op.results[0].type
+        if not (isinstance(res_t, IntegerType) and res_t.width.data == 1):
+            continue
+        src = op.operands[0]
+        if not isinstance(src.type, AnyFloat):
+            continue
+        zero = arith.ConstantOp(FloatAttr(0.0, src.type))
+        # `une` = unordered-or-not-equal: NaN compares TRUE, matching torch's `bool(nan) is True`.
+        cmp = arith.CmpfOp(src, zero.results[0], "une")
+        carry_provenance(cmp, op, "bool_fptosi_cmpf_une")
+        block = op.parent_block()
+        block.insert_op_before(zero, op)
+        block.insert_op_before(cmp, op)
+        op.results[0].replace_all_uses_with(cmp.results[0])
+        block.detach_op(op)
+        n += 1
+    return n
+
+
 def add_c_interface(module) -> int:
     """Mark public funcs with llvm.emit_c_interface; returns count marked."""
     from xdsl.dialects.builtin import UnitAttr

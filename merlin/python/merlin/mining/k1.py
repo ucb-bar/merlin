@@ -736,6 +736,15 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         feats or frozenset())
     _run([clang23, "--target=riscv64-unknown-linux-gnu", *_model_flags,
           "-c", res.ll_path, "-o", model_o])
+    # 2b. POST-CODEGEN CENSUS: is the model still IN the object? A backend that deletes reachable
+    # code still links, still produces a binary, and then reports a spectacular speedup for
+    # computing nothing -- smolvla linked a 512 MB ELF whose `forward` was 3,654 bytes with a
+    # complete call set of malloc/memset/roundevenf. Nothing between here and the board could see
+    # it. The bound is derived from the prepared IR (one instruction per structured op that reaches
+    # an output) and carries no constant; it raises, so an erased model cannot be timed.
+    from ..llvmlower.codegen_census import require_commensurate as _census_require
+    _census = _census_require(prepared, model_o, "forward")
+    print(f"[census] {_census.as_dict()}", flush=True)
 
     # 3. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).
     cgen = work / "cgen"

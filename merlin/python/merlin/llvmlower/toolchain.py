@@ -74,3 +74,19 @@ def mlir_translate() -> Path:
 
 def available() -> bool:
     return m2m_python().is_file() and clang().is_file()
+
+
+def objdump() -> Path:
+    """LLVM ``objdump``, from the same install as :func:`clang`. Env-overridable.
+
+    Used by the post-codegen census to count what was actually EMITTED for a symbol. It has to be
+    the LLVM one, and the same one that produced the object: GNU objdump on a host build has no
+    reason to know the cross target the object was compiled for, and a disassembler that decodes
+    nothing would make an empty function indistinguishable from an unreadable one."""
+    env = _env("MERLIN_OBJDUMP")
+    if env:
+        return Path(env)
+    local = DEFAULT_LLVM_INSTALL / "bin" / "llvm-objdump"
+    if local.exists():
+        return local
+    return Path(clang()).parent / "llvm-objdump"
