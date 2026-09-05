@@ -496,3 +496,122 @@ def test_the_board_preflight_can_only_be_skipped_deliberately():
     driver = _load_driver()
     assert "--no-board-preflight" in DRIVER.read_text(encoding="utf-8")
     assert driver.DEFAULT_MODELS, "the campaign must ship the diverse set it is claimed over"
+
+
+# --- the fit test and the gate must both be ABLE TO FAIL -----------------------------------------
+#
+# Both defects below shipped, and both presented as success. `smolvla_int8_w8a8_consistent` is a
+# 1.83 GB session capture that priced at ZERO resident bytes and reported `fits=True`, because every
+# weight lives one directory down and the pricer only stat'd the root. Its `prefix_encode` stage
+# ships a golden that is constant 1.0 covering 1 of 2 results — and the covered one is the pad mask,
+# not the KV cache the stage computes. A check that cannot fail must not report a pass.
+
+
+def _make_session(root, name, *, programs=("a", "b"), weights=1024, extra=512, stray=0):
+    """A version-2 multi-program capture: nothing at the root but a contract."""
+    d = root / name
+    d.mkdir(parents=True, exist_ok=True)
+    lines = ["version: 2", "programs:"]
+    for p in programs:
+        c = d / "stages" / p
+        c.mkdir(parents=True, exist_ok=True)
+        (c / "weights.safetensors").write_bytes(b"\0" * weights)
+        (c / "extra.npz").write_bytes(b"\0" * extra)
+        (c / "model.mlir").write_text(
+            "module {\n  func.func @forward(%0: tensor<4xf32>) -> tensor<4xf32> {\n  }\n}\n",
+            encoding="utf-8")
+        np.save(c / "golden.npy", np.arange(4, dtype=np.float32))
+        lines += [f"  - name: {p}", f"    bundle: stages/{p}"]
+    (d / "session_contract.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if stray:
+        (d / "unknown_blob.bin").write_bytes(b"\0" * stray)
+    return d
+
+
+def test_a_session_bundle_is_priced_by_program_not_at_its_empty_root(recaps):
+    d = _make_session(recaps, "s_int8_consistent", weights=1000, extra=500)
+    fp = ec.bundle_footprint(d, budget_bytes=10_000)
+    # Before the fix this was 0 with fits=True: the root holds only a contract.
+    assert fp["program_count"] == 2
+    assert fp["resident_lower_bound_bytes"] == 1500, "largest program, so fits=False stays decisive"
+    assert fp["resident_all_programs_bytes"] == 3000
+    assert fp["fits"] is True
+
+
+def test_a_session_too_big_for_the_board_is_still_refused(recaps):
+    _make_session(recaps, "big_int8_consistent", weights=9_000, extra=3_000)
+    plan = ec.plan_cell("big", budget_bytes=1_000, recaptures_root=recaps)
+    assert any("does not fit the board" in r for r in plan.refusals)
+
+
+def test_bytes_the_pricer_does_not_recognise_make_the_verdict_unknown_not_true(recaps):
+    d = _make_session(recaps, "u_int8_consistent", weights=100, extra=100, stray=50_000)
+    fp = ec.bundle_footprint(d, budget_bytes=10_000)
+    assert fp["unpriced_bytes"] == 50_000
+    assert fp["fits"] is None, "an unexamined remainder that alone busts the budget is not a pass"
+    assert "unknown_blob.bin" in fp["unpriced_examples"]
+    plan = ec.plan_cell("u", budget_bytes=10_000, recaptures_root=recaps)
+    assert any("footprint UNKNOWN" in r for r in plan.refusals)
+
+
+def test_a_multi_program_capture_is_refused_as_a_single_cell(recaps):
+    _make_session(recaps, "m_int8_consistent")
+    plan = ec.plan_cell("m", recaptures_root=recaps)
+    assert not plan.runnable
+    why = " ".join(plan.refusals)
+    assert "session capture" in why and "program selector" in why
+    # And NOT the misleading root-level story: every program ships both artifacts.
+    assert "ships no model.mlir" not in why
+    assert "ships no golden.npy" not in why
+
+
+def test_forward_result_count_does_not_split_inside_a_tensor_type(tmp_path):
+    m = tmp_path / "model.mlir"
+    m.write_text(
+        "module {\n"
+        "  func.func @forward(%0: tensor<1x2xf32>, %1: tensor<3xf32>) -> "
+        "(tensor<1x113xi1>, tensor<2x16x1x113x5x64xbf16>) {\n  }\n}\n", encoding="utf-8")
+    assert ec._forward_result_count(m) == 2
+    m.write_text("module {\n  func.func @forward(%0: tensor<4xf32>) -> tensor<4xf32> {\n }\n}\n",
+                 encoding="utf-8")
+    assert ec._forward_result_count(m) == 1
+
+
+def _cover_bundle(root, name, *, results, golden):
+    d = _make_bundle(root, name)
+    rets = ", ".join(f"tensor<{i + 1}xf32>" for i in range(results))
+    sig = rets if results == 1 else f"({rets})"
+    (d / "model.mlir").write_text(
+        f"module {{\n  func.func @forward(%0: tensor<4xf32>) -> {sig} {{\n  }}\n}}\n",
+        encoding="utf-8")
+    np.save(d / "golden.npy", golden)
+    return d
+
+
+def test_a_partial_gate_is_declared_but_still_measurable(recaps):
+    _cover_bundle(recaps, "p_int8_consistent", results=3,
+                  golden=np.arange(3, dtype=np.float32))
+    plan = ec.plan_cell("p", recaptures_root=recaps)
+    assert plan.golden_coverage["partial"] is True
+    assert plan.golden_coverage["cannot_fail"] is False
+    assert plan.runnable, "grading one of three outputs is a caveat, not a reason to refuse"
+    assert any("PARTIAL GATE" in n for n in plan.notes)
+
+
+def test_a_gate_that_cannot_fail_is_refused(recaps):
+    # 1 of 2 results graded, and that one constant -- smolvla/prefix_encode exactly.
+    _cover_bundle(recaps, "v_int8_consistent", results=2,
+                  golden=np.ones((1, 113), dtype=np.float32))
+    plan = ec.plan_cell("v", recaptures_root=recaps)
+    assert plan.golden_coverage["cannot_fail"] is True
+    assert not plan.runnable
+    assert any("CANNOT FAIL" in r for r in plan.refusals)
+
+
+def test_a_full_nondegenerate_golden_raises_neither_flag(recaps):
+    _cover_bundle(recaps, "ok_int8_consistent", results=1,
+                  golden=np.arange(8, dtype=np.float32))
+    plan = ec.plan_cell("ok", recaptures_root=recaps)
+    assert plan.golden_coverage == {**plan.golden_coverage, "partial": False, "degenerate": False}
+    assert plan.runnable
+    assert not any("PARTIAL GATE" in n or "DEGENERATE" in n for n in plan.notes)

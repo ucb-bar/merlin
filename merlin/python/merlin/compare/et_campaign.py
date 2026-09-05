@@ -56,6 +56,16 @@ DEFAULT_BOARD_USABLE_BYTES = 3_400_000_000
 #: under any accounting, and never refuses a feasible one on a guessed margin.
 RESIDENT_BUNDLE_FILES = ("weights.safetensors", "extra.npz")
 
+#: Bundle files this module RECOGNISES but deliberately does not count as resident (the IR, the
+#: stimulus, the references, the manifests). Kept apart from :data:`RESIDENT_BUNDLE_FILES` so that
+#: "excluded on purpose" stays distinguishable from "never looked at" — the second is what makes a
+#: fit test unable to fail, and is reported as ``unpriced_bytes`` below.
+RECOGNISED_NON_RESIDENT_FILES = (
+    "model.mlir", "golden.npy", "golden_w8a8.npy", "inputs.npz", "input_order.json",
+    "weights.safetensors.manifest.json", "session_contract.yaml", "session_inputs.npz",
+    "session_goldens.npz", "session_quality_fp32.npz", "golden_w8a8.provenance.json",
+)
+
 #: Largest golden compared byte-for-byte when inheriting a provenance record across a layout-only
 #: rewrite. Above it the inheritance is declined and the reference is reported UNKNOWN — a check
 #: that cannot run must not report success.
@@ -154,6 +164,34 @@ def expectation_status(model: str, verdict_status: str) -> str:
 # --- bundle footprint ---------------------------------------------------------------------------
 
 
+def program_roots(root: Path) -> list[Path]:
+    """The bundle directories a capture actually loads from, in contract order.
+
+    A single-program capture is its own root. A version-2 SESSION capture keeps nothing at its root
+    but a contract, and every artifact one program-directory down; pricing such a bundle at the root
+    finds no weights at all. Derived from the contract the bundle ships — never from a directory
+    naming convention, so a session that lays its programs out differently is still priced.
+    """
+    contract = root / "session_contract.yaml"
+    if not contract.is_file():
+        return [root]
+    from merlin.common.yaml import load_yaml
+
+    session = load_yaml(contract)
+    if not isinstance(session, dict) or int(session.get("version", 0)) != 2:
+        return [root]
+    programs = session.get("programs", ()) or ()
+    if not isinstance(programs, list):
+        return [root]
+    out: list[Path] = []
+    for program in programs:
+        if isinstance(program, dict) and program.get("bundle"):
+            child = root / str(program["bundle"])
+            if child.is_dir():
+                out.append(child)
+    return out or [root]
+
+
 def bundle_footprint(root: Path, *, budget_bytes: int = DEFAULT_BOARD_USABLE_BYTES,
                      budget_source: str = "declared default") -> dict:
     """Price a capture bundle against the board's usable RAM.
@@ -162,26 +200,178 @@ def bundle_footprint(root: Path, *, budget_bytes: int = DEFAULT_BOARD_USABLE_BYT
     weight blob and the lifted constants). It excludes activations and the runtime arena, so
     ``fits=False`` means the cell cannot fit under ANY accounting; ``fits=True`` is not a promise
     that it will, which is why the headroom is reported rather than a verdict.
+
+    Two ways this test could previously not fail, both closed here:
+
+    * A multi-program session keeps its weights one directory down, so pricing the root counted
+      **zero bytes of a 1.8 GB tree** and reported ``fits=True`` — a check that reported success
+      because it had found nothing to check. Programs are now priced individually via
+      :func:`program_roots`; the lower bound is the LARGEST program (what is certainly resident
+      while any one program runs, so ``fits=False`` stays decisive) and the sum across programs is
+      reported beside it as ``resident_all_programs_bytes``.
+    * Bytes in files this module does not recognise are counted as ``unpriced_bytes``. When they
+      could alone exhaust the headroom the verdict is ``fits=None`` — UNKNOWN, refused upstream —
+      rather than a ``True`` resting on an unexamined remainder.
     """
-    parts: dict[str, int | None] = {}
-    total = 0
-    for name in RESIDENT_BUNDLE_FILES:
-        p = root / name
-        if p.is_file():
-            size = p.stat().st_size
-            parts[name] = size
-            total += size
-        else:
-            parts[name] = None
+    roots = program_roots(root)
+    per_program: list[dict] = []
+    priced_paths: set[Path] = set()
+    for r in roots:
+        parts: dict[str, int | None] = {}
+        subtotal = 0
+        for name in RESIDENT_BUNDLE_FILES:
+            p = r / name
+            if p.is_file():
+                size = p.stat().st_size
+                parts[name] = size
+                subtotal += size
+                priced_paths.add(p.resolve())
+            else:
+                parts[name] = None
+        per_program.append({"root": r.name if r != root else ".",
+                            "parts_bytes": parts, "resident_bytes": subtotal})
+
+    total = max((e["resident_bytes"] for e in per_program), default=0)
+    all_programs = sum(e["resident_bytes"] for e in per_program)
+
+    recognised = set(RESIDENT_BUNDLE_FILES) | set(RECOGNISED_NON_RESIDENT_FILES)
+    unpriced = 0
+    unpriced_examples: list[str] = []
+    if root.is_dir():
+        for f in sorted(root.rglob("*")):
+            if not f.is_file() or f.resolve() in priced_paths:
+                continue
+            if f.name in recognised:
+                continue
+            unpriced += f.stat().st_size
+            if len(unpriced_examples) < 5:
+                unpriced_examples.append(str(f.relative_to(root)))
+
+    headroom = int(budget_bytes) - total
+    if total > int(budget_bytes):
+        fits: bool | None = False
+    elif unpriced > headroom:
+        fits = None
+    else:
+        fits = True
+
     return {
-        "parts_bytes": parts,
+        # Flattened for the single-program case, which is every non-session bundle: readers and the
+        # existing ledger rows keep seeing `parts_bytes` at the top level.
+        "parts_bytes": per_program[0]["parts_bytes"] if per_program else {},
+        "per_program": per_program,
+        "program_count": len(per_program),
         "resident_lower_bound_bytes": total,
+        "resident_all_programs_bytes": all_programs,
+        "unpriced_bytes": unpriced,
+        "unpriced_examples": unpriced_examples,
         "budget_bytes": int(budget_bytes),
         "budget_source": budget_source,
-        "headroom_bytes": int(budget_bytes) - total,
-        "fits": total <= int(budget_bytes),
+        "headroom_bytes": headroom,
+        "fits": fits,
         "note": ("lower bound: embedded weights + lifted constants only, excluding activations and "
-                 "the runtime arena. fits=False is decisive; fits=True is necessary, not sufficient."),
+                 "the runtime arena. fits=False is decisive; fits=True is necessary, not sufficient; "
+                 "fits=None means unrecognised bytes in the bundle could alone exhaust the headroom, "
+                 "so the question was not answered. For a multi-program session the bound is the "
+                 "LARGEST program, with the all-programs sum reported beside it."),
+    }
+
+
+# --- what the fp32 golden actually grades --------------------------------------------------------
+
+
+def _forward_result_count(mlir: Path) -> int | None:
+    """How many results ``@forward`` returns, or None if the signature was not found.
+
+    Parsed structurally (balanced-delimiter walk, per the repo's no-regex rule): the arrow tail is
+    taken after the paren that CLOSES the argument list, and the result list is split on commas at
+    nesting depth zero, so ``tensor<2x16x1x113x5x64xbf16>`` is one result and not six.
+    """
+    if not mlir.is_file():
+        return None
+    for line in mlir.read_text().splitlines():
+        t = line.strip()
+        if not t.startswith("func.func @forward"):
+            continue
+        depth, end = 0, None
+        for i, ch in enumerate(t):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end is None:
+            return None
+        tail = t[end + 1:].strip()
+        if not tail.startswith("->"):
+            return 0  # returns nothing
+        tail = tail[2:].strip()
+        if not tail.startswith("("):
+            return 1
+        depth, inner = 0, ""
+        for i, ch in enumerate(tail):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    inner = tail[1:i]
+                    break
+        if not inner.strip():
+            return 0
+        depth, count = 0, 1
+        for ch in inner:
+            if ch in "(<[":
+                depth += 1
+            elif ch in ")>]":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                count += 1
+        return count
+    return None
+
+
+def golden_coverage(root: Path) -> dict:
+    """What the bundle's ``golden.npy`` can and cannot decide, priced offline.
+
+    Two ways a gate passes without having tested anything, both found in a shipped bundle and both
+    invisible in the file (a golden is an ndarray of the right shape either way):
+
+    * **Partial coverage.** ``@forward`` returns N results; ``golden.npy`` holds ONE array. Every
+      result after the first is ungraded. In ``smolvla``'s ``prefix_encode`` the graded result is the
+      ``1x113xi1`` pad mask and the ungraded one is the ``2x16x1x113x5x64xbf16`` KV cache — that is,
+      the gate grades a passthrough and never touches the computation the stage exists to do.
+    * **A degenerate reference.** A golden whose elements are all one value carries no signal to
+      discriminate on; ``prefix_encode``'s is constant 1.0 (std 0).
+
+    Reported, not silently tolerated. Either alone is a caveat; TOGETHER they mean the gate cannot
+    fail, and the caller refuses the cell rather than publishing a pass that decided nothing.
+    """
+    import numpy as np
+
+    n_results = _forward_result_count(root / "model.mlir")
+    golden = root / "golden.npy"
+    graded, std, shape, err = 0, None, None, None
+    if golden.is_file():
+        try:
+            arr = np.load(golden, allow_pickle=False)
+            graded, shape = 1, tuple(int(x) for x in arr.shape)
+            std = float(np.std(arr.astype("float64")))
+        except Exception as exc:  # a reference we cannot read decides nothing either
+            err = f"{type(exc).__name__}: {exc}"
+    partial = bool(n_results and graded and graded < n_results)
+    degenerate = std == 0.0
+    return {
+        "forward_results": n_results,
+        "graded_results": graded,
+        "golden_shape": shape,
+        "golden_std": std,
+        "read_error": err,
+        "partial": partial,
+        "degenerate": degenerate,
+        "cannot_fail": bool(partial and degenerate),
     }
 
 
@@ -281,6 +471,8 @@ class CellPlan:
     goldens: dict
     w8a8_reference: dict
     footprint: dict
+    #: What the fp32 golden can decide: output-arity coverage and reference degeneracy.
+    golden_coverage: dict = field(default_factory=dict)
     refusals: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -298,7 +490,8 @@ class CellPlan:
             "ours_bundle_root": str(self.ours_bundle_root),
             "bundle_layout_equivalence": self.layout_equivalence,
             "goldens": self.goldens, "w8a8_reference": self.w8a8_reference,
-            "footprint": self.footprint, "refusals": list(self.refusals),
+            "footprint": self.footprint, "golden_coverage": dict(self.golden_coverage),
+            "refusals": list(self.refusals),
             "notes": list(self.notes), "runnable": self.runnable,
         }
 
@@ -342,9 +535,22 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
     if not ours_root.is_dir():
         refusals.append(f"capture bundle absent: bundle.resolve({model!r}, {variant!r}) -> "
                         f"{ours_root} does not exist. Recapture it; do not substitute another cell.")
-    have_mlir = (ours_root / "model.mlir").is_file()
-    have_fp32 = (ours_root / "golden.npy").is_file()
-    have_w8a8 = (ours_root / "golden_w8a8.npy").is_file()
+    # Artifact presence is asked of every PROGRAM the bundle declares, not of the root: a version-2
+    # session keeps nothing at its root, so root-level stats reported "ships no model.mlir" about a
+    # bundle that ships three. `CaptureBundle.require()` already walks programs; this walked the
+    # root, and the two layers disagreed about the same directory.
+    progs = program_roots(ours_root) if ours_root.is_dir() else [ours_root]
+    have_mlir = bool(progs) and all((r / "model.mlir").is_file() for r in progs)
+    have_fp32 = bool(progs) and all((r / "golden.npy").is_file() for r in progs)
+    have_w8a8 = bool(progs) and all((r / "golden_w8a8.npy").is_file() for r in progs)
+    if ours_root.is_dir() and len(progs) > 1:
+        refusals.append(
+            f"{ours_id} is a {len(progs)}-program session capture "
+            f"({', '.join(r.name for r in progs)}), and a comparison cell is ONE program: our arm "
+            "takes a bundle root, but the reference arm resolves its bundle from the model NAME "
+            "with no program selector, so the two arms cannot be aimed at the same program. "
+            "Measuring one program and labelling the row with the model name would price a fragment "
+            "as the whole. Refused rather than reported.")
     if ours_root.is_dir():
         if not have_mlir:
             refusals.append(f"{ours_id} ships no model.mlir: nothing to lower")
@@ -358,13 +564,42 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
                 "defect. Recapture the W8A8 reference instead of loosening the gate.")
 
     fp = bundle_footprint(ours_root, budget_bytes=budget_bytes, budget_source=budget_source)
-    if ours_root.is_dir() and not fp["fits"]:
+    if ours_root.is_dir() and fp["fits"] is False:
         refusals.append(
             f"does not fit the board: {ours_id} is at least "
             f"{fp['resident_lower_bound_bytes'] / 1e9:.2f} GB resident (embedded weights + lifted "
             f"constants) against a {fp['budget_bytes'] / 1e9:.2f} GB budget ({fp['budget_source']}). "
             "Refused BEFORE the board is touched; attempting it would spend a build and a transfer "
             "to learn what the file sizes already say.")
+    elif ours_root.is_dir() and fp["fits"] is None:
+        refusals.append(
+            f"footprint UNKNOWN for {ours_id}: {fp['unpriced_bytes'] / 1e9:.2f} GB of the bundle is "
+            f"in files this pricer does not recognise (e.g. {', '.join(fp['unpriced_examples'])}), "
+            f"which alone exceeds the {fp['headroom_bytes'] / 1e9:.2f} GB headroom left by the "
+            f"{fp['resident_lower_bound_bytes'] / 1e9:.2f} GB it could price. A fit test that has "
+            "not seen most of the bundle must not answer 'fits'; teach it the layout, do not widen "
+            "the budget.")
+
+    gcov = golden_coverage(ours_root) if ours_root.is_dir() else {}
+    if gcov.get("cannot_fail"):
+        refusals.append(
+            f"the fp32 gate on {ours_id} CANNOT FAIL: @forward returns "
+            f"{gcov['forward_results']} results and golden.npy grades {gcov['graded_results']} of "
+            f"them, and that one is constant (std 0). A pass would say nothing about the "
+            "computation. Recapture a golden covering the computed outputs; do not report the row.")
+    elif gcov.get("partial"):
+        notes.append(
+            f"PARTIAL GATE: {ours_id}'s @forward returns {gcov['forward_results']} results and "
+            f"golden.npy grades only the first (shape {gcov['golden_shape']}). The remaining "
+            f"{gcov['forward_results'] - gcov['graded_results']} are ungraded — a tier pass is "
+            "evidence about the graded output alone.")
+    elif gcov.get("degenerate"):
+        notes.append(
+            f"DEGENERATE REFERENCE: {ours_id}'s golden.npy is constant (std 0), so the fp32 tier "
+            "has no signal to discriminate on and a pass decides nothing.")
+    if gcov.get("read_error"):
+        notes.append(f"golden.npy on {ours_id} could not be read ({gcov['read_error']}); its tier "
+                     "decides nothing.")
 
     w8 = w8a8_reference(ours_root, source_bundle_id=ref_id if ours_id != ref_id else "",
                         recaptures_root=recaptures_root)
@@ -389,7 +624,8 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
                     reference_bundle_root=ref_root, ours_bundle_id=ours_id,
                     ours_bundle_root=ours_root, layout_equivalence=eq,
                     goldens={"fp32": have_fp32, "w8a8": have_w8a8, "model_mlir": have_mlir},
-                    w8a8_reference=w8, footprint=fp, refusals=refusals, notes=notes)
+                    w8a8_reference=w8, footprint=fp, golden_coverage=gcov,
+                    refusals=refusals, notes=notes)
 
 
 def plan_campaign(models, **kwargs) -> list[CellPlan]:
