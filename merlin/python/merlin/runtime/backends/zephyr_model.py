@@ -720,6 +720,13 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
         table = _pb.block_table(_cshapes(prepared), mr_cap=mr_cap,
                                 nr_cap=perop_nr_cap(vlen), harts=harts, vlen=nr_fill_vlen)
+        # DIRECT CONVOLUTIONS, priced into the SAME table (so the tagger, the priced-vs-tagged
+        # agreement check and the schedule are one code path, not two). `contraction_shapes` cannot
+        # see them: a direct conv has three reduction dims and its test admits exactly one. Returns
+        # {} unless `perop_blocks.CONV_ARM_FEATURE` is in `features`, so the default build's table --
+        # and every schedule and tag derived from it -- is byte-identical.
+        table.update(_pb.conv_block_table(prepared, features, mr_cap=mr_cap,
+                                          nr_cap=perop_nr_cap(vlen), vlen=nr_fill_vlen))
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}

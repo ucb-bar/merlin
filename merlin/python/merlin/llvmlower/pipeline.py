@@ -608,6 +608,13 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     _register_prepack_weight_layout()
     from .concat_dps import ensure_registered as _register_concat_dps
     _register_concat_dps()
+    # The direct-conv arm's REQUEST feature. Registered here for the same reason as the four above:
+    # this module is imported by the lowering child processes, and a name registered only in the
+    # parent fails `normalize` in the child. It edits nothing here -- the arm is realized by the
+    # per-op block table (llvmlower.perop_blocks), which the preparation step derives -- so a build
+    # that carries the name lowers identically and the name records that the arm was asked for.
+    from .perop_blocks import ensure_registered as _register_conv_arm
+    _register_conv_arm()
     feats = normalize(features)
     if parallel_harts is not None and not vectorize:
         raise PipelineError(
