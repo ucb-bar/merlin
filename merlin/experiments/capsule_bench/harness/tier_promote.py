@@ -115,6 +115,58 @@ def _submission_digest(ws) -> str:
     return submission_digests(ws)[0]
 
 
+def execution_digest(capsule_result: str | Path) -> str | None:
+    """Content identity for exactly what one capsule's hardware tier executes.
+
+    The identity covers the ELF bytes and the target/hardware revisions recorded beside the result. It
+    deliberately excludes Merlin's source commit: a source edit that emits byte-identical code has not
+    changed the program RTL certifies. Missing ELF, target, or a concrete hardware revision returns
+    ``None`` so scheduling falls back to the conservative submission/component digest.
+
+    This is the identity BOTH verdict readers (``qa_check._execution_digest_from_result`` and
+    ``agent_selfcheck``) put on every row. It must live here, next to the other content addressing:
+    when it went missing the readers still called it, their ``except`` swallowed the ImportError, and
+    every row reported ``execution_digest: null`` -- a digest that could not be computed presenting
+    exactly like a submission with no artifact identity.
+    """
+    import hashlib
+    import json
+    import yaml
+
+    cr = Path(capsule_result)
+    try:
+        result = json.loads(cr.read_text(encoding="utf-8"))
+        manifest = yaml.safe_load((cr.parent / "run_manifest.yaml").read_text(encoding="utf-8"))
+        elf = cr.parent / "generated" / "package_kernel.elf"
+        target = manifest.get("target") if isinstance(manifest, dict) else None
+        shas = result.get("toolchain_shas") if isinstance(result, dict) else None
+        if not isinstance(target, str) or not target.strip() or not isinstance(shas, dict):
+            return None
+        hardware = {}
+        for key, value in shas.items():
+            if str(key).lower() == "merlin":
+                continue
+            # Hardware pins are full git/content hashes. UNKNOWN, abbreviated, or otherwise malformed
+            # provenance cannot safely identify the design that executed the program.
+            if (not isinstance(key, str) or not key or not isinstance(value, str)
+                    or len(value) not in (40, 64)
+                    or not all(c in "0123456789abcdef" for c in value)):
+                return None
+            hardware[key] = value
+        if not hardware or not elf.is_file():
+            return None
+        payload = {
+            "version": 1,
+            "target": target,
+            "hardware": hardware,
+            "executable_sha256": hashlib.sha256(elf.read_bytes()).hexdigest(),
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(canonical).hexdigest()
+    except Exception:  # noqa: BLE001 -- missing/unreadable provenance is the conservative fallback
+        return None
+
+
 def _manifest(ws) -> dict | None:
     """The submission's own package manifest, or ``None`` if it cannot be read.
 

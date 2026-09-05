@@ -187,11 +187,79 @@ def test_execution_digest_fails_closed_without_concrete_hardware_identity(tmp_pa
     assert B.execution_digest(cr) is None
 
 
-def test_both_verdict_readers_expose_the_execution_digest():
-    qa = (HARNESS / "qa_check.py").read_text(encoding="utf-8")
-    agent = (HARNESS / "agent_selfcheck.py").read_text(encoding="utf-8")
-    assert '"execution_digest": rich.get("execution_digest")' in qa
-    assert '"execution_digest": _qc._execution_digest_from_result(cr)' in agent
+def _harness_module(name: str):
+    """Import a harness script by path. They are scripts, not an installed package."""
+    if str(HARNESS) not in sys.path:
+        sys.path.insert(0, str(HARNESS))
+    spec = importlib.util.spec_from_file_location(name, HARNESS / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:  # noqa: BLE001 — harness deps absent in this env
+        pytest.skip(f"{name} not importable here: {type(e).__name__}: {e}")
+    return mod
+
+
+def _runs_root(tmp_path, elf: bytes = b"program"):
+    """A runs tree shaped the way `_per_capsule_from_results` globs it: runs/<suite>/<capsule>/."""
+    root = tmp_path / "work"
+    cr = _capsule_result(root / "runs" / "suite", elf=elf)
+    cr.write_text(json.dumps({
+        "capsule": "A", "status": "pass",
+        "toolchain_shas": {"merlin": "1" * 40, "target_rtl": "2" * 40},
+    }))
+    return root, cr
+
+
+def test_the_verdict_reader_computes_a_real_execution_digest(tmp_path):
+    """EXECUTE the reader, do not grep it.
+
+    The previous version of this test asserted only that the CALL-SITE TEXT was present in the two
+    readers' source. That is a check that cannot fail for the failure it exists to catch: the callee was
+    deleted from `tier_promote`, both call sites still read exactly right, the test stayed green, and
+    `agent_selfcheck` died with `AttributeError: module 'qa_check' has no attribute
+    '_execution_digest_from_result'` on every invocation of the agent's own self-grader. So: build a real
+    capsule result, run the reader over it, and demand a real digest out the other end.
+    """
+    Q, B = _harness_module("qa_check"), _broker()
+    root, cr = _runs_root(tmp_path)
+
+    rows = Q._per_capsule_from_results(root)
+    assert "A" in rows, "the reader found no capsule result to read"
+    digest = rows["A"]["execution_digest"]
+
+    # A REAL digest, not the None the bridge returns when its callee has gone missing.
+    assert isinstance(digest, str) and len(digest) == 64
+    assert all(c in "0123456789abcdef" for c in digest)
+    assert digest == B.execution_digest(cr), "the reader and the broker must agree on the identity"
+
+    # And it is an IDENTITY: different executable bytes are a different capsule to certify.
+    other_root, _ = _runs_root(tmp_path / "other", elf=b"different program")
+    assert Q._per_capsule_from_results(other_root)["A"]["execution_digest"] != digest
+
+
+def test_the_self_check_reaches_the_same_live_bridge(tmp_path):
+    """`agent_selfcheck` reaches the bridge through its `_qc` alias — the exact expression that raised."""
+    A = _harness_module("agent_selfcheck")
+    _, cr = _runs_root(tmp_path)
+    digest = A._qc._execution_digest_from_result(cr)
+    assert isinstance(digest, str) and len(digest) == 64
+
+
+def test_a_missing_broker_identity_is_not_silently_a_missing_digest(tmp_path):
+    """The bridge's `except` is deliberate, but it must not be the reason every row reads `null`.
+
+    Absence has to mean "this capsule has no artifact identity" (no ELF, no concrete hardware pin), never
+    "the function the bridge imports is gone". Those two are indistinguishable at the call site, which is
+    how the regression survived a green suite.
+    """
+    B = _broker()
+    assert callable(getattr(B, "execution_digest", None)), (
+        "tier_promote.execution_digest is the identity both verdict readers import; without it every "
+        "row reports execution_digest: null and no certificate can be attributed to the bytes that "
+        "earned it")
+    # Absence still reports absence, for the honest reason.
+    assert B.execution_digest(tmp_path / "nothing" / "capsule_result.json") is None
 
 
 def test_tier_state_records_both_tiers(tmp_path):
