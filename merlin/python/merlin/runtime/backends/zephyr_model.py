@@ -719,11 +719,25 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     if not blocking:
         _judge_levers_on(prepared)
         return _strip_provenance(prepared, work, features), features
+    from ...llvmlower import im2col_pack as _ip
     from ...llvmlower import perop_blocks as _pb
     from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_MR_FILL_NAME,
                                             PEROP_NR_FILL_NAME,
                                             ensure_perop_block, parse_perop_mr_sentinel,
                                             PEROP_MR_SENTINEL_PREFIX)
+    # The panel-pack rewrite lives inside the per-op blocking branch below (it needs that branch's
+    # block table for its NR, and the table the tagger is built from must be re-derived after it). So
+    # asking for it WITHOUT the block request would silently do nothing -- the exact "a request that
+    # did nothing" failure `PEROP_MR_FILL_NAME` and `_perop_sentinel_unresolved` both exist for. Say so
+    # instead. It is not expressed as an `implies` because `perop_register_block` is a sentinel THIS
+    # function consumes, and re-materializing it at `normalize` time inside the lowering trips the
+    # unresolved-sentinel guard.
+    if _ip.FEATURE in features and PEROP_BLOCK_NAME not in features:
+        raise ValueError(
+            f"{_ip.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel width "
+            f"is the N tile that request's block table derives, and only its schedule arm can tile "
+            f"the packed contraction. Named alone it would rewrite the IR and leave every packed "
+            f"contraction to convert-linalg-to-loops. Name both.")
     # The N-fill request is a SEARCH KNOB, off by default, because its sign is model-dependent: on the
     # K1 it measured 1.160x FASTER on spectformer int8 and 1.196x SLOWER on small_llama int8, both far
     # outside the 2.6% band. The accumulator is i32, not i8, so at VLEN=256 an NR=16 tile is already
@@ -768,9 +782,23 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # each contraction's N cap is widened for ITS OWN narrowest element width; measured effect on
         # the block tables of the models on disk is MAC-weighted NR 16.00 -> 32.00 on every int8 model
         # and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
-        table = _pb.block_table(_cshapes(prepared), mr_cap=mr_cap,
-                                nr_cap=perop_nr_cap(vlen), harts=harts, vlen=nr_fill_vlen,
-                                mr_vlen=mr_fill_vlen)
+        _blk = dict(mr_cap=mr_cap, nr_cap=perop_nr_cap(vlen), harts=harts,
+                    vlen=nr_fill_vlen, mr_vlen=mr_fill_vlen)
+        # PANEL-PACKED im2col, default-off (`im2col_pack.FEATURE`). It has to run HERE, between the
+        # table that gives it its NR and the table the tagger/schedule are built from: the panel width
+        # is the N tile this model's own block policy derived (VLEN- and dtype-aware), and the packed
+        # contraction is a 4-dim generic that the SECOND table must not still be pricing as the 2-dim
+        # matmul it replaced -- a priced-but-absent geometry is exactly what `BlockAgreementError`
+        # fails the build over. Returns {} and the SAME path when the feature is absent or every
+        # candidate is refused, so the table, the tags, the schedule and the .ll stay byte-identical.
+        packed_entries: dict[str, tuple[int, int]] = {}
+        if _ip.FEATURE in features:
+            prepared, _pack = _ip.rewrite_prepared_file(
+                prepared, _pb.block_table(_cshapes(prepared), **_blk), work)
+            packed_entries = {k: (mr, nr) for k, mr, nr in _pack.entries}
+            print(f"[im2col_pack] packed={_pack.packed} "
+                  + " ".join(f"{k}={v}" for k, v in sorted(_pack.refusals.items())))
+        table = _pb.block_table(_cshapes(prepared), **_blk)
         # DIRECT CONVOLUTIONS, priced into the SAME table (so the tagger, the priced-vs-tagged
         # agreement check and the schedule are one code path, not two). `contraction_shapes` cannot
         # see them: a direct conv has three reduction dims and its test admits exactly one. Returns
@@ -779,6 +807,20 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         table.update(_pb.conv_block_table(prepared, features, mr_cap=mr_cap,
                                           nr_cap=perop_nr_cap(vlen), vlen=nr_fill_vlen,
                                           mr_vlen=mr_fill_vlen))
+        # PANEL-PACKED contractions need NO table entry of their own: the panel loop leaves an
+        # ORDINARY [F, NR] x K contraction behind, which `block_table` above already observed and
+        # priced. What is checked here is that it priced it at the SAME N tile the panel was packed
+        # to. A panel packed at NR whose contraction is then tiled at a narrower N is not a broken
+        # build -- the numbers stay right -- it is a HALF-APPLIED lever that would be measured and
+        # ranked as if it were the whole thing, which is the failure mode this repo keeps re-finding.
+        for _k, _want in sorted(packed_entries.items()):
+            _got = table.get(_k)
+            if _got is None or int(_got[1]) != int(_want[1]):
+                raise ValueError(
+                    f"{_ip.FEATURE}: packed {_k} to a panel of {_want[1]} columns, but the block "
+                    f"policy prices that contraction at {_got}. The panel width and the N tile must "
+                    f"agree or the packed layout is only half used; refusing to build a lever that "
+                    f"would measure as itself and be something else.")
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}

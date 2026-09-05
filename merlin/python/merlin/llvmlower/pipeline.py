@@ -1088,6 +1088,10 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # that carries the name lowers identically and the name records that the arm was asked for.
     from .perop_blocks import ensure_registered as _register_conv_arm
     _register_conv_arm()
+    # The panel-packed im2col REQUEST, registered for the same reason: the rewrite happens in the
+    # preparation step, and by lowering time the name only records that the arm was asked for.
+    from .im2col_pack import ensure_registered as _register_im2col_panel_pack
+    _register_im2col_panel_pack()
     feats = normalize(features)
     if parallel_harts is not None and not vectorize:
         raise PipelineError(

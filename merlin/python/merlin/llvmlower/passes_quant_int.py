@@ -93,7 +93,21 @@ def _select_targets(targets, select, key=None):
 # for an im2col matmul IS that expanded matrix. Per contraction it emits an abs-max reduction and a
 # quantize map over 602112 elements instead of over the 14700 the activation actually holds, and
 # the gather keeps moving f32. A trip-weighted instruction model of `forward` put 44.4% of deepjscc
-# in the gather and 31.1% in activation-quantize+amax, against 18.2% in the vectorized contraction.
+# in the gather and 31.1% in activation-quantize+amax, against 18.2% in the vectorized contraction
+# (lstmnetvit: 43.8% / 35.7% / 13.2%).
+#
+# THAT 44.4% IS A MEASUREMENT OF THE CONFIGURATION THIS PASS EXISTS TO REPLACE, NOT OF THE ONE WE
+# SHIP (re-dated 2026-09-05). It was taken on the f32-activation IR -- i.e. with this very feature
+# OFF, when the gather moved f32 and the quantize ran over the expanded matrix. With
+# `quantize_before_gather` ON, which is the shipping deepjscc int8 configuration, the gather moves
+# i8: derived from the prepared module on disk (`deepjscc_int8_consistent`, feature set
+# `16a924768a`), the twelve im2col gathers write 4,977,664 elements = 4.98 MB at i8 against 19.91 MB
+# at f32 -- EXACTLY 4x less traffic -- and the abs-max/quantize moved off the 4.98 M-element column
+# matrix onto the 513,724-element padded activation. So the gather's share is bounded well below
+# 44.4% in the shipping build, and the figure must not be quoted as current: it is the BEFORE side of
+# this lever's own A/B. Nothing has re-derived the AFTER side; re-deriving it needs the same
+# trip-weighted model run on the post-`quantize_before_gather` IR, and until that exists the honest
+# statement is "unmeasured in the shipping configuration".
 #
 # THE ALGEBRA. Quantization is ELEMENTWISE, so it commutes exactly with any pure gather:
 # `quantize_s(G(A)) == G(quantize_s(A))` for a single shared scale `s`. What blocks the commutation

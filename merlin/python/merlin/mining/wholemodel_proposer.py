@@ -54,6 +54,7 @@ from ..llvmlower.concat_dps import ensure_registered as _register_concat_dps
 from ..llvmlower.epilogue_fusion import ensure_registered as _register_fuse_epilogue_loops
 from ..llvmlower.prov_cse import ensure_registered as _register_cse_through_provenance
 from ..llvmlower.perop_blocks import ensure_registered as _register_conv_register_block
+from ..llvmlower.im2col_pack import ensure_registered as _register_im2col_panel_pack
 
 _register_fold_weight_transpose()
 _register_prepack_weight_layout()
@@ -70,6 +71,7 @@ _register_fuse_epilogue_loops()
 # candidate only alongside a capture whose convs took the direct form, and it has NO hardware
 # measurement yet -- see llvmlower.perop_blocks.CONV_ARM_FEATURE.
 _register_conv_register_block()
+_register_im2col_panel_pack()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
@@ -181,15 +183,41 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # `impr_features` itself, where its `edit_pipeline` hook lives.
     ("fuse_elementwise_post_contraction", False),         # tail: broadcast/elementwise -> fused, 50 -> 13
     ("vectorized_transcendental_activation", True),       # gelu/sigmoid/silu: closes the 10-17x activation gap
+    # The OTHER half of the im2col tail, and the only lever on this list that changes an operand's
+    # LAYOUT rather than what is computed from it. model2MLIR lays the column matrix out [K][M] and
+    # the per-op schedule tiles [MR, NR, 0] then K by 1, so K is the innermost loop and the B-operand
+    # pointer advances by M BYTES per step. Read off the LINKED ELF (deepjscc int8, the shipping
+    # feature set, `llvm-objdump -d merlin_k1`), five independent K loops advance B by 0x1000, 0x400,
+    # 0x100, 0x100, 0x100 -- exactly M for M = 4096, 1024, 256, 256, 256. Each 64-byte line therefore
+    # delivers NR=16 used bytes: 4.0x cache-line amplification on the operand the loop streams, 102.3
+    # MB of lines fetched to consume 25.6 MB on deepjscc and 4176.8 MB to consume 1098.3 MB on
+    # resnet50 -- 5x and 48x larger than the im2col materialization itself, which is why the
+    # materialization lever below is not the one that matters. Packing the gather's output as
+    # [M/NR][K][NR] makes that walk contiguous, which is exactly what XNNPACK's packed-panel GEMM
+    # does. Arithmetic-identical (same operands, same reduction order), so it grades against the same
+    # goldens; NR comes from the per-op block table, never a literal.
+    # Ranked here, above `quantize_before_gather`, because it is bit-exact where that one is not --
+    # and BELOW everything above it because its evidence is EMITTED-CODE ONLY. No board number
+    # exists: an amplification factor is not a speedup, and this repo has twice ranked a lever on
+    # flawless static evidence that measured SLOWER (`fold_weight_transpose` 1.09x,
+    # `vectorize_non_contraction_generics` 1.28x).
+    ("im2col_panel_pack", False),                         # im2col: [K][M] -> [M/NR][K][NR] packed panels
     # The convolutional half of the same tail, and the only lever here that DELETES an intermediate
     # tensor rather than scheduling one better. model2MLIR expands every conv into im2col + matmul
     # before merlin sees it, so the operand the int8 pass dynamically quantizes IS the expanded
     # matrix: on deepjscc's `enc.net.1` a 147x4096 f32 im2col matrix, ~41x the 1x3x70x70 activation
     # it was gathered from. A trip-weighted instruction model of `forward` put 44.4% of deepjscc int8
     # in the scalar gather and 31.1% in activation quantize+amax against 18.2% in the vectorized
-    # contraction (lstmnetvit: 43.8% / 35.7% / 13.2%). Moving the scale from per-parallel-row to
-    # per-tensor makes the quantization commute with the gather, which puts the abs-max and the
-    # quantize on the activation, moves the gather in i8, and erases the f32 expansion.
+    # contraction (lstmnetvit: 43.8% / 35.7% / 13.2%). THOSE THREE NUMBERS ARE THE *BEFORE* SIDE OF
+    # THIS LEVER AND ARE NOT CURRENT (re-dated 2026-09-05): they were taken on the f32-activation IR,
+    # i.e. with this feature OFF. With it ON -- the shipping deepjscc int8 configuration -- the gather
+    # moves i8, and the prepared module on disk gives the exact factor: 4,977,664 column elements =
+    # 4.98 MB at i8 against 19.91 MB at f32, 4x less traffic, with the abs-max/quantize moved onto the
+    # 513,724-element padded activation. The gather's post-lever share is UNMEASURED; do not quote
+    # 44.4% for the build we ship. See llvmlower/passes_quant_int.py for the same note at the source.
+    # What the lever does is unchanged: moving the scale from per-parallel-row to per-tensor makes the
+    # quantization commute with the gather, which puts the abs-max and the quantize on the activation,
+    # moves the gather in i8, and erases the f32 expansion.
     # Ranked LAST on purpose: the numbers above are STATIC, the wall is UNMEASURED, and it is the
     # only lever on this list that is not bit-exact (a per-tensor activation scale is a real numeric
     # change), so it must earn its rank against the accuracy gate and a board measurement rather than
