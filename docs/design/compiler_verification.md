@@ -1092,6 +1092,72 @@ refuses them with that reason. Reaching 4/4 would need a text-output seam on `me
 change, not a test. Recording them as `abstracted` would document the reason but would NOT satisfy
 `--fail-on-unverified`, and saying otherwise would overstate the coverage.
 
+### 2026-09-05 (source) — validating the pass against its own input
+
+Until now the formal layer compared the emitted ``interface`` program against a **re-derived
+specification** — ``enc.matmul`` over the same symbolic inputs. That is conformance against a model of
+what the pass should have done, not translation validation, and this log has been careful never to
+claim otherwise. ``verify/linalg_semantics.py`` closes it: the specification side is now the ACTUAL
+``linalg`` module the pass consumed.
+
+**Zero points are the part that needed care.** ``linalg.quantized_matmul`` carries lhs/rhs zero points
+as operands. When both resolve to constant zero the contraction delegates to ``Encoder.matmul`` (the
+2x-width multiply). When either is a non-zero constant it does the exact ``linalg`` arithmetic —
+sign-extend, subtract as add-of-negative since the ``smt`` dialect ships no subtract, accumulate mod
+2^32. A zero point that is not a resolvable constant **abstains**, and that is the right verdict
+rather than a gap: the ``interface`` plane carries no zero-point operand at all, so a runtime zp means
+the leaf correspondence between the two artifacts does not exist.
+
+Measured at 2x2x2, reuse 2:
+
+| control | verdict | time |
+|---|---|---|
+| real pass output vs its own linalg source | ``unsat`` | 0.03 s |
+| the same at 4³ / 8³ | ``unsat`` | 0.08 s / 0.50 s |
+| `miswired_commit` / `swapped_operands` / `dropped_activation` | ``sat`` with counterexample | 0.07–0.12 s |
+| source zero point changed 0 -> 7, output unchanged | ``sat`` with counterexample | 0.17 s |
+| symbolic (block-argument) zero point | abstains | — |
+
+That last positive-side case was added beyond the brief and is the one that matters: without it, an
+encoder that silently assumed zero would have passed every other test here.
+
+**What ``unsat`` from ``validate_pass`` proves, stated narrowly.** For THIS source module and THIS
+interface module at THEIR shape, every commit equals the corresponding ``linalg`` result for every
+integer assignment to the source's arguments. It proves nothing about other shapes or other programs.
+And both sides bottom out in the same ``Encoder.matmul`` when the zero points are zero, so what the
+query genuinely checks is that the pass emitted a contraction over the same operands, in the same
+pairing, at the same shape, with nothing added, dropped or mis-wired — the negative controls show it
+is not vacuous — but it is not two independent derivations of what a matmul means. A shared
+misunderstanding of ``interface.matmul`` would survive it. Residency is invisible to this check and
+remains the static layer's job.
+
+### 2026-09-05 (arm) — a treatment the agent was never told about
+
+Preparing the verify-arm campaign surfaced a measurement hazard worth more than the campaign. The
+freshly generated verify-arm ``STARTER_PROMPT.md`` was **byte-identical** to arm 4's, and
+``ALLOWED_MERLIN_TOOLS.md`` rendered only ``ToolSpec.note`` — a policy label — while ``ToolSpec.blurb``,
+which carries what the tool answers and how to invoke it, was rendered **nowhere**.
+
+An arm whose single treatment is a tool the agent is never told about produces a null result that
+cannot distinguish *"the tool does not help"* from *"the agent never knew it was there"*. That is how
+an earlier campaign lost its ISA grounding.
+
+Fixed: the bundle manifest now records **which tools it granted** — it carried paths but no capability
+names, so ``tools.txt`` and the manifest were two half-descriptions of one grant — and the generated
+doc renders each granted tool's blurb.
+
+A second, smaller problem was found the same way: **this checkout has zero ``merlin-*`` console
+scripts**. The package is used through ``PYTHONPATH``, so both ``merlin-verify ...`` and
+``merlin-opt ...`` were `command not found` in the very environment the agent runs in. Both blurbs now
+name the module form, and a test walks every blurb failing on any ``merlin-*`` token absent from PATH.
+It caught the second one on its first run.
+
+**Still open before any campaign** (not fixed here, deliberately): the committed arm-3/4/5 bundles
+predate the verify deny lines, and ``xdsl_kit`` grants the whole ``xdsl_dialects/`` directory, so those
+arms can currently read ``opt.py``. Deny wins in the sandbox binder, so two missing lines are the only
+thing that would mask it. Those are SERVED bundles with a live run in flight; regenerating them mid-run
+is itself a measurement change, so it needs a window rather than a patch.
+
 ---
 
 ## 7. Reproducing what is claimed here
