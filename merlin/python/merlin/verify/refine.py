@@ -100,6 +100,120 @@ def validate_interface_module(module, *, acc_width: int = 32,
     return check_module(mod, timeout_ms=timeout_ms)
 
 
+def validate_compilation(interface_module, cb: dict, *, acc_width: int = 32,
+                         timeout_ms: int = 60_000) -> Verdict:
+    """Does the emitted COMMAND BUFFER compute what the ``interface`` program specified?
+
+    This is the check that covers a compiler we did not write. ``interface`` is the input a backend
+    receives; the command buffer is what it produced. Both are encoded over THE SAME symbolic leaves
+    — encoding them over independent symbols would make the query trivially satisfiable — and the
+    query asserts that some declared output can differ. ``unsat`` therefore means: for every integer
+    input at this shape, the backend's buffer agrees with the interface program.
+
+    Three verdicts, and the middle one matters most here. A backend may legitimately use an opcode or
+    an epilogue this encoder has no definition for; that is an ABSTENTION, never a refutation.
+    Refuting a correct backend because our encoder is incomplete is the one outcome that would make
+    this tool worse than useless, so every gap raises :class:`UnsupportedSemantics` and is reported
+    as abstained.
+    """
+    if not HAS_XDSL:
+        raise UnsupportedSemantics("xDSL is not installed")
+    from xdsl.builder import ImplicitBuilder
+    from xdsl.dialects import builtin, smt
+    from xdsl.ir import Block, Region
+
+    from .cb_semantics import encode_command_buffer
+    from .smt_ops import SolverOp
+
+    blk = Block()
+    with ImplicitBuilder(blk):
+        enc = Encoder()
+
+        # SPEC side: the interface program the backend was handed.
+        spec = encode_interface(enc, interface_module, acc_width=acc_width)
+        if not spec.outputs:
+            raise UnsupportedSemantics("interface module commits no outputs; nothing to validate")
+
+        # The two sides must share leaves. The interface plane names inputs positionally (block
+        # arguments); the command buffer names them (`A0`, `W`, ...). Bind by ROLE and order, which
+        # is the only correspondence both artifacts actually agree on.
+        shared = _bind_leaves(spec.inputs, cb)
+
+        # TARGET side: the buffer the backend emitted, over those same symbols.
+        got, _ = encode_command_buffer(enc, cb, shared=shared, acc_width=acc_width)
+
+        pairs = _bind_outputs(spec.outputs, got, cb)
+        diffs = [enc.any_differs(t, g) for t, g in pairs]
+        term = diffs[0]
+        for d in diffs[1:]:
+            term = smt.OrOp(term, d).results[0]
+        smt.AssertOp(term)
+        smt.YieldOp()
+
+    mod = builtin.ModuleOp([SolverOp.from_region(Region([blk]))])
+    return check_module(mod, timeout_ms=timeout_ms)
+
+
+def _bind_outputs(spec_outputs: dict, got: dict, cb: dict) -> list:
+    """Pair the interface program's commits with the buffer's declared outputs, IN ORDER.
+
+    The two artifacts do not share output names and are not expected to: the interface plane numbers
+    its commits (``commit0``, ``commit1``) while the runtime lowering mints ``Y0``, ``Y1`` in commit
+    order. Order is the correspondence they genuinely share. A count mismatch is an abstention — it
+    means the buffer commits a different number of results than the program specified, which is a
+    real disagreement but not one this equality check is entitled to characterise.
+    """
+    declared = list(cb.get("outputs") or ()) or sorted(got)
+    spec_names = sorted(spec_outputs)
+    if len(declared) != len(spec_names):
+        raise UnsupportedSemantics(
+            f"the interface program commits {len(spec_names)} output(s) {spec_names} but the command "
+            f"buffer declares {len(declared)} ({declared}); they are not the same program")
+    out = []
+    for spec_name, cb_name in zip(spec_names, declared):
+        a, b = spec_outputs[spec_name], got[cb_name]
+        if (a.rows, a.cols) != (b.rows, b.cols):
+            raise UnsupportedSemantics(
+                f"output {spec_name!r} is {(a.rows, a.cols)} in the interface program but "
+                f"{cb_name!r} is {(b.rows, b.cols)} in the command buffer")
+        out.append((a, b))
+    return out
+
+
+def _bind_leaves(spec_inputs: list, cb: dict) -> dict:
+    """Map command-buffer tensor names onto the interface program's symbolic inputs.
+
+    The interface plane carries inputs as ordered block arguments with no names; the command buffer
+    names them and tags each with a derived ``role``. Binding by (role, order) is the correspondence
+    both artifacts genuinely share — the runtime lowering mints ``A0, A1, ...`` for activations and
+    ``W, W1, ...`` for pack sources in argument order, so this is a real invariant, not a guess.
+
+    A shape or width mismatch is an abstention: it means the two artifacts are not about the same
+    program, and comparing them anyway would produce a meaningless verdict.
+    """
+    tensors = cb.get("tensors") or {}
+    leaves = [(n, t) for n, t in tensors.items() if str(t.get("role")) in ("input", "weight")]
+    # Weights last, mirroring the interface convention that the trailing argument is the reused
+    # weight; within a role, the lowering's own name order is the argument order.
+    inputs = sorted((n for n, t in leaves if str(t.get("role")) == "input"))
+    weights = sorted((n for n, t in leaves if str(t.get("role")) == "weight"))
+    ordered = inputs + weights
+    if len(ordered) != len(spec_inputs):
+        raise UnsupportedSemantics(
+            f"the interface program has {len(spec_inputs)} leaf inputs but the command buffer "
+            f"declares {len(ordered)} ({ordered}); they are not the same program")
+    bound = {}
+    for name, tensor in zip(ordered, spec_inputs):
+        spec_shape = (tensor.rows, tensor.cols)
+        cb_shape = tuple(tensors[name].get("shape") or ())
+        if cb_shape != spec_shape:
+            raise UnsupportedSemantics(
+                f"leaf {name!r} is {cb_shape} in the command buffer but {spec_shape} in the "
+                f"interface program")
+        bound[name] = tensor
+    return bound
+
+
 def validate_workload(*, m: int = 2, k: int = 2, n: int = 2, reuse: int = 2,
                       timeout_ms: int = 60_000) -> RefinementResult:
     """Lower the reference workload at one concrete shape and validate the interface it produced.
