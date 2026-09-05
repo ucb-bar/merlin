@@ -331,6 +331,58 @@ a separate one — the L3 engine's wall cost tracks output size, so a corpus sma
 candidate is small *because* it is unrepresentative, and the two cannot be separated by tuning the
 member list.
 
+## A fourth wall: the output has to be read back, and that costs simulated cycles
+
+Three walls on capsule size were already recorded here — the affordability cap, the extrapolation
+refusal, and the materialization ceiling. A fourth was found by measurement and it is the one that
+actually stops a census-anchored certification.
+
+Measured on GSIM, this checkout, a ladder of resident matmuls after the blob path made them buildable:
+
+| shape | MACs | cycles | GSIM wall | achieved |
+|---|---:|---:|---:|---:|
+| 64x64x64 | 262 K | 4,087 | 150 s | 64 MACs/cyc |
+| 128x128x64 | 1.05 M | 12,483 | 346 s | 84 |
+| 256x256x128 | 8.39 M | 83,857 | 1,298 s | 100 |
+| **1024x256x128** (`tall_skinny`) | 33.6 M | — | 1,438 s | **FAILED** |
+
+Least squares over the three that completed gives **≈ 130 s + 14.0 ms/cycle**, with efficiency still
+climbing as the fixed overhead amortises. That law is worth having: it puts a `squareish_gemm`
+certification at roughly 1.5 h against the 27.3 h that `cert_cost`'s output-element law projects by
+extrapolating a fit made on 240..1,024 output elements out to 49,152.
+
+But the fourth row did not produce a number at all:
+
+```
+GemminiError: OUT Y0: expected 131072 values, got 29068
+```
+
+The build was fine — a 664-byte harness, a 462 KB ELF, both operands linked as blobs. **The harness
+prints the output tensor over a simulated UART, and a 131,072-element output does not finish
+printing.** Only 22% of the values came back. Whether the run exhausted `+max-cycles` while still
+printing or the capture truncated, the consequence is the same and it is a property of the OUTPUT
+SIZE, not of the arithmetic: the readback is part of the simulated program.
+
+Three things follow.
+
+**The affordability cap is guarding something real.** `cert_affordability` measures
+`written_output_elements`, and it has been easy to read its 875-element limit as merely conservative
+because its seconds law extrapolates so badly. It is tracking a genuine hard ceiling with a bad
+formula. Those are different criticisms and only the second one is fair.
+
+**The engine matters, and the two do not agree.** The three geometry members the synthesizer mints
+were verified correct on SPIKE at outputs of 8,960, 49,152 and 150,528 elements. This failure is on
+GSIM at 131,072. So a capsule can pass its functional oracle and still be unreadable on the
+cycle-accurate one, which is exactly the tier a performance claim needs. A member sized against spike
+is not thereby certifiable.
+
+**A large member needs a readback that is not a print.** The cost of dumping the answer scales with
+the answer, so any member whose output approaches six figures needs its result checked by a digest
+computed on the device, or by reading memory out of band, rather than by printing every element. Until
+that exists, the certifiable output size is bounded well below the census's reachable classes -- and
+that bound, not build size and not simulation speed, is what limits how large a certified anchor can
+be.
+
 ## The cost model on this branch cannot price a census-anchored member
 
 Sizing those members needs `targetgen.cert_cost.fit_cycles_for`, and on this checkout it returns a
