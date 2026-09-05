@@ -196,6 +196,13 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
 #: schedule arms in ``impr_features._VEC_RANK_ARMS`` must agree on it.
 _VEC_RANK_LANES = 8
 
+#: Highest loop rank the bounded-vectorize tagger admits, when nothing overrides it. Imported from
+#: the feature registry so the tagger and the schedule arms cannot disagree about it: the arms only
+#: exist for the ranks the feature names, and tagging a rank no arm matches leaves the op scalar
+#: while the tagger reports it as tagged.
+from ...llvmlower.impr_features import VEC_NONCONTRACTION_MAX_RANK as _VEC_RANK_MAX_RANK
+from ...llvmlower.impr_features import VEC_NONCONTRACTION_MIN_RANK as _VEC_RANK_MIN_RANK
+
 #: Caps for per-op register blocking. NR is the widest N tile a block may use (the champion's
 #: cap); KC is carried through to the v3 recipe, which tiles K by 1 and does not use it. MR is
 #: NOT capped here -- perop_blocks.DEFAULT_MR pins it at 1 for a measured instruction-selection
@@ -406,7 +413,8 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
                         named_contraction: bool = False,
                         prequant_gather: bool = False,
                         op_counts_out: "dict[str, int] | None" = None,
-                        vec_lanes: int = _VEC_RANK_LANES) -> Path:
+                        vec_lanes: int = _VEC_RANK_LANES,
+                        vec_max_rank: int = _VEC_RANK_MAX_RANK) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
     prepared module to ``work/model.prepared.mlir``. These make quantized / bf16 /
     over-rank-matmul / bool-cast models lowerable to a single object — the same fixes the
@@ -456,7 +464,7 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     import os as _os
     if tag_vec_ranks or _os.environ.get("MERLIN_VEC_RANK"):
         from xdsl.dialects.builtin import UnitAttr
-        n_tag = skip_gather = skip_extent = skip_math = 0
+        n_tag = skip_gather = skip_extent = skip_math = skip_rank = 0
         for op in module.walk():
             if op.name != "linalg.generic":
                 continue
@@ -464,7 +472,8 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
             if "reduction" in its or "parallel" not in its:
                 continue
             rank = its.count("iterator_type")
-            if not 2 <= rank <= 4:
+            if not _VEC_RANK_MIN_RANK <= rank <= vec_max_rank:
+                skip_rank += 1
                 continue
             # A DATA-DEPENDENT GATHER (a tensor.extract / memref.load in the body — the im2col and
             # pad-index generics) has no affine access to vectorize: `structured.vectorize` fails the
@@ -498,8 +507,9 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
             op.attributes[f"merlin.vec_r{rank}"] = UnitAttr()
             n_tag += 1
         print(f"[vec_rank] tagged {n_tag} all-parallel generics for bounded vectorize "
-              f"(skipped {skip_gather} gathers, {skip_math} with a transcendental body, "
-              f"{skip_extent} on a non-multiple innermost extent)")
+              f"(ranks {_VEC_RANK_MIN_RANK}..{vec_max_rank}; skipped {skip_gather} gathers, "
+              f"{skip_math} with a transcendental body, {skip_extent} on a non-multiple innermost "
+              f"extent, {skip_rank} outside the rank bound)")
     if op_counts_out is not None:
         # What the PREPARED module actually contains, for the caller to check its levers against.
         # A transform lever finds its work by op NAME; one whose ops are all absent still builds,
@@ -568,8 +578,10 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     is an untagged build).
     """
     from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
+    from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
     features = frozenset(features or frozenset())
     _lanes = _vec_lanes(features)
+    _max_rank = _vec_max_rank(features)
     from ...llvmlower.impr_features import (NAMED_INT8_CONTRACTION_NAME,
                                             QUANTIZE_BEFORE_GATHER_NAME)
     _op_counts: dict[str, int] = {}
@@ -578,7 +590,8 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                                    named_contraction=NAMED_INT8_CONTRACTION_NAME in features,
                                    prequant_gather=QUANTIZE_BEFORE_GATHER_NAME in features,
                                    op_counts_out=_op_counts,
-                                   vec_lanes=_lanes or _VEC_RANK_LANES)
+                                   vec_lanes=_lanes or _VEC_RANK_LANES,
+                                   vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK)
     # SAY SO when a requested lever cannot fire on this module. A transform schedule matches by op
     # name, and `transform.structured.match` on a name nothing carries yields an empty handle, so
     # every op downstream of it is a vacuous no-op -- the feature builds, gates clean, and reports
@@ -683,7 +696,8 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         _judge_levers_on(prepared)
         return _strip_provenance(prepared, work, features), features
     from ...llvmlower import perop_blocks as _pb
-    from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_NR_FILL_NAME,
+    from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_MR_FILL_NAME,
+                                            PEROP_NR_FILL_NAME,
                                             ensure_perop_block, parse_perop_mr_sentinel,
                                             PEROP_MR_SENTINEL_PREFIX)
     # The N-fill request is a SEARCH KNOB, off by default, because its sign is model-dependent: on the
@@ -706,6 +720,18 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
             f"{PEROP_MR_SENTINEL_PREFIX}<N> pins the cap block_table derives under, so two of them "
             f"describe two different builds; name exactly one.")
     mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()
+    # The M-fill request, the exact counterpart of the N-fill one above: passing a vlen here is the
+    # only thing that turns it on, so the default path derives the table under the single ambient cap
+    # and is byte-identical. A NAMED `_mr<N>` sentinel is a PIN and wins over the derivation -- a fork
+    # that asked to measure a specific cap must measure that cap, not one re-derived underneath it --
+    # and says so, because a request that silently did nothing is the failure this whole file is about.
+    mr_fill_vlen = vlen if PEROP_MR_FILL_NAME in features else None
+    features = features - {PEROP_MR_FILL_NAME}
+    if mr_fill_vlen and _mr_named:
+        print(f"[zephyr_model] {PEROP_MR_FILL_NAME} ignored: {PEROP_MR_SENTINEL_PREFIX}"
+              f"{_mr_named[0]} pins the per-op MR cap to {_mr_named[0]}, and a named pin wins over "
+              "the register-file derivation")
+        mr_fill_vlen = None
     if _mr_named:
         features = ({f for f in features if parse_perop_mr_sentinel(f) is None}
                     | {PEROP_BLOCK_NAME})
@@ -719,14 +745,16 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # the block tables of the models on disk is MAC-weighted NR 16.00 -> 32.00 on every int8 model
         # and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
         table = _pb.block_table(_cshapes(prepared), mr_cap=mr_cap,
-                                nr_cap=perop_nr_cap(vlen), harts=harts, vlen=nr_fill_vlen)
+                                nr_cap=perop_nr_cap(vlen), harts=harts, vlen=nr_fill_vlen,
+                                mr_vlen=mr_fill_vlen)
         # DIRECT CONVOLUTIONS, priced into the SAME table (so the tagger, the priced-vs-tagged
         # agreement check and the schedule are one code path, not two). `contraction_shapes` cannot
         # see them: a direct conv has three reduction dims and its test admits exactly one. Returns
         # {} unless `perop_blocks.CONV_ARM_FEATURE` is in `features`, so the default build's table --
         # and every schedule and tag derived from it -- is byte-identical.
         table.update(_pb.conv_block_table(prepared, features, mr_cap=mr_cap,
-                                          nr_cap=perop_nr_cap(vlen), vlen=nr_fill_vlen))
+                                          nr_cap=perop_nr_cap(vlen), vlen=nr_fill_vlen,
+                                          mr_vlen=mr_fill_vlen))
         if table:
             prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
             features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}

@@ -79,6 +79,21 @@ LMUL_LADDER: tuple[int, ...] = (1, 2, 4, 8)
 #: The widest whole-register group the ``vtype`` encoding admits.
 LMUL_MAX: int = LMUL_LADDER[-1]
 
+#: How many architectural vector registers the V extension defines: ``v0`` .. ``v31``. An ENCODING
+#: fact of the same class as :data:`LMUL_LADDER` -- the ``vd``/``vs1``/``vs2`` fields are five bits
+#: wide, so the file is 32 registers on every V implementation whatever its VLEN -- and NOT a number
+#: about any particular part. It lives here, beside the group WIDTH, because it is the denominator of
+#: the other register question: a width says how many registers ONE value occupies, this says how
+#: many such groups can be live at once. Anything that must choose how many accumulator groups to
+#: keep resident across a loop (see ``perop_blocks.mr_cap_for_registers``) is bounded by it.
+VREG_COUNT: int = 32
+
+#: Registers the encoding reserves rather than leaves to the allocator. ``v0`` is the ONLY register a
+#: masked instruction can name as its mask operand (the ``vm`` bit selects ``v0``, it does not encode
+#: a register number), so a nest that masks any dimension cannot also hold an accumulator there.
+#: Counted out of :data:`VREG_COUNT` by pressure calculations for that reason.
+RESERVED_VREGS: int = 1
+
 #: The LLVM RISC-V option that sets the register-group width used by auto-vectorized code. Named
 #: once, here, so the seam is a single string rather than an ``-mllvm`` scattered across builders.
 LMUL_OPTION: str = "-riscv-v-register-bit-width-lmul"

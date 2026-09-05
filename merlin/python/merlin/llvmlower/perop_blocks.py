@@ -188,9 +188,141 @@ def nr_cap_for_dtypes(nr_cap: int, vlen: int | None, dtypes) -> int:
 # ---------------------------------------------------------------------------------------------------
 
 
+def accum_elem_bits(dtypes) -> int | None:
+    """Width of the ACCUMULATOR element -- the ``out`` member of the ``(lhs, rhs, out)`` triple.
+
+    The accumulator is the element the vectorizer configures SEW for on a widening contraction (read
+    off the emitted int8 loop above: ``e16,m2`` operands feeding an ``e32,m4`` accumulator), so it is
+    the width that decides how many architectural registers ONE row of a register block occupies.
+
+    None for an unreadable or unrecognised triple, and that is the honest answer for the same reason
+    :func:`narrowest_elem_bits` gives one: the caller must then fail open to the cap it was handed
+    rather than price a block against a width nobody observed.
+    """
+    seq = [str(t) for t in (dtypes or ())]
+    if len(seq) >= 3 and seq[-1] in _ELEM_BITS:
+        return _ELEM_BITS[seq[-1]]
+    return None
+
+
+def _lanes_registers(lanes: int, bits: int, vlen: int) -> int:
+    """Architectural registers one ``lanes``-element value of ``bits``-wide elements occupies.
+
+    A value narrower than a register still occupies one (RVV's fractional LMULs are a way to share a
+    group with a WIDER element, not a way to pack two values into one register), so the floor is 1;
+    above that it is the ladder-rounded group width, because ``vtype`` cannot encode a group of 3.
+    """
+    from .lmul_group import _ladder_ceil
+    return max(1, _ladder_ceil((int(lanes) * int(bits)) / int(vlen)))
+
+
+def _operand_group_widths(operand_bits: int, acc_bits: int) -> list[int]:
+    """The SEWs the shared B row is materialized at before the MAC consumes it.
+
+    Structural, from the widening chain the ISA forces rather than from a spelling: a widening MAC
+    widens exactly 2x, so an ``operand_bits -> acc_bits`` contraction that widens more than that has
+    to climb there by explicit extensions, and every rung of that climb is a value that is live at the
+    same time as the accumulator. Read off the emitted int8 loop above, the climb for ``i8 -> i32`` is
+    ``vle8.v`` (e8) then ``vsext.vf2`` (e16) then ``vwmacc.vx`` (e16 -> e32): two live operand groups,
+    which is what ``[8, 16]`` says. An ``f32 -> f32`` contraction climbs nothing and its single group
+    is at the accumulator's own width, which is what ``[32]`` says.
+    """
+    top = max(int(operand_bits), int(acc_bits) // 2)
+    widths, w = [], int(operand_bits)
+    while w <= top:
+        widths.append(w)
+        w *= 2
+    return widths or [int(operand_bits)]
+
+
+def mr_cap_for_registers(mr_cap: int, *, vlen: int | None, nr: int, dtypes,
+                         vregs: int | None = None) -> int:
+    """The M-tile cap this contraction's own block can hold RESIDENT in the vector register file.
+
+    THE AXIS THIS EXISTS TO CLOSE. NR has been a derived, per-op quantity since
+    :func:`nr_cap_for_dtypes`: it is scaled by the board's VLEN and by the op's own narrowest element
+    width. MR was not derived at all -- it was ONE number for the whole model
+    (``zephyr_model.perop_mr_cap()``, or a ``perop_register_block_mr<N>`` sentinel), so the only thing
+    that ever made a per-op MR differ from its neighbour's was ``gcd(M)`` clipping a shared cap. That
+    made the register-file bound unstatable: the bound is a function of how many registers ONE
+    accumulator row costs, which is a function of that op's OWN N tile and accumulator width, and a
+    single model-wide number cannot express it.
+
+    The bound, stated as registers rather than as a tuned integer:
+
+        MR * regs(NR lanes at acc_bits) + sum(regs(NR lanes at w) for w in the widening chain)
+            <= VREG_COUNT - RESERVED_VREGS
+
+    i.e. MR accumulator groups plus the shared B row at every width it exists at must fit the
+    architectural file, with ``v0`` kept out of it because the encoding will not let a masked op name
+    any other mask register. Every term comes from a fact about the target -- the VLEN it was built
+    for, the element widths in THIS contraction's own type triple, and the RVV encoding's register
+    count (``lmul_group.VREG_COUNT`` / :data:`~merlin.llvmlower.lmul_group.RESERVED_VREGS`). Nothing
+    here is a measured constant, which is the point: the two MR values this repo has measured as best
+    fall out of it rather than being asserted by it.
+
+    Worked, at the K1's VLEN=256 (verify by hand -- these are the numbers the models below land on):
+    an ``i8 x i8 -> i32`` op at NR=16 spends 2 registers per accumulator row (16 x 32 bits = 512) and
+    2 on the B row (e8 rounds up to one whole register, e16 is one), leaving ``(32 - 1 - 2) // 2 =
+    14``; the same op at NR=32 (what ``perop_nr_fill_register`` asks for) spends 4 per row and leaves
+    7 -- which is the same direction as the measured spill at that tile, from the same arithmetic.
+
+    It is a CAP, exactly like the NR one: ``from_strategy._rvv_best_block`` returns only a divisor of
+    the observed ``gcd(M)`` that its lowering predicate accepts, so a cap of 14 on a model whose
+    ``gcd(M)`` is 16 yields MR=8, and one whose M is 1 still yields MR=1. And it is a bound on the
+    ARCHITECTURE, not a promise about the allocator: whether LLVM keeps that many groups live without
+    spilling is a cycle question for whoever runs it, which is why the feature that turns this on is
+    default-off and searched rather than defaulted.
+
+    FAILS OPEN to ``mr_cap`` -- no VLEN, no readable dtypes, or a non-positive NR means the caller's
+    cap is returned unchanged and the derivation is byte-identical to not existing. Fails open rather
+    than closed here because the alternative (MR=1) would silently DELETE blocking that the caller
+    already asked for, which is the failure mode this module's history is made of.
+    """
+    from .lmul_group import RESERVED_VREGS, VREG_COUNT
+    acc = accum_elem_bits(dtypes)
+    operand = narrowest_elem_bits(dtypes)
+    if not vlen or acc is None or operand is None or int(nr) <= 0:
+        return int(mr_cap)
+    budget = int(VREG_COUNT if vregs is None else vregs) - int(RESERVED_VREGS)
+    acc_regs = _lanes_registers(nr, acc, vlen)
+    live = sum(_lanes_registers(nr, w, vlen) for w in _operand_group_widths(operand, acc))
+    return max(1, (budget - live) // acc_regs)
+
+
+def _solve_block(mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None,
+                 dtypes) -> tuple[int, int]:
+    """``(MR, NR)`` for one contraction, with the MR cap DERIVED from its own block when asked.
+
+    Two-sided, and it has to be: the register-file bound on MR is a function of the N tile (that is
+    what sets how many registers one accumulator row costs), while the N tile is chosen by a ranking
+    that reads MR. So the block is solved, the cap re-derived from the block that came back, and the
+    block re-solved -- iterated to a fixed point rather than assumed to converge in one step. The
+    bound is the ladder's length because each round can only move NR between ladder rungs; reaching it
+    without settling means the two constraints disagree, and the LAST block is kept because it is the
+    one the final (tightest-known) cap produced.
+
+    ``mr_vlen=None`` skips the whole thing and returns exactly what the single-cap call returned, so
+    every existing caller is byte-identical.
+    """
+    from ..mining.from_strategy import _rvv_best_block
+    from .lmul_group import LMUL_LADDER
+    block = _rvv_best_block(mr_cap, nr_cap, pairs)
+    if not mr_vlen:
+        return block
+    for _ in range(len(LMUL_LADDER)):
+        cap = mr_cap_for_registers(mr_cap, vlen=mr_vlen, nr=block[1], dtypes=dtypes)
+        nxt = _rvv_best_block(cap, nr_cap, pairs)
+        if nxt == block:
+            break
+        block = nxt
+    return block
+
+
 def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
                 harts: int = 1,
-                vlen: int | None = None) -> dict[str, tuple[int, int]]:
+                vlen: int | None = None,
+                mr_vlen: int | None = None) -> dict[str, tuple[int, int]]:
     """``{shape_key: (MR, NR)}`` — the widest block legal for EACH contraction on its own.
 
     Uses the measured predicate (``_rvv_best_block`` over a single extent pair), so a per-op block is
@@ -210,6 +342,13 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
     (:func:`nr_cap_for_dtypes`) instead of every op sharing one element count. Omitted -> byte-identical
     to the dtype-blind behavior.
 
+    ``mr_vlen``, when given, does the SAME THING FOR M that ``vlen`` does for N: each contraction's MR
+    cap is derived from how many accumulator rows of ITS OWN block fit the board's vector register
+    file (:func:`mr_cap_for_registers`), instead of every op in the model sharing one hand-set number.
+    That asymmetry is what this parameter closes -- N has been per-op and target-derived for a while,
+    M was a single scalar for the whole model and could differ between two ops only by ``gcd(M)``
+    clipping it. Omitted -> ``mr_cap`` is used exactly as before, byte-identical.
+
     ``harts`` is the hart count the image will be lowered for, and it changes the ANSWER without
     changing the KEY. The multicore stage wraps each ``linalg.matmul`` in an ``scf.forall`` over N
     before the package schedule runs, so the block must cover ``ceil(N / harts)`` and the remainder
@@ -220,7 +359,6 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
     uses, so the two cannot drift.
     """
     from ..mining.apply import _harts_split_shapes
-    from ..mining.from_strategy import _rvv_best_block
 
     out: dict[str, tuple[int, int]] = {}
     for s in shapes:
@@ -238,7 +376,8 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
         # PER-SHAPE N cap: widened for this contraction's own narrowest element width when the board's
         # vlen is known (see nr_cap_for_dtypes). vlen=None -> the caller's cap, unchanged.
         shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
-        mr, nr = _rvv_best_block(mr_cap, shape_nr_cap, pairs or [(par[-2], par[-1])])
+        mr, nr = _solve_block(mr_cap, shape_nr_cap, pairs or [(par[-2], par[-1])],
+                              mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()))
         if nr <= 1:
             continue
         out[shape_key(s.op, par, red)] = (int(mr), int(nr))
@@ -411,7 +550,8 @@ def conv_shapes(src) -> "list[Any]":
 
 
 def conv_block_table(src, features: "Any" = (), *, mr_cap: int = DEFAULT_MR, nr_cap: int,
-                     vlen: int | None = None) -> dict[str, tuple[int, int]]:
+                     vlen: int | None = None,
+                     mr_vlen: int | None = None) -> dict[str, tuple[int, int]]:
     """``{shape_key: (MR, NR)}`` for the direct convs in ``src`` -- EMPTY unless the arm is requested.
 
     Merges into the same table :func:`block_table` produces, on purpose: the tagger, the
@@ -419,20 +559,23 @@ def conv_block_table(src, features: "Any" = (), *, mr_cap: int = DEFAULT_MR, nr_
     SAME code for a conv as for a matmul, and there is no second bookkeeping path to drift.
 
     The block is chosen by the same measured predicate the contractions use
-    (``from_strategy._rvv_best_block`` over the (F, Ow) extent pair), so a conv never gets a block the
-    lowering is known to reject. ``nr <= 1`` is dropped for the same reason a contraction's is: a
+    (``from_strategy._rvv_best_block`` over the (F, Ow) extent pair), and under the same derived MR
+    cap when ``mr_vlen`` is given (:func:`mr_cap_for_registers` -- the conv's MR rows are F rows of
+    accumulator, exactly the register-file question the contraction arm asks), so a conv never gets a
+    block the lowering is known to reject. ``nr <= 1`` is dropped for the same reason a contraction's
+    is: a
     one-lane "vector" buys nothing, and the op is then left to ``convert-linalg-to-loops`` exactly as
     it is today.
     """
     if CONV_ARM_FEATURE not in set(features or ()):
         return {}
     ensure_registered()
-    from ..mining.from_strategy import _rvv_best_block
     out: dict[str, tuple[int, int]] = {}
     for s in conv_shapes(src):
         f, ow = int(s.parallel[1]), int(s.parallel[3])
         shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
-        mr, nr = _rvv_best_block(mr_cap, shape_nr_cap, [(f, ow)])
+        mr, nr = _solve_block(mr_cap, shape_nr_cap, [(f, ow)],
+                              mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()))
         if nr <= 1:
             continue
         out[shape_key(s.op, tuple(int(d) for d in s.parallel),

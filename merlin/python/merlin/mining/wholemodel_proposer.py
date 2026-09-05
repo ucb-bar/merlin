@@ -131,6 +131,18 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # ~1.01x SLOWER on spectformer int8. A blanket default would have shipped a regression.
     ("promote_buffers_to_stack", False),
     ("perop_nr_fill_register", False),
+    # The M axis of the same question, and the reason it is listed rather than defaulted is the same:
+    # it is a bound on the ARCHITECTURE (how many accumulator rows of this op's own block fit the
+    # vector register file), not a promise about the register allocator, and only the board can say
+    # whether LLVM keeps that many groups live without spilling. What it CLOSES is an asymmetry: N has
+    # been derived per-op from target facts for a while, while M was one hand-set number for the whole
+    # model (`zephyr_model._PEROP_MR_CAP = 4`, an env var, or a rung of `_MR_CAP_LADDER` reachable only
+    # once a parent already carried blocking) -- so two contractions could differ in MR only by gcd(M)
+    # clipping the cap they shared. Registered eagerly by `impr_features` next to the N-fill knob whose
+    # `edit_pipeline` hook it mirrors, so no `ensure_registered` import belongs above: what an
+    # unregistered name costs is not a rejection but INVISIBILITY -- `_composes` catches the KeyError
+    # and returns False, and the lever is then never proposed at all.
+    ("perop_mr_fill_register", False),
     ("fuse_transpose_b", False),                          # transpose: 38% byte-traffic, measured -6.5% openvla
     # `fold_weight_transpose` IS NOT LISTED, and that is a result rather than an omission. It is the
     # general form of the fold above -- it folds a weight transpose into any linalg consumer's maps,

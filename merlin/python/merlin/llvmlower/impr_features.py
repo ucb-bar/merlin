@@ -93,6 +93,24 @@ def _try_lazy_register(name: str) -> bool:
     ``compiler_features`` -- rather than reaching it through a ``microkernel`` knob block, which
     registers it as a side effect of resolving -- failed with an "unknown impr feature" KeyError.
     Each family is registered from its own arity, so a name is either derivable or an honest error."""
+    # The parallel-GRAIN family carries its threshold in the name and lives in its own module, so
+    # it is resolved first and by import rather than through the arity table below.
+    from .parallel_grain import FEATURE_PREFIX as _PG_PREFIX
+    if name.startswith(_PG_PREFIX):
+        from .parallel_grain import ensure_registered as _pg_ensure
+        try:
+            _pg_ensure(int(name[len(_PG_PREFIX):]))
+        except ValueError:
+            return False
+        return name in _REGISTRY
+    point = _vec_noncontraction_point(name)
+    if point is not None:
+        # The non-contraction family's points are DERIVABLE FROM THE NAME (lanes and max rank), so
+        # they resolve in any process -- which is the whole reason this hook exists: a point the
+        # parent registered at run time is invisible to the lowering subprocess that re-imports this
+        # module, and the build fails with "unknown impr feature" rather than with the lever off.
+        ensure_vec_noncontraction(*point)
+        return name in _REGISTRY
     parts = name.split("_")
     tails: dict[str, tuple[int, "Callable[..., str]"]] = {
         "accum_resident_v3_": (3, ensure_v3_microkernel),          # MR, NR, KC
@@ -2033,37 +2051,61 @@ def _vec_bytewise_annotate(prefix: str, *, max_inputs: int = VEC_BYTEWISE_MAX_IN
 #: an untiled 1x64 relu with [1, 8] fails the whole pipeline with "Attempted to vectorize, but failed"
 #: (measured on deepjscc). Tiling first also means the vector shape is exactly the tile, so nothing is
 #: masked -- the tagging predicate only admits extents that are whole multiples of the lane count.
-def _vec_rank_arms(lanes: int, prefix: str | None = None) -> str:
-    """The per-rank tile+vectorize arms at ``lanes`` innermost lanes.
+#: Loop ranks the per-rank arms cover. The LOW bound is structural -- a rank-1 op has no outer dim
+#: to tile by 1, so the arm shape does not apply to it. The HIGH bound is not: it is the highest
+#: rank anyone had written an arm for, and it was silently costing coverage. MEASURED on the int8
+#: recaptures (baseline lowering, per-op attribution of the emitted `forward` --
+#: build_tools/scripts/scalar_remainder.py), the ops whose ONLY reason for being refused is this
+#: bound account for 19.2 % of one model's whole scalar remainder (52 ops, 5,653 scalar
+#: instructions), 1.6 % of another's and 0.7 % of the third's. The high rank comes from the shape
+#: the frontend expands a convolution into -- e.g. a rank-7 `tensor<64x8x3x3x1x8x12xf32>` weight
+#: expansion -- which is why it is a model-shape fact rather than a tuning choice, and why raising
+#: the bound is a COVERAGE fix rather than a new heuristic.
+VEC_NONCONTRACTION_MIN_RANK = 2
+VEC_NONCONTRACTION_MAX_RANK = 4
+
+
+def _vec_rank_arms(lanes: int, prefix: str | None = None,
+                   max_rank: int = VEC_NONCONTRACTION_MAX_RANK) -> str:
+    """The per-rank tile+vectorize arms at ``lanes`` innermost lanes, for ranks 2..``max_rank``.
 
     ``prefix`` names the byte-addressable-element matchers (see :func:`_vec_bytewise_matchers`); the
     arms then match ``merlin.vec_r{rank}`` AND the attribute those matchers annotate, so a sub-byte
     op is refused rather than mis-vectorized. Default None keeps the arms self-contained for the
     tests that read them without a module to splice matchers into.
+
+    One arm per rank, GENERATED rather than written out, because the tile-size list and the loop
+    arity are both functions of the rank: writing them by hand is what fixed the coverage at rank 4.
+    At the default ``max_rank`` the emitted text is byte-identical to the hand-written arms it
+    replaces (pinned by ``test_impr_features``).
     """
     gate = f", {VEC_BYTEWISE_ATTR}" if prefix else ""
     mark = _vec_bytewise_annotate(prefix) if prefix else ""
-    return mark + f"""\
-    %g2 = transform.structured.match attributes{{merlin.vec_r2{gate}}} in %arg0 : (!transform.any_op) -> !transform.any_op
-    %gt2, %gl2:2 = transform.structured.tile_using_for %g2 tile_sizes [1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
-    transform.structured.vectorize %gt2 vector_sizes [1, {lanes}] : !transform.any_op
-    %g3 = transform.structured.match attributes{{merlin.vec_r3{gate}}} in %arg0 : (!transform.any_op) -> !transform.any_op
-    %gt3, %gl3:3 = transform.structured.tile_using_for %g3 tile_sizes [1, 1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
-    transform.structured.vectorize %gt3 vector_sizes [1, 1, {lanes}] : !transform.any_op
-    %g4 = transform.structured.match attributes{{merlin.vec_r4{gate}}} in %arg0 : (!transform.any_op) -> !transform.any_op
-    %gt4, %gl4:4 = transform.structured.tile_using_for %g4 tile_sizes [1, 1, 1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
-    transform.structured.vectorize %gt4 vector_sizes [1, 1, 1, {lanes}] : !transform.any_op
-    %vecf = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
-    transform.apply_patterns to %vecf {{
+    arms = []
+    for rank in range(VEC_NONCONTRACTION_MIN_RANK, max_rank + 1):
+        sizes = ", ".join(["1"] * (rank - 1) + [str(lanes)])
+        # `tile_using_for` yields the tiled op plus one loop handle per tiled dim.
+        loops = ", ".join(["!transform.any_op"] * (rank + 1))
+        arms.append(
+            f"    %g{rank} = transform.structured.match attributes{{merlin.vec_r{rank}{gate}}} in "
+            f"%arg0 : (!transform.any_op) -> !transform.any_op\n"
+            f"    %gt{rank}, %gl{rank}:{rank} = transform.structured.tile_using_for %g{rank} "
+            f"tile_sizes [{sizes}] : (!transform.any_op) -> ({loops})\n"
+            f"    transform.structured.vectorize %gt{rank} vector_sizes [{sizes}] : "
+            f"!transform.any_op\n")
+    return mark + "".join(arms) + """\
+    %vecf = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+    transform.apply_patterns to %vecf {
       transform.apply_patterns.vector.cast_away_vector_leading_one_dim
       transform.apply_patterns.vector.drop_unit_dims_with_shape_cast
       transform.apply_patterns.vector.lower_shape_cast
-    }} : !transform.any_op
+    } : !transform.any_op
 """
 
 
 
-def _splice_vec_rank_arms(text: str, lanes: int = VEC_NONCONTRACTION_LANES) -> str:
+def _splice_vec_rank_arms(text: str, lanes: int = VEC_NONCONTRACTION_LANES,
+                          max_rank: int = VEC_NONCONTRACTION_MAX_RANK) -> str:
     """Insert the per-rank vectorize arms just before the schedule's func-level pattern block.
 
     ADDITIVE (not schedule_replace), so it layers on whatever micro-kernel recipe is in play: the
@@ -2081,7 +2123,7 @@ def _splice_vec_rank_arms(text: str, lanes: int = VEC_NONCONTRACTION_LANES) -> s
         # where a lever that is silently wrong is not.
         return text
     text = text.replace(head, head + _vec_bytewise_matchers(prefix), 1)
-    return text.replace(anchor, _vec_rank_arms(lanes, prefix) + anchor, 1)
+    return text.replace(anchor, _vec_rank_arms(lanes, prefix, max_rank) + anchor, 1)
 
 
 def _vec_module_header(text: str) -> str | None:
@@ -2139,6 +2181,41 @@ register(ImprFeature(
 ))
 
 
+def _vec_noncontraction_point(name: str) -> "tuple[int, int] | None":
+    """``(lanes, max_rank)`` a non-contraction-vectorize feature NAME asks for, or None.
+
+    The name is the single source of truth for both numbers, so the TAGGING predicate and the
+    SCHEDULE arms cannot drift apart -- and so a point resolves identically in the lowering
+    SUBPROCESS, which re-imports this module and never sees a registration the parent made at run
+    time. Grammar: the base name, then any of ``_l<lanes>`` and ``_r<max_rank>`` in any order. An
+    unparsable tail yields None (the feature is then simply not this family) rather than a default,
+    because silently reading a mistyped point as the default is how an experiment measures the
+    baseline and reports it as the lever.
+    """
+    if not name.startswith(VEC_NONCONTRACTION_NAME):
+        return None
+    tail = name[len(VEC_NONCONTRACTION_NAME):]
+    lanes, rank = VEC_NONCONTRACTION_LANES, VEC_NONCONTRACTION_MAX_RANK
+    while tail:
+        if not tail.startswith("_") or len(tail) < 3:
+            return None
+        kind, tail = tail[1], tail[2:]
+        digits = ""
+        while tail and tail[0].isdigit():
+            digits, tail = digits + tail[0], tail[1:]
+        if not digits:
+            return None
+        if kind == "l":
+            lanes = int(digits)
+        elif kind == "r":
+            rank = int(digits)
+        else:
+            return None
+    if lanes <= 0 or rank < VEC_NONCONTRACTION_MIN_RANK:
+        return None
+    return lanes, rank
+
+
 def vec_noncontraction_lanes(features) -> int | None:
     """Innermost lane count the enabled non-contraction-vectorize feature asks for, else None.
 
@@ -2147,12 +2224,23 @@ def vec_noncontraction_lanes(features) -> int | None:
     the feature name is what keeps them from drifting apart.
     """
     for f in features or ():
-        if f == VEC_NONCONTRACTION_NAME:
-            return VEC_NONCONTRACTION_LANES
-        if f.startswith(f"{VEC_NONCONTRACTION_NAME}_l"):
-            tail = f.rsplit("_l", 1)[1]
-            if tail.isdigit():
-                return int(tail)
+        point = _vec_noncontraction_point(f)
+        if point is not None:
+            return point[0]
+    return None
+
+
+def vec_noncontraction_max_rank(features) -> int | None:
+    """Highest loop rank the enabled non-contraction-vectorize feature asks for, else None.
+
+    Same contract as :func:`vec_noncontraction_lanes` and for the same reason: the tagger admits an
+    op only up to this rank and the schedule only carries arms up to it, so one number has to drive
+    both. None means no such feature is enabled, and the tagger then runs not at all.
+    """
+    for f in features or ():
+        point = _vec_noncontraction_point(f)
+        if point is not None:
+            return point[1]
     return None
 
 
@@ -2181,7 +2269,7 @@ def vec_noncontraction_lanes(features) -> int | None:
 # ---------------------------------------------------------------------------------------------------
 
 
-def ensure_vec_noncontraction(lanes: int) -> str:
+def ensure_vec_noncontraction(lanes: int, max_rank: int = VEC_NONCONTRACTION_MAX_RANK) -> str:
     """Register (on demand) the non-contraction vectorize point at ``lanes`` innermost lanes.
 
     Exposing the width as a registered point per value is what lets a search find one that pays
@@ -2190,17 +2278,22 @@ def ensure_vec_noncontraction(lanes: int) -> str:
     ``_vec_noncontraction_hygiene``). Each point implies the same hygiene as the bare name, so a
     width the search picks is measured in the same realization as the default one.
     """
-    if lanes == VEC_NONCONTRACTION_LANES:
+    if lanes == VEC_NONCONTRACTION_LANES and max_rank == VEC_NONCONTRACTION_MAX_RANK:
         return VEC_NONCONTRACTION_NAME
-    name = f"{VEC_NONCONTRACTION_NAME}_l{lanes}"
+    name = VEC_NONCONTRACTION_NAME
+    if lanes != VEC_NONCONTRACTION_LANES:
+        name += f"_l{lanes}"
+    if max_rank != VEC_NONCONTRACTION_MAX_RANK:
+        name += f"_r{max_rank}"
     if name in known():
         return name
     register(ImprFeature(
         name=name, action_class="PASS",
         description=(f"Bounded per-rank vectorize of the non-contraction all-parallel generics at "
-                     f"{lanes} innermost lanes (see {VEC_NONCONTRACTION_NAME}). Default-off; the width "
-                     f"must be chosen by measurement, not assumed."),
-        edit_schedule=lambda t, _l=lanes: _splice_vec_rank_arms(t, _l),
+                     f"{lanes} innermost lanes, loop ranks "
+                     f"{VEC_NONCONTRACTION_MIN_RANK}..{max_rank} (see {VEC_NONCONTRACTION_NAME}). "
+                     f"Default-off; both numbers must be chosen by measurement, not assumed."),
+        edit_schedule=lambda t, _l=lanes, _r=max_rank: _splice_vec_rank_arms(t, _l, _r),
         implies=_vec_noncontraction_hygiene(),
     ))
     return name
@@ -2457,6 +2550,62 @@ register(ImprFeature(
                 "tile can push it from m4 to m8 and spill (decoded: 0 -> 6 accumulator spill ops). A "
                 "search knob, not a default. Default-off; baseline byte-identical.",
     edit_pipeline=_perop_nr_fill_unresolved,
+    implies=frozenset({PEROP_BLOCK_NAME}),
+))
+
+
+PEROP_MR_FILL_NAME = "perop_mr_fill_register"
+
+
+def _perop_mr_fill_unresolved(_passes):
+    """Same contract as the two sentinels above: a REQUEST consumed at preparation time.
+
+    It has to be, for the same reason: the M cap it derives is a function of each contraction's OWN
+    block and element widths, and the prepared module is the first place those are readable. A
+    sentinel that reaches the pipeline means preparation was skipped, and the consequence would be
+    silent -- the table would be derived under the ambient cap and the build would report a lever it
+    never applied.
+    """
+    raise RuntimeError(
+        f"{PEROP_MR_FILL_NAME!r} reached the lowering pipeline unresolved. It must be consumed by "
+        "runtime.backends.zephyr_model.prepare_for_lowering, which is where the per-op block table is "
+        "derived and is therefore the only place the board's vector register file can size an M cap.")
+
+
+# THE M AXIS OF THE SAME QUESTION `PEROP_NR_FILL_NAME` ASKS ABOUT N, and the reason it did not exist
+# is worth stating: N has been a DERIVED, per-op quantity for a while (scaled by the board's VLEN by
+# `zephyr_model.perop_nr_cap`, then by the op's own narrowest element width by
+# `perop_blocks.nr_cap_for_dtypes`), while M was ONE number for the whole model -- `_PEROP_MR_CAP = 4`,
+# an `MERLIN_PEROP_MR_CAP` env var, or a `perop_register_block_mr<N>` sentinel naming a rung of a
+# hand-written ladder. Two contractions in one model could therefore differ in MR only by `gcd(M)`
+# clipping a cap they shared, and the bound that actually governs MR -- how many accumulator rows fit
+# the vector register file, which depends on THAT op's N tile and accumulator width -- could not be
+# stated at all.
+#
+# This asks `block_table` to derive it per contraction instead: MR accumulator groups plus the shared
+# B row at every width the widening chain materializes it at must fit `lmul_group.VREG_COUNT` minus
+# the mask register the encoding reserves. See `perop_blocks.mr_cap_for_registers` for the inequality
+# and the worked numbers. Every term is a target fact (the VLEN built for, the op's own type triple,
+# the RVV register count); no measured constant appears in it.
+#
+# NOT DEFAULTED, and the standard here is the one `PEROP_NR_FILL_NAME` sets rather than a suspicion:
+# the derivation bounds the ARCHITECTURE, not the register allocator, so whether LLVM keeps that many
+# groups live without spilling is a cycle question for the board. It is offered to the search, which
+# is what the search is for. `implies` the block sentinel because there is no per-op M cap to derive
+# without per-op blocking; `schedule_replace` stays False because it changes the TABLE, not the
+# schedule's shape, and the replacement schedule comes from the block feature it implies.
+register(ImprFeature(
+    name=PEROP_MR_FILL_NAME,
+    action_class="KNOB",
+    description="derive each contraction's per-op M cap from how many accumulator rows of ITS OWN "
+                "block fit the board's vector register file, instead of every op in the model "
+                "sharing one hand-set number. The N axis of this question has been derived per-op "
+                "for a while (VLEN- and element-width-scaled); M was a single scalar, so two ops "
+                "could differ only by gcd(M) clipping a shared cap. Derived from target facts only "
+                "-- the VLEN built for, the op's own element triple, and the RVV register count. A "
+                "bound on the architecture, not a promise about the allocator, so it is searched "
+                "rather than defaulted. Default-off; baseline byte-identical.",
+    edit_pipeline=_perop_mr_fill_unresolved,
     implies=frozenset({PEROP_BLOCK_NAME}),
 ))
 

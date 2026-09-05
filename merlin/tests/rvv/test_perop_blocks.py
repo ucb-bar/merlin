@@ -410,3 +410,141 @@ def test_an_unnamed_cap_still_reads_the_env_default():
     from merlin.runtime.backends import zephyr_model as zm
 
     assert zm.perop_mr_cap() == zm._PEROP_MR_CAP
+
+
+# ---------------------------------------------------------------------------------------------------
+# THE M AXIS. N has been derived per-op from target facts since `nr_cap_for_dtypes`; M was one number
+# for the whole model, so two contractions could differ in MR only by gcd(M) clipping a shared cap.
+# These pin the derivation, its inputs, and the fact that turning it OFF changes nothing.
+# ---------------------------------------------------------------------------------------------------
+
+
+def test_the_mr_cap_is_derived_from_the_register_file_not_from_a_constant():
+    """MR accumulator groups + the B row at every widening width must fit ``VREG_COUNT`` - ``v0``.
+
+    Worked at VLEN=256, and the arithmetic is the whole claim: an ``i8 x i8 -> i32`` op at NR=16
+    spends 2 registers per accumulator row (16 x 32 = 512 bits) and 2 on the shared B row (e8 rounds
+    up to one whole register, e16 is one), so ``(32 - 1 - 2) // 2 = 14``. The SAME formula at NR=32
+    -- what ``perop_nr_fill_register`` asks for -- spends 4 per row and leaves 7, which is the same
+    direction as the accumulator spill measured at that tile.
+    """
+    from merlin.llvmlower.lmul_group import RESERVED_VREGS, VREG_COUNT
+
+    i8 = ("i8", "i8", "i32")
+    assert pb.mr_cap_for_registers(4, vlen=256, nr=16, dtypes=i8) == (VREG_COUNT - RESERVED_VREGS - 2) // 2
+    assert pb.mr_cap_for_registers(4, vlen=256, nr=32, dtypes=i8) == 7
+    # f32 has no widening chain, so its ONE live operand group is at the accumulator's own width
+    assert pb.mr_cap_for_registers(4, vlen=256, nr=16, dtypes=("f32", "f32", "f32")) == 14
+    # and a wider unit holds the same tile in fewer registers, so it admits more rows
+    assert pb.mr_cap_for_registers(4, vlen=512, nr=16, dtypes=i8) > 14
+
+
+def test_the_derived_mr_cap_fails_OPEN_to_the_callers_cap():
+    """No VLEN or no readable dtypes must return the caller's cap unchanged.
+
+    Open rather than closed, deliberately: failing closed here means MR=1, which would silently DELETE
+    a register block the caller already asked for -- the failure mode this module's history is made of.
+    """
+    assert pb.mr_cap_for_registers(4, vlen=None, nr=16, dtypes=("i8", "i8", "i32")) == 4
+    assert pb.mr_cap_for_registers(4, vlen=256, nr=16, dtypes=()) == 4
+    assert pb.mr_cap_for_registers(4, vlen=256, nr=16, dtypes=("x", "y", "z")) == 4
+    assert pb.mr_cap_for_registers(4, vlen=256, nr=0, dtypes=("i8", "i8", "i32")) == 4
+    assert pb.accum_elem_bits(("i8", "i8", "i32")) == 32     # the OUT type, not the narrowest
+    assert pb.accum_elem_bits(()) is None
+
+
+def test_block_table_without_mr_vlen_is_byte_identical():
+    """The derivation is opt-in: omitting ``mr_vlen`` must not move a single block."""
+    shapes = [_S("linalg.matmul", (64, 256), (288,), dtypes=("i8", "i8", "i32")),
+              _S("linalg.batch_matmul", (6, 1500, 1500), (64,), dtypes=("f32", "f32", "f32"))]
+    assert (pb.block_table(shapes, mr_cap=4, nr_cap=16)
+            == pb.block_table(shapes, mr_cap=4, nr_cap=16, mr_vlen=None))
+
+
+def test_the_derived_cap_reaches_the_chosen_block_and_stays_a_cap():
+    """End to end, and BOTH directions of "it is a cap, not a pin".
+
+    The M=64 op has room for MR=8 under a derived cap of 14 (16 is not a divisor-of-gcd it accepts);
+    the M=3 op has none, and must come back at 3 rather than be forced anywhere.
+    """
+    i8 = ("i8", "i8", "i32")
+    wide = [_S("linalg.matmul", (64, 256), (576,), dtypes=i8)]
+    assert set(pb.block_table(wide, mr_cap=4, nr_cap=16).values()) == {(4, 16)}
+    assert set(pb.block_table(wide, mr_cap=4, nr_cap=16, mr_vlen=256).values()) == {(8, 16)}
+    narrow = [_S("linalg.matmul", (3, 4096), (400,), dtypes=i8)]
+    assert set(pb.block_table(narrow, mr_cap=4, nr_cap=16, mr_vlen=256).values()) == {(3, 16)}
+
+
+def test_the_derived_cap_is_per_op_not_one_number_for_the_model():
+    """The point of the whole change: two ops in ONE table, at ONE call, landing on different MRs for
+    a reason that is NOT gcd(M) clipping a shared cap -- their N tiles differ, so their rows cost
+    different numbers of registers."""
+    i8 = ("i8", "i8", "i32")
+    table = pb.block_table([_S("linalg.matmul", (64, 256), (576,), dtypes=i8),
+                            _S("linalg.matmul", (64, 49), (1024,), dtypes=i8)],
+                           mr_cap=4, nr_cap=16, mr_vlen=256)
+    by_nr = {nr: mr for mr, nr in table.values()}
+    assert len(by_nr) == 2, table
+    assert by_nr[16] != by_nr[7], "a narrower N tile leaves room for MORE accumulator rows"
+
+
+def test_the_mr_fill_knob_is_off_by_default_and_only_turns_on_by_request():
+    """Same wiring contract as the N-fill knob: passing a vlen is the ONLY thing that turns it on, and
+    the sentinel is stripped so it can never reach lowering unresolved."""
+    import inspect
+
+    from merlin.runtime.backends import zephyr_model as zm
+
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    assert "mr_fill_vlen = vlen if PEROP_MR_FILL_NAME in features else None" in prep
+    assert "mr_vlen=mr_fill_vlen" in prep, "block_table must receive the GATED vlen, not the raw one"
+    assert "features = features - {PEROP_MR_FILL_NAME}" in prep
+
+
+def test_a_named_mr_cap_pins_and_beats_the_derivation():
+    """A fork that asked to measure cap N must measure cap N, not one re-derived underneath it -- and
+    the override must SAY so, because a request that silently did nothing is unfalsifiable."""
+    import inspect
+
+    from merlin.runtime.backends import zephyr_model as zm
+
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    assert "if mr_fill_vlen and _mr_named:" in prep
+    assert "mr_fill_vlen = None" in prep
+    assert "ignored" in prep
+
+
+def test_the_mr_fill_knob_implies_the_blocking_it_has_no_meaning_without():
+    from merlin.llvmlower import impr_features as F
+    from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME, PEROP_MR_FILL_NAME
+
+    assert F.get(PEROP_MR_FILL_NAME).implies == frozenset({PEROP_BLOCK_NAME})
+    assert F.normalize([PEROP_MR_FILL_NAME]) == frozenset({PEROP_MR_FILL_NAME, PEROP_BLOCK_NAME})
+    # it changes the TABLE, not the schedule shape (the block feature it implies is the replacement)
+    assert F.get(PEROP_MR_FILL_NAME).schedule_replace is False
+
+
+def test_the_mr_fill_knob_is_registered_at_import_and_ranked():
+    """An unregistered lever is not declined, it is INVISIBLE: ``_composes`` swallows the KeyError and
+    returns False, so the lever is never proposed and no later improvement to it is ever measured.
+    Registration must therefore happen at import of ``impr_features``, and the name must be in
+    ``RANKED_LEVERS`` or nothing will ever put it in a candidate set."""
+    import json
+    import subprocess
+    import sys
+
+    from merlin.common.paths import merlin_dir, repo_root
+    from merlin.llvmlower.impr_features import PEROP_MR_FILL_NAME
+    from merlin.mining.wholemodel_proposer import RANKED_LEVERS, _composes
+
+    code = ("import json\n"
+            "from merlin.llvmlower import impr_features as F\n"
+            "print(json.dumps(F.PEROP_MR_FILL_NAME in F.known()))\n")
+    env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin"}
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       cwd=repo_root(), env=env)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert json.loads(r.stdout.strip().splitlines()[-1]) is True
+
+    assert any(n == PEROP_MR_FILL_NAME for n, _ in RANKED_LEVERS)
+    assert _composes(["perop_register_block", PEROP_MR_FILL_NAME, "promote_buffers_to_stack"])
