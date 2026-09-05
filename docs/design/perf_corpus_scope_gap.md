@@ -219,10 +219,22 @@ passed the cheap tier 20/20 while RTL passed 1). **A screen may eliminate; it ma
 
 Do not re-litigate these here:
 
-- **`PF` — `epilogue_fusion` (L5).** Needs a fused matmul+bias member *and* a standalone bias member.
-  This backend implements no bias-add epilogue, so two of the three member kinds fail code
-  generation and the capacity rule `complete_fused_and_part_comparison_group` can never be met.
-  Restoring it is backend functional work. Note `emitter.status: existing` — the corpus side is ready.
+- **`PF` — `epilogue_fusion` (L5): RESOLVED, and it is the worked example of what unblocking costs.**
+  The family needs a fused matmul+bias member *and* a standalone bias member, so it requires a
+  backend that implements a bias-add epilogue; without one, two of its three member kinds fail code
+  generation and the capacity rule `complete_fused_and_part_comparison_group` can never be met. That
+  was the state when this note was first written, and the entry said restoring it was backend
+  functional work rather than a tuning lever.
+
+  **That work has since been done.** `BIAS_ADD` is modelled in `runtime/reference.py`,
+  `corpus_spec.py` derives the bias operand (`_bias_operand`, `_BIAS_STAGES`), and `PF` is a live
+  sweep with six members rather than a `blocked_unimplemented` entry. So `L5_fusion` is no longer an
+  empty rung, and the ladder table above should be read as the state of a corpus that lacked it.
+
+  ⚠️ **Do not re-derive the block from a branch that lacks the epilogue.** A branch whose backend has
+  no bias support will regenerate a corpus with `PF` blocked and a `_perf.yaml` that says so, and
+  merging that over a branch which HAS the epilogue silently deletes six working members and a whole
+  rung of coverage. The capability lives in the backend; the block record only reports it.
 - **`PB` — `host_island_placement` (L4).** Blocked on `fused_single_elf`: the capsule path runs the
   accelerator on the target's oracle and the host lane in-process on the development machine, so a
   seam differential would price the workstation rather than the SoC. Until both lanes execute from
