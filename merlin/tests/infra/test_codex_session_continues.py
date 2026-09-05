@@ -20,49 +20,38 @@ sys.path.insert(0, str(repo_root() / "merlin/experiments/capsule_bench/harness")
 import codex_agent as CA  # noqa: E402
 
 
-def test_resume_keeps_every_flag_and_targets_the_thread():
-    """A continuation that dropped --model or -o would silently be a different arm."""
-    base = ["codex", "exec", "--json", "--model", "gpt-5.6-sol", "-C", "/ws", "-o", "/ws/f.txt"]
-    out = CA._resume_cmd(base, "uuid-1", Path("/ws/p.txt"))
-    assert out[:4] == ["codex", "exec", "resume", "uuid-1"]
-    for flag in ("--json", "--model", "gpt-5.6-sol", "-C", "-o"):
-        assert flag in out, f"{flag} lost on resume"
+def test_resume_passes_only_flags_the_subcommand_accepts():
+    """`codex exec resume` takes a SMALLER option set than `codex exec`.
+
+    Measured against 0.153.0 --help: it accepts --json/--model/-o/--skip-git-repo-check and the
+    sandbox bypass, but NOT --color and NOT -C. Rewriting the exec argv therefore produced
+    `Usage: codex exec resume ... <SESSION_ID> [PROMPT]` and the continuation died on its first
+    attempt with 14772s of budget left. Verified against the live CLI: with these flags it gets past
+    parsing to `no rollout found for thread id`, i.e. the arguments are accepted."""
+    cmd = CA.build_resume_cmd(Path("/ws"), model="m", effort="high", final_path=Path("/ws/f.txt"),
+                              sandbox="bwrap", thread_id="TID")
+    assert cmd[:3] == ["codex", "exec", "resume"]
+    assert "--color" not in cmd, "resume rejects --color"
+    assert "-C" not in cmd, "resume rejects -C (cwd comes from the spawn instead)"
+    for required in ("--json", "--model", "-o", "--skip-git-repo-check"):
+        assert required in cmd, f"{required} lost on resume"
 
 
-def test_resume_survives_the_real_nested_sandbox_argv():
-    """The shape that actually ships, and the two bugs it exposed.
-
-    `bash -c "bwrap ... bash -c 'export PATH=...; exec codex exec ...'"` nests the codex tokens inside
-    a quoted string AND puts the shell's own `exec` BUILTIN before the binary. Anchoring on the first
-    token spelled `exec` produced `exec resume ...`, which the live run reported as
-    `bash: line 1: exec: resume: not found`. Splitting and re-quoting the inner string then swallowed
-    the `;` separator, merging two commands into one."""
-    import shlex
-    inner = "export PATH=/x:/y; exec codex exec --json --model m -C /ws"
-    out = CA._resume_cmd(["bash", "-c", f"bwrap --args 10 bash -c {shlex.quote(inner)}"],
-                         "uuid-9", Path("/p"))
-    assert "export PATH=/x:/y; exec codex exec resume uuid-9 --json" in out[2], out[2]
-    assert out[2].count("resume") == 1
+def test_the_session_id_precedes_the_stdin_prompt_marker():
+    """The grammar is `[OPTIONS] [SESSION_ID] [PROMPT]`, and `-` is the prompt."""
+    cmd = CA.build_resume_cmd(Path("/ws"), model="m", effort="", final_path=Path("/f"),
+                              sandbox="bwrap", thread_id="TID")
+    assert cmd[-2:] == ["TID", "-"]
 
 
-def test_a_command_with_no_codex_is_untouched():
-    assert CA._resume_cmd(["bash", "-c", "echo hi"], "u", Path("/p")) == ["bash", "-c", "echo hi"]
-
-
-def test_resume_stays_inside_the_sandbox():
-    """Under bwrap the argv is `bash -c <inner>`; rewriting the OUTER command would run the
-    continuation outside the sandbox, with the answer surfaces unmasked."""
-    inner = " ".join(shlex.quote(c) for c in ["codex", "exec", "--json", "-C", "/ws"])
-    out = CA._resume_cmd(["bash", "-c", f"bwrap --args 10 {inner}"], "uuid-2", Path("/ws/p.txt"))
-    assert out[0] == "bash" and out[1] == "-c"
-    assert out[2].index("bwrap") < out[2].index("resume"), "resume escaped the sandbox"
-    assert "uuid-2" in out[2]
-
-
-def test_a_command_without_exec_is_left_alone():
-    """Fail safe: an argv this rewrite does not understand must not be mangled."""
-    odd = ["somethingelse", "--flag"]
-    assert CA._resume_cmd(odd, "uuid-3", Path("/p.txt")) == odd
+def test_resume_keeps_the_sandbox_bypass_off_the_unsandboxed_path():
+    """The outer bwrap is the boundary when sandboxed; without it codex needs its own policy."""
+    boxed = CA.build_resume_cmd(Path("/ws"), model="m", effort="", final_path=Path("/f"),
+                                sandbox="bwrap", thread_id="T")
+    bare = CA.build_resume_cmd(Path("/ws"), model="m", effort="", final_path=Path("/f"),
+                               sandbox="none", thread_id="T")
+    assert "--dangerously-bypass-approvals-and-sandbox" in boxed
+    assert "--sandbox" in bare and "workspace-write" in bare
 
 
 def test_the_continuation_prompt_carries_no_hint():

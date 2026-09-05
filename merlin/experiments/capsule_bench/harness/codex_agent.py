@@ -486,58 +486,32 @@ _CONTINUE_MIN_S = 120
 _CONTINUE_MAX_TURNS = 200
 
 
-def _splice_resume(text: str, thread_id: str) -> str | None:
-    """Insert ``resume <id>`` after the codex binary's ``exec`` inside a shell string, byte-exactly.
+def build_resume_cmd(ws: Path, *, model: str, effort: str, final_path: Path, sandbox: str,
+                     thread_id: str, codex_bin: str = "codex") -> list[str]:
+    """Assemble ``codex exec resume <SESSION_ID> -`` for continuing an existing thread.
 
-    Returns None when this string does not contain a codex invocation, so the caller can keep
-    looking. Structural scanning only -- no regex, and nothing else in the string is touched."""
-    at = text.find("codex")
-    while at != -1:
-        rest = text[at:]
-        head, sep, tail = rest.partition(" exec ")
-        if sep and " " not in head:            # `codex exec ` / `/path/codex exec `
-            cut = at + len(head) + len(sep)
-            return f"{text[:cut]}resume {thread_id} {text[cut:]}"
-        at = text.find("codex", at + 1)
-    return None
+    Built from scratch rather than by rewriting the first turn's argv, because ``resume`` accepts a
+    SMALLER option set than ``exec``. Measured against 0.153.0's ``--help``: it takes ``--json``,
+    ``--model``, ``-o``, ``--skip-git-repo-check`` and the sandbox-bypass flag, but NOT ``--color``
+    and NOT ``-C``. Patching the exec argv therefore produced
 
+        Usage: codex exec resume --json --dangerously-bypass-approvals-and-sandbox <SESSION_ID> [PROMPT]
 
-def _resume_cmd(cmd: list[str], thread_id: str, prompt_path: Path) -> list[str]:
-    """Rewrite a ``codex exec`` argv into ``codex exec resume <thread_id>``, preserving every flag.
+    and the continuation died on its first attempt with 14772s of budget left.
 
-    Two traps, both hit for real before this was right:
-
-    * The sandbox argv NESTS: ``bash -c "bwrap ... bash -c 'export PATH=...; exec codex exec ...'"``.
-      The codex tokens live inside a quoted string, sometimes two levels down, so a single unwrap
-      finds nothing and the command runs unmodified -- the continuation silently repeats turn one.
-    * That inner string contains the shell's own ``exec`` BUILTIN before the codex binary. Anchoring
-      on the first token spelled ``exec`` produced ``exec resume ...``, which the shell tried to run
-      as a program: ``bash: line 1: exec: resume: not found``.
-
-    So: recurse into nested command strings, and anchor on the ``exec`` that FOLLOWS the codex binary.
-    """
-    def _rewrite(argv: list[str]) -> tuple[list[str], bool]:
-        out = list(argv)
-        for i, tok in enumerate(out):
-            if Path(tok).name.startswith("codex"):
-                for j in range(i + 1, len(out)):
-                    if out[j] == "exec":
-                        return out[:j + 1] + ["resume", str(thread_id)] + out[j + 1:], True
-                return out, False
-        for i, tok in enumerate(out):
-            if "codex" in tok and (" " in tok or "\n" in tok):
-                # TEXTUAL insertion, never split-and-requote. Re-quoting a shell string destroys its
-                # own syntax: `export PATH=/x; exec codex ...` came back as `export 'PATH=/x;' exec
-                # codex ...`, swallowing the `;` and merging two commands into one. Splice the
-                # subcommand in and leave every other byte exactly as it was.
-                spliced = _splice_resume(tok, thread_id)
-                if spliced is not None:
-                    out[i] = spliced
-                    return out, True
-        return out, False
-
-    rewritten, ok = _rewrite(list(cmd))
-    return rewritten if ok else list(cmd)
+    Dropping ``-C`` is safe: the child is spawned with ``cwd=ws`` already, so the working directory is
+    the workspace either way. The session id precedes the trailing ``-`` because the grammar is
+    ``[OPTIONS] [SESSION_ID] [PROMPT]`` and ``-`` is the prompt (read from stdin, so its exact bytes
+    stay an artifact rather than an argv fragment)."""
+    cmd = [codex_bin, "exec", "resume", "--json", "--skip-git-repo-check",
+           "--model", model, "-o", str(final_path)]
+    cmd += _effort_arg(effort)
+    if sandbox == "bwrap":
+        cmd.append("--dangerously-bypass-approvals-and-sandbox")
+    else:
+        cmd += ["--sandbox", "workspace-write", "-c", "approval_policy=never"]
+    cmd += [str(thread_id), "-"]
+    return cmd
 
 
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
@@ -641,7 +615,18 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
             f"{prompt_path.stem}.cont{turn_index:02d}{prompt_path.suffix}")
         if turn_index:
             cur_prompt.write_text(_CONTINUE_MSG)
-            cmd = _resume_cmd(cmd, thread_id, cur_prompt)
+            resume_argv = build_resume_cmd(ws, model=resolved, effort=effort,
+                                           final_path=inner_final, sandbox=sandbox,
+                                           thread_id=thread_id, codex_bin=codex_bin)
+            if sandbox == "bwrap":
+                # Re-wrap exactly as the first turn was, so the continuation runs inside the SAME
+                # sandbox with the same binds. Rewriting the wrapped string instead would have to
+                # edit shell syntax; rebuilding it cannot drift from the first turn's wrapping.
+                _inner = " ".join(shlex.quote(c) for c in resume_argv)
+                cmd = ["bash", "-c", _R.bwrap_cmd(_inner, ws, bundle,
+                                                  extra_binds=codex_runtime_binds(codex_home))]
+            else:
+                cmd = resume_argv
         with open(stderr_path, "ab") as err_f, open(cur_prompt, "rb") as in_f:
             try:
                 proc = subprocess.Popen(cmd, stdin=in_f, stdout=subprocess.PIPE, stderr=err_f,
