@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -55,6 +56,29 @@ def _conditions() -> dict | None:
         return k1.board_conditions()
     except Exception as e:  # noqa: BLE001
         return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _host_conditions() -> dict:
+    """Load on the BUILD host, which decides whether a compile-ceiling refusal is reproducible.
+
+    Our arm's wall comes from the board and is insulated from this. The BUILD does not: tiny_llama's
+    whole-model clang was killed at ~880s while this shared 48-core host sat at load 46.6, so the
+    same command on an idle host may well finish inside the same ceiling. Without this number a
+    compile-timeout refusal reads as a property of the model, and a reader cannot tell whether to
+    retry or to fix something. Unreadable is UNKNOWN, never a comforting default.
+    """
+    out: dict = {}
+    try:
+        out["loadavg_1_5_15"] = list(os.getloadavg())
+    except OSError as e:  # noqa: BLE001
+        out["loadavg_1_5_15"] = None
+        out["loadavg_error"] = f"{type(e).__name__}: {e}"
+    try:
+        out["cpu_count"] = os.cpu_count()
+    except Exception as e:  # noqa: BLE001
+        out["cpu_count"] = None
+        out["cpu_count_error"] = f"{type(e).__name__}: {e}"
+    return out
 
 
 _MERLIN_PY = repo_root() / "merlin" / "python"
@@ -369,11 +393,18 @@ def main() -> None:
                                       cwd=repo_root(), capture_output=True,
                                       text=True).stdout.strip())
     print(f"[source] digest={_src_digest} dirty={_dirty or 'none'}", flush=True)
+    _host = _host_conditions()
+    print(f"[host] loadavg={_host.get('loadavg_1_5_15')} cpus={_host.get('cpu_count')}", flush=True)
     rec: dict = {"model": a.model, "ours_bundle": md.name, "package": Path(a.baseline).name,
                  "golden_tiers": sorted(refs), "started": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
                  # The compiler sources as READ, plus which of them were uncommitted at the time.
                  # A non-empty `dirty` means this number cannot be reproduced from the commit alone.
-                 "source_digest": _src_digest, "source_dirty": _dirty}
+                 "source_digest": _src_digest, "source_dirty": _dirty,
+                 # Load on the BUILD host at the start of the cell. The board wall is insulated from
+                 # this; the compile ceiling is not, so a compile-timeout refusal has to be readable
+                 # as "the host was saturated" vs "this model cannot be built in that budget".
+                 "host": _host_conditions(),
+                 "compile_timeout_s": int(a.compile_timeout_s)}
 
     # INTERLEAVED, ours first, so a board that drifts during the session moves both arms rather than
     # landing the drift entirely on one of them.
