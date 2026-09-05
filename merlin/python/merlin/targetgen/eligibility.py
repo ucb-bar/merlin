@@ -49,6 +49,14 @@ class RegionDescriptor:
     #: when it is asking a narrower question ("can the ARRAY run this?", distinct from "can the target
     #: run this?"). A hybrid is the only place the two answers differ, which is why the axis exists.
     engine: str | None = None
+    #: The op's OWN declared attributes, verbatim and unfiltered. Eligibility does not read this -- a
+    #: convolution's padding does not decide whether the hardware can run it -- but the REQUIREMENT does,
+    #: and the requirement is derived from these descriptors. Without it a conv's padding, stride and
+    #: dilation never reach the corpus, which is how every convolution capsule came to declare the same
+    #: geometry while the builder had accepted all three parameters all along. Kept unfiltered on
+    #: purpose: an attribute this module cannot interpret is still evidence about the capture, and a
+    #: known-key filter is a per-target fact in disguise.
+    config: dict | None = None
 
     def resolved_family(self) -> str | None:
         return self.family or sf.from_op(self.op)

@@ -124,3 +124,43 @@ def test_provenance_is_not_mistaken_for_configuration():
 def test_an_unparseable_capture_yields_no_observation_rather_than_raising():
     with pytest.raises(Exception):
         SC.chains(_mod("this is not mlir"))
+
+
+# ------------------------------------------------------- the requirement must be able to ASK for a chain
+
+def test_the_scope_axis_turns_observed_chains_into_an_obligation(tmp_path):
+    """The four upper rungs of the optimisation ladder were unrequirable, not merely unpopulated:
+    nothing observed adjacency, so no requirement could name a chain."""
+    from merlin.targetgen import conformance as C
+
+    src = tmp_path / "m.mlir"
+    src.write_text(_CHAIN.replace("%o: tensor<4x4xf32>", "%o: tensor<4x4xf32>"))
+    ax = C.scope_axis({"probe": src}, "any_target", min_occurrences=1)
+    assert not ax["captures_unreadable"], ax["captures_unreadable"]
+    assert ax["required"], "a capture containing a chain must yield at least one obligation"
+    row = ax["required"][0]
+    assert row["signature"] == "contraction -> contraction -> contraction"
+    assert row["length"] == 3 and row["occurrences"] >= 1
+
+
+def test_a_rare_chain_is_dropped_and_the_drop_is_COUNTED(tmp_path):
+    """A corpus cannot be asked to cover every accident of a graph, but an axis that filters silently
+    is indistinguishable from one that observed nothing."""
+    from merlin.targetgen import conformance as C
+
+    src = tmp_path / "m.mlir"
+    src.write_text(_CHAIN)
+    ax = C.scope_axis({"probe": src}, "any_target", min_occurrences=99)
+    assert ax["required"] == []
+    assert ax["dropped_below_threshold"] >= 1, "the drop must be reported, not silent"
+
+
+def test_an_unreadable_capture_is_named_rather_than_counted_as_no_chains(tmp_path):
+    """THE HONESTY CONTROL: a capture that could not be read must not read as a model with no chains."""
+    from merlin.targetgen import conformance as C
+
+    bad = tmp_path / "bad.mlir"
+    bad.write_text("this is not mlir")
+    ax = C.scope_axis({"broken": bad}, "any_target", min_occurrences=1)
+    assert ax["required"] == []
+    assert "broken" in ax["captures_unreadable"]

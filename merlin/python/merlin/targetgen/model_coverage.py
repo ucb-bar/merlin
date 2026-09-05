@@ -242,6 +242,7 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
     Unresolved stays None, so the caller counts it as unclassified instead of assuming a family.
     """
     out: list[RegionDescriptor] = []
+    extents = _contraction_extents(module)
     for op in module.walk():
         if not _is_region_op(op):
             continue
@@ -256,19 +257,75 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
             precision = precisions.get(_attr_str(op, "prov.fqn") or "")
         if precision is None:
             precision = _elem_dtype(op)
-        out.append(RegionDescriptor(source=short, op=short, family=family, in_dtype=precision))
+        # Extents and config come from the op itself. The descriptor declared m/k/n/rank/batch/layout
+        # and this walk filled NONE of them, so every consumer that read a shape axis off a capture read
+        # None and reported it as "the capture does not present one" -- a declared-and-unfilled field is
+        # indistinguishable downstream from a measured absence.
+        m, k, n, rank = extents.get(id(op), (None, None, None, None))
+        out.append(RegionDescriptor(source=short, op=short, family=family, in_dtype=precision,
+                                    m=m, k=k, n=n, rank=rank, config=_declared_config(op)))
     return tuple(out)
+
+
+def _contraction_extents(module) -> dict:
+    """``id(op) -> (m, k, n, rank)`` for every contraction the shape observer recognises.
+
+    Delegates to :func:`merlin.kernels.shapes.observe_contractions` and joins on op IDENTITY rather than
+    re-deriving extents here. A second implementation of "which axes are parallel and which reduce" is a
+    second thing that can disagree with the cover, and the disagreement would be invisible: both would
+    report a number.
+    """
+    try:
+        from merlin.kernels import shapes as KS
+
+        pairs = KS.observe_contractions(module)
+    except Exception:  # noqa: BLE001 - an unreadable module yields no extents, never a guess
+        return {}
+    import math
+
+    out: dict = {}
+    for op, cs in pairs:
+        par, red = list(cs.parallel), list(cs.reduction)
+        if not par:
+            continue
+        m = math.prod(par[:-1]) if len(par) > 1 else par[0]
+        n = par[-1] if len(par) > 1 else None
+        k = math.prod(red) if red else None
+        out[id(op)] = (m, k, n, len(par) + len(red))
+    return out
+
+
+def _declared_config(op) -> dict:
+    """The op's own attribute table, minus the provenance tags recorded elsewhere.
+
+    Verbatim: an attribute this module cannot interpret is still evidence about the capture, and
+    filtering against a known-key list would make the vocabulary a per-target fact.
+    """
+    from merlin.common import mlir_query as mq
+
+    out: dict[str, str] = {}
+    for table in mq._attr_tables(op):
+        try:
+            items = table.items()
+        except AttributeError:
+            continue
+        for k, v in items:
+            key = str(k)
+            if not key.startswith("prov."):
+                out[key] = str(v)
+    return out
+
 
 
 def region_ops(module) -> tuple:
     """The linalg ops :func:`regions_from_module` describes, in the SAME order.
 
-    Exists so a caller that needs the op itself -- to price a region's work, say -- can join to the
-    descriptors positionally instead of re-deriving the "is this a region" filter. Two copies of that
-    predicate drift, and a join that silently misaligns weights every region by another region's cost.
+    Exists so a caller that needs the op itself -- to price a region's work, or to walk the use-def edges
+    between regions -- can join to the descriptors positionally instead of re-deriving the "is this a
+    region" predicate. Two copies of that predicate drift, and a drifted copy silently weights every
+    region by another region's cost.
     """
     return tuple(op for op in module.walk() if _is_region_op(op))
-
 
 def coverage_for(regions: tuple[RegionDescriptor, ...], target: str, *,
                  model: str = "") -> CoverageReport:

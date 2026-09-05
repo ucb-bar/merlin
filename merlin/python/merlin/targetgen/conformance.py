@@ -1051,6 +1051,60 @@ def _geometry_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
 _BUILDER_EPILOGUE_STAGES = ("relu", "acc_scale", "bias_add", "maxpool")
 
 
+
+def scope_axis(captures: "dict[str, str | Path]", target: str, *, min_occurrences: int = 4,
+               max_signatures: int = 12) -> dict:
+    """WHICH ADJACENCIES a target's own captures present -- the unit a phase-2 obligation is made of.
+
+    Every other axis here describes ONE region: its family, its dtype, its extents, its geometry. That is
+    the right unit for a correctness obligation, because a compiler gets one op wrong at a time. It is
+    the wrong unit for the four upper rungs of the optimisation ladder -- inter-layer scheduling,
+    boundary crossing, fusion, global scope -- because those are properties of ADJACENT regions.
+
+    The corpus has zero members on those rungs, and that was never an oversight: nothing in this repo
+    observed that two regions were adjacent, so a requirement for a chain could not be derived at all
+    rather than merely being unpopulated. This derives it the way every other axis here is derived --
+    from what the target's own captured models contain.
+
+    A signature is the chain's shape in the semantic-family vocabulary, not its extents, so two attention
+    blocks at different sequence lengths present ONE obligation rather than two. Rare chains are not
+    required: ``min_occurrences`` keeps a one-off out of the requirement, because a corpus cannot be
+    asked to cover every accident of a graph. Both the threshold and what it dropped are reported, since
+    an axis that filters silently is indistinguishable from one that saw nothing.
+    """
+    from merlin.common import mlir_query as mq
+    from merlin.targetgen import scope_census as SC
+
+    unreadable: dict[str, str] = {}
+    seen: dict[str, dict] = {}
+    for label, path in sorted((captures or {}).items()):
+        try:
+            module = mq.parse(path)
+            census = SC.chain_census(module, max_length=64)
+        except Exception as exc:  # noqa: BLE001 - an unreadable capture evidences nothing, and says so
+            unreadable[str(label)] = f"{type(exc).__name__}: {exc}"
+            continue
+        for signature, count in (census.get("by_signature") or {}).items():
+            row = seen.setdefault(signature, {"signature": signature, "occurrences": 0,
+                                              "observed_in": []})
+            row["occurrences"] += int(count)
+            if str(label) not in row["observed_in"]:
+                row["observed_in"].append(str(label))
+
+    ranked = sorted(seen.values(), key=lambda r: (-r["occurrences"], r["signature"]))
+    frequent = [r for r in ranked if r["occurrences"] >= int(min_occurrences)]
+    kept = frequent[:int(max_signatures)]
+    for row in kept:
+        row["length"] = len(row["signature"].split(" -> "))
+    return {
+        "required": kept,
+        "min_occurrences": int(min_occurrences),
+        "max_signatures": int(max_signatures),
+        "dropped_below_threshold": len(ranked) - len(frequent),
+        "dropped_over_cap": [r["signature"] for r in frequent[int(max_signatures):]],
+        "captures_unreadable": unreadable,
+    }
+
 def _epilogue_axis(target: str) -> dict:
     """Which epilogue stages ``target`` must be asked to fuse onto a contraction.
 
@@ -1473,6 +1527,10 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # presents. See `geometry_axis` for why a corpus that is entirely square proves nothing about
         # the tall-skinny convolutions that carry a real vision model's work.
         "shape_geometry": geometry_axis(captures, target),
+        # THE ADJACENCY AXIS. Every axis above describes ONE region; the optimisation ladder's
+        # upper rungs are about adjacent ones, and until this nothing observed adjacency at all,
+        # so those rungs could not be required rather than merely being unpopulated.
+        "scope": scope_axis(captures, target),
         "memory_mapping": {
             "required": mem.get("by_regime") or {},
             "region_counts": mem.get("region_counts") or {},
