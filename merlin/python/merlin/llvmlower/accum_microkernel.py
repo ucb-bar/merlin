@@ -47,6 +47,7 @@ is byte-identical to the baseline.
 """
 from __future__ import annotations
 
+from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
@@ -394,6 +395,7 @@ def run_source() -> str:
         "from torch_mlir.dialects import llvm\n"
         + _SELFCOPY_PRELUDE
         + _COPY_EXPAND_PRELUDE
+        + _CONCAT_DPS_PRELUDE
         + _TRANSPOSE_MAPS_PRELUDE
         + _REWRITER_SRC
         + _MID_STAGE_SRC +
@@ -413,6 +415,8 @@ def run_source() -> str:
         # is how erase_self_copy came to read as an inert lever for seven beam rounds.
         "if _FOLD_WEIGHT_TRANSPOSE:\n"
         "    print('OK fold_weight_transpose folded', _fold_weight_transposes(module, ctx)[0])\n"
+        "if _CONCAT_DPS:\n"
+        "    print('OK concat_dps rewrote', _concat_dps(module, ctx)[0])\n"
         "if stage1:\n"
         "    PassManager.parse('builtin.module(' + stage1 + ')', ctx).run(module.operation)\n"
         "with ctx, ir.Location.unknown():\n"

@@ -22,10 +22,12 @@ from .pipeline import lower_to_llvm_ir
 from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
 from .transpose_maps import ensure_registered as _register_fold_weight_transpose
 from .prov_cse import ensure_registered as _register_cse_through_provenance
+from .concat_dps import ensure_registered as _register_concat_dps
 
 _register_epilogue_fusion()
 _register_fold_weight_transpose()
 _register_cse_through_provenance()
+_register_concat_dps()
 
 
 @dataclass

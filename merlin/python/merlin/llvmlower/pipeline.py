@@ -403,6 +403,7 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
 # act_poly runner called the PassManager directly, so every fork that also enabled
 # `vectorized_transcendental_activation` (the whole-model proposer enables it by default) got the
 # self-copy erase requested, reported as applied, and never run.
+from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
@@ -426,7 +427,7 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _MID_STAGE_SRC + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _MID_STAGE_SRC + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -445,6 +446,15 @@ if _FOLD_WEIGHT_TRANSPOSE:
     for _fwt_kind, _fwt_detail in _fwt_report:
         print("OK fold_weight_transpose", _fwt_kind, _fwt_detail)
     print("OK fold_weight_transpose folded", _fwt_n)
+# concat_dps (default-off): a `tensor.concat` operand produced by a destination-passing op is
+# retargeted to write STRAIGHT INTO the concatenated buffer, so bufferization has no data movement
+# left to emit for it. Must run BEFORE the pass manager: after one-shot-bufferize the destination is
+# no longer an operand, only a copy. See llvmlower/concat_dps.py.
+if _CONCAT_DPS:
+    _cd_n, _cd_report = _concat_dps(module, ctx)
+    for _cd_kind, _cd_detail in _cd_report:
+        print("OK concat_dps", _cd_kind, _cd_detail)
+    print("OK concat_dps rewrote", _cd_n)
 _run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES)
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
@@ -471,7 +481,7 @@ from torch_mlir.dialects import llvm
 
 _RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE
                          + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE
-                         + _MID_STAGE_SRC + r'''
+                         + _CONCAT_DPS_PRELUDE + _MID_STAGE_SRC + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -494,6 +504,15 @@ if _FOLD_WEIGHT_TRANSPOSE:
     for _fwt_kind, _fwt_detail in _fwt_report:
         print("OK fold_weight_transpose", _fwt_kind, _fwt_detail)
     print("OK fold_weight_transpose folded", _fwt_n)
+# concat_dps (default-off): a `tensor.concat` operand produced by a destination-passing op is
+# retargeted to write STRAIGHT INTO the concatenated buffer, so bufferization has no data movement
+# left to emit for it. Must run BEFORE the pass manager: after one-shot-bufferize the destination is
+# no longer an operand, only a copy. See llvmlower/concat_dps.py.
+if _CONCAT_DPS:
+    _cd_n, _cd_report = _concat_dps(module, ctx)
+    for _cd_kind, _cd_detail in _cd_report:
+        print("OK concat_dps", _cd_kind, _cd_detail)
+    print("OK concat_dps rewrote", _cd_n)
 with ctx, ir.Location.unknown():
     _n = apply_activation_polynomial(module, ctx)
 _run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES)
@@ -587,6 +606,8 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     _register_fold_weight_transpose()
     from .weight_prepack import ensure_registered as _register_prepack_weight_layout
     _register_prepack_weight_layout()
+    from .concat_dps import ensure_registered as _register_concat_dps
+    _register_concat_dps()
     feats = normalize(features)
     if parallel_harts is not None and not vectorize:
         raise PipelineError(
@@ -645,13 +666,17 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # its consumers' indexing_maps. See llvmlower/transpose_maps.py.
     from .transpose_maps import FEATURE as _FOLD_WEIGHT_TRANSPOSE_FEATURE
     _fold_wt = "1" if _FOLD_WEIGHT_TRANSPOSE_FEATURE in feats else "0"
+    # argv[8] gates concat_dps (default-off): a tensor.concat's destination-passing producers write
+    # straight into the concatenated buffer. See llvmlower/concat_dps.py.
+    from .concat_dps import FEATURE as _CONCAT_DPS_FEATURE
+    _concat_dps_gate = "1" if _CONCAT_DPS_FEATURE in feats else "0"
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
     stage_out = (work / "model.llvmdialect.mlir") if omp else out
     proc = subprocess.run(
         [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb,
-         _expand_copy, _fold_wt],
+         _expand_copy, _fold_wt, _concat_dps_gate],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")
