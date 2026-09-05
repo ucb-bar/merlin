@@ -63,6 +63,19 @@ def test_rewrite_skips_nonroutable_matmul():
     assert "linalg.matmul" in out  # untouched
 
 
+def test_routing_coverage_retains_candidate_denominator():
+    t = (
+        'module {\n  func.func @forward(%a: tensor<4x4xf32>, %b: tensor<4x4xf32>, '
+        '%c: tensor<4x4xf32>, %d: tensor<4x4xbf16>, %e: tensor<4x4xbf16>, '
+        '%f: tensor<4x4xbf16>) {\n'
+        '    %0 = linalg.matmul ins(%a, %b : tensor<4x4xf32>, tensor<4x4xf32>) '
+        'outs(%c : tensor<4x4xf32>) -> tensor<4x4xf32>\n'
+        '    %1 = linalg.matmul ins(%d, %e : tensor<4x4xbf16>, tensor<4x4xbf16>) '
+        'outs(%f : tensor<4x4xbf16>) -> tensor<4x4xbf16>\n  }\n}\n')
+    assert xb.matmul_routing_coverage(t) == (2, 1)
+    assert xb.rewrite_matmuls_to_xnn(t)[1] == 1
+
+
 def test_qd8_rewrite_routes_same_f32_matmuls_to_qd8_symbol():
     """The dynamic-int8 (qd8) arm routes the SAME routable f32 matmuls as the f32 arm, but to the
     quantizing shim symbol @merlin_xnn_qd8_gemm. Structural — the numerics/gate are board-validated."""
