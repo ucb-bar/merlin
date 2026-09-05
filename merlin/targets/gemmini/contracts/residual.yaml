@@ -104,7 +104,17 @@ compute_units:
       # dedicated LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1/2/3 (16-18), so a rank-4 conv
       # region IS acceleratable. Declaring ranks [2] alone made the shipped conv2d capsules score
       # ineligible and silently left them out of the ARR denominator.
-      - {family: contraction, dtypes: [int8], ranks: [2, 4]}
+      # rank 3 is the BATCHED contraction path. Unlike rank 4 this is not a distinct hardware
+      # sequence: `linalg_lower` lowers a single batched matmul (batch,m,k)@(batch,k,n) by looping the
+      # batch and calling the same (M,N,K) kernel per independent slice, so the region IS acceleratable
+      # and the evidence class is LOWERING, not RTL. Omitting it made every batched matmul ineligible
+      # before it reached the device rewrite -- the machinery existed and the contract forbade its use.
+      # Three other targets already ship batched capsules (atlas AF12, mx_gemmini MF5, radiance
+      # RP10/R11); gemmini shipped none because of this line. Declaring a narrower rank set than the
+      # target can execute is the same denominator loss the mx_gemmini rank bug was (see
+      # merlin/python/merlin/targetgen/eligibility.py). `batch` is already derived true, so it is NOT
+      # re-declared here: over-declaring a derived axis is how a contract stops tracking its target.
+      - {family: contraction, dtypes: [int8], ranks: [2, 3, 4]}
       # Epilogue-only: the mesh's readout applies per-channel scaling + requant on the way OUT of
       # the accumulator, so an elementwise map exists ONLY fused behind a contraction. Declaring it
       # standalone would make every standalone elementwise region an unclearable false_fallback.

@@ -63,7 +63,7 @@ class FamilyProfile:
 # (systolic MXUs; a SIMT core's op-level ISA is also pure .insn+CSR — see no-forked-toolchain-bringup).
 # vector/scalar lower through UPSTREAM LLVM targets (RVV/base RISC-V), so no per-target encoding.
 _PROFILES: dict[str, FamilyProfile] = {
-    "systolic": FamilyProfile("systolic", "inline_asm_insn", True, "rocc_insn", ("L3", "L4", "L5"), (),
+    "systolic": FamilyProfile("systolic", "inline_asm_insn", True, "rocc_insn", ("L3", "L4"), (),
                               "circt_static"),
     "simt":     FamilyProfile("simt", "inline_asm_insn", False, None, ("L3",),
                               ("flops", "gflops", "pct_fp_peak"), "simt_config"),
@@ -75,7 +75,7 @@ _PROFILES: dict[str, FamilyProfile] = {
     # artifact IS the schema-valid command buffer (command_buffer endpoint). Its facts come from the OPU
     # state-manifest geometry (cluster x cell tile, MRF depth, int8/fp8 datapaths) via the "opu" fact
     # extractor. Perf is tensor-tile MAC throughput. (See memory: opu-endpoint-is-command-buffer-not-rocc.)
-    "spatial":  FamilyProfile("spatial", "command_buffer", False, None, ("L3", "L4", "L5"),
+    "spatial":  FamilyProfile("spatial", "command_buffer", False, None, ("L3", "L4"),
                               ("macs", "mac_per_cycle", "pct_mac_peak"), "opu"),
 }
 

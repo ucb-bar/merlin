@@ -63,7 +63,31 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
     from ..runtime_build import derived_link_script
     link_ld = derived_link_script(recipe.load_address, recipe.link_script, Path(workdir))
     elf = workdir / "package_kernel.elf"
-    cmd = recipe.command(sources=[workdir / "harness.c", obj], output=elf, link_script=link_ld)
+    # REPRODUCIBLE BUILD, in two phases. A single compile+link invocation lets the driver name its
+    # intermediate objects `ccXXXXXX.o`, and those random names are recorded in the ELF as STT_FILE
+    # symbols -- so two builds of byte-identical sources differ (measured: 6 bytes) while producing
+    # identical cycles. That defeats content-addressed reuse of a measurement for no reason. Naming
+    # each object explicitly makes the artifact a function of its inputs again.
+    # ORDER IS PRESERVED EXACTLY. The single-step command linked
+    # `harness.c, <kernel obj>, *support_sources`; object order decides placement within a section,
+    # so reordering could move code and change cycles. This build changes how each object is NAMED,
+    # nothing about which objects are linked or in what order.
+    objects: list[Path] = []
+    for source in [workdir / "harness.c", obj, *recipe.support_sources]:
+        source = Path(source)
+        # Assembly counts: the driver assembles a .S through the same temp-named intermediate that
+        # a .c goes through, so leaving crt.S to the link step reintroduced the very STT_FILE symbol
+        # this two-phase build exists to remove.
+        if source.suffix not in (".c", ".S", ".s"):
+            objects.append(source)
+            continue
+        unit = workdir / f"{source.stem}.o"
+        step = subprocess.run(recipe.compile_command(source=source, output=unit),
+                              capture_output=True, text=True)
+        if step.returncode != 0:
+            raise recipe.error_cls(f"compile of {source.name} failed:\n{step.stderr[-2000:]}")
+        objects.append(unit)
+    cmd = recipe.link_command(objects=objects, output=elf, link_script=link_ld)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise recipe.error_cls(f"link failed:\n{proc.stderr[-2000:]}")

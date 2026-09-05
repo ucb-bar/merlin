@@ -162,14 +162,12 @@ def check(trace: dict, expected: dict, cb: dict | None = None,
             violations.append("mode k_accumulate declared but no accumulate-onto PRELOAD / "
                               "COMPUTE_ACCUMULATE found")
     if modes.get("resident_reuse"):
-        # reuse = >=2 compute groups (MVOUTs) but weights loaded into the resident region once.
+        # reuse = >=2 compute groups (MVOUTs) but the resident region written ONCE.
         n_mvout = classes.count("MVOUT")
-        n_cfg_ex = classes.count("CONFIG_EX")
         if n_mvout < 2:
             violations.append("mode resident_reuse declared but <2 output commits (no reuse visible)")
-        if n_cfg_ex != 1:
-            violations.append(f"mode resident_reuse: expected a single weight-stationary config, "
-                              f"saw {n_cfg_ex} CONFIG_EX")
+        violations += _residency_findings(ins)
+        violations += _stale_mode_config_findings(ins)
     if modes.get("movement"):
         bad = present & _COMPUTE | (present & {"PRELOAD"})
         if bad:
@@ -189,6 +187,92 @@ def check(trace: dict, expected: dict, cb: dict | None = None,
         violations += dram_address_findings(trace, address_model)
 
     return {"status": "pass" if not violations else "fail", "violations": violations}
+
+
+def _operand_identity(value) -> tuple:
+    """A hashable identity for one decoded operand reference, compared structurally.
+
+    The decoder resolves a memory operand to either a constant or an argument-relative reference; both
+    forms compare exactly. No field layout is read here -- the decoder already did that from the target's
+    own RTL facts, which is the only place it may be done.
+    """
+    if isinstance(value, dict):
+        return ("ref", value.get("kind"), value.get("raw"),
+                value.get("arg_index"), value.get("offset"))
+    return ("lit", value)
+
+
+def _residency_findings(ins: list[dict]) -> list[str]:
+    """Under a declared residency mode: was the resident region written ONCE, or re-loaded per use?
+
+    THE CHECK THIS REPLACES TESTED A PROXY AND HAD DRIFTED FROM ITS OWN COMMENT. It read
+    ``n_cfg_ex != 1`` beneath the words "weights loaded into the resident region once" -- but a
+    CONFIG_EX count is not a statement about the resident region, and nothing counted the loads. On
+    A6_resident_reuse that reported one redundant config while the weight was ALSO being moved in twice,
+    and nothing said so; suppressing the config alone would have turned the capsule green with the
+    reload intact. A capsule that passes while the property it exists to prove is absent is worse than
+    one that fails.
+
+    Stated directly, and checked from the DECODER'S OWN derived fields rather than from raw operand
+    bits: an on-chip destination that is written again from the same source, with nothing having
+    overwritten it in between, was not resident -- the program re-materialized what it claimed to keep.
+    Tracking the live contents per destination is what makes the "in between" precise: a genuine
+    re-load after the slot was reused for something else is not flagged, because the slot no longer held
+    that source.
+
+    Both fields come from the decode, so this stays correct for any target whose ISA the decoder can
+    read: ``spad_addr`` (the on-chip destination) and ``dram`` (the source reference), plus the tile
+    extent, since the same source at a different extent is a different transfer.
+    """
+    live: dict[Any, tuple] = {}
+    reloads: list[tuple[int, Any]] = []
+    for index, instruction in enumerate(ins):
+        if instruction.get("class") not in _MVIN:
+            continue
+        decoded = instruction.get("decoded") or {}
+        destination = decoded.get("spad_addr")
+        if destination is None:
+            continue                      # this decoder cannot see the destination: say nothing
+        content = (_operand_identity(decoded.get("dram")),
+                   decoded.get("rows"), decoded.get("cols"))
+        if live.get(destination) == content:
+            reloads.append((index, destination))
+        live[destination] = content
+    if not reloads:
+        return []
+    where = ", ".join(f"#{i} -> on-chip {addr}" for i, addr in reloads[:4])
+    return [f"mode resident_reuse: {len(reloads)} redundant load(s) rewrite an on-chip destination "
+            f"that already held that exact source ({where}), so the region was NOT resident -- it was "
+            f"re-materialized per use"]
+
+
+def _stale_mode_config_findings(ins: list[dict]) -> list[str]:
+    """A weight-stationary program configures the execution mode once; re-issuing it changes nothing.
+
+    Narrowly scoped ON PURPOSE. This is the surviving half of the original check's intent -- the
+    execution-mode config is part of what "weight-stationary" means, so re-issuing it belongs to this
+    mode's verdict. Redundant LOAD/STORE configs do NOT: they are ordinary config hoisting, no capsule
+    declares them, and folding them in here would fail a residency capsule for an unrelated property.
+
+    A mode config carries no address, so identical operand payloads mean an identical configuration and
+    the repeat is provably inert -- no scratchpad state can make it matter, which is exactly why this
+    can be decided on the payload while a transfer cannot.
+    """
+    active: tuple | None = None
+    repeats: list[int] = []
+    for index, instruction in enumerate(ins):
+        if instruction.get("class") != "CONFIG_EX":
+            continue
+        payload = (_operand_identity(instruction.get("rs1")),
+                   _operand_identity(instruction.get("rs2")))
+        if active == payload:
+            repeats.append(index)
+        active = payload
+    if not repeats:
+        return []
+    return [f"mode resident_reuse: {len(repeats)} execution-mode config(s) re-issue the configuration "
+            f"already active (at {', '.join('#' + str(i) for i in repeats[:4])}); a weight-stationary "
+            f"program configures the mode once and reuses it"]
 
 
 def _ceil16(x: int) -> int:

@@ -746,11 +746,17 @@ def model_input_abi(art: CapsuleArtifacts) -> list[dict]:
 
 
 def resolve_model_loader(entry: dict, m2m_dir: str | Path | None = None) -> Path:
-    """A model capsule entry names either a workload (``model: small_llama``) or an explicit ``loader``."""
+    """Resolve an external workload name or a repository-relative explicit loader.
+
+    Profile files are repository inputs, so an explicit relative ``loader`` is rooted at the Merlin
+    repository.  Only the implicit ``model: NAME`` convention belongs to the external model2MLIR
+    checkout.  Rooting both forms at model2MLIR made the self-contained model capsules impossible to
+    regenerate whenever that checkout lived beside this repository.
+    """
     root = Path(m2m_dir) if m2m_dir else _m2m_dir()
     if entry.get("loader"):
         p = Path(entry["loader"])
-        return p if p.is_absolute() else (root / p)
+        return p if p.is_absolute() else (repo_root() / p)
     name = entry.get("model")
     if not name:
         raise ValueError("model capsule entry needs 'model' (workload name) or 'loader' (path)")

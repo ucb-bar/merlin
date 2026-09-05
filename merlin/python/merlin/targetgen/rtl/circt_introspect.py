@@ -30,6 +30,7 @@ CLI::
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -41,7 +42,7 @@ from .facts import rtl_cache_dir
 
 _REPO = repo_root()  # the repo root (contains merlin/)
 
-GENERATOR_VERSION = "rtl-introspect-v4-timing"
+GENERATOR_VERSION = "rtl-introspect-v7-elaborated-features"
 # RISC-V ISA STANDARD custom-N major opcodes — fixed by the base ISA for EVERY RISC-V chip, NOT a
 # per-target fact. WHICH custom slot a RoCC accelerator is wired to IS target-specific; it is resolved
 # from the target's own reviewed encoding (contract ``encoding.rocc_custom_slot``) — never a baked
@@ -231,6 +232,119 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
         "evidence": f"GemminiISA.scala // funct values block: {len(legal)} codes "
                     f"[{legal[0]}..{legal[-1]}] up to CONFIG_EX",
     }
+
+
+def _scala_int_expr(node: ast.AST, values: dict[str, int]) -> int:
+    """Evaluate the small integer-expression subset used by Chisel bundle width declarations.
+
+    This is deliberately not Python ``eval``: only integer literals, previously-derived constant names,
+    and the four arithmetic operators needed by width declarations are accepted. Anything else fails
+    closed and the containing bundle is omitted from the fact record.
+    """
+    if isinstance(node, ast.Expression):
+        return _scala_int_expr(node.body, values)
+    if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+        return int(node.value)
+    if isinstance(node, ast.Name) and node.id in values:
+        return values[node.id]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.FloorDiv)):
+        lhs, rhs = _scala_int_expr(node.left, values), _scala_int_expr(node.right, values)
+        if isinstance(node.op, ast.Add):
+            return lhs + rhs
+        if isinstance(node.op, ast.Sub):
+            return lhs - rhs
+        if isinstance(node.op, ast.Mult):
+            return lhs * rhs
+        return lhs // rhs
+    raise ValueError(f"unsupported Scala integer-width expression {ast.dump(node)}")
+
+
+def _scala_int_constants(text: str) -> dict[str, int]:
+    """Resolve ``val UPPER_CASE = <integer expression>`` declarations structurally."""
+    pending: dict[str, str] = {}
+    for line in text.splitlines():
+        source = line.split("//", 1)[0].strip()
+        if not source.startswith("val "):
+            continue
+        lhs, sep, rhs = source.partition("=")
+        name = lhs[4:].strip()
+        if (not sep or not name
+                or not all(c.isupper() or c.isdigit() or c == "_" for c in name)):
+            continue
+        pending[name] = rhs.strip()
+    values: dict[str, int] = {}
+    progress = True
+    while pending and progress:
+        progress = False
+        for name, expr in list(pending.items()):
+            try:
+                value = _scala_int_expr(ast.parse(expr, mode="eval"), values)
+            except (SyntaxError, ValueError, ZeroDivisionError):
+                continue
+            if value <= 0:
+                continue
+            values[name] = value
+            del pending[name]
+            progress = True
+    return values
+
+
+def extract_register_bundle_layouts(isa_src: str) -> dict[str, dict[str, Any]]:
+    """Derive packed register fields from Chisel ``Bundle`` declarations in an ISA source.
+
+    Chisel packs a Bundle in reverse declaration order: the last field occupies the least-significant
+    bits. The extractor resolves every field width from the source's own ``val *_WIDTH`` declarations,
+    counts spacer fields in the offsets but omits them from the consumer-facing map, and drops a bundle
+    entirely when any field width is not derivable. This yields target-owned bit placement without a
+    compiler copying shifts out of a C macro.
+    """
+    values = _scala_int_constants(isa_src)
+    lines = isa_src.splitlines()
+    out: dict[str, dict[str, Any]] = {}
+    i = 0
+    while i < len(lines):
+        line = lines[i].split("//", 1)[0].strip()
+        if not line.startswith("class ") or "extends Bundle" not in line:
+            i += 1
+            continue
+        head = line[6:].split("extends Bundle", 1)[0].strip()
+        name = head.split("(", 1)[0].strip().split()[0]
+        depth = line.count("{") - line.count("}")
+        body: list[str] = []
+        i += 1
+        while i < len(lines) and depth > 0:
+            current = lines[i].split("//", 1)[0].strip()
+            depth += current.count("{") - current.count("}")
+            if depth >= 0:
+                body.append(current)
+            i += 1
+        fields: list[tuple[str, int]] = []
+        complete = bool(body)
+        for current in body:
+            if not current.startswith("val ") or "= UInt(" not in current or ".W)" not in current:
+                continue
+            lhs, rhs = current.partition("= UInt(")[::2]
+            field = lhs[4:].strip()
+            width_expr = rhs.split(".W)", 1)[0].strip()
+            try:
+                width = _scala_int_expr(ast.parse(width_expr, mode="eval"), values)
+            except (SyntaxError, ValueError, ZeroDivisionError):
+                complete = False
+                break
+            if width <= 0:
+                complete = False
+                break
+            fields.append((field, width))
+        if not complete or not fields:
+            continue
+        offset = 0
+        packed: dict[str, dict[str, int]] = {}
+        for field, width in reversed(fields):
+            if not field.startswith("_"):
+                packed[field] = {"offset": offset, "width": width}
+            offset += width
+        out[name] = {"width": offset, "fields": packed}
+    return out
 
 
 def outside_block_names(isa_src: str, start_at: int = 0) -> dict[str, list[str]]:
@@ -483,6 +597,17 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16] if path.is_file() else "missing"
 
 
+def _sha256(path: Path) -> str:
+    """Full content digest for a consumer which must bind an observation to CIRCT bytes.
+
+    ``_sha`` predates evidence-carrying performance receipts and remains a short, human-facing
+    cache identity.  It is not a safe equality witness: a receipt must never accept unrelated
+    elaborated RTL merely because it shares a 64-bit prefix.  Keep the old field for compatibility
+    and publish a separately named full digest for fail-closed consumers.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "missing"
+
+
 def _core_hw_input(target: str) -> dict[str, str]:
     """The CORE HW dialect that mlc discovery and the pipeline-depth walk read, as provenance fields.
 
@@ -497,8 +622,11 @@ def _core_hw_input(target: str) -> dict[str, str]:
     except Exception:
         path = None
     if path is None:
-        return {"core_hw_mlir": "unresolved", "core_hw_sha": "unresolved"}
-    return {"core_hw_mlir": Path(path).name, "core_hw_sha": _sha(Path(path))}
+        return {"core_hw_mlir": "unresolved", "core_hw_sha": "unresolved",
+                "core_hw_sha256": "unresolved"}
+    core = Path(path)
+    return {"core_hw_mlir": core.name, "core_hw_sha": _sha(core),
+            "core_hw_sha256": _sha256(core)}
 
 
 def _facts_from_discovery(target: str, facts: dict) -> list[str]:
@@ -568,6 +696,136 @@ def _timing_from_discovery(target: str, facts: dict) -> list[str]:
     return [f"timing({resolved}/{len(recs)} modules)"]
 
 
+def _firrtl_bool_literal(expr: str) -> bool | None:
+    """A FIRRTL one-bit UInt literal, parsed exactly (not substring/regex matched)."""
+    expr = expr.strip()
+    prefix = "UInt<1>("
+    if not expr.startswith(prefix) or not expr.endswith(")"):
+        return None
+    token = expr[len(prefix):-1].strip().lower()
+    try:
+        value = int(token[2:], 16) if token.startswith("0h") else int(token, 10)
+    except ValueError:
+        return None
+    return bool(value) if value in (0, 1) else None
+
+
+def _firrtl_call_args(expr: str, callee: str) -> list[str] | None:
+    """Top-level operands of one FIRRTL primitive call, preserving nested expressions."""
+    expr = expr.strip()
+    head = f"{callee}("
+    if not expr.startswith(head) or not expr.endswith(")"):
+        return None
+    body = expr[len(head):-1]
+    args: list[str] = []
+    depth = 0
+    start = 0
+    for i, char in enumerate(body):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                return None
+        elif char == "," and depth == 0:
+            args.append(body[start:i].strip())
+            start = i + 1
+    if depth != 0:
+        return None
+    args.append(body[start:].strip())
+    return args
+
+
+def extract_max_pool_from_firrtl(fir_text: str) -> dict[str, Any] | None:
+    """Read the elaborated StoreController pooling gate from exact FIRRTL.
+
+    Chisel elaborates ``has_max_pool.B && pool_stride =/= 0.U`` into a node named
+    ``pooling_is_enabled`` whose ``and`` has one literal build-gate operand and one dynamic operand.
+    Literal 1 means the datapath was built; literal 0 means it was compiled out. A missing, duplicate,
+    or differently-shaped node is UNKNOWN (``None``), never inferred from the mere presence of pooling
+    registers or ISA fields.
+    """
+    found: list[dict[str, Any]] = []
+    prefix = "node pooling_is_enabled = "
+    module: str | None = None
+    for line_no, raw in enumerate(fir_text.splitlines(), 1):
+        code = raw.split("@[", 1)[0].strip()
+        if code.startswith("module ") and " :" in code:
+            module = code[len("module "):code.index(" :")].strip()
+            continue
+        if module != "StoreController":
+            continue
+        if not code.startswith(prefix):
+            continue
+        expr = code[len(prefix):].strip()
+        args = _firrtl_call_args(expr, "and")
+        if args is None or len(args) != 2:
+            continue
+        literals = [(idx, _firrtl_bool_literal(arg)) for idx, arg in enumerate(args)]
+        literals = [(idx, val) for idx, val in literals if isinstance(val, bool)]
+        if len(literals) != 1:
+            continue
+        literal_index, value = literals[0]
+        dynamic = args[1 - literal_index]
+        # The other operand must really be a dynamic pool enable, not a second spelling we happened
+        # not to parse. The exact signal is generator-owned evidence and contains no capsule identity.
+        if "pool" not in dynamic.lower():
+            continue
+        found.append({"value": value, "line": line_no, "expression": expr})
+    if len(found) != 1:
+        return None
+    return found[0]
+
+
+def extract_elaborated_rtl_features(target: str, facts: dict,
+                                    fir_path: Path | str | None = None) -> dict[str, Any]:
+    """Normalize feature gates from exact elaborated RTL, with source config as corroboration only."""
+    source = facts.get("source") or {}
+    path = Path(fir_path or source.get("fir_path")) if (fir_path or source.get("fir_path")) else None
+    observed = None
+    if path is not None and path.is_file():
+        try:
+            observed = extract_max_pool_from_firrtl(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            observed = None
+
+    corroboration: dict[str, Any] = {"status": "unavailable"}
+    try:
+        from merlin.targetgen import capability_discovery as discovery
+        config = discovery.elaborated_config(target, facts)
+        if config is not None:
+            field = config.fields.get("has_max_pool")
+            config_value = config.boolean("has_max_pool") if not config.ambiguities else None
+            corroboration = {
+                "status": ("agree" if observed is not None and config_value is observed["value"]
+                           else "diverge" if observed is not None and isinstance(config_value, bool)
+                           else "unknown"),
+                "config": config.name,
+                "instantiated": config.instantiated or None,
+                "has_max_pool": config_value,
+                "source": field.locator if field is not None else None,
+                "line": field.line if field is not None else None,
+            }
+    except Exception:  # noqa: BLE001 — corroboration never decides the hardware fact
+        pass
+
+    value = observed["value"] if observed is not None else None
+    status = "derived" if isinstance(value, bool) else "unknown"
+    evidence = (f"{path}:{observed['line']}: {observed['expression']}"
+                if path is not None and observed is not None
+                else "no unique structural FIRRTL pooling_is_enabled build gate was derivable")
+    return {
+        "name": "elaborated_rtl_features",
+        "features": {"max_pool": value},
+        "status": status,
+        "source": str(path) if path is not None else None,
+        "source_sha256": _sha256(path) if path is not None else "unresolved",
+        "method": "structural FIRRTL pooling_is_enabled boolean build gate",
+        "evidence": evidence,
+        "corroboration": corroboration,
+    }
+
+
 def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None = None,
                 chipyard_root: str | Path | None = None, target: str | None = None) -> dict[str, Any]:
     """Assemble the RTL facts for ``target``. PREFERS mlc RTL discovery (target-agnostic: mesh DIM +
@@ -587,11 +845,13 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
     hw_path = _soc_hw_path(target) if hw_path is None else Path(hw_path)
     isa_path = isa_scala_path(target, chipyard_root) if isa_path is None else Path(isa_path)
 
-    fir_sha = isa_sha = "n/a"
+    fir_sha = fir_sha256 = isa_sha = "n/a"
+    elaborated_fir: Path | None = None
     v1: dict[str, Any] = {}
     if isa_path.is_file():   # a chipyard target with a Chisel ISA source -> legacy FIRRTL grep + HW-port
         try:
             arts = V1.find_artifacts(chipyard_root)
+            elaborated_fir = Path(arts["fir"])
             v1 = V1.extract_facts(arts["fir"], arts["hierarchy"])
             hw_text = hw_path.read_text(errors="replace") if hw_path.is_file() else ""
             acc = extract_accumulator(hw_text) if hw_text else None
@@ -599,7 +859,8 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
             if acc:
                 mems.append(acc)
             v1["memories"] = mems
-            fir_sha, isa_sha = _sha(arts["fir"]), _sha(isa_path)
+            fir_sha, fir_sha256, isa_sha = (_sha(elaborated_fir), _sha256(elaborated_fir),
+                                             _sha(isa_path))
         except Exception:  # noqa: BLE001 — chipyard artifacts absent/broken: rely on mlc discovery
             v1 = {}
 
@@ -621,6 +882,31 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
         v1.setdefault("interfaces", []).append(funct)
         sourced.append("funct" if funct.get("method", "").startswith("decoder") else "funct(header)")
 
+    # Packed command-register layouts come from the target's own Chisel ISA Bundle declarations. They
+    # are separate from the funct decode table: the decoder says WHICH instruction this is, while this
+    # record says how that instruction's rs payload is partitioned. An unavailable ISA source leaves the
+    # record absent, and a code generator needing one must fail closed rather than copy bit positions.
+    if isa_path.is_file():
+        layouts = extract_register_bundle_layouts(isa_path.read_text(errors="replace"))
+        if layouts:
+            v1.setdefault("interfaces", []).append({
+                "name": "register_bundle_layouts",
+                "bundles": layouts,
+                "source": str(isa_path),
+                "method": "chisel_bundle_reverse_declaration_order",
+                "evidence": (f"{isa_path.name}: {len(layouts)} fully-derived packed Bundle layout(s); "
+                             "field widths from the file's val declarations"),
+            })
+            sourced.append(f"register_layouts({len(layouts)})")
+
+    # ISA fields prove that pooling is encodable, not that the elaborated StoreController contains the
+    # datapath. Resolve its literal build gate from the exact elaborated FIRRTL and publish a three-state
+    # value beside the other interfaces. The source configuration is corroboration only. Consumers
+    # require literal True; false/unknown can never manufacture pooled coverage.
+    build_features = extract_elaborated_rtl_features(target, v1, elaborated_fir)
+    v1.setdefault("interfaces", []).append(build_features)
+    sourced.append(f"elaborated_features({build_features['status']})")
+
     return {
         "schema_version": "2.0",
         "generator": {
@@ -632,6 +918,7 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
         "inputs": {
             "target": target,
             "hw_mlir": hw_path.name, "hw_sha": _sha(hw_path),
+            "hw_sha256": _sha256(hw_path),
             # The SoC dialect above is only one of the two HW inputs, and for most targets it is the
             # one that is ABSENT: it feeds the legacy accumulator port-parse. What mlc discovery and
             # the pipeline-depth walk actually read is the CORE dialect, resolved separately by
@@ -642,15 +929,9 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
             # when mlc cannot resolve one at all. A term's validity domain cannot name its elaboration
             # unless this field does.
             **_core_hw_input(target),
-            "fir_sha": fir_sha, "isa_sha": isa_sha,
-            "extractor_sha": _sha(Path(__file__)),  # recorded; NOT yet an invalidation trigger
-            # NOTE: this field records the extractor that produced the artifact, but nothing
-            # compares it. ``facts.ensure_facts`` regenerates only when the cache is COLD
-            # (``if p.is_file(): return p``), so a change here does not invalidate anything and a
-            # stale cache can serve facts from an older extractor indefinitely. Comparing it is
-            # the obvious fix and deliberately not done here: it would force a live CIRCT
-            # re-extraction on the next read for every target at once, which is expensive and
-            # can fail closed where the toolchain is absent. Purge the cache to pick up a change.
+            "fir_sha": fir_sha, "fir_sha256": fir_sha256, "isa_sha": isa_sha,
+            "extractor_sha": _sha(Path(__file__)),
+            "extractor_sha256": _sha256(Path(__file__)),
         },
         "facts": v1,
     }

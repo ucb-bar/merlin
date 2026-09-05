@@ -144,6 +144,12 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     undetermined_capsules: list[str] = []
     false_fallback: list[str] = []
     must_accelerate_violations: list[str] = []
+    # A FOURTH state, and the one the must_accelerate gate structurally cannot report. See
+    # `declined_offload` below: a region whose FAMILY this target declares but whose DTYPE (or other
+    # axis) it does not, which therefore ran on the host. It is not a violation -- the fallback is
+    # correct -- but it is also not nothing, and today it is indistinguishable from work that was
+    # accelerated.
+    declined_offload: list[dict] = []
     # G0-G5 breakdown: recall per generalization axis (the axis each capsule PROBES)
     by_axis: dict[str, dict[str, int]] = {}
     for r in results:
@@ -203,6 +209,21 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
             n_fused_only_ineligible += 1
         if violated:
             must_accelerate_violations.append(r["capsule"])
+        # DECLINED OFFLOAD -- the state `violated` cannot express. The gate reads
+        # `must and eligible and not accelerated`, and the `eligible` conjunct disarms it exactly
+        # where fallback happens: a region is ineligible BECAUSE the target cannot run it, which is
+        # the same region that will quietly drop to the host. Measured: all 12 bf16 capsules on an
+        # int8-only array declare must_accelerate and are ineligible on dtype, so `violated` is False
+        # for every one of them forever, and a bf16 contraction running scalar on the CPU is reported
+        # by nothing.
+        #
+        # This is deliberately NOT a violation: with 8-bit operands there is nowhere for a bf16
+        # operand to live, so falling back is the correct behaviour and failing the capsule would
+        # punish a conformant submission. It is recorded instead, with the axis that declined it, so
+        # the fallback is visible and can be priced rather than silently absorbed.
+        if must and not eligible and not accelerated and family in cap_map:
+            declined_offload.append({"capsule": r["capsule"], "semantic_family": family,
+                                     "reason": reason, "undetermined": is_undetermined})
         if accelerated:
             n_accelerated += 1
             if eligible:
@@ -253,6 +274,11 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         "false_fallback": false_fallback,
         "must_accelerate_violations": must_accelerate_violations,
         "must_accelerate_pass": not must_accelerate_violations,
+        # Reported, never scored: a declined offload is correct behaviour whose COST is the thing
+        # worth seeing. Distinguishing it from acceleration is the whole point -- see the comment at
+        # the append site for why `must_accelerate` cannot carry this.
+        "declined_offload": declined_offload,
+        "n_declined_offload": len(declined_offload),
         "acceleratable_region_recall": _ratio(n_eligible_accelerated, n_eligible),
         # The floor under the headline. `n_undetermined` regions are the ones whose family no rung of
         # the evidence ladder could decide; by design they leave BOTH sides of the ratio, because
@@ -476,6 +502,14 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
                   f"Undetermined is a gap in the target's evidence; unclassified is a gap in our "
                   f"vocabulary. Neither says the hardware cannot do the work, and the recall above is "
                   f"computed over the remainder — do not quote it alone.", ""]
+        if arr.get("declined_offload"):
+            rows = arr["declined_offload"]
+            shown = ", ".join(f"{d['capsule']} ({d['semantic_family']})" for d in rows[:6])
+            L += [f"> **declined offload** on {len(rows)} capsule(s): {shown} — the target DECLARES "
+                  f"this family but not this region's dtype, so the work ran on the host. Correct, "
+                  f"and unpriced: `must_accelerate` cannot report it because the region is "
+                  f"ineligible.",
+                  f">   first reason: {rows[0]['reason']}", ""]
         if arr.get("must_accelerate_violations"):
             L += [f"> **must_accelerate violated** on {len(arr['must_accelerate_violations'])} capsule(s): "
                   f"{', '.join(arr['must_accelerate_violations'][:8])} — an ELIGIBLE region that fell back.",

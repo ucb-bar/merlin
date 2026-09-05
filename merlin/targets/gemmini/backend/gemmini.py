@@ -354,13 +354,25 @@ def preflight_codegen_smoke(*, target: str) -> tuple[bool, str]:
     """Compile the production command-buffer emitter and run it bit-exact on RTL.
 
     This is the target-owned implementation of the generic pre-spend codegen-smoke hook.  It exercises
-    the same ``generate_driver -> riscv gcc -> Verilator -> parse -> reference equality`` path used by a
-    real grade.  Merely finding the simulator or compiling an empty file is insufficient: both have been
-    true while the emitted kernel itself was wrong.
+    the same ``generate_driver -> riscv gcc -> selected L3 engine -> parse -> reference equality`` path
+    used by a real grade.  The engine is resolved through the shared RTL policy, including
+    ``MERLIN_REQUIRED_RTL_ENGINE``; otherwise a GSIM-pinned run would silently pay for an unrelated
+    Verilator pass before every resume.  Merely finding the simulator or compiling an empty file is
+    insufficient: both have been true while the emitted kernel itself was wrong.
     """
-    if not available("verilator"):
-        return False, ("Gemmini production codegen smoke cannot run: the Verilator RTL oracle, "
-                       "RISC-V compiler, or curated harness is unavailable")
+    try:
+        # Import at call time: capsule_runner discovers this backend while it is itself importing, so a
+        # module-level import would create a cycle.  This is the SAME selector used to bind the L3 grade;
+        # the preflight must not maintain a second engine policy.
+        from merlin.targetgen.capsule_runner import chipyard_l3_selection
+        selection = chipyard_l3_selection(target)
+        rtl_engine = str(selection["engine"])
+    except Exception as e:  # noqa: BLE001 — no policy-selected L3 means the smoke cannot certify codegen
+        return False, ("Gemmini production codegen smoke cannot select its L3 RTL engine: "
+                       f"{type(e).__name__}: {str(e)[-200:]}")
+    if not available(rtl_engine):
+        return False, (f"Gemmini production codegen smoke cannot run: the selected {rtl_engine} RTL "
+                       "oracle, RISC-V compiler, or curated harness is unavailable")
     tile = int(DIM)
     cb = {
         "abi_version": "0.1",
@@ -382,7 +394,7 @@ def preflight_codegen_smoke(*, target: str) -> tuple[bool, str]:
     }
     try:
         with tempfile.TemporaryDirectory(prefix="merlin_gemmini_codegen_smoke_") as td:
-            result = run_command_buffer(cb, workdir=td, simulator="verilator", timeout=600)
+            result = run_command_buffer(cb, workdir=td, simulator=rtl_engine, timeout=600)
             elf_present = Path(str(result.get("elf") or "")).is_file()
     except Exception as e:  # noqa: BLE001 — this is the failure the launch gate exists to surface
         return False, f"Gemmini production codegen smoke failed: {type(e).__name__}: {str(e)[-240:]}"
@@ -394,7 +406,7 @@ def preflight_codegen_smoke(*, target: str) -> tuple[bool, str]:
                        f"(correct={result.get('correct')!r}, output={bool(output)}, "
                        f"elf={elf_present}, oracle={oracle!r})")
     return True, (f"production command-buffer codegen compiled and ran a {tile}x{tile} kernel "
-                  "bit-exact on Verilator RTL")
+                  f"bit-exact on {rtl_engine} RTL")
 
 
 def harness_build_recipe():

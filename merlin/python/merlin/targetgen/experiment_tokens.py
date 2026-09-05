@@ -46,7 +46,7 @@ METERED = "metered"
 SUBSCRIPTION_NOTIONAL = "subscription_notional"
 
 
-def _load_price_overrides() -> dict[str, tuple[float, float]]:
+def _load_price_overrides() -> dict[str, tuple[float, float, float, float]]:
     """Overlay rates from ``AET_PRICE_TABLE`` (the shared bedrock_prices file aet's PriceTable also reads),
     so this estimate and aet's agree on every model — ONE source of truth, not two divergent tables. The
     file gives USD per MILLION tokens ([input, output, ...] or a dict); converted to per-token here.
@@ -63,18 +63,49 @@ def _load_price_overrides() -> dict[str, tuple[float, float]]:
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     except Exception:  # noqa: BLE001 — malformed price file must never break token accounting
         return {}
-    out: dict[str, tuple[float, float]] = {}
+    out: dict[str, tuple[float, float, float, float]] = {}
     for k, v in (raw.items() if isinstance(raw, dict) else []):
         try:
-            i, o = (float(v["input"]), float(v["output"])) if isinstance(v, dict) \
-                else (float(v[0]), float(v[1]))
-            out[str(k).lower()] = (i / 1e6, o / 1e6)
+            if isinstance(v, dict):
+                i, o = float(v["input"]), float(v["output"])
+                cr = float(v["cache_read"]) if "cache_read" in v else i * _CACHE_READ_MULT
+                cache_key = "cache_creation" if "cache_creation" in v else "cache_write"
+                cw = float(v[cache_key]) if cache_key in v else i * _CACHE_WRITE_MULT
+            else:
+                values = [float(value) for value in v]
+                if not 2 <= len(values) <= 4:
+                    continue
+                i, o = values[:2]
+                cr = values[2] if len(values) >= 3 else i * _CACHE_READ_MULT
+                cw = values[3] if len(values) >= 4 else i * _CACHE_WRITE_MULT
+            out[str(k).lower()] = tuple(value / 1e6 for value in (i, o, cr, cw))
         except Exception:  # noqa: BLE001 — skip a malformed entry, keep the rest
             continue
     return out
 
 
-_OVERRIDES: dict[str, tuple[float, float]] | None = None
+_OVERRIDES: dict[str, tuple[float, float, float, float]] | None = None
+
+
+def _bucket_rate(model: str) -> tuple[float, float, float, float] | None:
+    """Per-token input/output/cache-read/cache-write rates for ``model``.
+
+    Four-column deployment overrides are authoritative for all four buckets. Legacy two-column
+    maps retain the historical 0.10x cache-read and 1.25x cache-write convention. Longest-key
+    matching mirrors AET's PriceTable so a family fallback cannot shadow a version-specific row.
+    """
+    global _OVERRIDES
+    if _OVERRIDES is None:
+        _OVERRIDES = _load_price_overrides()
+    lowered = (model or "").lower()
+    matches = [(key, value) for key, value in _OVERRIDES.items() if key in lowered]
+    if matches:
+        return max(matches, key=lambda item: (len(item[0]), item[0]))[1]
+    builtin = [(key, value) for key, value in _RATES.items() if key in lowered]
+    if not builtin:
+        return None
+    _key, (rin, rout) = max(builtin, key=lambda item: (len(item[0]), item[0]))
+    return rin, rout, rin * _CACHE_READ_MULT, rin * _CACHE_WRITE_MULT
 
 
 def _rate(model: str) -> tuple[float, float] | None:
@@ -85,17 +116,8 @@ def _rate(model: str) -> tuple[float, float] | None:
     $17.21 "estimate" — a number with no provider behind it. An unpriced model now produces no dollar
     figure and a stated reason.
     """
-    global _OVERRIDES
-    if _OVERRIDES is None:
-        _OVERRIDES = _load_price_overrides()
-    m = (model or "")
-    for k, v in _OVERRIDES.items():          # shared override (AET_PRICE_TABLE) wins
-        if k in m.lower():
-            return v
-    for k, v in _RATES.items():
-        if k in m:
-            return v
-    return None
+    buckets = _bucket_rate(model)
+    return buckets[:2] if buckets is not None else None
 
 
 def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
@@ -223,14 +245,14 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
     else:
         cost = 0.0
         for model, m in by_model.items():
-            rate = _rate(model)
+            rate = _bucket_rate(model)
             if rate is None:
                 unpriced.append(model)            # fail closed: no rate -> no dollar figure at all
                 continue
-            rin, rout = rate
+            rin, rout, rcache_read, rcache_write = rate
             cost += m["input"] * rin
-            cost += m["cache_create"] * rin * _CACHE_WRITE_MULT
-            cost += m["cache_read"] * rin * _CACHE_READ_MULT
+            cost += m["cache_create"] * rcache_write
+            cost += m["cache_read"] * rcache_read
             cost += m["output"] * rout
     rec = {
         "available": True,
@@ -442,14 +464,14 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
         if k in u:
             rec[k] = u[k]
 
-    rate = _rate(model) if model else None
+    rate = _bucket_rate(model) if model else None
     cost = None
     if rate is not None:
-        rin, rout = rate
+        rin, rout, rcache_read, rcache_write = rate
         billable_out = tok_out + (0 if u.get("reasoning_is_subset_of_output", True)
                                   else u.get("tokens_reasoning", 0))
-        cost = (tok_in * rin + u.get("tokens_cache_write", 0) * rin * _CACHE_WRITE_MULT
-                + tok_cached * rin * _CACHE_READ_MULT + billable_out * rout)
+        cost = (tok_in * rin + u.get("tokens_cache_write", 0) * rcache_write
+                + tok_cached * rcache_read + billable_out * rout)
 
     if billing_mode != METERED:
         # A seat is not billed per token. The spend field stays empty so no aggregator can sum a

@@ -11,7 +11,7 @@ CLI:
     python -m merlin.targetgen.oot_runner --contract merlin/contract \\
         --package artifacts/targets/gemmini/merlin_native_v0 \\
         --input merlin/contract/examples/g0_matmul.interface.mlir \\
-        --run-id contract_smoke_g0 [--simulator spike|verilator] [--runs-root runs/gemmini_contract]
+        --run-id contract_smoke_g0 [--simulator spike|gsim|verilator] [--runs-root runs/gemmini_contract]
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ CONTRACT_VERSION = "0.1"
 # graded by one of these carries a cycle-accurate cert; a functional tier (spike / the arc coarse
 # model) does not. Extensible as data: a new cycle-accurate sim adds its tool name here. These are
 # simulator tool names, never target names, so no target is baked by keying on the set.
-_CYCLE_ACCURATE_SIMULATORS = frozenset({"verilator", "vcs"})
+_CYCLE_ACCURATE_SIMULATORS = frozenset({"gsim", "verilator", "vcs"})
 
 # A package root IS the submission directory, so an argv token rooted at ``submission/`` is doubly
 # rooted. Only these prefixes are eligible for the strip below; every other token is left untouched.
@@ -577,7 +577,8 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     entry = {"parse": "skipped", "lower_interface_to_target": "skipped",
              "emit_command_buffer": "skipped", "lower_target_to_llvm": "skipped"}
     semantic = {"reference_outputs_vs_simulate": "skipped"}
-    oracle = {"kind": "none", "derived_from_rtl": False, "cycle_accurate": False,
+    oracle = {"kind": "none", "engine": simulator,
+              "derived_from_rtl": False, "cycle_accurate": False,
               "result": "skipped", "cycles": None}
     oracle_outputs: dict | None = None      # the mesh's actual output values (for in-process callers)
     trace_check = {"required": bool(require_accelerator_trace), "status": "not_required",
@@ -717,7 +718,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
                                   f"oracle {simulator} invocation failed: {str(e)[-800:]}") from e
             ok = outputs_match(res["outputs"], ref) and outputs_match(res["outputs"], sim)
             oracle_outputs = res["outputs"]      # what the mesh actually produced (bit-exact == ref when ok)
-            oracle = {"kind": res["oracle"].get("kind"),
+            oracle = {"kind": res["oracle"].get("kind"), "engine": simulator,
                       "derived_from_rtl": res["oracle"].get("derived_from_rtl", False),
                       "cycle_accurate": simulator in _CYCLE_ACCURATE_SIMULATORS and ok,
                       "result": "pass" if ok else "fail", "cycles": res.get("cycles")}
@@ -847,7 +848,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--package", required=True)
     ap.add_argument("--input", required=True, help="path to an *.interface.mlir")
     ap.add_argument("--run-id", required=True)
-    ap.add_argument("--simulator", default="spike", choices=["spike", "verilator"])
+    ap.add_argument("--simulator", default="spike", choices=["spike", "gsim", "verilator"])
     ap.add_argument("--runs-root", default="out/runs/gemmini_contract")
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args(argv)

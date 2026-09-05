@@ -354,6 +354,30 @@ class HarnessBuildRecipe:
         cmd += [str(s) for s in self.support_sources]
         return cmd
 
+    def compile_command(self, *, source: Path, output: Path) -> list[str]:
+        """Compile ONE source to an object with an explicit name.
+
+        Compiling and linking in a single invocation makes the build non-reproducible: the driver
+        names its intermediate object ``ccXXXXXX.o`` and that random name is recorded in the ELF as an
+        STT_FILE symbol. Measured 2026-09-03: two builds of byte-identical sources differed in exactly
+        6 bytes, ``ccFzUU8w.o`` vs ``ccnuEDwa.o``, while producing identical cycle counts. That single
+        difference defeats any content-addressed reuse of a measurement, because the artifact digest
+        moves when nothing about the program did.
+        """
+        cmd = [str(self.compiler), *self.cflags]
+        for root in self.include_roots:
+            cmd += ["-I", str(root)]
+        return cmd + ["-c", str(source), "-o", str(output)]
+
+    def link_command(self, *, objects: "Sequence[Path]", output: Path,
+                     link_script: Path | None = None) -> list[str]:
+        """Link already-compiled objects. Support sources are NOT re-appended: they are among them."""
+        cmd = [str(self.compiler), *self.cflags]
+        for root in self.include_roots:
+            cmd += ["-I", str(root)]
+        cmd += ["-T", str(link_script or self.link_script), "-o", str(output)]
+        return cmd + [str(o) for o in objects]
+
 
 def harness_build_recipe(target: str) -> HarnessBuildRecipe:
     """The build recipe ``target``'s backend declares, or a clear refusal.

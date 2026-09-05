@@ -14,6 +14,7 @@ scratch dir, so no consumer hardcodes the gemmini path (they used to, with three
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import warnings
 from pathlib import Path
@@ -63,6 +64,82 @@ def _committed_facts_path(target: str):
     return p if p.is_file() else None
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _circt_facts_current(path: Path) -> bool:
+    """Whether a default CIRCT facts artifact is bound to this extractor and its exact FIRRTL.
+
+    A committed artifact may be read in a sandbox where the external RTL checkout is intentionally
+    hidden. In that case the two independently recorded full FIR digests must still agree. When the
+    source is reachable, its current bytes must agree too. Any old schema, truncated digest, mismatched
+    source, or unparseable artifact is stale and must not establish a build-feature capability.
+
+    Other fact-extractor families retain their own cache policy; this check is deliberately scoped by
+    the artifact's generator identity.
+    """
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    generator = document.get("generator") or {}
+    if generator.get("name") != "merlin.targetgen.rtl.circt_introspect":
+        return True
+
+    from . import circt_introspect
+
+    inputs = document.get("inputs") or {}
+    if generator.get("version") != circt_introspect.GENERATOR_VERSION:
+        return False
+    try:
+        extractor_digest = _file_sha256(Path(circt_introspect.__file__).resolve())
+    except OSError:
+        return False
+    if inputs.get("extractor_sha256") != extractor_digest:
+        return False
+
+    features = [
+        interface for interface in ((document.get("facts") or {}).get("interfaces") or [])
+        if interface.get("name") == "elaborated_rtl_features"
+    ]
+    if len(features) != 1:
+        return False
+    feature = features[0]
+    status = feature.get("status")
+    value = (feature.get("features") or {}).get("max_pool")
+    fir_digest = inputs.get("fir_sha256")
+    feature_digest = feature.get("source_sha256")
+    source = feature.get("source")
+    has_fir_digest = isinstance(fir_digest, str) and len(fir_digest) == 64
+    has_feature_digest = isinstance(feature_digest, str) and len(feature_digest) == 64
+    if has_fir_digest:
+        if not has_feature_digest or fir_digest != feature_digest:
+            return False
+        if not isinstance(source, str) or not source:
+            return False
+        source_path = Path(source)
+    else:
+        # A non-Chisel target may genuinely have no FIR input. Any other spelling is neither a full
+        # digest nor an explicit absence state and therefore cannot key a cache entry.
+        if fir_digest not in ("n/a", "missing", "unresolved"):
+            return False
+        source_path = None
+    if source_path is not None and source_path.is_file():
+        try:
+            if _file_sha256(source_path) != fir_digest:
+                return False
+        except OSError:
+            return False
+    if status == "unknown":
+        return value is None
+    return status == "derived" and isinstance(value, bool) and has_fir_digest
+
+
 
 def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     """Resolve the facts artifact and GUARANTEE it exists, REGENERATING it from the RTL into the
@@ -78,12 +155,15 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     that toolchain is absent, ``build_facts`` falls back to the Scala-header parse — a KNOWN-weaker
     legal set — so we emit a loud warning first rather than silently serving the degraded facts."""
     p = rtl_facts_path(target, explicit=explicit)
-    if p.is_file():
-        return p
-    if explicit is not None or os.environ.get("MERLIN_RTL_FACTS"):
+    override = explicit is not None or bool(os.environ.get("MERLIN_RTL_FACTS"))
+    if override:
+        if p.is_file():
+            return p
         raise FileNotFoundError(
             f"RTL facts override does not exist: {p} (explicit=/$MERLIN_RTL_FACTS is used as-is and "
             "is never regenerated over)")
+    if p.is_file() and _circt_facts_current(p):
+        return p
     # Cache cold: prefer the COMMITTED, reviewed artifact before regenerating from RTL.
     #
     # `rtl_facts_path` points at a PURGEABLE cache under out/artifacts/cache/. The agent sandbox grants
@@ -95,7 +175,7 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
     # (hardware_pins reviews it); the cache is a regeneration convenience, so falling back to the commit
     # is both correct and what makes the grant mean something.
     committed = _committed_facts_path(target)
-    if committed is not None and committed.is_file():
+    if committed is not None and committed.is_file() and _circt_facts_current(committed):
         return committed
     if target in _REGENERATING:
         raise RuntimeError(f"re-entrant RTL-facts regeneration for target {target!r}")
@@ -107,6 +187,9 @@ def ensure_facts(target: str, *, explicit: str | Path | None = None) -> Path:
         _REGENERATING.discard(target)
     if not p.is_file():
         raise RuntimeError(f"RTL-facts regeneration produced no artifact at {p}")
+    if not _circt_facts_current(p):
+        raise RuntimeError(
+            f"RTL-facts regeneration produced a stale or unbound CIRCT artifact at {p}")
     return p
 
 

@@ -65,8 +65,13 @@ def load_default_facts(target: str) -> dict[str, Any]:
     16x16 mesh / 0x7B opcode / 256 KB scratchpad would silently mis-screen a non-gemmini target). The
     consuming checks SKIP any fact that is UNKNOWN. ``target`` is REQUIRED — the facts are the run's
     resolved target's facts, never an assumed default."""
-    facts: dict[str, Any] = {"mesh": None, "scratchpad_bytes": None, "legal_funct": None,
-                             "custom_opcode": None, "funct3": None,
+    facts: dict[str, Any] = {"mesh": None, "scratchpad_bytes": None,
+                             "scratchpad_rows": None, "scratchpad_row_mask": None,
+                             "accumulator_rows": None,
+                             "accumulator_select_bit": None, "accumulator_row_mask": None,
+                             "local_address_data_width": None, "local_address_data_mask": None,
+                             "config_mvout_fields": None, "max_pool_supported": None,
+                             "legal_funct": None, "custom_opcode": None, "funct3": None,
                              "from": "UNKNOWN (RTL facts not derivable)"}
     try:
         rec = load_facts(target)
@@ -77,11 +82,68 @@ def load_default_facts(target: str) -> dict[str, Any]:
         sp = next((m for m in f.get("memories", []) if m["name"] == "scratchpad"), None)
         if sp and sp.get("bytes"):
             facts["scratchpad_bytes"] = sp["bytes"]
+        # A local-address operand is not necessarily a flat scratchpad row number.  Derive both
+        # memory capacities in the units the ISA addresses (rows) from the same CIRCT facts record;
+        # address_space also accounts for the accumulator's wider element type and banked depth.
+        try:
+            from .address_space import derive_address_space
+            space = derive_address_space(target, facts=rec)
+            scratchpad = space.store("scratchpad")
+            accumulator = space.store("accumulator")
+            if scratchpad is not None:
+                facts["scratchpad_rows"] = scratchpad.total_rows
+                if isinstance(scratchpad.total_rows, int):
+                    width = max(1, (scratchpad.total_rows - 1).bit_length())
+                    facts["scratchpad_row_mask"] = (1 << width) - 1
+            if accumulator is not None:
+                facts["accumulator_rows"] = accumulator.total_rows
+                if isinstance(accumulator.total_rows, int):
+                    # Physical accumulator addressing uses the low ceil(log2(total_rows)) data bits.
+                    width = max(1, (accumulator.total_rows - 1).bit_length())
+                    facts["accumulator_row_mask"] = (1 << width) - 1
+            if space.separate_accumulator_space is True:
+                # The accumulator selector comes from the generated ISA constants (ultimately the
+                # target contract/header's ADDR_LEN convention), never from a capsule name or bit-31
+                # literal. The row mask above is derived independently from the memory capacity.
+                try:
+                    from .rocc.decode import isa_constants
+                    isa = isa_constants(target)
+                    select = isa.get("ACC_I8")
+                    if isinstance(select, int):
+                        facts["accumulator_select_bit"] = select
+                except Exception:
+                    # Capacities, row masks, and common LocalAddr.data width remain independently
+                    # useful. Only the selector stays UNKNOWN.
+                    pass
+            # ``LocalAddr.data`` is wide enough for the largest local store. A smaller store's physical
+            # address accessor selects only its own low address bits; any remaining data bits are thus
+            # non-canonical payload which aliases a lower physical row. Derive that common data width
+            # from the two independently-derived store address widths, not from a target literal.
+            row_masks = [m for m in (facts["scratchpad_row_mask"],
+                                     facts["accumulator_row_mask"])
+                         if isinstance(m, int)]
+            if row_masks and (space.separate_accumulator_space is not True or len(row_masks) == 2):
+                facts["local_address_data_mask"] = max(row_masks)
+                facts["local_address_data_width"] = max(row_masks).bit_length()
+        except Exception:
+            # The base RTL facts remain useful on a target whose address-space/ISA contract cannot be
+            # derived. Leave only these optional fields UNKNOWN; do not erase mesh/decode facts.
+            pass
         ft = next((i for i in f.get("interfaces", []) if i.get("name") == "funct_decode_table"), None)
         if ft:
             facts["legal_funct"] = ft.get("legal_funct")
             facts["custom_opcode"] = ft.get("custom_opcode")
             facts["funct3"] = ft.get("funct3")
+        layouts = next((i.get("bundles", {}) for i in f.get("interfaces", [])
+                        if i.get("name") == "register_bundle_layouts"), {})
+        mvout_layout = layouts.get("ConfigMvoutRs1") if isinstance(layouts, dict) else None
+        if isinstance(mvout_layout, dict):
+            facts["config_mvout_fields"] = sorted((mvout_layout.get("fields") or {}).keys())
+        build_features = next((i for i in f.get("interfaces", [])
+                               if i.get("name") == "elaborated_rtl_features"), {})
+        max_pool = (build_features.get("features") or {}).get("max_pool")
+        if isinstance(max_pool, bool) and build_features.get("status") == "derived":
+            facts["max_pool_supported"] = max_pool
         facts["from"] = f"circt_introspect facts.json ({rec.get('generator', {}).get('version', '?')})"
     except Exception:  # noqa: BLE001 — facts not derivable -> everything stays UNKNOWN (checks skip)
         pass
@@ -294,19 +356,24 @@ def _check_tile_coverage(trace: dict, capsule: dict | None, rtl_facts: dict) -> 
         return Check("T0.tile_coverage", "T0", "warn", "pass",
                      f"MVOUT={n_mvout} >= lower-bound {lo} tiles ({len(matmuls)} matmuls of {M}x{N})",
                      expected=f">={lo}", got=n_mvout)
-    # single declared matmul: exact tile geometry from RTL mesh + declared shape.
-    M, N = shape
-    exp = math.ceil(M / mr) * math.ceil(N / mc)
+    # Single declared matmul: the store-controller mode determines the exact commit count. A normal
+    # MVOUT commits one mesh-row tile; native pooling walks every output spatial row inside one MVOUT,
+    # so it needs one command per output channel tile (and per independent spatial plane), not Mt*Nt.
+    expected = expected_mvout_count(capsule, rtl_facts)
+    if expected is None:
+        return Check("T0.tile_coverage", "T0", "warn", "skipped",
+                     "exact MVOUT geometry is not derivable from the declaration and RTL mesh")
+    exp, geometry = expected
     if n_mvout != exp:
         return Check("T0.tile_coverage", "T0", "warn", "fail",
-                     f"MVOUT={n_mvout} but {M}x{N} over {mr}x{mc} mesh needs Mt*Nt={exp} tiles",
+                     f"MVOUT={n_mvout} but {geometry} needs {exp} store command(s)",
                      expected=exp, got=n_mvout,
                      ratio=round(n_mvout / exp, 3) if exp else None,
                      fix_hint=("over-committing outputs" if n_mvout > exp else "under-committing "
                                "outputs") + f" ~{round(n_mvout/exp,1) if exp else '?'}x; "
                                "check the M/N tiling loop bounds")
     return Check("T0.tile_coverage", "T0", "warn", "pass",
-                 f"MVOUT={n_mvout} == Mt*Nt={exp} for {M}x{N} over {mr}x{mc} mesh",
+                 f"MVOUT={n_mvout} == {exp} for {geometry}",
                  expected=exp, got=n_mvout)
 
 
@@ -367,13 +434,17 @@ def _check_data_movement_reuse(trace: dict, capsule: dict | None, rtl_facts: dic
 
 
 def _check_spad_capacity(trace: dict, rtl_facts: dict) -> Check:
-    """Any MVIN scratchpad row address must lie within the introspected scratchpad capacity.
+    """Every MVIN local row must fit the memory space selected by its encoded address.
 
-    Addresses are row indices into the spad banks; the capacity in *rows* is
-    scratchpad_bytes / (DIM * elem_bytes) with i8 elements (elem_bytes=1, row width = DIM cols).
-    We compare the largest emitted spad_addr against that row count. This is the
-    ``must_respect_scratchpad_capacity`` compiler obligation — a real silicon-correctness bound,
-    identical for every shape.
+    Gemmini-style local addresses multiplex scratchpad and accumulator rows in one operand.  The
+    accumulator selector is derived by :func:`load_default_facts` from the target's ISA contract,
+    while its row-payload mask and both row capacities are independently derived from CIRCT
+    memory/datapath facts.
+    Comparing the raw encoded value to scratchpad capacity confuses a space tag with a row bit (for
+    example ``ACC_I8 | 16`` is accumulator row 16, not scratchpad row 2147483664).
+
+    The historical check id is retained for artifact compatibility even though the invariant now
+    covers both local spaces.
     """
     mesh = _mesh(rtl_facts)
     spad_bytes = rtl_facts.get("scratchpad_bytes")
@@ -382,29 +453,165 @@ def _check_spad_capacity(trace: dict, rtl_facts: dict) -> Check:
                      "mesh/scratchpad UNKNOWN (no RTL facts) — cannot bound scratchpad capacity")
     mr, _mc = mesh
     spad_bytes = int(spad_bytes)
-    # rows = bytes / (cols-per-row * elem_bytes); i8 => 1 byte, row holds DIM columns.
-    rows_capacity = spad_bytes // (mr * 1)
-    addrs = [i.get("decoded", {}).get("spad_addr") for i in trace.get("instructions", [])
-             if i.get("class") in _MVIN_CLASSES]
-    addrs = [a for a in addrs if isinstance(a, int)]
-    if not addrs:
+    # Prefer the address-space derivation.  Keep the byte/mesh calculation as a compatibility path for
+    # callers that inject the old flat facts shape directly into this pure helper.
+    spad_capacity = rtl_facts.get("scratchpad_rows")
+    if not isinstance(spad_capacity, int):
+        spad_capacity = int(spad_bytes) // (mr * 1)
+    spad_row_mask = rtl_facts.get("scratchpad_row_mask")
+    if isinstance(spad_capacity, int) and not isinstance(spad_row_mask, int):
+        spad_row_mask = (1 << max(1, (spad_capacity - 1).bit_length())) - 1
+    acc_capacity = rtl_facts.get("accumulator_rows")
+    acc_select = rtl_facts.get("accumulator_select_bit")
+    acc_row_mask = rtl_facts.get("accumulator_row_mask")
+    if isinstance(acc_capacity, int) and not isinstance(acc_row_mask, int):
+        acc_row_mask = (1 << max(1, (acc_capacity - 1).bit_length())) - 1
+    local_data_mask = rtl_facts.get("local_address_data_mask")
+    if not isinstance(local_data_mask, int):
+        # Compatibility for callers injecting the old flat fact shape: LocalAddr.data is the widest
+        # local-store address payload, so its mask is the maximum of the derived per-store masks.
+        known_masks = [m for m in (spad_row_mask, acc_row_mask) if isinstance(m, int)]
+        local_data_mask = max(known_masks) if known_masks else None
+    local_data_width = (local_data_mask.bit_length()
+                        if isinstance(local_data_mask, int) and local_data_mask >= 0 else None)
+    selector_is_derived = (isinstance(acc_select, int) and not isinstance(acc_select, bool)
+                           and acc_select > 0 and (acc_select & (acc_select - 1)) == 0)
+
+    encoded = [(i.get("index"), i.get("decoded", {}).get("spad_addr"),
+                i.get("decoded", {}).get("rows"))
+               for i in trace.get("instructions", []) if i.get("class") in _MVIN_CLASSES]
+    encoded = [(idx, addr, rows) for idx, addr, rows in encoded
+               if isinstance(addr, int) and not isinstance(addr, bool)]
+    if not encoded:
         return Check("T0.spad_capacity", "T0", "error", "skipped",
                      "no MVIN scratchpad addresses to check")
-    max_addr = max(addrs)
-    if max_addr >= rows_capacity:
-        bad = [i["index"] for i in trace.get("instructions", [])
-               if i.get("class") in _MVIN_CLASSES
-               and isinstance(i.get("decoded", {}).get("spad_addr"), int)
-               and i["decoded"]["spad_addr"] >= rows_capacity][:8]
+
+    # Each entry is (instruction index, decoded base row, exclusive transfer end). The decoded `rows`
+    # field is the exact number of consecutive local rows touched. An absent count is UNKNOWN; zero or a
+    # negative value is an invalid encoded transfer, not a one-row default (LoadController consumes the
+    # encoded field and its zero case can underflow the repeat count / violate its non-zero-byte assert).
+    spad: list[tuple[int | None, int, int]] = []
+    accumulator: list[tuple[int | None, int, int]] = []
+    unresolved_acc: list[int | None] = []
+    unresolved_space: list[int | None] = []
+    unresolved_rows: list[int | None] = []
+    invalid_rows: list[int | None] = []
+    noncanonical_acc: list[int | None] = []
+    noncanonical_spad: list[int | None] = []
+    for idx, addr, transfer_rows in encoded:
+        if not isinstance(transfer_rows, int) or isinstance(transfer_rows, bool):
+            unresolved_rows.append(idx)
+            continue
+        if transfer_rows <= 0:
+            invalid_rows.append(idx)
+            continue
+
+        if selector_is_derived and addr & acc_select:
+            if isinstance(acc_row_mask, int) and isinstance(acc_capacity, int):
+                row = addr & acc_row_mask
+                if isinstance(local_data_mask, int):
+                    payload = addr & local_data_mask
+                    if payload & ~acc_row_mask:
+                        noncanonical_acc.append(idx)
+                accumulator.append((idx, row, row + transfer_rows))
+            else:
+                unresolved_acc.append(idx)
+        else:
+            # A high/control bit on an address cannot safely be discarded when a separate accumulator
+            # exists but its selector was not derived. It might select that space. Low-only values carry
+            # no set selector bit and remain unambiguously scratchpad addresses.
+            if (isinstance(acc_capacity, int) and not selector_is_derived
+                    and (not isinstance(local_data_mask, int) or addr & ~local_data_mask)):
+                unresolved_space.append(idx)
+                continue
+            if not isinstance(spad_row_mask, int):
+                unresolved_space.append(idx)
+                continue
+            row = addr & spad_row_mask
+            if isinstance(local_data_mask, int):
+                payload = addr & local_data_mask
+                if payload & ~spad_row_mask:
+                    noncanonical_spad.append(idx)
+            spad.append((idx, row, row + transfer_rows))
+
+    bad_spad = [(idx, row, end) for idx, row, end in spad if end > spad_capacity]
+    bad_acc = ([(idx, row, end) for idx, row, end in accumulator if end > acc_capacity]
+               if isinstance(acc_capacity, int) else [])
+    spad_max = max((row for _idx, row, _end in spad), default=None)
+    acc_max = max((row for _idx, row, _end in accumulator), default=None)
+    spad_end = max((end for _idx, _row, end in spad), default=None)
+    acc_end = max((end for _idx, _row, end in accumulator), default=None)
+    evidence = {
+        "scratchpad_max_row": spad_max,
+        "scratchpad_max_row_exclusive": spad_end,
+        "scratchpad_rows_capacity": spad_capacity,
+        "scratchpad_row_mask": spad_row_mask,
+        "accumulator_max_row": acc_max,
+        "accumulator_max_row_exclusive": acc_end,
+        "accumulator_rows_capacity": acc_capacity,
+        "accumulator_select_bit": acc_select,
+        "accumulator_row_mask": acc_row_mask,
+        "local_address_data_width": local_data_width,
+        "local_address_data_mask": local_data_mask,
+        "noncanonical_accumulator_instruction_indices": noncanonical_acc[:8],
+        "noncanonical_scratchpad_instruction_indices": noncanonical_spad[:8],
+        "unresolved_address_space_instruction_indices": unresolved_space[:8],
+        "invalid_row_count_instruction_indices": invalid_rows[:8],
+        "unresolved_row_count_instruction_indices": unresolved_rows[:8],
+    }
+    if bad_spad or bad_acc or noncanonical_acc or noncanonical_spad or invalid_rows:
+        bad = ([idx for idx, _row, _end in (bad_spad + bad_acc)] + noncanonical_acc
+               + noncanonical_spad + invalid_rows)[:8]
+        details = []
+        if bad_spad:
+            details.append(
+                f"scratchpad transfer end {max(end for _idx, _row, end in bad_spad)} > {spad_capacity}"
+            )
+        if bad_acc:
+            details.append(
+                f"accumulator transfer end {max(end for _idx, _row, end in bad_acc)} > {acc_capacity}"
+            )
+        if noncanonical_acc:
+            details.append(
+                f"{len(noncanonical_acc)} accumulator address(es) set LocalAddr.data bits outside "
+                "the accumulator row payload and alias lower physical rows"
+            )
+        if noncanonical_spad:
+            details.append(
+                f"{len(noncanonical_spad)} scratchpad address(es) set LocalAddr.data bits outside "
+                "the scratchpad row payload and alias lower physical rows"
+            )
+        if invalid_rows:
+            details.append(f"{len(invalid_rows)} MVIN address(es) have a non-positive row count")
         return Check("T0.spad_capacity", "T0", "error", "fail",
-                     f"max spad_addr {max_addr} >= scratchpad row capacity {rows_capacity} "
-                     f"({spad_bytes} bytes / {mr} cols) — would alias/wrap on silicon",
-                     expected=f"<{rows_capacity}", got=max_addr,
-                     evidence={"instruction_indices": bad},
-                     fix_hint="resident footprint exceeds scratchpad; tile K/N smaller or evict")
+                     "; ".join(details) + " — local transfer is invalid or would alias/wrap on silicon",
+                     expected={"scratchpad": f"<{spad_capacity}",
+                               "accumulator": (f"<{acc_capacity}" if isinstance(acc_capacity, int)
+                                               else "derived capacity")},
+                     got={"scratchpad_max": spad_max, "accumulator_max": acc_max},
+                     evidence={**evidence, "instruction_indices": bad},
+                     fix_hint="resident footprint exceeds its selected local memory; tile smaller or evict")
+    unresolved = unresolved_acc + unresolved_space + unresolved_rows
+    if unresolved:
+        reasons = []
+        if unresolved_acc:
+            reasons.append("an accumulator-selected MVIN has UNKNOWN row mask/capacity")
+        if unresolved_space:
+            reasons.append("the accumulator selector/local-address payload is UNKNOWN")
+        if unresolved_rows:
+            reasons.append("an MVIN row count is undecodable")
+        return Check("T0.spad_capacity", "T0", "error", "skipped",
+                     "; ".join(reasons) + " — cannot safely prove the local transfer bound",
+                     evidence={**evidence, "instruction_indices": unresolved[:8]})
+    spaces = [f"scratchpad max {spad_max} < {spad_capacity}"] if spad_max is not None else []
+    if acc_max is not None:
+        spaces.append(f"accumulator max {acc_max} < {acc_capacity}")
     return Check("T0.spad_capacity", "T0", "error", "pass",
-                 f"max spad_addr {max_addr} < scratchpad row capacity {rows_capacity}",
-                 expected=f"<{rows_capacity}", got=max_addr)
+                 "; ".join(spaces),
+                 expected={"scratchpad": f"<{spad_capacity}",
+                           "accumulator": (f"<{acc_capacity}" if isinstance(acc_capacity, int)
+                                           else None)},
+                 got={"scratchpad_max": spad_max, "accumulator_max": acc_max}, evidence=evidence)
 
 
 def _check_decode_funct_legal(trace: dict, rtl_facts: dict) -> Check:
@@ -549,6 +756,125 @@ def _pooled_rows(rows: int, entry: dict) -> tuple[int | None, str]:
     return (rows // (H * W)) * Ho * Wo, ""
 
 
+_POOL_CONFIG_FIELDS = ("pool_stride", "pool_size", "pool_out_dim", "porows", "pocols",
+                       "orows", "ocols", "upad", "lpad")
+
+
+def _declared_pool_geometry(capsule: dict | None) -> tuple[dict | None, str]:
+    """The native store-controller geometry implied by a declared max-pool epilogue.
+
+    Gemmini's RTL bundle has scalar (square-window) size/stride fields and explicit top/left padding;
+    bottom/right padding affects the derived output dimensions.  No field width or offset is assumed
+    here: this is declaration-side intent, compared later with fields decoded from the RTL layout.
+    """
+    a = _attrs(capsule)
+    if "maxpool" not in (a.get("epilogue") or []):
+        return None, "no maxpool epilogue is declared"
+    pid, size, stride = a.get("pool_in_dims"), a.get("pool_size"), a.get("pool_stride")
+    padding = a.get("pool_padding") or [0, 0, 0, 0]
+    if not all(isinstance(v, (list, tuple)) and len(v) == n
+               for v, n in ((pid, 2), (size, 2), (stride, 2), (padding, 4))):
+        return None, "pool_in_dims/size/stride/padding do not have declared arities 2/2/2/4"
+    try:
+        H, W = (int(pid[0]), int(pid[1]))
+        sh, sw = (int(size[0]), int(size[1]))
+        th, tw = (int(stride[0]), int(stride[1]))
+        top, left, bottom, right = (int(x) for x in padding)
+    except (TypeError, ValueError):
+        return None, "pool geometry contains a non-integer value"
+    if min(H, W, sh, sw, th, tw) <= 0:
+        return None, "pool input, window, and stride dimensions must be positive"
+    if sh != sw or th != tw:
+        return None, "the RTL CONFIG_ST bundle represents only square pool_size and pool_stride"
+    from merlin.runtime.tensor import pool_out_dims
+    try:
+        Ho, Wo = pool_out_dims(H, W, [sh, sw], [th, tw], [top, left, bottom, right])
+    except (TypeError, ValueError) as e:
+        return None, f"declared pool output geometry is invalid ({type(e).__name__})"
+    if Ho <= 0 or Wo <= 0:
+        return None, "declared pool geometry has no output positions"
+
+    pre_rows = None
+    op = _declared_op(capsule)
+    if op in ("matmul", "matmul_resident"):
+        shape = _declared_output_shape(capsule)
+        pre_rows = shape[0] if shape is not None else None
+    elif op in ("conv", "conv2d"):
+        ifm = _input_shape(capsule, a.get("ifm"), "input")
+        if isinstance(ifm, list) and len(ifm) == 4:
+            try:
+                from merlin.runtime.commandbuffer import conv_out_dims
+                ch, cw = conv_out_dims(int(ifm[1]), int(ifm[2]), int(a["kh"]), int(a["kw"]),
+                                       a.get("stride", [1, 1]),
+                                       a.get("padding", [0, 0, 0, 0]),
+                                       a.get("dilation", [1, 1]))
+                pre_rows = int(ifm[0]) * ch * cw
+            except (KeyError, TypeError, ValueError):
+                pre_rows = None
+    if not isinstance(pre_rows, int) or pre_rows <= 0 or pre_rows % (H * W):
+        return None, (f"pool_in_dims [{H}, {W}] does not partition the operation's pre-pool "
+                      f"row extent {pre_rows!r}")
+    planes = pre_rows // (H * W)
+    return {
+        "pool_stride": th, "pool_size": sh, "pool_out_dim": Wo,
+        "porows": Ho, "pocols": Wo, "orows": H, "ocols": W,
+        "upad": top, "lpad": left, "planes": planes,
+        "rows_per_store": Ho * Wo,
+    }, ""
+
+
+def _pool_config_agreement(config: dict | None, capsule: dict | None,
+                           rtl_facts: dict) -> tuple[bool, str, dict]:
+    """Compare one emitted CONFIG_ST snapshot with declaration-derived pooling intent."""
+    want, why = _declared_pool_geometry(capsule)
+    if want is None:
+        return False, why, {}
+    supported = rtl_facts.get("max_pool_supported")
+    if supported is not True:
+        state = "disabled in the elaborated RTL configuration" if supported is False else "UNKNOWN"
+        return False, f"native max-pool capability is {state}", want
+    config = config or {}
+    missing = [f for f in _POOL_CONFIG_FIELDS if not isinstance(config.get(f), int)]
+    if missing:
+        return False, f"RTL-derived decoder did not recover CONFIG_ST field(s) {missing}", want
+    mismatch = {f: {"expected": want[f], "got": int(config[f])}
+                for f in _POOL_CONFIG_FIELDS if int(config[f]) != want[f]}
+    if mismatch:
+        return False, f"CONFIG_ST pooling fields disagree with the declaration: {mismatch}", want
+    return True, "", want
+
+
+def expected_mvout_count(capsule: dict | None, rtl_facts: dict) -> tuple[int, str] | None:
+    """Exact single-matmul store count from declared geometry and the RTL-derived mesh.
+
+    Shared by the Python screen and FileCheck compiler so their count model cannot drift.
+    """
+    if _declared_op(capsule) not in ("matmul", "matmul_resident"):
+        return None
+    a = _attrs(capsule)
+    if isinstance(a.get("matmuls"), list):
+        return None
+    shape, mesh = _declared_output_shape(capsule), _mesh(rtl_facts)
+    if shape is None or mesh is None:
+        return None
+    M, N = shape
+    mr, mc = mesh
+    if "maxpool" in (a.get("epilogue") or []):
+        if rtl_facts.get("max_pool_supported") is not True:
+            return None
+        recovered = rtl_facts.get("config_mvout_fields")
+        if not isinstance(recovered, list) or not set(_POOL_CONFIG_FIELDS) <= set(recovered):
+            return None
+        pool, _why = _declared_pool_geometry(capsule)
+        if pool is None:
+            return None
+        count = int(pool["planes"]) * math.ceil(N / mc)
+        return count, (f"native pooled {M}x{N} commit: {pool['planes']} spatial plane(s) x "
+                       f"ceil({N}/{mc}) channel tiles")
+    count = math.ceil(M / mr) * math.ceil(N / mc)
+    return count, f"{M}x{N} over {mr}x{mc} mesh (Mt*Nt)"
+
+
 def declared_outputs(capsule: dict | None) -> tuple[list[dict], str]:
     """Every DECLARED output's committed extent, in kernel-argument order — or ``([], reason)``.
 
@@ -683,27 +1009,51 @@ def _moves(trace: dict, move_class: str, stride_class: str, stride_key: str) -> 
     or missing an extent, keeps ``None`` in that field — the caller reports UNKNOWN and asserts nothing,
     rather than assuming a pitch."""
     stride = None
+    config: dict = {}
     out: list[dict] = []
     for i in trace.get("instructions", []):
         d = i.get("decoded") or {}
         if i.get("class") == stride_class:
             v = d.get(stride_key)
             stride = int(v) if isinstance(v, int) and v > 0 else None
+            config = dict(d)
         elif i.get("class") == move_class:
             dram = d.get("dram") if isinstance(d.get("dram"), dict) else {}
             out.append({"index": i.get("index"), "kind": dram.get("kind"),
                         "arg_index": dram.get("arg_index"), "offset": dram.get("offset"),
-                        "rows": d.get("rows"), "cols": d.get("cols"), "stride": stride})
+                        "rows": d.get("rows"), "cols": d.get("cols"), "stride": stride,
+                        "config": dict(config)})
     return out
 
 
-def _store_coverage(trace: dict, outputs: list[dict]) -> dict:
+def _effective_store_rows(store: dict, capsule: dict | None,
+                          rtl_facts: dict) -> tuple[int | None, str]:
+    """Rows physically committed by one MVOUT under its active CONFIG_ST.
+
+    In native pooling mode the StoreController ignores MVOUT.num_rows and walks porows*pocols output
+    positions itself.  We use that replacement only after every encoded geometry field agrees with the
+    declaration; otherwise the footprint is UNKNOWN, never silently interpreted as zero rows.
+    """
+    if "maxpool" not in (_attrs(capsule).get("epilogue") or []):
+        rows = store.get("rows")
+        return (int(rows), "") if isinstance(rows, int) else (None, "MVOUT rows are undecodable")
+    ok, why, want = _pool_config_agreement(store.get("config"), capsule, rtl_facts)
+    if not ok:
+        return None, why
+    return int(want["rows_per_store"]), ""
+
+
+def _store_coverage(trace: dict, outputs: list[dict], capsule: dict | None = None,
+                    rtl_facts: dict | None = None) -> dict:
     """Per-declared-output DRAM store coverage, computed from the author's own stores.
 
     ``{name: {"status": "covered"|"uncovered"|"absent"|"unknown", ...}}``. Row/column coverage is tracked
     as SETS OF INDICES so a kernel that legalizes a ragged extent by any means (a shorter final band, or
     many one-row bands) is judged by what it actually covers, not by the shape of its loop."""
     stores = _moves(trace, "MVOUT", "CONFIG_ST", "out_stride_bytes")
+    for store in stores:
+        store["rows"], store["rows_unknown_reason"] = _effective_store_rows(
+            store, capsule, rtl_facts or {})
     rep: dict[str, dict] = {}
     for o in outputs:
         mine = [s for s in stores if s["kind"] == "argbase" and s["arg_index"] == o["arg_index"]]
@@ -731,7 +1081,11 @@ def _store_coverage(trace: dict, outputs: list[dict]) -> dict:
                        or not all(isinstance(s[k], int) for k in ("offset", "rows", "cols"))]
         if undecodable:
             rec.update(status="unknown", undecodable_instruction_indices=undecodable[:8],
-                       unknown_reason="store(s) carry no decodable offset/rows/cols/row-pitch")
+                       unknown_reason="; ".join(sorted({
+                           str(s.get("rows_unknown_reason") or
+                               "store carries no decodable offset/rows/cols/row-pitch")
+                           for s in mine if s["index"] in undecodable
+                       })))
             rep[o["name"]] = rec
             continue
         R, C, eb = o["rows"], o["cols"], o["elem_bytes"]
@@ -818,6 +1172,65 @@ def _vocabulary_classes(target: str, stems: tuple[str, ...]) -> tuple[set[str], 
 
 
 # ----------------------------------------------------------------------------- new structural checks
+def _check_pool_config(trace: dict, capsule: dict | None, rtl_facts: dict) -> Check:
+    """Native CONFIG_ST pooling mode must encode the declared geometry exactly.
+
+    This gate is intentionally separate from coverage: a malformed or underived config must make the
+    pooled footprint UNKNOWN, not let the checker manufacture a plausible coverage result from capsule
+    intent alone.
+    """
+    cid = "T0.pool_config"
+    stores = _moves(trace, "MVOUT", "CONFIG_ST", "out_stride_bytes")
+    declared = "maxpool" in (_attrs(capsule).get("epilogue") or [])
+    if not declared:
+        enabled = [s["index"] for s in stores
+                   if isinstance((s.get("config") or {}).get("pool_stride"), int)
+                   and s["config"]["pool_stride"] > 0]
+        if enabled:
+            return Check(cid, "T0", "warn", "fail",
+                         "CONFIG_ST enables native pooling although no maxpool epilogue is declared",
+                         expected="pool_stride == 0", got="pool_stride > 0",
+                         evidence={"instruction_indices": enabled[:8]})
+        return Check(cid, "T0", "warn", "skipped", "no maxpool epilogue is declared")
+    supported = rtl_facts.get("max_pool_supported")
+    if supported is False:
+        return Check(cid, "T0", "warn", "fail",
+                     "a maxpool epilogue is declared, but the RTL-derived elaborated configuration "
+                     "disables native max-pool",
+                     expected=True, got=False)
+    if supported is not True:
+        return Check(cid, "T0", "warn", "skipped",
+                     "native max-pool capability is UNKNOWN because no derived elaborated-config "
+                     "feature fact is available")
+    want, declaration_why = _declared_pool_geometry(capsule)
+    if want is None:
+        return Check(cid, "T0", "warn", "fail",
+                     f"declared maxpool geometry cannot be represented/derived: {declaration_why}",
+                     expected="representable native pool geometry", got=declaration_why)
+    if not stores:
+        return Check(cid, "T0", "warn", "skipped",
+                     "no MVOUT exists at which to observe the active CONFIG_ST pooling fields")
+    bad = []
+    for store in stores:
+        ok, why, _ = _pool_config_agreement(store.get("config"), capsule, rtl_facts)
+        if not ok:
+            bad.append({"instruction_index": store["index"], "reason": why,
+                        "decoded_config": {f: (store.get("config") or {}).get(f)
+                                           for f in _POOL_CONFIG_FIELDS}})
+    if bad:
+        return Check(cid, "T0", "warn", "fail",
+                     f"{len(bad)} pooled MVOUT(s) do not carry a fully derived CONFIG_ST matching "
+                     "the declared geometry; their store footprint is UNKNOWN",
+                     expected={f: want[f] for f in _POOL_CONFIG_FIELDS}, got=bad[0]["decoded_config"],
+                     evidence={"mismatches": bad[:8]},
+                     fix_hint="encode CONFIG_ST pooling fields from the declared geometry using the "
+                              "target's RTL-derived ConfigMvoutRs1 layout")
+    return Check(cid, "T0", "warn", "pass",
+                 f"all {len(stores)} pooled MVOUT(s) use CONFIG_ST geometry matching the declaration",
+                 expected={f: want[f] for f in _POOL_CONFIG_FIELDS},
+                 got={f: want[f] for f in _POOL_CONFIG_FIELDS})
+
+
 def _check_output_store_coverage(trace: dict, capsule: dict | None, rtl_facts: dict) -> Check:
     """Every DECLARED output must be covered by stores in the emitted stream, and by no store past it.
 
@@ -834,7 +1247,7 @@ def _check_output_store_coverage(trace: dict, capsule: dict | None, rtl_facts: d
     if not outs:
         return Check("T0.output_store_coverage", "T0", "warn", "skipped",
                      f"declared output extent not derivable: {why}")
-    cov = _store_coverage(trace, outs)
+    cov = _store_coverage(trace, outs, capsule, rtl_facts)
     unknown = {n: r for n, r in cov.items() if r["status"] == "unknown"}
     if unknown:
         return Check("T0.output_store_coverage", "T0", "warn", "skipped",
@@ -944,7 +1357,7 @@ def _check_extent_tile_legalization(trace: dict, capsule: dict | None, rtl_facts
                      f"the ragged extent(s) {[a['axis'] for a in ragged]} are legalized by the hardware "
                      f"loop {sorted(in_trace)}, which walks the tail itself",
                      evidence={"axes": axes, "loop_classes": sorted(in_trace), "basis": loop_basis})
-    cov = _store_coverage(trace, outs)
+    cov = _store_coverage(trace, outs, capsule, rtl_facts)
     n_compute = sum(1 for c in _classes(trace) if c in _COMPUTE_CLASSES)
     min_compute = sum(math.ceil(M / mr) * math.ceil(K / mr) * math.ceil(N / mc)
                       for (M, N, K) in contractions)
@@ -1349,6 +1762,7 @@ def _check_encoded_field_intent(trace: dict, capsule: dict | None, rtl_facts: di
     volume: dict[int, int] = {}
     ld_pitch: int | None = None
     st_pitch: int | None = None
+    st_config: dict = {}
 
     def _padded_cols(b: dict) -> int:
         return math.ceil(b["cols"] / mc) * mc
@@ -1371,6 +1785,7 @@ def _check_encoded_field_intent(trace: dict, capsule: dict | None, rtl_facts: di
         if cls == "CONFIG_ST":
             v = dec.get("out_stride_bytes")
             st_pitch = int(v) if isinstance(v, int) and v > 0 else None
+            st_config = dict(dec)
             if commit is None:
                 undecidable.append({"index": idx, "field": "store_activation", "reason": commit_why})
                 undecidable.append({"index": idx, "field": "config_scale", "reason": commit_why})
@@ -1427,6 +1842,12 @@ def _check_encoded_field_intent(trace: dict, capsule: dict | None, rtl_facts: di
                                           f"{shape} argument order's {len(binding)} slot(s) do not cover"})
             continue
         offset, rows, cols = dram.get("offset"), dec.get("rows"), dec.get("cols")
+        if cls == "MVOUT" and "maxpool" in (_attrs(capsule).get("epilogue") or []):
+            rows, pool_why = _effective_store_rows(
+                {"rows": rows, "config": st_config}, capsule, rtl_facts)
+            if rows is None:
+                undecidable.append({"index": idx, "field": "store_extent",
+                                    "reason": f"pooled MVOUT footprint is UNKNOWN: {pool_why}"})
         pitch = ld_pitch if cls in _MVIN_CLASSES else st_pitch
         packed_pitch, padded_pitch = _pitches(b)
         base = {"index": idx, "instruction": cls, "arg_index": arg, "tensor": b["name"],
@@ -1707,6 +2128,7 @@ def screen(trace: dict, capsule: dict | None = None,
     # purpose: they are feedback, and a warn can never move this report's verdict to 'reject' (which an
     # opt-in caller may use to skip an oracle run). A structurally-odd but conformant kernel must never
     # lose its oracle over an advisory finding.
+    rep.checks.append(_check_pool_config(trace, capsule, facts))
     rep.checks.append(_check_output_store_coverage(trace, capsule, facts))
     rep.checks.append(_check_extent_tile_legalization(trace, capsule, facts, target))
     rep.checks.append(_check_conv_lowering(trace, capsule, facts, target))

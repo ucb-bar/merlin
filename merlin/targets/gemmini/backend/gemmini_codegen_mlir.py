@@ -38,29 +38,41 @@ GARBAGE = 0xFFFFFFFF                  # universal, not target-specific — no de
 @cache
 def _isa() -> SimpleNamespace:
     from merlin.targetgen.target_experiment import load_capability_manifest
+    from merlin.targetgen.address_space import derive_address_space
     from merlin.targetgen.rtl.facts import load_facts
     m = load_capability_manifest("gemmini")
     enc, rb = m.encoding, m.encoding["readout_bits"]
     code_of = {cls: code for code, cls in enc["semantic_class"].items()}
-    facts = load_facts("gemmini")["facts"]
+    facts_rec = load_facts("gemmini")
+    facts = facts_rec["facts"]
     fd = next(i for i in facts["interfaces"] if i.get("name") == "funct_decode_table")
     layouts = next((i for i in facts["interfaces"]
                     if i.get("name") == "register_bundle_layouts"), {})
+    build_features = next((i for i in facts["interfaces"]
+                           if i.get("name") == "elaborated_rtl_features"), {})
     # DIM (systolic mesh dimension) is a CIRCT-extracted FACT, not a hand-declared manifest field.
     mesh = next((a for a in facts.get("arrays", []) if a.get("name") == "mesh"), {})
     # On-chip operand-store depth (scratchpad rows) is a CIRCT-extracted memory FACT — it bounds how
     # much of an operand can be kept resident (see the capacity-fit residency in emit_kernel_mlir).
     # Fail-closed: absent -> None (no capacity-fit residency, the per-tile schedule stands).
-    sp = next((mem for mem in facts.get("memories", []) if mem.get("name") == "scratchpad"), {})
-    acc = next((mem for mem in facts.get("memories", []) if mem.get("name") == "accumulator"), {})
+    # A memory fact's ``depth`` is per bank. LocalAddr indexes the banked space as one flat row range,
+    # so code generation must use the address-space derivation's TOTAL rows (bytes / RTL-derived row
+    # width), not the per-bank depth. Using depth rejected valid retained pool planes and made operand
+    # residency four times more conservative on the pinned 4-bank scratchpad.
+    address_space = derive_address_space("gemmini", facts=facts_rec)
+    sp_store = address_space.store("scratchpad")
+    acc_store = address_space.store("accumulator")
+    sp_rows = sp_store.total_rows if sp_store is not None else None
+    acc_rows = acc_store.total_rows if acc_store is not None else None
     config_code_of = {name: int(code) for code, name in enc.get("config_subtype", {}).items()}
-    pool_capable = any(
-        cap.get("family") == "reduction"
-        and "int8" in (cap.get("dtypes") or [])
-        and "contraction" in (cap.get("composed_with") or [])
-        for unit in m.contract.get("compute_units", [])
-        for cap in unit.get("semantic_capabilities", [])
-    )
+    # The ISA bundle proves pooling is encodable; only the configuration which produced the RTL says
+    # whether StoreController built it. Require a literal derived True. A human capability declaration,
+    # an absent fact, or an UNKNOWN extraction can no longer enable code generation.
+    max_pool_supported = ((build_features.get("features") or {}).get("max_pool")
+                          if build_features.get("status") == "derived" else None)
+    if not isinstance(max_pool_supported, bool):
+        max_pool_supported = None
+    pool_capable = max_pool_supported is True
     mesh_rows, mesh_cols = mesh.get("rows"), mesh.get("cols")
     if not isinstance(mesh_rows, int) or not isinstance(mesh_cols, int) or mesh_rows <= 0 or mesh_cols <= 0:
         raise CodegenError("CIRCT facts do not contain a positive mesh row/column geometry; refusing "
@@ -79,10 +91,11 @@ def _isa() -> SimpleNamespace:
         K_FLUSH=code_of["FLUSH"],
         CUSTOM_OPCODE=fd["custom_opcode"],  # RoCC custom-3 (0x7b)
         FUNCT3=fd["funct3"],                # 0x3
-        SCRATCHPAD_ROWS=sp.get("depth"),    # on-chip operand-store depth (rows); None if underived
-        ACCUMULATOR_ROWS=acc.get("depth"),  # accumulator rows available for a retained output plane
+        SCRATCHPAD_ROWS=sp_rows,             # total banked operand-store rows; None if underived
+        ACCUMULATOR_ROWS=acc_rows,           # total banked accumulator rows for a retained output plane
         CONFIG_ST_TYPE=config_code_of.get("CONFIG_ST"),
         CONFIG_ST_LAYOUT=(layouts.get("bundles") or {}).get("ConfigMvoutRs1"),
+        MAX_POOL_SUPPORTED=max_pool_supported,
         POOL_CAPABLE=pool_capable,
     )
     # config_ex (WS, no activation, shift 0, identity scales, strides 1) and config_ld RS1 (block
@@ -99,7 +112,7 @@ def _isa() -> SimpleNamespace:
 _DERIVED = ("DIM", "ADDR_LEN", "F1", "C_ACC", "ACC_ACCUM", "ACC_I8", "K_CONFIG", "K_MVIN", "K_MVOUT",
             "K_COMPUTE_PRELOADED", "K_PRELOAD", "K_FLUSH", "CUSTOM_OPCODE", "FUNCT3",
             "CFG_EX_RS1", "CFG_EX_RS2", "CFG_LD_RS1", "SCRATCHPAD_ROWS", "ACCUMULATOR_ROWS",
-            "CONFIG_ST_TYPE", "POOL_CAPABLE")
+            "CONFIG_ST_TYPE", "MAX_POOL_SUPPORTED", "POOL_CAPABLE")
 _DERIVED_LAYOUTS = ("CONFIG_ST_LAYOUT",)
 
 
@@ -294,8 +307,10 @@ def _pool_config_rs1(pool: PoolSpec | None, *, acc_act: int) -> int:
         if isa.CONFIG_ST_TYPE is None:
             raise CodegenError("CONFIG_ST subtype is absent from the target capability manifest")
         return (int(acc_act) << 2) | int(isa.CONFIG_ST_TYPE)
-    if not isa.POOL_CAPABLE:
-        raise CodegenError("target capability manifest does not declare int8 reduction composed with contraction")
+    if isa.MAX_POOL_SUPPORTED is False:
+        raise CodegenError("exact elaborated RTL facts show native max-pool was compiled out")
+    if isa.MAX_POOL_SUPPORTED is not True:
+        raise CodegenError("exact elaborated RTL facts do not establish native max-pool capability")
     if isa.CONFIG_ST_TYPE is None:
         raise CodegenError("CONFIG_ST subtype is absent from the target capability manifest")
     return _pack_register_fields(isa.CONFIG_ST_LAYOUT, {

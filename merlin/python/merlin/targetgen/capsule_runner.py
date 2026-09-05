@@ -502,7 +502,17 @@ def chipyard_l3_selection(target: str) -> dict:
                     else f"{engine} reports unavailable for {target!r}")
         return run
 
-    return _pol.select(target, {e: _probe(e) for e in _pol.ENGINE_PRIORITY})
+    probes = {engine: _probe(engine) for engine in _pol.ENGINE_PRIORITY}
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
+    if required:
+        if required not in probes:
+            raise RuntimeError(
+                f"required RTL engine {required!r} is not registered for chipyard selection")
+        selected = _pol.select(target, {required: probes[required]})
+        selected["required_engine"] = required
+        selected["selection_constraint"] = "MERLIN_REQUIRED_RTL_ENGINE"
+        return selected
+    return _pol.select(target, probes)
 
 
 def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
@@ -1371,6 +1381,26 @@ def _rtl_tiers_of(target: str | None) -> frozenset[str]:
         return frozenset()
 
 
+def _screen_tiers_of(target: str | None) -> tuple[tuple[str, str], ...]:
+    """The (tier, sim) pairs BELOW this target's RTL tiers -- the cheap functional screens, in order.
+
+    Derived from the target's own ``tier_sim`` map minus its declared ``rtl_tiers``, so it is the
+    contract that names the screen, never a "spike" literal here. A target that declares no cheap tier
+    (an adapter-supplied ladder with an empty ``tier_sim``) yields ``()`` and the caller must then say
+    the screen is UNAVAILABLE rather than invent one.
+    """
+    if not target:
+        return ()
+    try:
+        from .runner_config import runner_config_from_manifest
+        from .target_experiment import load_capability_manifest
+        cfg = runner_config_from_manifest(load_capability_manifest(target))
+    except Exception:                                    # noqa: BLE001 — unresolvable manifest
+        return ()
+    return tuple((t, cfg.tier_sim[t]) for t in cfg.oracle_tiers
+                 if t not in cfg.rtl_tiers and t in cfg.tier_sim)
+
+
 def _numeric_when_not_accelerated(st, gate, verify: dict, cos: float, engine: str,
                                   measured_on: str) -> dict:
     """The numeric verdict for a model capsule that will NOT be reported as a pass.
@@ -1426,25 +1456,103 @@ def _model_tier_evidence(model_exec: dict | None, tile_exec: dict | None) -> dic
     tile_records = [tile if isinstance(tile, dict) else {} for tile in tiles]
     contributors = [*call_oracles, *tile_records]
 
+    # A performance/formal run may bind one exact RTL engine. Fidelity flags alone cannot enforce that
+    # pin because GSIM and Verilator are both elaborated RTL; summing their cycles would produce a valid-
+    # looking number with no single timing authority. Dynamic call records carry ``engine`` while the
+    # flattened synthesized-tile records carry ``oracle_engine``.
+    required_engine = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+    contributor_engines = [
+        record.get("engine") if index < len(call_oracles) else record.get("oracle_engine")
+        for index, record in enumerate(contributors)
+    ]
+    engine_bound = (required_engine is None or (
+        bool(contributors) and all(engine == required_engine for engine in contributor_engines)))
+
     dynamic_cycles = [oracle.get("cycles") for oracle in call_oracles]
     cycles = (sum(dynamic_cycles)
-              if dynamic_cycles and all(isinstance(v, int) and not isinstance(v, bool)
-                                        for v in dynamic_cycles)
+              if engine_bound and dynamic_cycles
+              and all(isinstance(v, int) and not isinstance(v, bool) for v in dynamic_cycles)
               else None)
     evidence_parts = []
     if isinstance(ledger, list):
         evidence_parts.append("mesh_execution.dispatch_ledger")
     if isinstance(per_tile, list):
         evidence_parts.append("mesh_tile_verification.per_tile")
-    derived = bool(contributors) and all(r.get("derived_from_rtl") is True for r in contributors)
-    accurate = bool(contributors) and all(r.get("cycle_accurate") is True for r in contributors)
+    derived = (engine_bound and bool(contributors)
+               and all(r.get("derived_from_rtl") is True for r in contributors))
+    accurate = (engine_bound and bool(contributors)
+                and all(r.get("cycle_accurate") is True for r in contributors))
     return {
         "cycles": cycles,
         "derived_from_rtl": derived,
         "cycle_accurate": accurate,
         "evidence": " + ".join(evidence_parts) or None,
         "fidelity": "elaborated_rtl" if derived else None,
+        "measurement_conditions": ({"required_rtl_engine": required_engine,
+                                    "observed_rtl_engines": sorted(
+                                        {str(engine) for engine in contributor_engines if engine}),
+                                    "single_engine_cycle_authority": engine_bound}
+                                   if required_engine is not None else None),
     }
+
+
+def _model_screen_tier(tier: str, sim: str, tile_exec: dict | None) -> "TierResult":
+    """The SCREEN rung for a whole model: did every synthesized tile clear the cheap functional oracle?
+
+    A model capsule declares ``required_oracle_tiers: [L0, L1, L2, L3]`` and this map used to emit only
+    L0/L1/L3 -- the screen rung was declared and then silently dropped, so a model reached the cert tier
+    without ever earning the tier below it. That is the one ordering every operator capsule obeys
+    (`capsule_runner` walks each capsule cheapest-first), and dropping a declared tier is exactly the
+    `not_run_is_not_pass` hole: a tier with no record is not evidence, and an ABSENT key does not even
+    read as a hole.
+
+    The evidence is the same per-tile evidence the cert rung rests on, measured on the cheap oracle
+    instead: ``_mesh_verify`` runs each routed layer's capacity-fit tile through the screen simulator
+    FIRST and only promotes a tile that passed. So this rung is not a synthesized restatement of the
+    cert rung -- it is a separate execution, and a tile that fails it never reaches the RTL oracle.
+
+    Four distinct cases, mirroring the cert rung:
+
+      * every screened tile passed        -> pass
+      * some screened tile failed         -> fail
+      * no tile was screened at all       -> skipped
+      * the screen leg left no record     -> unavailable  (absent must never read as 0)
+    """
+    # TWO DIFFERENT ABSENCES, and collapsing them made every model grade that does no tile
+    # verification read as a HOLE. When `tile_exec` is absent entirely, this grade never synthesized a
+    # tile -- the cert rung is resting on the model's own mesh counters, and there was nothing to
+    # screen. That is a legitimate skip, so it is `not_applicable` and does not make the capsule
+    # incomplete. When tiles WERE verified but carry no screen tally, the cheapest-first order was
+    # actually skipped, and that is the hole this rung exists to expose.
+    if not tile_exec:
+        return TierResult(tier, "skipped", True, not_applicable=True,
+                          reason="this grade synthesized no tiles, so there was nothing to screen "
+                                 "before the cert tier")
+    n = (tile_exec or {}).get("n_screened")
+    if not isinstance(n, int) or isinstance(n, bool):
+        return TierResult(tier, "unavailable", True,
+                          reason=f"{len((tile_exec or {}).get('per_tile') or [])} tile(s) were verified "
+                                 f"without a recorded {sim} screen, so whether they clear the cheap "
+                                 f"oracle first is UNKNOWN")
+    failed = int((tile_exec or {}).get("n_screen_failed") or 0)
+    unavailable = int((tile_exec or {}).get("n_screen_unavailable") or 0)
+    passed = int((tile_exec or {}).get("n_screen_passed") or 0)
+    evidence = "mesh_tile_verification.per_tile[].screen"
+    if n == 0:
+        return TierResult(tier, "skipped", True, evidence=evidence,
+                          reason="no mesh-routed tile was screened (this model routed none)")
+    if failed:
+        return TierResult(tier, "fail", True, evidence=evidence,
+                          reason=f"{failed} of {n} tile(s) failed the {sim} functional screen")
+    if unavailable == n:
+        return TierResult(tier, "unavailable", True, evidence=evidence,
+                          reason=f"the {sim} screen oracle was unavailable for all {n} tile(s)")
+    if passed != n:
+        return TierResult(tier, "unavailable", True, evidence=evidence,
+                          reason=f"only {passed} of {n} tile(s) have a {sim} screen verdict; "
+                                 f"{n - passed} are unaccounted for")
+    return TierResult(tier, "pass", True, evidence=evidence,
+                      reason=f"{n} tile(s) cleared the {sim} functional screen before the cert tier ran")
 
 
 def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | None,
@@ -1472,6 +1580,9 @@ def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | 
         if t in ("L0", "L1"):
             tiers[t] = TierResult(t, "skipped", True, not_applicable=True,
                                   reason="a whole model has no command buffer to interpret")
+    for t, _sim in _screen_tiers_of(target):
+        if t in declared and t not in tiers:
+            tiers[t] = _model_screen_tier(t, _sim, tile_exec)
     _rtl = [x for x in declared if x in _rtl_tiers_of(target)]
     tier = _rtl[-1] if _rtl else (declared[-1] if declared else None)
     if tier is None or tier in tiers:

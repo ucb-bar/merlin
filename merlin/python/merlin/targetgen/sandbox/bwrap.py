@@ -29,6 +29,7 @@ from merlin.targetgen.target_experiment import TargetExperiment
 _EXPOSE_OPS = ("--ro-bind", "--bind", "--dev-bind", "--ro-bind-try", "--bind-try")
 _HIDE_DEST_OPS = ("--tmpfs",)            # single-arg-dest hide ops
 _DEVNULL = "/dev/null"
+PINNED_SUBMISSION_READ_ONLY_ENV = "MERLIN_PINNED_SUBMISSION_READ_ONLY"
 _SNAPSHOT_DIR = "bundle_inputs"
 _SNAPSHOT_COMPLETE = "snapshot.json"
 
@@ -428,25 +429,31 @@ def claude_runtime_binds() -> list[str]:
 
 
 # --------------------------------------------------------------------------- mount-table replay
-def _mounts(argv: list[str]) -> list[tuple[str, str]]:
-    """Parse the argv into ordered (state, dest) mount ops, where state is 'expose' or 'hide'. Only the
-    ops that affect path visibility are kept; everything else (flags, --chdir, --unsetenv…) is ignored."""
-    ops: list[tuple[str, str]] = []
+def _mounts(argv: list[str]) -> list[tuple[str, str | None, str]]:
+    """Parse argv into ordered ``(state, source, destination)`` mount operations.
+
+    Retaining the source is essential for immutable bundle snapshots: a live destination can gain a
+    file after setup while the frozen directory bound over it does not contain that file.  Visibility
+    is determined by the mounted source bytes, never by the current host destination tree.
+    """
+    ops: list[tuple[str, str | None, str]] = []
     i = 0
     n = len(argv)
     while i < n:
         a = argv[i]
         if a in _EXPOSE_OPS and i + 2 < n:
             src, dest = argv[i + 1], argv[i + 2]
-            ops.append(("hide" if src == _DEVNULL else "expose", dest))
+            ops.append(("hide" if src == _DEVNULL else "expose", src, dest))
             i += 3
             continue
         if a in _HIDE_DEST_OPS and i + 1 < n:
-            ops.append(("hide", argv[i + 1]))
+            ops.append(("hide", None, argv[i + 1]))
             i += 2
             continue
         if a in ("--dev", "--proc") and i + 1 < n:
-            ops.append(("hide", argv[i + 1]))    # devtmpfs/procfs — hides host content under dest
+            # devtmpfs/procfs hide host content below the destination.  They intentionally have no
+            # ordinary host source that answer-surface replay may inspect.
+            ops.append(("hide", None, argv[i + 1]))
             i += 2
             continue
         i += 1
@@ -464,21 +471,24 @@ def is_exposed(argv: list[str], path: Path) -> bool:
     ancestor of it, most-specific (longest dest) wins, ties broken by LATEST op (bwrap applies in order).
     Exposed iff that controlling mount is an 'expose' AND the mapped host source still contains the path."""
     ops = _mounts(argv)
-    best = None  # (dest_len, index, state, dest)
-    for idx, (state, dest) in enumerate(ops):
+    best = None  # (dest_len, index, state, source, dest)
+    for idx, (state, source, dest) in enumerate(ops):
         if _is_under(path, dest):
             key = (len(dest), idx)
             if best is None or key >= (best[0], best[1]):
-                best = (len(dest), idx, state, dest)
+                best = (len(dest), idx, state, source, dest)
     if best is None:
         return False              # no mount covers it -> not present
-    _, _, state, dest = best
+    _, _, state, source, dest = best
     if state == "hide":
         return False
-    # expose: dest is bound to the identical host path in this harness (src==dest), so the sub-path maps
-    # back to itself; it is exposed iff it still exists on the host.
+    # Map the requested destination back into the controlling bind's source.  Most host/runtime mounts
+    # use source==destination; frozen bundle grants deliberately do not.
+    assert source is not None
+    relative = path.relative_to(Path(dest))
+    mapped = Path(source) / relative
     try:
-        return path.exists()
+        return mapped.exists()
     except PermissionError:
         return True               # a locked-but-present surface is still exposed content-wise
     except OSError:
@@ -505,6 +515,23 @@ def apply_answer_masks(argv: list[str], surfaces: list[AnswerSurface]) -> list[s
     return out
 
 
+def apply_pinned_submission_guard(argv: list[str], ws: Path) -> list[str]:
+    """Make ``workspace/submission`` genuinely immutable for a certified resume.
+
+    File mode bits are not an isolation boundary when the agent owns the files: it can simply run
+    ``chmod -R u+w submission`` and continue editing.  A same-path read-only bind is enforced by the
+    mount namespace and cannot be undone from inside this unprivileged sandbox.  Append it LAST so the
+    earlier writable workspace bind remains useful for QA/tool outputs while this subtree is protected.
+    """
+    if os.environ.get(PINNED_SUBMISSION_READ_ONLY_ENV, "").strip() != "1":
+        return list(argv)
+    submission = Path(ws).absolute() / "submission"
+    if submission.is_symlink() or not submission.is_dir():
+        raise RuntimeError(
+            f"pinned submission guard requires a plain submission directory: {submission}")
+    return [*argv, "--ro-bind", str(submission), str(submission)]
+
+
 # --------------------------------------------------------------------------- full assembly
 def full_argv(te: TargetExperiment, ws: Path, bundle: dict | None = None,
               *, _policy_test_live_inputs: bool = False) -> list[str]:
@@ -520,7 +547,8 @@ def full_argv(te: TargetExperiment, ws: Path, bundle: dict | None = None,
             argv += _bundle_mount_args(ws, bundle, repo_root(), _policy_test_live_inputs=True)
         else:
             argv = reapply_bundle_snapshot(argv, ws, bundle)
-    return apply_answer_masks(argv, answer_surfaces(te))
+    argv = apply_answer_masks(argv, answer_surfaces(te))
+    return apply_pinned_submission_guard(argv, ws)
 
 
 def wrap(te: TargetExperiment, ws: Path, inner: str, bundle: dict | None = None,

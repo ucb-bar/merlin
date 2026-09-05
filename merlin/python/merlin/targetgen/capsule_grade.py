@@ -100,6 +100,16 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
     violations: list[str] = []
     execution = result.get("mesh_execution")
     tiles = result.get("mesh_tile_verification")
+    requested_engine = execution.get("simulator_requested") if isinstance(execution, dict) else None
+    if requested_engine is not None and (
+            not isinstance(requested_engine, str) or not requested_engine):
+        violations.append("model_requested_oracle_engine_malformed")
+        requested_engine = None
+    required_engine = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+    if required_engine is not None and requested_engine is None:
+        violations.append("model_requested_oracle_engine_missing")
+    if required_engine is not None and requested_engine != required_engine:
+        violations.append("model_requested_oracle_engine_differs_from_required_engine")
 
     def _count(record, field: str, *, minimum: int = 0) -> int | None:
         value = record.get(field) if isinstance(record, dict) else None
@@ -125,6 +135,7 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
             violations.append(f"{prefix}_accelerator_trace_missing_or_invalid")
         oracle = record.get("oracle_evidence") if prefix == "model_call" else {
             "result": record.get("oracle_result"),
+            "engine": record.get("oracle_engine"),
             "derived_from_rtl": record.get("derived_from_rtl"),
             "cycle_accurate": record.get("cycle_accurate"),
         }
@@ -132,6 +143,12 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
                 or oracle.get("derived_from_rtl") is not True
                 or oracle.get("cycle_accurate") is not True):
             violations.append(f"{prefix}_oracle_fidelity_missing_or_invalid")
+        engine = oracle.get("engine") if isinstance(oracle, dict) else None
+        expected_engine = required_engine or requested_engine
+        if expected_engine is not None and (not isinstance(engine, str) or not engine):
+            violations.append(f"{prefix}_oracle_engine_missing_or_invalid")
+        elif expected_engine is not None and engine != expected_engine:
+            violations.append(f"{prefix}_oracle_engine_mismatch")
         identity = record.get("artifact_identity") if isinstance(record, dict) else None
         artifacts = identity.get("artifacts") if isinstance(identity, dict) else None
         if (not isinstance(identity, dict) or identity.get("version") != 1
@@ -238,6 +255,19 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
         violations.append("model_tile_oracle_unavailable")
     if n_unsynth not in (None, 0):
         violations.append("model_tile_unsynthesizable")
+    # THE SCREEN RUNG IS EVIDENCE, AND ITS ABSENCE IS A HOLE. A model declares
+    # `required_oracle_tiers: [L0, L1, L2, L3]`, so a cert-tier pass with no screen record means the
+    # capsule reached the cert tier without earning the tier below it -- the ordering every operator
+    # capsule obeys. Absent must never read as satisfied, so an unrecorded screen is a violation and
+    # not a silent omission.
+    n_screened = _count(tiles, "n_screened", minimum=1)   # None -> `_count` already recorded the hole
+    if n_screened is not None:
+        if _count(tiles, "n_screen_passed") != n_screened:
+            violations.append("not_all_model_tiles_screened")
+        if _count(tiles, "n_screen_failed") not in (None, 0):
+            violations.append("model_tile_screen_failed")
+        if _count(tiles, "n_screen_unavailable") not in (None, 0):
+            violations.append("model_tile_screen_oracle_unavailable")
     per_tile = tiles.get("per_tile") if isinstance(tiles, dict) else None
     if (not isinstance(per_tile, list) or n_tiles is None or len(per_tile) != n_tiles):
         violations.append("model_tile_evidence_missing_or_malformed")
@@ -304,6 +334,8 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
         "matmul_layers_unrouted": unrouted,
         "n_tiles": n_tiles,
         "n_tiles_certified": n_passed,
+        "simulator_requested": requested_engine,
+        "required_rtl_engine": required_engine,
         "dispatch_ledger_sha256": ledger_digest,
         "observed_lanes": sorted(observed_lanes),
         "dynamic_boundary": (actual_boundary or {}).get("boundary") if isinstance(
@@ -313,6 +345,46 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
                  "accelerator regions executed through the submitted package and its required lanes "
                  "were exercised; it is not represented as a decoded single-kernel trace"),
     }
+
+
+def enforce_model_execution_check(result: dict, capsule: dict | None, *, target: str) -> dict:
+    """Attach and enforce a whole-model execution proof on the capsule verdict itself.
+
+    The score-level structural flag is not enough: QA and checkpoint readers intentionally re-open each
+    durable ``capsule_result.json``.  Before this enforcement a Verilator-backed model remained
+    ``status=pass, L3=pass`` under a GSIM pin; only the in-memory score carried a failing auxiliary check,
+    so those durable readers false-accepted it.  A wrong/missing required engine is ``incomplete`` (the
+    requested evidence did not run), while malformed evidence from the requested engine is a real fail.
+    """
+    check = model_execution_check(result, capsule)
+    result["model_execution_check"] = check
+    if check.get("status") == "pass":
+        return result
+
+    violations = [str(v) for v in (check.get("violations") or [])]
+    engine_unmeasured = any(
+        v.startswith("model_requested_oracle_engine_") or v.endswith("_oracle_engine_mismatch")
+        or v.endswith("_oracle_engine_missing_or_invalid")
+        for v in violations
+    )
+    status = "unavailable" if engine_unmeasured else "fail"
+    detail = "whole-model execution proof failed: " + ", ".join(violations)
+    for tier in CR._rtl_tiers_of(target):
+        record = (result.get("tiers") or {}).get(tier)
+        if isinstance(record, dict) and record.get("status") == "pass":
+            record.update(status=status, reason=detail, cycles=None,
+                          derived_from_rtl=False, cycle_accurate=False)
+
+    # Preserve a pre-existing stronger failure.  The dangerous case is the flattering pass that escaped
+    # into durable QA; convert that to an honest no-measurement or protocol verdict.
+    if result.get("status") == "pass":
+        result["status"] = "incomplete" if engine_unmeasured else "fail"
+        result["failure"] = {
+            "plane": "required_rtl_engine" if engine_unmeasured else "model_execution",
+            "category": "NOT_RUN_IS_NOT_PASS" if engine_unmeasured else "PROTOCOL_VIOLATION",
+            "detail": detail,
+        }
+    return result
 
 
 def cycles_by_tier(tiers: dict | None, *, ladder: list[str] | tuple[str, ...] = ()) -> dict[str, int]:
@@ -496,8 +568,15 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     _caps_by_name = {str(cap.get("name")): cap for cap in caps}
     for result in results:
         if result.get("kind") == "model":
-            result["model_execution_check"] = model_execution_check(
-                result, _caps_by_name.get(str(result.get("capsule"))))
+            enforce_model_execution_check(
+                result, _caps_by_name.get(str(result.get("capsule"))), target=target)
+            # The runner persisted the model result before this suite-level cross-record proof existed.
+            # Keep the durable row in sync because QA/selfcheck/checkpoint consumers deliberately re-glob
+            # it rather than trusting this function's in-memory score.
+            result_path = (Path(runs_root) / "runs" / CR.suite_for(target)
+                           / str(result.get("capsule")) / "capsule_result.json")
+            if result_path.is_file():
+                result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
     # collect decoded traces for coverage — read from the TARGET's own suite dir (run_capsule writes
     # under cfg.suite, e.g. atlas-capsule-bench), not the gemmini SUITE literal (which left the atlas
