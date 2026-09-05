@@ -131,3 +131,56 @@ def test_a_family_with_no_admitting_target_is_not_reported_here():
         pytest.skip("PS is not declared")
     assert sat.get("PS") == (), f"PS is satisfied somewhere now: {sat.get('PS')}"
     assert "PS" not in ER.unreachable_where_admitted(sat, families)
+
+
+# --- an unclassified emitter kind is not a reachable one -------------------------------------------
+#
+# `can_emit` used to answer "capsule builder: emits the interface grammar, no ISA needed" for every
+# entry that merely was not the program generator -- an allowlist of one, inverted into a permissive
+# default. Measured on the entries `_perf.yaml` actually declares, that produced a confident True with
+# a fabricated reason for the barrier pair, for both `new:` placeholders that name no module at all,
+# and for a nonsense string. Nothing consumed the module, so nothing noticed.
+
+def test_an_unclassified_entry_is_not_reported_as_reaching_everything():
+    r = ER.can_emit("utter.nonsense.that.does.not.exist", "gemmini")
+    assert r.can_emit is False
+    assert r.established is False, (
+        "an unrecognised emitter kind is UNMEASURED, not shown to be unreachable")
+    assert "unclassified" in r.reason
+
+
+def test_a_placeholder_entry_naming_no_module_does_not_claim_reach():
+    """`new:` entries are declared before an emitter exists; they must not read as working."""
+    r = ER.can_emit("new:host_seam_differential", "gemmini")
+    assert (r.can_emit, r.established) == (False, False)
+
+
+def test_the_target_emitter_driver_is_unestablished_and_says_why():
+    """`pair_from_emitter` drives the TARGET's own emitter through a knob on its signature.
+
+    Whether a given target's emitter accepts that knob is a fact about its backend, and
+    `merlin/targets` is not on the import path -- so this module must not answer either way.
+    """
+    r = ER.can_emit("merlin.perf.barrier_arms.pair_from_emitter", "gemmini")
+    assert (r.can_emit, r.established) == (False, False)
+    assert "knob" in r.reason
+
+
+def test_both_grammar_emitters_still_reach_every_target():
+    """The two archetypes that genuinely need no ISA: one produces the grammar, one consumes it."""
+    for entry in ("merlin.targetgen.corpus_spec.build",
+                  "merlin.perf.command_stream_gen.pair_from_interface"):
+        for target in _TARGETS:
+            r = ER.can_emit(entry, target)
+            assert r.can_emit is True and r.established is True, f"{entry} on {target}: {r.reason}"
+
+
+def test_unestablished_is_not_reported_as_unreachable():
+    """The mirror of the old bug: "nobody classified this" must not become a named defect either."""
+    families = {"PBar": "merlin.perf.barrier_arms.pair_from_emitter"}
+    gates = {"PBar": tuple(_TARGETS)}
+    assert ER.unreachable_where_admitted(gates, families) == {}, (
+        "an unestablished reach is not evidence the family cannot be emitted")
+    assert "PBar" in ER.unestablished_reach(families, _TARGETS), (
+        "but it must be surfaced somewhere, not silently dropped from both reports"
+    )
