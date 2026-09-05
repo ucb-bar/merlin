@@ -18,6 +18,7 @@ and working log: `docs/design/compiler_verification.md`.
 - `faults.py` — the seeded fault corpus, one knob each, applied to real pass output.
 - `evaluate.py` — run every fault past every layer; produce the detection matrix.
 - `plots.py` — the four figures, each generated from a JSON record, never from a literal.
+- `replay.py` — replay historical `fix(` commits past the layers, on a seeded blind sample.
 
 ## Invariants
 
@@ -36,6 +37,17 @@ and working log: `docs/design/compiler_verification.md`.
   it in preprocessing without bit-blasting a single multiplier; `unsat` in seconds at a shape where
   `sat` never returns is the normal case, not a surprise. Never cite a scaling curve measured on
   correct programs as evidence that fault detection is tractable at that shape.
+- **A detection rate is only worth as much as its denominator.** `replay.py` exists because the first
+  answer to "would this have caught real bugs?" was seven hand-picked fixes, six caught — a
+  demonstration chosen after the layers existed, by someone who knew what they check. Never cite that
+  shape of number. The replacement fixes the population before drawing (every `fix(` commit touching an
+  observed path), draws with a recorded seed, uses shuffle-then-take so a larger sample EXTENDS the
+  smaller one rather than replacing it, reports `unreplayable` commits instead of dropping them, and
+  reports the rate over fixes that PREDATE the layers separately — a fix that shipped with its own
+  regression test is caught by that test, not by the layer.
+- **A shadowed package that will not import is not a detection.** The replay pins old files over a copy
+  of the package, which can easily fail to import because a sibling moved. pytest exits 1 for a real
+  failure and >= 2 when the run did not happen; only 1 counts as a rejection.
 - **`unsat` is the PASS** for a refinement query, and `sat` must carry a counterexample. If a model
   ever comes back empty, the exporter's trailing `(reset)` is being handed to z3 — see `smt_export`.
 - **Never CHECK a generated target dialect's op mnemonics.** They are invented per backend-generation
