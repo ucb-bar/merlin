@@ -27,11 +27,13 @@ never a false fail):
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util
 import json
 import shlex
 from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 _ASSISTED = ("merlin_assisted", "merlin_rtlchecks")
@@ -51,21 +53,65 @@ def _load_scan_file():
         return None
 
 
-def _submission_regex(sub_dir: Path) -> list[dict]:
-    """List every regex use in the submission's own Python (path, line, kind). Empty => clean."""
+@lru_cache(maxsize=1)
+def _vendored_xdsl_hashes() -> frozenset[str]:
+    """Hashes of the xDSL dependency a package is permitted to vendor.
+
+    The no-regex treatment applies to code the AGENT authors. A self-contained package may copy the
+    granted xDSL runtime byte-for-byte; charging that upstream dependency to the agent both misstates
+    the treatment and makes an otherwise perfect run impossible to freeze. Content identity is the
+    boundary deliberately: a modified or newly authored file under a directory merely NAMED ``xdsl`` is
+    not exempt, so the exemption cannot be claimed by putting authored code in a suggestively named
+    folder.
+    """
+    try:
+        spec = importlib.util.find_spec("xdsl")
+    except (ImportError, AttributeError, ValueError):
+        return frozenset()
+    locations = tuple(spec.submodule_search_locations or ()) if spec is not None else ()
+    hashes: set[str] = set()
+    for location in locations:
+        root = Path(location)
+        if not root.is_dir():
+            continue
+        for py in root.rglob("*.py"):
+            try:
+                hashes.add(hashlib.sha256(py.read_bytes()).hexdigest())
+            except OSError:
+                continue
+    return frozenset(hashes)
+
+
+def _submission_regex_evidence(sub_dir: Path) -> tuple[list[dict], list[dict]]:
+    """``(authored hits, byte-identical vendored files)`` -- attributed separately, never merged."""
     scan = _load_scan_file()
     if scan is None or not sub_dir.exists():
-        return []
+        return [], []
     hits: list[dict] = []
+    vendored: list[dict] = []
+    allowed_hashes = _vendored_xdsl_hashes()
     for py in sorted(sub_dir.rglob("*.py")):
         if "__pycache__" in py.parts or "build" in py.parts:
             continue
         try:
-            for line, kind in scan(py):
-                hits.append({"file": str(py.relative_to(sub_dir)), "line": line, "kind": kind})
+            file_hits = list(scan(py))
+            if not file_hits:
+                continue
+            relative = str(py.relative_to(sub_dir))
+            if hashlib.sha256(py.read_bytes()).hexdigest() in allowed_hashes:
+                vendored.append({"file": relative, "n_hits": len(file_hits),
+                                 "attribution": "byte_identical_granted_xdsl"})
+                continue
+            for line, kind in file_hits:
+                hits.append({"file": relative, "line": line, "kind": kind})
         except Exception:  # noqa: BLE001
             continue
-    return hits
+    return hits, vendored
+
+
+def _submission_regex(sub_dir: Path) -> list[dict]:
+    """List regex use in agent-AUTHORED Python. Empty means the authored compiler is clean."""
+    return _submission_regex_evidence(sub_dir)[0]
 
 
 @dataclass(frozen=True)
@@ -517,7 +563,11 @@ def compute(tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str,
     arm4 = False if tools is None else bool(tools & rtl_surface)
     external = endpoint_kind == "external_backend"
     calls = _tool_calls(tpath)
-    regex_hits = _submission_regex(sub_dir) if xdsl else []   # no-regex is an xDSL-authoring mandate
+    regex_hits, vendored_regex = (
+        _submission_regex_evidence(sub_dir) if xdsl else ([], [])
+    )  # no-regex is an xDSL-authoring mandate, and a byte-identical vendored dependency is not
+    # authored: it is attributed separately rather than charged, so an otherwise perfect run can
+    # still be frozen. A MODIFIED file under a directory named `xdsl` stays charged.
     has_py = bool(list(sub_dir.rglob("*.py"))) if sub_dir.exists() else False
 
     checks: dict = {}
@@ -567,6 +617,7 @@ def compute(tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str,
         "n_missing_results": sum(not call.result_present for call in calls),
     }
     return {"conformant": conformant, "checks": checks, "regex_hits": regex_hits,
+            "vendored_regex_files": vendored_regex,
             "tool_evidence": tool_evidence, "arm": arm, "endpoint_kind": endpoint_kind,
             "resolved_tools": sorted(tools) if tools is not None else None,
             "arm4_tooling_required": arm4}
