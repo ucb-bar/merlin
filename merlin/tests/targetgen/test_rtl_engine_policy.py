@@ -126,3 +126,66 @@ def test_an_engine_this_module_does_not_lay_out_is_not_judged_by_it(tmp_path, mo
         raise AssertionError("the gsim lineage record was consulted for another engine")
     monkeypatch.setattr(GE, "resolve", _boom)
     assert PO._rtl_engine_probe("t", "verilator")()[0] is True
+
+
+# ---------------------------------------------------------------------------------------------
+# An engine BUILT in the other flavour is not an engine ABSENT -- and the probe must still refuse it,
+# because this path cannot drive it. Both halves matter: the first is a truthful reason, the second is
+# probe/executor agreement.
+# ---------------------------------------------------------------------------------------------
+
+def _binary_flavour_home(tmp_path, monkeypatch, name="gsim"):
+    """A home holding the BINARY flavour (a standalone emulator) and no run_program wrapper."""
+    from merlin.targetgen import program_oracle as PO
+    from merlin.targetgen import gsim_emulator as GE
+
+    home = tmp_path / name
+    home.mkdir()
+    binary = home / GE.BINARY_NAME
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(PO, "_rtl_engine_dir", lambda target, engine: home)
+    monkeypatch.setattr(GE, "resolve", lambda target, **k: GE.Resolution(
+        target=target, path=binary, source="derived", ok=True, refused=False,
+        reason="built", flavour="binary", digest="d", receipt_status="bound", receipt=None))
+    return home, binary
+
+
+def test_a_built_binary_flavour_is_not_reported_absent(tmp_path, monkeypatch):
+    """Measured: gemmini's and radiance's GSIM homes hold the BINARY flavour, and this probe -- which
+    stats one filename -- called the engine "absent". It is not absent; it is built in a flavour this
+    route cannot import. Saying "absent" sends a reader hunting for a missing build."""
+    from merlin.targetgen import program_oracle as PO
+
+    _, binary = _binary_flavour_home(tmp_path, monkeypatch)
+    available, reason = PO._rtl_engine_probe("t", "gsim")()
+    assert available is False                      # it still cannot be driven from here
+    assert "IS built" in reason and "binary flavour" in reason
+    assert str(binary) in reason
+    assert "absent" not in reason                  # the old answer, and the thing being fixed
+
+
+def test_the_probe_and_the_executor_agree_about_that_home(tmp_path, monkeypatch):
+    """The refusal is not pedantry: passing it would trade a clean unavailable for a late crash. This
+    pins the two together -- whatever the probe says about this home, loading its runner must fail."""
+    from merlin.targetgen import program_oracle as PO
+
+    home, _ = _binary_flavour_home(tmp_path, monkeypatch)
+    assert PO._rtl_engine_probe("t", "gsim")()[0] is False
+    with pytest.raises(PO.OracleUnavailable):
+        PO._load_rtl_runner(home, "gsim_run.py")
+
+
+def test_a_wrapper_flavour_home_still_passes(tmp_path, monkeypatch):
+    """The distinction must not cost the flavour this route CAN drive."""
+    from merlin.targetgen import program_oracle as PO
+    from merlin.targetgen import gsim_emulator as GE
+
+    home = tmp_path / "gsim"
+    home.mkdir()
+    wrapper = home / "gsim_run.py"
+    wrapper.write_text("def run_program(*a, **k): ...", encoding="utf-8")
+    monkeypatch.setattr(PO, "_rtl_engine_dir", lambda target, engine: home)
+    monkeypatch.setattr(GE, "resolve", lambda target, **k: GE.Resolution(
+        target=target, path=wrapper, source="derived", ok=True, refused=False, reason="built",
+        flavour="wrapper", digest="d", receipt_status="bound", receipt=None))
+    assert PO._rtl_engine_probe("t", "gsim")()[0] is True

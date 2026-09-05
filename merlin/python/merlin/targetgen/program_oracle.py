@@ -782,6 +782,11 @@ def _timing_block(res: Any) -> "tuple[list[dict] | None, dict | None]":
 #: that module lays out; every other engine is registered and judged by whoever built it.
 _LINEAGE_ENGINE = "gsim"
 
+#: The flavour this program-driven path can actually import and call. The other flavour
+#: (a standalone binary taking a linked ELF) is a real build of the same engine that this
+#: particular route cannot drive -- a distinction the probe must state rather than flatten.
+_WRAPPER_FLAVOUR = "wrapper"
+
 _RTL_ENGINES: dict[str, tuple[str, str]] = {
     "vcs": ("vcs", "vcs_run.py"),
     "gsim": ("gsim", "gsim_run.py"),
@@ -827,6 +832,29 @@ def _rtl_engine_probe(target: str, engine: str):
                            f"registered and no build at {engine_home(target, engine)}")
         w = d / fname
         if not w.is_file():
+            # PRESENCE IS THE HOME-LAYOUT MODULE'S FACT TOO, not just lineage. Statting one filename
+            # made a home holding a BUILT engine of the other flavour report the engine as ABSENT --
+            # the same two-modules-disagree defect as the blind probe and the bypassed lineage gate,
+            # in a third place. The answer stays False, because it must: this path calls
+            # ``run_program(words, preload, reads)`` on an imported wrapper, and the binary flavour
+            # takes a LINKED ELF instead (``<emu> <elf> +loadmem=<elf> +max-cycles=N``). Assembling an
+            # ELF out of program words is the compiler's job upstream, not a probe's, so a home
+            # without the wrapper genuinely cannot be driven from here and passing it would trade a
+            # clean unavailable for a crash inside the runner import.
+            #
+            # What changes is the REASON. "absent" sent every reader looking for a missing build;
+            # naming the flavour that IS there sends them to the right question -- which is whether
+            # this target's own backend drives that engine, as it does for the binary flavour today.
+            if engine == _LINEAGE_ENGINE:
+                from .gsim_emulator import resolve as _built
+                r = _built(target)
+                if r.ok and r.flavour and r.flavour != _WRAPPER_FLAVOUR:
+                    return False, (
+                        f"{engine} IS built for {target}, as the {r.flavour} flavour at {r.path} -- "
+                        f"but NOT as {fname}. This program-driven path imports {fname} and calls "
+                        f"run_program(words, preload, reads); the {r.flavour} flavour is driven with a "
+                        f"linked ELF instead, so it cannot be run from assembled program words here. "
+                        f"The engine is not missing: the target's own backend runs it.")
             return False, f"{fname} absent under {d}"
         # FINDING THE WRAPPER PROVES AN ENGINE IS BUILT, NOT THAT ITS BYTES MAY CERTIFY. The home-layout
         # module owns the lineage question for the homes it lays out, and asking it here is what stops
