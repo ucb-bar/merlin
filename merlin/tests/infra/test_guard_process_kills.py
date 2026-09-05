@@ -45,7 +45,9 @@ def test_denies_the_shapes_that_have_actually_bitten(command):
     'kill 12345',                                           # exact PID: the safe form
     'kill -9 12345',
     'pgrep -af pytest | head -5',                           # inspection is how you find the PIDs
-    'until ! ps -p 999 >/dev/null; do sleep 5; done',       # the safe wait
+    # NOTE: an unbounded `ps -p` wait used to be listed here as "the safe wait". It is safe from the
+    # self-match, and still unbounded -- if the process hangs, the loop does too. It moved to the
+    # deny list when the bound rule landed, which is the rule correcting an earlier, weaker claim.
     '.venv/bin/python -m pytest merlin/tests/ir -q',
     'echo "never use pkill -f on this host"',               # a MENTION, not an invocation
 ])
@@ -79,3 +81,42 @@ def test_it_ignores_tools_other_than_bash():
     payload = json.dumps({"tool_name": "Write", "tool_input": {"command": "pkill -f x"}})
     proc = subprocess.run(["python3", str(HOOK)], input=payload, capture_output=True, text=True)
     assert proc.returncode == ALLOW
+
+
+@pytest.mark.parametrize("command", [
+    'until [ -s /tmp/x.log ]; do sleep 2; done',        # the 2.5-hour zombie, measured
+    'until ! ps -p 999 >/dev/null; do sleep 5; done',   # unbounded even on the "safe" wait
+    'while [ ! -f /tmp/marker ]; do sleep 10; done',
+])
+def test_denies_an_unbounded_polling_loop(command):
+    """A wait with no bound spins forever, silently, and reads as a slow job.
+
+    Measured 2026-09-05: a loop polling for a file whose writer had already been stopped ran 2.5
+    hours producing no output. The self-matching pgrep loop is the same family with a different
+    trigger; requiring a bound catches every variant, because it stops asking WHY the condition
+    never holds.
+    """
+    assert _verdict(command) == DENY, f"unbounded poll allowed: {command!r}"
+
+
+@pytest.mark.parametrize("command", [
+    'for i in $(seq 1 60); do ps -p 999 >/dev/null || break; sleep 5; done',
+    'timeout 300 bash -c "until [ -s /tmp/x ]; do sleep 2; done"',
+    'while read l; do echo "$l"; done < f.txt',          # a read loop is not a poll
+    'sleep 5 && echo done',
+])
+def test_allows_a_bounded_wait_and_a_non_poll(command):
+    assert _verdict(command) == ALLOW, f"guard blocked a bounded or non-polling loop: {command!r}"
+
+
+def test_a_glued_separator_does_not_hide_an_invocation():
+    """`echo hi;<killer> -f x` is an invocation; the segmenter must split a glued `;`."""
+    assert _verdict('echo hi;' + "pkill" + ' -f thing') == DENY
+
+
+def test_a_separator_inside_quotes_stays_a_mention():
+    """The other half of the same rule: padding blindly turns a quoted string into a fake invocation.
+
+    An earlier draft of this guard did exactly that and blocked its own test suite.
+    """
+    assert _verdict('echo "hi;' + "pkill" + ' -f thing"') == ALLOW

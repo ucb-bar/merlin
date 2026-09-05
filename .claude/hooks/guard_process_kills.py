@@ -53,11 +53,15 @@ SEPARATORS = {"&&", "||", ";", "|", "&", "(", ")", "{", "}", "\n"}
 #: Loop keywords — a pattern match inside one of these is the hang, not the kill.
 LOOP_WORDS = {"until", "while"}
 
+#: Tokens that BOUND a polling loop, so it cannot spin forever.
+LOOP_BOUNDS = {"seq", "timeout", "SECONDS", "attempt", "attempts", "tries", "deadline", "max_wait"}
+
 #: Words that may PRECEDE a command without being one: `until ! pgrep …`, `while ! ps …`,
 #: `time pytest …`. Without stripping these the real command is never in head position and the guard
 #: silently allows exactly the case it exists to catch — which is how the wait-loop hang first got
 #: through this hook's own test.
-COMMAND_PREFIXES = {"until", "while", "if", "then", "do", "!", "time", "nohup", "exec", "sudo"}
+COMMAND_PREFIXES = {"until", "while", "if", "then", "do", "done", "!", "time",
+                    "nohup", "exec", "sudo"}
 
 
 def _segments(command: str) -> list[list[str]]:
@@ -69,7 +73,28 @@ def _segments(command: str) -> list[list[str]]:
     ordinary scripts, and errs toward allowing — text inside a heredoc or a quoted string is almost
     never the first word of a segment.
     """
-    words = command.replace("\n", " \n ").split()
+    # Pad separators so a glued token like `done;` or `];` splits, WITHOUT padding inside quotes so a
+    # quoted argument that merely contains a separator plus a command name stays one token and reads
+    # as the mention it is. Both halves are needed: without padding, a glued `foo;<killer> -f x` hides
+    # an invocation; padding blindly turns a quoted string into an apparent one, and an earlier draft
+    # of this guard blocked its own test suite that way.
+    out_chars: list[str] = []
+    quote = None
+    for ch in command.replace("\n", " \n "):
+        if quote:
+            out_chars.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            out_chars.append(ch)
+            continue
+        if ch in ("&", "|", ";"):
+            out_chars.extend((" ", ch, " "))
+            continue
+        out_chars.append(ch)
+    words = "".join(out_chars).split()
     out: list[list[str]] = []
     current: list[str] = []
     for word in words:
@@ -111,6 +136,31 @@ def main() -> int:
 
     segments = _segments(command)
     in_loop = any(_basename(seg[0]) in LOOP_WORDS for seg in segments if seg)
+
+    # An UNBOUNDED polling loop can wait forever on a condition nothing will produce. Measured
+    # 2026-09-05: `until [ -s <log> ]; do sleep 2; done` polled for a file written by a retry loop that
+    # had already been stopped, and spun 2.5 HOURS producing no output — indistinguishable from a slow
+    # job. The pgrep self-match (blocked above) is the same family with a different trigger; a bound
+    # catches both and every future variant, because it stops asking WHY the condition never holds.
+    # `do sleep 2` puts `do` in head position, so the command must be found after prefix stripping —
+    # the same trap that hid the wait-loop case from this guard's first draft.
+    def _head_after_prefixes(seg: list[str]) -> str:
+        i = 0
+        while i < len(seg) and _basename(seg[i]) in COMMAND_PREFIXES:
+            i += 1
+        return _basename(seg[i]) if i < len(seg) else ""
+
+    if in_loop and any(_head_after_prefixes(seg) == "sleep" for seg in segments if seg):
+        words = {w.strip("'\"$(){}") for seg in segments for w in seg}
+        if not (words & LOOP_BOUNDS):
+            _deny(
+                "this polling loop has no bound: if its condition is never satisfied it waits "
+                "forever, produces no output, and looks exactly like a slow job rather than a stuck "
+                "one. Measured 2026-09-05 — a wait on a file whose writer had already been stopped "
+                "spun 2.5 hours.",
+                "Instead: bound it — `for i in $(seq 1 60); do <check> && break; sleep 5; done` — or "
+                "wrap it in `timeout <seconds>`, or let the harness notify you when a background job "
+                "finishes rather than polling for it.")
 
     for seg in segments:
         # Strip prefixes so the actual command reaches head position.
