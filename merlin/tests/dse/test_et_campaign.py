@@ -638,3 +638,20 @@ def test_a_refused_cell_still_shows_a_reference_wall_that_was_measured():
 
     text = ec.format_summary(ec.summarize([row]))
     assert "364.142" in text and "MEASURED, no ratio" in text
+
+
+def test_a_declared_blocker_that_was_overtaken_is_removed_not_kept():
+    """lstmnetvit's declared qd8-export blocker was retired once the cell produced a verdict.
+
+    A stale entry is worse than no entry: `expectation_status` turns every refusal of a declared
+    model into `expected_refusal`, so a NEW and unrelated failure on that cell would read as the
+    old known one and draw no attention.
+    """
+    assert "lstmnetvit" not in ec.KNOWN_REFERENCE_BLOCKERS
+    assert ec.expectation_status("lstmnetvit", "refused") == "unexpected_refusal"
+    # smolvla is the live one: ExecuTorch produces no .pte for it at all.
+    b = ec.known_blocker("smolvla")
+    assert b and b["stage"] == "executorch_export" and "u31" in b["reason"]
+    assert "CAPABILITY" in b["not_a_fallback"], (
+        "running a model the reference cannot export is not a speedup, and the row must say so")
+    assert ec.expectation_status("smolvla", "measured") == "stale_expectation"

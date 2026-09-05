@@ -109,13 +109,21 @@ _UNKNOWN_W8A8_NOTE = (
 # campaign refuses to attempt it. ``expectation_status`` compares the expectation against the
 # observed outcome and flags a stale entry so this registry cannot quietly outlive its facts.
 KNOWN_REFERENCE_BLOCKERS: dict[str, dict] = {
-    "lstmnetvit": {
+    # lstmnetvit's entry was REMOVED on 2026-09-05, not edited. Its declared qd8-export blocker
+    # (ChannelsLastTaggedReshapePass rebinding input_node after its rank-4 validation) no longer
+    # holds: the cell produced a full verdict -- ExecuTorch qd8 warm 15.267 ms against our 126.990 ms
+    # -- and the campaign flagged it `stale_expectation`. A declared blocker that has been overtaken
+    # is worse than none, because it suppresses attention on a cell that now works and quietly
+    # re-labels a real refusal as the expected one.
+    "smolvla": {
         "stage": "executorch_export",
-        "reason": ("ExecuTorch qd8 export blocked upstream: ChannelsLastTaggedReshapePass rebinds "
-                   "input_node after its rank-4 validation, which is qd8-specific"),
-        "not_a_fallback": ("fp32 and qs8 export fine, but qs8 is static per-tensor activation quant "
-                           "— different arithmetic, so it is NOT a substitute comparand"),
-        "observed": "2026-09",
+        "reason": ("ExecuTorch AOT export fails on an UNBACKED symbolic dimension: "
+                   "exir/tensor.py:94 dim_order_from_stride cannot resolve u31, so no .pte is "
+                   "produced at either N. ExecuTorch cannot run this model at int8 at all"),
+        "not_a_fallback": ("this is an export-stage failure, not a slow run: there is no ExecuTorch "
+                           "number to compare against, and our own arm running it would be a "
+                           "CAPABILITY difference, never a speedup"),
+        "observed": "2026-09-05",
     },
     "gemma2_2b": {
         "stage": "pt2e_calibration",
