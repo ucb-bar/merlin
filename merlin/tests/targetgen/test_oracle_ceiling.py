@@ -2,7 +2,7 @@
 
 Certification cost grows with a capsule's depth and it is measured, not guessed: fitted from the runs
 already on disk, one elaborated-RTL engine costs ~14s + 0.0047s/cycle and another ~134s + 0.069s/cycle
-(``merlin.targetgen.cert_cost``). At the second rate a 28k-cycle capsule is ~35 minutes and one twice
+(``merlin.targetgen.tier_affordability``). At the second rate a 28k-cycle capsule is ~35 minutes and one twice
 as deep is over an hour, so a corpus that grows deep capsules needs a ceiling or a single grade becomes
 unaffordable -- and an unaffordable grade does not announce itself, it presents as a grade that is
 still running.
@@ -36,7 +36,7 @@ import json
 
 import pytest
 
-from merlin.targetgen import cert_cost as CC
+from merlin.targetgen import tier_affordability as CC
 from merlin.targetgen import tier_policy as TP
 
 TARGET = "ceiling_fixture_target"

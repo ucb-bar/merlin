@@ -1378,7 +1378,12 @@ def _write_capsule(entry, binding, out_root):
 #:                      emitted it, so a model_slice capsule declaring lanes silently lost them -- which
 #:                      is how the first host-only capsule generated with `lanes: None` and asserted
 #:                      nothing at all.
-_DECLARED_BLOCKS = ("performance", "comparison_group", "pass_requirements", "lanes")
+_DECLARED_BLOCKS = ("performance", "comparison_group", "pass_requirements", "lanes",
+                    # The oracle-tier ceiling and the sibling a capped member rests on. Declared
+                    # once in a profile and carried onto every member derived from it, so the
+                    # link between a screened member and the capsule that certifies it is
+                    # machine-readable rather than prose. See merlin.targetgen.tier_policy.
+                    "max_oracle_tier", "max_timing_tier", "extends")
 
 
 def _carry_declared_blocks(entry: dict, cap: dict) -> bool:

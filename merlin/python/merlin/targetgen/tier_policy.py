@@ -451,7 +451,7 @@ def verify_extends(target: str, capsule: Mapping, cap_tier: str | None, *,
     if not sibling:
         return ExtendsVerdict(None, False, reason=f"capsule declares no `{EXTENDS_FIELD}` sibling")
     sibling = str(sibling)
-    from . import cert_cost as CC
+    from . import tier_affordability as CC
 
     universe = list(declared_tiers) or list(capsule.get("required_oracle_tiers") or ())
     cap_rank = _rank(str(cap_tier), universe + [str(cap_tier)]) if cap_tier else -1
@@ -549,7 +549,7 @@ def oracle_ceiling(target: str, capsule: Mapping, tier: str, *,
     The screen tier is the caller's to exclude -- a ceiling must never suppress the cheap tier, since
     "screened at the cheap tier" is the whole claim a capped capsule makes.
     """
-    from . import cert_cost as CC
+    from . import tier_affordability as CC
 
     universe = list(declared_tiers) or list(capsule.get("required_oracle_tiers") or ())
     axis = axis_of(capsule, tier)

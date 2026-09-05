@@ -107,6 +107,16 @@ class TierResult:
                                       # difference between an actionable result and a number. Shape is
                                       # the target's to define; None -> omitted, so a target whose
                                       # oracle reports no counters is byte-identical to before.
+    oracle_ceiling: dict | None = None
+                                      # WHY THIS TIER WAS NOT BOUGHT, when a per-capsule oracle-tier
+                                      # ceiling declined it: the cap, where it came from (declared /
+                                      # derived from measured cost / unpriced), the budget that set it,
+                                      # the `extends` sibling the claim rests on, and the affordability
+                                      # calculation. A capped tier is ALWAYS recorded -- `skipped` with
+                                      # this block -- never omitted: a tier with no record is not
+                                      # evidence, and an absent key is what made two model capsules read
+                                      # as though they had never been graded.
+                                      # See merlin.targetgen.tier_policy.oracle_ceiling.
     not_applicable: bool = False      # tier honestly N/A for this capsule's datatype (e.g. the integer
                                       # L0/L1 floor on a float datapath) — a legitimate skip, not a
                                       # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
@@ -186,6 +196,8 @@ class TierResult:
             d["not_applicable"] = True
         if self.budget_deferred:
             d["budget_deferred"] = True
+        if self.oracle_ceiling:
+            d["oracle_ceiling"] = dict(self.oracle_ceiling)
         if self.fidelity:
             d["fidelity"] = self.fidelity
         # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
