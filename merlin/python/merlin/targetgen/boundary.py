@@ -498,6 +498,103 @@ def required_boundaries(captures: dict, target: str) -> dict:
             "whole_model_shape": whole_model, "captures_unreadable": unreadable}
 
 
+def host_lane_coverage(spec_doc: dict, corpus_roots, *, labels=None, exclude=None) -> dict:
+    """Does the corpus EVIDENCE the negative lane the spec derives — ``host_lane.required``?
+
+    The cell vocabulary is ``admitted INTERSECT observed``, so by construction it can never contain a
+    pair the hardware does not admit. Work in such a pair is not out-of-scope: it is the work the
+    compiler must place on the HOST, and the conformance spec already derives it, pair by pair, in its
+    ``host_lane`` block. Nothing measured that block. Measured on this repo's int8-only array: 28 of 105
+    graded capsules witness no required cell, all 28 present a pair the spec's own ``host_lane`` axis
+    demands, and the gate reported them only as an undifferentiated "corpus cells not in the requirement"
+    list with a parenthetical saying such a cell is intentional. A requirement that is derived, written
+    down, and never checked is indistinguishable from one that is met.
+
+    ``covered_by`` is deliberately strict, on the same rule :func:`conformance.uncovered` applies to the
+    narrow ``host_only`` axis: the witnessing capsule's OWN family and dtype must be the pair, and its
+    whole program must land on the host lane. A capsule that merely *contains* a host stretch proves
+    nothing about that pair -- every routing-shaped capsule contains one -- so those are reported apart
+    as ``incidental``, and a pair with only incidental witnesses is named in ``covered_only_incidentally``
+    rather than counted.
+
+    ``entry_tensor_only`` is the third verdict and the one a reader most needs. A whole-model capsule's
+    ``inputs[]`` is the network's ENTRY tensor -- a token-id vector, i64 -- which is not the dtype of
+    anything the model computes in; the capsule declares that separately
+    (``operation.attributes.dtype``). A pair whose only evidence is such a mismatch is not host-lane work
+    at all; it is the entry tensor read as an operand, the same defect
+    :func:`coverage_report._capsule_region` documents one level down. Naming it here stops a reader
+    hunting for a host-lane witness for computation that does not exist.
+    """
+    import yaml
+
+    req = ((spec_doc or {}).get("host_lane") or {}).get("required")
+    if req is None:
+        return {"status": "not_measured",
+                "detail": "this spec carries no host_lane axis; regenerate it with --write to derive "
+                          "the negative lane at family x dtype resolution"}
+    target = str((spec_doc or {}).get("target") or "")
+    want = {(str(p_["family"]), str(p_["dtype"])) for p_ in req}
+    labels = set(labels or {"public"})
+    exclude = set(exclude or ())
+    roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
+
+    covered: dict[str, list[str]] = {}
+    incidental: dict[str, list[str]] = {}
+    entry_tensor: dict[str, list[str]] = {}
+    unread: dict[str, str] = {}
+    for root in roots:
+        for cy in sorted(Path(root).glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            if cap.get("label") not in labels:
+                continue
+            name = str(cap.get("name") or cy.parent.name)
+            if name in exclude:
+                continue
+            fam = str((cap.get("semantic") or {}).get("semantic_family") or "")
+            dts = {str(t.get("dtype")) for t in (cap.get("inputs") or [])
+                   if t.get("dtype") and t.get("role") in ("input", "weight")}
+            pairs = {(fam, d) for d in dts} & want
+            if not pairs:
+                continue
+            # The dtype the capsule says it COMPUTES in, where it says so. A whole model declares it
+            # because its operands are not its entry tensor; a single-region capsule does not, and for
+            # one the entry tensor IS the operand.
+            declared = str(((cap.get("operation") or {}).get("attributes") or {}).get("dtype") or "")
+            prof = profile_capsule(cy.parent, target)
+            if prof.kind == UNKNOWN:
+                unread[name] = prof.detail
+            for pair in sorted(pairs):
+                key = f"{pair[0]}/{pair[1]}"
+                if declared and declared != pair[1]:
+                    entry_tensor.setdefault(key, []).append(name)
+                elif prof.kind == HOST_ONLY:
+                    covered.setdefault(key, []).append(name)
+                elif HOST_ONLY in (prof.contains or ()):
+                    incidental.setdefault(key, []).append(name)
+    keys = {f"{f}/{d}" for f, d in want}
+    proven = set(covered)
+    return {
+        "status": "ok",
+        "n_required": len(keys),
+        "n_covered": len(proven),
+        "uncovered": sorted(keys - proven),
+        "covered_by": {k: sorted(v) for k, v in sorted(covered.items())},
+        "covered_only_incidentally": sorted(set(incidental) - proven),
+        "incidental": {k: sorted(v) for k, v in sorted(incidental.items())},
+        "entry_tensor_only": sorted(k for k, v in entry_tensor.items()
+                                    if k not in proven and k not in incidental),
+        "entry_tensor_witnesses": {k: sorted(v) for k, v in sorted(entry_tensor.items())},
+        "unreadable_capsules": unread,
+        "note": ("a (family, dtype) pair the hardware does not admit, shown landing on the host lane by "
+                 "a capsule whose OWN family and dtype are that pair and whose whole program is host "
+                 "work -- not by one that merely contains a host stretch, and not by a whole-model "
+                 "capsule whose i64 token-id entry tensor was read as an operand"),
+    }
+
+
 def uncovered_boundaries(required: dict, corpus: dict) -> dict:
     """Required composition shapes no capsule in the corpus exercises."""
     want = list((required or {}).get("by_kind") or {})

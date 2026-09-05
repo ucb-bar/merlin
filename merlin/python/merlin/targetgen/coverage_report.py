@@ -37,6 +37,47 @@ def _ratio(num: int, den: int):
     return (num / den) if den else None
 
 
+#: The axis a decline was decided on, in the order :func:`eligibility.is_eligible` checks them. Named
+#: rather than parsed out of the verdict's prose: the reason string is a human sentence and matching it
+#: would break the moment somebody rewords it, which is exactly how this repo has mis-measured before.
+DECLINE_AXES = ("undetermined", "family", "dtype", "rank", "batch", "layout", "engine", "fused_only",
+                "unknown")
+
+
+def _decline_axis(desc, family: str, cap_map: dict, *, undetermined: bool) -> str:
+    """WHICH declared axis refused ``desc`` — re-asked structurally against the same capability.
+
+    A declined offload is only actionable if the reader can tell *why* the hardware would not take the
+    work: a dtype the datapath has nowhere to put is a fact about the operand format, while a family the
+    target declares nothing for at all is a fact about the machine's whole repertoire, and the two lead
+    to opposite conclusions about whether the corpus should have expected acceleration. Mirrors
+    ``is_eligible``'s own check order so the answer can never disagree with the verdict that produced it.
+    """
+    from . import eligibility as _el
+
+    if undetermined:
+        return "undetermined"
+    caps, how = _el._family_support(family, cap_map)
+    if how is None:
+        return "family"
+    for c in caps:
+        if not _el._dtype_ok(desc.in_dtype, c.dtypes):
+            return "dtype"
+        if desc.weight_dtype is not None and not _el._dtype_ok(desc.weight_dtype, c.dtypes):
+            return "dtype"
+        if c.ranks and desc.rank is not None and desc.rank not in c.ranks:
+            return "rank"
+        if desc.batch > 1 and not c.batch:
+            return "batch"
+        if c.layouts and desc.layout is not None and desc.layout not in c.layouts:
+            return "layout"
+        if c.engines and desc.engine is not None and desc.engine not in c.engines:
+            return "engine"
+        if c.composed_with and how == "direct" and family == c.family:
+            return "fused_only"
+    return "unknown"
+
+
 def _capsule_region(cap: dict):
     """A :class:`merlin.targetgen.eligibility.RegionDescriptor` for a capsule spec — its declared
     ``semantic.semantic_family`` (or, when omitted, the family derived from ``operation.op``) at the
@@ -221,8 +262,22 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # operand to live, so falling back is the correct behaviour and failing the capsule would
         # punish a conformant submission. It is recorded instead, with the axis that declined it, so
         # the fallback is visible and can be priced rather than silently absorbed.
-        if must and not eligible and not accelerated and family in cap_map:
+        #
+        # ⚠️ THE GUARD USED TO READ `family in cap_map`, and that clause had the same shape as the
+        # `eligible` conjunct it was written to route around: it disarmed the record exactly where the
+        # decline is widest. A family the target declares NO capability for is the strongest possible
+        # reason to fall back, and it was the one case this could not express. Measured on the int8-only
+        # array: of the 14 must_accelerate capsules that land on the host lane, 3 (`softmax` x2,
+        # `attention` x1) name a family the manifest never mentions, so they were recorded by nothing --
+        # not by the cells (a host-lane pair is not an admitted cell), not by `host_only` (that axis is
+        # derived from the captures, which contain neither family), not here. The guard is now
+        # `family is not None`: an UNCLASSIFIED region is still excluded, because "our taxonomy has no
+        # word for this op" is a gap in our vocabulary and is already reported as `n_unclassified` --
+        # reporting it as a decline would put the blame on the hardware.
+        if must and not eligible and not accelerated and family is not None:
             declined_offload.append({"capsule": r["capsule"], "semantic_family": family,
+                                     "declined_on": _decline_axis(desc, family, cap_map,
+                                                                  undetermined=is_undetermined),
                                      "reason": reason, "undetermined": is_undetermined})
         if accelerated:
             n_accelerated += 1
@@ -279,6 +334,14 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # the append site for why `must_accelerate` cannot carry this.
         "declined_offload": declined_offload,
         "n_declined_offload": len(declined_offload),
+        # WHICH axis declined, counted. A run whose declines are all `dtype` is a corpus carrying work in
+        # a format the datapath has nowhere to put; a run whose declines are `family` is a corpus asking
+        # for a repertoire the machine does not claim. Both are correct fallbacks and neither is scored,
+        # but they are different facts about the submission's workload and reporting one count for both
+        # hides that.
+        "declined_offload_by_axis": {ax: sum(1 for d in declined_offload if d["declined_on"] == ax)
+                                     for ax in DECLINE_AXES
+                                     if any(d["declined_on"] == ax for d in declined_offload)},
         "acceleratable_region_recall": _ratio(n_eligible_accelerated, n_eligible),
         # The floor under the headline. `n_undetermined` regions are the ones whose family no rung of
         # the evidence ladder could decide; by design they leave BOTH sides of the ratio, because
@@ -504,11 +567,15 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
                   f"computed over the remainder — do not quote it alone.", ""]
         if arr.get("declined_offload"):
             rows = arr["declined_offload"]
-            shown = ", ".join(f"{d['capsule']} ({d['semantic_family']})" for d in rows[:6])
-            L += [f"> **declined offload** on {len(rows)} capsule(s): {shown} — the target DECLARES "
-                  f"this family but not this region's dtype, so the work ran on the host. Correct, "
-                  f"and unpriced: `must_accelerate` cannot report it because the region is "
-                  f"ineligible.",
+            shown = ", ".join(f"{d['capsule']} ({d['semantic_family']}/{d.get('declined_on', '?')})"
+                              for d in rows[:6])
+            byax = arr.get("declined_offload_by_axis") or {}
+            axes = ", ".join(f"{k}={v}" for k, v in byax.items())
+            L += [f"> **declined offload** on {len(rows)} capsule(s): {shown} — the region declared "
+                  f"`must_accelerate`, the target could not take it on the axis named beside it, and it "
+                  f"ran on the host. Correct, and unpriced: `must_accelerate` cannot report it because "
+                  f"the region is ineligible.",
+                  f">   declined on: {axes or 'unrecorded'}",
                   f">   first reason: {rows[0]['reason']}", ""]
         if arr.get("must_accelerate_violations"):
             L += [f"> **must_accelerate violated** on {len(arr['must_accelerate_violations'])} capsule(s): "

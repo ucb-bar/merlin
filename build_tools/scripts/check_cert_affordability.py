@@ -90,6 +90,39 @@ def _price(fit, output_elements: int) -> tuple[float, str]:
     return (secs or 0.0, basis)
 
 
+def _default_corpus_target() -> str:
+    """The target whose corpus sits at the corpus ROOT rather than in a subtree of its own.
+
+    Found by elimination -- the one public profile with no directory beside it -- so this file names no
+    target. Needed because that target's capsules have one fewer path component than everyone else's,
+    which is exactly what the label rule below has to get right.
+    """
+    from merlin.common.paths import merlin_dir
+
+    root = merlin_dir() / "contract" / "capsules"
+    names = [f.stem for f in (root / "profiles").glob("*.yaml")
+             if not f.stem.startswith("_") and "." not in f.stem]
+    rootless = [n for n in names if not (root / n).is_dir()]
+    return rootless[0] if len(rootless) == 1 else "(default)"
+
+
+def _target_label_for(cy) -> str:
+    """Which target a capsule belongs to, from its path.
+
+    ⚠️ THE ROOT-CORPUS TARGET HAS ONE FEWER COMPONENT. A subtree capsule is
+    ``capsules/<target>/<category>/<name>/capsule.yaml`` (4 parts after ``capsules``); the root
+    corpus's is ``capsules/<category>/<name>/capsule.yaml`` (3). The previous rule took the first
+    component whenever there were more than two, so every capsule of the root-corpus target was
+    labelled with its CATEGORY -- ``isa``, ``_perf``, ``model`` -- and priced against a target of that
+    name, which has no certification history at all. That target's 34 measured certifications have
+    therefore never priced its own capsules; every one silently fell back to the global law.
+    """
+    parts = cy.parts
+    i = parts.index("capsules") if "capsules" in parts else -1
+    rest = parts[i + 1:] if i >= 0 else ()
+    return rest[0] if len(rest) > 3 else _default_corpus_target()
+
+
 def _resolved_target(label: str) -> str:
     """The TARGET NAME behind a corpus directory label.
 
@@ -125,7 +158,7 @@ def _engine_fit(target: str, cache: dict):
 
 def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
     root = merlin_dir() / "contract" / "capsules"
-    rows, unpriceable = [], []
+    rows, unpriceable, extends_rows = [], [], []
     fit_cache: dict = {}
     for cy in sorted(root.rglob("capsule.yaml")):
         try:
@@ -133,6 +166,16 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
         except yaml.YAMLError as exc:
             unpriceable.append({"capsule": cy.parent.name, "why": f"unreadable capsule.yaml: {exc}"})
             continue
+        # ⚠️ COLLECTED BEFORE THE L3 FILTER, DELIBERATELY. A capsule resting on a sibling is exactly the
+        # one that does NOT demand L3 -- it was capped to the cheap tier precisely because it could not
+        # afford certification -- so verifying `extends` after this filter examines only capsules that
+        # never carry one. Placed after it, the check reported zero every time while 19 capsules on disk
+        # declared the field.
+        if doc.get("extends") and (not targets or any(t in cy.parts for t in targets)):
+            extends_rows.append({"capsule": cy.parent.name,
+                                 "target": _resolved_target(_target_label_for(cy)),
+                                 "extends": str(doc["extends"]),
+                                 "max_oracle_tier": doc.get("max_oracle_tier")})
         if "L3" not in (doc.get("required_oracle_tiers") or ()):
             continue                               # not asking to be certified
         if targets and not any(t in cy.parts for t in targets):
@@ -152,10 +195,7 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
             continue
         perf = doc.get("performance") or {}
         instrument = str(((perf.get("gate") or {}).get("instrument")) or "")
-        parts = cy.parts
-        _i = parts.index("capsules") if "capsules" in parts else -1
-        _rest = parts[_i + 1:] if _i >= 0 else ()
-        _target = (_rest[0] if len(_rest) > 2 else "(default)")
+        _target = _target_label_for(cy)
         # PRICED WITH THIS TARGET'S OWN MEASURED ENGINE where one exists. The whole corpus used to be
         # priced by the single global law, so a target nobody had ever certified and one with 34
         # measured certifications produced the same number and neither said which.
@@ -175,6 +215,24 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
                      # these are reported apart with the remedy that IS available to them.
                      "needs_cycle_accurate": "cycle" in instrument,
                      "path": str(cy.parent.relative_to(_REPO))})
+    # ⚠️ AN UNVERIFIED `extends` IS NOT A REMEDY. A non-empty field was read as one, so a capsule
+    # naming a sibling that was never certified counted as remedied -- the failure the field exists to
+    # prevent, arrived at through the field itself. verify_extends asks the sibling's own results
+    # whether it earned a deeper tier and fails closed: no result on disk records UNVERIFIED, which is
+    # weaker than naming nobody, because an unchecked extends reads as certified.
+    for r in extends_rows:
+        try:
+            from merlin.targetgen import tier_policy as TP
+
+            v = TP.verify_extends(r["target"],
+                                  {"extends": r["extends"],
+                                   "required_oracle_tiers": ["L0", "L1", "L2", "L3"]},
+                                  str(r["max_oracle_tier"] or "L2"))
+            r["verified"] = bool(getattr(v, "verified", False))
+            r["reason"] = str(getattr(v, "reason", ""))
+        except Exception as exc:  # noqa: BLE001 - unaskable is UNKNOWN, never a pass
+            r["verified"], r["reason"] = False, f"could not be verified here: {type(exc).__name__}"
+    unverified_extends = [r for r in extends_rows if not r.get("verified")]
     unremedied = [r for r in rows
                   if r["predicted_s"] > budget_s and not r["extends"]
                   and str(r["max_oracle_tier"] or "").upper() != "L2"]
@@ -240,6 +298,10 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
                                             if r["extrapolated"]) / 3600.0, 2),
             "total_predicted_s": round(total, 1),
             "total_predicted_hours": round(total / 3600.0, 2),
+            "n_extends_declared": len(extends_rows),
+            "unverified_extends": [{"capsule": r["capsule"], "target": r["target"],
+                                    "extends": r["extends"], "reason": r.get("reason", "")}
+                                   for r in unverified_extends],
             "over_budget": sorted(over, key=lambda r: -r["predicted_s"]),
             # Over budget, but an L2 cap is not a remedy they can take.
             "over_budget_needs_cycle_accurate": sorted(needs_cycles,
@@ -296,6 +358,9 @@ def main(argv=None) -> int:
         print(f"   priced beyond the calibrated range : {rep['n_extrapolated']} "
               f"({rep['extrapolated_hours']}h of the total — an unstated guess if not said out loud)")
         print(f"   over budget with no L2 cap and no extends: {len(rep['over_budget'])}")
+        print(f"   resting on an UNVERIFIED extends          : "
+              f"{len(rep.get('unverified_extends') or [])} "
+              "(names a sibling with no certification on disk)")
         for r in rep["over_budget"][:20]:
             mark = " " if _debt_key(r) in ratchet else "*"
             print(f"   {mark} {r['predicted_s']:9,.0f}s  {r['output_elements']:9,} out  "
