@@ -684,13 +684,28 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
             res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
                                    vectorize=True, transform_schedule=pkg.schedule_text,
                                    hoist_static_allocs=False, features=feats)
-        except PipelineError:
+        except PipelineError as exc:
             # Some models (e.g. xr0's rank-4 two-batch attention) hit a vectorize-path
             # specialization (linalg-specialize-generic-ops) that emits an invalid rank-4
             # linalg.batch_matmul. Fall back to the SCALAR lowering (no specialize pass): the int8
             # datapath is intact, only the contraction stays a scalar loop (correct, unvectorized).
+            #
+            # SAY SO. Substituting silently makes a scalar fallback indistinguishable from a slow
+            # lever: the build succeeds, the numerics stay bit-exact BECAUSE the datapath is intact,
+            # and only the wall moves. Measured consequence -- 8 of the 10 registered mrpad tile
+            # rungs raise here on small_llama int8, and every one produced the SAME binary
+            # (sha 18a88c44f245, `forward` coverage 0.478 -> 0.392). Two of those builds were
+            # measured on the board and reported as tiling outcomes: one "tile" at 20,450,661 ns
+            # with coverage 0.399 -> 0.256, and another "1.61x slower than the default". Neither was
+            # a tile. Both were this branch.
+            print(f"[fallback] VECTORIZED LOWERING FAILED for features={sorted(feats or ())}; "
+                  f"substituting the SCALAR lowering (correct, unvectorized). A wall measured from "
+                  f"this build prices scalar code, NOT the feature. Cause: {exc}", flush=True)
             res = lower_model_file(prepared, work / "lower_scalar", targets=(), textual=True,
                                    vectorize=False, hoist_static_allocs=False)
+            # A marker beside the artifacts, so a reader who never saw stdout can still tell.
+            (work / "SCALAR_FALLBACK.txt").write_text(
+                f"features={sorted(feats or ())}\ncause={exc}\n", encoding="utf-8")
 
     # 2. compile model.ll -> K1 Linux object. The IR is emitted by the repo's clang-23 toolchain
     #    and carries LLVM-23 attribute syntax (e.g. `captures(none)`) the SpacemiT clang-19 can't
