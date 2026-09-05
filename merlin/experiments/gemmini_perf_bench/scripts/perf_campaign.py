@@ -83,6 +83,12 @@ _WAIVABLE_PREDICATES: frozenset[str] = frozenset({
     "finalize_missing",
     "finalize_regrade_not_pass",
     "phase_functional_pass_missing",
+    # A phase grade whose passed/total ratio is SHORT but well-formed. Added deliberately (see the
+    # note above): it is a completeness fact -- every declared capsule was graded and some did not
+    # pass -- and it carries the observed ratio, so a reader of a waived result knows exactly what
+    # was short. A MALFORMED or VACUOUS ratio is broken evidence and still raises in `_graded_ratio`,
+    # so this name can never admit one.
+    "phase_grade_incomplete",
     "public_tier_below_cert",
     "task_scope_public_mismatch",
     "task_scope_hidden_mismatch",
@@ -144,7 +150,26 @@ def _mapping_file(path: Path, *, yaml_file: bool = False) -> dict:
     return doc
 
 
-def _full_ratio(value: object, *, label: str) -> int:
+def _graded_ratio(value: object, *, label: str) -> tuple[int, list[Deviation]]:
+    """The DECLARED total of a ``passed/total`` phase grade, plus any completeness deviation.
+
+    Two different failures used to be folded into one raise here, and that is why an honest run could
+    not be consumed at all: the same shortfall that `inspect_functional_run` already reports as the
+    WAIVABLE ``phase_functional_pass_missing`` aborted the inspection before any waiver could be
+    acknowledged. The two are not the same kind of fact —
+
+    * a ratio that is MALFORMED, non-numeric, VACUOUS (``total <= 0``), or arithmetically impossible
+      (``passed`` negative, or larger than the total that was graded) is BROKEN EVIDENCE. There is no
+      grade to reason about, so it still RAISES and no waiver reaches it;
+    * a ratio that is merely SHORT (``passed < total``) is a COMPLETENESS gap of exactly the kind the
+      waiver mechanism exists for — every declared capsule was graded and some did not pass — so it
+      becomes the named, waivable ``phase_grade_incomplete`` deviation carrying the observed ratio.
+
+    THE RETURNED TOTAL IS ALWAYS THE DECLARED TOTAL, never ``passed``. Downstream this number is the
+    ``expected=`` denominator for :func:`_validate_score` and the coverage figure for
+    :func:`_validate_scope_coverage`; returning ``passed`` would shrink the denominator and make an
+    83/96 run read as a complete 83/83 one — a worse defect than the refusal it replaces.
+    """
     parts = str(value or "").split("/")
     if len(parts) != 2:
         raise CampaignGateError(f"{label} must state an explicit passed/total ratio")
@@ -154,9 +179,14 @@ def _full_ratio(value: object, *, label: str) -> int:
         raise CampaignGateError(f"{label} has a malformed passed/total ratio: {value!r}") from exc
     if total <= 0:
         raise CampaignGateError(f"{label} must be non-vacuous, not {passed}/{total}")
+    if passed < 0 or passed > total:
+        raise CampaignGateError(
+            f"{label} has an impossible passed/total ratio: {passed}/{total}")
     if passed != total:
-        raise CampaignGateError(f"{label} is incomplete: {passed}/{total}")
-    return total
+        return total, [Deviation("phase_grade_incomplete",
+                                 f"{label} is incomplete: {passed}/{total} "
+                                 f"({total - passed} of {total} graded capsule(s) did not pass)")]
+    return total, []
 
 
 def _validate_score(score: dict, *, label: str, expected: int) -> list[Deviation]:
@@ -504,8 +534,11 @@ def inspect_functional_run(run_root: Path, run_id: str, expected_digest: str, *,
         found.append(Deviation("public_tier_below_cert",
                                f"functional public run did not reach the required L3 tier "
                                f"(highest_tier={public.get('highest_tier')!r})"))
-    n_public = _full_ratio(public.get("passed"), label="public functional grade")
-    n_hidden = _full_ratio(hidden.get("passed"), label="hidden functional grade")
+    n_public, _pub_ratio_found = _graded_ratio(public.get("passed"),
+                                               label="public functional grade")
+    n_hidden, _hid_ratio_found = _graded_ratio(hidden.get("passed"),
+                                               label="hidden functional grade")
+    found += _pub_ratio_found + _hid_ratio_found
     task_scope = environment.get("task_scope")
     if not isinstance(task_scope, dict):
         raise CampaignGateError("functional run lacks its sealed task scope")
