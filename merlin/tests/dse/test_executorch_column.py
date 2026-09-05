@@ -76,7 +76,8 @@ def test_experiment_executorch_column_fail_never_reported_as_number(tmp_path):
     cell = executorch_cell("rdt2", "fp32", root=tmp_path)
     assert cell["executorch_status"] == "not_measured"
     assert cell["executorch_wall_ns"] is None
-    assert "fail" in cell["reason"] and "cos=0.5" in cell["reason"]
+    # The measured cosine still has to appear; the spelling now names the bar it missed too.
+    assert "fail" in cell["reason"] and "cos 0.5 < 0.9999" in cell["reason"]
 
 
 def test_experiment_executorch_column_int8_never_borrows_fp32_number(tmp_path):
@@ -345,3 +346,37 @@ def test_the_harness_keeps_every_tier_score_not_the_collapsed_pair():
     # XNNPACK's delegate-init prepacking or is an advantage we granted ourselves.
     assert '"load_ns": getattr(r, "load_ns", None)' in src
     assert '"executorch_load_ns": load' in src
+
+
+# --------------------------------------------- a refused reference suppresses losses, not just wins
+#
+# tiny_llama's ExecuTorch qd8 arm measured cos 0.9943 (clears its 0.99 bar) and rel 0.1063 (misses
+# its 0.05 bar), so the cell publishes no ratio. Two things must be true of how that is reported:
+# the row has to name WHICH TERM missed -- "fail (cos=0.994)" reads as a broken reference when cos
+# in fact passed -- and it has to say that an absent row is missing evidence, because a reference
+# refused on accuracy removes a cell we might have LOST just as readily as one we might have won.
+
+
+def test_a_reference_failing_on_rel_says_so_and_does_not_read_as_broken_cos(tmp_path):
+    _write_result(tmp_path, "tiny_llama", "int8", built=True, ran=True, cos=0.9943368460376679,
+                  rel=0.10627618720798984, wall_ns=391_514_666,
+                  cos_threshold=0.99, rel_threshold=5e-2)
+    cell = executorch_cell("tiny_llama", "int8", root=tmp_path)
+    assert cell["executorch_status"] == "not_measured"
+    assert cell["executorch_wall_ns"] is None, "a failing reference must not carry a number"
+    why = cell["reason"]
+    assert "rel 0.106276 > 0.05" in why, "name the term that missed, with both values"
+    assert "cos 0.994337 >= 0.99" in why, "and the term that passed, so it does not read as broken"
+    assert "suppresses a LOSS" in why
+
+
+def test_the_reference_accuracy_bar_is_recorded_so_it_can_be_compared_with_ours(tmp_path):
+    _write_result(tmp_path, "tiny_llama", "int8", built=True, ran=True, cos=0.9943368460376679,
+                  rel=0.10627618720798984, wall_ns=391_514_666,
+                  cos_threshold=0.99, rel_threshold=5e-2)
+    bar = executorch_cell("tiny_llama", "int8", root=tmp_path)["ref_accuracy_bar"]
+    # Our arm's int8 gate is a DIFFERENT SHAPE (cos>0.99 plus argmax plus a per-element term, with
+    # no aggregate rel bound at the fp32 tier). Recording the reference's bar is what lets a reader
+    # see that "both passed" never meant "both cleared the same test".
+    assert bar == {"cos_threshold": 0.99, "rel_threshold": 5e-2,
+                   "cos": 0.9943368460376679, "rel": 0.10627618720798984}

@@ -17,6 +17,8 @@ number (e.g. an int8 cell never borrows the fp32 wall).
 """
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 
 from merlin.baselines import aggregate as _agg
@@ -106,7 +108,24 @@ def _not_measured_reason(model: str, variant: str, rows: list) -> str:
         gap = (r.gap_reason or "").strip()
         detail = f": {gap}" if gap else ""
         if r.status() == "fail" and r.cos is not None:
-            detail += f" (cos={r.cos})"
+            # Name the bar it missed and BY WHICH TERM. "fail (cos=0.994)" reads as a broken
+            # reference; "cos passed, rel 0.106 against its own 0.05 int8 bar" is a different fact
+            # and a reader has to be able to tell them apart, because the bias here runs one way:
+            # a reference refused on accuracy produces no row, so a cell we would have LOST is
+            # simply absent. That is not a neutral outcome and it must not read as one.
+            terms = []
+            if r.cos_threshold is not None and r.cos is not None:
+                terms.append(f"cos {r.cos:.6g} {'>=' if r.cos >= r.cos_threshold else '<'} "
+                             f"{r.cos_threshold:g}")
+            if r.rel_threshold is not None and r.rel is not None:
+                terms.append(f"rel {r.rel:.6g} {'<=' if r.rel <= r.rel_threshold else '>'} "
+                             f"{r.rel_threshold:g}")
+            if terms:
+                detail += " (" + ", ".join(terms) + ")"
+            return (f"latest executorch {variant} = fail against ITS OWN declared bar{detail}"
+                    f"{_result_caveats(model)}. No ratio is published for this cell — note that "
+                    "this suppresses a LOSS as readily as a win, so read the absence as missing "
+                    "evidence, not as parity.")
         return f"latest executorch {variant} = {r.status()}{detail}{_result_caveats(model)}"
     if model in _bundle.K1_RAM_INFEASIBLE:
         return (f"no executorch {variant} result; {model} is K1 RAM-infeasible whole-model (7B-class "
@@ -137,10 +156,62 @@ def bundle_mismatch_reason(ours_bundle_id: str, ref_bundle_id: str) -> str | Non
                 "(_full is a different model from _consistent, not a smaller capture of it). "
                 "Re-measure with bundle_id recorded on both sides.")
     if ours_bundle_id != ref_bundle_id:
+        eq = layout_equivalence(ours_bundle_id, ref_bundle_id)
+        if eq is not None:
+            return None          # declared, and the caller must record `eq` in the artifact
         return (f"bundle MISMATCH: ours measured on {ours_bundle_id!r}, the reference on "
                 f"{ref_bundle_id!r}. These are different models, not different runs of one -- a ratio "
                 "between them is not a speedup. Re-measure both on one bundle.")
     return None
+
+
+def layout_equivalence(ours_bundle_id: str, ref_bundle_id: str) -> dict | None:
+    """Is ``ours`` a LAYOUT-ONLY derivative of ``ref``? The record, or None.
+
+    Two bundles differing only in how the same weights are STORED are the same model, and comparing
+    across them is legitimate ONLY because both sides do their layout work once, outside the window
+    being timed: XNNPACK prepacks into its blocked layout at delegate init (measured here as a 26 ms
+    ``load_ns``, 13x a warm inference) and we pre-apply the transposed layout at build time. Timing
+    ours WITH the transposes while theirs are hoisted out of the measured region compares the
+    accounting, not the compilers -- which is the same error as timing a warm loop against a
+    cold-amortized average.
+    
+    DERIVED FROM THE ARTIFACT, never a name rule: the derived bundle ships
+    ``bundle.rewrites.json`` naming its ``source_bundle`` and the per-argument soundness argument
+    (each hoisted transpose is its argument's SOLE consumer, and the stored bytes are asserted equal
+    to ``stored.T``). A bundle that carries no such record, or whose record names a different
+    source, is NOT equivalent and the mismatch stands. The byte count is unchanged by the rewrite,
+    so offsets and the arg table are untouched.
+    """
+    from merlin.common.artifacts import recaptures_dir
+
+    rec = recaptures_dir() / str(ours_bundle_id) / "bundle.rewrites.json"
+    if not rec.is_file():
+        return None
+    try:
+        rewrites = (json.loads(rec.read_text(encoding="utf-8")) or {}).get("rewrites") or []
+    except (OSError, ValueError):
+        return None              # unreadable provenance is not a licence to compare
+    for r in rewrites:
+        if not isinstance(r, dict):
+            continue
+        if str(r.get("source_bundle") or "") != str(ref_bundle_id):
+            continue
+        if str(r.get("name") or "") not in _LAYOUT_ONLY_REWRITES:
+            continue
+        return {"kind": "layout_only", "rewrite": r.get("name"),
+                "source_bundle": r.get("source_bundle"),
+                "soundness": r.get("soundness"),
+                "note": ("comparable ONLY because both sides do their weight layout once outside "
+                         "the timed window -- ExecuTorch at delegate init, ours at build time. "
+                         "Record both one-time costs beside any ratio taken across this.")}
+    return None
+
+
+#: Rewrites that change only how weights are STORED, never what is computed. Named explicitly: a
+#: rewrite that changes the graph (layer truncation, a fused subgraph, a different quantization) is
+#: a different model and must keep failing the bundle check.
+_LAYOUT_ONLY_REWRITES: frozenset = frozenset({"hoist_weight_transposes"})
 
 
 #: The int8 recipes, and which of them are the same ARITHMETIC. `weight_only` is the odd one out and
@@ -299,4 +370,11 @@ def executorch_cell(model: str, dtype: str, *, root: Path | None = None,
         "label": EXECUTORCH_LABEL,
         "dtype_comparability": dtype_comparability(dtype),
         "reason": _not_measured_reason(model, variant, rows),
+        # The bar the reference was held to, recorded so a reader can check it against the bar OUR
+        # arm was held to. The two gates have different shapes (ours adds argmax and a per-element
+        # term and carries no aggregate rel bound at the fp32 tier), so "both passed" never means
+        # "both cleared the same test" and the row must not imply it.
+        "ref_accuracy_bar": ({"cos_threshold": rows[0].cos_threshold,
+                              "rel_threshold": rows[0].rel_threshold,
+                              "cos": rows[0].cos, "rel": rows[0].rel} if rows else None),
     }
