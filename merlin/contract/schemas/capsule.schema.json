@@ -337,14 +337,26 @@
           "enum": [
             "seen",
             "shape",
+            "shape_geometry",
             "layout",
+            "rank",
             "dtype",
             "surface",
             "composition",
             "fusion",
+            "epilogue",
+            "accumulation_depth",
+            "conv_window",
+            "application",
+            "host_lane",
+            "roster",
             "model",
             "kernel"
           ]
+        },
+        "conv_window": {
+          "type": "string",
+          "description": "The convolution window signature this capsule stands for (kernel/stride/dilation/padding, as the conv-geometry axis derives it). Present only on capsules whose generalization_axis is conv_window."
         },
         "composed_families": {
           "type": "array",
