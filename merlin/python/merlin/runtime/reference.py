@@ -71,13 +71,12 @@ def _narrow_int_readout(t: Tensor, dtype: str, op: str) -> Tensor:
 
     This is independently spelled here so the simulator/reference comparison still catches a broken
     command dispatch, while following the ABI's derived-bitwidth rule rather than assuming one target's
-    output width.
+    output width. A non-integer token passes through unchanged, matching the golden -- see the longer
+    note on :func:`merlin.runtime.simulator._narrow_int_readout` for why raising instead was wrong.
     """
     kind, digits = (dtype[:1], dtype[1:]) if dtype else ("", "")
     if kind not in ("i", "u") or not digits.isdigit():
-        raise ValueError(
-            f"{op} output_dtype {dtype!r} is not an integer dtype; this integer engine has no "
-            f"definition for it")
+        return t
     bits, signed = int(digits), kind == "i"
     if bits >= 32:
         return t

@@ -20,6 +20,16 @@ match the golden, with a default of `i32`. The two defaults were never symmetric
 since the golden — the authority at L2/L3 — already treated absent as `i32`, any buffer that relied on
 the old clamp was already failing L0. Changing it can only fix, not break.
 
+**The first attempt at this fix over-corrected, and that is worth recording.** It made the two runtime
+helpers RAISE on a non-integer `output_dtype`, on the reasoning that an integer engine has no
+definition for a float readout. The golden passes such a token through unchanged, so raising replaced
+one divergence with another — and this one fired on real buffers: 37 tests across
+`test_xdsl_vector_ops`, `test_xdsl_whole_model_chain`, `test_gemmini_native_pooling` and
+`test_rtl_checks` commit an `f32` tensor produced by a VECTOR_MAP chain, which the old `== "i8"` test
+had silently passed through for as long as they had existed. The rule is not "be strict"; it is "agree
+with the golden", and `test_all_three_engines_agree_on_every_declared_dtype` now covers `f32`/`bf16`
+so a future strictness argument fails the suite instead of the corpus.
+
 One site is deliberately untouched: `runtime/backends/rvv_codegen.py` still carries the old inline
 test. That file is under another workstream's lock. It is named here rather than left to be
 rediscovered.
@@ -43,6 +53,8 @@ def _engines():
     ("i8", 127),
     ("i4", 7),
     ("u8", 255),
+    ("f32", 74192),   # not an integer container: pass through, as the golden does
+    ("bf16", 74192),
 ])
 def test_all_three_engines_agree_on_every_declared_dtype(dtype, expected):
     """The property the L0 comparison depends on. A disagreement here fails a correct backend."""

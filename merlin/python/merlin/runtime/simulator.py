@@ -83,17 +83,19 @@ def _conv_geom(attrs: dict[str, Any], key: str, arity: int, default: list[int]) 
 def _narrow_int_readout(t: Tensor, dtype: str, op: str) -> Tensor:
     """Saturating readout of the i32 accumulator into the command's DECLARED integer output dtype.
 
-    Same definition as the golden engine's ``_narrow_to_dtype`` (bitwidth parsed structurally from the
-    token, ``i8`` routed through :meth:`Tensor.to_i8` so it stays byte-identical to the historical
-    path, width >= 32 read out whole), so the functional tier and the numeric oracle cannot disagree
-    about a narrowed conv. A NON-integer dtype raises instead of passing through: this engine's matmul
-    is integer, so a float readout it "supported" by ignoring would be a wrong answer.
+    Same definition as the golden engine's ``_narrow_to_dtype``, in every branch: bitwidth parsed
+    structurally from the token, ``i8`` routed through :meth:`Tensor.to_i8` so it stays byte-identical
+    to the historical path, width >= 32 read out whole, and a NON-integer token passed through
+    unchanged. The pass-through is not an oversight. An earlier version of this helper raised on a
+    float token, reasoning that an integer engine has no definition for a float readout; that reasoning
+    ignored who the authority is. The golden passes it through, so raising here made the two engines
+    disagree in the one direction that costs a correct backend its grade -- and it did: 37 tests, all
+    of them buffers that legitimately commit an ``f32`` tensor produced by a VECTOR_MAP chain. The
+    invariant is that these engines agree, and the golden defines what they agree on.
     """
     kind, digits = (dtype[:1], dtype[1:]) if dtype else ("", "")
     if kind not in ("i", "u") or not digits.isdigit():
-        raise SimulationError(
-            f"{op} output_dtype {dtype!r} is not an integer dtype; this integer engine has no "
-            f"definition for it")
+        return t
     bits, signed = int(digits), kind == "i"
     if bits >= 32:
         return t
