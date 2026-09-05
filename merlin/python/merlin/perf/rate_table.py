@@ -341,3 +341,71 @@ def rates_for(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
             fastest_macs_per_cycle=max(o[0] for o in observed), n_programs=len(observed),
             cycles_min=min(o[2] for o in observed), cycles_max=max(o[2] for o in observed))
     return table
+
+def holdout_containment(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
+                        roots: Sequence[Path] | None = None,
+                        programs: Mapping[str, Program] | None = None) -> dict[str, Any]:
+    """Do rates derived from HALF the programs produce bands containing the other half?
+
+    This is the acceptance gate on using a rate table to price anything, and it is the same reasoning
+    that condemned every cheap ordering signal in this tree: a signal is exposed on measured
+    agreement, never on the plausibility of its derivation. Deriving and testing on one set would
+    report how well a bound covers the very data that set it.
+
+    The two miss directions are reported separately and never averaged. A measurement BELOW the floor
+    means the floor is not a floor -- a mis-derived peak, or work the counter did not see. One ABOVE
+    the ceiling means the slowest observed rate was not slow enough. They are different defects and
+    one combined rate would hide both.
+
+    The split is deterministic on the program digest, so the same corpus always yields the same
+    verdict; a random split would let a rerun launder a failure into a pass.
+    """
+    from merlin.perf import compose_estimate as CE
+
+    if programs is None:
+        programs, _ = observed_programs(target, authority=authority, roots=roots)
+    usable = {d: p for d, p in programs.items() if p.measured}
+    # Deterministic halves: the digest is already a hash, so its low bit is a fair coin that does not
+    # move between runs.
+    train = {d: p for d, p in usable.items() if int(d[-1], 16) % 2 == 0}
+    test = {d: p for d, p in usable.items() if int(d[-1], 16) % 2 == 1}
+
+    table = rates_for(target, peak_macs_per_cycle=peak_macs_per_cycle, programs=train)
+    below = above = inside = 0
+    widths: list[float] = []
+    undecided: list[dict[str, Any]] = []
+    for program in test.values():
+        klass = CE.compute_class(program.buffer)
+        band = CE.band(program.buffer, target=target, peak_macs_per_cycle=peak_macs_per_cycle,
+                       slowest_macs_per_cycle=table.rate_for(klass))
+        if band.get("status") != CE.DERIVED:
+            undecided.append({"workload": program.workload, "compute_class": klass,
+                              "reason": str(band.get("reason") or "band not derived")})
+            continue
+        if band.get("lower"):
+            widths.append(float(band["upper"]) / float(band["lower"]))
+        measured = program.cycles
+        if measured < band["lower"]:
+            below += 1
+        elif measured > band["upper"]:
+            above += 1
+        else:
+            inside += 1
+    decided = below + above + inside
+    widths.sort()
+    median_width = (widths[len(widths) // 2] if len(widths) % 2
+                    else (widths[len(widths) // 2 - 1] + widths[len(widths) // 2]) / 2) if widths else None
+    return {"target": target, "peak_macs_per_cycle": peak_macs_per_cycle,
+            "median_band_width": median_width,
+            "width_note": ("CONTAINMENT ALONE IS CHEAP: a band wide enough contains everything, so the "
+                           "width is half the result. A band must be about an order of magnitude to "
+                           "separate anything, and at this width a difference smaller than it is "
+                           "invisible -- which is what the band may not be used to deny"),
+            "n_train": len(train), "n_test": len(test), "n_decided": decided,
+            "contained": inside, "below_floor": below, "above_ceiling": above,
+            "containment_rate": (inside / decided) if decided else None,
+            "n_undecided": len(undecided), "undecided": undecided[:20],
+            "rates_used": {k: v.to_dict() for k, v in sorted(table.rates.items())},
+            "unpriced_classes": list(table.unpriced_classes),
+            "licence": ("a containment rate over programs the rates were NOT derived from; a band "
+                        "may eliminate a candidate and may never certify one")}

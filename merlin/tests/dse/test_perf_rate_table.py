@@ -140,3 +140,55 @@ class TestTheTableCarriesWhatIsNeededToDistrustIt:
         provenance = _table([_program("a", _resident_buffer(), 300.0)]).to_dict()["provenance"]
         assert provenance["kind"] == "trace_derived"
         assert "never promotable" in provenance["note"] or "promotable" in provenance["note"]
+
+
+class TestTheGateOnUsingTheseRatesAtAll:
+    """Held-out containment is the acceptance gate: a signal is exposed on measured agreement."""
+
+    def _ladder(self, n: int):
+        """`n` resident programs whose measured cycles all sit inside a plausible band."""
+        out = []
+        for i in range(n):
+            jobs = 1 + (i % 8)
+            buf = _resident_buffer(jobs=jobs, m=16 + i, k=16, n=16)
+            # ~40 MACs/cycle, comfortably between the 256 peak floor and any slow ceiling.
+            macs = jobs * (16 + i) * 16 * 16
+            out.append(_program(f"w{i}", buf, macs / 40.0))
+        return {p.digest: p for p in out}
+
+    def test_rates_are_derived_from_one_half_and_scored_on_the_other(self):
+        """Deriving and testing on one set reports how well a bound covers the data that set it."""
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0,
+                                        programs=self._ladder(24))
+        assert result["n_train"] > 0 and result["n_test"] > 0
+        assert result["n_train"] + result["n_test"] == 24
+
+    def test_the_split_is_deterministic_so_a_rerun_cannot_launder_a_failure(self):
+        programs = self._ladder(24)
+        a = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
+        b = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
+        assert (a["n_train"], a["contained"], a["n_decided"]) == (b["n_train"], b["contained"],
+                                                                 b["n_decided"])
+
+    def test_the_two_miss_directions_are_reported_separately(self):
+        """Below the floor and above the ceiling are different defects; one rate would hide both."""
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=self._ladder(24))
+        assert "below_floor" in result and "above_ceiling" in result
+        assert result["contained"] + result["below_floor"] + result["above_ceiling"] == result["n_decided"]
+
+    def test_a_program_below_the_structural_floor_is_counted_as_a_floor_miss(self):
+        """A measurement under the floor means the floor is not a floor -- a peak or a counter is wrong."""
+        programs = self._ladder(24)
+        # One test-half program made impossibly fast: 8192 MACs in 1 cycle beats a 256-MAC/cycle peak.
+        victim = next(p for d, p in programs.items() if int(d[-1], 16) % 2 == 1)
+        victim.measured.clear()
+        victim.measured.add(1.0)
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
+        assert result["below_floor"] >= 1
+        assert result["containment_rate"] < 1.0
+
+    def test_the_width_is_reported_because_containment_alone_is_cheap(self):
+        """A band wide enough contains everything, so a containment rate without a width says little."""
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=self._ladder(24))
+        assert result["median_band_width"] is not None and result["median_band_width"] > 1.0
+        assert "order of magnitude" in result["width_note"]
