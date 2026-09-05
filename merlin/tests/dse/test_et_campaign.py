@@ -615,3 +615,26 @@ def test_a_full_nondegenerate_golden_raises_neither_flag(recaps):
     assert plan.golden_coverage == {**plan.golden_coverage, "partial": False, "degenerate": False}
     assert plan.runnable
     assert not any("PARTIAL GATE" in n or "DEGENERATE" in n for n in plan.notes)
+
+
+def test_a_refused_cell_still_shows_a_reference_wall_that_was_measured():
+    """Board time already spent must not be discarded because the OTHER arm refused.
+
+    tiny_llama's cell was refused because our whole-model clang outran its ceiling -- a reason with
+    nothing to do with ExecuTorch, whose two-N slope had already been paid for on the board. The
+    summary printed `nan`, and the 364.142 ms had to be recovered by hand out of log text.
+    """
+    row = {
+        "model": "tiny_llama", "ours_bundle_id": "tiny_llama_int8_consistent",
+        "w8a8_reference": {"independent": True},
+        "protocol": {"reference": {"warm_ns": 364141594.0, "cold_ns": 391514666.0}},
+        "verdict": {"status": "refused", "reason": "clang outran the compile ceiling"},
+    }
+    cell = ec.summarize([row])["per_model"]["tiny_llama"]
+    assert cell["status"] == "refused"
+    assert cell["executorch_warm_ns"] is None, "a refused cell publishes no reference verdict"
+    assert cell["executorch_warm_ns_measured"] == 364141594.0, "but the measurement is kept"
+    assert cell["speedup_vs_executorch"] is None, "and still no ratio"
+
+    text = ec.format_summary(ec.summarize([row]))
+    assert "364.142" in text and "MEASURED, no ratio" in text

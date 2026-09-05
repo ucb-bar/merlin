@@ -836,6 +836,13 @@ def summarize(rows) -> dict:
                 "status": (r.get("verdict") or {}).get("status"),
                 "ours_ns": (r.get("verdict") or {}).get("ours_ns"),
                 "executorch_warm_ns": (r.get("verdict") or {}).get("executorch_warm_ns"),
+                # The reference's MEASURED warm slope, kept even when no verdict could be formed.
+                # A cell refused for a reason on OUR side (a compile that outran its ceiling) threw
+                # away a reference wall that had already been paid for on the board, and the number
+                # had to be recovered by hand out of log text. Recorded is not published: there is
+                # still no ratio, and `status` still says refused.
+                "executorch_warm_ns_measured": ((r.get("protocol") or {}).get("reference") or {})
+                                               .get("warm_ns"),
                 "speedup_vs_executorch": (r.get("verdict") or {}).get("speedup_vs_executorch"),
                 "beats_executorch": (r.get("verdict") or {}).get("beats_executorch"),
                 "reason": (r.get("verdict") or {}).get("reason", ""),
@@ -860,10 +867,17 @@ def format_summary(summary: dict) -> str:
         c = summary["per_model"][model]
         ours = c.get("ours_ns")
         etw = c.get("executorch_warm_ns")
+        etw_measured = c.get("executorch_warm_ns_measured")
         sp = c.get("speedup_vs_executorch")
         ind = c.get("w8a8_reference_independent")
         ind_s = {True: "indep", False: "ours", None: "UNKNOWN"}[ind if ind in (True, False) else None]
         note = "" if c.get("status") == "measured" else (c.get("reason") or "")[:100]
+        # A refused cell whose REFERENCE nonetheless measured: show that wall, marked, with no
+        # ratio. Hiding it as `nan` discards board time already spent and invites someone to
+        # re-run the arm that worked.
+        if etw is None and etw_measured:
+            etw = etw_measured
+            note = f"[et warm {etw_measured / 1e6:.3f} ms MEASURED, no ratio] {note}"
         lines.append(f"{model:<16} {str(c.get('status')):<10} "
                      f"{(ours / 1e6 if ours else float('nan')):>10.3f} "
                      f"{(etw / 1e6 if etw else float('nan')):>11.3f} "
