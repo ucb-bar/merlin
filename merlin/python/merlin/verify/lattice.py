@@ -28,10 +28,26 @@ import sys
 import time
 from typing import Any
 
-#: Cell families this module knows how to build a program for. Anything else is recorded as an
-#: omission with its reason rather than skipped — a lattice point silently dropped would inflate the
-#: coverage denominator's apparent quality.
+#: Cell families this module can build and lower a program for.
+#:
+#: The limit is NOT the SMT encoder — it already handles VECTOR_MAP, VREDUCE and MOVEMENT. It is the
+#: in-tree reference target: ``load_curated_contract("toy_npu")`` declares exactly four ops
+#: (``res_pack, matmul, commit, evict``), and ``lower_to_target`` refuses anything outside them with
+#: "the dialect plan does not lower interface.X, so this payload cannot descend to it. Coverage is
+#: read from the plan, never assumed." Without a descent there is no command buffer, and with no
+#: command buffer there is no compilation to validate. Sweeping the other families needs a target
+#: that declares their ops — a target-side gap, not an encoder one, and the omission reason says so.
 ENCODABLE_FAMILIES = frozenset({"contraction"})
+
+
+def reference_target_ops() -> list[str]:
+    """The op set the in-tree reference target declares. Read, never assumed."""
+    try:
+        from merlin.xdsl_dialects.lowering.pipeline import load_curated_contract
+
+        return sorted((load_curated_contract("toy_npu") or {}).get("ops") or [])
+    except Exception:
+        return []
 
 
 def spec_path(target: str):
@@ -85,9 +101,7 @@ def sweep(target: str, *, timeout_ms: int = 300_000, acc_width: int = 32,
         dtype = str(cell.get("dtype") or "")
         name = str(cell.get("cell") or f"{family}/{dtype}")
         if family not in ENCODABLE_FAMILIES:
-            omissions.append({"cell": name, "reason":
-                              f"family {family!r} has no program builder here; encodable families "
-                              f"are {sorted(ENCODABLE_FAMILIES)}"})
+            omissions.append({"cell": name, "reason": _family_omission(family)})
             continue
         grouped.setdefault((family, dtype), []).append(name)
 
@@ -177,6 +191,23 @@ def witnesses_graded(target: str) -> dict[str, Any]:
     return {"capsules": capsules, "distinct_shapes": len(shapes),
             "note": "counted from tracked capsule.yaml files, excluding hidden/; each is graded on "
                     "one deterministic stimulus"}
+
+
+def _family_omission(family: str) -> str:
+    """Why a family is not swept — the real blocker, derived from the target, not a generic message.
+
+    Being precise here matters: "we have not written a builder" and "the reference target cannot
+    represent this at all" call for different work, and the first would send someone to the wrong file.
+    """
+    ops = reference_target_ops()
+    # Deliberately does NOT name the interface op: the family name and the op name differ (the
+    # `elementwise_map` family lowers to `interface.elementwise`), and inventing `interface.<family>`
+    # would put a plausible-looking but wrong symbol in a ledger people cite.
+    return (f"family {family!r} is not swept: the in-tree reference target declares only "
+            f"{ops or 'UNKNOWN'}, so lower_to_target refuses this family's interface op and no "
+            f"command buffer is produced — there is nothing to validate. The SMT encoder is not the "
+            f"limit (it already handles VECTOR_MAP, VREDUCE and MOVEMENT); a target declaring those "
+            f"ops is.")
 
 
 def _lattice_source(spec: dict[str, Any]) -> str:

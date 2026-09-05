@@ -95,3 +95,29 @@ def test_a_refutation_makes_the_sweep_fail():
     target = _a_target_with_a_derived_edge()
     rc = main(["--target", target, "--max-points", "1", "--timeout-ms", "60000"])
     assert rc == 0, "a clean sweep must exit 0"
+
+
+def test_an_omitted_family_names_the_real_blocker_not_a_generic_reason():
+    """"We have not written a builder" and "the target cannot represent this" need different work.
+
+    Measured 2026-09-05: the in-tree reference target declares exactly four ops, so `lower_to_target`
+    refuses every non-contraction family and no command buffer exists to validate. The SMT encoder is
+    NOT the limit — it already handles VECTOR_MAP, VREDUCE and MOVEMENT. A reason that blamed the
+    encoder would send someone to the wrong file.
+    """
+    from merlin.verify.lattice import reference_target_ops, sweep
+
+    target = _a_target_with_a_derived_edge()
+    rec = sweep(target, max_points=1, timeout_ms=60_000)
+    omitted = rec["cell_omissions"]
+    if not omitted:
+        pytest.skip("every declared family is swept for this target")
+
+    ops = reference_target_ops()
+    assert ops, "the reference target's op set could not be read; the reason would be unfounded"
+    for om in omitted:
+        reason = om["reason"]
+        assert str(ops) in reason, "the reason must carry the op set it was derived from"
+        assert "encoder is not the limit" in reason, "the reason must not misattribute the blocker"
+        # and it must not invent an op symbol: family names and op names differ
+        assert "interface." not in reason or "this family's interface op" in reason
