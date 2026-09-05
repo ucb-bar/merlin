@@ -94,13 +94,16 @@ def main() -> int:
             if isinstance(doc, dict):
                 caps.append(doc)
         fit = CC.fit_for(t)
-        rep = PP.split_report(caps, target=t, fit=fit, budget_s=args.budget_s)
+        ca = PP.cycle_accurate_seen(t)
+        rep = PP.split_report(caps, target=t, fit=fit, budget_s=args.budget_s,
+                              cycle_accurate_available=ca)
         counts = rep["counts"]
         report[t] = {"n_capsules": rep["n_capsules"], "counts": counts,
                      "cert_fit_samples": getattr(fit, "n_samples", None),
                      "single_phase_reasons": rep["single_phase_reasons"]}
 
-        anc = PP.anchors(caps, target=t, fit=fit, budget_s=args.budget_s)
+        anc = PP.anchors(caps, target=t, fit=fit, budget_s=args.budget_s,
+                         cycle_accurate_available=ca)
         report[t]["obligations"] = anc["n_obligations"]
         report[t]["paired"] = anc["n_paired"]
         report[t]["orphaned"] = anc["n_orphaned"]

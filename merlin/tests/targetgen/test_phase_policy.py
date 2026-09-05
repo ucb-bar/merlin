@@ -58,16 +58,39 @@ def test_undetermined_is_counted_separately_in_a_report():
 
 # ------------------------------------------------------------------------------- the two predicates
 
-def test_a_capsule_with_no_cycle_accurate_tier_cannot_be_certified():
-    v = PP.certifiable(_capsule(required_oracle_tiers=["L0", "L1", "L2"]), target="t")
+def test_a_required_tier_list_is_not_a_CEILING_and_must_not_decide_certifiability():
+    """THE CORRECTION. ``required_oracle_tiers`` is the MANDATORY set, not the runnable one. A target in
+    this repo runs a cycle-accurate tier that gates nothing -- its runner says "L3 is an RTL-cert tier
+    that NEVER gates a capsule" -- so reading the required list as the capability declared that target
+    unable to certify anything while it had certified 32 members."""
+    gated_at_l2 = _capsule(required_oracle_tiers=["L0", "L1", "L2"])
+    v = PP.certifiable(gated_at_l2, target="t", cycle_accurate_available=True)
+    assert v.value == PP.YES, v.reason
+
+
+def test_an_explicit_cap_is_what_makes_a_capsule_uncertifiable():
+    """The capsule-level ceiling is the declared cap, which is also what obliges it to name a sibling."""
+    capped = _capsule(max_oracle_tier="L2")
+    v = PP.certifiable(capped, target="t", cycle_accurate_available=True)
     assert v.value == PP.NO
-    assert "cycle-accurate" in v.reason
+    assert "sibling it rests on" in v.reason
+
+
+def test_an_unestablished_target_capability_is_unknown_not_no():
+    v = PP.certifiable(_capsule(), target="t")          # caller did not establish it
+    assert v.value == PP.UNKNOWN
+    assert "does not answer it" in v.reason
+
+
+def test_a_target_with_no_cycle_accurate_tier_certifies_nothing():
+    v = PP.certifiable(_capsule(), target="t", cycle_accurate_available=False)
+    assert v.value == PP.NO
 
 
 def test_an_operand_past_the_measured_range_is_refused_for_unknown_cost_not_for_size():
     big = _capsule(inputs=[{"name": "A", "role": "input", "shape": [4096, 4096]},
                            {"name": "W", "role": "weight", "shape": [4096, 16]}])
-    v = PP.certifiable(big, target="t")
+    v = PP.certifiable(big, target="t", cycle_accurate_available=True)
     assert v.value == PP.NO
     assert "unknown, not merely large" in v.reason
 
@@ -177,14 +200,16 @@ def test_both_is_reachable_and_is_the_anchor_state():
         n_samples = 8
     from merlin.targetgen import cert_cost as CC
 
-    v = PP.phase_of(_capsule(), target="t", fit=None, budget_s=None)
+    v = PP.phase_of(_capsule(), target="t", fit=None, budget_s=None, cycle_accurate_available=True)
     assert v.phase == PP.BOTH, v.reason
 
 
 # ----------------------------------------------------------------------------- the anchor relation
 
-def _sized(name, m, k, n, tiers=("L0", "L1", "L2", "L3")):
-    c = _capsule(name=name, required_oracle_tiers=list(tiers))
+def _sized(name, m, k, n, capped=None):
+    c = _capsule(name=name)
+    if capped:
+        c["max_oracle_tier"] = capped
     c["inputs"] = [{"name": "A", "role": "input", "shape": [m, k], "dtype": "i8"},
                    {"name": "W", "role": "weight", "shape": [k, n], "dtype": "i8"}]
     return c
@@ -192,8 +217,8 @@ def _sized(name, m, k, n, tiers=("L0", "L1", "L2", "L3")):
 
 def test_a_large_member_rests_on_a_certifiable_sibling_of_the_SAME_obligation():
     small = _sized("small", 16, 16, 16)
-    big = _sized("big", 512, 512, 512, tiers=("L0", "L1", "L2"))  # no cycle-accurate tier
-    a = PP.anchors([small, big], target="t")
+    big = _sized("big", 512, 512, 512, capped="L2")   # explicitly screened, not certified
+    a = PP.anchors([small, big], target="t", cycle_accurate_available=True)
     assert a["n_orphaned"] == 0
     assert a["paired"] and a["paired"][0]["member"] == "big"
     assert a["paired"][0]["anchor"] == "small"
@@ -202,8 +227,8 @@ def test_a_large_member_rests_on_a_certifiable_sibling_of_the_SAME_obligation():
 def test_a_member_with_no_certifiable_sibling_is_reported_orphaned_not_accepted():
     """An L2 pass on a shape nothing ever certified cycle-accurately is the failure this relation
     exists to catch, so the absence of an anchor must be loud."""
-    big = _sized("big", 512, 512, 512, tiers=("L0", "L1", "L2"))
-    a = PP.anchors([big], target="t")
+    big = _sized("big", 512, 512, 512, capped="L2")
+    a = PP.anchors([big], target="t", cycle_accurate_available=True)
     assert a["n_paired"] == 0
     assert a["n_orphaned"] == 1
     assert "no certifiable witness" in a["orphaned"][0]["why"]
@@ -212,13 +237,13 @@ def test_a_member_with_no_certifiable_sibling_is_reported_orphaned_not_accepted(
 def test_an_anchor_is_never_drawn_from_a_different_obligation():
     """Resting an attention member on a contraction anchor would certify the wrong thing."""
     other = _sized("contraction_anchor", 16, 16, 16)
-    att = _capsule(name="att_big", required_oracle_tiers=["L0", "L1", "L2"],
+    att = _capsule(name="att_big", max_oracle_tier="L2",
                    semantic={"semantic_family": "attention"},
                    operation={"op": "attention_full", "attributes": {"out": "Y"}},
                    inputs=[{"name": "Q", "role": "input", "shape": [256, 64], "dtype": "i8"},
                            {"name": "K", "role": "input", "shape": [256, 64], "dtype": "i8"},
                            {"name": "V", "role": "input", "shape": [256, 64], "dtype": "i8"}])
-    a = PP.anchors([other, att], target="t")
+    a = PP.anchors([other, att], target="t", cycle_accurate_available=True)
     assert a["n_paired"] == 0 and a["n_orphaned"] == 1
 
 
@@ -227,6 +252,6 @@ def test_the_largest_certifiable_witness_is_chosen_as_the_anchor():
     dominates the cost -- so the anchor is the largest affordable witness, not the smallest."""
     tiny = _sized("tiny", 8, 8, 8)
     mid = _sized("mid", 32, 32, 32)
-    big = _sized("big", 512, 512, 512, tiers=("L0", "L1", "L2"))
-    a = PP.anchors([tiny, mid, big], target="t")
+    big = _sized("big", 512, 512, 512, capped="L2")
+    a = PP.anchors([tiny, mid, big], target="t", cycle_accurate_available=True)
     assert a["paired"][0]["anchor"] == "mid"

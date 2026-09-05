@@ -47,6 +47,7 @@ __all__ = [
     "YES", "NO", "UNKNOWN", "Verdict", "PhaseVerdict",
     "PHASE1", "PHASE2", "BOTH", "NEITHER", "UNDETERMINED",
     "certifiable", "priceable", "phase_of", "declared_macs", "split_report", "anchors",
+    "cycle_accurate_seen",
 ]
 
 #: Tri-state. ``UNKNOWN`` is not a soft ``NO``: it says the question could not be answered here, which
@@ -276,14 +277,31 @@ def _trailing(shape: Sequence[int]) -> int:
 
 
 def certifiable(capsule: Mapping[str, Any], *, target: str, fit: Any = None,
-                budget_s: float | None = None, max_operand_elements: int | None = None) -> Verdict:
-    """Can this member's answer be checked at full fidelity, on THIS target, inside a budget?"""
+                budget_s: float | None = None, max_operand_elements: int | None = None,
+                cycle_accurate_available: "bool | None" = None) -> Verdict:
+    """Can this member's answer be checked at full fidelity, on THIS target, inside a budget?
+
+    ``cycle_accurate_available`` is a property of the TARGET and the caller must establish it. ``None``
+    means nobody asked, reported as UNKNOWN rather than assumed: the capsule's own required-tier list
+    cannot answer it.
+    """
     from merlin.targetgen import cert_cost as CC
 
-    tiers = capsule.get("required_oracle_tiers") or ()
-    cycle_accurate = [t for t in tiers if str(t) in _CYCLE_ACCURATE_TIERS]
-    if not cycle_accurate:
-        return Verdict(NO, f"declares no cycle-accurate tier (has {list(tiers)!r}), so nothing certifies it")
+    # ``required_oracle_tiers`` is the MANDATORY set, NOT a ceiling. A target may run a cycle-accurate
+    # tier that gates nothing -- one in this repo does exactly that, and its runner records "L3 is an
+    # RTL-cert tier that NEVER gates a capsule" -- so reading the required list as the set of tiers that
+    # CAN run declares such a target unable to certify anything while it is certifying 32 members. The
+    # capsule-level ceiling is the explicit cap; target capability is supplied by the caller.
+    cap = capsule.get("max_oracle_tier")
+    if cap is not None and str(cap) not in _CYCLE_ACCURATE_TIERS:
+        return Verdict(NO, f"caps its oracle tier at {str(cap)!r}, which is not cycle-accurate, so it is "
+                           "screened rather than certified and must name the sibling it rests on")
+    if cycle_accurate_available is False:
+        return Verdict(NO, f"{target!r} has no cycle-accurate tier available, so nothing can certify it")
+    if cycle_accurate_available is None:
+        return Verdict(UNKNOWN, f"whether {target!r} can run a cycle-accurate tier was not established; "
+                                "a required-tier list does not answer it, because such a tier may run "
+                                "without gating any capsule")
 
     ceiling = CC.MEASURED_MAX_OPERAND_ELEMENTS if max_operand_elements is None else int(max_operand_elements)
     operand = largest_operand_elements(capsule)
@@ -292,8 +310,8 @@ def certifiable(capsule: Mapping[str, Any], *, target: str, fit: Any = None,
                            "the cost of moving it is unknown, not merely large")
 
     if budget_s is None:
-        return Verdict(YES, f"declares {cycle_accurate[0]} and its operands are inside the measured range; "
-                            "no budget was supplied, so size was not tested against one")
+        return Verdict(YES, "a cycle-accurate tier is available and its operands are inside the measured "
+                            "range; no budget was supplied, so size was not tested against one")
 
     affordable = CC.max_elements_within(fit, float(budget_s))
     if affordable is None:
@@ -327,9 +345,11 @@ def priceable(capsule: Mapping[str, Any], *, achievable_macs_per_cycle: float | 
 
 
 def phase_of(capsule: Mapping[str, Any], *, target: str, fit: Any = None, budget_s: float | None = None,
-             achievable_macs_per_cycle: float | None = None) -> PhaseVerdict:
+             achievable_macs_per_cycle: float | None = None,
+             cycle_accurate_available: "bool | None" = None) -> PhaseVerdict:
     """Which phase this capsule can serve. ``both`` is the healthy state; ``neither`` is a finding."""
-    cert = certifiable(capsule, target=target, fit=fit, budget_s=budget_s)
+    cert = certifiable(capsule, target=target, fit=fit, budget_s=budget_s,
+                       cycle_accurate_available=cycle_accurate_available)
     price = priceable(capsule, achievable_macs_per_cycle=achievable_macs_per_cycle)
     if cert.value == UNKNOWN or price.value == UNKNOWN:
         # Fail closed on the EVIDENCE, not on the capsule. An UNKNOWN folded into NO would report a
@@ -348,7 +368,8 @@ def phase_of(capsule: Mapping[str, Any], *, target: str, fit: Any = None, budget
 
 def split_report(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = None,
                  budget_s: float | None = None,
-                 achievable_macs_per_cycle: float | None = None) -> dict[str, Any]:
+                 achievable_macs_per_cycle: float | None = None,
+                 cycle_accurate_available: "bool | None" = None) -> dict[str, Any]:
     """The phase split for one target's corpus, with every single-phase member's reason kept.
 
     A count on its own cannot be acted on: the useful output is WHY a member is single-phase, because
@@ -356,7 +377,8 @@ def split_report(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any
     afford to certify.
     """
     verdicts = [phase_of(c, target=target, fit=fit, budget_s=budget_s,
-                         achievable_macs_per_cycle=achievable_macs_per_cycle) for c in capsules]
+                         achievable_macs_per_cycle=achievable_macs_per_cycle,
+                         cycle_accurate_available=cycle_accurate_available) for c in capsules]
     counts: dict[str, int] = {BOTH: 0, PHASE1: 0, PHASE2: 0, NEITHER: 0, UNDETERMINED: 0}
     for v in verdicts:
         counts[v.phase] += 1
@@ -398,7 +420,8 @@ def _obligation_key(capsule: Mapping[str, Any]) -> tuple:
 
 
 def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = None,
-            budget_s: float | None = None) -> dict[str, Any]:
+            budget_s: float | None = None,
+            cycle_accurate_available: "bool | None" = None) -> dict[str, Any]:
     """Pair every phase-2 member with the certified sibling it can rest on.
 
     The relation this computes is the one ``extends`` already declares and nothing verifies: a member
@@ -414,7 +437,8 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
     """
     by_ob: dict[tuple, list[tuple[Mapping[str, Any], PhaseVerdict]]] = {}
     for c in capsules:
-        v = phase_of(c, target=target, fit=fit, budget_s=budget_s)
+        v = phase_of(c, target=target, fit=fit, budget_s=budget_s,
+                     cycle_accurate_available=cycle_accurate_available)
         by_ob.setdefault(_obligation_key(c), []).append((c, v))
 
     paired: list[dict[str, Any]] = []
@@ -436,3 +460,26 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
     return {"target": target, "n_obligations": len(by_ob),
             "paired": paired, "orphaned": orphaned,
             "n_paired": len(paired), "n_orphaned": len(orphaned)}
+
+
+def cycle_accurate_seen(target: str, *, roots: Any = None) -> "bool | None":
+    """Has a cycle-accurate tier ACTUALLY RUN on this target? ``True`` or ``None``, never ``False``.
+
+    Measured, not declared: read from the per-capsule results the cost model already reads, so a target
+    that has certified something says so with evidence. The absence of a record is ``None`` -- unknown --
+    and never ``False``, because "nobody has run one here" and "this target cannot run one" are
+    different facts with different remedies, and only the second would justify excluding a target's
+    whole corpus from phase 1.
+
+    The obvious substitute is wrong, which is why this exists. A capsule's ``required_oracle_tiers`` is
+    the MANDATORY set, not the runnable one: a target in this repo runs a cycle-accurate tier that gates
+    nothing, and reading its required list as its capability declared it unable to certify anything
+    while it had in fact certified 32 members.
+    """
+    from merlin.targetgen import cert_cost as CC
+
+    try:
+        records = CC._timing_records(str(target), roots)
+    except Exception:  # noqa: BLE001 - an unreadable run tree is "unknown", not "cannot"
+        return None
+    return True if records else None
