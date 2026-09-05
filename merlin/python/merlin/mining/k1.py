@@ -920,6 +920,23 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
                 pass
 
 
+def _is_multi_program(model_dir: str | Path) -> bool:
+    """True when this bundle is a VERSION-2 session, i.e. several programs in one image.
+
+    Version 1 declares a step count and stays a single program (the harness loops its steps
+    internally), so it takes the ordinary single-program build path. Only version 2 routes to the
+    multi-program builder. Kept as its own predicate so a caller can ask the question without
+    duplicating the version check -- and so a capability that path does not have can be refused
+    before anything is built.
+    """
+    path = Path(model_dir) / "session_contract.yaml"
+    if not path.is_file():
+        return False
+    from ..common.yaml import load_yaml
+    value = load_yaml(path)
+    return isinstance(value, dict) and int(value.get("version", 0) or 0) == 2
+
+
 def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 600,
               kernel_backend: str | None = None, dispatch_timing: bool = False,
               op_profile: bool = False, force_scalar: bool = False,
@@ -941,6 +958,18 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
 
     if not K1_HOST:
         raise K1Error("MERLIN_K1_HOST unset — board unreachable")
+
+    if op_profile and _is_multi_program(model_dir):
+        # FAIL CLOSED. The multi-program session build path does not take an ``op_profile``
+        # parameter, so asking for a per-op profile of a version-2 session builds the
+        # UN-instrumented binary, writes no ``opprof_table.json``, and returns a result with no
+        # ``op_profile`` key. Downstream that reads as an empty op table, and the profiler reports a
+        # breakdown of a model with no ops -- "nothing was measured" wearing the clothes of "there
+        # was nothing to measure". It also costs a full build and a board slot to produce that.
+        raise K1Error(
+            "op_profile=True is not supported for a version-2 multi-program session: the session "
+            "build path does not instrument the IR, so the run would produce no PROF lines. "
+            "Profile each program's bundle (the `stages/<name>` directories) on its own instead.")
 
     def _build_deploy_run(mode: str, tag: str) -> dict:
         # mode: "v" vectorized (fixed-width RVV); "omp" scalar int8 + OpenMP across 8 cores;

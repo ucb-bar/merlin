@@ -208,3 +208,144 @@ def test_every_untagged_row_is_marked_as_derived():
     table2 = [_rec(0, "linalg.generic", 10, 1, family="elementwise")]
     opf.annotate_table(table2, timebase_hz=TIMEBASE_HZ)
     assert table2[0]["family_source"] == "prov.family"
+
+
+# =================================================================================================
+# 5. The window is per EXECUTION, and a session bundle runs @forward many times per timed iteration.
+#
+# The 144 % artifact was one direction of a window mismatch. This is the other: a version-1 session
+# bundle declares `steps: 256` and its harness calls merlin_run once per step INSIDE one timed
+# iteration, so the shim accumulates 256 executions against a wall that reports one iteration.
+# Comparing the per-execution attributed total against that wall gives ~1/256 and refuses a profile
+# that is in fact sound -- an under-attribution refusal manufactured by arithmetic, not measurement.
+# =================================================================================================
+
+def test_a_plain_model_runs_forward_once_per_iteration():
+    assert opf.executions_per_iteration(7, 5, 2) == 1      # the 144 % artifact's own run
+    assert opf.executions_per_iteration(1, 1, 0) == 1
+
+
+def test_a_session_bundle_runs_forward_once_per_declared_step():
+    """256 steps in one launch of one timed iteration is 256 executions per iteration."""
+    assert opf.executions_per_iteration(256, 1, 0) == 256
+    assert opf.executions_per_iteration(768, 2, 1) == 256   # 3 launches x 256 steps
+
+
+def test_an_underivable_divisor_is_unknown_not_guessed():
+    """A count that is not a whole multiple of the launches means the model did something the
+    profiler cannot account for -- refuse rather than round."""
+    assert opf.executions_per_iteration(7, 5, 0) is None    # 7/5 is not whole
+    assert opf.executions_per_iteration(0, 1, 0) is None
+    assert opf.executions_per_iteration(1, 0, 0) is None
+
+
+def test_a_session_profile_is_not_refused_for_a_window_it_did_not_have():
+    """Same ticks, same wall: dividing the wall by the step count is the difference between a
+    coverage of ~0.004 (refused) and ~1.0 (reportable)."""
+    wall_ticks = 256_000.0                       # one timed iteration = a 256-step session
+    attributed = 1_000.0                         # per ONE execution of @forward
+    naive = opf.coverage_report(attributed, wall_ticks, executions=256, timed_iterations=1)
+    fixed = opf.coverage_report(attributed, wall_ticks, executions=256, timed_iterations=1,
+                                executions_per_timed_iteration=256)
+    assert naive["profiler_coverage"] == pytest.approx(1 / 256, abs=1e-4)
+    assert naive["runtime_shares_reportable"] is False
+    assert fixed["profiler_coverage"] == pytest.approx(1.0)
+    assert fixed["runtime_shares_reportable"] is True
+    assert fixed["wall_ticks_per_execution"] == 1_000.0
+    assert fixed["executions_per_timed_iteration"] == 256
+
+
+def test_an_underivable_divisor_refuses_runtime_shares():
+    cov = opf.coverage_report(100.0, 100.0, executions_per_timed_iteration=0)
+    assert cov["runtime_shares_reportable"] is False
+    assert cov["refusal"] and "divisor" in cov["refusal"]
+
+
+# =================================================================================================
+# 6. Actionable categories: the bucket a lever is aimed at, not the frontend's family name.
+# =================================================================================================
+
+def test_the_requant_epilogue_is_not_counted_as_a_contraction():
+    """The int8 rewrite splits one matmul into a contraction and a requant epilogue that CARRY THE
+    SAME fqn and family. Bucketing on family charges the quantize chain's cost to the matmul --
+    which is precisely the claim ('the quantize chain costs more than every matmul combined') this
+    profile exists to test."""
+    contraction = {"mlir_op": "linalg.generic", "family": "contraction", "op": "matmul",
+                   "role": "contraction", "fqn": "layers.0.attn.q_proj"}
+    requant = {"mlir_op": "linalg.generic", "family": "contraction", "op": "matmul",
+               "role": "requant", "fqn": "layers.0.attn.q_proj"}
+    assert opf.resolve_category(contraction) == ("contraction", "prov.role")
+    assert opf.resolve_category(requant) == ("quantize_requant", "prov.role")
+    # ... while the FAMILY still calls them both a contraction, which is why the split is needed.
+    assert opf.resolve_family(contraction)[0] == opf.resolve_family(requant)[0] == "contraction"
+
+
+def test_the_whole_activation_quantize_chain_lands_in_one_bucket():
+    """`passes_quant_int._carry_prov` stamps act_amax/act_scale/act_quantize/gather/requant. The
+    first four are the per-row dynamic activation quantization; they must roll up together or the
+    chain's cost is reported as five unrelated slivers."""
+    roles = ["act_amax", "act_scale", "act_quantize", "requant"]
+    cats = {opf.resolve_category({"mlir_op": "linalg.generic", "role": r})[0] for r in roles}
+    assert cats == {"quantize_requant"}
+    assert opf.resolve_category({"mlir_op": "linalg.generic", "role": "gather"})[0] == "gather"
+
+
+def test_softmax_is_a_reduction_not_a_normalization():
+    """`prov.family` calls softmax and layer_norm both `normalization`, and they cost differently:
+    one is a reduction chain, the other is not."""
+    sm = {"mlir_op": "linalg.generic", "family": "normalization", "op": "softmax"}
+    ln = {"mlir_op": "linalg.generic", "family": "normalization", "op": "layer_norm"}
+    assert opf.resolve_category(sm) == ("reduction_softmax", "prov.op")
+    assert opf.resolve_category(ln) == ("normalization", "prov.family")
+
+
+def test_a_metadata_view_is_not_a_layout_copy():
+    """`family = layout` covers both a free reshape and a transpose that materializes a buffer.
+    Charging a lever aimed at layout copies with the cost of free views would misprice it."""
+    view = {"mlir_op": "tensor.expand_shape", "family": "layout", "op": "view"}
+    transpose = {"mlir_op": "linalg.transpose", "family": "layout", "op": "transpose"}
+    assert opf.resolve_category(view)[0] == "layout_view"
+    assert opf.resolve_category(transpose)[0] == "layout_copy"
+
+
+def test_an_untagged_op_the_map_does_not_know_is_named_not_folded():
+    """Fail closed: an op none of role/op/family/mlir_op places gets its OWN bucket, so it shows up
+    in the ranking as unaccounted rather than inflating a neighbour."""
+    cat, src = opf.resolve_category({"mlir_op": "some.future_op"})
+    assert cat == "unclassified:some.future_op" and src == "unknown"
+    # the one genuinely unknowable case keeps its dedicated bucket
+    assert opf.resolve_category({"mlir_op": "linalg.generic"}) == ("unclassified_generic", "unknown")
+
+
+def test_annotate_table_stamps_the_category_and_its_source():
+    table = [{"id": 0, "mlir_op": "linalg.generic", "family": "contraction", "op": "matmul",
+              "role": "requant", "ticks": 100, "hits": 1}]
+    opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
+    assert table[0]["category"] == "quantize_requant"
+    assert table[0]["category_source"] == "prov.role"
+
+
+# =================================================================================================
+# 7. Every row carries its own denominator: a share quoted alone still says what it is a share of.
+# =================================================================================================
+
+def test_every_rollup_row_states_its_denominator_and_coverage():
+    """The 144 % profile was quoted one row at a time. A caveat that lives only in a sibling block
+    is a caveat that does not travel with the number."""
+    table = [_rec(0, "linalg.matmul", 900, 1), _rec(1, "linalg.transpose", 100, 1)]
+    opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
+    refused = opf.rollup(table, lambda r: r["category"], "category", wall_ms=None, coverage=1.44)
+    assert all(r["share_denominator"] == "attributed" for r in refused)
+    assert all(r["profiler_coverage"] == 1.44 for r in refused)
+    ok = opf.rollup(table, lambda r: r["category"], "category",
+                    wall_ms=opf.sum_attributed_ticks(table) * (1e9 / TIMEBASE_HZ) / 1e6,
+                    coverage=1.0)
+    assert all(r["share_denominator"] == "wall" for r in ok)
+    assert sum(r["share_of_runtime"] for r in ok) == pytest.approx(1.0)
+
+
+def test_what_the_profiler_cannot_attribute_is_named_rather_than_missing():
+    """A bucket the mark interval structurally cannot see must not read as a measured zero."""
+    assert set(opf.CATEGORIES_NOT_ATTRIBUTABLE) == {"allocator", "fork_join", "intra_op"}
+    for why in opf.CATEGORIES_NOT_ATTRIBUTABLE.values():
+        assert len(why) > 60          # each says WHY, and what to do instead

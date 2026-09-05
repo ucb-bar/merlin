@@ -420,7 +420,8 @@ def annotate_table(table: list[dict], *, timebase_hz: float) -> list[dict]:
     """Fill in the derived per-op fields, IN PLACE, and return the table.
 
     Sets ``executions`` (the measured hit count), ``ticks_avg``/``ms_avg`` (per execution),
-    ``family_resolved``/``family_source``, ``vectorized`` and ``join_key``. An op with 0 hits gets
+    ``family_resolved``/``family_source``, ``vectorized``, ``join_key`` and
+    ``category``/``category_source`` (:func:`resolve_category`). An op with 0 hits gets
     ``ticks_avg = None`` and is excluded from every sum by :func:`sum_attributed_ticks`.
     """
     ns_per_tick = 1e9 / timebase_hz
@@ -435,6 +436,9 @@ def annotate_table(table: list[dict], *, timebase_hz: float) -> list[dict]:
         rec["family_source"] = src
         rec["vectorized"] = fam in VECTORIZED_FAMILIES
         rec["join_key"] = join_key(rec)
+        cat, csrc = resolve_category(rec)
+        rec["category"] = cat
+        rec["category_source"] = csrc
     return table
 
 
@@ -446,19 +450,33 @@ def sum_attributed_ticks(table: list[dict]) -> float:
 def coverage_report(attributed_ticks: float, wall_ticks: float | None, *,
                     band: tuple[float, float] = COVERAGE_BAND,
                     executions: int | None = None,
-                    timed_iterations: int | None = None) -> dict:
+                    timed_iterations: int | None = None,
+                    executions_per_timed_iteration: int | None = None) -> dict:
     """Decide whether this profile may be quoted as a percentage of RUNTIME.
+
+    ``attributed_ticks`` is per EXECUTION of ``@forward``; ``wall_ticks`` is per TIMED ITERATION.
+    Those are the same window only when one iteration runs ``@forward`` once. A v1 session bundle
+    runs it once per declared step (``steps: 256``), so the wall must first be divided by
+    ``executions_per_timed_iteration`` (:func:`executions_per_iteration`) or the coverage comes back
+    near 1/256 and a sound profile is refused. Passing ``None`` means "one execution per iteration",
+    which is the plain-model case and what every pre-session caller meant; the value used is echoed
+    back in the report so the denominator is never implicit.
 
     Fail-closed: an unknown or out-of-band coverage sets ``runtime_shares_reportable`` False, and
     every consumer must then express buckets as a share of ATTRIBUTED time with the coverage stated
     beside them. It is never left to the reader to notice that the denominator moved.
     """
     lo, hi = band
-    cov = (attributed_ticks / wall_ticks) if wall_ticks else None
+    per_iter = 1 if executions_per_timed_iteration is None else int(executions_per_timed_iteration)
+    wall_per_execution = (wall_ticks / per_iter) if (wall_ticks and per_iter >= 1) else None
+    cov = (attributed_ticks / wall_per_execution) if wall_per_execution else None
     over_window = (executions is not None and timed_iterations is not None
                    and executions > timed_iterations)
     if cov is None:
-        refusal = ("no measured wall ticks to divide by — a share of runtime has no denominator")
+        refusal = ("cannot derive how many @forward executions one timed iteration contains, so "
+                   "the per-execution wall has no divisor"
+                   if wall_ticks else
+                   "no measured wall ticks to divide by — a share of runtime has no denominator")
     elif cov < lo:
         refusal = (f"profiler coverage {cov:.4f} is below {lo:.2f}: more than "
                    f"{100 * (1 - cov):.1f}% of the wall was never attributed to any op, so a "
@@ -473,6 +491,10 @@ def coverage_report(attributed_ticks: float, wall_ticks: float | None, *,
     return {
         "attributed_ticks": attributed_ticks,
         "wall_ticks": wall_ticks,
+        #: The denominator actually divided by: the wall of ONE @forward execution. Equal to
+        #: `wall_ticks` for a plain model and to `wall_ticks / steps` for a session bundle.
+        "wall_ticks_per_execution": wall_per_execution,
+        "executions_per_timed_iteration": per_iter,
         "profiler_coverage": None if cov is None else round(cov, 4),
         "band": [lo, hi],
         "in_band": refusal is None,
@@ -487,19 +509,28 @@ def coverage_report(attributed_ticks: float, wall_ticks: float | None, *,
         "executions_exceed_timed_iterations": over_window,
         "refusal": refusal,
         "note": ("Shares are a fraction of ATTRIBUTED op time unless runtime_shares_reportable is "
-                 "true. Coverage = attributed ticks per execution / measured wall ticks per timed "
-                 "iteration; it can exceed 1.0 only when the two windows count different numbers "
-                 "of @forward executions (e.g. untimed warmup passes accumulate into the shim)."),
+                 "true. Coverage = attributed ticks per @forward EXECUTION / wall ticks per "
+                 "@forward EXECUTION, where the latter is the harness's per-timed-iteration wall "
+                 "divided by executions_per_timed_iteration. Both sides must count the same number "
+                 "of executions: counting more in the numerator inflates the coverage above 1.0 "
+                 "(untimed warmup passes accumulate into the shim), counting more in the "
+                 "denominator deflates it (a session runs @forward once per declared step)."),
     }
 
 
-def rollup(table: list[dict], keyfn, label: str, *, wall_ms: float | None = None) -> list[dict]:
+def rollup(table: list[dict], keyfn, label: str, *, wall_ms: float | None = None,
+           coverage: float | None = None) -> list[dict]:
     """Aggregate per-execution ms by ``keyfn``, sorted by cost.
 
     ``share_of_attributed`` is always present. ``share_of_runtime`` is present only when the caller
     passes ``wall_ms`` — which it must do ONLY when :func:`coverage_report` said the profile may be
     quoted that way; otherwise the field stays ``None`` so a consumer cannot read an inflated share
     as a runtime percentage.
+
+    Every row also carries ``share_denominator`` and ``profiler_coverage``, so a row lifted out of
+    the JSON and quoted on its own still says what its percentage is a percentage OF. The 144 %
+    artifact was quoted one row at a time; a caveat that lives only in a sibling block is a caveat
+    that does not travel.
     """
     agg: dict[str, dict] = {}
     for rec in table:
@@ -521,6 +552,206 @@ def rollup(table: list[dict], keyfn, label: str, *, wall_ms: float | None = None
                      "vectorized": a["vectorized"],
                      "family_sources": sorted(a["family_sources"]),
                      "share_of_attributed": (a["ms"] / total) if total else None,
-                     "share_of_runtime": (a["ms"] / wall_ms) if wall_ms else None})
+                     "share_of_runtime": (a["ms"] / wall_ms) if wall_ms else None,
+                     "share_denominator": "wall" if wall_ms else "attributed",
+                     "profiler_coverage": coverage})
     rows.sort(key=lambda r: r["ms"], reverse=True)
     return rows
+
+
+# ==================================================================================================
+# ACTIONABLE CATEGORIES — the buckets an optimization decision is actually made in.
+#
+# `resolve_family` answers "what KIND of op is this" in the frontend's own vocabulary (contraction,
+# layout, normalization, ...). That vocabulary is the right one for provenance and the wrong one for
+# a decision: `normalization` merges layer_norm with softmax, `layout` merges a free `view` with a
+# materializing transpose, and the whole int8 quantize chain is spread across `quantize`, `cast` and
+# a set of `prov.role`s that no family name mentions.
+#
+# The categories below are the ones a lever can be aimed at. They are DERIVED, in this order:
+#   1. `prov.role` — stamped by `passes_quant_int._carry_prov` when a rewrite SPLIT one captured op
+#      into pieces. Its vocabulary is exactly {act_amax, act_scale, act_quantize, gather,
+#      contraction, requant}, i.e. the quantize/requant chain itself, so it wins over every other
+#      signal: the requant epilogue of a matmul carries the matmul's family and fqn, and bucketing it
+#      as a contraction is the specific mistake this ordering exists to prevent.
+#   2. `prov.op` — the semantic op, which splits a family whose members cost differently (`softmax`
+#      is a reduction, `layer_norm` is not; `view` is free, `transpose` materializes).
+#   3. `prov.family` — the frontend family.
+#   4. the printed MLIR op name — for the ~40 % of ops the quantization and blocking rewrites rebuild
+#      without re-stamping provenance.
+# Anything none of the four can place lands in `unclassified:<mlir_op>` and is REPORTED as such. An
+# untagged `linalg.generic` gets its own `unclassified_generic` bucket because it is the one case
+# where the family is genuinely unknowable from the printed line (some of them ARE contractions).
+# ==================================================================================================
+
+#: What each `prov.role` is, in cost terms. Vocabulary from `passes_quant_int._carry_prov` call
+#: sites; `epilogue_fusion` documents the contraction/requant pair.
+ROLE_CATEGORY = {
+    "contraction": "contraction",
+    "requant": "quantize_requant",
+    "act_amax": "quantize_requant",
+    "act_scale": "quantize_requant",
+    "act_quantize": "quantize_requant",
+    "gather": "gather",
+}
+
+#: `prov.op` overrides that split a family whose members do not cost alike.
+OP_CATEGORY = {
+    "softmax": "reduction_softmax",
+    "view": "layout_view",            # metadata-only reshape: should read ~free
+    "reshape": "layout_view",
+    "squeeze": "layout_view",
+    "unsqueeze": "layout_view",
+    "expand": "layout_view",
+    "quantize": "quantize_requant",
+    "dequantize": "quantize_requant",
+    "requantize": "quantize_requant",
+    "dtype_cast": "quantize_requant",
+    "embedding": "gather",
+    "index_gather": "gather",
+    "convolution_im2col_matmul": "contraction",
+}
+
+#: `prov.family` -> category. The families are the ones the study models' own captures emit.
+FAMILY_CATEGORY = {
+    "contraction": "contraction",
+    "quantize": "quantize_requant",
+    "cast": "quantize_requant",
+    "elementwise": "elementwise",
+    "bitwise": "elementwise",
+    "compare": "elementwise",
+    "minmax": "elementwise",
+    "normalization": "normalization",
+    "reduce": "reduction_softmax",
+    "arg_reduce": "reduction_softmax",
+    "scan": "reduction_softmax",
+    "pool": "reduction_softmax",
+    "spectral": "spectral",
+    "layout": "layout_copy",
+    "concat": "layout_copy",
+    "resize": "layout_copy",
+    "gather_scatter": "gather",
+    "fill": "fill_init",
+    "iota": "fill_init",
+}
+
+#: Printed MLIR op name -> category, for ops that reach the table with no provenance at all.
+MLIR_OP_CATEGORY = {
+    "linalg.transpose": "layout_copy",
+    "linalg.copy": "layout_copy",
+    "linalg.broadcast": "elementwise",
+    "linalg.reduce": "reduction_softmax",
+    "linalg.fill": "fill_init",
+    "tensor.insert_slice": "layout_copy",
+    "tensor.extract_slice": "layout_copy",
+    "tensor.concat": "layout_copy",
+    "tensor.expand_shape": "layout_view",
+    "tensor.collapse_shape": "layout_view",
+    "tensor.empty": "alloc",
+    "tensor.splat": "fill_init",
+    "bufferization.alloc_tensor": "alloc",
+    "memref.alloc": "alloc",
+    "memref.alloca": "alloc",
+    "memref.dealloc": "alloc",
+    "memref.copy": "layout_copy",
+    "arith.constant": "constant",
+}
+
+#: The categories the tool ranks, in the order a reader should see them. A category absent from a
+#: given model simply does not appear; a category the profiler CANNOT see at all is listed in
+#: :data:`CATEGORIES_NOT_ATTRIBUTABLE` so its absence is never read as "it costs nothing".
+CATEGORY_ORDER = ("contraction", "quantize_requant", "elementwise", "normalization",
+                  "reduction_softmax", "gather", "layout_copy", "spectral", "layout_view",
+                  "fill_init", "alloc", "constant", "unclassified_generic")
+
+#: What a per-op mark interval structurally CANNOT attribute, and why. Reported in the artifact so a
+#: reader does not mistake a missing row for a measured zero.
+CATEGORIES_NOT_ATTRIBUTABLE = {
+    "allocator": ("`memref.alloc`/`free` are hoisted toward the function entry by "
+                  "buffer-hoisting/buffer-loop-hoisting, so allocator cost drifts into whichever "
+                  "mark interval the hoisted alloc lands in (typically the first) rather than into "
+                  "the op that needed the buffer. Measure it differentially instead: build twice "
+                  "with and without MERLIN_BUMP_MALLOC and diff the walls."),
+    "fork_join": ("there is no fork/join inside a single-threaded @forward. Under "
+                  "parallel_harts/OpenMP the join happens INSIDE one top-level op, below the "
+                  "granularity of a mark interval, so it is charged to that op and cannot be "
+                  "separated from it."),
+    "intra_op": ("a mark interval is one whole top-level op. Anything inside it — a contraction's "
+                 "inner loop versus its tail, an epilogue the compiler fused into the op — is below "
+                 "this profiler's resolution."),
+}
+
+
+def resolve_category(rec: dict) -> tuple[str, str]:
+    """``(category, source)`` for one op record — the bucket a lever can be aimed at.
+
+    Resolution order is role -> op -> family -> mlir_op (see the module section above); ``source``
+    names which one answered, so a reader can tell a stamped category from a derived one. An op none
+    of them place returns ``unclassified:<mlir_op>`` rather than being folded into a neighbour.
+    """
+    role = rec.get("role")
+    if role and role in ROLE_CATEGORY:
+        return ROLE_CATEGORY[role], "prov.role"
+    op = rec.get("op")
+    if op and op in OP_CATEGORY:
+        return OP_CATEGORY[op], "prov.op"
+    fam = rec.get("family")
+    if fam and fam in FAMILY_CATEGORY:
+        return FAMILY_CATEGORY[fam], "prov.family"
+    name = rec.get("mlir_op") or ""
+    if name in MLIR_OP_CATEGORY:
+        return MLIR_OP_CATEGORY[name], "mlir_op"
+    if name in CONTRACTION_OPS:
+        return "contraction", "mlir_op"
+    if is_unclassified_generic(rec):
+        return "unclassified_generic", "unknown"
+    return f"unclassified:{name or '(unknown)'}", "unknown"
+
+
+def executions_per_iteration(executions: int | None, timed_iterations: int | None,
+                             warmup: int | None = 0) -> int | None:
+    """How many ``@forward`` executions ONE timed iteration contains, or ``None`` if underivable.
+
+    The shim's accumulators run from process start, so ``executions`` (the largest ``hits`` in the
+    table) counts every execution in the image: ``(warmup + timed_iterations)`` launches, each of
+    which runs ``@forward`` once for a plain model and once PER SESSION STEP for a session model.
+    A v1 session bundle declares ``steps: 256``, so one timed iteration is 256 executions — and
+    comparing a per-EXECUTION attributed total against a per-ITERATION wall then reports a coverage
+    near 1/256 and refuses a profile that is in fact sound. This is the same window mismatch that
+    produced the 144 % artifact, in the opposite direction.
+
+    Fail-closed: a count that is not a positive whole multiple of the launches returns ``None``,
+    which makes :func:`coverage_report` refuse rather than guess a divisor.
+    """
+    launches = int(timed_iterations or 0) + int(warmup or 0)
+    if not executions or launches <= 0:
+        return None
+    q, r = divmod(int(executions), launches)
+    return q if (r == 0 and q >= 1) else None
+
+
+def table_blocker(table: list[dict] | None) -> str | None:
+    """Why this op table cannot be a profile, or ``None`` if it can.
+
+    Separated from the driver so the fail-closed rule is testable without a board. Two ways a run
+    comes back carrying nothing, both of which used to sail through as a successful profile of a
+    model with no attributable work:
+
+    * an EMPTY table — the build never instrumented the IR (e.g. a build path that ignores the
+      ``op_profile`` flag) or wrote no ``opprof_table.json``;
+    * a table with ops but ZERO recorded hits — the marks were compiled in but never executed, or
+      ``merlin_prof_dump()`` never ran, so no ``PROF`` line reached the console.
+
+    Neither is a measurement. "Nothing was measured" and "there was nothing to measure" are
+    different claims, and only the second is ever a finding.
+    """
+    if table is None:
+        return "no op table was produced at all"
+    if not table:
+        return ("the instrumented run produced an EMPTY op table: the build emitted no "
+                "opprof_table.json, or no `PROF <id> <ticks> <hits>` line reached the console. "
+                "Nothing was measured — this is not a profile of a model with no ops.")
+    if not any(int(r.get("hits") or 0) for r in table):
+        return (f"the op table has {len(table)} ops and ZERO recorded hits: the marks were compiled "
+                f"in but never executed, or merlin_prof_dump() never ran. Nothing was measured.")
+    return None
