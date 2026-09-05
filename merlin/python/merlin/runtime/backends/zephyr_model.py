@@ -2224,8 +2224,31 @@ _GATE_MAX_REL = float(os.environ.get("MERLIN_GATE_MAX_REL", "0.05") or "0")
 # non-degenerate floor; 0 (or empty) disables it.
 _GATE_QUANT_EXCESS = float(os.environ.get("MERLIN_GATE_QUANT_EXCESS", "4.0") or "0")
 
+# HOW MUCH OF THE OUTPUT THE VERDICT ACTUALLY COVERS. The run's output reaches this function as a
+# CONSOLE PREFIX -- the bare-metal/Linux harness dumps at most ``MERLIN_DUMP_CAP`` (4096) elements
+# (`merlin.mining.k1.main_linux_c`) -- while the reference is the whole tensor, and the loop below
+# truncates the reference to the prefix's length. For every model whose output fits under the cap
+# that is the whole tensor and the distinction is empty; for the ones that do not it is not:
+# tiny_llama compares 4096 of 256000 (1.6%), gemma2_2b 4096 of 2048000 (0.2%) or of 32768000
+# (0.01%), deepjscc 4096 of 12288 (33%). MEASURED, and it is not a cosmetic difference -- on
+# tiny_llama int8 the SAME output scores w8a8_cos 0.892504 on the prefix and 0.995999 on the whole
+# tensor, because the prefix is exactly token 0's logits and token 0 is the position W8A8
+# quantization destroys for everyone (the INDEPENDENT torchao reference scores cos -0.320 against
+# fp32 there, while tokens 1-7 all sit above 0.988). A caller handed 0.892504 with nothing saying
+# "of 1.6% of the output, all of it the worst position" reads it as the model's accuracy. That
+# reading has already cost this repo one multi-hour hunt for a board defect that did not exist
+# (`prefix 0.484 vs full 0.976`), so the coverage is now REPORTED on every verdict.
+#
+# ``MERLIN_GATE_MIN_COVERAGE`` turns the report into a veto: a fraction in (0, 1] below which no
+# tier may be awarded, so a caller that needs a whole-output verdict declares it and gets a refusal
+# instead of a prefix score. Default 0 = report only, because the existing board harness CANNOT
+# produce more than the cap and flipping every large-output run to NOT_GATED is a measurement-policy
+# decision, not a bug fix.
+_GATE_MIN_COVERAGE = float(os.environ.get("MERLIN_GATE_MIN_COVERAGE", "0") or "0")
 
-def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> dict:
+
+def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None,
+          min_coverage: float | None = None) -> dict:
     """Multi-tier accuracy gate for an int8 (W8A8) run. ``references`` is either a single
     fp32 reference array (legacy: one ``cos``/``rel``/``ok`` at the strict fp32 threshold) or
     a ``{tier: array}`` dict. Tiers (literature-backed for W8A8 transformers — I-BERT /
@@ -2240,18 +2263,29 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     manufacture spurious blow-ups, while a real localized error (large element, or a near-zero
     element that jumped) still trips it. ``max_rel`` defaults to the ``MERLIN_GATE_MAX_REL``
     module knob; a value <= 0 disables the per-element term (recovering the old aggregate-only
-    behavior). Emits per-tier ``<tier>_cos``/``<tier>_rel``/``<tier>_argmax``/``<tier>_max_rel``."""
+    behavior). Emits per-tier ``<tier>_cos``/``<tier>_rel``/``<tier>_argmax``/``<tier>_max_rel``.
+
+    ``prefix`` is compared against the LEADING elements of each reference, so a run whose output the
+    harness console truncated is scored on that truncation. Every verdict therefore also carries
+    ``n_compared`` / ``n_reference`` / ``compared_fraction`` / ``comparison_complete``, and
+    ``min_coverage`` (default: the ``MERLIN_GATE_MIN_COVERAGE`` knob) refuses every tier below that
+    fraction rather than returning a partial-output score as if it were the model's verdict. See
+    ``_GATE_MIN_COVERAGE``."""
     pref = np.asarray(prefix, dtype=np.float32).ravel()
     if not isinstance(references, dict):
         references = {"fp32": references}
     thresh = _GATE_MAX_REL if max_rel is None else float(max_rel)
+    cover_min = _GATE_MIN_COVERAGE if min_coverage is None else float(min_coverage)
     out: dict[str, Any] = {}
     _arr: dict[str, np.ndarray] = {}
+    _ref_n: dict[str, int] = {}
     k = len(pref)
     for tier, ref in references.items():
         if ref is None:
             continue
-        r = np.asarray(ref, dtype=np.float32).ravel()[:k]
+        _full = np.asarray(ref, dtype=np.float32).ravel()
+        _ref_n[tier] = int(_full.size)
+        r = _full[:k]
         _arr[tier] = r
         rmax = max(1e-9, float(np.abs(r).max()))
         rel = float(np.abs(pref - r).max()) / rmax
@@ -2315,9 +2349,26 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None) -> di
     # (t2/argmax) and bit-close (legacy) tiers, plus the fp16 driver's own gate. Whole-model fp16/int8
     # forks are still per-element-guarded via t1 (w8a8 ref) and the dtype drivers.
     t3 = (out.get("fp32_cos", 0.0) > 0.9999 and "fp32_cos" in out and _excess_ok)
+    # ---- HOW MUCH OF THE OUTPUT THIS VERDICT COVERS (see `_GATE_MIN_COVERAGE`). Reported on every
+    # verdict, because the truncation above is invisible in cos/rel and a partial score reads
+    # exactly like a whole-output one. `n_reference` is the LARGEST reference offered: a tier whose
+    # reference is itself short would otherwise make a truncated run look complete.
+    _n_ref = max(_ref_n.values()) if _ref_n else 0
+    _n_cmp = min(k, _n_ref) if _n_ref else k
+    out["n_compared"] = int(_n_cmp)
+    out["n_reference"] = int(_n_ref)
+    out["compared_fraction"] = (float(_n_cmp) / _n_ref) if _n_ref else 0.0
+    out["comparison_complete"] = bool(_n_ref) and _n_cmp >= _n_ref
+    # A declared coverage floor VETOES every tier: below it there is no output-level verdict to give,
+    # only a score on a slice the caller did not ask about.
+    _coverage_ok = cover_min <= 0 or out["compared_fraction"] >= cover_min
+    out["coverage_ok"] = bool(_coverage_ok)
+    out["min_coverage"] = float(cover_min)
     out["cos"] = out.get("w8a8_cos", out.get("fp32_cos"))
     out["rel"] = out.get("w8a8_rel", out.get("fp32_rel"))
     out["max_rel"] = out.get("w8a8_max_rel", out.get("fp32_max_rel"))
+    if not _coverage_ok:
+        t1 = t2 = legacy = t3 = False
     out["ok"] = bool(t1 or t2 or legacy or t3)
     # Which tiers were actually in play, and which one carried the verdict. Without this the
     # fallback is INVISIBLE: grading a W8A8 run with no `golden_w8a8.npy` silently drops to the
