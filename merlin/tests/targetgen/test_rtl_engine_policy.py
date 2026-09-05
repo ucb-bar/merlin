@@ -85,3 +85,44 @@ def test_the_reason_survives_on_the_result_not_just_in_a_log():
     sel = P.select("t", {"vcs": _DOWN("no license"), "gsim": _UP("emu built at <path>")})
     assert sel["reason"] == "emu built at <path>"
     assert {c["engine"]: c["reason"] for c in sel["considered"]}["vcs"] == "no license"
+
+
+# ---------------------------------------------------------------------------------------------
+# The lineage gate must reach the SELECTION path, not only the module that owns the home layout.
+# ---------------------------------------------------------------------------------------------
+
+def test_a_refused_lineage_loses_the_selection_not_just_the_probe(tmp_path, monkeypatch):
+    """Measured 2026-09-04: with MERLIN_GSIM_REQUIRE_RECEIPT=1, a target whose engine carried only an
+    adoption record had gsim_emulator.probe() answer False and STILL certified on it, because the
+    selection path asked only whether the wrapper file existed. A provenance gate the selection routes
+    around is not a gate."""
+    from merlin.targetgen import program_oracle as PO
+    from merlin.targetgen import gsim_emulator as GE
+
+    home = tmp_path / "gsim"
+    home.mkdir()
+    (home / "gsim_run.py").write_text("def run_program(*a, **k): ...", encoding="utf-8")
+    monkeypatch.setattr(PO, "_rtl_engine_dir", lambda target, engine: home)
+    monkeypatch.setattr(GE, "resolve", lambda target, **k: GE.Resolution(
+        target=target, path=home / "gsim_run.py", source="derived", ok=False, refused=True,
+        reason="lineage ADOPTED, not built-and-bound", flavour="wrapper", digest="d",
+        receipt_status="adopted", receipt=None))
+    available, reason = PO._rtl_engine_probe("t", "gsim")()
+    assert available is False and "ADOPTED" in reason
+
+
+def test_an_engine_this_module_does_not_lay_out_is_not_judged_by_it(tmp_path, monkeypatch):
+    """A refusal authored by the wrong module would be worse than none: verilator's home is laid out
+    and receipted by whoever built it, so the gsim lineage record must not be consulted for it."""
+    from merlin.targetgen import program_oracle as PO
+    from merlin.targetgen import gsim_emulator as GE
+
+    home = tmp_path / "vsim"
+    home.mkdir()
+    (home / "verilator_run.py").write_text("def run_program(*a, **k): ...", encoding="utf-8")
+    monkeypatch.setattr(PO, "_rtl_engine_dir", lambda target, engine: home)
+
+    def _boom(*a, **k):
+        raise AssertionError("the gsim lineage record was consulted for another engine")
+    monkeypatch.setattr(GE, "resolve", _boom)
+    assert PO._rtl_engine_probe("t", "verilator")()[0] is True

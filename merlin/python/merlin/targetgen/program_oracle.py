@@ -777,6 +777,11 @@ def _timing_block(res: Any) -> "tuple[list[dict] | None, dict | None]":
 #: Elaborated-RTL engines, each as (ext_path key suffix, conventional wrapper filename). Every engine
 #: exposes the SAME ``run_program``; merlin never names a binary or a target. Adding an engine is one row
 #: here plus a wrapper beside its build — the priority among them lives in ``rtl_engine_policy``.
+#: The engine whose home layout -- and therefore whose build receipt / adoption record --
+#: :mod:`gsim_emulator` owns. Named here because the lineage question is only answerable for the homes
+#: that module lays out; every other engine is registered and judged by whoever built it.
+_LINEAGE_ENGINE = "gsim"
+
 _RTL_ENGINES: dict[str, tuple[str, str]] = {
     "vcs": ("vcs", "vcs_run.py"),
     "gsim": ("gsim", "gsim_run.py"),
@@ -823,6 +828,23 @@ def _rtl_engine_probe(target: str, engine: str):
         w = d / fname
         if not w.is_file():
             return False, f"{fname} absent under {d}"
+        # FINDING THE WRAPPER PROVES AN ENGINE IS BUILT, NOT THAT ITS BYTES MAY CERTIFY. The home-layout
+        # module owns the lineage question for the homes it lays out, and asking it here is what stops
+        # two modules disagreeing about one fact with the OPTIMISTIC one having the last word.
+        #
+        # Measured 2026-09-04: with MERLIN_GSIM_REQUIRE_RECEIPT=1 set, a target whose engine carries only
+        # an adoption record -- lineage `adopted`, never built-and-bound -- had gsim_emulator.probe()
+        # answer False and STILL certified on it, because this probe asked only whether a file existed.
+        # A provenance gate that the selection path routes around is not a gate.
+        #
+        # Only asked of the engine whose home this module describes, and only when the dir IS that
+        # derived home: an engine registered elsewhere, or laid out by someone else, is not this
+        # module's to judge, and a refusal it did not author would be worse than none.
+        if engine == _LINEAGE_ENGINE:
+            from .gsim_emulator import resolve as _resolve
+            r = _resolve(target)
+            if r.refused:
+                return False, r.reason
         return True, f"{fname} at {d}"
     return probe
 

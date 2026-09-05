@@ -157,6 +157,29 @@ eight per-channel DMA units and the DMA-beat counters that this trace does not c
 in `unmeasured_units`, and the idle figures differ by precisely their cycles, which is why idle from a
 trace is a bound and not a figure to compare across engines.
 
+## The receipt gate had to reach the selection, not only the probe (2026-09-04)
+
+`MERLIN_GSIM_REQUIRE_RECEIPT=1` is the switch a publishing run turns on so an emulator whose lineage is
+unrecorded cannot certify. Measured with it set: `gsim_emulator.probe('atlas')` answered **False** —
+correctly, its lineage is `adopted`, never built-and-bound — and `describe_l3_engine('atlas')` **still
+selected GSIM**. The selection path resolved wrappers through `program_oracle._rtl_engine_probe`, which
+asked only whether the wrapper FILE existed; the lineage verdict lived in a module it never consulted.
+
+That is the same two-modules-disagree defect as the blind probe, in the opposite direction: there the
+pessimistic module was authoritative where the optimistic one was not consulted, and the result was a
+silent Verilator fallback. Here the optimistic module has the last word over a provenance gate, and the
+result is a cert on unattributable bytes with the gate explicitly armed. A gate the selection routes
+around is not a gate.
+
+`_rtl_engine_probe` now asks the home-layout module for the lineage verdict and fails closed on a
+refusal — but only for the engine whose homes that module lays out, and only when the resolved
+directory IS that derived home. An engine registered elsewhere is judged by whoever built it; a
+refusal authored by the wrong module would be worse than none.
+
+With the gate armed the selection is now: gemmini `gsim` (bound by `build_receipt.json`), atlas
+`verilator` (GSIM refused, lineage adopted), radiance `verilator` (GSIM refused, lineage unrecorded).
+With the gate off — the default — all three still select GSIM, unchanged.
+
 ## Why atlas and radiance cannot be promoted by a rebuild (2026-09-04)
 
 Both engines are refused under `MERLIN_GSIM_REQUIRE_RECEIPT=1` — radiance because no receipt sits
