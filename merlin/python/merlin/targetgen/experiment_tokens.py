@@ -98,6 +98,78 @@ def _rate(model: str) -> tuple[float, float] | None:
     return None
 
 
+# --- reasoning / tool-call block counting -----------------------------------------------------------
+# Reasoning TOKENS and reasoning BLOCKS are different quantities from different parts of a transcript,
+# and only the token counter was driver-agnostic. The block counter recognised exactly one shape -- the
+# Claude ``{"type": "thinking"}`` content block -- so a codex run that spent 106503 reasoning tokens
+# recorded ``thinking_blocks: 0``, a number that reads as "this model did not think" and is arithmetically
+# impossible beside its own token count. Blocks are counted from every shape below, and when a driver
+# reports reasoning tokens without ever delimiting a block the count is recorded as UNKNOWN (``None``)
+# with a reason -- never as 0.
+
+#: Claude content-block types that ARE one reasoning block.
+_REASONING_BLOCKS = frozenset({"thinking", "redacted_thinking"})
+#: Raw `codex exec --json` item type for one reasoning block, and its completion envelope.
+_CODEX_REASONING_ITEM = "reasoning"
+_CODEX_ITEM_COMPLETED = "item.completed"
+#: Raw `opencode run --format json` part type for one reasoning block.
+_OPENCODE_REASONING_PART = "reasoning"
+#: opencode part type for one tool call.
+_OPENCODE_TOOL_PART = "tool"
+#: Raw codex item types that ARE one tool call.
+_CODEX_TOOL_ITEMS = frozenset({"command_execution", "file_change", "mcp_tool_call", "web_search"})
+
+
+def _blocks_in(evt: dict) -> tuple[int, int]:
+    """``(reasoning_blocks, tool_calls)`` announced by one event, whatever driver wrote it.
+
+    Matched EXACTLY against each driver's own vocabulary (no substring tests, no regex). An event in
+    none of the known shapes contributes nothing, rather than being guessed at.
+    """
+    reasoning = tools = 0
+    msg = evt.get("message")
+    if isinstance(msg, dict) and evt.get("type") == "assistant":
+        for block in msg.get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            bt = block.get("type")
+            if bt in _REASONING_BLOCKS:
+                reasoning += 1
+            elif bt == "tool_use":
+                tools += 1
+    inner = evt.get("event") if isinstance(evt.get("event"), dict) else evt
+    if inner.get("type") == _CODEX_ITEM_COMPLETED:
+        item = inner.get("item")
+        if isinstance(item, dict):
+            if item.get("type") == _CODEX_REASONING_ITEM:
+                reasoning += 1
+            elif item.get("type") in _CODEX_TOOL_ITEMS:
+                tools += 1
+    part = evt.get("part")
+    if isinstance(part, dict):
+        if part.get("type") == _OPENCODE_REASONING_PART:
+            reasoning += 1
+        elif part.get("type") == _OPENCODE_TOOL_PART:
+            tools += 1
+    return reasoning, tools
+
+
+#: Written whenever reasoning tokens were billed but no reasoning block was ever delimited.
+REASONING_BLOCKS_UNKNOWN = (
+    "reasoning tokens were reported but this driver's stream delimits no reasoning block, so the block "
+    "COUNT is not measurable from this transcript. Recorded as null, never 0: a zero here reads as "
+    "'the model did no thinking' while its own token counter says otherwise.")
+
+
+def _record_reasoning_blocks(rec: dict, blocks: int, reasoning_tokens: int) -> None:
+    """Set ``thinking_blocks`` on a record, fail-closed. Mutates ``rec``."""
+    if blocks or not reasoning_tokens:
+        rec["thinking_blocks"] = blocks
+    else:
+        rec["thinking_blocks"] = None
+        rec["thinking_blocks_unavailable_reason"] = REASONING_BLOCKS_UNKNOWN
+
+
 def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
                      trust_cli_cost: bool = True) -> dict:
     """Parse a stream-json JSONL transcript → token/cost/tool-call summary (honest if absent).
@@ -135,6 +207,9 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         except Exception:
             continue
         n_events += 1
+        _r, _t = _blocks_in(evt)
+        thinking_blocks += _r
+        tool_calls += _t
         if evt.get("type") == "result":
             # The terminal `result` event carries the AUTHORITATIVE per-model totals — the orchestrator PLUS
             # every delegated sub-agent / background tier — and the true cost. Streamed `assistant` usage is
@@ -163,12 +238,6 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         if evt.get("type") != "assistant":
             continue
         msg = evt.get("message") or {}
-        for block in msg.get("content", []) or []:
-            bt = block.get("type") if isinstance(block, dict) else None
-            if bt == "tool_use":
-                tool_calls += 1
-            elif bt == "thinking":
-                thinking_blocks += 1
         mid = msg.get("id") or ""
         if not mid or mid in seen:
             continue
@@ -207,9 +276,12 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         by_model = stream_by_model
 
     if not any_usage:
-        return {"available": False, "reason": "no usage metadata in transcript",
-                "n_events": n_events, "tool_calls": tool_calls,
-                "thinking_blocks": thinking_blocks}
+        rec = {"available": False, "reason": "no usage metadata in transcript",
+               "n_events": n_events, "tool_calls": tool_calls,
+               "thinking_blocks": thinking_blocks}
+        _record_reasoning_blocks(rec, thinking_blocks,
+                                 sum(m["reasoning"] for m in stream_by_model.values()))
+        return rec
 
     tok_in = sum(m["input"] + m["cache_create"] for m in by_model.values())
     tok_cached = sum(m["cache_read"] for m in by_model.values())
@@ -246,6 +318,9 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         "tokens_native_by_model": {k: dict(v) for k, v in by_model.items()},
         "n_events": n_events,
     }
+    # Fail closed: a driver that bills reasoning tokens but never delimits a reasoning block yields
+    # UNKNOWN, not 0 (see _record_reasoning_blocks).
+    _record_reasoning_blocks(rec, thinking_blocks, tok_reason)
     if tok_reason:
         rec["tokens_reasoning"] = tok_reason      # subset of tokens_output; not added to any total
     if billing_mode != METERED:
@@ -409,12 +484,23 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
         except ValueError:
             continue
 
+    # Tool calls and reasoning blocks are STRUCTURAL, not usage: they are countable even for a turn
+    # that reported no tokens, and they were previously absent from this path entirely.
+    reasoning_blocks = tool_calls = 0
+    for evt in events:
+        _r, _t = _blocks_in(evt)
+        reasoning_blocks += _r
+        tool_calls += _t
+
     u = reader(events)
     if u is None:
-        return {"available": False,
-                "reason": f"{driver} transcript carries no usage (turn failed or was cut off); "
-                          f"UNPRICED, not zero",
-                "n_events": n_lines, "usage_complete": False, "billing_mode": billing_mode}
+        rec = {"available": False,
+               "reason": f"{driver} transcript carries no usage (turn failed or was cut off); "
+                         f"UNPRICED, not zero",
+               "n_events": n_lines, "usage_complete": False, "billing_mode": billing_mode,
+               "tool_calls": tool_calls}
+        _record_reasoning_blocks(rec, reasoning_blocks, 0)
+        return rec
 
     tok_in = u["tokens_input"]
     tok_cached = u["tokens_cached"]
@@ -434,8 +520,11 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
                         + (0 if u.get("reasoning_is_subset_of_output", True)
                            else u.get("tokens_reasoning", 0)),
         "billing_mode": billing_mode,
+        "tool_calls": tool_calls,
+        "subagent_tool_calls_tracked": False,
         "n_events": n_lines,
     }
+    _record_reasoning_blocks(rec, reasoning_blocks, u.get("tokens_reasoning", 0) or 0)
     for k in ("tokens_cache_write", "tokens_reasoning", "reasoning_is_subset_of_output",
               "turns_started", "turns_completed", "steps", "usage_complete",
               "input_included_cached"):
