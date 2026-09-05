@@ -618,8 +618,8 @@ def submission_digests(ws) -> tuple:
 # ---------------------------------------------------------------------------------------------------
 # `capsule.yaml` used to accept a `depends_on: [<component>, ...]` block, read here and handed to
 # `CapsuleState.depends_on` so a capsule could keep its certificate across an edit to a component it did
-# not name. Nothing ever declared one, and the field is gone from `capsule.schema.json` because a
-# truthful narrow declaration cannot exist:
+# not name. Nothing ever declared one -- 0 of the 509 capsules in the shipped corpus -- and the field is
+# gone from `capsule.schema.json` because a truthful narrow declaration cannot exist:
 #
 #   * THE GRADER RUNS EVERY COMMAND FOR EVERY CAPSULE. `capsule_common.run_entrypoints` -- the shared ABI
 #     front half every target's runner goes through -- invokes parse, lower_interface_to_target,
