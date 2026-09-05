@@ -1158,6 +1158,42 @@ arms can currently read ``opt.py``. Deny wins in the sandbox binder, so two miss
 thing that would mask it. Those are SERVED bundles with a live run in flight; regenerating them mid-run
 is itself a measurement change, so it needs a window rather than a patch.
 
+### 2026-09-05 (4 of 4) — the last two passes were checkable all along
+
+The obligation gate read **2 of 4**, and the reason given here for the other two was that they
+"consume and produce Python dataclasses, so there is no stdout for FileCheck to read". That was true
+of the PASSES and false as a conclusion.
+
+`merlin-emit-dispatch-program` takes an `OutlineResult` and returns a `DispatchProgram`;
+`merlin-partition-dispatches` takes that and returns a `PartitionResult`. Neither can ever be a
+ModulePass, and `--list-merlin-passes` was right to report them unregistrable. But `DispatchProgram`
+already had `to_dict`, and `schedule_dispatch` already had `emit_schedule_c` rendering a stable C
+table — a text emitter nobody had connected to a driver. `merlin-opt --emit` runs the stage and
+prints it. The gate could not rise above 2 of 4 not because those passes were unverifiable, but
+because nothing exposed their results.
+
+```
+verified by a static or formal layer: 4 / 4
+```
+
+**The RUN lines still carry `-p <pass-name>` in `--emit` mode, deliberately.** `record_core_verdicts`
+credits a pass by reading that token, so a check whose subject is invisible to the gate discharges
+nothing. Handing an unregistrable name to `PassPipeline.parse_spec` raises, so `setup_pipeline` is
+skipped in emit mode; the emit path never builds a pipeline anyway.
+
+Both checks are non-vacuous, and measured rather than argued. The dispatch-program check falls to a
+renamed kernel, a changed entry symbol, and a rewired result buffer. The schedule check falls to a
+broken **level barrier** — a consumer moved down to its producer's level, which is a race, since harts
+within a level run concurrently — and to a dropped kernel. That barrier is the strongest invariant of
+the three previously-unverified passes, and pinning it on the EMITTED table matters because the table
+is what a multicore runtime consumes: a schedule correct in memory and wrong on emission is still a
+wrong schedule.
+
+**How the first draft failed, since it is the same lesson twice in one day.** The initial checks
+asserted a `"kernel"` key the emitter does not produce — the field is `"op"` — so the check failed
+against *correct* output. Rewritten by reading the emitter's real output. A check written from a guess
+about a format tests the guess, not the code.
+
 ---
 
 ## 7. Reproducing what is claimed here
