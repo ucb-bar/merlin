@@ -1,0 +1,149 @@
+name: PM01_m16n32
+kind: model_slice
+source_role: derived_sweep
+source_reference: output-tile sweep at a fixed reduction depth, over exact mesh multiples
+  from one to four tiles on each parallel extent; the aligned counterpart of the held-out
+  PKG landmark tails. Four points per axis rather than two because this family fits
+  a law over M and N, and a two-point fit cannot be refuted. Extents stay symbolic
+  multiples of the derived mesh dimension, never literals. (tile=16; M=16, N=32)
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L1_tile
+  family: PM
+  lever: parallel_extents
+  member_class: LAW
+  claim: PREDICTS
+  comparand:
+    kind: fitted_prediction
+    against: measured_cycles_same_member
+    cancels:
+    - identical_K
+    - identical_datapath
+    - identical_numeric_policy
+    demand_equal:
+    - operation
+    - K
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: residual_cycles_by_output_tile_count
+    fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+    negative_control: fixed_K_across_all_M_and_N_points
+  gate:
+    traits:
+    - structural_pipeline_depth
+    instrument: cycle_count
+    capacity: two_distinct_parallel_extents_on_each_of_M_and_N
+    on_missing: skip_with_evidence
+  regime:
+    separation: M_and_N_are_the_only_varied_shape_axes
+    layout: target_native_direct_corpus_builder
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      operation: matmul
+      varied_axes:
+      - M
+      - N
+    resolved:
+      source: direct
+      operand_dtype: int8
+      accum_dtype: i32
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: 4
+    projected_cycles: derived_at_preflight
+    basis: four_members_before_repetition
+  acceptance:
+    schema_version: 1
+    analyzer: perf_affine_claim.analyze_affine_claim/v1
+    fit:
+      form: affine
+      method: ordinary_least_squares_all_L3_replicates
+      independent_variable: output_elements
+      variable_source:
+        kind: output_elements
+        lhs: A0
+        weight: W
+      dependent_metric: gsim_L3_cycles
+    cohort:
+      operation: matmul
+      fixed_fields:
+      - operation
+      - operand_dtype
+      - accum_dtype
+      exact_points: 16
+      note: output extent M*N read from the declared operand shapes, at a fixed reduction
+        depth
+    replicates:
+      exact_count: 2
+      identities:
+      - r000
+      - r001
+    evidence:
+      correctness_simulator: spike
+      correctness_tier: L2
+      timing_simulator: gsim
+      timing_tier: L3
+      spike_cycles_citable: false
+    thresholds:
+      slope_min_exclusive: 0.0
+      r_squared_min_inclusive: 0.95
+      residual_bound:
+        predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+        absolute_floor_cycles: 64
+        observed_cycle_fraction: 0.1

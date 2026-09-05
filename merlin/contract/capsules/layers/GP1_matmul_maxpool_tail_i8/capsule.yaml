@@ -28,7 +28,7 @@ operation:
     out: Y0
     epilogue:
     - maxpool
-    output_dtype: i8
+    output_dtype: i32
     pool_in_dims:
     - 5
     - 5
@@ -45,7 +45,7 @@ operation:
     - 0
 numeric_policy:
   compare: exact_int
-  dtype: i8
+  dtype: i32
 expected:
   instruction_classes:
   - FLUSH

@@ -43,7 +43,10 @@ expected:
   - PRELOAD
   - COMPUTE_PRELOADED
   - MVOUT
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
 required_oracle_tiers:
 - L0
 - L1
@@ -57,4 +60,5 @@ semantic:
   eligible: auto
 pass_requirements:
 - target-isa-lowering
+max_oracle_tier: L2
 extends: SY_contraction_i8_aligned

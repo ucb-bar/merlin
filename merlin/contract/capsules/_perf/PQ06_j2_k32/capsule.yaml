@@ -1,0 +1,162 @@
+name: PQ06_j2_k32
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'barrier-count sweep: the same arithmetic issued as N independent
+  jobs, once with a barrier after every job and once with the minimum pair. Job counts
+  span 1..16 rather than 1..4 because the lever''s cost is per barrier and real kernels
+  issue thousands of them -- a three-point sweep over 1,2,4 cannot separate a saving
+  that grows with the removed barrier count from noise. (tile=16; K=32; jobs=2, matmuls=[{''lhs'':
+  ''A0'', ''out'': ''Y0'', ''M_tiles'': 1}, {''lhs'': ''A1'', ''out'': ''Y1'', ''M_tiles'':
+  1}])'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: A1
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: resident_reuse
+  attributes:
+    weight: W
+    matmuls:
+    - lhs: A0
+      out: Y0
+      epilogue: []
+      output_dtype: i32
+    - lhs: A1
+      out: Y1
+      epilogue: []
+      output_dtype: i32
+    semantic: resident_reuse
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    resident_reuse: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L2_intra_layer
+  family: PQ
+  lever: redundant_synchronization_removal
+  member_class: OBJECTIVE
+  claim: DIFFERENTIAL
+  comparand:
+    kind: paired_run
+    against: the_same_capsule_emitted_with_a_barrier_after_every_job
+    cancels:
+    - operation
+    - M
+    - N
+    - K
+    - job_count
+    - operands
+    - epilogue
+    - operand_dtype
+    - accum_dtype
+    - movement_and_compute_command_multiset
+    - scratchpad_and_accumulator_addressing
+    - drained_output_bytes
+    - emitted_instruction_multiset_except_the_barrier
+    demand_equal:
+    - operation
+    - M
+    - N
+    - K
+    - job_count
+    - operand_dtype
+    - accum_dtype
+    - epilogue
+  falsifier:
+    observation: paired_cycle_saving_by_removed_barrier_count
+    fires_when: the_saving_does_not_grow_with_the_removed_barrier_count_beyond_the_declared_noise_band
+    negative_control: the_single_job_member_whose_two_arms_are_the_byte_identical_program
+  gate:
+    traits:
+    - host_dispatched_queue
+    - explicit_completion
+    instrument: cycle_count
+    capacity: at_least_two_removed_barrier_counts_across_the_members
+    on_missing: skip_with_evidence
+  regime:
+    separation: one_shape_per_pair_and_the_pair_is_two_emissions_of_that_one_capsule
+    layout: identical_operands_and_identical_command_stream_plus_the_removed_barriers
+  emitter:
+    status: existing
+    entry: merlin.perf.barrier_arms.paired_removal
+    knobs:
+      transformation: count_completion_points_in_the_baseline_and_candidate_emissions_of_one_capsule
+      removed_barrier_count: varies_across_members_because_the_job_count_does
+    resolved:
+      source: direct
+      operand_dtype: int8
+      accum_dtype: i32
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  noise_band:
+    kind: measured_replicate_dispersion
+    declared_constant: null
+    minimum_replicate_count: 2
+    predicate: a_saving_counts_iff_it_exceeds_the_measured_replicate_dispersion_of_its_own_pair
+  cost:
+    tier: 1
+    runs: two_arms_by_two_replicates_per_member
+    projected_cycles: derived_at_preflight
+    basis: 'the members are deliberately SHALLOW: the measured per-barrier cost does
+      not grow with the reduction depth, so the shallowest point prices it conservatively
+      and this family competes for no deep-K slot. The expensive axis is the job count
+      -- the L3 engine''s wall cost tracks OUTPUT size and a member drains one tile
+      per job -- and four jobs is enough to separate a per-barrier saving from a constant
+      one'
+  acceptance:
+    schema_version: 1
+    analyzer: perf_paired_claim.analyze_paired_claim/v1
+    roles:
+    - minimum_barriers
+    - barrier_after_every_job
+    expected_faster: minimum_barriers
+    negative_control_capsule: null
+    band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+    evidence:
+      timing_simulator: gsim
+      timing_tier: L3
+      correctness_simulator: spike
+      correctness_tier: L2

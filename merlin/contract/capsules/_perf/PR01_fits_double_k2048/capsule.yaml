@@ -61,6 +61,7 @@ performance:
   level: L2_intra_layer
   family: PR
   lever: operand_residency
+  member_class: OBJECTIVE
   claim: DIFFERENTIAL
   comparand:
     kind: group_arithmetic

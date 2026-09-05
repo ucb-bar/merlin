@@ -1,10 +1,16 @@
-name: PQ03_j1_k32
+name: PQ08_j8_k32
 kind: model_slice
 source_role: derived_sweep
-source_reference: 'shared barrier-removal pair: one resident weight reused by one,
-  two and four jobs at two reduction depths, where each member''s A/B is that one
-  capsule emitted at two settings of the target emitter''s retire knob (tile=16; K=32;
-  jobs=1, matmuls=[{''lhs'': ''A0'', ''out'': ''Y0'', ''M_tiles'': 1}])'
+source_reference: 'barrier-count sweep: the same arithmetic issued as N independent
+  jobs, once with a barrier after every job and once with the minimum pair. Job counts
+  span 1..16 rather than 1..4 because the lever''s cost is per barrier and real kernels
+  issue thousands of them -- a three-point sweep over 1,2,4 cannot separate a saving
+  that grows with the removed barrier count from noise. (tile=16; K=32; jobs=8, matmuls=[{''lhs'':
+  ''A0'', ''out'': ''Y0'', ''M_tiles'': 1}, {''lhs'': ''A1'', ''out'': ''Y1'', ''M_tiles'':
+  1}, {''lhs'': ''A2'', ''out'': ''Y2'', ''M_tiles'': 1}, {''lhs'': ''A3'', ''out'':
+  ''Y3'', ''M_tiles'': 1}, {''lhs'': ''A4'', ''out'': ''Y4'', ''M_tiles'': 1}, {''lhs'':
+  ''A5'', ''out'': ''Y5'', ''M_tiles'': 1}, {''lhs'': ''A6'', ''out'': ''Y6'', ''M_tiles'':
+  1}, {''lhs'': ''A7'', ''out'': ''Y7'', ''M_tiles'': 1}])'
 label: dev
 interface_mlir: capsule.interface.mlir
 inputs:
@@ -20,6 +26,48 @@ inputs:
   - 16
   - 32
   dtype: i8
+- name: A1
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: A2
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: A3
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: A4
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: A5
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: A6
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: A7
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
 operation:
   op: resident_reuse
   attributes:
@@ -27,6 +75,34 @@ operation:
     matmuls:
     - lhs: A0
       out: Y0
+      epilogue: []
+      output_dtype: i32
+    - lhs: A1
+      out: Y1
+      epilogue: []
+      output_dtype: i32
+    - lhs: A2
+      out: Y2
+      epilogue: []
+      output_dtype: i32
+    - lhs: A3
+      out: Y3
+      epilogue: []
+      output_dtype: i32
+    - lhs: A4
+      out: Y4
+      epilogue: []
+      output_dtype: i32
+    - lhs: A5
+      out: Y5
+      epilogue: []
+      output_dtype: i32
+    - lhs: A6
+      out: Y6
+      epilogue: []
+      output_dtype: i32
+    - lhs: A7
+      out: Y7
       epilogue: []
       output_dtype: i32
     semantic: resident_reuse
@@ -61,6 +137,7 @@ performance:
   level: L2_intra_layer
   family: PQ
   lever: redundant_synchronization_removal
+  member_class: OBJECTIVE
   claim: DIFFERENTIAL
   comparand:
     kind: paired_run
@@ -104,9 +181,10 @@ performance:
     layout: identical_operands_and_identical_command_stream_plus_the_removed_barriers
   emitter:
     status: existing
-    entry: merlin.perf.barrier_arms.pair_from_emitter
+    entry: merlin.perf.barrier_arms.paired_removal
     knobs:
-      transformation: emit_one_capsule_at_two_settings_of_the_target_emitters_retire_knob
+      transformation: count_completion_points_in_the_baseline_and_candidate_emissions_of_one_capsule
+      removed_barrier_count: varies_across_members_because_the_job_count_does
     resolved:
       source: direct
       operand_dtype: int8
@@ -128,3 +206,20 @@ performance:
       -- the L3 engine''s wall cost tracks OUTPUT size and a member drains one tile
       per job -- and four jobs is enough to separate a per-barrier saving from a constant
       one'
+  acceptance:
+    schema_version: 1
+    analyzer: perf_paired_claim.analyze_paired_claim/v1
+    roles:
+    - minimum_barriers
+    - barrier_after_every_job
+    expected_faster: minimum_barriers
+    negative_control_capsule: null
+    band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+    evidence:
+      timing_simulator: gsim
+      timing_tier: L3
+      correctness_simulator: spike
+      correctness_tier: L2

@@ -60,10 +60,14 @@ semantic:
   semantic_family: contraction
   generalization_axis: model
   must_accelerate: false
+  not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
+    under test, so host/RVV-lane work is expected and required. The accelerator demand
+    is expressed as lanes.require [on_mesh, scalar_rvv_lane], which fails unless both
+    lanes carried work.'
   eligible: auto
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125
-  ceiling_atol: 1.8161604142189025
+  ceiling_atol: 1.7476110291481017
   basis: the largest atol under which the best constant answer still fails this golden
   falsifiable: true

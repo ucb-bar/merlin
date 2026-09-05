@@ -44,7 +44,10 @@ expected:
   - PRELOAD
   - COMPUTE_PRELOADED
   - MVOUT
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: true
+    i8: true
 required_oracle_tiers:
 - L0
 - L1

@@ -71,6 +71,7 @@ performance:
   level: L3_inter_layer
   family: PC
   lever: dma_issue_before_wait
+  member_class: OBJECTIVE
   claim: DIFFERENTIAL
   comparand:
     kind: paired_run
@@ -85,7 +86,6 @@ performance:
     - M
     - N
     - K
-    - separation_regime
   falsifier:
     observation: paired_cycle_delta
     fires_when: hoisting_does_not_improve_any_declared_separation_regime
@@ -116,3 +116,20 @@ performance:
     runs: derived_from_two_pairs_plus_negative_control
     projected_cycles: derived_at_preflight
     basis: paired_differential_at_two_separation_regimes
+  acceptance:
+    schema_version: 1
+    analyzer: perf_paired_claim.analyze_paired_claim/v1
+    roles:
+    - not_hoisted
+    - hoisted
+    expected_faster: hoisted
+    negative_control_capsule: null
+    band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+    evidence:
+      timing_simulator: gsim
+      timing_tier: L3
+      correctness_simulator: spike
+      correctness_tier: L2

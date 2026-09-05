@@ -47,6 +47,10 @@ vcs: optional
 firesim: optional
 gate:
   after_op_pass_fraction: 0.0
+lanes:
+  require:
+  - on_mesh
+  - scalar_rvv_lane
 pytorch_ref:
   op: model
   dtype: i8
@@ -57,6 +61,8 @@ semantic:
   generalization_axis: model
   must_accelerate: true
   eligible: auto
+pass_requirements:
+- model-boundary-capstone
 numeric_falsifiability:
   status: ok
   declared_atol: 0.03125

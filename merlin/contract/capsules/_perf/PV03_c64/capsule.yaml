@@ -1,0 +1,171 @@
+name: PV03_c64
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'window-reuse amplification: convolution at a fixed 3x3 window and
+  8x8 image over four input channel depths. Conv is the family with headroom on this
+  machine -- measured at 3.3% of the achievable ceiling against deep-K matmul''s ~100%
+  -- so it is where a schedule change has room to show. Channel depth is varied and
+  everything else held fixed, so the fitted rate is cycles per unit of contraction
+  depth and nothing else moves under it. (tile=16; ci=64)'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 576
+  - 16
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 8
+  - 8
+  - 64
+  dtype: i8
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 64
+    kh: 3
+    kw: 3
+    stride:
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue: []
+    output_dtype: i32
+    semantic: conv2d_im2col
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L2_intra_layer
+  family: PV
+  lever: window_reuse_amplification
+  member_class: LAW
+  claim: PREDICTS
+  comparand:
+    kind: fitted_prediction
+    against: measured_cycles_same_member
+    cancels:
+    - identical_kernel_window
+    - identical_stride
+    - identical_datapath
+    - identical_image_size
+    demand_equal:
+    - operation
+    - kh
+    - kw
+    - N
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: residual_cycles_by_contraction_depth
+    fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
+    negative_control: fixed_window_image_size_and_output_channels_across_all_points
+  gate:
+    traits:
+    - structural_pipeline_depth
+    - managed_scratchpad
+    instrument: cycle_count
+    capacity: four_distinct_contraction_depths_at_one_spatial_extent
+    on_missing: skip_with_evidence
+  regime:
+    separation: input_channel_count_is_the_only_varied_axis
+    layout: target_native_direct_corpus_builder
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      operation: conv2d
+      varied_axes:
+      - ci
+    resolved:
+      source: direct
+      operand_dtype: int8
+      accum_dtype: i32
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 1
+    runs: 4
+    projected_cycles: derived_at_preflight
+    basis: four_distinct_channel_depths_before_repetition
+  acceptance:
+    schema_version: 1
+    analyzer: perf_affine_claim.analyze_affine_claim/v1
+    fit:
+      form: affine
+      method: ordinary_least_squares_all_L3_replicates
+      independent_variable: input_channels
+      variable_source:
+        kind: input_dim
+        input: IFM
+        axis: 3
+      dependent_metric: gsim_L3_cycles
+    cohort:
+      operation: conv2d
+      fixed_fields:
+      - operation
+      - operand_dtype
+      - accum_dtype
+      exact_points: 4
+      note: input channel count read from the declared IFM shape, at a fixed window
+        and image size. The four points are multiples of the array's own tile dimension,
+        so the cohort scales with a wider array instead of pinning it to one width
+    replicates:
+      exact_count: 2
+      identities:
+      - r000
+      - r001
+    evidence:
+      correctness_simulator: spike
+      correctness_tier: L2
+      timing_simulator: gsim
+      timing_tier: L3
+      spike_cycles_citable: false
+    thresholds:
+      slope_min_exclusive: 0.0
+      r_squared_min_inclusive: 0.95
+      residual_bound:
+        predicate: abs_residual_le_max_of_floor_and_fraction_of_observed
+        absolute_floor_cycles: 64
+        observed_cycle_fraction: 0.1

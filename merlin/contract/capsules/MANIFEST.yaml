@@ -15,6 +15,12 @@ generated_by: merlin/contract/capsules/generate_corpus.py
 generated:
 - _perf/PC00_k64
 - _perf/PC01_k128
+- _perf/PF00_fused_matmul_bias_m16k16n16
+- _perf/PF01_matmul_m16k16n16
+- _perf/PF02_bias_add_m16k16n16
+- _perf/PF03_fused_matmul_bias_m16k32n16
+- _perf/PF04_matmul_m16k32n16
+- _perf/PF05_bias_add_m16k32n16
 - _perf/PK00_k16
 - _perf/PK01_k32
 - _perf/PK02_k64
@@ -74,6 +80,25 @@ generated:
 - isa/FT00_movement_tail_15x15
 - isa/FT01_movement_tail_17x15
 - isa/GS0_matmul_spec
+- isa/SY_contraction_i8_aligned
+- isa/SY_contraction_i8_partial
+- isa/SY_contraction_i8_sub_tile
+- isa/SY_elementwise_map_i8_aligned
+- isa/SY_elementwise_map_i8_partial
+- isa/SY_elementwise_map_i8_sub_tile
+- isa/SY_geometry_gemv_like
+- isa/SY_geometry_odd_tail_heavy
+- isa/SY_geometry_squareish_gemm
+- isa/SY_geometry_tall_skinny
+- isa/SY_movement_i8_aligned
+- isa/SY_movement_i8_partial
+- isa/SY_movement_i8_sub_tile
+- isa/SY_reduction_i8_aligned
+- isa/SY_reduction_i8_partial
+- isa/SY_reduction_i8_sub_tile
+- isa/SY_regime_fits_double
+- isa/SY_regime_fits_single
+- isa/SY_regime_spills
 - layers/B0_quantized_linear_i8
 - layers/B1_linear_relu_i8
 - layers/B2_linear_acc_scale_relu_i8
@@ -86,11 +111,20 @@ generated:
 - layers/GP0_matmul_maxpool_i8
 - layers/GP1_matmul_maxpool_tail_i8
 - layers/GP2_conv2d_maxpool_i8
+- layers/SY_epilogue_acc_scale
+- layers/SY_epilogue_bias_add
+- layers/SY_epilogue_maxpool
+- layers/SY_epilogue_relu
+- layers/SY_kdepth_fits_double
+- layers/SY_kdepth_fits_single
+- layers/SY_kdepth_spills
 - model/GX0_interop_rvv_lane
 - model/M0_small_llama_gemmini
 - model/M1_lstmnetvit_gemmini
 - model/M2_microvit_gemmini
 - model/M3_host_island_seam_gemmini
+- model/SY_micro_model
+- model/SY_model_tiny_llama
 - model_slices/C0_mlp_linear1
 - model_slices/C1_mlp_activation_linear2
 - model_slices/C2_attention_q_projection
@@ -110,18 +144,29 @@ generated:
 - model_slices/GF3_geglu_bf16_pt
 - model_slices/GF4_add_bf16_pt
 - model_slices/GF5_gelu_bf16_pt
+- model_slices/GN0_layernorm_host_only_bf16_pt
+- model_slices/SY_host_lane_attention_bf16
+- model_slices/SY_host_lane_contraction_bf16
+- model_slices/SY_host_lane_contraction_f32
+- model_slices/SY_host_lane_elementwise_map_bf16
+- model_slices/SY_host_lane_elementwise_map_f32
+- model_slices/SY_host_lane_reduction_bf16
+- model_slices/SY_host_lane_reduction_f32
+- model_slices/SY_host_lane_softmax_bf16
+- model_slices/SY_host_only_normalization
+- model_slices/SY_rank_contraction_batched
 hand_authored:
 - isa/A1_mvin_mvout
 - layers/B3_conv2d_im2col_i8
 - layers/B4_conv2d_relu_i8
 held_out:
-  n_generated: 0
-  n_hand_authored: 11
+  n_generated: 10
+  n_hand_authored: 5
 performance_generation:
   gemmini:
     shared_template:
       path: merlin/contract/capsules/profiles/_perf.yaml
-      sha256: 307e8f073d5cb23f5f549dc15bc97dfc81f285c4cca9a8d6b93ba680816198c2
+      sha256: f57668786d0d3f68f8f266a9d8426526810114ab4cbb7d60e5f9f2d19343ed67
     facts:
       target: gemmini
       sha256: 5f892671d3dc46fe5ad03460fce6bc7b040439da7216906f521aa7339ff390b9
@@ -152,6 +197,13 @@ performance_generation:
       comparison_roles:
       - hoisted
       - not_hoisted
+    - family: PF
+      claim: DIFFERENTIAL
+      fit_axes:
+      - K
+      comparison_roles:
+      - fused
+      - part
     - family: PL
       claim: DIFFERENTIAL
       fit_axes:
@@ -209,17 +261,10 @@ performance_generation:
       comparison_roles:
       - prediction
       - measurement
-    - family: PF
-      claim: DIFFERENTIAL
-      fit_axes:
-      - K
-      comparison_roles:
-      - fused
-      - part
     counts:
       declared_families: 12
-      generated_families: 7
-      generated_members: 49
+      generated_families: 8
+      generated_members: 55
       by_family:
         PK:
           admitted_members: 4
@@ -230,6 +275,9 @@ performance_generation:
         PC:
           admitted_members: 2
           written_members: 2
+        PF:
+          admitted_members: 6
+          written_members: 6
         PL:
           admitted_members: 4
           written_members: 4
@@ -252,9 +300,6 @@ performance_generation:
           admitted_members: 0
           written_members: 0
         PT:
-          admitted_members: 0
-          written_members: 0
-        PF:
           admitted_members: 0
           written_members: 0
     skipped_inapplicable:
@@ -355,30 +400,6 @@ performance_generation:
       comparison_roles:
       - prediction
       - measurement
-    - family: PF
-      status: blocked_unimplemented
-      reason: this family's comparison group needs a fused matmul+bias member and
-        a standalone bias member, so it requires a target backend that implements
-        a bias-add epilogue. Where the backend implements no epilogue beyond the activation,
-        two of the three member kinds fail code generation and the capacity rule --
-        a complete fused-and-parts group -- can never be met, while the surviving
-        plain-contraction arms duplicate a workload the reduction-depth family already
-        covers. Restoring it is backend functional work, not a tuning lever. The per-target
-        measurement that established this is recorded with that target's run, not
-        in this shared template.
-      emitter:
-        status: existing
-        entry: merlin.targetgen.corpus_spec.build
-        knobs:
-          members:
-          - fused_matmul_bias
-          - matmul
-          - bias_add
-      fit_axes:
-      - K
-      comparison_roles:
-      - fused
-      - part
     errors: []
   atlas:
     shared_template:
@@ -2246,7 +2267,32 @@ performance_generation:
     errors: []
 roster_generation:
   gemmini:
-    not_built: []
+    not_built:
+    - capsule: SY_model_resnet50
+      model: resnet50
+      operand_dtype: i8
+      quant_scheme: int8_dyn_act_int8_weight
+      status: not_built
+      reason: 'M2MUnavailable: RuntimeError: paper capture requires M2M_RESNET_INPUT_NPZ
+        with preprocessed ImageNet images; set M2M_RESNET_RANDOM=1 only for compiler
+        smoke tests'
+    - capsule: SY_model_lstmnetvit
+      model: lstmnetvit
+      operand_dtype: i8
+      quant_scheme: int8_dyn_act_int8_weight
+      status: not_built
+      reason: 'M2MUnavailable: m2m capture produced a non-clean program for op ''model''/i8
+        (ok=True, opaque=44, scheme=''int8_dyn_act_int8_weight'', rc=3); a capsule
+        input must be 0-opaque. Opaque ops: torchao_choose_qparams_affine_default_1=6,
+        torchao_quantize_affine_default_1=6, torchao_choose_qparams_affine_default_4=6,
+        torchao_quantize_affine_default_4=6, torchao_choose_qparams_affine_default=2,
+        torchao_quantiz'
+    - capsule: SY_model_smolvla
+      model: smolvla
+      operand_dtype: i8
+      quant_scheme: int8_dyn_act_int8_weight
+      status: not_built
+      reason: 'M2MUnavailable: ModuleNotFoundError: No module named ''lerobot'''
   atlas:
     not_built:
     - capsule: SY_model_resnet50
@@ -2337,7 +2383,10 @@ lane_generation:
     forbid_not_provable: []
 superseded_generation:
   gemmini:
-    removed: []
+    removed:
+    - PQ03_j1_k32
+    - PQ04_j2_k32
+    - PQ05_j4_k32
   radiance:
     removed:
     - SY_rank_attention_batched

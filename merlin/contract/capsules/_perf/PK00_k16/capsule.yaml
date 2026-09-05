@@ -59,6 +59,7 @@ performance:
   level: L1_tile
   family: PK
   lever: reduction_depth
+  member_class: LAW
   claim: PREDICTS
   comparand:
     kind: fitted_prediction
@@ -78,13 +79,13 @@ performance:
     fires_when: residuals_are_not_bounded_after_rate_and_intercept_fit
     negative_control: fixed_M_and_N_across_all_K_points
   acceptance:
-    schema_version: 1
-    analyzer: perf_pk_claim.analyze_pk_claim/v1
+    schema_version: 2
+    analyzer: perf_pk_claim.analyze_pk_claim/v3
     fit:
       form: affine
       method: ordinary_least_squares_all_L3_replicates
       independent_variable: K
-      dependent_metric: verilator_L3_cycles
+      dependent_metric: gsim_L3_cycles
     cohort:
       operation: matmul
       fixed_shape_axes:
@@ -102,17 +103,22 @@ performance:
       - 4
       - 8
     replicates:
-      exact_count: 3
+      exact_count: 2
       identities:
       - r000
       - r001
-      - r002
     evidence:
       correctness_simulator: spike
       correctness_tier: L2
-      timing_simulator: verilator
+      timing_simulator: gsim
       timing_tier: L3
       spike_cycles_citable: false
+      timing_oracle_kind: rtl_gsim
+      timing_fidelity: elaborated_rtl
+      required_identity_sha256_fields:
+      - simulator_binary_sha256
+      - elaborated_firrtl_sha256
+      - program_elf_sha256
     thresholds:
       slope_cycles_per_K_element_min_exclusive: 0.0
       r_squared_min_inclusive: 0.995

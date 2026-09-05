@@ -55,6 +55,7 @@ performance:
   level: L5_fusion
   family: PF
   lever: epilogue_fusion
+  member_class: OBJECTIVE
   claim: DIFFERENTIAL
   comparand:
     kind: group_arithmetic
