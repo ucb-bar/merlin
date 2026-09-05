@@ -695,7 +695,63 @@ def _measurement_c_fragments(warmup_work: str) -> dict[str, str]:
             "requested_cache_condition": requested}
 
 
-def _harness_c(cb: dict, inputs: dict | None = None) -> str:
+#: Element count at or above which a CONSTANT operand is linked in as a binary blob instead of being
+#: written as a C initializer list. Below it nothing changes and the emitted harness stays
+#: byte-identical, which matters because this harness is on the graded L0/L1/L3 path and a change to
+#: every run would make a round's verdicts incomparable with the rounds before it.
+#:
+#: Above it the initializer form is not merely large but unbuildable. The sibling SIMT harness measured
+#: the same wall on its own element-wise form: a 2048x2048 operand is 4.19 million initializers and
+#: 124.7 MB of C, and the compiler ran 45+ minutes without finishing. The census this corpus is
+#: supposed to represent puts 99.4% of its MAC mass in shapes far above that, so the ceiling is not a
+#: tuning parameter -- it is the reason no member of those shapes can be built at all.
+_BLOB_MIN_ELEMS = 1024
+
+
+def _blob_asm(symbol: str, payload: Path, *, align: int, elems: int) -> str:
+    """An assembler stub defining ``symbol`` from ``payload``'s bytes, aligned as the C form was.
+
+    ``.incbin`` rather than a ``.byte`` list: the whole point is to stop handing the toolchain one
+    statement per element, and a huge ``.byte`` directive reintroduces exactly that cost in the
+    assembler instead of the compiler.
+
+    The alignment is DERIVED from the same expression the C attribute uses (the tile edge times the
+    element width), not chosen. An under-aligned operand is not a build error -- the DMA simply reads
+    from an address the row stride does not expect, which shows up as wrong data much later.
+    """
+    return (f"  .section .rodata\n"
+            f"  .balign {int(align)}\n"
+            f"  .globl {symbol}\n"
+            f"{symbol}:\n"
+            f"  .incbin \"{payload}\"\n"
+            f"  .size {symbol}, . - {symbol}\n"
+            f"  /* {elems} elements */\n")
+
+
+def _const_operand(symbol: str, ctype: str, data: list, *, dtype: str,
+                   blobs: dict | None) -> str:
+    """One constant operand: an initializer list, or an ``extern`` filled from a blob.
+
+    ``blobs is None`` means the caller cannot link an extra object, so the inline form is the only
+    legal one and a large operand is emitted as it always was -- slow, but never silently wrong.
+    """
+    from merlin.runtime.tensor import DTYPE_BYTES
+
+    if blobs is None or len(data) < _BLOB_MIN_ELEMS:
+        return (f"static const {ctype} {symbol}[{len(data)}] row_align(1) = "
+                f"{{{','.join(str(int(v)) for v in data)}}};")
+    width = int(DTYPE_BYTES[dtype])
+    blobs[symbol] = {
+        "bytes": b"".join(int(v).to_bytes(width, "little", signed=True) for v in data),
+        # `row_align(1)` expands to `aligned(1 * DIM * sizeof(elem_t))`, so the blob must match it.
+        "align": _ceil_dim(1) * width,
+        "elems": len(data),
+    }
+    return f"extern const {ctype} {symbol}[{len(data)}];"
+
+
+def _harness_c(cb: dict, inputs: dict | None = None, *,
+               blobs: dict | None = None) -> str:
     """Thin C harness: embed padded leaf data, call the MLIR kernel, print outputs (cropped).
 
     ``inputs`` (name -> nested-list) INJECTS explicit operand values so the device runs the model's real
@@ -712,14 +768,14 @@ def _harness_c(cb: dict, inputs: dict | None = None) -> str:
     for weight, k, n, jobs in groups:
         kp, np_ = _ceil_dim(k), _ceil_dim(n)
         wpad = _pad_rowmajor(list(leaves[weight].data), k, n, kp, np_)
-        decls.append(f"static const elem_t T_{weight}[{kp * np_}] row_align(1) = "
-                     f"{{{','.join(str(int(v)) for v in wpad)}}};")
+        decls.append(_const_operand(f"T_{weight}", "elem_t", wpad,
+                                    dtype=leaves[weight].dtype, blobs=blobs))
         for job in jobs:
             lhs, m = job.lhs, job.input_rows
             mp = _ceil_dim(m)
             ap = _pad_rowmajor(list(leaves[lhs].data), m, k, mp, kp)
-            decls.append(f"static const elem_t T_{lhs}[{mp * kp}] row_align(1) = "
-                         f"{{{','.join(str(int(v)) for v in ap)}}};")
+            decls.append(_const_operand(f"T_{lhs}", "elem_t", ap,
+                                        dtype=leaves[lhs].dtype, blobs=blobs))
     for out, m, n, out_dtype in outs:
         np_ = _ceil_dim(n)
         mp = _ceil_dim(m)
@@ -788,7 +844,19 @@ def run_on_spike(cb: dict, workdir: str | Path | None = None, *, simulator: str 
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="gemmini_mlir_run_"))
     work.mkdir(parents=True, exist_ok=True)
     obj = build_object(cb, work)
-    (work / "harness.c").write_text(_harness_c(cb), encoding="utf-8")
+    # THE LINK IS WHAT MAKES THE BLOB FORM LEGAL. `_harness_c` will only move an operand out of line
+    # when it is handed somewhere to put it, so a caller that cannot add an object to the link gets
+    # the inline form and a correct (if slow) build rather than an undefined symbol.
+    blobs: dict = {}
+    (work / "harness.c").write_text(_harness_c(cb, blobs=blobs), encoding="utf-8")
+    blob_sources = []
+    for symbol, spec in sorted(blobs.items()):
+        payload = work / f"{symbol}.bin"
+        payload.write_bytes(spec["bytes"])
+        stub = work / f"{symbol}.S"
+        stub.write_text(_blob_asm(symbol, payload, align=spec["align"], elems=spec["elems"]),
+                        encoding="utf-8")
+        blob_sources.append(str(stub))
     rt, common = gem.rocc_tests_dir(), gem._common_dir()
     elf = work / "gemmini_mlir.elf"
     cmd = [str(gem.gcc_path()), "-DPREALLOCATE=1", "-DMULTITHREAD=1", "-mcmodel=medany",
@@ -797,7 +865,7 @@ def run_on_spike(cb: dict, workdir: str | Path | None = None, *, simulator: str 
            "-lm", "-lgcc", "-I", str(rt / "riscv-tests"), "-I", str(rt / "riscv-tests/env"),
            "-I", str(rt), "-I", str(common), "-DID_STRING=", "-DPRINT_TILE=0",
            "-nostdlib", "-nostartfiles", "-static", "-T", str(common / "test.ld"), "-DBAREMETAL=1",
-           str(work / "harness.c"), str(obj), "-o", str(elf),
+           str(work / "harness.c"), str(obj), *blob_sources, "-o", str(elf),
            *(str(p) for p in sorted(common.glob("*.c"))),
            *(str(p) for p in sorted(common.glob("*.S")))]
     proc = subprocess.run(cmd, capture_output=True, text=True)
