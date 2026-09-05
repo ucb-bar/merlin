@@ -121,7 +121,7 @@ def test_the_fit_predicts_capsules_it_has_never_seen():
 
     timings = CC._timing_records("gemmini")
     sizes = CC._capsule_sizes([merlin_dir() / "contract" / "capsules"])
-    points = [(sizes[n], s) for n, (s, _src) in sorted(timings.items()) if sizes.get(n)]
+    points = [(sizes[n], s) for (n, _eng), (s, _src) in sorted(timings.items()) if sizes.get(n)]
     if len(points) < CC._MIN_SAMPLES + 1:
         pytest.skip("not enough measured capsules to hold one out")
 
@@ -186,3 +186,99 @@ def test_a_sample_with_no_recorded_engine_still_yields_a_basis():
     seconds, basis = CC._cycle_accurate_seconds(old)
     assert seconds == 12.0
     assert basis and "@" not in basis
+
+
+# ---------------------------------------------------------------------------------------------
+# The engine is part of what identifies a cost sample. Two elaborated-RTL engines answer the same
+# capsule at the same FIDELITY and roughly 26x apart in SECONDS (measured on the identical ELF: GSIM
+# 3.31 s, Verilator 86.83 s), so a fit that mixes them prices a capsule at neither engine's cost.
+# ---------------------------------------------------------------------------------------------
+
+def _result(dirpath, capsule, seconds, engine=None):
+    """One capsule_result.json declaring a cycle-accurate L3 tier, optionally naming its engine."""
+    import json
+
+    d = dirpath / capsule if engine is None else dirpath / f"{capsule}-{engine}"
+    d.mkdir(parents=True)
+    tier = {"timing": {"sim_active_s": seconds}, "cycle_accurate": True, "derived_from_rtl": True}
+    if engine is not None:
+        tier["engine"] = engine
+    (d / "capsule_result.json").write_text(
+        json.dumps({"capsule": capsule, "tiers": {"L3": tier}}), encoding="utf-8")
+
+
+def test_one_capsule_on_two_engines_keeps_both_samples(tmp_path):
+    """Keyed on the capsule NAME alone, the second engine's run overwrote the first and whichever file
+    sorted last silently won -- so the 26x gap could never appear in the evidence at all."""
+    _result(tmp_path, "C1", 3.31, engine="gsim")
+    _result(tmp_path, "C1", 86.83, engine="verilator")
+    recs = CC._timing_records("t", root=tmp_path)
+    assert set(recs) == {("C1", "gsim"), ("C1", "verilator")}
+    assert recs[("C1", "gsim")][0] == 3.31
+    assert recs[("C1", "verilator")][0] == 86.83
+
+
+def test_an_unrecorded_engine_is_unknown_never_guessed(tmp_path):
+    """As of today NO record on disk carries an engine. Inferring one from the console FILENAME is the
+    trap this discriminator closes: `sim_name` comes from the contract's static tier_sim map, which a
+    run-time engine substitution does not update, so GSIM consoles were written under Verilator's name.
+    """
+    _result(tmp_path, "C2", 10.0)
+    assert set(CC._timing_records("t", root=tmp_path)) == {("C2", CC.UNKNOWN_ENGINE)}
+
+
+def _fit(tmp_path, monkeypatch, sizes, **kw):
+    monkeypatch.setattr(CC, "_capsule_sizes", lambda roots: sizes)
+    return CC.fit_for("t", corpus_roots=[tmp_path], timing_root=tmp_path, **kw)
+
+
+def test_fit_for_restricts_to_one_engine(tmp_path, monkeypatch):
+    sizes = {}
+    for i in range(CC._MIN_SAMPLES + 1):
+        name = f"C{i}"
+        sizes[name] = 100 * (i + 1)
+        _result(tmp_path, name, 1.0 + i, engine="gsim")
+        _result(tmp_path, name, 100.0 + 50 * i, engine="verilator")
+
+    fast = _fit(tmp_path, monkeypatch, sizes, engine="gsim")
+    slow = _fit(tmp_path, monkeypatch, sizes, engine="verilator")
+    assert fast is not None and slow is not None
+    assert fast.engines == ("gsim",) and slow.engines == ("verilator",)
+    assert not fast.mixed_engines and not slow.mixed_engines
+    # Each fit describes ITS engine, and the slow one is dramatically more expensive per element.
+    assert slow.per_element_s > fast.per_element_s * 5
+    assert CC.predict_seconds(slow, 300) > CC.predict_seconds(fast, 300)
+
+
+def test_an_unfiltered_fit_over_two_engines_says_it_is_a_mixture(tmp_path, monkeypatch):
+    """Reported, not refused: a history predating the discriminator is legitimately unattributed and
+    must keep working. But a caller sizing a budget for one engine must be able to SEE that this fit
+    is not about one engine, instead of reading an average as a measurement."""
+    sizes = {}
+    for i in range(CC._MIN_SAMPLES + 1):
+        name = f"C{i}"
+        sizes[name] = 100 * (i + 1)
+        _result(tmp_path, name, 1.0 + i, engine="gsim")
+        _result(tmp_path, name, 100.0 + 50 * i, engine="verilator")
+    mixed = _fit(tmp_path, monkeypatch, sizes)
+    assert mixed is not None
+    assert mixed.mixed_engines is True
+    assert mixed.engines == ("gsim", "verilator")
+
+
+def test_an_unattributed_history_fits_exactly_as_it_did_before(tmp_path, monkeypatch):
+    """The compatibility guarantee: with no engine recorded anywhere, keying on the pair changes
+    nothing -- same samples, same coefficients -- and the fit does not claim to be about an engine."""
+    sizes = {}
+    for i in range(CC._MIN_SAMPLES + 1):
+        name = f"C{i}"
+        sizes[name] = 100 * (i + 1)
+        _result(tmp_path, name, 1.0 + i)
+    unfiltered = _fit(tmp_path, monkeypatch, sizes)
+    explicit = _fit(tmp_path, monkeypatch, sizes, engine=CC.UNKNOWN_ENGINE)
+    assert unfiltered is not None
+    assert unfiltered.n_samples == CC._MIN_SAMPLES + 1
+    assert unfiltered.engines == (CC.UNKNOWN_ENGINE,)
+    assert unfiltered.mixed_engines is False
+    assert (explicit.intercept_s, explicit.per_element_s) == (unfiltered.intercept_s,
+                                                              unfiltered.per_element_s)

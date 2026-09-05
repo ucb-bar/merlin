@@ -69,6 +69,20 @@ class CostFit:
     elements_max: int
     metric: str = "written_output_elements"
     sources: tuple[str, ...] = ()
+    #: The engines whose samples this fit rests on. More than one means the fit is a MIXTURE: two
+    #: elaborated-RTL engines answer the same capsule at the same fidelity roughly 26x apart, so a
+    #: line through both prices a capsule at neither engine's cost. Empty string = engine unrecorded.
+    engines: tuple[str, ...] = ()
+
+    @property
+    def mixed_engines(self) -> bool:
+        """Whether this fit averages measurements from more than one named engine.
+
+        A caller sizing a budget for a SPECIFIC engine must not use a mixed fit -- refit with
+        ``fit_for(..., engine=...)``. Reported rather than refused, because a history that predates the
+        discriminator is legitimately unattributed and must keep working.
+        """
+        return len({e for e in self.engines if e}) > 1
 
     @property
     def floor_dominates_below(self) -> int:
@@ -268,6 +282,17 @@ _SUMMED_LEGACY = "summed_over_tiers(legacy score file, no per-tier block)"
 def _cycle_accurate_seconds(timing: dict) -> tuple[float | None, str]:
     """``(seconds, basis)`` for the cycle-accurate tier of one capsule's timing entry.
 
+    A thin projection of :func:`_cycle_accurate_pick`. The two exist so the engine can be read off the
+    SAME tier the seconds came from, without a second copy of the selection rule that could drift from
+    this one -- which on this module would mean pricing one engine's run with another's name.
+    """
+    seconds, basis, _engine = _cycle_accurate_pick(timing)
+    return seconds, basis
+
+
+def _cycle_accurate_pick(timing: dict) -> tuple[float | None, str, str]:
+    """``(seconds, basis, engine)`` for the cycle-accurate tier of one capsule's timing entry.
+
     Prefers the per-tier block and selects the tier that DECLARES itself cycle-accurate, rather than
     assuming a tier name means an oracle kind (a target may certify on any rung its contract
     declares). Falls back to the summed scalar only for score files written before the per-tier block
@@ -292,10 +317,10 @@ def _cycle_accurate_seconds(timing: dict) -> tuple[float | None, str]:
                     # is then readable off its own sources instead of being a silent average.
                     eng = str(rec.get("engine") or "").strip()
                     basis = f"{_CYCLE_ACCURATE_ONLY}:{name}"
-                    best = (float(secs), f"{basis}@{eng}" if eng else basis)
+                    best = (float(secs), f"{basis}@{eng}" if eng else basis, eng)
         if best:
             return best
-        return None, "no cycle-accurate tier ran for this capsule"
+        return None, "no cycle-accurate tier ran for this capsule", ""
     # ⚠️ A SUMMED SAMPLE IS REFUSED, not used as a fallback. Without a per-tier block there is no way
     # to know a cycle-accurate tier ran at all, and on a target whose graded history is functional-only
     # the summed figure is milliseconds. Measured while this fallback was live: atlas fitted 13 samples
@@ -305,8 +330,8 @@ def _cycle_accurate_seconds(timing: dict) -> tuple[float | None, str]:
     # graded something.
     if timing.get("sim_active_s"):
         return None, ("summed over tiers with no per-tier block, so no cycle-accurate time can be "
-                      "attributed; re-grade to contribute a sample")
-    return None, "no positive sim_active_s"
+                      "attributed; re-grade to contribute a sample"), ""
+    return None, "no positive sim_active_s", ""
 
 
 def _per_tier_from_result(doc: dict) -> dict:
@@ -340,9 +365,26 @@ def _per_tier_from_result(doc: dict) -> dict:
     return out
 
 
+#: The key an unattributed sample is filed under. Deliberately not "verilator" or any engine name: the
+#: 804 cycle-accurate records on disk today carry no engine at all, and guessing one from the console
+#: FILENAME is the trap this discriminator exists to close -- `capsule_runner` takes `sim_name` from the
+#: contract's static `tier_sim` map, which a run-time engine substitution does not update, so GSIM
+#: consoles were written under Verilator's name. An unknown engine stays unknown.
+UNKNOWN_ENGINE = ""
+
+
 def _timing_records(target: str, root: Path | None = None,
-                    extra_roots=()) -> dict[str, tuple[float, str]]:
-    """``capsule -> (cycle_accurate_seconds, source)`` from every run this target has on disk.
+                    extra_roots=()) -> "dict[tuple[str, str], tuple[float, str]]":
+    """``(capsule, engine) -> (cycle_accurate_seconds, source)`` from every run this target has on disk.
+
+    KEYED ON THE PAIR, not on the capsule. Keyed on the name alone, a capsule certified on two engines
+    kept exactly ONE sample -- whichever file sorted last silently won -- so the same capsule's 3.31 s
+    GSIM run and 86.83 s Verilator run could never both be retained, and the one that survived was
+    decided by filesystem order. The engine is part of what identifies a measurement, because the two
+    engines answer the same capsule at the same fidelity roughly 26x apart.
+
+    An engine that was not recorded is filed under :data:`UNKNOWN_ENGINE` rather than assigned one, so a
+    history with no discriminator behaves exactly as it did before and a mixed history stops colliding.
 
     Two record kinds are read, because they are written by different paths: a score file's
     ``timing_diagnostic`` (the batch grader's roll-up) and a ``capsule_result.json``'s ``tiers``
@@ -361,7 +403,7 @@ def _timing_records(target: str, root: Path | None = None,
     bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target),
                                        runs_dir() / str(target)]
     bases += [Path(r) for r in extra_roots]
-    out: dict[str, tuple[float, str]] = {}
+    out: "dict[tuple[str, str], tuple[float, str]]" = {}
     for base in bases:
         if not base.is_dir():
             continue
@@ -377,16 +419,16 @@ def _timing_records(target: str, root: Path | None = None,
                 for name, timing in block.items():
                     if not isinstance(timing, dict):
                         continue
-                    seconds, basis = _cycle_accurate_seconds(timing)
+                    seconds, basis, engine = _cycle_accurate_pick(timing)
                     if seconds is not None:
-                        out[str(name)] = (seconds, f"{path}#{basis}")
+                        out[(str(name), engine)] = (seconds, f"{path}#{basis}")
                 continue
             name = doc.get("capsule")
             per_tier = _per_tier_from_result(doc)
             if name and per_tier:
-                seconds, basis = _cycle_accurate_seconds({"by_tier": per_tier})
+                seconds, basis, engine = _cycle_accurate_pick({"by_tier": per_tier})
                 if seconds is not None:
-                    out[str(name)] = (seconds, f"{path}#{basis}")
+                    out[(str(name), engine)] = (seconds, f"{path}#{basis}")
     return out
 
 
@@ -435,12 +477,20 @@ def _capsule_sizes(corpus_roots) -> dict[str, int]:
 
 
 def fit_for(target: str, *, corpus_roots=None, timing_root=None,
-            extra_timing_roots=()) -> "CostFit | None":
+            extra_timing_roots=(), engine: str | None = None) -> "CostFit | None":
     """The cost model for ``target``, or ``None`` when nothing has been measured.
 
     ``None`` is a real answer and the caller must honour it: a target with no certification history
     has no basis for sizing a capsule to a time budget, and the correct response is to leave its
     capsules at the shallow tier rather than to certify a size nobody has evidence for.
+
+    ``engine`` restricts the fit to one engine's samples. Sizing a budget for a named engine over a
+    history containing two is asking for a number that describes neither: measured on the identical
+    ELF, GSIM answers a capsule in 3.31 s where Verilator takes 86.83 s. Pass :data:`UNKNOWN_ENGINE`
+    to fit only the records that predate the discriminator. Left unset, every sample is used and the
+    engines that contributed are recorded on the fit, so a mixture is visible
+    (:attr:`CostFit.mixed_engines`) instead of implied -- unattributed history stays usable, which
+    matters because as of today NO record on disk carries an engine at all.
     """
     from merlin.common.paths import merlin_dir
 
@@ -453,13 +503,17 @@ def fit_for(target: str, *, corpus_roots=None, timing_root=None,
     xs: list[int] = []
     ys: list[float] = []
     sources: set[str] = set()
-    for name, (seconds, source) in sorted(timings.items()):
+    engines: set[str] = set()
+    for (name, rec_engine), (seconds, source) in sorted(timings.items()):
+        if engine is not None and rec_engine != engine:
+            continue
         size = sizes.get(name)
         if not size:
             continue
         xs.append(size)
         ys.append(seconds)
         sources.add(source)
+        engines.add(rec_engine)
     if len(xs) < _MIN_SAMPLES or len(set(xs)) < 2:
         return None                                # a line through one x tells you nothing
 
@@ -475,7 +529,7 @@ def fit_for(target: str, *, corpus_roots=None, timing_root=None,
     r2 = 1.0 - (sum((y - (intercept + slope * x)) ** 2 for x, y in zip(xs, ys)) / ss_tot) if ss_tot else 0.0
     return CostFit(target=str(target), intercept_s=intercept, per_element_s=slope, r2=r2,
                    n_samples=n, elements_min=min(xs), elements_max=max(xs),
-                   sources=tuple(sorted(sources)))
+                   sources=tuple(sorted(sources)), engines=tuple(sorted(engines)))
 
 
 def predict_seconds(fit: "CostFit | None", elements: int) -> "float | None":

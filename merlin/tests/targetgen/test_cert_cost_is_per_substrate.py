@@ -146,8 +146,11 @@ def test_a_single_capsule_run_is_a_cost_sample(tmp_path):
     }), encoding="utf-8")
 
     recs = CC._timing_records("t", root=tmp_path)
-    assert "CAL_probe" in recs, f"a single-capsule run must contribute a sample: {recs}"
-    seconds, source = recs["CAL_probe"]
+    # Keyed on (capsule, engine): a capsule certified on two engines has two samples, not one that
+    # the filesystem order picks. This record declares no engine, so it files under UNKNOWN_ENGINE.
+    key = ("CAL_probe", CC.UNKNOWN_ENGINE)
+    assert key in recs, f"a single-capsule run must contribute a sample: {recs}"
+    seconds, source = recs[key]
     assert seconds == 177.249, "the cycle-accurate tier's time, not the functional one or the sum"
     assert "cycle_accurate_tier:L3" in source
 
