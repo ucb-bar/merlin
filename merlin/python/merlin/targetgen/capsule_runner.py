@@ -3081,18 +3081,60 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
     # could accelerate the family the target's manifest does not admit and still pass the capsule
     # written to catch exactly that.
     #
-    # `incomplete`, never `fail`: nothing about the submission was disproved. We simply did not measure
-    # the one thing this capsule exists to assert, and an unmeasured assertion must not read as a pass.
+    # The operator path CAN prove the negative half, from the artifact it already produces: the linked
+    # ELF is the complete set of instructions the program can execute, so a scan of its executable
+    # sections for this target's DERIVED accelerator opcode settles "no work reached the accelerator"
+    # whatever spelling the backend used -- including the `.word`/`.insn` datum the IR-level decoder
+    # reads as silence. It settles nothing in the positive direction (an instruction present in a
+    # binary is not one that ran), so a REQUIRED lane stays unmeasured here and its capsule stays
+    # incomplete. See `merlin.targetgen.elf_lanes`.
+    #
+    # `incomplete`, never `fail`, for what is left unmeasured: nothing about the submission was
+    # disproved. We simply did not measure the one thing this capsule exists to assert, and an
+    # unmeasured assertion must not read as a pass.
     _decl_lanes = capsule.get("lanes") or {}
-    if (status == "pass" and (_decl_lanes.get("require") or _decl_lanes.get("forbid"))
-            and (extra or {}).get("lane_report") is None):
-        status = "incomplete"
-        if failure is None:
-            failure = {"plane": "lanes", "category": "LANE_CONTRACT_NOT_EVALUATED",
-                       "detail": (f"capsule declares lanes {dict(_decl_lanes)}, but this grading path "
-                                  f"produced no lane report: only the whole-model path carries the "
-                                  f"routing plan and execution record a lane verdict needs. Grade it "
-                                  f"as kind=model, or do not declare the lanes")}
+    if _decl_lanes.get("require") or _decl_lanes.get("forbid"):
+        from . import elf_lanes as _EL
+
+        _lane_rep = (extra or {}).get("lane_report")
+        # A report the CALLER supplied comes from a path that owns evidence this one cannot see (the
+        # whole-model dispatch ledger), and its quality is judged where that evidence lives
+        # (`capsule_grade`). This rule remains about the ABSENCE of an evaluation. Only the report built
+        # HERE is held to `unjudged_lanes`, because here we know exactly how thin the evidence is.
+        _from_caller = _lane_rep is not None
+        if _lane_rep is None:
+            try:
+                _lane_rep = _EL.lane_report_from_elf(
+                    capsule, paths.generated / _EL.PACKAGE_ELF_NAME, target=eff_target)
+            except Exception as _le:  # noqa: BLE001 -- our scanner's limit is not the submission's defect
+                _lane_rep = None
+                import sys as _sys
+                _sys.stderr.write(f"WARNING: linked-ELF lane scan failed (unmeasured): {_le}\n")
+            if _lane_rep is not None:
+                extra = {**(extra or {}), "lane_report": _lane_rep}
+        _unjudged = [] if _from_caller else _EL.unjudged_lanes(_lane_rep, _decl_lanes)
+        if _lane_rep is not None and _lane_rep.get("violated"):
+            # DISPROVED, so this is a fail and not an `incomplete`: the emitted binary carries
+            # instructions for a lane the capsule forbids. Same category name the whole-model path uses
+            # for the same defect, so one grep finds both.
+            _scan = _lane_rep.get("elf_scan") or {}
+            status = "fail"
+            failure = {"plane": "lanes", "category": "ACCELERATED_A_FORBIDDEN_LANE",
+                       "detail": (f"capsule forbids lane(s) {_lane_rep['violated']}, and the linked "
+                                  f"executable carries {_scan.get('n_hits')} instruction(s) with this "
+                                  f"target's accelerator opcode ({_scan.get('opcode_source')}). This "
+                                  f"target's capability manifest does not admit this capsule's family, "
+                                  f"so the compiler must leave it on the host lane.")}
+        elif status == "pass" and (_lane_rep is None or _unjudged):
+            status = "incomplete"
+            if failure is None:
+                failure = {"plane": "lanes", "category": "LANE_CONTRACT_NOT_EVALUATED",
+                           "detail": (f"capsule declares lanes {dict(_decl_lanes)}; lane(s) {_unjudged} "
+                                      f"were not measured on this path. A required lane needs evidence "
+                                      f"that something RAN, which only the whole-model path's dispatch "
+                                      f"ledger carries; a forbidden lane also accepts a linked-ELF scan, "
+                                      f"which needs a readable executable and a derivable accelerator "
+                                      f"opcode. Grade it as kind=model, or do not declare those lanes")}
 
     if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
         # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)
