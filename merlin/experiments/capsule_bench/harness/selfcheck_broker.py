@@ -29,6 +29,42 @@ from pathlib import Path
 SELFCHECK = Path(__file__).resolve().parent / "agent_selfcheck.py"
 
 
+def _rtl_engines() -> tuple[str, ...]:
+    try:
+        from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+        return tuple(ENGINE_PRIORITY)
+    except Exception:  # noqa: BLE001 -- closed historical set, never widen on import failure
+        return ("vcs", "gsim", "verilator")
+
+
+def _required_rtl_engine() -> str | None:
+    return os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+
+
+def _allowed_sims() -> tuple[str, ...]:
+    """Spike plus either the one pinned RTL engine or the closed registered RTL set."""
+    required = _required_rtl_engine()
+    if required is not None:
+        return ("spike", required) if required in _rtl_engines() else ("spike",)
+    return ("spike",) + _rtl_engines()
+
+
+def _default_sim() -> str:
+    required = _required_rtl_engine()
+    return required if required in _rtl_engines() else "verilator"
+
+
+def _sim_policy_error(sim: str) -> str | None:
+    allowed = _allowed_sims()
+    if sim in allowed:
+        return None
+    required = _required_rtl_engine()
+    if required is not None:
+        return (f"--sim {sim!r} conflicts with MERLIN_REQUIRED_RTL_ENGINE={required!r}; "
+                f"allowed: {list(allowed)!r}")
+    return f"--sim {sim!r} is not accepted; allowed: {list(allowed)!r}"
+
+
 def _atomic_write(path: Path, text: str) -> None:
     """Publish a response/marker with no observable partial-file state."""
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
@@ -138,10 +174,19 @@ def main(argv=None):
             _atomic_write(resp, json.dumps({"error": "broker: unreadable request"}))
             _atomic_write(ch / f"done_{rid}", "err")
             continue
+        sim = str(r.get("sim", _default_sim()))
+        policy_error = _sim_policy_error(sim)
+        if policy_error:
+            _atomic_write(resp, json.dumps({
+                "error": f"broker: {policy_error}", "all_pass": False, "sim": sim,
+                "required_rtl_engine": _required_rtl_engine(),
+            }))
+            _atomic_write(ch / f"done_{rid}", "err")
+            continue
         to = int(r.get("timeout", 1800))
         argv2 = [sys.executable, str(SELFCHECK),
                  "--submission", str(ws / "submission"),
-                 "--sim", str(r.get("sim", "spike")),
+                 "--sim", sim,
                  "--capsules", str(r.get("capsules", "all")),
                  "--workers", str(r.get("workers", 8)),
                  "--timeout", str(to),

@@ -22,7 +22,7 @@ oracle. It tells you
 WHETHER and roughly WHERE you are wrong (mismatch_count, failing plane) — not the answer.
 """
 from __future__ import annotations
-import argparse, json, shutil, sys
+import argparse, json, os, shutil, sys
 from pathlib import Path
 
 
@@ -123,26 +123,70 @@ def _target() -> str:
 SIM_TIER = {"spike": "L2", "verilator": "L3", "gsim": "L3", "vcs": "L4"}
 
 
+def _required_rtl_engine() -> str | None:
+    """The exact RTL engine imposed by the enclosing experiment, if any."""
+    return os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+
+
+def _default_sim() -> str:
+    """Default to the experiment's pinned RTL engine, not the historical Verilator binding."""
+    required = _required_rtl_engine()
+    return required if required in SIM_TIER and required != "spike" else "verilator"
+
+
+def _sim_policy_error(sim: str, sim_via: str | None) -> str | None:
+    """Refuse an RTL request that differs from the experiment-wide engine pin.
+
+    Spike remains available as a correctness-only screen.  Every elaborated-RTL request must name the
+    required engine exactly; inheriting the pin while directly constructing a Verilator adapter used to
+    let a self-check run the wrong simulator even though formal grading was GSIM-only.
+    """
+    if sim_via != "chipyard" or sim == "spike":
+        return None
+    required = _required_rtl_engine()
+    if required is None:
+        return None
+    if required not in SIM_TIER or required == "spike":
+        return (f"MERLIN_REQUIRED_RTL_ENGINE={required!r} is not a registered elaborated-RTL "
+                "self-check engine")
+    if sim != required:
+        return (f"--sim {sim!r} conflicts with MERLIN_REQUIRED_RTL_ENGINE={required!r}; "
+                f"use --sim 'spike' for a correctness-only screen or --sim {required!r} for RTL")
+    return None
+
+
 def _adapters(sim: str, target: str, sim_via: str | None) -> tuple[dict, str]:
     """Resolve the self-check oracle tiers from the TARGET's contract (target-agnostic, mirrors the driver
     grade). A chipyard target (gemmini) exposes the spike/verilator/vcs ladder selectable via --sim; any
     other target grades on its OWN contract-derived RTL tier (atlas external_backend -> the program oracle;
     an arc target -> the RTL-derived arc cosim), where --sim is not applicable. Routing atlas here through
     the hardcoded spike/verilator adapters ran the gemmini/RVV lowering path and crashed (AW4)."""
+    policy_error = _sim_policy_error(sim, sim_via)
+    if policy_error:
+        raise ValueError(policy_error)
     if sim_via == "chipyard":
         ad = {"L2": CR._spike_verilator_adapter("spike", target)}
-        if sim in ("verilator", "vcs", "gsim"):
+        if sim in ("verilator", "gsim"):
             # Build L3 from the engine the caller NAMED. This used to hardcode "verilator", which made
             # --sim gsim silently certify on verilator -- a result attributed to the wrong engine. The
             # adapter factory is engine-generic (it forwards simulator=sim and gates on
             # backend.available(sim)), so an absent engine fails closed here rather than substituting.
-            _l3_engine = "gsim" if sim == "gsim" else "verilator"
-            ad["L3"] = CR._spike_verilator_adapter(_l3_engine, target)
+            ad["L3"] = CR._spike_verilator_adapter(sim, target)
         if sim == "vcs":
+            # In the unpinned legacy ladder VCS is an L4 addition above Verilator L3.  An experiment-wide
+            # VCS pin, however, means *no other RTL engine may run*, so do not build that Verilator rung.
+            # If VCS is unavailable the pinned run must refuse instead of silently substituting.
+            required = _required_rtl_engine()
+            if required is None:
+                ad["L3"] = CR._spike_verilator_adapter("verilator", target)
             try:
                 from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
                 ad["L4"] = VA.adapter()
-            except Exception:
+            except Exception as exc:
+                if required is not None:
+                    raise ValueError(
+                        f"required RTL engine {required!r} is unavailable: {type(exc).__name__}: {exc}"
+                    ) from exc
                 print("  (vcs adapter unavailable in this environment — falling back to verilator L3)", file=sys.stderr)
                 sim = "verilator"
         return ad, sim
@@ -217,7 +261,7 @@ def main(argv=None):
     # which PASSES the screen goes on to certify instead of stopping there. Choosing "spike"
     # explicitly is a legitimate fast screen, but it CANNOT certify: the mandatory cert tier
     # reports unavailable and the capsule is not a pass.
-    ap.add_argument("--sim", choices=["spike", "verilator", "gsim", "vcs"], default="verilator")
+    ap.add_argument("--sim", choices=["spike", "verilator", "gsim", "vcs"], default=_default_sim())
     ap.add_argument("--capsules", default="all", help="'all' or comma-separated capsule names")
     ap.add_argument("--workers", type=int, default=8, help="parallel sim workers (verilator/vcs)")
     ap.add_argument("--timeout", type=int, default=1800)
@@ -262,7 +306,17 @@ def main(argv=None):
     _strip_build_state(sub)   # every grade builds from scratch in its OWN path — see helper
 
     _tgt, _sim_via = _target_sim_via()
-    adapters, sim = _adapters(a.sim, _tgt, _sim_via)
+    try:
+        adapters, sim = _adapters(a.sim, _tgt, _sim_via)
+    except ValueError as exc:
+        out = {"error": str(exc), "all_pass": False, "sim": a.sim,
+               "required_rtl_engine": _required_rtl_engine()}
+        txt = json.dumps(out, indent=2)
+        print(txt)
+        if a.out:
+            Path(a.out).write_text(txt)
+        _log_telemetry(out, a.capsules)
+        return 2
     if a.tiers:
         # Validate the REQUEST against everything the endpoint can reach, not against the cheap loop
         # ladder -- that conflation is exactly what select_tiers documents, and it is why a cert tier

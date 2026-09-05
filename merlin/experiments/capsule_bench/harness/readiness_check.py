@@ -552,6 +552,17 @@ def _oracle_sim_via() -> str:
     return (load_target_experiment(desc).sim_via or "").strip() if desc.is_file() else ""
 
 
+def _chipyard_rtl_selection() -> dict:
+    """Return the same elaborated-RTL selection record a real grade will use.
+
+    This is intentionally a thin call to the shared policy seam.  Readiness used to name Verilator
+    directly, so ``MERLIN_REQUIRED_RTL_ENGINE=gsim`` either launched the wrong engine or (after the
+    self-check was hardened) failed readiness without testing the required one.
+    """
+    from merlin.targetgen import capsule_runner as CR
+    return CR.chipyard_l3_selection(TARGET)
+
+
 def test_oracles_endtoend():
     """G. Prove the target's REAL grading oracle can produce a verdict — the safeguard abc7 lacked.
     Routed by the target's oracle kind (contract, no target literal):
@@ -563,8 +574,9 @@ def test_oracles_endtoend():
       the exact preflight the launcher runs) and that ``oracle_adapters`` resolves BOTH graded tiers to
       the program oracle — the precise wiring a graded round uses. That is the honest pre-launch proof;
       the numeric bit-exact check runs against a known-good npu_model program at grade time.
-    * ``chipyard`` (gemmini): actually RUN spike + verilator on the committed reference backend to a real
-      verdict, measure verilator's per-capsule time, and NO-GO on the abc7 signature (0 capsules/timeout).
+    * ``chipyard`` (gemmini): actually RUN spike + the centrally selected elaborated-RTL engine on the
+      committed reference backend to a real verdict and NO-GO on the abc7 signature
+      (0 capsules/timeout).  The engine pin is inherited from the experiment.
     """
     import json as _json
     import os as _os
@@ -675,6 +687,15 @@ def test_oracles_endtoend():
     # MIRROR the driver's grade env exactly (incl. .compat_lib for libidn) so the gate fails iff a real
     # run would. (.compat_lib omission is exactly what made abc8's C++ build fail.)
     env["LD_LIBRARY_PATH"] = f"{_compat}:{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
+    try:
+        rtl_selection = _chipyard_rtl_selection()
+        rtl_engine = str(rtl_selection["engine"])
+        _ok(f"central RTL-engine policy selected {rtl_engine}", True,
+            f"required={rtl_selection.get('required_engine')} reason={rtl_selection.get('reason')}")
+    except Exception as exc:  # noqa: BLE001 — no required engine is a hard readiness failure
+        _ok("central RTL-engine policy resolves the required engine", False,
+            f"{type(exc).__name__}: {exc}")
+        return
 
     def _grade(sub, sim, to, cap="A1_mvin_mvout"):
         r = subprocess.run([PY, str(SCRIPTS / "agent_selfcheck.py"), "--submission", str(sub),
@@ -726,24 +747,36 @@ def test_oracles_endtoend():
         _ok("spike RUNS to a real L2=pass on the reference backend",
             sp.get("n_capsules") == 1 and _spike_tier == "pass",
             f"L2={_spike_tier} n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error','')[:50]}")
-        # Probe a COMPUTE capsule for the L3 cert — a movement-only capsule (A1) tops out below L3, so it
-        # can never certify verilator's numerical tier. And agent_selfcheck reports the reached tier on its
+        # Probe a COMPUTE capsule for the elaborated-RTL cert — a movement-only capsule (A1) tops out below
+        # L3, so it can never certify that numerical tier. And agent_selfcheck reports the reached tier on its
         # per-capsule record as barrier_tier/barrier_status (there is NO "tiers" map — the same field the
         # spike check above reads), so the old tiers["L3"] read was a field-name bug that ALWAYS yielded
-        # None: a false NO-GO that also blocked .oracle_timing.json, which the launcher refuses to start
-        # without. Verilator was running fine the whole time.
-        t0 = _time.time(); ve = _grade(ref, "verilator", 900, cap="A2_single_tile_matmul"); dt = _time.time() - t0
+        # None: a false NO-GO that also blocked the legacy timing receipt.  The engine here is the exact
+        # result of the central policy, never a second hardcoded selection.
+        t0 = _time.time()
+        ve = _grade(ref, rtl_engine, 900, cap="A2_single_tile_matmul")
+        dt = _time.time() - t0
         cv = (ve.get("per_capsule") or [{}])[0]
         l3 = (ve.get("all_pass") and ve.get("n_capsules") == 1
               and cv.get("barrier_tier") == "L3" and cv.get("barrier_status") == "pass")
-        _ok("verilator RUNS to a real L3=pass (not 0-capsules / timeout)", l3,
+        _ok(f"{rtl_engine} RUNS to a real L3=pass (not 0-capsules / timeout)", l3,
             f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} "
             f"barrier={cv.get('barrier_tier')}/{cv.get('barrier_status')}")
-        if l3:
+        # The old filename/key is consumed only by the historical Verilator A/B launcher.  Do not write a
+        # GSIM observation into that schema: it would be accepted as Verilator timing and could make a
+        # later legacy launch claim the wrong engine.  Modern GSIM performance preflight has its own
+        # content-addressed timing/certification receipts.
+        if l3 and rtl_engine == "verilator":
             (SCRIPTS / ".oracle_timing.json").write_text(_json.dumps(
-                {"verilator_per_capsule_s": round(dt, 1), "config": "GemminiRocketConfig",
-                 "measured_by": "readiness_check"}))
-            _ok("wrote .oracle_timing.json (T_obs for the driver timeout)", True, f"T_obs={dt:.0f}s")
+                {"verilator_per_capsule_s": round(dt, 1), "rtl_engine": rtl_engine,
+                 "target": TARGET, "config": "GemminiRocketConfig",
+                 "evidence_scope": "legacy_verilator_timeout_qualification_only",
+                 "gsim_certified_evidence": False, "measured_by": "readiness_check"}))
+            _ok("wrote legacy Verilator qualification timing (not GSIM evidence)", True,
+                f"T_obs={dt:.0f}s")
+        elif l3:
+            _ok("legacy Verilator timing receipt is not written for the selected engine", True,
+                f"selected={rtl_engine}; GSIM certification uses its content-addressed receipt")
         # NEGATIVE: an empty submission must produce 0 capsules / error -> the abc7 signature is caught
         empt = Path(_tf.mkdtemp()) / "sub"; empt.mkdir(parents=True)   # honours TMPDIR
         ne = _grade(empt, "spike", 60)

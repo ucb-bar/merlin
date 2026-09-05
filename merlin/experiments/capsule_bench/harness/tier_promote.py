@@ -26,10 +26,14 @@ exactly, so retention cannot make a stale certificate look valid.
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
 _NEUTRAL_SIM = "contract"   # "grade on whatever tier this target's contract resolves to"
+
+
+from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL as _ELABORATED_RTL
 
 
 def cert_sim(cert_tier: str) -> str | None:
@@ -63,7 +67,24 @@ def cert_sim(cert_tier: str) -> str | None:
                                                         load_target_experiment)
         te = load_target_experiment(_C.EXP / "target_experiment.yaml")
         cfg = runner_config_from_manifest(load_capability_manifest(te.target))
+        required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
+        if required and cert_tier in set(cfg.rtl_tiers or ()):
+            # A tier is a fidelity, not a historical binary binding.  Under an experiment-wide pin the
+            # required engine serves every elaborated-RTL tier it implements; consulting tier_sim first
+            # would recover the manifest's old Verilator label, find it excluded by the broker, and
+            # silently disable promotion in a GSIM-only run.
+            return required if required in allowed else None
         sim = (cfg.tier_sim or {}).get(cert_tier)
+        # THE CONTRACT NAMES A FIDELITY, NOT A BINARY. `tier_sim` used to read `{L3: verilator}` and the
+        # allowlist happened to contain that word, so this returned an engine by accident. Once the
+        # contract said what it means -- `{L3: elaborated_rtl}` -- the sentinel matched no `--sim` token,
+        # this returned None, and promotion silently switched off for every unpinned run: the caller logs
+        # "no --sim serves L3" once and then never enqueues, which is indistinguishable from a round with
+        # nothing to promote. Resolve the sentinel through the SAME availability policy the contract
+        # comment names, so the fidelity is declared in one place and the engine chosen in one place.
+        if sim == _ELABORATED_RTL:
+            from merlin.targetgen.capsule_runner import chipyard_l3_selection
+            sim = str((chipyard_l3_selection(te.target) or {}).get("engine") or "").strip() or None
     except Exception:  # noqa: BLE001 -- unresolvable map: no promotion, and the caller says so
         return None
     return sim if sim in allowed else None

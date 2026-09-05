@@ -80,7 +80,8 @@ weaken a mask to make a run work.
   gate matches on path, so a holdout name in the *contents* of an ordinary-looking file passes it —
   check contents too.
 - **A pass count is not a certification tier.** Under bwrap the materializer caps
-  `required_oracle_tiers` at L2 (spike). Verilator runs and is recorded but does not gate. Report
+  `required_oracle_tiers` at L2 (spike). The centrally selected elaborated-RTL engine runs and is
+  recorded but does not gate. Report
   `tier_reached["L3"]` beside every `n_passed`; see `out/artifacts/capsule-bench/<target>/METHODOLOGY.md`.
 - **Nothing in `merlin/python/merlin/` may read a path under here** — the dependency is one-way.
   Enforced by `check_structure.py` "library boundary".

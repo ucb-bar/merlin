@@ -68,6 +68,18 @@ def _formal_model_simulator(target: str) -> dict:
     }
 
 
+def _install_formal_model_simulator(target: str) -> tuple[dict, str | None]:
+    """Select and install the trusted model-tile engine, returning prior ambient state for audit."""
+    selected = _formal_model_simulator(target)
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+    if required is not None and selected.get("engine") != required:
+        raise RuntimeError(
+            f"formal model engine {selected.get('engine')!r} differs from required {required!r}")
+    inherited = os.environ.get("MERLIN_MESH_SIM")
+    os.environ["MERLIN_MESH_SIM"] = selected["engine"]
+    return selected, inherited
+
+
 def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUIRED_TIER) -> tuple[bool, list[str]]:
     """Fail-closed completion predicate for one official grading phase.
 
@@ -277,12 +289,10 @@ def main(argv: list[str] | None = None) -> int:
     # a functional-model result; each tile also records and is checked for derived_from_rtl and
     # cycle_accurate evidence by capsule_grade.model_execution_check.
     try:
-        _formal_mesh_selection = _formal_model_simulator(C.TARGET)
+        _formal_mesh_selection, _inherited_mesh_sim = _install_formal_model_simulator(C.TARGET)
     except Exception as exc:  # noqa: BLE001 — formal grading must fail closed, never demote fidelity
         raise SystemExit(f"cannot resolve formal whole-model simulator: {exc}") from exc
     _formal_mesh_sim = _formal_mesh_selection["engine"]
-    _inherited_mesh_sim = os.environ.get("MERLIN_MESH_SIM")
-    os.environ["MERLIN_MESH_SIM"] = _formal_mesh_sim
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)

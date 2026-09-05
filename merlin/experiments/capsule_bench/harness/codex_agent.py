@@ -453,7 +453,8 @@ def last_message_path(ws: Path, final_path: Path, sandbox: str) -> Path:
 
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
-              effort: str = "", prompt: str | None = None, **_ignored) -> tuple[int, Path]:
+              effort: str = "", prompt: str | None = None,
+              effective_model: str | None = None, **_ignored) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
 
     Tier-within-agent (``subagent_model`` / ``background_model``) has no Codex
@@ -462,7 +463,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     it would make an arm look tiered when it was not.
     """
     codex_bin = os.environ.get("CODEX_BIN", "codex")
-    resolved = resolve_model(model)
+    # A rigorous caller may preflight model resolution and pass the content-addressed result.  In
+    # that mode do not consult CODEX_MODEL_MAP a second time between declaration and process launch.
+    resolved = str(effective_model).strip() if effective_model is not None else resolve_model(model)
+    if not resolved:
+        raise ValueError("effective Codex model must be non-empty")
     rounds = run_dir / "rounds"
     rounds.mkdir(parents=True, exist_ok=True)
     tpath = rounds / f"round_{rnd:02d}.transcript.jsonl"

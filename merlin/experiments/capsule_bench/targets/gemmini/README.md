@@ -2,7 +2,8 @@
 
 Turns `capsule_bench_v0` (the fidelity harness) into a scientific A/B experiment: a fresh agent
 generates a Gemmini MLIR OOT backend in a sandbox, the submission is frozen + hashed, then graded
-through the public/dev capsules (L0–L3: golden / ref==sim / spike / verilator-RTL) and, post-freeze,
+through the public/dev capsules (L0–L3: golden / ref==sim / spike / policy-selected elaborated RTL)
+and, post-freeze,
 the hidden capsules. Process metrics (wall / tokens / $ / tool-calls) come from the agent transcript.
 
 > **The session that built this harness is NOT an experiment run.** A valid run is created only by
@@ -67,15 +68,15 @@ runs/<arm>/<run_id>/
   hidden goldens).
 
 ## Cycles, tiers & metrics
-- **Oracle tiers**: L0 golden, L1 ref==sim, trace-check, **L2 spike** (functional), **L3 verilator**
-  (cycle-accurate RTL — this is where `cycles_diagnostic` comes from), L4 VCS / L5 FireSim
-  (config-gated; FireSim's bare-metal replay hook is not yet wired — honestly unavailable).
-- **Cycles** are L3 verilator `rdcycle`-bracketed counts around the kernel region; diagnostic-only,
+- **Oracle tiers**: L0 golden, L1 ref==sim, trace-check, **L2 spike** (functional), **L3 elaborated
+  RTL** (engine selected centrally and pinned by `MERLIN_REQUIRED_RTL_ENGINE`; this is where
+  `cycles_diagnostic` comes from). A tier name is not a simulator name.
+- **Cycles** are L3 `rdcycle`-bracketed counts from that exact required RTL engine; diagnostic-only,
   never gate pass/fail. `--workers N` runs the per-capsule oracle instances in parallel
   (deterministic — cycles are identical to a serial run).
 - **Active-vs-waiting timing**: grader reports `timing_rollup` = `{suite_wall_s, sim_active_s,
   oracle_wait_s, parallel_speedup}` — `oracle_wait_s` is time blocked on a VCS/FireSim queue/FPGA
-  slot (≈0 for local verilator). The QA loop reports `active_wall_s` vs `rate_limit_wait_s`.
+  slot (normally ≈0 for a local engine). The QA loop reports `active_wall_s` vs `rate_limit_wait_s`.
 - **Reports**: `reports/comparison_table.md` (per-run `public` 4-pilot + **`full-suite` N/25**),
   `reports/full_suite_audit.md` (25-capsule matrix + per-class coverage + cycles + timing),
   `reports/repeatability.md` (rate-limit-aware valid pass-rate).

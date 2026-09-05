@@ -209,8 +209,17 @@ def _allowed_sims() -> tuple[str, ...]:
     try:
         from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
     except Exception:  # noqa: BLE001 -- no policy module: keep the historical ladder, do not widen
-        return ("spike", "verilator", "vcs")
-    return ("spike",) + tuple(ENGINE_PRIORITY)
+        engines = ("vcs", "verilator")
+    else:
+        engines = tuple(ENGINE_PRIORITY)
+    # A campaign-wide engine pin is stronger than this agent-controlled request surface.  Spike remains
+    # a correctness-only screen; an RTL request may name only the exact required engine.  Previously the
+    # inherited pin reached the child but `_adapters` directly constructed whichever engine the request
+    # named, so a GSIM-only run could still launch Verilator from the sandbox broker.
+    required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
+    if required:
+        return ("spike", required) if required in engines else ("spike",)
+    return ("spike",) + engines
 
 
 _NEUTRAL_SIM = "contract"

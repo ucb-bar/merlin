@@ -492,7 +492,7 @@ _CONTEXT_WINDOWS: dict[str, int] = _BR.CONTEXT_WINDOWS
 
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
-              effort: str = "", **_ignored) -> tuple[int, Path]:
+              effort: str = "", prompt: str | None = None, **_ignored) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via the opencode CLI. Returns (rc, transcript_path) — the same contract
     as ``launch_agent``'s claude path.
 
@@ -582,10 +582,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     env["OPENCODE_CONFIG"] = cfgf.name
     env["OPENCODE_DISABLE_PROJECT_CONFIG"] = "1"  # a stray opencode.json in cwd must not shadow our config
 
-    msg = ("Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-           "backend under submission/ per those instructions. Run `python3 agent_selfcheck.py --submission "
-           "submission --sim spike --capsules all` with your bash tool after each build to grade against the "
-           "real oracle (goldens withheld), and iterate until capsules pass. Begin now.")
+    msg = prompt if prompt is not None else (
+        "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
+        "backend under submission/ per those instructions. Run `python3 agent_selfcheck.py --submission "
+        "submission --sim spike --capsules all` with your bash tool after each build to grade against the "
+        "real oracle (goldens withheld), and iterate until capsules pass. Begin now.")
     run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid,
                "--dir", str(ws)]
     # opencode spells reasoning effort `--variant` (provider-specific: high / max / minimal). Passing it is

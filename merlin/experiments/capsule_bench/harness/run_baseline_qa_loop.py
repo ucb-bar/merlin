@@ -337,10 +337,122 @@ def _authoring_completion(numeric_all_pass: bool, workflow_conformant: bool) -> 
     return bool(numeric_all_pass and workflow_conformant)
 
 
+def _latest_live_authoring_transcript(paths) -> Path | None:
+    """Return the newest transcript backed by an actual authoring turn.
+
+    A failed CLI launch still creates a ``round_*.transcript.jsonl``.  It has no
+    assistant turn and therefore cannot be evidence for (or against) the
+    submission's workflow.  In particular, it must not replace the prior live
+    transcript when the run reaches its final conformance recomputation or is
+    resumed.  ``agent_turn_dead`` is deliberately the shared definition here:
+    a quiet but real turn remains evidence and a tool-using turn that later
+    errors remains evidence; only a turn that never ran is skipped.
+    """
+    for path in reversed(sorted((Path(p) for p in paths), key=lambda p: p.name)):
+        dead, _why = RL.agent_turn_dead(path)
+        if not dead:
+            return path
+    return None
+
+
 def _formal_completion(numeric_all_pass: bool, workflow_conformant: bool,
                        official_grade_complete: bool) -> bool:
     """Formal success additionally requires the outer, post-freeze public+hidden L3 grade."""
     return bool(numeric_all_pass and workflow_conformant and official_grade_complete)
+
+
+def _require_submission_identity(submission_dir: Path, expected_sha256: str, *, stage: str) -> dict:
+    """Fail closed when a resume bound to prior certification changes package bytes.
+
+    A correctness/equivalence certificate names an exact compiler tree, not merely a run id.  This
+    guard lets a resumed authoring turn gather missing workflow evidence without silently attaching an
+    older certificate to a changed compiler.  It deliberately does not restore or discard edits: if an
+    agent changes the package, that new package needs a new certificate and the run stops honestly.
+    """
+    expected = str(expected_sha256).strip()
+    if (len(expected) != 64 or expected.lower() != expected
+            or any(ch not in "0123456789abcdef" for ch in expected)):
+        raise ValueError("required submission sha256 must be 64 lowercase hexadecimal characters")
+    submission_dir = Path(submission_dir)
+    if submission_dir.is_symlink() or not submission_dir.is_dir():
+        raise RuntimeError(
+            f"submission identity check at {stage} found no plain directory: {submission_dir}")
+    observed = C.hash_tree(submission_dir)
+    if observed.get("sha256") != expected:
+        raise RuntimeError(
+            f"submission identity changed at {stage}: required {expected}, "
+            f"observed {observed.get('sha256')}; prior certification is not applicable and must not "
+            "be reused")
+    return observed
+
+
+def _validate_required_submission_mode(expected_sha256: str, *, resume: bool,
+                                       seed_submission: str, legacy_continuous: bool) -> None:
+    """Validate the only two unambiguous identity-pinned launch modes.
+
+    An identity guard may bind either an existing resume workspace or a fresh workspace copied from an
+    explicit seed.  With neither source there are no bytes for the operator to have certified.  The
+    legacy one-session path has no formal completion path, so it cannot carry a certification binding.
+    """
+    if not expected_sha256:
+        return
+    if not (resume or seed_submission):
+        raise RuntimeError(
+            "--require-submission-sha256 requires either --resume or a fresh --seed-submission")
+    if resume and seed_submission:
+        raise RuntimeError("--seed-submission cannot be combined with --resume")
+    if legacy_continuous:
+        raise RuntimeError(
+            "--require-submission-sha256 requires the checkpointed round loop, not legacy --continuous")
+    expected = expected_sha256.strip()
+    if (len(expected) != 64 or expected.lower() != expected
+            or any(ch not in "0123456789abcdef" for ch in expected)):
+        raise ValueError("required submission sha256 must be 64 lowercase hexadecimal characters")
+
+
+def _identity_evidence_artifact(ws: Path) -> str:
+    """Select an existing compiler-emitted MLIR artifact without encoding a candidate-specific path."""
+    submission = Path(ws) / "submission"
+    candidates = sorted(
+        path for path in submission.rglob("*.mlir")
+        if "build" not in path.parts and "__pycache__" not in path.parts
+    )
+    if not candidates:
+        raise RuntimeError(
+            "evidence-only qualification requires an existing MLIR artifact under submission/ for "
+            "the ISA lint witness")
+    return candidates[0].relative_to(ws).as_posix()
+
+
+def _identity_evidence_prompt(target: str, artifact_path: str) -> str:
+    """A narrowly-scoped authoring prompt for a byte-identity-pinned evidence round.
+
+    Each command is intentionally its own line and must become its own tool call.  The conformance
+    checker rejects shell composition because one concatenated/truncated result cannot prove that every
+    discovery action actually completed.
+    """
+    return f"""This is an EVIDENCE-ONLY qualification round for an already-authored compiler.
+
+The submission is identity-pinned and mounted read-only. Do not edit, chmod, delete, rename, replace, or
+copy anything into submission/. Do not update REPORT.md or iteration notes. Your only job is to execute
+the required workflow checks against the existing compiler and report what they return.
+
+Run every command below as its OWN separate shell tool call. Do not join commands with semicolons, &&,
+pipes, or a multi-line shell invocation. Wait for each result before issuing the next command.
+
+python cca_contract.py check-bijection {target}
+python action_catalog.py escalation-ladder spatial.dataflow {target}
+python -c "from merlin.targetgen import rtl_backend as R; print(R.derived_levers(R.target_profile('{target}')))"
+python -c "from merlin.targetgen.rtl.facts import load_facts; import json; f=load_facts('{target}')['facts']; print(json.dumps({{k:f.get(k) for k in ('target','arrays','memories','datapaths','interfaces')}}))"
+python -c "from merlin.targetgen.generate import target_repo; print([x.relpath for x in target_repo.generate_skeleton('{target}')])"
+python isa_tools.py lint {shlex.quote(artifact_path)}
+jq '.rtl_checks' qa/verdict.json
+python3 agent_selfcheck.py --submission submission --sim spike --capsules all
+
+If qa/verdict.json has not appeared yet, wait for the host grader and retry only the single jq command as
+a new shell tool call. The full self-check may exit nonzero when a required tier is screened or fails;
+let it finish and preserve its complete structured output. Do not attempt repairs: summarize the eight
+results, state that submission/ was not changed, and stop."""
 
 
 def _workflow_conformance(tpath: Path, submission_dir: Path, arm: str, endpoint_kind: str,
@@ -1486,6 +1598,10 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None 
     # worktree/tool input can override the snapshot, then apply answer masks.
     parts = _BW.reapply_bundle_snapshot(parts, ws, bundle, repo=C.REPO)
     parts = _BW.apply_answer_masks(parts, _surfaces(_te()))
+    # A certification-bound resume is evidence-only: keep the workspace writable for QA and tool
+    # outputs, but enforce the compiler subtree as a final read-only mount.  chmod is not sufficient —
+    # the same-UID agent can undo it (and did); the mount namespace cannot be remounted by the agent.
+    parts = _BW.apply_pinned_submission_guard(parts, ws)
     payload = f"{TC.sandbox_env(ws)} {inner}"
     # Single-quote the whole payload for the OUTER `bash -c`, escaping any embedded single quotes (the
     # POSIX '\'' idiom). ``inner`` may itself be shlex-quoted by the caller (the opencode driver quotes
@@ -1794,7 +1910,8 @@ def _billing_mode(model: str) -> str:
 
 
 def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
-                 bundle: dict, rnd: int, timeout: int, arm: str = "raw_baseline") -> tuple[int, Path]:
+                 bundle: dict, rnd: int, timeout: int, arm: str = "raw_baseline", *,
+                 evidence_only: bool = False) -> tuple[int, Path]:
     # TASK.md must live INSIDE the bound workspace: run_dir is under runs/ which bwrap tmpfs-masks,
     # so a stdin redirect from run_dir/TASK.md is invisible inside the sandbox (empty stdin).
     ws_task = ws / "TASK.md"
@@ -1803,6 +1920,10 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
     # pick up changed bundle prose.  Missing after setup is corruption, not an invitation to regenerate.
     if not ws_task.is_file():
         raise RuntimeError(f"sealed task is missing before agent launch: {ws_task}")
+    evidence_prompt = None
+    if evidence_only:
+        evidence_prompt = _identity_evidence_prompt(
+            _te().target, _identity_evidence_artifact(ws))
     # Under bwrap the oracle is masked, so the agent's self-check (agent_selfcheck.py) can't grade in-box.
     # Start the driver-side BROKER (oracle available, outside the sandbox) + stage the in-box shim, so the
     # agent gets a REDACTED on-demand self-check (numeric diff, no goldens) without the oracle ever entering
@@ -1826,7 +1947,8 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         if drv == "converse":
             import bedrock_agent as _BA
             return _BA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
-                                 subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL)
+                                 subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
+                                 prompt=evidence_prompt)
         if drv == "opencode":
             try:
                 import opencode_agent as _OA
@@ -1835,7 +1957,7 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
             # effort threads here for the same reason it does for codex below — see that comment.
             return _OA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
                                  subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
-                                 effort=effort)
+                                 effort=effort, prompt=evidence_prompt)
         if drv == "codex":
             try:
                 import codex_agent as _CA
@@ -1845,7 +1967,7 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
             # arm that silently ran at a different reasoning effort is a different arm.
             return _CA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
                                  subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
-                                 effort=effort)
+                                 effort=effort, prompt=evidence_prompt)
         # claudecode. The claude CLI speaks the Anthropic Messages API, so a NON-Anthropic model reaches
         # it only through the LiteLLM bridge (ANTHROPIC_BASE_URL -> our proxy -> Bedrock). This is what
         # makes the harness the experimental variable instead of a fixed property of the model: nemotron
@@ -1854,9 +1976,13 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
         import agent_bridge as _BR
         _bridge_env = _BR.claude_env(model)
         _cli_model = _BR.claude_model_name(model, provider=_PROVIDER)
+        prompt_file = ws_task
+        if evidence_prompt is not None:
+            prompt_file = ws / "EVIDENCE_ONLY.md"
+            prompt_file.write_text(evidence_prompt, encoding="utf-8")
         inner = (f'claude --print --model {_cli_model} --effort {effort} '
                  f'--permission-mode bypassPermissions --add-dir {ws} '
-                 f'--output-format stream-json --verbose < {ws_task}')
+                 f'--output-format stream-json --verbose < {prompt_file}')
         if _bridge_env:
             # Exported INSIDE the sandbox: bwrap keeps the network namespace (loopback reaches the
             # proxy) but not the environment.
@@ -2510,6 +2636,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="TEST ONLY: override the reset epoch to wait toward (verification, not 5h)")
     ap.add_argument("--resume", action="store_true",
                     help="continue an existing run_dir (cross-window robustness) instead of refusing")
+    ap.add_argument("--require-submission-sha256", default="", metavar="SHA256",
+                    help="identity guard for a previously certified compiler, used with --resume or a "
+                         "fresh --seed-submission: require submission/ to keep this exact content hash "
+                         "before and after every agent turn and before the official grade. Any mutation "
+                         "stops the run and requires recertification; the driver also skips its docs-only "
+                         "finalizer so it cannot change the bound tree.")
     ap.add_argument("--seed-submission", default="", metavar="DIR",
                     help="fresh run only: initialize submission/ from a preserved candidate while the "
                          "new run seals its current bundle and records the candidate's exact identity")
@@ -2534,6 +2666,15 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError("--seed-submission cannot be combined with --resume")
     if a.resume and a.operator_errata:
         raise RuntimeError("--operator-errata cannot be combined with --resume")
+    _validate_required_submission_mode(
+        a.require_submission_sha256, resume=a.resume,
+        seed_submission=a.seed_submission, legacy_continuous=a.continuous)
+    if a.require_submission_sha256:
+        # Consumed by both sandbox assembly paths: this driver's bwrap_cmd (Claude/Codex/OpenCode) and
+        # the shared sandbox wrapper (Bedrock tool calls). It is deliberately not passed into the agent
+        # prompt as policy; the mount is the enforcement boundary.
+        from merlin.targetgen.sandbox import bwrap as _BWpin
+        os.environ[_BWpin.PINNED_SUBMISSION_READ_ONLY_ENV] = "1"
     # A real (spending) run MUST be sandboxed: without bwrap the agent can read any absolute path (incl.
     # denied /scratch* answer dirs), so the copy-workspace + post-hoc transcript audit alone do NOT isolate
     # it. Fail closed (parity with run_agent_experiment.py) — an unsandboxed run needs an explicit opt-in.
@@ -2732,6 +2873,10 @@ def main(argv: list[str] | None = None) -> int:
     _seed_submission_record = None
     if a.seed_submission:
         _seed_submission_record = _seed_submission(ws, _seed_source_preflight, run_dir)
+    if a.require_submission_sha256:
+        _require_submission_identity(
+            ws / "submission", a.require_submission_sha256,
+            stage="resume preflight" if a.resume else "seeded fresh-run preflight")
     _bundle_snapshot_record = None
     _model_host_lane_snapshot = None
     _hidden_snapshot_record = None
@@ -2927,7 +3072,7 @@ def main(argv: list[str] | None = None) -> int:
     # loop therefore does not launch again.  ``finalize.transcript`` is deliberately excluded: it is a
     # docs-only turn, not the authoring workflow whose mandatory tools must be evidenced.
     _saved_authoring_transcripts = sorted((run_dir / "rounds").glob("round_*.transcript.jsonl"))
-    _latest_authoring_tpath = _saved_authoring_transcripts[-1] if _saved_authoring_transcripts else None
+    _latest_authoring_tpath = _latest_live_authoring_transcript(_saved_authoring_transcripts)
     if _resuming and state_p.exists():
         st = yaml.safe_load(state_p.read_text()) or {}
         rounds_summary = st.get("rounds", []) or []
@@ -3010,7 +3155,8 @@ def main(argv: list[str] | None = None) -> int:
             import round_brief as _RBlaunch
             _RBlaunch.refresh_before_launch(run_dir, ws, 0)
             rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, 0,
-                                     a.round_timeout, arm=arm)
+                                     a.round_timeout, arm=arm,
+                                     evidence_only=bool(a.require_submission_sha256))
         except subprocess.TimeoutExpired:
             rc, tpath = 124, run_dir / "rounds" / "round_00.transcript.jsonl"
             print("[continuous] agent session TIMEOUT (the session bound, not a round)")
@@ -3079,13 +3225,24 @@ def main(argv: list[str] | None = None) -> int:
             import round_brief as _RBlaunch
             _RBlaunch.refresh_before_launch(run_dir, ws, rnd)
             rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd,
-                                     a.round_timeout, arm=arm)
+                                     a.round_timeout, arm=arm,
+                                     evidence_only=bool(a.require_submission_sha256))
         except subprocess.TimeoutExpired:
             rc, tpath = 124, run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             print(f"[round {rnd}] agent TIMEOUT")
         finally:
             _stop_in_turn_grader(_bg)   # the post-turn grade below is the authoritative one
-        _latest_authoring_tpath = tpath
+        if a.require_submission_sha256:
+            _require_submission_identity(
+                ws / "submission", a.require_submission_sha256,
+                stage=f"after authoring round {rnd}")
+        # Do not let a zero-turn CLI failure erase the last real author's evidence.  The same
+        # selection is used above on --resume, so a dead transcript left on disk cannot poison a
+        # later final-conformance recomputation either.  We intentionally retain a live turn even
+        # if a subsequent quota branch stops the run: it may have changed the submission and is the
+        # only truthful transcript to bind to those bytes.
+        if not RL.agent_turn_dead(tpath)[0]:
+            _latest_authoring_tpath = tpath
 
         # Daily-quota wall: a provider DAILY token limit (429 'too many tokens per day') has no short
         # window reset to sleep to, so retrying burns every remaining round producing empty results
@@ -3433,10 +3590,15 @@ def main(argv: list[str] | None = None) -> int:
                 import round_brief as _RBlaunch
                 _RBlaunch.refresh_before_launch(run_dir, ws, rnd)
                 _fix_rc, _fix_tpath = launch_agent(
-                    ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd, a.round_timeout, arm=arm)
+                    ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd, a.round_timeout, arm=arm,
+                    evidence_only=bool(a.require_submission_sha256))
             except subprocess.TimeoutExpired:
                 _fix_rc = 124
                 print("[verilator fix-round] agent TIMEOUT")
+            if a.require_submission_sha256:
+                _require_submission_identity(
+                    ws / "submission", a.require_submission_sha256,
+                    stage=f"after cycle-accurate fix round {rnd}")
             active_wall_s += time.time() - _fr
             # RE-DERIVE ELIGIBILITY after the fix round. The fix round changes the submission, so a
             # capsule that was held back may now clear the loop tier — and without refreshing, per-capsule
@@ -3505,7 +3667,20 @@ def main(argv: list[str] | None = None) -> int:
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
     finalize = None
-    if _authoring_complete():
+    if _authoring_complete() and a.require_submission_sha256:
+        # The finalizer intentionally edits REPORT.md/docs. A resume explicitly bound to an already
+        # certified package must retain those exact bytes; its existing report is part of the pin.
+        _identity = _require_submission_identity(
+            ws / "submission", a.require_submission_sha256,
+            stage="before identity-preserving finalization")
+        finalize = {
+            "skipped": True,
+            "reason": "submission identity is pinned; docs-only finalizer would change certified bytes",
+            "required_submission_sha256": a.require_submission_sha256,
+            "observed_submission_sha256": _identity.get("sha256"),
+        }
+        print("[finalize] skipped — submission identity is pinned to prior certification")
+    elif _authoring_complete():
         print("[finalize] converged — running bounded report-finalize turn")
         _fin_start = time.time()
         finalize = finalize_report(ws, run_dir, a.model, a.effort, a.sandbox, bundle, arm, verdict,
@@ -3574,6 +3749,9 @@ def main(argv: list[str] | None = None) -> int:
     official_grade = {"complete": False, "grader_returncode": None,
                       "manifest": str(run_dir / "run_manifest.yaml"),
                       "failures": ["submission_missing"]}
+    if wsub.exists() and a.require_submission_sha256:
+        _require_submission_identity(
+            wsub, a.require_submission_sha256, stage="before official-grade freeze")
     if wsub.exists():
         dst = run_dir / "submission"
         if dst.exists():

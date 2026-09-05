@@ -227,12 +227,21 @@ def _shell_tokens(command: str) -> list[str]:
 
     Evidence commands deliberately reject shell composition.  That makes ``true # derived_levers(...)``
     and ``echo 'load_facts(...)'`` data, not executable API evidence, while quoted Python ``-c`` source
-    remains one token.
+    remains one token.  Native Codex events wrap every command in an exact ``/bin/bash -lc <command>``;
+    unwrap that transport layer once so the semantic checker sees the command that actually ran.  The
+    wrapper must contain exactly one command-string argument.  Any outer or inner composition remains in
+    the returned token stream and is rejected by ``_executable`` below.
     """
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
-        return list(lexer)
+        tokens = list(lexer)
+        if (len(tokens) == 3 and Path(tokens[0]).name in {"bash", "sh"}
+                and tokens[1] in {"-c", "-lc"}):
+            inner = shlex.shlex(tokens[2], posix=True, punctuation_chars=True)
+            inner.whitespace_split = True
+            return list(inner)
+        return tokens
     except ValueError:
         return []
 
@@ -465,14 +474,29 @@ def _rtl_checks_read(calls: list[ToolCall]) -> bool:
 
 def _full_selfcheck(calls: list[ToolCall]) -> bool:
     for call in calls:
-        if not call.succeeded:
-            continue
         ex = _exec_str(call)
         # a CLI self-check over the whole set (claude / opencode run it as bash)
         if "agent_selfcheck" in ex and ("--capsules all" in ex or '--capsules "all"' in ex):
-            return True
+            if call.succeeded:
+                return True
+            # The self-check intentionally exits nonzero when even one tier is screened-only/fails. That
+            # still proves the agent RAN the full set — this check is coverage, not correctness (the grade
+            # is the correctness gate). Credit a nonzero command only when its persisted result is a
+            # complete structured response, never for command-not-found/timeout/error prose.
+            if call.result_present:
+                try:
+                    result = json.loads(call.result_text)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    result = None
+                if isinstance(result, dict):
+                    count = result.get("n_capsules")
+                    rows = result.get("per_capsule")
+                    if (isinstance(count, int) and not isinstance(count, bool) and count > 0
+                            and isinstance(rows, list) and len(rows) == count):
+                        return True
         # the bedrock self_check tool: default (no capsules key) or an explicit "all"
-        if call.name == "self_check" and call.input.get("capsules") in (None, "", "all"):
+        if (call.succeeded and call.name == "self_check"
+                and call.input.get("capsules") in (None, "", "all")):
             return True
     return False
 
