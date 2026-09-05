@@ -1410,14 +1410,25 @@ def _arm_from_bundle_id(bundle_id: str) -> str:
 
     Longest wins because the stems nest: ``merlin_assisted_rtlchecks_*`` also starts with
     ``merlin_assisted_``, and picking the shorter one silently downgrades the CIRCT arm to the xDSL arm.
+
+    RESOLVED AGAINST ``_ALL_ARMS``, NOT ``_ARMS``. ``_ARMS`` is the DEFAULT ladder -- the arms that get
+    materialized into every target's bundles unless ``--arms`` says otherwise -- while ``_OPT_IN_ARMS``
+    holds arms that exist and are emitted only when named. Resolving against the default ladder alone
+    does not refuse an opt-in bundle; it MIS-RESOLVES it, because every opt-in stem deliberately
+    contains ``merlin_assisted`` so the arm inherits the assisted prompt. Measured 2026-09-05:
+    ``merlin_assisted_verify_hwbringup_v0`` resolved to ``merlin_assisted`` and would have run with
+    arm-3's tool grants under the verify arm's name -- an arm gaining nothing while its result was
+    attributed to the seam it was supposed to be testing. A gemmini verify bundle already exists on
+    disk, so this was live rather than hypothetical.
     """
-    from merlin.targetgen.generate_bundles import _ARMS
+    from merlin.targetgen.generate_bundles import _ALL_ARMS
     best, best_len = "", -1
-    for arm, stem in _ARMS.items():
+    for arm, stem in _ALL_ARMS.items():
         if bundle_id.startswith(stem + "_") and len(stem) > best_len:
             best, best_len = arm, len(stem)
     if not best:
-        raise KeyError(f"bundle id {bundle_id!r} matches no ladder rung (stems: {sorted(_ARMS.values())})")
+        raise KeyError(
+            f"bundle id {bundle_id!r} matches no ladder rung (stems: {sorted(_ALL_ARMS.values())})")
     return best
 
 

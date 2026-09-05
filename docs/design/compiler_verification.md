@@ -1394,6 +1394,35 @@ differential case can no longer run end to end, since such a buffer is refused b
 reads it — so the property it protected (the encoder's default equals the engines') is asserted directly
 against the engines' source instead of being dropped.
 
+### 2026-09-05 — VER-26 was still live, and worse than "the arm cannot run"
+
+The plan recorded a hard precondition: *a verify-arm campaign must not launch until VER-26 lands*,
+because `run_baseline_qa_loop._arm_from_bundle_id` matched against the default arm list and
+`merlin_assisted_verify_*` would resolve to arm 3. Another session has since rewritten that function to
+longest-matching-stem and made it raise on no match, so I checked whether the precondition had cleared.
+
+It had not, and the failure is not the one the note describes. `merlin_assisted_verify_public_v0`
+resolves to **`merlin_assisted`** — not to a `KeyError`. Every opt-in arm's stem deliberately contains
+`merlin_assisted`, because `generate_prompt._is_assisted_arm` is a substring test and the arm is meant
+to inherit the assisted prompt without a prompt edit. So resolving against the default ladder alone does
+not refuse an opt-in bundle; it silently mis-resolves it to the longest stem that IS in the ladder.
+
+The consequence is the specific thing this experiment cannot survive: the verify arm would run with
+arm-3's tool grants — **no verification seam at all** — under the verify arm's name, and the result
+would be read as evidence about the seam. Nothing downstream can detect that. A gemmini verify bundle
+already exists on disk (`targets/gemmini/input_bundles/merlin_assisted_verify_public_v0`), so this was
+live rather than hypothetical.
+
+One line: resolve against `_ALL_ARMS` (default ladder plus opt-in arms) rather than `_ARMS`.
+`merlin/tests/infra/test_arm_resolution.py` now derives the check from the arm table rather than a list
+typed into the test, so a seventh arm is covered when it is added, and asserts separately that
+`verify_seam` reaches exactly one arm — an arm gaining two things at once produces a result
+attributable to neither.
+
+**The precondition is cleared; the launch is not made.** The two grounds I held it on are also gone:
+the spend ceiling is enforced (`MERLIN_MAX_SPEND_USD` stops the batch through a shared ledger), and the
+grading engine has settled. What remains is a paid campaign, which is a decision rather than a task.
+
 ---
 
 ## 7. Reproducing what is claimed here
