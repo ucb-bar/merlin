@@ -27,7 +27,7 @@ from pathlib import Path
 from .toolchain import m2m_python
 
 
-def _dealloc_passes() -> list[str]:
+def _dealloc_passes(sink: bool | None = None) -> list[str]:
     """Free the buffers ``one-shot-bufferize`` allocates.
 
     Bufferization turns every ``tensor.empty`` into a ``memref.alloc``; it does NOT insert the
@@ -58,20 +58,97 @@ def _dealloc_passes() -> list[str]:
     ``MERLIN_NO_DEALLOC`` restores the previous behavior for an A/B — it exists because this changes
     generated code for every model, and the honest way to defend "numerics unchanged" is to be able
     to rebuild both.
+
+    ``MERLIN_SINK_DEALLOCS`` (or ``sink=True``) appends the sinking stage described in
+    :func:`_sink_dealloc_passes`, which moves each free from the end of the function to just after
+    the buffer's last use. Default OFF, so an unflagged build is byte-identical to the frozen
+    baseline.
     """
     import os
     if os.environ.get("MERLIN_NO_DEALLOC"):
         return []
-    return ["ownership-based-buffer-deallocation",
-            "buffer-deallocation-simplification",
-            "bufferization-lower-deallocations"]
-    # NOT here: `func.func(optimize-allocation-liveness)`. It looked like the obvious next lever --
-    # sink each dealloc to just after its last user and the peak drops -- but measured on the two
-    # models that bracket the range it moved nothing: whisper_tiny stayed at 2184.1 MB and deepjscc at
-    # 48.1 MB, byte for byte, while still perturbing the IR. Ownership-based deallocation is already
-    # placing the frees tightly enough that there is no slack to reclaim. A pass with no measured
-    # effect is not free -- it is another thing that can break a build -- so it stays out until some
-    # model demonstrates a delta.
+    passes = ["ownership-based-buffer-deallocation",
+              "buffer-deallocation-simplification",
+              "bufferization-lower-deallocations"]
+    if sink is None:
+        sink = _sink_deallocs()
+    if sink:
+        passes += _sink_dealloc_passes()
+    return passes
+
+
+def _sink_deallocs() -> bool:
+    """Whether to sink each dealloc to its last use. Default OFF (``MERLIN_SINK_DEALLOCS=1``).
+
+    A named predicate rather than an inline environ poke so a test can drive it, and so the flag is
+    read per build instead of frozen at import."""
+    import os
+    return bool(os.environ.get("MERLIN_SINK_DEALLOCS"))
+
+
+#: The pass that moves a dealloc to its last user. Named once: the runner keys the placement CHECK
+#: on finding it in the pass list, so a rename that missed one of the two would silently disarm the
+#: check rather than fail.
+SINK_DEALLOC_PASS = "func.func(optimize-allocation-liveness)"
+
+
+def _sink_dealloc_passes() -> list[str]:
+    """Move each free from function exit to just after the buffer's last use.
+
+    CORRECTING WHAT THIS COMMENT USED TO SAY. It recorded that
+    ``func.func(optimize-allocation-liveness)`` "moved nothing" and concluded that
+    ``ownership-based-buffer-deallocation`` "is already placing the frees tightly enough that there is
+    no slack to reclaim". The first half was an accurate observation; the second half was the wrong
+    explanation, and the emitted IR contradicts it. The frees are not tight — they are ALL at the end
+    of ``@forward``: measured on the deepjscc int8 build, the last ``malloc`` is at line 10,530 of a
+    12,112-line function and every ``free`` sits after the last compute. The static arena binder
+    (:mod:`merlin.llvmlower.arena_bind`), which can only reuse bytes between a free and a later
+    malloc, therefore gets 1.00x reuse on all three int8 models, while planning the SAME buffers under
+    last-use liveness gives 5.77x / 7.67x / 11.73x. The slack was real; the pass simply could not see
+    it.
+
+    WHY IT MOVED NOTHING. ``bufferization-lower-deallocations`` does not emit a bare
+    ``memref.dealloc``: it emits the dealloc inside an ``scf.if`` guarded by the buffer's ownership
+    flag, which ``buffer-deallocation-simplification`` has already folded to a constant ``true``::
+
+        scf.if %true {
+          memref.dealloc %alloc : memref<64x64xf32>
+        }
+
+    ``OptimizeAllocationLiveness`` looks for a user of the allocation with a Free memory effect and
+    bails unless that user is in the SAME BLOCK as the alloc — deliberately, so it never hoists a
+    dealloc out of a conditional (llvm-project ``mlir/lib/Dialect/Bufferization/Transforms/
+    OptimizeAllocationLiveness.cpp``, ``deallocOp->getBlock() != allocOp->getBlock()``). The dealloc
+    is in the ``scf.if``'s body block, so EVERY allocation is skipped and the pass is a guaranteed
+    no-op wherever it is placed after the lowering — and, measured, equally a no-op placed BEFORE it.
+    Adding it changed nothing not because the frees were tight but because it could not read them.
+
+    THE FIX is the ``canonicalize`` this pipeline dropped. Upstream's own composite
+    ``buffer-deallocation-pipeline`` runs ``cse`` + ``canonicalize`` AFTER ``lower-deallocations``
+    (llvm-project ``mlir/lib/Dialect/Bufferization/Pipelines/BufferizationPipelines.cpp:36-38``); this
+    pipeline names the three passes individually — for the ``vector.mask`` reason in
+    :func:`_dealloc_passes` — and lost that cleanup with them. Canonicalization folds the
+    statically-true ``scf.if`` away, leaving the ``memref.dealloc`` a direct user of the alloc in the
+    alloc's own block, and the liveness pass then moves every one of them to its last use.
+
+    ORDER IS LOAD-BEARING and is asserted by ``merlin/tests/ir/test_dealloc_sinking.py``:
+    ``bufferization-lower-deallocations`` → ``canonicalize`` → ``optimize-allocation-liveness``.
+    Placed before the lowering, or after it without the canonicalize, the pass silently moves nothing
+    — which is exactly how this was mis-diagnosed the first time.
+
+    The canonicalize is safe HERE for the same reason the composite pipeline was not: it runs where
+    ``__DEALLOC__`` is spliced, which in the RVV pipeline is already past ``lower-vector-mask`` and
+    ``convert-vector-to-scf`` (no ``vector.mask`` region left to sink a constant into), and in the
+    scalar pipelines the module carries no vector ops at all.
+
+    Sinking a free is the one edit in this file that can produce SILENTLY WRONG NUMBERS rather than a
+    build failure: a dealloc moved before a use is a use-after-free, and with the arena bound on top
+    of it the freed bytes are handed to another buffer. So the flagged path does not merely trust the
+    pass — the runner re-checks the placement structurally on the IR the stage produced (every use of
+    the allocation and of every value derived from it must precede its dealloc) and FAILS THE BUILD
+    on a violation. See :data:`DEALLOC_CHECK_PRELUDE`.
+    """
+    return ["canonicalize", SINK_DEALLOC_PASS]
 
 
 _UPSTREAM_PASSES = [
@@ -410,6 +487,210 @@ from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 
+# --- The use-after-free check that guards the sinking stage ---------------------------------
+#
+# Sinking a dealloc is the one edit here whose failure mode is WRONG NUMBERS, not a broken build: a
+# free moved before a use is a use-after-free, and with the static arena bound on top of it the
+# freed bytes are immediately handed to another buffer. `optimize-allocation-liveness` decides where
+# a free may go from upstream's `BufferViewFlowAnalysis`; this re-checks the RESULT, on the IR the
+# stage actually produced, in terms that do not depend on that analysis being right.
+#
+# The rule: for every `memref.alloc` whose `memref.dealloc` the stage placed in the alloc's OWN block
+# (an allocation still freed inside an `scf.if` was not sunk -- upstream placed it, and it is left
+# alone), every use of the allocation AND of every value derived from it must come before that free.
+#
+# "Derived from" is deliberately OVER-approximated: any op result of memref type, and any memref
+# block argument of a region, of an op that consumes an aliasing value joins the alias set. An
+# over-approximation can only make the check REFUSE a placement it could have allowed; it cannot let
+# a real use-after-free through by narrowing what counts as a use. Anything it cannot read -- a use
+# whose ancestor chain does not reach the alloc's block -- is reported, never skipped.
+DEALLOC_CHECK_PRELUDE = r"""
+def _memref_typed(v):
+    return str(v.type).startswith('memref')
+
+
+def _op_key(o):
+    # OpView and Operation both answer `.operation`, and the bindings hand back equal (hashable)
+    # objects for the same op however it was reached -- so this is a stable dict key.
+    return o.operation
+
+
+def _dealloc_placement_violations(module):
+    # (violations, n_allocs, n_sunk) for a post-deallocation memref module.
+    order, block_of, index_of, owner_of_block = [], {}, {}, {}
+    counter = [0]
+
+    def visit(block, owner):
+        bid = counter[0]
+        counter[0] += 1
+        owner_of_block[bid] = owner
+        for i, op in enumerate(block.operations):
+            k = _op_key(op)
+            block_of[k], index_of[k] = bid, i
+            order.append(op)
+            for region in op.regions:
+                for b in region.blocks:
+                    visit(b, op)
+
+    for op in module.body.operations:
+        for region in op.regions:
+            for b in region.blocks:
+                visit(b, op)
+
+    alias, roots, uses = {}, {}, {}
+    for op in order:
+        name = op.operation.name
+        if name == 'memref.alloc' and len(op.results) == 1:
+            rid = len(roots)
+            roots[rid] = op
+            alias[op.results[0]] = {rid}
+            continue
+        hit = set()
+        for v in op.operands:
+            hit |= alias.get(v, set())
+        if not hit:
+            continue
+        for rid in hit:
+            uses.setdefault(rid, []).append(op)
+        for r in op.results:
+            if _memref_typed(r):
+                alias.setdefault(r, set()).update(hit)
+        for region in op.regions:
+            for b in region.blocks:
+                for a in b.arguments:
+                    if _memref_typed(a):
+                        alias.setdefault(a, set()).update(hit)
+
+    def ancestor_in_block(op, bid):
+        o = op
+        while True:
+            k = _op_key(o)
+            if k not in block_of:
+                return None
+            if block_of[k] == bid:
+                return o
+            parent = owner_of_block[block_of[k]]
+            if parent is None:
+                return None
+            o = parent
+
+    violations, sunk = [], 0
+    for rid, alloc in roots.items():
+        abid = block_of[_op_key(alloc)]
+        here = [u for u in uses.get(rid, [])
+                if u.operation.name == 'memref.dealloc' and block_of[_op_key(u)] == abid]
+        if not here:
+            continue                      # freed in a conditional/another block: not sunk
+        sunk += 1
+        d = min(here, key=lambda o: index_of[_op_key(o)])
+        di = index_of[_op_key(d)]
+        ty = str(alloc.results[0].type)
+        for u in uses.get(rid, []):
+            if _op_key(u) == _op_key(d):
+                continue
+            anc = ancestor_in_block(u, abid)
+            if anc is None:
+                violations.append(ty + ': use by ' + u.operation.name +
+                                  ' is outside the block its free was placed in')
+            elif index_of[_op_key(anc)] > di:
+                violations.append(ty + ': freed at #' + str(di) + ' but used at #' +
+                                  str(index_of[_op_key(anc)]) + ' by ' + u.operation.name)
+    return violations, len(roots), sunk
+"""
+
+#: Runner glue: wrap ``_run_stages`` so the placement check runs on the IR the sinking stage
+#: produced, in EVERY runner variant, without any of them having to know about it. The wrapper
+#: delegates unchanged when the pass list carries no sinking stage.
+DEALLOC_CHECK_RUNNER = r"""
+_ORIG_RUN_STAGES = _run_stages
+_SINK_MARK = 'optimize-allocation-liveness'
+
+
+def _run_stages(ctx, module, pipeline, erase, mid=()):
+    passes = [p for p in pipeline.split(',') if p]
+    k = next((i for i, p in enumerate(passes) if _SINK_MARK in p), -1)
+    if k < 0:
+        return _ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid)
+    head, tail = passes[:k + 1], passes[k + 1:]
+    # `erase`/`mid` open their window after buffer-loop-hoisting; hand them to whichever half
+    # contains it, or they would be accepted here and silently never run.
+    hoist_head = any('buffer-loop-hoisting' in p for p in head)
+    _ORIG_RUN_STAGES(ctx, module, ','.join(head),
+                     erase if hoist_head else 0, mid if hoist_head else ())
+    bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
+    print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
+    if bad:
+        raise RuntimeError('dealloc placement moved a free before a use of the buffer '
+                           '(' + str(len(bad)) + ' violations):\n  ' + '\n  '.join(bad[:20]))
+    if tail:
+        _ORIG_RUN_STAGES(ctx, module, ','.join(tail),
+                         0 if hoist_head else erase, () if hoist_head else mid)
+"""
+
+#: The line the runner prints once the check has run. `lower_to_llvm_ir` REQUIRES it whenever the
+#: pipeline carries the sinking stage: a runner variant that drove the PassManager itself and never
+#: reached the wrapper would otherwise sink the frees with nothing checking them, and report success.
+DEALLOC_CHECK_TOKEN = "OK dealloc_placement"
+
+
+def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
+    """Run ``pipeline`` over ``mlir_text`` in the m2m venv and return the printed module.
+
+    A diagnostic/test seam, not a build path: it drives the SAME pass registry the lowering drives
+    (the torch-mlir wheel's), so a test that pins what a stage does to the IR cannot pass against a
+    different LLVM than the one that ships.
+    """
+    work = Path(tempfile.mkdtemp(prefix="merlin_apply_passes_"))
+    src, dst = work / "in.mlir", work / "out.mlir"
+    src.write_text(mlir_text, encoding="utf-8")
+    script = work / "apply.py"
+    script.write_text(
+        "import sys\n"
+        "from torch_mlir import ir\n"
+        "from torch_mlir.passmanager import PassManager\n"
+        "ctx = ir.Context()\n"
+        "with open(sys.argv[1]) as f:\n"
+        "    module = ir.Module.parse(f.read(), ctx)\n"
+        "PassManager.parse('builtin.module(' + sys.argv[3] + ')', ctx).run(module.operation)\n"
+        "with open(sys.argv[2], 'w') as f:\n"
+        "    f.write(str(module.operation))\n", encoding="utf-8")
+    proc = subprocess.run([str(m2m_python()), str(script), str(src), str(dst), pipeline],
+                          capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0 or not dst.is_file():
+        raise PipelineError(f"apply_passes failed:\n{proc.stdout}\n{proc.stderr}")
+    return dst.read_text(encoding="utf-8")
+
+
+def dealloc_placement_violations(mlir_text: str, timeout: int = 600) -> list[str]:
+    """Violations of the placement rule in a post-deallocation memref module.
+
+    Empty list == every allocation whose free was sunk into the alloc's own block is used only
+    before that free. Runs the SAME source the build runs, out of process in the m2m venv (the MLIR
+    Python bindings live there), so a test and a build cannot disagree about what is checked.
+    """
+    import json
+    work = Path(tempfile.mkdtemp(prefix="merlin_dealloc_check_"))
+    src = work / "module.mlir"
+    src.write_text(mlir_text, encoding="utf-8")
+    script = work / "check.py"
+    script.write_text(
+        "import json, sys\n"
+        "from torch_mlir import ir\n"
+        + DEALLOC_CHECK_PRELUDE +
+        "ctx = ir.Context()\n"
+        "with open(sys.argv[1]) as f:\n"
+        "    module = ir.Module.parse(f.read(), ctx)\n"
+        "bad, n_alloc, n_sunk = _dealloc_placement_violations(module)\n"
+        "print('MERLIN_CHECK ' + json.dumps({'violations': bad, 'allocations': n_alloc, "
+        "'sunk': n_sunk}))\n", encoding="utf-8")
+    proc = subprocess.run([str(m2m_python()), str(script), str(src)],
+                          capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0:
+        raise PipelineError(f"dealloc placement check failed:\n{proc.stdout}\n{proc.stderr}")
+    line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("MERLIN_CHECK "))
+    return json.loads(line[len("MERLIN_CHECK "):])["violations"]
+
+
 # How a runner emits its result. The in-process torch-mlir bridge
 # (`translate_module_to_llvmir`) is the default and produces .ll directly; it SEGFAULTS on
 # OpenMP IR (its OpenMPIRBuilder), so the multicore/parallel paths instead DUMP the
@@ -427,7 +708,7 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _MID_STAGE_SRC + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _MID_STAGE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -481,7 +762,8 @@ from torch_mlir.dialects import llvm
 
 _RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE
                          + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE
-                         + _CONCAT_DPS_PRELUDE + _MID_STAGE_SRC + r'''
+                         + _CONCAT_DPS_PRELUDE + _MID_STAGE_SRC
+                         + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -687,6 +969,17 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")
+    if SINK_DEALLOC_PASS in pipeline and DEALLOC_CHECK_TOKEN not in proc.stdout:
+        # The sinking stage ran and the use-after-free check did NOT. That is only reachable from a
+        # runner variant that drives the PassManager itself instead of going through `_run_stages`
+        # (the accumulator-resident v3 runner does, for its first stage), and it would sink every
+        # free with nothing verifying the placement -- silently wrong numbers, not a failed build.
+        # Refuse the artifact rather than ship an unchecked one.
+        raise PipelineError(
+            "the dealloc sinking stage ran but its use-after-free check did not report "
+            f"({DEALLOC_CHECK_TOKEN!r} absent from the runner's output). This runner variant "
+            "bypasses `_run_stages`; do not combine MERLIN_SINK_DEALLOCS with it until the check "
+            f"is wired there too.\n{proc.stdout}")
     if omp:
         from .toolchain import mlir_translate
         tproc = subprocess.run(
