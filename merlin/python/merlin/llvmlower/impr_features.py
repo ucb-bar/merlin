@@ -1868,13 +1868,159 @@ def _vec_noncontraction_hygiene() -> frozenset[str]:
     identical base, offsets and region) and is a no-op on a lowering that has none, so implying it
     can only help or do nothing -- and enabling it is what makes ``lower_to_llvm_ir`` splice the
     post-bufferization ``canonicalize,cse`` that collapses the two subviews into the one SSA value
-    the erase keys on. Output stayed BIT-IDENTICAL on both models, all four arms.
+    the erase keys on.
+
+    CORRECTION (supersedes the closing claim of commit ffd3c40f, "the output is bit-identical on
+    every arm"). That statement was WRONG for small_llama int8 and it was wrong because of the
+    sample, not the reasoning: the copy census above was taken on deepjscc and small_llama, and only
+    the OUTPUT DIGEST of deepjscc was compared. On small_llama the lever's output was cos 0.968247 /
+    rel 0.46352 against the baseline's 0.999966 / 0.00836 -- a MISCOMPILE, not a rounding difference,
+    and one that produced two different answers (``756d00f36c43``, ``d9d8a01aa32e``) from the SAME
+    shared object depending on the host process's memory layout. The cause is unrelated to the
+    self-copy erase (it is the sub-byte element hazard :func:`_vec_bytewise_matchers` documents and
+    now refuses); what the erase claim got wrong is only that it generalized a bit-identity measured
+    on one model to "every arm". With the refusal in place the output IS bit-identical to the
+    baseline on all three int8 recaptures, in both arm placements, under three initial memory
+    layouts -- which is the statement this note is willing to make.
 
     It is an ``implies`` rather than a note in the description for the reason ``_tile_epilogue_hygiene``
     gives: a default-off lever whose payoff is cancelled by a separate default-off fix is an inert
     lever, because everyone naming it directly in ``compiler_features`` gets the cancelled version.
     """
     return frozenset({_SELF_COPY_FEATURE})
+
+
+#: Attribute the byte-addressable-element MATCHERS below annotate an op with. An arm matches
+#: ``merlin.vec_r{rank}`` AND this, so an op only vectorizes when its own IR says every tensor it
+#: reads and writes has a byte-or-wider element type. See :func:`_vec_bytewise_matchers`.
+VEC_BYTEWISE_ATTR = "merlin.vec_ok"
+
+#: Smallest element width, in bits, whose in-memory layout a ``vector.transfer`` and a scalar
+#: ``memref`` access agree on. NOT a tuning choice and not a target fact: a `memref<...xT>` is
+#: addressed at `sizeof(T)` rounded UP to a byte, while a `vector<NxT>` is PACKED, so at T=i1 a
+#: `vector<8xi1>` occupies ONE byte where the scalar form occupies eight. Everything at 8 bits or
+#: wider has the same layout in both.
+VEC_BYTEWISE_MIN_BITS = 8
+
+#: Largest ``ins`` arity the matchers below enumerate. The check has to hold for EVERY input, and
+#: ``match.structured.elemental_bitwidth`` takes ONE value (a ``%s[all]`` handle is rejected by its
+#: single-value trait), so the arity is enumerated and each input checked by index. An op with more
+#: inputs than this matches NO matcher, is never annotated, and is therefore NOT vectorized -- the
+#: refusal is what "fail closed" means here, and it is why the bound may be raised but never removed.
+VEC_BYTEWISE_MAX_INPUTS = 6
+
+
+def _vec_bytewise_matcher_prefix(text: str) -> str | None:
+    """Symbol prefix for the matchers spliced into ``text``, derived from ITS OWN entry point.
+
+    ``transform-preload-library`` merges every library it is given into one transform module, and the
+    non-contraction arms are spliced into TWO of them (the pre-specialization library and the package
+    schedule). A fixed symbol name would collide there. The entry-point symbol is what distinguishes
+    the two libraries, so deriving the prefix from it makes the names unique without anyone choosing
+    one. Returns None when the text has no named sequence to derive from (then nothing is spliced).
+    """
+    key = "transform.named_sequence @"
+    for line in text.splitlines():
+        head, sep, tail = line.partition(key)
+        if not sep:
+            continue
+        name = tail.split("(", 1)[0].strip()
+        if name:
+            return f"__merlin_vec_bytewise_{name.lstrip('_')}_"
+    return None
+
+
+def _vec_bytewise_matchers(prefix: str, *, min_bits: int = VEC_BYTEWISE_MIN_BITS,
+                           max_inputs: int = VEC_BYTEWISE_MAX_INPUTS) -> str:
+    """Named matcher sequences that accept a ``linalg.generic`` iff EVERY tensor it reads or writes
+    has an element at least ``min_bits`` wide.
+
+    WHY THIS EXISTS -- a MISCOMPILE, measured, not inferred. The arms vectorize an op by tiling it and
+    writing each tile with a ``vector.transfer_write``. For an element type narrower than a byte the
+    two sides of that write disagree about the layout of the SAME buffer: LLVM stores a `vector<8xi1>`
+    PACKED (one byte for eight lanes) while the memref the tile belongs to is addressed one byte per
+    element, and every scalar consumer reads it that way. MEASURED on small_llama int8 (host lowering,
+    old arm placement), the causal mask is a `tensor<8x8xi1>`::
+
+        %3147 = call ptr @malloc(i64 128)          ; 64 elements, ONE BYTE EACH
+        ...
+        %3163 = getelementptr i1, ptr %3152, i64 %3157   ; %3157 = row * 8
+        store <8 x i1> %3162, ptr %3164, align 1   ; ...but this writes ONE byte
+        ...
+        %3204 = getelementptr inbounds nuw i1, ptr %3152, i64 %3203
+        %3205 = load i1, ptr %3204, align 1        ; scalar consumer, one byte per element
+        %3208 = select i1 %3205, float 0xFFF0000000000000, float %3207
+
+    8 of the 64 bytes are written and 56 are read back UNINITIALISED, straight into the attention
+    mask's `select`. The result is wrong (cos 0.9682 / rel 0.4635 against a baseline 0.99997 / 0.0084)
+    and depends on what happened to be in that allocation, so the same binary answers differently
+    under a different initial stack/heap layout. Both directions are unsound: a vectorized WRITE of a
+    sub-byte destination, and a vectorized READ of a sub-byte input some scalar loop wrote -- which is
+    why the inputs are checked as well as the destination.
+
+    Realized as matchers rather than as a tagging-time predicate because the tag is applied by the
+    prepare pass and the arms are the last thing that decides; a schedule that carries the arms
+    carries the refusal with them, and cannot be armed without it.
+
+    One sequence per ``ins`` arity: ``match.structured.elemental_bitwidth`` takes a SINGLE value, and
+    ``%s[all]`` is rejected by its single-value trait, so each input is checked by index and the arity
+    is pinned with ``num_inputs``. An op outside the enumerated arities matches nothing and is
+    refused. ``num_inits`` is pinned to 1 for the same reason -- a second destination would go
+    unchecked otherwise.
+
+    WHAT THIS IS NOT, checked and ruled out. The obvious suspect was PARTIAL COVERAGE -- the extra
+    destination buffer the arms allocate per vectorized op, written only where the tile lands and
+    read where it does not. It is not that. The tagging predicate admits an op only when its
+    innermost extent is a whole multiple of the lane count and the arms tile every other dim by 1, so
+    the tiles cover the destination exactly: MEASURED on small_llama int8 at the post-interpreter
+    module, every one of the 33 (old placement) / 84 (new placement) tile writes carries
+    ``in_bounds = [true...]``, there is not one ``affine.min`` trip-count clamp and not one
+    ``vector.mask`` in the whole module. The uninitialised bytes come from the ELEMENT WIDTH, not
+    from the tiling.
+    """
+    out: list[str] = []
+    for n in range(max_inputs + 1):
+        lines = [
+            f"  transform.named_sequence @{prefix}{n}(%op: !transform.any_op "
+            "{transform.readonly}) -> !transform.any_op {",
+            '    transform.match.operation_name %op ["linalg.generic"] : !transform.any_op',
+            "    transform.match.structured %op : !transform.any_op {",
+            "    ^bb0(%s: !transform.any_op):",
+            f"      %bits = transform.param.constant {min_bits} : i64 -> !transform.param<i64>",
+            "      %one = transform.param.constant 1 : i64 -> !transform.param<i64>",
+            f"      %arity = transform.param.constant {n} : i64 -> !transform.param<i64>",
+            "      %ni = transform.match.structured.num_inputs %s : (!transform.any_op) -> "
+            "!transform.param<i64>",
+            "      transform.match.param.cmpi eq %ni, %arity : !transform.param<i64>",
+            "      %no = transform.match.structured.num_inits %s : (!transform.any_op) -> "
+            "!transform.param<i64>",
+            "      transform.match.param.cmpi eq %no, %one : !transform.param<i64>",
+            "      %init = transform.match.structured.init %s[0] : (!transform.any_op) -> "
+            "!transform.any_value",
+            "      %bwinit = transform.match.structured.elemental_bitwidth %init : "
+            "(!transform.any_value) -> !transform.param<i64>",
+            "      transform.match.param.cmpi ge %bwinit, %bits : !transform.param<i64>",
+        ]
+        for k in range(n):
+            lines += [
+                f"      %in{k} = transform.match.structured.input %s[{k}] : (!transform.any_op) -> "
+                "!transform.any_value",
+                f"      %bw{k} = transform.match.structured.elemental_bitwidth %in{k} : "
+                "(!transform.any_value) -> !transform.param<i64>",
+                f"      transform.match.param.cmpi ge %bw{k}, %bits : !transform.param<i64>",
+            ]
+        lines += ["    }", "    transform.yield %op : !transform.any_op", "  }"]
+        out.append("\n".join(lines))
+    return "\n".join(out) + "\n"
+
+
+def _vec_bytewise_annotate(prefix: str, *, max_inputs: int = VEC_BYTEWISE_MAX_INPUTS) -> str:
+    """The arm-body lines that run those matchers and mark what they accept."""
+    return "".join(
+        f"    %ok{n} = transform.collect_matching @{prefix}{n} in %arg0 : "
+        f"(!transform.any_op) -> !transform.any_op\n"
+        f'    transform.annotate %ok{n} "{VEC_BYTEWISE_ATTR}" : !transform.any_op\n'
+        for n in range(max_inputs + 1))
 
 
 #: Bounded per-rank vectorize of the tagged all-parallel generics. BOUNDED on purpose: a plain
@@ -1887,16 +2033,24 @@ def _vec_noncontraction_hygiene() -> frozenset[str]:
 #: an untiled 1x64 relu with [1, 8] fails the whole pipeline with "Attempted to vectorize, but failed"
 #: (measured on deepjscc). Tiling first also means the vector shape is exactly the tile, so nothing is
 #: masked -- the tagging predicate only admits extents that are whole multiples of the lane count.
-def _vec_rank_arms(lanes: int) -> str:
-    """The per-rank tile+vectorize arms at ``lanes`` innermost lanes."""
-    return f"""\
-    %g2 = transform.structured.match attributes{{merlin.vec_r2}} in %arg0 : (!transform.any_op) -> !transform.any_op
+def _vec_rank_arms(lanes: int, prefix: str | None = None) -> str:
+    """The per-rank tile+vectorize arms at ``lanes`` innermost lanes.
+
+    ``prefix`` names the byte-addressable-element matchers (see :func:`_vec_bytewise_matchers`); the
+    arms then match ``merlin.vec_r{rank}`` AND the attribute those matchers annotate, so a sub-byte
+    op is refused rather than mis-vectorized. Default None keeps the arms self-contained for the
+    tests that read them without a module to splice matchers into.
+    """
+    gate = f", {VEC_BYTEWISE_ATTR}" if prefix else ""
+    mark = _vec_bytewise_annotate(prefix) if prefix else ""
+    return mark + f"""\
+    %g2 = transform.structured.match attributes{{merlin.vec_r2{gate}}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %gt2, %gl2:2 = transform.structured.tile_using_for %g2 tile_sizes [1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     transform.structured.vectorize %gt2 vector_sizes [1, {lanes}] : !transform.any_op
-    %g3 = transform.structured.match attributes{{merlin.vec_r3}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %g3 = transform.structured.match attributes{{merlin.vec_r3{gate}}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %gt3, %gl3:3 = transform.structured.tile_using_for %g3 tile_sizes [1, 1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     transform.structured.vectorize %gt3 vector_sizes [1, 1, {lanes}] : !transform.any_op
-    %g4 = transform.structured.match attributes{{merlin.vec_r4}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %g4 = transform.structured.match attributes{{merlin.vec_r4{gate}}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %gt4, %gl4:4 = transform.structured.tile_using_for %g4 tile_sizes [1, 1, 1, {lanes}] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     transform.structured.vectorize %gt4 vector_sizes [1, 1, 1, {lanes}] : !transform.any_op
     %vecf = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
@@ -1919,7 +2073,28 @@ def _splice_vec_rank_arms(text: str, lanes: int = VEC_NONCONTRACTION_LANES) -> s
     anchor = '    %f = transform.structured.match ops{["func.func"]}'
     if "merlin.vec_r" in text or anchor not in text:
         return text
-    return text.replace(anchor, _vec_rank_arms(lanes) + anchor, 1)
+    prefix = _vec_bytewise_matcher_prefix(text)
+    head = _vec_module_header(text)
+    if prefix is None or head is None:
+        # Nowhere to put the refusal matchers => splice NO arms. Arming without them is the
+        # miscompile `_vec_bytewise_matchers` documents, and a lever that is off is recoverable
+        # where a lever that is silently wrong is not.
+        return text
+    text = text.replace(head, head + _vec_bytewise_matchers(prefix), 1)
+    return text.replace(anchor, _vec_rank_arms(lanes, prefix) + anchor, 1)
+
+
+def _vec_module_header(text: str) -> str | None:
+    """The ``module ... {`` line the matcher sequences are inserted after, or None.
+
+    Structural, not positional: the first line that OPENS a module. A schedule whose module this
+    cannot find gets no arms at all rather than arms without their refusal matchers.
+    """
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("module") and stripped.endswith("{"):
+            return line
+    return None
 
 
 register(ImprFeature(
@@ -1941,7 +2116,15 @@ register(ImprFeature(
         "to `llvm.memcpy`, not to the `@memrefCopy` the earlier check counted. This feature now "
         "IMPLIES `erase_self_copy`, which removes them: measured on the host lowering, the copy "
         "call sites the lever adds inside `forward` go from +15 (deepjscc) / +33 (small_llama) to "
-        "+0 on both, with the vector-instruction gain kept and the output still bit-identical. "
+        "+0 on both, with the vector-instruction gain kept. The output was reported bit-identical "
+        "at that point and it was NOT: on small_llama int8 the lever answered cos 0.968247 / rel "
+        "0.46352 against a baseline 0.999966 / 0.00836, and answered DIFFERENTLY from the same "
+        "object under a different process memory layout, because a `vector<8xi1>` mask tile is "
+        "stored PACKED into a buffer every scalar reader addresses one byte per element (56 of 64 "
+        "bytes left uninitialised, read straight into the attention mask). The arms now refuse a "
+        "sub-byte element type on the destination or on any input, and with that refusal the "
+        "output IS bit-identical to the baseline on all three int8 recaptures, in both arm "
+        "placements, under three memory layouts. See `_vec_bytewise_matchers`. "
         "NOT yet claimed as a speedup -- that is a board measurement, and the cycle number above "
         "is the one it has to beat. Two known limits remain, both MEASURED and neither fixable "
         "from this file: (a) COVERAGE -- `func.func(linalg-specialize-generic-ops)`, which runs "
