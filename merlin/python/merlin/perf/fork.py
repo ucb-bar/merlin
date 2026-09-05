@@ -15,8 +15,11 @@ Three things have to hold, and each is a separate failure this module makes visi
 2. **A Phase-P edit requeues the SMALL functional capsules that ride on what it touched.** With a
    single whole-submission digest, every edit kills every certificate, so the cycle-accurate tier --
    minutes per capsule -- is re-bought for the whole corpus per edit and the round never finishes.
-   Comparing only the components a capsule DECLARED (``depends_on``) requeues the handful that
-   actually moved, and the large performance workload is not a functional capsule at all: it is not
+   Comparing per COMPONENT (``depends_on``) instead requeues only the capsules whose components moved
+   -- and the bytes the decomposition proved no command can read requeue nothing at all. The dependency
+   set is the submission's own decomposition, never a claim by a capsule: the grader runs every command
+   for every capsule, so no capsule can honestly narrow it (see ``tier_promote``). The large
+   performance workload is not a functional capsule at all: it is not
    in the fork's capsule set, so :func:`requeue` cannot emit it. Re-proving the compiler is cheap;
    re-running the workload to prove the compiler is the thing that made rounds unaffordable.
 
@@ -72,7 +75,8 @@ class ForkPoint:
     components: dict[str, str] = field(default_factory=dict)
     #: ``{capsule: {tier: status}}`` -- the Phase-F verdicts that may not be weakened.
     invariants: dict[str, dict[str, str]] = field(default_factory=dict)
-    #: ``{capsule: (component, ...)}`` as each capsule declared it. Absent == depends on everything.
+    #: ``{capsule: (component, ...)}`` the certificate rides on, from the submission's decomposition.
+    #: Absent == depends on everything (the whole submission digest).
     depends_on: dict[str, tuple[str, ...]] = field(default_factory=dict)
     recorded_at: str = ""
     #: Opaque hardware-provenance block (``merlin.common.provenance.record()``). The Phase-F verdicts

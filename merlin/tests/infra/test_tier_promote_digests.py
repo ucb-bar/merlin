@@ -221,7 +221,9 @@ def _states(before, after, declared):
             for n, dep in declared.items()]
 
 
-# capsule -> what it declares. `whole_model` declares nothing on purpose: it is the fail-closed control.
+# capsule -> the dependency set the SCHEDULER is given. `oracle_schedule` policy fixtures, not capsule
+# declarations -- `depends_on` is no longer a capsule.yaml field. `whole_model` is given None on purpose:
+# it is the fail-closed control.
 DECLARED = {
     "isa_parse_smoke": ("parse",),
     "matmul_tile": ("lower_interface_to_target",),
@@ -349,12 +351,19 @@ def test_explain_reports_the_invalidating_component_per_capsule():
 
 
 # ---------------------------------------------------------------------------------------------
-# 6. end to end through the broker
+# 6. the retired per-capsule declaration -- and why nothing may narrow
 # ---------------------------------------------------------------------------------------------
+# `capsule.yaml` once accepted `depends_on: [<component>, ...]`, and `tier_promote.capsule_dependencies`
+# handed it to `CapsuleState.depends_on`. It is gone from the schema, because a truthful narrow
+# declaration cannot exist: the grader runs EVERY declared command for EVERY capsule, so an edit to any
+# command's files can flip any capsule's verdict. These tests pin all three halves of that -- the premise
+# (all commands always run), the schema (the field is not offered), and the behaviour (a capsule.yaml
+# still carrying the key narrows nothing).
 CORPUS = {"matmul_tile": "lower_interface_to_target", "conv_codegen": "lower_target_to_llvm"}
 
 
 def _corpus(tmp_path):
+    """A corpus whose capsules STILL carry the retired key, which must now buy them nothing."""
     root = tmp_path / "corpus"
     for name, dep in CORPUS.items():
         d = root / name
@@ -366,21 +375,77 @@ def _corpus(tmp_path):
     return root
 
 
-def test_capsule_dependencies_reads_each_capsules_own_declaration(tmp_path):
-    B = _mod()
-    got = B.capsule_dependencies([_corpus(tmp_path)])
-    assert got == {n: (d,) for n, d in CORPUS.items()}
-    # a capsule that declares nothing gets NO entry, so `depends_on` stays None -> whole submission
-    assert "undeclared" not in got
+def test_the_capsule_schema_offers_no_per_capsule_dependency_set():
+    """A schema field nothing reads is a claim the repo does not keep.
+
+    Asserted on the repo copy, which always exists, and on the packaged copy WHEN it exists -- that one
+    is a build product a fresh checkout has not materialized yet, and asserting on its absence would be
+    asserting on the build rather than on the contract.
+    """
+    import json
+    checked = 0
+    for rel in ("contract/schemas/capsule.schema.json",
+                "python/merlin/_data/contract/schemas/capsule.schema.json"):
+        path = merlin_dir() / rel
+        if not path.is_file():
+            continue
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        assert "depends_on" not in doc["properties"], rel
+        checked += 1
+    assert checked, "no capsule schema found at all, so this test established nothing"
 
 
-def test_promote_requeues_only_the_dependent_capsule_after_an_edit(tmp_path, monkeypatch, capsys):
-    """The plumbing, not just the policy: two real `promote()` calls across one edit.
+def test_the_promotion_plumbing_reads_no_capsule_declaration():
+    """The reader is gone too, not merely unused: a dormant reader is one caller away from returning."""
+    assert not hasattr(_mod(), "capsule_dependencies")
 
-    The first certifies both capsules; the edit touches the tiling component only; the second must
-    re-enqueue the cert tier for `matmul_tile` alone and say which component did it. Under the old
-    whole-submission digest both would requeue -- which at minutes per capsule is the cost this change
-    exists to remove.
+
+def test_every_declared_command_runs_for_every_capsule():
+    """THE PREMISE the removal rests on, asserted against the runner rather than trusted.
+
+    `capsule_common.run_entrypoints` is the shared ABI front half every target's runner goes through. It
+    invokes each of the four contract entrypoints unconditionally -- there is no per-capsule subset -- so
+    no capsule can honestly say it does not ride on one of them. If this ever becomes conditional, the
+    rationale for retiring `depends_on` is void and this test is where that shows up.
+    """
+    import ast
+    import inspect
+
+    from merlin.targetgen import capsule_common
+
+    tree = ast.parse(inspect.getsource(capsule_common.run_entrypoints))
+    called = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+        if name != "run_entrypoint":
+            continue
+        for arg in node.args[1:2]:
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                called.add(arg.value)
+    # The fourth entrypoint has two accepted spellings; either satisfies the ladder.
+    fourth = {"lower_target_to_llvm", "emit_target_artifact"}
+    assert set(CMDS[:3]) <= called, f"a contract entrypoint is no longer unconditional: {called}"
+    assert called & fourth, f"the fourth entrypoint is no longer unconditional: {called}"
+    # and nothing guards any of those calls on a per-capsule condition
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.If, ast.For, ast.While)):
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Call):
+                    fn = inner.func
+                    nm = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+                    assert nm != "run_entrypoint", "an entrypoint call became conditional"
+
+
+def test_a_retired_depends_on_narrows_nothing(tmp_path, monkeypatch, capsys):
+    """The behaviour, end to end: two real `promote()` calls across one edit.
+
+    `matmul_tile` declares it rides on the tiling command and `conv_codegen` declares it does not. The
+    edit touches the tiling pass -- and BOTH must lose their certificate, because the grader will run the
+    tiling command for `conv_codegen` too. Honouring the declaration (which is what happened before) left
+    `conv_codegen` holding a certificate its current bytes had not earned.
     """
     B = _mod()
     import json
@@ -388,7 +453,11 @@ def test_promote_requeues_only_the_dependent_capsule_after_an_edit(tmp_path, mon
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
+    # `raising=False` on purpose: the reader this patches is GONE, and the patch is inert now. It is
+    # here so the test still stands up the corpus for any reader that comes back -- which is what makes
+    # this a falsifier rather than a tautology. Against the code that honoured the declaration, this
+    # same test fails on `conv_codegen` surviving an edit to a command it will be graded through.
+    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),), raising=False)
     v = {"per_capsule": [{"capsule": n, "pass": True} for n in CORPUS]}
 
     assert sorted(B.promote(ws, ch, v, "L2", "L3", None, sys.stderr)) == ["conv_codegen", "matmul_tile"]
@@ -398,8 +467,9 @@ def test_promote_requeues_only_the_dependent_capsule_after_an_edit(tmp_path, mon
         f.unlink()
 
     (ws / "submission" / "mlir_oot" / "lowering" / "tile.py").write_text("tile v2\n")
-    assert B.promote(ws, ch, v, "L2", "L3", None, sys.stderr) == ["matmul_tile"]
-    assert [json.loads(f.read_text())["capsules"] for f in ch.glob("simreq_*.json")] == ["matmul_tile"]
+    assert sorted(B.promote(ws, ch, v, "L2", "L3", None, sys.stderr)) == ["conv_codegen", "matmul_tile"]
+    assert sorted(json.loads(f.read_text())["capsules"] for f in ch.glob("simreq_*.json")) == \
+        ["conv_codegen", "matmul_tile"]
     err = capsys.readouterr().err
     assert "matmul_tile L3 invalidated by lower_interface_to_target (changed)" in err
-    assert "conv_codegen L3 invalidated" not in err
+    assert "conv_codegen L3 invalidated by lower_interface_to_target (changed)" in err

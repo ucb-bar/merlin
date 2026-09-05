@@ -24,12 +24,16 @@ Three rules do the work:
 
 1. **Content-address every verdict.** A verdict is keyed by ``(capsule, digest, tier)`` where ``digest``
    is the submission bytes that produced it. Unchanged bytes therefore need no re-run *ever*, and changed
-   bytes invalidate exactly the capsules they affect -- not the corpus. A capsule may narrow that further
-   by declaring ``depends_on: [<component>, ...]``, and then only those components' digests are compared
-   (see :meth:`CapsuleState.invalidated_by`). Declaring nothing means depending on everything: an
-   optimization pass that edits the compiler on every iteration would otherwise re-buy the cycle-accurate
-   tier for the whole corpus per edit, and a round that re-certifies 35 capsules at minutes each to learn
-   about one never finishes.
+   bytes invalidate exactly the capsules they affect -- not the corpus. ``depends_on`` narrows WHICH bytes
+   that is: only the named components' digests are compared (see :meth:`CapsuleState.invalidated_by`), and
+   naming nothing means the whole submission. The caller supplies it from the submission's own
+   decomposition -- every component, so that the bytes the decomposition PROVED no command can read stop
+   invalidating anything. It is NOT a per-capsule claim: a capsule cannot honestly say it does not ride on
+   a command, because the grader runs every command for every capsule. (``capsule.yaml`` briefly offered a
+   ``depends_on`` block; it was retired for exactly that reason -- see ``tier_promote``.) Without any of
+   this, an optimization pass that edits the compiler on every iteration re-buys the cycle-accurate tier
+   for the whole corpus per edit, and a round that re-certifies 35 capsules at minutes each to learn about
+   one never finishes.
 2. **The cheap tier gates the expensive one.** A deeper tier is scheduled only for a capsule that has
    PASSED the shallower one, so RTL time is only ever spent on work that could plausibly certify.
 3. **The expensive tier runs on a representative subset.** Full coverage at the functional tier,
@@ -90,7 +94,8 @@ class CapsuleState:
     """Everything the scheduler knows about one capsule.
 
     ``digest`` is the whole submission; ``components`` decomposes those same bytes by component, and
-    ``depends_on`` is what the capsule itself declared it rides on.
+    ``depends_on`` is which of those components the certificate rides on -- supplied by the caller from
+    the decomposition, never claimed by the capsule.
 
     The reason the decomposition exists: Phase P forks a functionally-complete compiler and then edits it
     continuously, and a whole-submission digest makes EVERY edit invalidate EVERY certificate. The cert
@@ -101,14 +106,14 @@ class CapsuleState:
     digest: str                                    # the submission bytes currently on disk for it
     verdicts: dict[str, Verdict] = field(default_factory=dict)   # tier -> Verdict
     components: dict[str, str] = field(default_factory=dict)     # component -> digest of the CURRENT bytes
-    depends_on: tuple[str, ...] | None = None      # None/() == undeclared == depends on the whole submission
+    depends_on: tuple[str, ...] | None = None      # None/() == unset == depends on the whole submission
 
     def _dep_components(self) -> tuple[str, ...] | None:
         """The components this capsule's certificate rides on, or ``None`` for "the whole submission".
 
         FAIL CLOSED, in both directions that matter:
 
-        * an undeclared (or empty) ``depends_on`` means "depends on everything", never "depends on
+        * an unset (or empty) ``depends_on`` means "depends on everything", never "depends on
           nothing". Getting this backwards makes a stale certificate look valid, which is far worse than
           re-running a capsule that did not need it;
         * a submission with no computable decomposition (``components`` empty) also falls back to the

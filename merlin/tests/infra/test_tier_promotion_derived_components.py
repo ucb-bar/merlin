@@ -221,8 +221,11 @@ def test_refusing_leaves_the_whole_digest_byte_identical(tmp_path):
 # ---------------------------------------------------------------------------------------------
 # 4. THE FALSIFIER -- reconciliation: who loses a certificate when one file moves
 # ---------------------------------------------------------------------------------------------
-# capsule -> what it declares. `whole_model` declares nothing: it takes the DERIVED default, which is
-# every component, so it is the control for "an undeclared capsule still depends on all the code".
+# capsule -> the dependency set the SCHEDULER is given. These are `oracle_schedule` policy fixtures,
+# not capsule declarations: `depends_on` is no longer a capsule.yaml field (see `tier_promote`), and
+# `promote()` supplies every capsule the full component set. The narrow sets are kept here because the
+# scheduler must still discriminate per component -- that is what the derived decomposition buys.
+# `whole_model` is given None: the control for "no dependency set means the whole submission".
 DECLARED = {
     "isa_parse_smoke": ("parse",),
     "matmul_tile": ("lower_interface_to_target",),
@@ -307,6 +310,7 @@ CORPUS = {"matmul_tile": "lower_interface_to_target", "conv_codegen": "lower_tar
 
 
 def _corpus(tmp_path):
+    """A corpus whose capsules still carry the RETIRED `depends_on` key, which must buy them nothing."""
     root = tmp_path / "corpus"
     for name, dep in CORPUS.items():
         d = root / name
@@ -331,7 +335,7 @@ def test_an_inert_edit_requeues_nothing_through_promote(tmp_path, monkeypatch, c
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
+    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),), raising=False)
 
     assert sorted(_promote_once(B, ws, ch, sys.stderr)) == ["conv_codegen", "matmul_tile", "whole_model"]
     (ws / "submission" / "docs" / "iteration_notes.md").write_text("round 2\n")
@@ -341,24 +345,36 @@ def test_an_inert_edit_requeues_nothing_through_promote(tmp_path, monkeypatch, c
     assert "invalidated by" not in capsys.readouterr().err
 
 
-def test_a_live_edit_still_requeues_exactly_its_dependents(tmp_path, monkeypatch, capsys):
-    """The negative half of the same run. `matmul_tile` rides on the tiling pass and must lose its cert;
-    `conv_codegen` does not and must keep it; the capsule that declared NOTHING must lose it too."""
+def test_a_live_edit_requeues_every_capsule_not_only_the_declared_dependents(tmp_path, monkeypatch,
+                                                                             capsys):
+    """The negative half of the same run, and the shape of the retired `depends_on`.
+
+    The edit lands on the tiling pass. `matmul_tile` still carries a stale `depends_on` naming that
+    command and `conv_codegen` carries one naming a different command -- and BOTH must lose their
+    certificate anyway, because the grader runs every command for every capsule
+    (`capsule_common.run_entrypoints`), so an edit to any of them can flip any verdict. Against the code
+    that honoured the declaration, `conv_codegen` survived here, holding a certificate its current bytes
+    had not earned.
+
+    The saving is still real and still asserted -- by the sibling test above, where an edit to bytes no
+    command can READ requeues nothing at all. That is the axis on which certificates survive; the
+    capsule's own opinion never was.
+    """
     B = _mod()
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
+    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),), raising=False)
 
     _promote_once(B, ws, ch, sys.stderr)
     capsys.readouterr()
     (ws / "submission" / "mlir_oot" / "lowering" / "tile.py").write_text("def tile(x): return x + 1\n")
-    assert sorted(_promote_once(B, ws, ch, sys.stderr)) == ["matmul_tile", "whole_model"]
+    assert sorted(_promote_once(B, ws, ch, sys.stderr)) == ["conv_codegen", "matmul_tile", "whole_model"]
     assert sorted(json.loads(f.read_text())["capsules"] for f in ch.glob("simreq_*.json")) == \
-        ["matmul_tile", "whole_model"]
+        ["conv_codegen", "matmul_tile", "whole_model"]
     err = capsys.readouterr().err
-    assert "matmul_tile L3 invalidated by lower_interface_to_target (changed)" in err
-    assert "conv_codegen L3 invalidated" not in err
+    for name in ("matmul_tile", "conv_codegen", "whole_model"):
+        assert f"{name} L3 invalidated by lower_interface_to_target (changed)" in err
 
 
 def test_promote_says_where_the_decomposition_came_from(tmp_path, monkeypatch, capsys):
@@ -368,7 +384,7 @@ def test_promote_says_where_the_decomposition_came_from(tmp_path, monkeypatch, c
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
+    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),), raising=False)
     _promote_once(B, ws, ch, sys.stderr)
     assert "[promote] components: derived" in capsys.readouterr().err
 
@@ -385,7 +401,7 @@ def test_a_completed_cert_is_recorded_against_the_pending_bytes_not_the_current_
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
+    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),), raising=False)
     _promote_once(B, ws, ch, sys.stderr)
     pending = json.loads((ws / "qa" / "tier_state.json").read_text())["matmul_tile"]["L3"]
     assert pending["status"] == "pending"

@@ -65,10 +65,13 @@ problem. Its own round reports named the cause each time.
 
 ## Known open items
 
-- **`depends_on` is declared by 0/48 gemmini capsules**, so every agent edit invalidates every
-  certificate (`invalidated by <whole-submission>`). The machinery is complete; only adoption is
-  missing. Declare it **before** a cohort freeze — never mid-round, which changes what the agent is
-  graded against.
+- **`depends_on` is RETIRED** (was: 0/48 gemmini capsules declared it). It is gone from
+  `capsule.schema.json` because no capsule can honestly narrow: `capsule_common.run_entrypoints` runs
+  every declared command for every capsule, so an edit to any of them can flip any verdict, and a
+  narrowed declaration keeps a certificate the current bytes did not earn. What survives an edit is
+  decided by the SUBMISSION's decomposition instead — `promote()` gives every capsule the full
+  component set, so bytes the derivation proved no command can read (`inert`) stop invalidating
+  anything. See the block above `promote()` in `tier_promote.py`.
 - `GP0`/`GP1`/`GP2` declare `epilogue: ['maxpool']`, which `command_buffer.schema.json` forbids; the
   interpreter pools via `pool_*` attributes on the store instead. `additionalProperties: True` lets a
   wrong carrier validate silently. Ratcheted in

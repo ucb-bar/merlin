@@ -171,9 +171,9 @@ def component_paths(ws) -> tuple[dict, list] | None:
     ``commands`` rather than inside each one).
 
     A key outside :func:`component_vocabulary` is REJECTED and returned in the second slot rather than
-    honoured, so a typo cannot quietly mint a component that no capsule's ``depends_on`` will ever match
-    and that therefore holds no bytes -- a component with no files never changes, so every certificate
-    depending on it would live forever.
+    honoured, so a typo cannot quietly mint a component that owns no files -- a component with no files
+    never changes, and since every capsule depends on every component, every certificate would then live
+    forever across edits to the files the typo failed to claim.
 
     ``None`` when there is no vocabulary or no ``components`` block: undeterminable/undeclared, and the
     caller falls back to the whole-submission digest.
@@ -613,38 +613,34 @@ def submission_digests(ws) -> tuple:
     return h.hexdigest()[:16], comps, d["rejected"]
 
 
-def capsule_dependencies(roots) -> dict:
-    """``{capsule name: (component, ...)}`` from each capsule's own ``depends_on``.
-
-    Read straight off ``capsule.yaml`` rather than through the validating loader: a corpus bug must not
-    turn promotion off, and a capsule this cannot read simply has no declared dependency set -- which
-    means "depends on everything", the fail-closed answer.
-    """
-    import yaml
-    out = {}
-    for root in roots or ():
-        for cy in sorted(Path(root).glob("*/capsule.yaml")):
-            try:
-                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
-            except Exception:  # noqa: BLE001 -- unreadable capsule: no declaration, so whole-submission
-                continue
-            dep = cap.get("depends_on")
-            name = cap.get("name") or cy.parent.name
-            if isinstance(dep, str):
-                dep = [dep]
-            if isinstance(dep, list) and dep:
-                out[str(name)] = tuple(str(d) for d in dep)
-    return out
-
-
-def _graded_roots():
-    """The corpus roots this experiment grades, or ``()`` when the descriptor is unreachable."""
-    try:
-        from merlin.targetgen.target_experiment import load_target_experiment
-        import _common as _C
-        return tuple(load_target_experiment(_C.EXP / "target_experiment.yaml").graded_roots())
-    except Exception:  # noqa: BLE001 -- no descriptor here: no declarations, so whole-submission digests
-        return ()
+# ---------------------------------------------------------------------------------------------------
+# WHY NO CAPSULE DECLARES ITS OWN DEPENDENCY SET
+# ---------------------------------------------------------------------------------------------------
+# `capsule.yaml` used to accept a `depends_on: [<component>, ...]` block, read here and handed to
+# `CapsuleState.depends_on` so a capsule could keep its certificate across an edit to a component it did
+# not name. Nothing ever declared one, and the field is gone from `capsule.schema.json` because a
+# truthful narrow declaration cannot exist:
+#
+#   * THE GRADER RUNS EVERY COMMAND FOR EVERY CAPSULE. `capsule_common.run_entrypoints` -- the shared ABI
+#     front half every target's runner goes through -- invokes parse, lower_interface_to_target,
+#     emit_command_buffer and the fourth entrypoint unconditionally, and a nonzero rc from any of them is
+#     a CertFailure. `oot_runner`'s K-ladder does the same at K2-K6. There is no per-capsule command
+#     subset anywhere, so an edit to ANY command's files can flip ANY capsule's verdict. A capsule naming
+#     a proper subset would keep a certificate its current bytes did not earn -- the one direction
+#     `oracle_schedule` calls "far worse than re-running".
+#   * THE NARROWING WOULD BUY NOTHING ANYWAY. Every package in this repo maps all four commands onto the
+#     same `{tool}` argv, differing only in flags, so `_command_roots` hands the four components the same
+#     entrypoint and `_closure` gives them identical file sets. Four identical digests move together on
+#     every edit; picking a subset of them changes no answer.
+#   * AND IT COULD NOT BE AUTHORED. The vocabulary is the SUBMISSION's manifest `commands` keys
+#     (`component_vocabulary`, enforced by `component_paths` rejecting anything else). A capsule.yaml is
+#     written against the corpus long before any submission exists, so its author would be naming
+#     components of a package that has not been built.
+#
+# The saving the decomposition actually delivers needs no declaration: it is the `inert` bucket -- bytes
+# the derivation PROVED no command can read -- and `promote()` gives it to every capsule by passing the
+# full component set. That is measured at 17% of a live round's submission-mutating operations (see the
+# module docstring), and it is a fact about the submission, not a claim by a capsule.
 
 
 def _cert_cover(ws) -> set | None:
@@ -746,22 +742,22 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
 
     digest, comps, rejected = submission_digests(ws)
     d = decomposition(ws)
-    deps = capsule_dependencies(_graded_roots())
     st = _tier_state(ws)
     if rejected:
-        # Loud, not silent: a rejected name means a capsule's declared dependency can never match, so it
-        # falls back to the whole submission and quietly loses the saving it was written to get.
+        # Loud, not silent: a rejected name owns no bytes, so the component it was meant to be never
+        # moves and every certificate keeps riding on the files it failed to claim.
         print(f"[promote] manifest components outside the declared command vocabulary, ignored: "
               f"{sorted(rejected)}", file=log, flush=True)
     print(f"[promote] components: {d['source'] or 'none (whole-submission digest)'}"
           + (f" -- {len(comps)} component(s), {len(d['inert'])} file(s) outside every command's reach"
              if d["source"] else ""), file=log, flush=True)
 
-    # What a capsule that declared nothing rides on. `depends_on` absent has always meant "everything",
-    # and it still does -- but "everything" is now expressed as the set of components rather than as the
-    # whole digest, and the two differ by exactly the bytes the decomposition PROVED no command can read.
-    # With no decomposition the fallback is `None`, which is the whole digest, i.e. today's behaviour.
-    default_deps = tuple(sorted(comps)) or None
+    # What EVERY capsule rides on: all of it. "Everything" is expressed as the set of components rather
+    # than as the whole digest, and the two differ by exactly the bytes the decomposition PROVED no
+    # command can read. With no decomposition the fallback is `None`, which is the whole digest, i.e. the
+    # behaviour before the decomposition existed. No capsule may narrow this -- see WHY NO CAPSULE
+    # DECLARES ITS OWN DEPENDENCY SET above for why a per-capsule claim cannot be truthful.
+    deps = tuple(sorted(comps)) or None
 
     # Record what the loop tier just learned, keyed by the bytes that earned it -- BOTH the whole digest
     # and the per-component decomposition, because a verdict that carries only the whole digest cannot be
@@ -782,7 +778,7 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
                            verdicts={t: Verdict(v.get("status"), v.get("digest"),
                                                 dict(v.get("components") or {}))
                                      for t, v in (e or {}).items() if isinstance(v, dict)},
-                           components=dict(comps), depends_on=deps.get(n) or default_deps)
+                           components=dict(comps), depends_on=deps)
               for n, e in st.items()]
     want = [w for w in schedule(states, tier_order=[loop_tier, cert_tier], cert_tiers=(cert_tier,),
                                 cert_cover=cover)
