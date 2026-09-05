@@ -251,6 +251,44 @@ def op_for_shape(family: str, *, admitted_ops: set[str] | None = None, dtype: st
     return op
 
 
+#: Output rows and columns every convolution-window member is sized to produce. Small, fixed, and the
+#: same for every window, so a member's certification cost -- which tracks WRITTEN OUTPUT -- does not
+#: depend on how large its kernel is. Four rather than one so a stride actually steps and a padded
+#: border is a minority of the output rather than all of it.
+_CONV_WINDOW_OUT = 4
+
+
+def _image_for_window(kernel, stride, dilation, pad_before, pad_after) -> tuple[int, ...]:
+    """The input image that makes ``kernel`` produce ``_CONV_WINDOW_OUT`` outputs per axis.
+
+    The inverse of :func:`merlin.runtime.commandbuffer.conv_out_dims`, which computes
+    ``out = (H + pt + pb - (d*(k-1) + 1)) // s + 1``. Solving it for H at a chosen output is what keeps
+    a 16x16 stride-16 window from walking off the default 8x8 image and producing a capsule with zero
+    output rows -- which builds, runs, passes, and tests nothing.
+    """
+    out: list[int] = []
+    for i, k in enumerate(kernel):
+        s_ = stride[i] if i < len(stride) else 1
+        d_ = dilation[i] if i < len(dilation) else 1
+        before = pad_before[i] if i < len(pad_before) else 0
+        after = pad_after[i] if i < len(pad_after) else 0
+        span = d_ * (k - 1) + 1
+        out.append(max(1, (_CONV_WINDOW_OUT - 1) * s_ + span - before - after))
+    return tuple(out)
+
+
+#: Which ops in the shared op VOCABULARY express a convolution window, by spatial rank. A vocabulary
+#: fact like `_op_family_map`, not a target fact: which of these a given target admits is decided by
+#: its own op pool, and a target admitting none is told so rather than given a rank-2 member under a
+#: rank-3 window's name. Ordered most-specific-first so a dense convolution is preferred to a
+#: depthwise one when both are admitted.
+_CONV_OPS_BY_RANK: dict[int, tuple[str, ...]] = {
+    1: ("conv1d",),
+    2: ("conv2d", "convolution", "depthwise_conv2d"),
+    3: ("conv3d",),
+}
+
+
 def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
                   dtype: str | None = None, writer: str | None = None) -> str | None:
     """The cheapest op that exercises ``family`` AND can actually be written at ``dtype``.
@@ -851,7 +889,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"capsule here cannot tell a compiler that routes them correctly from one that does not"),
             "label": "public",
             "lanes": {"forbid": ["on_mesh"]},
-            "semantic": {"must_accelerate": False, "eligible": False,
+            "generalization": {"must_accelerate": False, "eligible": False,
                          "generalization_axis": "host_lane",
                          "not_asserted_reason": (
                              "the target admits no datapath for this family at this dtype; the capsule "
@@ -905,7 +943,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"it on the host lane. dtype {dtype} is the one the captures carry for this family"),
             "label": "public",
             "lanes": {"forbid": ["on_mesh"]},
-            "semantic": {"must_accelerate": False, "eligible": False,
+            "generalization": {"must_accelerate": False, "eligible": False,
                          "not_asserted_reason": (
                              "the target declares no capability for this family; the capsule exists to "
                              "prove the compiler does NOT accelerate it")},
@@ -937,7 +975,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"micro_model.spec; the shapes the requirement names are {sorted(composition)}"),
             "label": "public",
             "lanes": {"require": ["on_mesh"]},
-            "semantic": {"generalization_axis": "composition"},
+            "generalization": {"generalization_axis": "composition"},
         }
         _mark_source(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
@@ -993,7 +1031,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"{family!r} handles a {probe.split('.')[-1]} region, and a (family, dtype, alignment) "
                 f"cell cannot demand one. Shape and layout come from capability_probes"),
             "label": "public",
-            "semantic": {"generalization_axis": axis},
+            "generalization": {"generalization_axis": axis},
         }
         # EXTENTS COME FROM THE BUILDER, NOT THE PROBE. This axis asks whether the unit can be asked for
         # a batched or transposed region at all; WHICH extent is the alignment axis's question, and the
@@ -1043,8 +1081,88 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"alignment) cell cannot demand a particular stage -- so without this the capability is "
                 f"reported covered by whichever single stage the cell axis happened to pick"),
             "label": "public",
-            "semantic": {"generalization_axis": "epilogue"},
+            "generalization": {"generalization_axis": "epilogue"},
             **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
+        }
+        declare_pool_window(entry)
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        entries.append(entry)
+
+    # ---- the CONVOLUTION-WINDOW axis ----------------------------------------------------------------
+    # WHICH window rides the convolution, and how its border is treated. A cell says a contraction runs
+    # at int8; it cannot say the contraction is a 3x3 stride-2 convolution whose border is padded, and
+    # the padded border is where a lost padding identity is wrong and nowhere else.
+    #
+    # ⚠️ THE GAP THIS CLOSES IS BETWEEN TWO MEMBERS THAT EACH COVER HALF OF IT. The hand-authored
+    # corpus declares a padded convolution and a strided convolution as SEPARATE entries and no
+    # strided-AND-padded one, while the captures demand exactly that. A per-attribute corpus misses
+    # that shape by construction; a per-CLASS corpus cannot, because the class IS the combination.
+    #
+    # A `padUNKNOWN` obligation is still emitted, at zero padding, with the unknown recorded in
+    # `source_reference`: the capture applies that padding by a route the reader cannot see (a
+    # reflection pad via an index gather), so its IDENTITY is not zero and a member asserting zero
+    # would be making a claim the evidence does not support. What such a member does test is the
+    # window and its stepping, which is real coverage and is stated as exactly that much.
+    conv_dtype = regime_dtype or (kept[0] if kept else narrowest_admitted(admitted_dtypes))
+    for _cw in ((spec_doc.get("conv_geometry") or {}).get("required") or ()):
+        sig = str(_cw.get("signature") or "")
+        if not sig:
+            continue
+        kern = [int(v) for v in (_cw.get("kernel") or ())]
+        if not conv_dtype:
+            unexpressable.append(f"conv-window axis: no admitted dtype to build {sig!r} at")
+            continue
+        _op = next((o for o in _CONV_OPS_BY_RANK.get(len(kern), ()) if o in pool), None)
+        if _op is None:
+            # An absent OP, not an absent obligation -- and the two must not read the same. A target
+            # whose pool has no rank-N convolution cannot be asked for this window; a target that has
+            # one and lacks the member is uncovered.
+            unexpressable.append(
+                f"conv-window axis: this target's op pool materializes no rank-{len(kern)} "
+                f"convolution, so window {sig} has no member here")
+            continue
+        pad_known = bool(_cw.get("pad_known"))
+        pb = [int(v) for v in (_cw.get("pad_before") or ())] if pad_known else [0] * len(kern)
+        pa = [int(v) for v in (_cw.get("pad_after") or ())] if pad_known else [0] * len(kern)
+        entry = {
+            "cat": "layers", "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_conv_{sig.replace('/', '_').replace('-', '_')}",
+            "op": _op, "operand_dtype": conv_dtype,
+            "lhs": "A0", "weight": "W", "out": "Y0",
+            "kh": kern[0], "kw": kern[-1],
+            "stride": [int(v) for v in (_cw.get("stride") or ())] or [1] * len(kern),
+            "dilation": [int(v) for v in (_cw.get("dilation") or ())] or [1] * len(kern),
+            "padding": list(pb) + list(pa),
+            # ⚠️ THE IMAGE IS SIZED TO THE WINDOW, NEVER LEFT AT THE DEFAULT. `conv2d` defaults to an
+            # 8x8 image, and a large window walks off it: measured, k16x16/s16x16 gives an output of
+            # 0x0 rows and k8x8/s8x8 gives 1x1. A zero-row capsule is not a small test, it is a test
+            # of nothing that still builds, still runs and still passes. So H and W are solved from
+            # the window for a fixed small output -- the inverse of `conv_out_dims` -- which keeps
+            # every window's member the same size in the thing certification is actually priced on
+            # (written output) regardless of how large the window is.
+            **dict(zip(("Himg", "Wimg"), _image_for_window(
+                kern, [int(v) for v in (_cw.get("stride") or ())] or [1] * len(kern),
+                [int(v) for v in (_cw.get("dilation") or ())] or [1] * len(kern),
+                pb, pa))),
+            "source_role": SOURCE_ROLE,
+            "source_reference": (
+                f"synthesized for the convolution-window axis: window {sig}, recovered structurally "
+                f"from {_cw.get('n_regions')} region(s) of {_cw.get('sources')}. torch-mlir emits "
+                f"im2col, so a captured convolution carries no padding/stride/dilation attribute at "
+                f"all and the geometry comes from the gather's affine map and its padding producer"
+                + ("" if pad_known else
+                   ". THE PADDING WAS NOT READABLE in the capture -- it is applied by an index gather, "
+                   "i.e. a reflection pad -- so this member tests the WINDOW and its stepping at zero "
+                   "padding and asserts nothing about a padding identity that is not zero")),
+            "label": "public",
+            # THE OBLIGATION THIS MEMBER DISCHARGES, named. A `padUNKNOWN` window cannot be matched by
+            # re-deriving a signature from the member's attributes: the member declares zero padding
+            # (it is the only padding we can spell) and would re-derive as `pad0x0`, so the obligation
+            # it exists for could never be satisfied by the member built for it. The declared
+            # signature closes that, and the coverage reader still VERIFIES the window itself against
+            # the attributes -- only the unspellable padding component is taken on the declaration.
+            "generalization": {"generalization_axis": "conv_window", "conv_window": sig},
+            **extents_for("aligned", probes, quantum=_quanta.get(conv_dtype)),
         }
         declare_pool_window(entry)
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
@@ -1133,7 +1251,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"M={m} K={k} N={n}. Every other synthesized capsule is square, so without this the "
                 f"corpus cannot tell a compiler that tiles this ratio well from one that does not"),
             "label": "public",
-            "semantic": {"generalization_axis": "shape_geometry"},
+            "generalization": {"generalization_axis": "shape_geometry"},
             "M": m, "K": k, "N": n,
         }
         _why = cap_to_affordable(entry, spec_doc, extends=_sib)
@@ -1184,7 +1302,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "M": "tile", "K": f"{int(point['K_tiles'])}*tile", "N": "tile",
             "source_role": SOURCE_ROLE, "source_reference": why,
             "label": "public",
-            "semantic": {"generalization_axis": "accumulation_depth"},
+            "generalization": {"generalization_axis": "accumulation_depth"},
         }
         if tier != "L3":
             e["max_oracle_tier"] = tier
@@ -1297,7 +1415,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 + (f"; extends {_cap['extends']}, which carries the cycle-accurate guarantee this "
                    f"larger shape rests on" if _cap.get("extends") else "")),
             "label": "public",
-            "semantic": {"generalization_axis": "application"},
+            "generalization": {"generalization_axis": "application"},
         }
         if _tier != "L3":
             # AN L2-ONLY CAPSULE IS AN EXTENSION, NEVER A SUBSTITUTE. The tier is capped because this
@@ -1364,7 +1482,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                     # would pass a submission that ran the whole network on the host -- which is the
                     # vacuity the op capsules had removed and the capstones did not.
                     "lanes": {"require": ["on_mesh"]},
-                    "semantic": {"generalization_axis": "roster"},
+                    "generalization": {"generalization_axis": "roster"},
                 }
                 _mark_source(entry)
                 entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)

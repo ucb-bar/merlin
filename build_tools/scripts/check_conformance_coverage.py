@@ -270,6 +270,12 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         "memory_mapping": gap.get("memory_mapping") or {"status": "not_measured"},
         "shape_geometry": gap.get("shape_geometry") or {"status": "not_measured"},
         "host_only": gap.get("host_only") or {"status": "not_measured"},
+        # THE THREE AXES THAT WERE DERIVED AND NEVER PRINTED. Measuring an axis and not reporting it
+        # is only a little better than not measuring it: the number exists, nobody reads it, and the
+        # gap stays invisible for exactly as long.
+        "host_lane": gap.get("host_lane") or {"status": "not_measured"},
+        "epilogue": gap.get("epilogue") or {"status": "not_measured"},
+        "conv_geometry": gap.get("conv_geometry") or {"status": "not_measured"},
         "diagnostics": doc.get("diagnostics") or {},
     }
 
@@ -481,6 +487,30 @@ def main(argv=None) -> int:
                 print(f"   host-only lane: UNDETERMINABLE — {ho.get('detail', '')}")
             elif ho:
                 print(f"   host-only lane: {ho.get('status')} — {ho.get('detail', '')}")
+            for label, key, noun in (("host lane    ", "host_lane", "(family, dtype) pair(s) the "
+                                      "compiler must place on the HOST"),
+                                     ("epilogue     ", "epilogue", "fusable stage(s)"),
+                                     ("conv window  ", "conv_geometry", "convolution window(s) real "
+                                      "captures contain")):
+                ax = r.get(key) or {}
+                if ax.get("status") != "ok":
+                    print(f"   {label}: {ax.get('status', 'missing')} — {ax.get('detail', '')}")
+                    continue
+                print(f"   {label}: {ax['n_covered']} / {ax['n_required']} {noun}")
+                for miss in ax.get("uncovered") or ():
+                    mark = " " if _debt(r["target"], miss, key) in ratchet else "*"
+                    print(f"     {mark} {miss}")
+                # A stage evidenced ONLY standalone says the lowering exists and the FUSION is not
+                # tested, which is a different remedy from the reverse; one number cannot carry both.
+                if ax.get("standalone_only"):
+                    print(f"       evidenced standalone only (fusion untested): "
+                          f"{ax['standalone_only']}")
+                if ax.get("entry_tensor_only"):
+                    print(f"       evidenced only by a whole model's ENTRY tensor, which is not an "
+                          f"operand dtype: {ax['entry_tensor_only']}")
+                if ax.get("covered_only_incidentally"):
+                    print(f"       covered only INCIDENTALLY (no capsule is named for it): "
+                          f"{ax['covered_only_incidentally']}")
             if r["corpus_cells_not_required"]:
                 print(f"   corpus cells not in the requirement: {r['corpus_cells_not_required']}")
                 print("     (a cell the hardware does not admit for that family — e.g. an int8 movement "

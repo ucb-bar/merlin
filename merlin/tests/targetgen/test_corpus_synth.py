@@ -6,6 +6,16 @@ six profiles -- the one input a new target's owner cannot reasonably be asked to
 hold the loop closed, and hold it closed HONESTLY: the failure mode being guarded against is not a wrong
 capsule but a missing one, because a requirement that quietly produces nothing is indistinguishable from
 a requirement that is met.
+
+
+⚠️ THE GENERALIZATION INTENT LIVES UNDER ``generalization``, NOT ``semantic``. A profile
+entry's ``semantic`` key is a free-form OP-semantics label ("quantized_linear") that flows
+into ``operation.attributes.semantic``; the generator reads the generalization intent from
+``entry['generalization']``. These assertions used ``semantic`` and so did the synthesizer,
+which meant every derived axis annotation was DISCARDED at generation and every synthesized
+capsule was labelled by kind alone -- 163 read ``composition`` and none read ``application``,
+``conv_window``, ``epilogue`` or ``host_lane``. The tests agreed with the bug, so nothing
+caught it.
 """
 
 from __future__ import annotations
@@ -64,7 +74,8 @@ def test_every_required_cell_becomes_an_entry(target):
     #: synthesizer writes into `source_reference`; an entry matching none of them is unattributable.
     axes = ("memory regime", "host-only family", "composition axis", "roster axis",
             "rank axis", "layout axis", "host lane", "epilogue axis", "application axis",
-            "accumulation-depth axis", "geometry class")
+            "accumulation-depth axis", "geometry class",
+                "convolution-window axis")
     unattributed = [e["name"] for e in other
                     if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -108,7 +119,7 @@ def test_a_fused_only_family_is_carried_as_an_epilogue_not_a_standalone_op():
     # must NOT ride a contraction the hardware would then be entitled to accelerate.
     fused = [e for e in res["capsules"]
              if "elementwise_map" in e["name"]
-             and (e.get("semantic") or {}).get("generalization_axis") != "host_lane"]
+             and (e.get("generalization") or {}).get("generalization_axis") != "host_lane"]
     if not fused:
         pytest.skip("this target's requirement has no fused-only family")
     for entry in fused:
@@ -168,7 +179,7 @@ def test_an_application_capsule_carries_a_concrete_shape_and_says_where_it_came_
         "cert_budget_s": 300.0,
     }
     made = [e for e in CS.synthesize(doc)["capsules"]
-            if (e.get("semantic") or {}).get("generalization_axis") == "application"]
+            if (e.get("generalization") or {}).get("generalization_axis") == "application"]
     assert len(made) == 1
     entry = made[0]
     assert entry["source_role"] == "model_derived"
@@ -195,7 +206,7 @@ def test_an_l2_only_application_capsule_names_the_sibling_it_extends():
         "cert_budget_s": 300.0,
     }
     entry = [e for e in CS.synthesize(doc)["capsules"]
-             if (e.get("semantic") or {}).get("generalization_axis") == "application"][-1]
+             if (e.get("generalization") or {}).get("generalization_axis") == "application"][-1]
     assert entry["max_oracle_tier"] == "L2"
     assert entry["extends"], "an L2-only capsule must say what carries its cycle-accurate guarantee"
     assert "extends" in entry["source_reference"]
@@ -318,7 +329,7 @@ def test_a_host_only_family_becomes_a_forbidding_capsule():
     for family in ("normalization", "reduction"):
         e = made[f"{CS.SYNTH_PREFIX}_host_only_{family}"]
         assert e["lanes"] == {"forbid": ["on_mesh"]}
-        assert e["semantic"]["must_accelerate"] is False
+        assert e["generalization"]["must_accelerate"] is False
         assert e["operand_dtype"] == "bf16"
 
 
@@ -387,7 +398,7 @@ def test_an_unsized_depth_is_not_reported_as_a_missing_writer():
         # mx_gemmini has no measured history of its own and still sizes a depth, because the law prices
         # the output tile and the tile edge is a fact about the target rather than about its run log.
         emitted = [e for e in res["capsules"]
-                   if (e.get("semantic") or {}).get("generalization_axis") == "accumulation_depth"]
+                   if (e.get("generalization") or {}).get("generalization_axis") == "accumulation_depth"]
         if not emitted:
             assert prov.get("accumulation_depth_unsizable"), (
                 f"{target} synthesized no depth capsule and said nothing about why")
@@ -404,7 +415,7 @@ def _ws(target: str) -> dict:
 def _roster_entries(target: str) -> list[dict]:
     res = CS.synthesize(_spec(target), workload_spec=_ws(target))
     return [e for e in res["capsules"]
-            if (e.get("semantic") or {}).get("generalization_axis") == "roster"]
+            if (e.get("generalization") or {}).get("generalization_axis") == "roster"]
 
 
 @pytest.mark.parametrize("target", ["gemmini", "atlas"])
@@ -488,7 +499,7 @@ def test_an_l2_application_capsule_with_no_certified_sibling_is_dropped():
     }
     res = CS.synthesize(doc)
     made = [e for e in res["capsules"]
-            if (e.get("semantic") or {}).get("generalization_axis") == "application"]
+            if (e.get("generalization") or {}).get("generalization_axis") == "application"]
     assert made == [], "an L2 capsule with no certified sibling may not ship"
     holes = " ".join(res["provenance"].get("cells_no_writer_can_express") or ())
     assert "rest on nothing" in holes, "the dropped capsule must say why, not vanish"
@@ -508,7 +519,7 @@ def test_an_l2_application_capsule_ships_when_its_sibling_does():
         "cert_budget_s": 300.0,
     }
     made = [e for e in CS.synthesize(doc)["capsules"]
-            if (e.get("semantic") or {}).get("generalization_axis") == "application"]
+            if (e.get("generalization") or {}).get("generalization_axis") == "application"]
     assert [e.get("max_oracle_tier") for e in made] == [None, "L2"]
 
 
@@ -516,7 +527,7 @@ def test_an_l2_application_capsule_ships_when_its_sibling_does():
 
 def _depth_axis(res):
     return [e for e in res["capsules"]
-            if (e.get("semantic") or {}).get("generalization_axis") == "accumulation_depth"]
+            if (e.get("generalization") or {}).get("generalization_axis") == "accumulation_depth"]
 
 
 def _with_depth(doc, *, certified=True, refusal=None, regimes=True, ceiling=862):

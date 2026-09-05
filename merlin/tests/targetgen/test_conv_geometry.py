@@ -169,3 +169,120 @@ def test_an_unreadable_capture_is_reported_not_skipped():
     # An unparseable capture degrades to "saw nothing" inside `geometries`, so it contributes no
     # class. What must never happen is a raise that takes the whole derivation down.
     assert isinstance(rep["captures_unreadable"], dict)
+
+
+# --------------------------------------------------------------------- synthesis into the corpus
+
+
+def test_the_window_axis_synthesizes_one_member_per_class():
+    """The axis is only worth deriving if it becomes capsules. Measured before this: the corpus
+    presented a padded convolution and a strided convolution as SEPARATE hand-authored entries and no
+    strided-AND-padded one, while the captures demand exactly that -- the defect lived in the gap
+    between two members each covering half of it."""
+    from merlin.targetgen import corpus_synth as CS
+
+    spec = {
+        "target": "t",
+        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
+                   "alignment": "aligned"}],
+        "boundaries": {"tile_edge": 16,
+                       "extent_probes": [{"boundary": "tile_edge", "edge": 16,
+                                          "points": [1, 4, 8, 15, 16, 17, 32]}]},
+        "conv_geometry": {"required": [
+            {"signature": "k3x3/s2x2/d1x1/pad1x1", "kernel": [3, 3], "stride": [2, 2],
+             "dilation": [1, 1], "pad_before": [1, 1], "pad_after": [1, 1], "pad_known": True,
+             "n_regions": 6, "sources": ["deepjscc_int8"]},
+            {"signature": "k7x7/s1x1/d1x1/padUNKNOWN", "kernel": [7, 7], "stride": [1, 1],
+             "dilation": [1, 1], "pad_before": [0, 0], "pad_after": [0, 0], "pad_known": False,
+             "n_regions": 1, "sources": ["deepjscc_int8"]},
+        ]},
+    }
+    out = CS.synthesize(spec, workload_spec={"models": [], "precision_preference": ["int8"]})
+    entries = out["capsules"] if isinstance(out, dict) else out
+    conv = [e for e in entries if (e.get("generalization") or {}).get("generalization_axis") == "conv_window"]
+    assert len(conv) == 2, f"one member per window class; got {[e['name'] for e in conv]}"
+
+    strided = next(e for e in conv if "s2x2" in e["name"])
+    assert (strided["kh"], strided["kw"]) == (3, 3)
+    assert list(strided["stride"]) == [2, 2]
+    assert list(strided["padding"]) == [1, 1, 1, 1], (
+        "a strided AND padded member is the whole point; a padding of zero here would recreate the gap")
+
+
+def test_an_unknown_padding_member_says_it_asserts_nothing_about_the_identity():
+    """A padUNKNOWN window is a real obligation and gets a member -- at zero padding, because the
+    capture's padding identity is NOT zero (a reflection pad) and we cannot spell it. The member must
+    say that, or a reader will take its zero padding for a measured fact."""
+    from merlin.targetgen import corpus_synth as CS
+
+    spec = {
+        "target": "t",
+        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
+                   "alignment": "aligned"}],
+        "boundaries": {"tile_edge": 16,
+                       "extent_probes": [{"boundary": "tile_edge", "edge": 16,
+                                          "points": [1, 4, 8, 15, 16, 17, 32]}]},
+        "conv_geometry": {"required": [
+            {"signature": "k7x7/s1x1/d1x1/padUNKNOWN", "kernel": [7, 7], "stride": [1, 1],
+             "dilation": [1, 1], "pad_before": [0, 0], "pad_after": [0, 0], "pad_known": False,
+             "n_regions": 1, "sources": ["deepjscc_int8"]},
+        ]},
+    }
+    out = CS.synthesize(spec, workload_spec={"models": [], "precision_preference": ["int8"]})
+    entries = out["capsules"] if isinstance(out, dict) else out
+    member = next(e for e in entries
+                  if (e.get("generalization") or {}).get("generalization_axis") == "conv_window")
+    ref = member["source_reference"]
+    assert "NOT READABLE" in ref
+    assert "asserts nothing about a padding identity that is not zero" in ref
+
+
+def test_every_window_gets_an_image_that_actually_produces_output():
+    """⚠️ REGRESSION. `conv2d` defaults to an 8x8 image and a large window walks off it: measured,
+    k16x16/s16x16 gives a 0x0 output and k8x8/s8x8 gives 1x1. A zero-row capsule is not a small test,
+    it is a test of nothing that still builds, still runs and still passes -- the exact failure this
+    repo keeps rediscovering. The image is solved from the window instead."""
+    from merlin.runtime.commandbuffer import conv_out_dims
+    from merlin.targetgen.corpus_synth import _CONV_WINDOW_OUT, _image_for_window
+
+    for kernel, stride, dilation, pb, pa in [
+        ((16, 16), (16, 16), (1, 1), (0, 0), (0, 0)),
+        ((8, 8), (8, 8), (1, 1), (0, 0), (0, 0)),
+        ((7, 7), (4, 4), (1, 1), (3, 3), (3, 3)),
+        ((4, 4), (4, 4), (1, 1), (0, 0), (0, 0)),
+        ((3, 3), (2, 2), (1, 1), (1, 1), (1, 1)),
+        ((3, 3), (1, 1), (1, 1), (1, 1), (1, 1)),
+        ((5, 5), (1, 1), (1, 1), (0, 0), (0, 0)),
+    ]:
+        h, w = _image_for_window(kernel, stride, dilation, pb, pa)
+        ho, wo = conv_out_dims(h, w, kernel[0], kernel[1], list(stride),
+                               list(pb) + list(pa), list(dilation))
+        assert (ho, wo) == (_CONV_WINDOW_OUT, _CONV_WINDOW_OUT), (
+            f"window k{kernel} s{stride} pad{pb}/{pa} on a {h}x{w} image writes {ho}x{wo} rows")
+
+
+def test_the_synthesized_member_carries_the_solved_image():
+    from merlin.runtime.commandbuffer import conv_out_dims
+    from merlin.targetgen import corpus_synth as CS
+
+    spec = {
+        "target": "t",
+        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
+                   "alignment": "aligned"}],
+        "boundaries": {"tile_edge": 16,
+                       "extent_probes": [{"boundary": "tile_edge", "edge": 16,
+                                          "points": [1, 4, 8, 15, 16, 17, 32]}]},
+        "conv_geometry": {"required": [
+            {"signature": "k16x16/s16x16/d1x1/padUNKNOWN", "kernel": [16, 16], "stride": [16, 16],
+             "dilation": [1, 1], "pad_before": [0, 0], "pad_after": [0, 0], "pad_known": False,
+             "n_regions": 6, "sources": ["smolvla"]},
+        ]},
+    }
+    out = CS.synthesize(spec, workload_spec={"models": [], "precision_preference": ["int8"]})
+    entries = out["capsules"] if isinstance(out, dict) else out
+    m = next(e for e in entries
+             if (e.get("generalization") or {}).get("generalization_axis") == "conv_window")
+    ho, wo = conv_out_dims(m["Himg"], m["Wimg"], m["kh"], m["kw"], list(m["stride"]),
+                           list(m["padding"]), list(m["dilation"]))
+    assert ho > 0 and wo > 0, "a member writing no rows tests nothing while passing"
+    assert (ho, wo) == (CS._CONV_WINDOW_OUT, CS._CONV_WINDOW_OUT)

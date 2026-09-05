@@ -750,8 +750,37 @@ def _application_axis(target: str, *, captures: dict | None = None,
     except Exception:                              # noqa: BLE001 -- no edge is a real answer
         tile = 0
 
+    # ⚠️ AN APPLICATION CLASS THE HARDWARE DOES NOT ADMIT IS HOST-LANE WORK, NOT AN ACCELERATOR
+    # OBLIGATION. The classes come from what the captures CONTAIN, and a real model contains plenty of
+    # arithmetic this target cannot take -- measured on an int8-only array, 32 of 46 sized classes were
+    # f32 and 2 were bf16. Emitting those as accelerator capsules demands acceleration the datapath
+    # cannot provide, which is a capsule that cannot pass under any correct behaviour. They are already
+    # an obligation on the `host_lane` axis, at the same (family, dtype) resolution, so they are moved
+    # there rather than dropped: the work is real, it is just the host's.
+    #
+    # This was invisible for as long as the axis produced nothing. Turning it on is what surfaced it.
+    adm = admitted(target) or {}
+    admitted_pairs = set()
+    for _fam, _dts in adm.items():
+        for _d in _dts or ():
+            try:
+                admitted_pairs.add((str(_fam), capsule_dtype(str(_d))))
+            except Exception:                      # noqa: BLE001
+                admitted_pairs.add((str(_fam), str(_d)))
+
     required, refused = [], []
     for row in grouped.get("classes") or ():
+        if admitted_pairs and (str(row["family"]), str(row["dtype"])) not in admitted_pairs:
+            # Refusals are strings here, matching what `size_class` returns, so a caller printing the
+            # list does not have to know which refusal it is looking at.
+            refused.append(
+                f"{row.get('class') or (row['family'] + '/' + row['dtype'])}: this target's manifest "
+                f"does not admit {row['family']}/{row['dtype']}, so the work in this class belongs on "
+                f"the HOST lane and not on the accelerator. It is already required by the host_lane "
+                f"axis at the same resolution ({row.get('multiplicity')} region(s), "
+                f"{row.get('work')} MACs); an accelerator capsule here would demand an offload the "
+                f"datapath cannot perform and could not pass under any correct behaviour")
+            continue
         evidence = APP.ClassEvidence(
             region_class=APP.RegionClass(
                 family=row["family"], dtype=row["dtype"], alignment=row["alignment"],
@@ -1684,6 +1713,19 @@ def _conv_geometry_gap(required, corpus_roots, *, labels=None, exclude=None) -> 
                              pad_known=True, in_spatial=(), out_spatial=(),
                              channels_in=0, dtype=str(a.get("dtype") or ""))
             have.setdefault(g.signature(), []).append(name)
+
+            # A DECLARED obligation is honoured only where the derived one CANNOT express it, and the
+            # window is still verified. A capsule built for a `padUNKNOWN` class declares zero padding
+            # -- the only padding that can be spelled -- so re-deriving its signature yields `pad0x0`
+            # and the obligation it was built for could never be satisfied by it. The declaration
+            # closes that gap without becoming a way to claim anything: the kernel, stride and
+            # dilation of the declared signature must match what the capsule actually carries, so only
+            # the unspellable padding component is taken on trust.
+            declared = str(((cap.get("semantic") or {}).get("conv_window")) or "")
+            if declared and declared != g.signature():
+                derived_window = g.signature().rsplit("/", 1)[0]
+                if declared.startswith(derived_window + "/"):
+                    have.setdefault(declared, []).append(name)
 
     want = [str(r["signature"]) for r in (required or [])]
     missing = [sig for sig in want if sig not in have]

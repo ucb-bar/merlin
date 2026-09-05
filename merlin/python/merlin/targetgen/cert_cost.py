@@ -85,6 +85,18 @@ class CostFit:
         return len({e for e in self.engines if e}) > 1
 
     @property
+    def rests_on_wall_clock(self) -> bool:
+        """Whether ANY sample under this fit is adapter WALL time rather than simulator time.
+
+        A weaker measurement that says it is weaker. ``adapter_wall_s`` carries the oracle queue wait,
+        which is a property of how busy the host was and not of the capsule -- measured, one capsule
+        appears at 12.106 s and 0.809 s across two runs. A fit resting on it is still worth having (it
+        is the difference between an unmeasured target and a roughly-measured one), but a caller
+        quoting a number from it must be able to see that it is not the simulator's own seconds.
+        """
+        return any("wall_clock" in s for s in self.sources)
+
+    @property
     def floor_dominates_below(self) -> int:
         """Elements below which the fixed cost exceeds the size-dependent cost.
 
@@ -290,6 +302,13 @@ def _cycle_accurate_seconds(timing: dict) -> tuple[float | None, str]:
     return seconds, basis
 
 
+#: How much of the variance a WALL-CLOCK fit must explain before it may be used to size anything.
+#: Wall clock carries the oracle queue wait, so a fit over it can be pure contention noise -- measured,
+#: 105 such samples explained 0.65% of the variance with a negative slope. Simulator-seconds fits are
+#: not held to this: they measure the capsule and are usable even when the relationship is weak.
+_WALL_CLOCK_MIN_R2 = 0.25
+
+
 def _cycle_accurate_pick(timing: dict) -> tuple[float | None, str, str]:
     """``(seconds, basis, engine)`` for the cycle-accurate tier of one capsule's timing entry.
 
@@ -308,7 +327,31 @@ def _cycle_accurate_pick(timing: dict) -> tuple[float | None, str, str]:
             # accepted as the older spelling of the same claim.
             if not (rec.get("cycle_accurate") is True or rec.get("derived_from_rtl") is True):
                 continue
+            # ⚠️ WALL CLOCK IS A MARKED FALLBACK, NOT A PEER OF SIMULATION TIME. `sim_active_s` is the
+            # simulator's own active seconds and is what this model wants. It is absent from every
+            # record one target ever wrote -- 1,501 cycle-accurate tier records, 1,299 of them timed
+            # and 704 of them PASSING, and not one carries it (counted over the 2,036
+            # `capsule_result.json` files on disk on 2026-09-05) -- because its program-oracle
+            # adapters emitted no timing block until recently.
+            # Reading only `sim_active_s` therefore reported that target as having NO
+            # certification history, which cascaded: no history means no cost model, no cost model
+            # means no application class can be shown affordable, and the whole application axis
+            # derived zero capsules. The target was never uncertified; it was unmeasured, and the two
+            # were indistinguishable from here.
+            #
+            # `adapter_wall_s` includes `oracle_wait_s`, i.e. queue contention that is not a property
+            # of the capsule -- measured, one capsule appears at 12.106s and 0.809s across two runs,
+            # a 15x spread. So it is used only when the precise field is missing, it is marked in the
+            # basis, and the fit reports that it leaned on it. A weaker sample that says it is weaker
+            # beats no sample that reads as no history.
             secs = rec.get("sim_active_s")
+            wall_basis = ""
+            if not (isinstance(secs, (int, float)) and secs > 0):
+                secs = rec.get("adapter_wall_s")
+                if secs is None:
+                    secs = (rec.get("timing") or {}).get("adapter_wall_s") \
+                        if isinstance(rec.get("timing"), dict) else None
+                wall_basis = "+wall_clock"
             if isinstance(secs, (int, float)) and secs > 0:
                 # Deepest reported wins if several qualify; a longer one is the binding cost.
                 if best is None or secs > best[0]:
@@ -316,7 +359,7 @@ def _cycle_accurate_pick(timing: dict) -> tuple[float | None, str, str]:
                     # beside the number. A fit whose samples came from two engines that differ by 26x
                     # is then readable off its own sources instead of being a silent average.
                     eng = str(rec.get("engine") or "").strip()
-                    basis = f"{_CYCLE_ACCURATE_ONLY}:{name}"
+                    basis = f"{_CYCLE_ACCURATE_ONLY}:{name}{wall_basis}"
                     best = (float(secs), f"{basis}@{eng}" if eng else basis, eng)
         if best:
             return best
@@ -352,6 +395,13 @@ def _per_tier_from_result(doc: dict) -> dict:
         out[str(name)] = {"sim_active_s": tm.get("sim_active_s"),
                           "build_s": tm.get("build_s"),
                           "oracle_wait_s": tm.get("oracle_wait_s"),
+                          # CARRIED SO THE FALLBACK CAN SEE IT. This reshaping dropped
+                          # `adapter_wall_s`, which is the only timing one target's entire history
+                          # records -- so that target read as having no certification history at all
+                          # while 704 passing cycle-accurate runs sat on disk. Same class of defect as
+                          # the dropped `engine` field below: the record had the number and the
+                          # projection threw it away.
+                          "adapter_wall_s": tm.get("adapter_wall_s"),
                           "cycle_accurate": rec.get("cycle_accurate"),
                           "derived_from_rtl": rec.get("derived_from_rtl"),
                           # WHICH ENGINE PRODUCED THIS SECOND. Two elaborated-RTL engines answer the same
@@ -504,6 +554,13 @@ def fit_for(target: str, *, corpus_roots=None, timing_root=None,
     ys: list[float] = []
     sources: set[str] = set()
     engines: set[str] = set()
+    # ⚠️ SCOPED TO THE SAMPLES ACTUALLY FITTED, not to every record on disk. Asked of the whole
+    # history, a single simulator-timed record that the fit DISCARDS -- one whose capsule has no
+    # readable size, or one belonging to a different engine than the caller asked for -- was enough to
+    # answer "not wall-clock only" for a line drawn entirely through wall-clock points, and the guard
+    # below then let that line through. The question the guard asks is about the evidence under the
+    # fit, so it must be counted there.
+    wall_only = True
     for (name, rec_engine), (seconds, source) in sorted(timings.items()):
         if engine is not None and rec_engine != engine:
             continue
@@ -514,6 +571,8 @@ def fit_for(target: str, *, corpus_roots=None, timing_root=None,
         ys.append(seconds)
         sources.add(source)
         engines.add(rec_engine)
+        if "wall_clock" not in source:
+            wall_only = False
     if len(xs) < _MIN_SAMPLES or len(set(xs)) < 2:
         return None                                # a line through one x tells you nothing
 
@@ -527,6 +586,16 @@ def fit_for(target: str, *, corpus_roots=None, timing_root=None,
     intercept = mean_y - slope * mean_x
     ss_tot = sum((y - mean_y) ** 2 for y in ys)
     r2 = 1.0 - (sum((y - (intercept + slope * x)) ** 2 for x, y in zip(xs, ys)) / ss_tot) if ss_tot else 0.0
+    # ⚠️ A WALL-CLOCK FIT WITH NO SIZE SIGNAL IS REFUSED, NOT RETURNED. `adapter_wall_s` includes the
+    # queue wait, which is not a property of the capsule: measured on one target's whole history,
+    # 105 wall-clock samples fit at r2 0.0065 with a NEGATIVE per-element slope. That is not "size
+    # does not move cost over this range" -- it is queue noise with no size signal in it -- and
+    # returning it is worse than returning nothing, because `max_elements_within` reads a
+    # non-positive slope as "size did not matter" and hands back `elements_max`, i.e. permission to
+    # certify anything at any size. A target whose only timing is wall clock must keep reading as
+    # unmeasured until something records simulator seconds.
+    if wall_only and (slope <= 0 or r2 < _WALL_CLOCK_MIN_R2):
+        return None
     return CostFit(target=str(target), intercept_s=intercept, per_element_s=slope, r2=r2,
                    n_samples=n, elements_min=min(xs), elements_max=max(xs),
                    sources=tuple(sorted(sources)), engines=tuple(sorted(engines)))

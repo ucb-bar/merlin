@@ -379,6 +379,28 @@ def geometries(src) -> list[ConvGeometry]:
     return out
 
 
+#: Parsed-geometry cache, keyed by the capture path. A capture's convolution windows are a property of
+#: the CAPTURE and not of any target, but the requirement is derived once per target -- so without this
+#: the same 29 model.mlir files are re-parsed for every target, which is most of what a spec
+#: regeneration spends its time on. Keyed by (path, mtime, size) so an edited capture re-parses.
+_GEOMETRY_CACHE: dict = {}
+
+
+def _cached_geometries(path) -> list[ConvGeometry]:
+    from pathlib import Path as _P
+
+    try:
+        st = _P(path).stat()
+        key = (str(path), st.st_mtime_ns, st.st_size)
+    except OSError:
+        return geometries(path)                    # not a file we can stamp; parse it and do not cache
+    hit = _GEOMETRY_CACHE.get(key)
+    if hit is None:
+        hit = geometries(path)
+        _GEOMETRY_CACHE[key] = hit
+    return hit
+
+
 def geometry_classes(captures: dict) -> dict:
     """The distinct convolution geometries a set of captures contains, with their evidence.
 
@@ -388,7 +410,7 @@ def geometry_classes(captures: dict) -> dict:
     unreadable: dict[str, str] = {}
     for label, path in sorted((captures or {}).items()):
         try:
-            found = geometries(path)
+            found = _cached_geometries(path)
         except Exception as e:                     # noqa: BLE001 -- reported, never skipped silently
             unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
             continue
