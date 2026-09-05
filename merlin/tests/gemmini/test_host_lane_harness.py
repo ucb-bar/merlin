@@ -134,6 +134,30 @@ def test_an_i8_leaf_is_embedded_exactly_as_before():
     assert _decl(c, "arg0").startswith("static const elem_t T_arg0[")
 
 
+def test_a_rank_1_leaf_is_one_row_not_a_refusal():
+    """A layernorm's per-channel weight and bias are rank-1, and a host-lane program carries them as
+    ordinary operands. Sizing them through the whole-op path's rank >= 2 rule failed two shipped
+    capsules with "needs a positive rank >= 2 shape" -- a harness limit worded as a defect in the
+    submission that declared a perfectly ordinary vector."""
+    cb = _host_lane_cb(rows=16, cols=32)
+    cb["tensors"]["W"] = {"shape": [32], "dtype": "f32", "role": "input"}
+    cb["tensors"]["B"] = {"shape": [32], "dtype": "f32", "role": "input"}
+    c = gem.render_harness(cb, target="gemmini")
+    assert "gemmini_kernel((void*)T_arg0, (void*)T_Y0, (void*)T_W, (void*)T_B);" in c
+    # rank-1 [32] is ONE row of 32: the row pitch the kernel indexes with is the column extent, so
+    # its elements sit at 0..31 exactly as a leading-dims-multiply-into-rows split puts them.
+    assert _decl(c, "W").startswith("static const uint32_t T_W[")
+
+
+@pytest.mark.parametrize("shape", [[], [0, 4], [4, -1], "notalist"])
+def test_a_shape_that_is_not_a_positive_extent_list_is_refused(shape):
+    """Still fail-closed on a shape that is not extents at all — only the rank floor was wrong."""
+    cb = _host_lane_cb()
+    cb["tensors"]["W"] = {"shape": shape, "dtype": "f32", "role": "input"}
+    with pytest.raises(Exception, match="non-empty shape of positive extents"):
+        gem.render_harness(cb, target="gemmini")
+
+
 def test_rows_are_padded_to_the_tile_edge():
     """Same layout every other harness here uses, so a kernel written against the declared ABI indexes
     one pitch whichever shape it is handed."""

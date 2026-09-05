@@ -715,6 +715,31 @@ def _native_interface_harness_c(cb: dict, command: dict, *, inputs: dict | None 
 _EXTERNAL_ROLES = ("input", "weight", "bias", "output")
 
 
+def _buffer_extent(spec: dict, *, name: str) -> tuple[int, int]:
+    """``(rows, cols)`` for a host-lane buffer of ANY rank: leading extents are rows, the last is
+    columns, and a rank-1 tensor is one row.
+
+    Deliberately NOT :func:`_flat_matrix_shape`, whose rank >= 2 requirement is a real constraint of
+    the whole-op path (an NHWC activation with no channel dimension is a malformed conv operand) and
+    is no constraint at all here. A host-lane program routinely carries a rank-1 leaf -- a layernorm's
+    per-channel weight and bias are exactly that -- and refusing one made two capsules fail with
+    "needs a positive rank >= 2 shape", which reads as a defect in the submission that declared a
+    perfectly ordinary vector.
+
+    The split is the same one the emitting side makes (leading dims multiply into rows, the last is
+    the row pitch), so the harness and the kernel agree on the layout for every rank.
+    """
+    shape = spec.get("shape")
+    if not isinstance(shape, list) or not shape or any(
+            not isinstance(dim, int) or isinstance(dim, bool) or dim <= 0 for dim in shape):
+        raise CodegenError(
+            f"host-lane tensor {name!r} needs a non-empty shape of positive extents, got {shape!r}")
+    rows = 1
+    for dim in shape[:-1]:
+        rows *= dim
+    return rows, shape[-1]
+
+
 def _is_host_lane_cb(cb: dict) -> bool:
     """Does this buffer describe a program with NO accelerator command?
 
@@ -760,6 +785,11 @@ def _host_lane_harness_c(cb: dict, *, target: str, inputs: dict | None = None) -
     outputs = [name for name in args if tensors[name].get("role") == "output"]
     if not outputs:
         raise CodegenError("a host-lane buffer declares no output tensor to read back")
+    # Extents FIRST, before anything materializes. `materialize_inputs` builds a Tensor per leaf and
+    # raises its own shape error, so a buffer with a malformed extent was refused by the wrong voice
+    # ("shape (0, 4) needs 0 elements") and this function's own check could never fire -- a guard that
+    # cannot fail is not a guard.
+    extents = {name: _buffer_extent(tensors[name], name=name) for name in args}
     leaves = materialize_inputs(cb, inputs)
 
     decls: list[str] = []
@@ -767,7 +797,7 @@ def _host_lane_harness_c(cb: dict, *, target: str, inputs: dict | None = None) -
     for name in args:
         spec = tensors[name]
         dtype = str(spec.get("dtype") or "")
-        rows, cols = _flat_matrix_shape(spec, name=name)
+        rows, cols = extents[name]
         prows, pcols = _ceil_dim(rows), _ceil_dim(cols)
         container = container_for(dtype)
         if spec.get("role") == "output":
