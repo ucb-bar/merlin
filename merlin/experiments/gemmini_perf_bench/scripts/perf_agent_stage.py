@@ -76,6 +76,11 @@ ANALYSIS_ACTION = "analyze-command-buffers"
 #: differently below; every other non-zero code stays a refusal.
 ROUND_DEADLINE_EXIT = 124
 
+#: Declared operations whose required work this stage can derive from the capsule's own shapes.
+#: These are the emitted ABI's operation names, carried by the corpus rather than assumed about any
+#: device. An operation outside this set yields no declared work and says so, rather than a zero.
+_WORK_OPERATIONS = ("matmul", "resident_reuse")
+
 #: How many member measurements the sweep may run at once. DECLARED, never guessed: this is a shared
 #: host, and the fan-out a measurement ran at is stamped on its own result. Default 1, so a launch
 #: that says nothing behaves exactly as the sequential sweep did.
@@ -2229,8 +2234,9 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
     Shapes come from the capsule's declared operands, so this stays a statement about the workload.
     """
     operation = descriptor.get("operation")
-    if not isinstance(operation, Mapping) or operation.get("op") != "matmul":
-        return None, f"declared work is derived for matmul only, not {(operation or {}).get('op')!r}"
+    if not isinstance(operation, Mapping) or operation.get("op") not in _WORK_OPERATIONS:
+        return None, (f"declared work is derived for {sorted(_WORK_OPERATIONS)} only, not "
+                      f"{(operation or {}).get('op')!r}")
     attributes = operation.get("attributes")
     if not isinstance(attributes, Mapping):
         return None, "the declared operation carries no operand attributes"
@@ -2242,9 +2248,36 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
         if (isinstance(shape, Sequence) and not isinstance(shape, (str, bytes))
                 and all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in shape)):
             shapes[str(row.get("name"))] = [int(v) for v in shape]
-    lhs = shapes.get(str(attributes.get("lhs")))
     weight = shapes.get(str(attributes.get("weight")))
-    if lhs is None or weight is None or len(lhs) != 2 or len(weight) != 2:
+    if weight is None or len(weight) != 2:
+        return None, "the declared weight operand is not a rank-2 shape"
+
+    # A REUSED WEIGHT IS STILL DECLARED WORK. Twelve of the thirty-eight corpus members declare one
+    # resident weight and a LIST of activations sharing it, and reading only a single `lhs` left
+    # every one of them with no declared work: no utilization, no share of the achievable rate, no
+    # verdict -- a third of the corpus with no headroom signal at all. It also left the corpus-wide
+    # attainable total UNKNOWN, which silently disabled the attainment stop condition. The rule is
+    # the same rule, summed: each reuse contracts the same weight, so each contributes its own
+    # M x K x N and the total is what the specification demands however a compiler emits it.
+    reuses = attributes.get("matmuls")
+    if isinstance(reuses, Sequence) and not isinstance(reuses, (str, bytes)):
+        total = 0
+        for index, row in enumerate(reuses):
+            if not isinstance(row, Mapping):
+                return None, f"reuse {index} of the declared operation is not a mapping"
+            lhs = shapes.get(str(row.get("lhs")))
+            if lhs is None or len(lhs) != 2:
+                return None, f"reuse {index} declares no rank-2 activation shape"
+            if lhs[1] != weight[0]:
+                return None, (f"reuse {index} does not contract: lhs {lhs} against weight {weight}")
+            total += lhs[0] * lhs[1] * weight[1]
+        if not total:
+            return None, "the declared operation reuses the weight zero times"
+        return total, ("declared operand shapes, summed over the "
+                       f"{len(reuses)} reuse(s) of one resident weight (M x K x N each)")
+
+    lhs = shapes.get(str(attributes.get("lhs")))
+    if lhs is None or len(lhs) != 2:
         return None, "the declared matmul operands are not two rank-2 shapes"
     if lhs[1] != weight[0]:
         return None, ("the declared operand shapes do not contract: "

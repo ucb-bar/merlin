@@ -144,3 +144,58 @@ def test_a_missing_input_marks_the_condition_unevaluable_wherever_it_occurs():
         "a condition whose own reason says it cannot be evaluated must say so in the field too")
     for name in ("plateaued", "budget_exhausted"):
         assert verdicts[name].evaluable is True
+
+
+# ---------------------------------------------------------------------------------------------------
+# a reused weight is still declared work
+# ---------------------------------------------------------------------------------------------------
+def _reuse_descriptor(*, k=64, n=64, activations=(16, 16)):
+    return {
+        "operation": {"op": "resident_reuse", "attributes": {
+            "weight": "W",
+            "matmuls": [{"lhs": f"A{i}", "out": f"Y{i}"} for i in range(len(activations))]}},
+        "inputs": [{"name": "W", "shape": [k, n], "role": "weight"}]
+                  + [{"name": f"A{i}", "shape": [m, k], "role": "input"}
+                     for i, m in enumerate(activations)],
+    }
+
+
+def test_a_reused_weight_contributes_work_for_every_reuse():
+    """Twelve of thirty-eight members declare one resident weight and a LIST of activations.
+
+    Reading only a single `lhs` left every one of them with no declared work -- no utilization, no
+    share of the achievable rate, no verdict -- and left the corpus attainable total UNKNOWN, which
+    silently disabled the attainment stop condition. Verified against the compiler's own emitted
+    work on six real capsules: the sums agree exactly.
+    """
+    macs, basis = PAS.declared_capsule_macs(_reuse_descriptor(activations=(16, 16)))
+    assert macs == 2 * (16 * 64 * 64), "each reuse of the weight is work the specification demands"
+    assert "reuse" in basis
+
+    one, _ = PAS.declared_capsule_macs(_reuse_descriptor(activations=(16,)))
+    assert one == 16 * 64 * 64, "a single reuse must price as a single matmul"
+
+
+def test_a_reuse_whose_shapes_do_not_contract_is_refused_by_name():
+    bad = _reuse_descriptor()
+    bad["inputs"][1]["shape"] = [16, 32]          # activation K disagrees with the weight's K
+    macs, basis = PAS.declared_capsule_macs(bad)
+    assert macs is None and "does not contract" in basis
+
+
+def test_every_shipped_perf_capsule_declares_work_it_can_be_scored_against():
+    """A member with no declared work gets no headroom signal at all, and drags the corpus total
+    into UNKNOWN with it. This pins the corpus, not just the function."""
+    import glob as _glob
+
+    import yaml as _yaml
+
+    from merlin.common.paths import repo_root as _root
+
+    undecided = []
+    for path in sorted(_glob.glob(str(_root() / "merlin/contract/capsules/_perf/*/capsule.yaml"))):
+        descriptor = _yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        macs, basis = PAS.declared_capsule_macs(descriptor)
+        if not macs:
+            undecided.append(f"{Path(path).parent.name}: {basis}")
+    assert not undecided, "capsules with no declared work: " + "; ".join(undecided)
