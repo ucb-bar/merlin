@@ -29,7 +29,22 @@ _BUNDLE = {kind: _PKG / "_data" / kind
 #  - targets: ``rtl_facts`` (per-target RTL-cert data — regenerable via the RTL flow, needs a
 #    checkout); the wheel ships the target *contracts* (dialect_plan/target_contract), not cert data.
 # Plus build cruft everywhere.
-_EXCLUDE = {"benchmarks": ("recaptures",), "targets": ("rtl_facts",)}
+#  - contract: the benchmark ANSWER SURFACES. `check_no_answer_keys.py` keeps every golden, held-out
+#    subtree and holdout sidecar UNTRACKED, and it is green because they are untracked -- but this
+#    bundle copies from DISK, not from git, so the wheel shipped exactly what that gate exists to keep
+#    unpublished. Two green checks with the gap between them publishing the answers; the gate that
+#    inspects the WHEEL (check_standalone_install.py) is wired to nothing and does not complete.
+#    `check_no_answer_keys._is_answer_key` remains the authority on what an answer surface IS;
+#    merlin/tests/infra/test_wheel_excludes_answer_keys.py holds these two in agreement against the
+#    real tree, so this list cannot silently fall behind it.
+_EXCLUDE = {"benchmarks": ("recaptures",), "targets": ("rtl_facts",),
+            "contract": ("hidden", "golden")}
+#: Name SUFFIXES excluded per tree. Needed because the holdout SPECIFICATION sidecar is named for its
+#: target (`radiance.hidden.yaml`), so no prefix rule reaches it -- and a holdout's op, dtype and exact
+#: shape is itself an answer. `expected_instruction_coverage.yaml` is here for the same reason: the
+#: required instruction classes ARE the answer. The agreement test found this one; do not hand-extend
+#: this list without re-running it.
+_EXCLUDE_SUFFIXES = {"contract": (".hidden.yaml", "expected_instruction_coverage.yaml")}
 # The bundle ships read-only DATA only — never code. The corpora carry dev/repro helper scripts
 # (e.g. benchmarks/dse_guidance/verify_implementation.py) the SDK never loads; keep them out of the
 # wheel (smaller, and no stray code under the importable package for the repo linters to scan).
@@ -38,12 +53,14 @@ _CODE_SUFFIXES = (".py", ".pyc", ".pyo", ".sh")
 
 def _ignore_for(kind: str):
     prefixes = _EXCLUDE.get(kind, ())
+    suffixes = _EXCLUDE_SUFFIXES.get(kind, ())
 
     def _ignore(_dir: str, names: list[str]) -> set[str]:
         return {n for n in names
                 if n == "__pycache__"
                 or n.endswith(_CODE_SUFFIXES)
-                or any(n.startswith(p) for p in prefixes)}
+                or any(n.startswith(p) for p in prefixes)
+                or any(n.endswith(x) for x in suffixes)}
 
     return _ignore
 
