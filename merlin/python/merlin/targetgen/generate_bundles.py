@@ -178,7 +178,7 @@ def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str, *,
         allow, deny = _apply_ablation(te, allow, deny, add_tools, drop_tools)
     return {"bundle_id": bundle_id, "arm": arm, "task": f"{te.target}-mlir-oot-capsule",
             "description": f"{arm} arm for the {te.target} target (generated from target_experiment.yaml)",
-            "allowed": allow, "denied": deny, "integrity_required": True}
+            "allowed": allow, "denied": deny, "tools": list(tools), "integrity_required": True}
 
 
 def _apply_ablation(te: TargetExperiment, allow: list[dict], deny: list[dict],
@@ -262,6 +262,35 @@ def _grant_txt(manifest: dict[str, Any], key: str) -> str:
     return "\n".join(paths) + ("\n" if paths else "")
 
 
+def _tool_blurbs(manifest: dict[str, Any]) -> str:
+    """Render each granted tool's BLURB — what it does and how to call it.
+
+    The allow list says which PATHS are readable; it does not say that a path is a tool, what the tool
+    answers, or how to invoke it. Those live in ``ToolSpec.blurb``, written for the agent, and until
+    now nothing rendered them: the generated doc showed only ``ToolSpec.note``, a one-line policy
+    label like "ALLOWED (verify arm): the compiler-verification seam".
+
+    That gap is a measurement hazard, not a documentation nicety. An arm whose single treatment is a
+    tool the agent is never told about produces a null result that cannot distinguish "the tool does
+    not help" from "the agent never knew it was there" — which is exactly how an earlier campaign
+    lost its ISA grounding.
+    """
+    names = list(manifest.get("tools") or ())
+    if not names:
+        return ("- (this manifest predates tool recording; regenerate the bundle to list the tools "
+                "it grants)")
+    from . import tool_registry as TR
+
+    rows = []
+    for name in names:
+        spec = TR.TOOLS.get(name)
+        if spec is None:
+            rows.append(f"### `{name}`\n\nGranted, but no registry entry describes it — report this.")
+            continue
+        rows.append(f"### `{name}`\n\n{spec.blurb}")
+    return "\n\n".join(rows)
+
+
 def _allowed_merlin_tools_doc(manifest: dict[str, Any]) -> str:
     """Human-readable tool policy derived from the exact bundle manifest.
 
@@ -293,6 +322,10 @@ run's `environment.yaml` → `sandbox` for the mode actually used. Both fields a
 launcher's real `--sandbox` argument. A scored, trusted run requires deny-by-default `bwrap` plus its
 frozen input snapshot. An explicit `none` run is diagnostic only and supports no trusted isolation claim.
 If older static prose names another mode, those run artifacts win.
+
+## Granted tools — what they are and how to invoke them
+
+{_tool_blurbs(manifest)}
 
 ## Allowed authoring inputs
 

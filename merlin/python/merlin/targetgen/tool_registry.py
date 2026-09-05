@@ -176,12 +176,12 @@ TOOLS: dict[str, ToolSpec] = {
     # IR, never a golden — and like the eqsat seam it is granted to exactly one arm, for the same reason.
     "verify_seam": ToolSpec(
         "verify_seam",
-        "The compiler-verification seam. `merlin-verify compile --interface <f.mlir> --command-buffer "
-        "<cb.json>` proves whether YOUR emitted command buffer computes what the interface program "
+        "The compiler-verification seam. `python -m merlin.verify.cli compile --interface <f.mlir> "
+        "--command-buffer <cb.json>` proves whether YOUR emitted command buffer computes what the interface program "
         "specified, for every integer input at that shape: exit 0 verified, 1 refuted with the "
         "counterexample inputs printed, 2 abstained. An abstention is a limit of the checker, not a "
         "defect in your buffer. Also: the fault/detection matrix that scores what a check would have "
-        "caught, a sweep of the target's derived extent lattice, and the merlin-opt driver that runs a "
+        "caught, a sweep of the target's derived extent lattice, and `python -m merlin.xdsl_dialects.opt`, which runs a "
         "single pass on a single module. Advisory only -- it does not gate your submission.",
         bundle_paths=(f"{_PY}verify/", f"{_PY}xdsl_dialects/opt.py"),
         note="ALLOWED (verify arm): the compiler-verification seam",
