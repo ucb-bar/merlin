@@ -1134,8 +1134,13 @@ def test_the_launch_interpreter_runs_this_checkout():
         inside = resolved.is_relative_to(REPO.resolve())
     except AttributeError:  # pragma: no cover - Python < 3.9
         inside = str(resolved).startswith(str(REPO.resolve()))
+    # A WORKTREE HITS THIS LEGITIMATELY, and the failure is the correct answer there rather than a false
+    # positive: a worktree's .venv is a symlink to the main checkout's, so the same interpreter is seen
+    # from both trees and an unpinned run in a worktree executes MAIN's library while reading the
+    # worktree's code. Naming the remedy keeps that from being read as a broken gate.
+    remedy = f"  (expected under {REPO}; if launching from a worktree, set PYTHONPATH={REPO}/merlin/python)"
     _ok("the launch interpreter imports merlin from THIS checkout", inside,
-        f"{PY} -> {resolved}" + ("" if inside else f"  (expected under {REPO})"))
+        f"{PY} -> {resolved}" + ("" if inside else remedy))
 
 
 def main() -> int:
