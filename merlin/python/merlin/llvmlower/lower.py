@@ -67,11 +67,27 @@ def lower_model(mlir_text: str, workdir: str | Path,
         upstream_text, stats = preprocess_text(mlir_text)
     (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
 
-    ll_text = lower_to_llvm_ir(upstream_text, workdir=work, vectorize=vectorize,
-                               transform_schedule=transform_schedule,
-                               hoist_static_allocs=hoist_static_allocs,
-                               parallel=parallel, features=features,
-                               parallel_harts=parallel_harts)
+    try:
+        ll_text = lower_to_llvm_ir(upstream_text, workdir=work, vectorize=vectorize,
+                                   transform_schedule=transform_schedule,
+                                   hoist_static_allocs=hoist_static_allocs,
+                                   parallel=parallel, features=features,
+                                   parallel_harts=parallel_harts)
+    except Exception as exc:
+        # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
+        # number in a machine-written module — not the captured layer that produced it. The commonest
+        # cause is a windowed op (pooling, strided convolution) whose window dims are bound by no
+        # indexing map; `window_maps.explain` names the op, the dims and the layer. Diagnosis only,
+        # run once the lowering has already failed, and it re-raises the original error either way.
+        from .window_maps import explain as _explain_window_maps
+        note = _explain_window_maps(upstream_text)
+        if note is None:
+            raise
+        try:                                    # keep the caller's except-clause working
+            enriched = type(exc)(f"{exc}\n\n{note}")
+        except Exception:                       # noqa: BLE001 -- an exotic constructor: keep the original
+            raise exc
+        raise enriched from exc
     ll_path = work / "model.ll"
     ll_path.write_text(ll_text, encoding="utf-8")
 
