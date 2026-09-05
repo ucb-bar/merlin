@@ -18,7 +18,6 @@ import fcntl
 import subprocess
 from pathlib import Path
 
-from merlin.common.artifacts import cache_dir
 from merlin.mining import k1
 
 # Reuse merlin's board config verbatim (env: MERLIN_K1_HOST / MERLIN_K1_SSH_KEY / MERLIN_K1_REMOTE_DIR).
@@ -52,7 +51,10 @@ def board_lock(timeout: float | None = None):
 
     Blocking by default; pass ``timeout`` seconds to fail fast if another agent holds the board.
     """
-    lock_path = cache_dir("baselines") / "k1_board.lock"
+    # This must be the *same* host-wide lock used by Merlin's compiler/mining runner.  A separate
+    # baseline-only lock serializes baseline processes with each other while still allowing a
+    # baseline measurement to overlap a Merlin measurement on the one physical board.
+    lock_path = k1._board_lock_path()
     fh = open(lock_path, "w")
     try:
         if timeout is None:
