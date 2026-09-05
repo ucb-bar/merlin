@@ -10,8 +10,14 @@ turns an entry into a capsule: it writes ``capsule.yaml``, ``capsule.interface.m
 computes and writes the untracked ``golden.yaml``, scrubs the directory, and records the capsule in
 ``MANIFEST.yaml`` as *generated*. An earlier version of this work wrote the directory itself and got
 none of that — no golden for the grader, and ``update_provenance_manifest`` would have classified a
-solver-produced capsule as ``hand_authored``, which is exactly backwards. ``load_profile`` already
-merges ``profiles/<target>.*.yaml`` sidecars, so emitting an entry gets all of it for free.
+solver-produced capsule as ``hand_authored``, which is exactly backwards.
+
+``load_profile`` merges an explicit, hardcoded chain of sidecars -- ``<target>.yaml``,
+``<target>.synth.yaml``, ``<target>.smt.yaml``, ``<target>.hidden.yaml``. It is NOT a glob, and this
+docstring claimed it was: "``load_profile`` already merges ``profiles/<target>.*.yaml`` sidecars, so
+emitting an entry gets all of it for free". It did not merge ``.smt.yaml`` at all, so every entry this
+module wrote went to a filename nothing read — consistent with no ``*.smt.yaml`` ever having been
+committed. The name is in the chain now; a NEW sidecar suffix still has to be added there by hand.
 
 **What the entry carries, and what it does not.** It carries the SHAPE and configuration the solver
 found. It does not carry the solver's input values, because a capsule has nowhere to put them:

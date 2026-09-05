@@ -367,6 +367,19 @@ def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
         extra = list(doc.get("capsules") or ())
         if extra:
             prof["capsules"] = list(prof.get("capsules") or []) + extra
+    # SOLVER-DERIVED ENTRIES. `verify.counterexamples` writes `<target>.smt.yaml` -- a counterexample
+    # the deterministic fill cannot reach, found by the SMT layer at a shape it can still decide. It
+    # was written to a filename nothing read: this chain was three hardcoded names, and
+    # `counterexamples.py` documented a glob that does not exist ("load_profile already merges
+    # profiles/<target>.*.yaml sidecars"). No `.smt.yaml` has ever been committed, which is consistent
+    # with the path never having worked end to end.
+    smt = PROFILES / f"{target}.smt.yaml"
+    if smt.is_file():
+        doc = yaml.safe_load(smt.read_text(encoding="utf-8")) or {}
+        extra = list(doc.get("capsules") or ())
+        if extra:
+            prof["capsules"] = list(prof.get("capsules") or []) + extra
+
     side = PROFILES / f"{target}.hidden.yaml"
     if include_holdouts and side.is_file():
         held = yaml.safe_load(side.read_text(encoding="utf-8")) or {}
@@ -387,10 +400,19 @@ def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
 
 
 def profile_targets() -> list[str]:
-    """Target profile stems, excluding shared templates and private sidecars."""
+    """Target profile stems, excluding shared templates, sidecars, and every DOTTED stem.
+
+    ⚠️ A DOTTED STEM IS A SIDECAR, NEVER A TARGET. `Path.stem` strips only the LAST suffix, so
+    `gemmini.synth.yaml` yields the stem `gemmini.synth` -- and this function returned it as a target
+    beside `gemmini`. Measured: six real targets came back as twelve, and `main()` uses this list as
+    the default when `--target` is absent, so a bare run generated six phantom corpora whose profiles
+    are fragments. Excluding `.hidden` by filename alone was the same bug avoided one case at a time;
+    the rule is now structural -- a target name has no dot in it, which is also what
+    `check_phase_split` and `retire_hand_capsules` already assume when they enumerate targets.
+    """
     return sorted(
         path.stem for path in PROFILES.glob("*.yaml")
-        if not path.name.startswith("_") and not path.name.endswith(".hidden.yaml"))
+        if not path.name.startswith("_") and "." not in path.stem)
 
 
 # ------------------------------------------------------------------------------------------------
