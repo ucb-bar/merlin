@@ -1365,6 +1365,14 @@ def accelerator_lane_violated(capsule: dict, trace) -> bool:
         return False
 
 
+#: Evidence rungs that record something that ACTUALLY RAN, as opposed to ``"routing_plan"``, which
+#: records only what the router intended. Exported because :mod:`merlin.targetgen.capsule_grade`
+#: judges a lane report against it: when the two ends kept their own copies of this vocabulary they
+#: drifted, and the consumer compared a per-lane MAPPING against a bare string -- a test that could
+#: never pass, reported to the submission as a malformed report it did not produce.
+EXECUTED_LANE_EVIDENCE: tuple[str, ...] = ("dynamic_dispatch_ledger", "execution")
+
+
 def lane_report(capsule: dict, routing_plan: dict | None,
                 mesh_execution: dict | None = None,
                 host_execution: dict | None = None,
@@ -1466,10 +1474,9 @@ def lane_report(capsule: dict, routing_plan: dict | None,
         if n > 0:
             carried.add(ln)
 
-    _EXECUTED = ("dynamic_dispatch_ledger", "execution")
     unexercised = [ln for ln in req if ln not in carried]
-    violated = [ln for ln in forbid if evidence.get(ln) in _EXECUTED and ln in carried]
-    unmeasured_forbid = [ln for ln in forbid if evidence.get(ln) not in _EXECUTED]
+    violated = [ln for ln in forbid if evidence.get(ln) in EXECUTED_LANE_EVIDENCE and ln in carried]
+    unmeasured_forbid = [ln for ln in forbid if evidence.get(ln) not in EXECUTED_LANE_EVIDENCE]
     out = {"required": req, "observed": sorted(carried), "unexercised": unexercised,
            "evidence": {ln: evidence[ln] for ln in (*req, *forbid)},
            # Contractions apart from kernels: the host lane is mostly norms and activations, so a bare

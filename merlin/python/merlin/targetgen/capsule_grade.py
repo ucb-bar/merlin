@@ -294,12 +294,29 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
     if required_lanes and lane is None:
         violations.append("required_lane_report_missing")
     elif lane is not None:
+        # `evidence` is a MAPPING of lane -> the rung that lane was judged on; a single label for the
+        # whole report had to lie about at least one lane, which is why the producer reports per lane.
+        # This end compared that mapping to a bare string, so the condition was true for every report
+        # ever produced and every lane-declaring whole-model capsule failed as "malformed" -- blaming
+        # the submission for a report the harness itself builds. Judge the SHAPE here, and the evidence
+        # QUALITY below, against the producer's own exported vocabulary.
+        _ev = lane.get("evidence")
         if (not isinstance(lane, dict) or not isinstance(lane.get("unexercised"), list)
-                or lane.get("evidence") != "dynamic_dispatch_ledger"):
+                or not isinstance(_ev, dict)):
             violations.append("lane_report_missing_or_malformed")
         elif (set(lane.get("observed") or []) != observed_lanes
               or sorted(lane["unexercised"]) != missing_required):
             violations.append("lane_report_disagrees_with_dispatch_ledger")
+        else:
+            # A required lane reported as exercised must rest on evidence that something RAN. The
+            # remaining rung, "routing_plan", is the router's INTENT: measured on one submission, 15
+            # matmuls were assigned to the mesh and 15 fell back to the host at run time. Accepting it
+            # here would let a plan satisfy an execution obligation.
+            _plan_only = sorted(ln for ln in required_lanes
+                                if ln not in missing_required
+                                and _ev.get(ln) not in CR.EXECUTED_LANE_EVIDENCE)
+            if _plan_only:
+                violations.append("required_lane_evidenced_by_plan_only")
 
     expected_boundary = result.get("boundary_expectation")
     actual_boundary = result.get("boundary_execution")
