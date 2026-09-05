@@ -341,10 +341,20 @@ def dataflow_operands(cb: dict[str, Any]) -> tuple[list[str], str] | None:
 
 
 def _flatten(nested) -> list[int]:
+    """Flatten a nested list of ANY rank to its scalars, row-major.
+
+    This peeled exactly one level, which is right for a rank-2 operand and silently wrong for a
+    rank-3 one: a batched activation came back as a list of LISTS, and ``Tensor`` then rejected it for
+    having 4 elements where its shape needs 12. That reads as a malformed input rather than as an
+    unsupported rank, which is how a rank the contract admits stays unreachable -- the target contract
+    declares rank-3 contractions legal and nothing downstream could materialize one.
+
+    Recursing costs nothing here and is rank-agnostic, so the next rank does not need another edit.
+    """
     out: list[int] = []
-    if nested and isinstance(nested[0], list):
-        for row in nested:
-            out.extend(row)
-    else:
-        out.extend(nested)
+    for item in nested:
+        if isinstance(item, (list, tuple)):
+            out.extend(_flatten(item))
+        else:
+            out.append(item)
     return out

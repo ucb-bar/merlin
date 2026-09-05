@@ -25,7 +25,14 @@ endpoint_kind: inline_asm_insn
 runner:
   suite: gemmini-capsule-bench
   dtype: i8xi8_i32
-  tier_sim: {L2: spike, L3: verilator, L4: vcs, L5: firesim}
+  # A TIER IS A FIDELITY, NOT A SIMULATOR. L3 is "the elaborated design ran it"; vcs, gsim and
+  # verilator all answer at that fidelity and which one does is an availability/cost decision, resolved
+  # by merlin.targetgen.rtl_engine_policy (ENGINE_PRIORITY = vcs, gsim, verilator) and recorded per run.
+  # This used to read {L3: verilator, L4: vcs, L5: firesim}, which ranked VCS *above* Verilator as
+  # though it were a higher fidelity -- it is the same elaborated RTL, only better licensed for signoff
+  # -- and left GSIM unnameable, so a GSIM cert had to be forced past the contract by
+  # MERLIN_REQUIRED_RTL_ENGINE. FireSim is a genuinely different rung (FPGA-emulated), so it keeps one.
+  tier_sim: {L2: spike, L3: elaborated_rtl, L4: firesim}
   # The DECLARED bespoke-sim engine (chipyard elaborates the spike L2 / verilator L3 tiers). Read by
   # capsule_runner._bespoke_sim_via so the sim engine comes from this contract, never a hardcoded
   # {spike,verilator} -> chipyard inference. A target with no bespoke sim omits this (arc-only).
@@ -111,7 +118,16 @@ compute_units:
       # dedicated LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1/2/3 (16-18), so a rank-4 conv
       # region IS acceleratable. Declaring ranks [2] alone made the shipped conv2d capsules score
       # ineligible and silently left them out of the ARR denominator.
-      - {family: contraction, dtypes: [int8], ranks: [2, 4]}
+      # rank 3 is the BATCHED contraction path. Unlike rank 4 this is not a distinct hardware
+      # sequence: `linalg_lower` lowers a single batched matmul (batch,m,k)@(batch,k,n) by looping
+      # the batch and calling the same (M,N,K) kernel per independent slice, so the region IS
+      # acceleratable and the evidence class is LOWERING, not RTL. Omitting it made every batched
+      # matmul ineligible before it reached the device rewrite -- the machinery existed and the
+      # contract forbade its use. Three other targets already ship batched capsules (atlas
+      # AF12, mx_gemmini MF5, radiance RP10/R11); gemmini shipped none because of this line.
+      # Declaring a narrower rank set than the target can execute is the same denominator loss the
+      # mx_gemmini rank bug was (see merlin/python/merlin/targetgen/eligibility.py).
+      - {family: contraction, dtypes: [int8], ranks: [2, 3, 4]}
       # Epilogue-only: per-channel scaling + requant apply on the way OUT of the accumulator, so an
       # elementwise map exists ONLY fused behind a contraction. Standalone would be a false_fallback.
       - {family: elementwise_map, dtypes: [int8], composed_with: [contraction]}

@@ -21,7 +21,7 @@ from .tensor import Tensor
 #: Fail closed instead (see :class:`UnmodeledOp`).
 MODELED_OPCODES = frozenset({
     "RES_PACK", "MATMUL_RESIDENT", "MATMUL", "COMMIT", "VECTOR_MAP", "VREDUCE", "ATTENTION_QK",
-    "ATTENTION_PV", "CONV2D", "MOVEMENT",
+    "ATTENTION_PV", "CONV2D", "MOVEMENT", "BATCHED_MATMUL",
 })
 
 #: Opcodes with NO effect on committed values, correctly ignored here rather than "unmodeled". ``EVICT``
@@ -308,6 +308,33 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
                 weight_name = resident_source.get(weight_operand, weight_operand)
                 weight = env[weight_name]
             t = _conv2d(ifm_name, env[ifm_name], weight_operand, weight, dst, attrs, default_shift)
+            env[dst] = t
+            outputs[dst] = t.to_list()
+        elif op == "BATCHED_MATMUL":
+            # O[b] = A[b] @ W[b] over a batch of INDEPENDENT 2-D contractions. The weight differs per
+            # batch, so there is no residency to reuse and no COMMIT to evaluate at: this writes its
+            # own output the way the other self-contained operations here do.
+            #
+            # Modelled because the contract admits rank-3 contractions and the lowering loops the
+            # batch around the same 2-D kernel. Leaving it out did not make batched work refuse
+            # loudly -- it made this engine raise UnmodeledOp, which reads as "grade it on hardware
+            # instead" and silently removed the one tier that compares two independent evaluations.
+            a_name, w_name, dst = ops["a"], ops["w"], ops["dst"]
+            at, wt = env[a_name], env[w_name]
+            if len(at.shape) != 3 or len(wt.shape) != 3:
+                raise ValueError(
+                    f"BATCHED_MATMUL needs two rank-3 operands: {a_name}{at.shape} @ {w_name}{wt.shape}")
+            batch, m, kdim = at.shape
+            wbatch, k2, n = wt.shape
+            if batch != wbatch or kdim != k2:
+                raise ValueError(
+                    f"BATCHED_MATMUL operands do not contract: {a_name}{at.shape} @ {w_name}{wt.shape}")
+            flat: list = []
+            for index in range(batch):
+                lhs = Tensor((m, kdim), at.data[index * m * kdim:(index + 1) * m * kdim], at.dtype)
+                rhs = Tensor((kdim, n), wt.data[index * kdim * n:(index + 1) * kdim * n], wt.dtype)
+                flat.extend(lhs.matmul(rhs).data)
+            t = Tensor((batch, m, n), flat, "i32")
             env[dst] = t
             outputs[dst] = t.to_list()
         elif op == "MOVEMENT":

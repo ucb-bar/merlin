@@ -409,6 +409,18 @@ capsules:
    source_role: derived_sweep,
    source_reference: 'im2col conv2d int8 at stride 2: consecutive output positions share no input tap',
    label: public}
+# THE RANK-3 CONTRACTION, WHICH THE CONTRACT ADMITS AND NO CAPSULE EXERCISED. The target contract
+# declared `ranks: [2, 4]`, so a batched matmul -- output rank 3 -- was ruled ineligible before it
+# reached the device rewrite, even though the rewrite already supports the (B,M,N,K) signature, the
+# device builder already produces the (M,N,K) kernel, and the generated shim already loops the batch
+# calling that kernel once per independent slice. The machinery existed and the contract forbade its
+# use. The contract now reads [2, 3, 4]; this is the capsule that keeps it honest, because every
+# other operand in the corpus is rank-2 and a revert of that line would otherwise be invisible.
+- {cat: layers, name: GB0_batched_matmul_i8, kind: layer, op: gemv_batched, B: 2, M: 16, H: 32, N: 16,
+   source_role: derived_sweep,
+   source_reference: 'batched int8 contraction: two independent (M,H)x(H,N) slices, the rank-3 shape
+     the target contract admits and no other capsule declares',
+   label: public, modes: {}}
 - {cat: model_slices, name: GC1_depthwise_bf16_pt, kind: model_slice, op: depthwise_conv2d,
    operand_dtype: bf16, source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 3, out: Y0,
    source_role: pytorch_model_slice, source_reference: 'PyTorch depthwise conv bf16 (MixFFN depthwise)',

@@ -990,8 +990,15 @@ def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, st
     lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
-    attrs = {"lhs": lhs, "weight": weight, "out": out, "batch": B, "block_scale": "e8m0",
+    # BLOCK SCALING IS A PROPERTY OF THE DATATYPE, NOT OF BATCHING. The operand list and the interface
+    # already emit the per-batch scale streams only when the datatype is block-scaled; the attribute
+    # naming their encoding was declared unconditionally, so on a plain-integer target this op claimed
+    # an e8m0 scale encoding whose streams do not exist. Declared where the streams are.
+    scaled = is_block_scaled(binding.operand_dtype)
+    attrs = {"lhs": lhs, "weight": weight, "out": out, "batch": B,
              "semantic": "gemv_batched", "output_dtype": odt}
+    if scaled:
+        attrs["block_scale"] = "e8m0"
     cap = {
         "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
         "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
@@ -1019,9 +1026,10 @@ def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, st
             f'  %{weight}_scale = merlin_iface.tensor {{name = "{weight}_scale", role = "scale", '
             f'scale_of = "{weight}", block = {_blk} : i64}} : tensor<{B}x{_g}x{N}xi8>',
         ]
+    scale_attr = 'block_scale = "e8m0", ' if scaled else ""
     L += [
         f'  %{out} = merlin_iface.matmul_batched %{lhs}, %{weight} {{name = "{out}", batch = {B} : i64, '
-        f'block_scale = "e8m0", output_dtype = "{odt}"}} '
+        f'{scale_attr}output_dtype = "{odt}"}} '
         f': (tensor<{B}x{M}x{H}x{midt}>, tensor<{B}x{H}x{N}x{midt}>) -> tensor<{B * M}x{N}x{modt}>', "}"]
     return cap, "\n".join(L) + "\n"
 

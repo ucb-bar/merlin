@@ -133,3 +133,38 @@ def test_every_qk_capsule_of_every_target_is_eligible():
             assert v.eligible or "dtype" in (v.reason or ""), (
                 f"{c['name']} on {target}: {v.reason} — a QK piece may only be refused on its DTYPE")
     assert seen >= 4, f"expected the known QK capsules, found {seen}"
+
+
+# ------------------------------------------------------- the rank a contract admits must be the one it loads
+
+def test_the_batched_contraction_rank_is_admitted_on_the_path_that_actually_loads():
+    """A rank the target can execute must not be declared away, and the fix must land on the LIVE copy.
+
+    Measured twice, and the second time is why this test reads the loader rather than a file. The
+    contract declared ``ranks: [2, 4]``, so every batched matmul was ruled ineligible before it reached
+    the device rewrite -- while the rewrite already supported the (B,M,N,K) signature, the device
+    builder already produced the (M,N,K) kernel, and the shim already looped the batch calling that
+    kernel per slice. The machinery existed and the contract forbade its use.
+
+    It was then repaired in the PACKAGED copy of the contract while the copy the registry actually
+    loads kept saying [2, 4], so the bug stayed live behind a fix that looked applied. Asserting
+    through ``capability_map_for_target`` is the whole point: it answers for whichever file the loader
+    resolves, which a grep over either path cannot.
+
+    Rank 5 is checked alongside so this cannot pass by admitting everything.
+    """
+    from merlin.targetgen.eligibility import (RegionDescriptor, capability_map_for_target,
+                                              is_eligible)
+
+    caps = capability_map_for_target("gemmini")
+
+    def verdict(rank):
+        region = RegionDescriptor(source="t", op="matmul", in_dtype="int8", weight_dtype="int8",
+                                  rank=rank, m=16, k=32, n=16)
+        return is_eligible(region, caps)
+
+    assert verdict(3).eligible, (
+        "a batched contraction is ineligible, so every rank-3 region is refused before the device "
+        f"rewrite sees it: {verdict(3).reason}")
+    assert verdict(2).eligible and verdict(4).eligible
+    assert not verdict(5).eligible, "admitting every rank would make this assertion vacuous"

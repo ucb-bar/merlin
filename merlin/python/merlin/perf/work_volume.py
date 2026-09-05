@@ -161,6 +161,18 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
                 rows.append(CommandWork(index, opcode, macs, provenance))
                 continue
             reason = "matmul operands do not resolve to compatible rank-2 tensor shapes"
+        elif opcode == "BATCHED_MATMUL":
+            # A batch of INDEPENDENT contractions: the work is one 2-D contraction's MACs times the
+            # batch, and the batch extents must agree or the two operands describe different batches.
+            a, w = _shape(tensors, operands.get("a")), _shape(tensors, operands.get("w"))
+            macs = None
+            if a is not None and w is not None and len(a) == len(w) == 3 and a[0] == w[0]:
+                per_slice = _matmul_shapes(a[1:], w[1:])
+                macs = None if per_slice is None else a[0] * per_slice
+            if macs is not None:
+                rows.append(CommandWork(index, opcode, macs, provenance))
+                continue
+            reason = "batched-matmul operands do not resolve to two rank-3 shapes over one batch"
         elif opcode == "ATTENTION_QK":
             q, k = _shape(tensors, operands.get("q")), _shape(tensors, operands.get("k"))
             macs = q[0] * q[1] * k[0] if q and k and len(q) == len(k) == 2 and q[1] == k[1] else None
