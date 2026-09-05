@@ -11,13 +11,94 @@ label, the analyzer identity is the thing the contract froze, and it already car
 retuned analyzer cannot silently score an old declaration.  An identity this registry does not know
 is REFUSED and named -- never routed to a "closest" analyzer, and never quietly skipped, which is
 the failure this module exists to end.
+
+Two entry points, one rule.  :func:`resolve` is what the AUTHORING stage runs before a run: it turns
+a cohort's declaration into the module, its single `preflight_*` precondition check and its decision
+function, and raises with the reason when it cannot -- so an undecidable family is refused at launch
+instead of after every L3 cell has been paid for.  :func:`analyze` is what a REPORT runs after, over
+already-measured rows.  Both read the same frozen field, so the procedure that admitted a run is the
+procedure that decides it.
 """
 from __future__ import annotations
 
+import importlib
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Callable
 
 REFUSED = "REFUSED"
+
+#: The prefix an analyzer's single launch-time precondition check is published under. The reporting
+#: gate resolves it the same way -- by prefix, requiring exactly one -- so a module publishing none
+#: or several is a wiring defect that must be named here rather than at report time, when every
+#: measurement has already been paid for.
+PREFLIGHT_PREFIX = "preflight_"
+
+
+class DispatchError(RuntimeError):
+    """A cohort whose declared decision procedure cannot be resolved, with the reason why."""
+
+
+@dataclass(frozen=True)
+class ResolvedAnalyzer:
+    """Everything a caller needs to run one family's declared procedure."""
+
+    identity: Any
+    module: Any
+    preflight: Callable[..., dict]
+    analyze: Callable[..., dict]
+
+
+def resolve(descriptors: Sequence[Mapping[str, Any]]) -> ResolvedAnalyzer:
+    """Resolve the ONE procedure a cohort's own contracts name, or raise with the reason.
+
+    This is the resolution the authoring stage runs BEFORE a run, where :func:`analyze` is the one a
+    report runs after. Both read the declaration and neither consults a family name: a family the
+    code has never heard of is dispatched by what it froze, and one that declares nothing is refused
+    by name instead of falling through to whichever analyzer happened to be imported.
+    """
+    from merlin.perf import claim_reach
+
+    if not isinstance(descriptors, Sequence) or isinstance(descriptors, str) or not descriptors:
+        raise DispatchError("no capsule descriptors were supplied")
+    identities: dict[str, Any] = {}
+    for descriptor in descriptors:
+        performance = (descriptor.get("performance") if isinstance(descriptor, Mapping) else None)
+        name = (descriptor.get("name") if isinstance(descriptor, Mapping) else None) or "<unnamed>"
+        try:
+            identity = claim_reach.analyzer_identity(
+                performance if isinstance(performance, Mapping) else {})
+        except ValueError as exc:
+            raise DispatchError(
+                f"frozen capsule {str(name)!r} names an unusable claim analyzer: {exc}") from exc
+        if identity is None:
+            raise DispatchError(
+                f"frozen capsule {str(name)!r} declares no acceptance.analyzer, so no procedure "
+                "decides its family's claim")
+        identities[identity.declared] = identity
+    if len(identities) != 1:
+        raise DispatchError(
+            f"the cohort declares {len(identities)} claim analyzers {sorted(identities)}; one "
+            "campaign seals one claim, so a mixed cohort is refused rather than split")
+    identity = next(iter(identities.values()))
+    try:
+        module = importlib.import_module(identity.module)
+    except Exception as exc:                                        # noqa: BLE001
+        raise DispatchError(
+            f"the declared claim analyzer {identity.declared!r} is unavailable: {exc}") from exc
+    entries = sorted(name for name in dir(module)
+                     if name.startswith(PREFLIGHT_PREFIX) and callable(getattr(module, name, None)))
+    if len(entries) != 1:
+        raise DispatchError(
+            f"analyzer module {identity.module!r} publishes {len(entries)} preflight entry points; "
+            "exactly one is required")
+    decide = getattr(module, identity.function, None)
+    if not callable(decide):
+        raise DispatchError(
+            f"the declared claim analyzer {identity.declared!r} is unavailable: module "
+            f"{identity.module!r} publishes no {identity.function!r}")
+    return ResolvedAnalyzer(identity=identity, module=module,
+                            preflight=getattr(module, entries[0]), analyze=decide)
 
 
 def _registry() -> dict[str, Callable[..., dict]]:

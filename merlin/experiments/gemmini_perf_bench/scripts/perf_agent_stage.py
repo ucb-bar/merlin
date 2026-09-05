@@ -21,6 +21,7 @@ import ast
 import copy
 import contextlib
 import hashlib
+import importlib
 import inspect
 import json
 import math
@@ -1518,17 +1519,11 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
     if inputs.formal_replicate_identities != expected_replicas:
         raise StageGateError("formal replicate identities are not the exact canonical cohort")
     declaration = inputs.formal_claim.get("declaration")
-    evidence = declaration.get("evidence") if isinstance(declaration, Mapping) else None
-    timing_simulator = (evidence.get("timing_simulator")
-                        if isinstance(evidence, Mapping) else None)
-    try:
-        supported_acceptance = PK.supported_acceptance(str(timing_simulator))
-    except ValueError as exc:
-        raise StageGateError(
-            "performance prompt formal claim selects an unsupported timing engine") from exc
-    if (_canonical_json(declaration) != _canonical_json(supported_acceptance)
-            or inputs.formal_claim.get("status") != "READY"):
+    if not isinstance(declaration, Mapping) or inputs.formal_claim.get("status") != "READY":
         raise StageGateError("performance prompt formal claim is not preflight-ready")
+    claim_family = str(inputs.formal_claim.get("family") or "")
+    _verify_supported_acceptance(
+        _declaration_module(declaration, claim_family), declaration, claim_family)
     if (set(inputs.e2e_sentinel.required_lanes) != {"on_mesh", "scalar_rvv_lane"}
             or "L3" not in inputs.e2e_sentinel.required_tiers):
         raise StageGateError("performance prompt E2E sentinel lacks its cross-lane L3 contract")
@@ -1689,47 +1684,214 @@ def _frozen_path_for_destination(inputs: FrozenFunctionalInputs, destination: Pa
     return frozen
 
 
-def prepare_formal_pk_claim(
-        capsules: Sequence[PerformanceCapsule],
-        requested_replicates: int | None = None) -> dict[str, Any]:
-    """Admit the exact frozen PK declaration and derive its formal result cohort."""
-    descriptors = [capsule.descriptor for capsule in capsules if capsule.family == "PK"]
-    preflight = PK.preflight_pk_claim(descriptors)
-    if preflight.get("status") != "READY":
-        reasons = preflight.get("refusal_reasons")
-        detail = "; ".join(str(value) for value in reasons) if isinstance(reasons, list) else "unknown"
-        raise StageGateError(f"frozen PK formal claim preflight refused: {detail}")
-    declaration = preflight.get("declaration")
-    if not isinstance(declaration, Mapping):
-        raise StageGateError("frozen PK acceptance is not a mapping")
+def _analyzer_kwargs(entry: Callable[..., Any], providers: Mapping[str, Callable[[], Any]], *,
+                     label: str, positional: int = 1) -> dict[str, Any]:
+    """Supply exactly the run facts one analyzer entry point DECLARES, and refuse the rest.
+
+    The signature is the interface. A family whose procedure needs the replicate schedule declares a
+    ``replicates`` parameter and is handed it; one that needs nothing is handed nothing; one that
+    declares a fact this stage cannot derive is REFUSED rather than called without it, because a
+    missing run fact arriving as a default is the difference between "not measured" and "measured
+    zero". ``positional`` names how many arguments the caller passes positionally (the descriptors,
+    and for a decision procedure the rows), which are never supplied from here.
+    """
+    supplied: dict[str, Any] = {}
+    for index, (name, parameter) in enumerate(inspect.signature(entry).parameters.items()):
+        if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        if index < positional and parameter.kind is not inspect.Parameter.KEYWORD_ONLY:
+            continue
+        provide = providers.get(name)
+        if provide is None:
+            if parameter.default is not inspect.Parameter.empty:
+                continue
+            raise StageGateError(
+                f"{label} requires run facts this stage cannot supply: {name!r}")
+        value = provide()
+        if not value:
+            raise StageGateError(
+                f"{label} requires run facts this stage cannot supply: {name!r} is unavailable")
+        supplied[name] = value
+    return supplied
+
+
+def _declared_claim_analyzer(capsules: Sequence[PerformanceCapsule]):
+    """Resolve the ONE decision procedure the frozen corpus's own declarations name.
+
+    Dispatch is on the declaration, never on a family name, and the resolution itself lives in
+    :mod:`perf_claim_dispatch` so the stage and the report reach the same procedure from the same
+    frozen fact. A family the stage has never heard of is routed by what its contract froze; one
+    that declares no analyzer is refused BY NAME rather than falling through to whichever analyzer
+    happened to be imported here, which is how ``PM`` and ``PV`` came to ship a frozen ``PREDICTS``
+    contract that nothing ever evaluated.
+    """
+    import perf_claim_dispatch as DISPATCH
+
+    if not capsules:
+        raise StageGateError("the frozen performance corpus has no capsules")
+    try:
+        resolved = DISPATCH.resolve([capsule.descriptor for capsule in capsules])
+    except DISPATCH.DispatchError as exc:
+        raise StageGateError(str(exc)) from exc
+    families = "+".join(sorted({str(capsule.family) for capsule in capsules}))
+    return resolved.identity, resolved.module, resolved.preflight, families
+
+
+def _replicate_schedule(performance: object, requested: int | None) -> tuple[str, ...]:
+    """The replicate identities this family's own declaration admits, for the requested count.
+
+    Two declared shapes, both honoured as written: a contract that FROZE its identities gets them
+    verbatim and refuses any other count, and one that states a FLOOR lets the run author the
+    schedule at or above it. A declaration that states neither is refused -- a count chosen here
+    would be this stage's opinion about how many measurements the family's band needs.
+    """
+    from merlin.perf import claim_reach
+
+    try:
+        contract = claim_reach.replicate_contract(
+            performance if isinstance(performance, Mapping) else {})
+    except ValueError as exc:
+        raise StageGateError(f"frozen acceptance has an invalid replicate cohort: {exc}") from exc
+    if contract is None:
+        raise StageGateError(
+            "frozen acceptance declares neither an exact nor a minimum replicate count, so the "
+            "run has no schedule it could author")
+    if requested is not None and (isinstance(requested, bool) or not isinstance(requested, int)
+                                  or requested <= 0):
+        raise StageGateError("a formal replicate override must be a positive integer")
+    if contract.exact_count is not None:
+        if requested is not None and requested != contract.exact_count:
+            raise StageGateError(
+                f"formal replicate override must equal the frozen exact_count="
+                f"{contract.exact_count}")
+        identities = contract.identities or tuple(
+            f"r{index:03d}" for index in range(contract.exact_count))
+        if len(identities) != contract.exact_count:
+            raise StageGateError("frozen acceptance has an invalid exact replicate cohort")
+        return tuple(identities)
+    count = contract.minimum_count if requested is None else requested
+    if count < contract.minimum_count:
+        raise StageGateError(
+            f"formal replicate count {count} is below the declared "
+            f"minimum_count={contract.minimum_count} ({contract.source})")
+    return tuple(f"r{index:03d}" for index in range(count))
+
+
+def _preflight_cohort(formal_claim: Mapping[str, Any]) -> tuple[str, ...]:
+    """The replicate identities the sealed preflight says every member is measured at.
+
+    Read from the frozen contract when it froze them and from the preflight's own authored schedule
+    when the contract states only a floor, so one helper answers for every family and no caller has
+    to know which shape its family declared.
+    """
+    declaration = formal_claim.get("declaration") if isinstance(formal_claim, Mapping) else None
+    contract = declaration.get("replicates") if isinstance(declaration, Mapping) else None
+    identities = contract.get("identities") if isinstance(contract, Mapping) else None
+    if identities is None:
+        identities = formal_claim.get("replicates") if isinstance(formal_claim, Mapping) else None
+    if (not isinstance(identities, Sequence) or isinstance(identities, str) or not identities
+            or any(not isinstance(value, str) or not value for value in identities)
+            or len(set(identities)) != len(identities)):
+        raise StageGateError("the formal claim preflight names no replicate schedule")
+    return tuple(str(value) for value in identities)
+
+
+def _declaration_module(declaration: Mapping[str, Any], family: str) -> Any:
+    """Import the analyzer module a sealed declaration itself names."""
+    from merlin.perf import claim_reach
+
+    try:
+        identity = claim_reach.analyzer_identity({"acceptance": declaration})
+    except ValueError as exc:
+        raise StageGateError(
+            f"the sealed {family} declaration names an unusable analyzer: {exc}") from exc
+    if identity is None:
+        raise StageGateError(
+            f"the sealed {family} declaration names no acceptance.analyzer, so nothing decides it")
+    try:
+        return importlib.import_module(identity.module)
+    except Exception as exc:                                        # noqa: BLE001
+        raise StageGateError(
+            f"the sealed {family} analyzer {identity.declared!r} is unavailable: {exc}") from exc
+
+
+def _supported_acceptance(module: Any, declaration: Mapping[str, Any], family: str):
+    """The analyzer's own reviewed template for this contract, or None when it keeps none.
+
+    Requiring exact equality against a template makes a profile edit a deliberate analyzer edit too,
+    so a relaxed threshold cannot silently become eligible for promotion. An analyzer that keeps no
+    template validates the contract inside its own preflight instead, and nothing is asserted about
+    it here -- the alternative, comparing against some other module's template, is exactly the
+    fall-through this dispatch exists to end.
+    """
+    supported = getattr(module, "supported_acceptance", None)
+    if not callable(supported):
+        return None
+    parameters = [parameter for parameter in inspect.signature(supported).parameters.values()
+                  if parameter.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                                        inspect.Parameter.POSITIONAL_OR_KEYWORD)]
     evidence = declaration.get("evidence")
     timing_simulator = (evidence.get("timing_simulator")
                         if isinstance(evidence, Mapping) else None)
     try:
-        supported = PK.supported_acceptance(str(timing_simulator))
-    except ValueError as exc:
-        raise StageGateError("frozen PK acceptance selects an unsupported timing engine") from exc
-    if _canonical_json(declaration) != _canonical_json(supported):
-        raise StageGateError("frozen PK acceptance differs from the supported claim contract")
-    replicate_contract = declaration.get("replicates")
-    if not isinstance(replicate_contract, Mapping):
-        raise StageGateError("frozen PK acceptance omits its replicate contract")
-    identities = replicate_contract.get("identities")
-    exact_count = replicate_contract.get("exact_count")
-    if (not isinstance(identities, list) or any(not isinstance(value, str) for value in identities)
-            or isinstance(exact_count, bool) or not isinstance(exact_count, int)
-            or exact_count != len(identities)
-            or identities != [f"r{index:03d}" for index in range(exact_count)]):
-        raise StageGateError("frozen PK acceptance has an invalid exact replicate cohort")
-    if requested_replicates is not None and (
-            isinstance(requested_replicates, bool) or not isinstance(requested_replicates, int)
-            or requested_replicates != exact_count):
+        return supported(str(timing_simulator)) if parameters else supported()
+    except (TypeError, ValueError) as exc:
         raise StageGateError(
-            f"formal replicate override must equal frozen PK exact_count={exact_count}")
+            f"frozen {family} acceptance selects an unsupported timing engine") from exc
+
+
+def _verify_supported_acceptance(module: Any, declaration: Mapping[str, Any], family: str) -> None:
+    expected = _supported_acceptance(module, declaration, family)
+    if expected is not None and _canonical_json(declaration) != _canonical_json(expected):
+        raise StageGateError(
+            f"frozen {family} acceptance differs from the supported claim contract")
+
+
+def prepare_formal_pk_claim(
+        capsules: Sequence[PerformanceCapsule],
+        requested_replicates: int | None = None) -> dict[str, Any]:
+    """Admit the frozen formal claim declaration and derive its formal result cohort.
+
+    The corpus is already scoped to the families a run selected; which procedure decides them comes
+    from their OWN ``acceptance.analyzer``, so a newly declared family reaches a handoff with no
+    edit here, and one that declares nothing is refused instead of being silently skipped.
+    """
+    identity, module, preflight_entry, family = _declared_claim_analyzer(capsules)
+    descriptors = [capsule.descriptor for capsule in capsules]
+    identities = _replicate_schedule(descriptors[0].get("performance"), requested_replicates)
+    label = f"{identity.module}.{preflight_entry.__name__}"
+    kwargs = _analyzer_kwargs(preflight_entry, {"replicates": lambda: list(identities)},
+                              label=label)
+    preflight = preflight_entry(descriptors, **kwargs)
+    if not isinstance(preflight, Mapping):
+        raise StageGateError(f"{label} returned something other than a preflight mapping")
+    if preflight.get("status") != "READY":
+        reasons = preflight.get("refusal_reasons")
+        detail = ("; ".join(str(value) for value in reasons)
+                  if isinstance(reasons, Sequence) and not isinstance(reasons, str) and reasons
+                  else "unknown")
+        raise StageGateError(f"frozen {family} formal claim preflight refused: {detail}")
+    declaration = preflight.get("declaration")
+    if not isinstance(declaration, Mapping):
+        raise StageGateError(f"frozen {family} acceptance is not a mapping")
+    _verify_supported_acceptance(module, declaration, family)
+    if _preflight_cohort(preflight) != identities:
+        raise StageGateError(
+            f"frozen {family} preflight reports a replicate schedule the stage did not author")
     expected = preflight.get("expected_identities")
-    if not isinstance(expected, list) or len(expected) != len(descriptors) * exact_count * 2:
-        raise StageGateError("frozen PK preflight did not produce its exact L2/L3 identity cohort")
-    return copy.deepcopy(preflight)
+    if (not isinstance(expected, list) or not expected
+            or any(not isinstance(row, Mapping) for row in expected)):
+        raise StageGateError(f"frozen {family} preflight produced no expected measurement cells")
+    if any(not str(row.get("simulator") or "") or not str(row.get("tier") or "")
+           for row in expected):
+        raise StageGateError(f"frozen {family} preflight has an unattributed measurement cell")
+    if {str(row.get("capsule")) for row in expected} != {capsule.capsule for capsule in capsules}:
+        raise StageGateError(
+            f"frozen {family} preflight cells do not cover exactly the frozen corpus")
+    if {str(row.get("replicate")) for row in expected} != set(identities):
+        raise StageGateError(
+            f"frozen {family} preflight cells do not use the declared replicate schedule")
+    return copy.deepcopy(dict(preflight))
 
 
 def _family_declarations(
@@ -1757,10 +1919,13 @@ def _family_declarations(
         if previous is not None and previous != family:
             raise StageGateError(f"performance family declaration drifts: {capsule.family}")
         rows[capsule.family] = family
-    pk = rows.get("PK")
-    if (pk is None or _canonical_json(pk.acceptance) != _canonical_json(
+    declared = str(formal_claim.get("family") or "")
+    claiming = rows.get(declared)
+    if (claiming is None or _canonical_json(claiming.acceptance) != _canonical_json(
             formal_claim.get("declaration"))):
-        raise StageGateError("PK family declaration drifts from its formal preflight acceptance")
+        raise StageGateError(
+            f"{declared or 'the claiming'} family declaration drifts from its formal preflight "
+            "acceptance")
     return tuple(rows[name] for name in sorted(rows))
 
 
@@ -2884,18 +3049,17 @@ def prepare_prompt_inputs(
         max_tool_calls: int, tool_timeout_seconds: int,
         candidate_path: str = "submission") -> StagePromptInputs:
     declaration = formal_claim.get("declaration")
-    if not isinstance(declaration, Mapping) or not isinstance(declaration.get("replicates"), Mapping):
-        raise StageGateError("formal PK claim omits its frozen replicate declaration")
-    formal_identities = tuple(declaration["replicates"].get("identities") or ())
-    replicates = declaration["replicates"].get("exact_count")
+    if not isinstance(declaration, Mapping):
+        raise StageGateError("the formal claim omits its frozen acceptance declaration")
+    formal_identities = _preflight_cohort(formal_claim)
+    replicates = len(formal_identities)
     if (isinstance(smoke_replicates, bool) or not isinstance(smoke_replicates, int)
-            or smoke_replicates <= 0 or not isinstance(replicates, int)
-            or smoke_replicates >= replicates):
+            or smoke_replicates <= 0 or smoke_replicates >= replicates):
         raise StageGateError(
-            "smoke replicates must be positive and smaller than the formal PK cohort")
+            "smoke replicates must be positive and smaller than the formal cohort")
     evidence = declaration.get("evidence")
     if not isinstance(evidence, Mapping):
-        raise StageGateError("formal PK claim omits timing-engine evidence semantics")
+        raise StageGateError("the formal claim omits timing-engine evidence semantics")
     timing_simulator = str(evidence.get("timing_simulator"))
     cells = tuple(PP.PerfCell(row.family, row.capsule, row.simulator, row.replicate)
                   for row in expected_perf_cells(
@@ -4106,64 +4270,67 @@ def _validate_formal_claim_facts(
         formal: object, replicates: object, formal_replicate_identities: object,
         smoke_replicates: object, cells: object, families: object) -> None:
     if (not isinstance(formal, Mapping) or formal.get("schema_version") != 1
-            or formal.get("family") != "PK" or formal.get("claim") != "PREDICTS"
+            or not isinstance(formal.get("family"), str) or not formal.get("family")
+            or formal.get("claim") not in ("RECOVERS", "PREDICTS", "DIFFERENTIAL")
             or formal.get("status") != "READY" or formal.get("refusal_reasons") != []):
-        raise StageGateError("performance candidate omits a READY frozen PK formal claim")
+        raise StageGateError("performance candidate omits a READY frozen formal claim")
+    family = str(formal["family"])
     declaration = formal.get("declaration")
-    evidence = declaration.get("evidence") if isinstance(declaration, Mapping) else None
+    if not isinstance(declaration, Mapping):
+        raise StageGateError(f"performance candidate {family} acceptance is not a mapping")
+    evidence = declaration.get("evidence")
     timing_simulator = (evidence.get("timing_simulator")
                         if isinstance(evidence, Mapping) else None)
-    try:
-        supported_acceptance = PK.supported_acceptance(str(timing_simulator))
-    except ValueError as exc:
+    supported = _supported_acceptance(
+        _declaration_module(declaration, family), declaration, family)
+    if supported is not None and _canonical_json(declaration) != _canonical_json(supported):
+        raise StageGateError(f"performance candidate {family} acceptance contract drifted")
+    identities = list(_preflight_cohort(formal))
+    if (formal_replicate_identities != identities or replicates != len(identities)):
         raise StageGateError(
-            "performance candidate selects an unsupported PK timing engine") from exc
-    if _canonical_json(declaration) != _canonical_json(supported_acceptance):
-        raise StageGateError("performance candidate PK acceptance contract drifted")
-    assert isinstance(declaration, Mapping)
-    replicate_contract = declaration.get("replicates")
-    if not isinstance(replicate_contract, Mapping):
-        raise StageGateError("performance candidate PK acceptance omits replicates")
-    identities = replicate_contract.get("identities")
-    exact_count = replicate_contract.get("exact_count")
-    if (not isinstance(identities, list) or formal_replicate_identities != identities
-            or isinstance(exact_count, bool) or not isinstance(exact_count, int)
-            or replicates != exact_count or exact_count != len(identities)):
-        raise StageGateError("performance candidate formal replicates drift from PK acceptance")
+            f"performance candidate formal replicates drift from {family} acceptance")
     if (isinstance(smoke_replicates, bool) or not isinstance(smoke_replicates, int)
-            or smoke_replicates <= 0 or smoke_replicates >= exact_count):
+            or smoke_replicates <= 0 or smoke_replicates >= len(identities)):
         raise StageGateError("performance candidate smoke replicas could masquerade as formal evidence")
     if not isinstance(families, list):
         raise StageGateError("performance candidate formal families are malformed")
-    pk_families = [row for row in families
-                   if isinstance(row, Mapping) and row.get("family") == "PK"]
-    if (len(pk_families) != 1
-            or _canonical_json(pk_families[0].get("acceptance")) != _canonical_json(declaration)):
-        raise StageGateError("performance candidate family omits its exact PK acceptance")
+    claiming = [row for row in families
+                if isinstance(row, Mapping) and row.get("family") == family]
+    if (len(claiming) != 1
+            or _canonical_json(claiming[0].get("acceptance")) != _canonical_json(declaration)):
+        raise StageGateError(f"performance candidate family omits its exact {family} acceptance")
     cohort = formal.get("cohort")
     expected = formal.get("expected_identities")
-    if (not isinstance(cohort, Mapping) or cohort.get("replicates") != identities
-            or not isinstance(expected, list) or not expected):
-        raise StageGateError("performance candidate PK preflight omits its exact cohort")
+    if (not isinstance(cohort, Mapping) or not isinstance(expected, list) or not expected):
+        raise StageGateError(f"performance candidate {family} preflight omits its exact cohort")
+    # A cohort record that ECHOES its schedule must echo the one the preflight authored; one that
+    # does not is not thereby excused, because the schedule itself is read above from the sealed
+    # preflight and is what every other check here compares against.
+    if cohort.get("replicates") not in (None, identities):
+        raise StageGateError(f"performance candidate {family} preflight omits its exact cohort")
     expected_cells: list[dict[str, str]] = []
     for row in expected:
         if not isinstance(row, Mapping):
-            raise StageGateError("performance candidate PK preflight has a malformed identity")
+            raise StageGateError(f"performance candidate {family} preflight has a malformed identity")
         simulator, tier = row.get("simulator"), row.get("tier")
         if ((simulator, tier) not in (("spike", "L2"), (timing_simulator, "L3"))
-                or row.get("family") != "PK"):
-            raise StageGateError("performance candidate PK preflight changes L2/L3 semantics")
+                or row.get("family") != family):
+            raise StageGateError(f"performance candidate {family} preflight changes L2/L3 semantics")
+        # A family measuring two ARMS per member names each arm in its own identity; the cells are
+        # the measurement schedule, so identities are compared on the part a cell carries, and the
+        # arm axis rides along as the extra fact the analyzer needs from each cell.
         expected_cells.append({key: str(row.get(key))
                                for key in ("family", "capsule", "simulator", "replicate")})
-    if len({tuple(row.items()) for row in expected_cells}) != len(expected_cells):
-        raise StageGateError("performance candidate PK preflight repeats a formal identity")
+    unique_cells = sorted({tuple(row.items()) for row in expected_cells})
     if not isinstance(cells, list):
         raise StageGateError("performance candidate formal cells are malformed")
-    recorded_pk = [row for row in cells
-                   if isinstance(row, Mapping) and row.get("family") == "PK"]
-    if sorted(expected_cells, key=_canonical_json) != sorted(
-            (dict(row) for row in recorded_pk), key=_canonical_json):
-        raise StageGateError("performance candidate PK formal identities drift from expected cells")
+    recorded = sorted({tuple({key: str(row.get(key)) for key in
+                              ("family", "capsule", "simulator", "replicate")}.items())
+                       for row in cells
+                       if isinstance(row, Mapping) and row.get("family") == family})
+    if unique_cells != recorded:
+        raise StageGateError(
+            f"performance candidate {family} formal identities drift from expected cells")
 
 
 def validate_candidate_record(document: Mapping[str, Any], *, require_consumable: bool = True) -> dict:
@@ -4602,7 +4769,7 @@ def verify_candidate_record(path: Path, *, require_consumable: bool = True,
     observed_formal_claim = prepare_formal_pk_claim(
         frozen_loaded.capsules, int(corpus["replicates"]))
     if _canonical_json(observed_formal_claim) != _canonical_json(corpus["formal_claim"]):
-        raise StageGateError("frozen performance descriptors changed their formal PK preflight")
+        raise StageGateError("frozen performance descriptors changed their formal claim preflight")
     agent_manifest = Path(corpus["agent_input_manifest"])
     if (agent_manifest.is_symlink() or not agent_manifest.is_file()
             or _sha256(agent_manifest.read_bytes()) != corpus["agent_input_manifest_sha256"]):
@@ -5286,8 +5453,7 @@ def run_stage(
     base = PC.materialize_perf_workspace(functional, stage_root / "_frozen_functional")
     frozen_corpus = freeze_performance_corpus(discovered, stage_root / "_frozen_corpus")
     formal_claim = prepare_formal_pk_claim(frozen_corpus.capsules, replicates)
-    replicate_contract = formal_claim["declaration"]["replicates"]
-    replicates = int(replicate_contract["exact_count"])
+    replicates = len(_preflight_cohort(formal_claim))
     agent_inputs = build_answer_free_agent_inputs(
         frozen_corpus, target_experiment, stage_root / "_agent_inputs")
     frozen_functional = load_frozen_functional_inputs(functional)

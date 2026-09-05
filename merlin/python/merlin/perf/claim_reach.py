@@ -34,13 +34,13 @@ names a target or a family -- a declaration arrives as a mapping and leaves as a
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 __all__ = [
     "AnalyzerIdentity", "CAPACITY_CONTRADICTS_DEMAND_EQUAL", "FamilyReach",
-    "UNDECLARED_FIRING_QUANTITY", "analyzer_identity", "capacity_demand", "family_reach",
-    "has_decision_procedure", "tokens",
+    "ReplicateContract", "UNDECLARED_FIRING_QUANTITY", "analyzer_identity", "capacity_demand",
+    "family_reach", "has_decision_procedure", "replicate_contract", "tokens",
 ]
 
 #: The gate asks for at least two of a quantity the comparand's ``demand_equal`` holds fixed.
@@ -191,6 +191,90 @@ def analyzer_identity(performance: Mapping) -> AnalyzerIdentity | None:
         raise ValueError(
             f"declared analyzer {declared!r} does not name a simple module, function and version")
     return AnalyzerIdentity(declared=declared, module=module, function=function, version=version)
+
+
+@dataclass(frozen=True)
+class ReplicateContract:
+    """How many times one family's own declaration says each member must be measured.
+
+    A family whose band is the MEASURED replicate dispersion cannot be decided from a schedule its
+    declaration never states: at one replicate the dispersion is not small, it is UNDETERMINABLE,
+    and substituting zero is the assumption these contracts exist to refuse. So the count is read
+    from the declaration and never defaulted -- an undeclared count is :data:`None`, which a caller
+    turns into a refusal, not into a two.
+
+    Two spellings are in the corpus and both are declarations, not styles. ``exact_count`` with
+    frozen ``identities`` means the schedule is part of the frozen contract and a run may not choose
+    another; ``minimum_count`` means the contract states a floor and the RUN authors the identities.
+    A family that states its floor beside its band (``noise_band.minimum_replicate_count``) rather
+    than inside ``acceptance`` has still stated it, so both locations are read -- acceptance first,
+    because that is the block a claim freezes.
+    """
+
+    #: The exact number of replicates the contract froze, or None when it declares only a floor.
+    exact_count: int | None
+    #: The smallest admissible number of replicates. Equal to ``exact_count`` when one is frozen.
+    minimum_count: int
+    #: The frozen replicate identities, empty when the run authors them.
+    identities: tuple[str, ...]
+    #: The declaration path the counts were read from, so a refusal can say where it looked.
+    source: str
+
+
+def _positive_count(value: object, *, where: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{where} must be a positive integer, not {value!r}")
+    return value
+
+
+def replicate_contract(performance: Mapping) -> ReplicateContract | None:
+    """Read one family's declared replicate schedule, or None when it declares none.
+
+    Three states, as with :func:`analyzer_identity`: ``None`` means the declaration is silent (a
+    wiring state a caller must refuse rather than fill in), :class:`ValueError` means it states
+    something that cannot be true of a schedule, and anything else is the resolved contract.
+    """
+    if not isinstance(performance, Mapping):
+        return None
+    acceptance = performance.get("acceptance")
+    declared = acceptance.get("replicates") if isinstance(acceptance, Mapping) else None
+    if isinstance(declared, Mapping):
+        identities = declared.get("identities")
+        frozen: tuple[str, ...] = ()
+        if identities is not None:
+            if (not isinstance(identities, Sequence) or isinstance(identities, str)
+                    or not identities
+                    or any(not isinstance(item, str) or not item for item in identities)):
+                raise ValueError(
+                    "acceptance.replicates.identities must be a non-empty list of names")
+            frozen = tuple(str(item) for item in identities)
+            if len(set(frozen)) != len(frozen):
+                raise ValueError("acceptance.replicates.identities repeats an identity")
+        if declared.get("exact_count") is not None:
+            exact = _positive_count(declared.get("exact_count"),
+                                    where="acceptance.replicates.exact_count")
+            if frozen and len(frozen) != exact:
+                raise ValueError(
+                    f"acceptance.replicates freezes {len(frozen)} identities against an "
+                    f"exact_count of {exact}")
+            return ReplicateContract(exact_count=exact, minimum_count=exact, identities=frozen,
+                                     source="acceptance.replicates.exact_count")
+        if declared.get("minimum_count") is not None:
+            floor = _positive_count(declared.get("minimum_count"),
+                                    where="acceptance.replicates.minimum_count")
+            if frozen:
+                raise ValueError(
+                    "acceptance.replicates declares a floor and freezes identities; a run cannot "
+                    "both author the schedule and inherit it")
+            return ReplicateContract(exact_count=None, minimum_count=floor, identities=(),
+                                     source="acceptance.replicates.minimum_count")
+    band = performance.get("noise_band")
+    if isinstance(band, Mapping) and band.get("minimum_replicate_count") is not None:
+        floor = _positive_count(band.get("minimum_replicate_count"),
+                                where="noise_band.minimum_replicate_count")
+        return ReplicateContract(exact_count=None, minimum_count=floor, identities=(),
+                                 source="noise_band.minimum_replicate_count")
+    return None
 
 
 @dataclass(frozen=True)

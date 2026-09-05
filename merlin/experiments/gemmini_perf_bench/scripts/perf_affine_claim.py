@@ -19,7 +19,9 @@ one is REFUSED rather than silently scored against a bound this module chose.
 """
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
 from typing import Any
 
 SCHEMA_VERSION = 1
@@ -248,3 +250,312 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
         return {"verdict": REFUTED, "reasons": reasons, "measured": measured,
                 "breaches": breaches[:8], "family": sorted(families)[0]}
     return {"verdict": ACCEPTED, "measured": measured, "family": sorted(families)[0]}
+
+
+# ---------------------------------------------------------------------------------------------
+# PREFLIGHT: is this cohort admissible BEFORE a single cycle is spent measuring it?
+#
+# The decision procedure above refuses bad evidence.  That is too late to be the only guard: a
+# campaign that discovers at report time that its contract omits a threshold, or that its cohort
+# holds the independent variable constant, has already paid for every L3 cell.  The preflight asks
+# the same questions of the DECLARATION alone, so an inadmissible family is refused at launch.
+#
+# Everything below is read from the frozen declaration.  Nothing about a family, an axis, an
+# operation or a target is written here: the independent variable comes from ``fit.variable_source``,
+# the cohort size from ``cohort.exact_points``, the schedule from ``replicates``, and the bounds from
+# ``thresholds`` -- and a declaration that omits any of them is REFUSED rather than completed with a
+# value this module chose.
+# ---------------------------------------------------------------------------------------------
+
+
+class _Refusal(ValueError):
+    """One named reason a declaration cannot be admitted."""
+
+
+def _mapping(value: object, label: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _Refusal(f"{label} must be a mapping")
+    return value
+
+
+def _sequence(value: object, label: str) -> Sequence[Any]:
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        raise _Refusal(f"{label} must be a sequence")
+    return value
+
+
+def _family_of(descriptors: object) -> str | None:
+    """The one family a cohort names, or None when it names zero or several."""
+    if not isinstance(descriptors, Sequence) or isinstance(descriptors, str):
+        return None
+    names = set()
+    for descriptor in descriptors:
+        performance = descriptor.get("performance") if isinstance(descriptor, Mapping) else None
+        if isinstance(performance, Mapping):
+            names.add(str(performance.get("family")))
+    return names.pop() if len(names) == 1 else None
+
+
+def _free_axes(source: Mapping[str, Any]) -> dict[str, object]:
+    """Which declared operand axes the independent variable is allowed to move.
+
+    This is the cohort control, DERIVED: a member differs from its siblings only in the quantity the
+    fit varies, so every operand axis the variable source does not name must be identical across the
+    cohort.  Each family's own falsifier names the same control in prose -- one holds K fixed while
+    the output extent moves, another holds the window and image fixed while the channel depth moves
+    -- and reading it off ``variable_source`` gets both without either being written here.
+    """
+    kind = source.get("kind")
+    if kind == "output_elements":
+        # The output extent is lhs rows by weight columns, so exactly those two axes may move.
+        return {str(source.get("lhs")): {0}, str(source.get("weight")): {1}}
+    if kind == "input_elements":
+        return {str(source.get("input")): "all"}
+    if kind == "input_dim":
+        return {str(source.get("input")): {int(source.get("axis"))}}
+    raise _Refusal("the contract does not declare how to read its independent variable")
+
+
+def _shape_of(descriptor: Mapping[str, Any], name: str) -> tuple[int, ...]:
+    row = _inputs_by_name(descriptor).get(name)
+    shape = row.get("shape") if row else None
+    if not isinstance(shape, Sequence) or isinstance(shape, str) or not shape:
+        raise _Refusal(f"member {descriptor.get('name')!r} declares no shape for operand {name!r}")
+    extents = []
+    for extent in shape:
+        if isinstance(extent, bool) or not isinstance(extent, int) or extent <= 0:
+            raise _Refusal(
+                f"member {descriptor.get('name')!r} operand {name!r} has a non-positive extent")
+        extents.append(int(extent))
+    return tuple(extents)
+
+
+#: The cohort-control fields a descriptor states about itself, each read STRUCTURALLY from the block
+#: that declares it.  A contract naming a field absent from this table is REFUSED rather than having
+#: that part of its control silently skipped -- an unread control is not a control.
+def _fixed_field(descriptor: Mapping[str, Any], field: str) -> Any:
+    operation = _mapping(descriptor.get("operation"), f"member {descriptor.get('name')!r} operation")
+    attributes = _mapping(operation.get("attributes"),
+                          f"member {descriptor.get('name')!r} operation attributes")
+    if field == "operation":
+        return operation.get("op")
+    if field == "operand_dtype":
+        rows = _sequence(descriptor.get("inputs"), f"member {descriptor.get('name')!r} inputs")
+        return tuple(sorted({str(row.get("dtype")) for row in rows if isinstance(row, Mapping)}))
+    if field == "accum_dtype":
+        return attributes.get("output_dtype")
+    if field == "epilogue":
+        return list(attributes.get("epilogue") or [])
+    raise _Refusal(
+        f"the cohort control names a fixed field {field!r} this procedure cannot read from a "
+        "descriptor; it would be declared and never checked")
+
+
+def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]],
+                                                         dict[str, Any], dict[str, Any]]:
+    """Admit the cohort, or raise the first reason it is inadmissible."""
+    rows = _sequence(descriptors, "affine descriptors")
+    if not rows:
+        raise _Refusal("no capsule descriptors were supplied")
+    members: list[Mapping[str, Any]] = []
+    contracts: list[Any] = []
+    families: set[str] = set()
+    names: list[str] = []
+    for index, raw in enumerate(rows):
+        descriptor = _mapping(raw, f"descriptor {index}")
+        name = descriptor.get("name")
+        if not isinstance(name, str) or not name:
+            raise _Refusal(f"descriptor {index} has no capsule name")
+        performance = _mapping(descriptor.get("performance"), f"descriptor {name!r} performance")
+        if performance.get("claim") != "PREDICTS":
+            raise _Refusal(
+                f"descriptor {name!r} declares {performance.get('claim')!r}; this procedure "
+                "decides PREDICTS claims only")
+        families.add(str(performance.get("family")))
+        contracts.append(performance.get("acceptance"))
+        names.append(name)
+        members.append(descriptor)
+    if len(set(names)) != len(names):
+        raise _Refusal("the cohort repeats a capsule name")
+    if len(families) != 1:
+        raise _Refusal(f"descriptors span {len(families)} families {sorted(families)}")
+    contract = _mapping(contracts[0], "the frozen acceptance contract")
+    if any(entry != contract for entry in contracts):
+        raise _Refusal("members disagree about the frozen acceptance contract")
+    if contract.get("analyzer") != ANALYZER:
+        raise _Refusal(
+            f"the contract names analyzer {contract.get('analyzer')!r}, not {ANALYZER!r}")
+
+    fit = _mapping(contract.get("fit"), "the contract's fit block")
+    if fit.get("form") != "affine":
+        raise _Refusal(
+            f"the contract fits a {fit.get('form')!r} form; this procedure fits an affine law and "
+            "will not score a declaration against a law it did not state")
+    source = _mapping(fit.get("variable_source"), "the contract's fit.variable_source")
+    if source.get("kind") not in _VARIABLE_KINDS:
+        raise _Refusal("the contract does not declare how to read its independent variable")
+    metric = fit.get("dependent_metric")
+    if not isinstance(metric, str) or not metric:
+        raise _Refusal("the contract does not name its dependent metric")
+
+    cohort = _mapping(contract.get("cohort"), "the contract's cohort block")
+    exact_points = cohort.get("exact_points")
+    if isinstance(exact_points, bool) or not isinstance(exact_points, int) or exact_points < 2:
+        raise _Refusal("the contract does not declare a cohort of at least two points")
+    if len(members) != exact_points:
+        raise _Refusal(
+            f"the cohort is {len(members)} member(s) against a predeclared {exact_points}")
+
+    thresholds = _mapping(contract.get("thresholds"), "the contract's thresholds block")
+    if not _is_number(thresholds.get("slope_min_exclusive")) or not _is_number(
+            thresholds.get("r_squared_min_inclusive")):
+        raise _Refusal("the contract omits a slope or r-squared threshold; a bound this module "
+                       "chose itself would be its opinion wearing the contract's authority")
+    bound = _mapping(thresholds.get("residual_bound"), "the contract's residual bound")
+    if not _is_number(bound.get("absolute_floor_cycles")) or not _is_number(
+            bound.get("observed_cycle_fraction")):
+        raise _Refusal("the residual bound is not fully specified")
+
+    from merlin.perf import claim_reach
+    try:
+        schedule = claim_reach.replicate_contract(members[0]["performance"])
+    except ValueError as exc:
+        raise _Refusal(f"the replicate contract is malformed: {exc}") from exc
+    if schedule is None:
+        raise _Refusal("the contract declares no replicate schedule")
+    if schedule.exact_count is None or not schedule.identities:
+        raise _Refusal(
+            "an affine law is fitted over ALL of its replicates, so the cohort it is fitted over "
+            "must be frozen; this contract declares only a floor")
+    if schedule.minimum_count < 2:
+        raise _Refusal(
+            f"the contract schedules {schedule.minimum_count} replicate(s); one leaves the "
+            "replicate dispersion UNDETERMINABLE rather than zero")
+
+    evidence = _mapping(contract.get("evidence"), "the contract's evidence block")
+    lanes = []
+    for simulator_key, tier_key in (("correctness_simulator", "correctness_tier"),
+                                    ("timing_simulator", "timing_tier")):
+        simulator, tier = evidence.get(simulator_key), evidence.get(tier_key)
+        if not isinstance(simulator, str) or not simulator or not isinstance(tier, str) or not tier:
+            raise _Refusal(f"the contract's evidence omits its {simulator_key}/{tier_key}")
+        lanes.append((simulator, tier))
+
+    # --- the cohort control: only the declared independent variable may move ---
+    free = _free_axes(source)
+    xs: dict[str, int] = {}
+    for descriptor in members:
+        name = str(descriptor.get("name"))
+        value = independent_value(descriptor, source)
+        if value is None or value <= 0:
+            raise _Refusal(
+                f"the independent variable is not derivable from member {name!r}'s declared shapes")
+        xs[name] = int(value)
+    if len(set(xs.values())) < 2:
+        raise _Refusal(
+            "every member shares one value of the independent variable, so no slope is "
+            "identifiable and the law could not be refuted by any measurement")
+
+    for field in _sequence(cohort.get("fixed_fields") or (), "the cohort's fixed_fields"):
+        observed = {repr(_fixed_field(descriptor, str(field))) for descriptor in members}
+        if len(observed) != 1:
+            raise _Refusal(f"the cohort control does not hold {str(field)!r} fixed")
+    declared_operation = cohort.get("operation")
+    if declared_operation is not None:
+        for descriptor in members:
+            if _fixed_field(descriptor, "operation") != declared_operation:
+                raise _Refusal(
+                    f"member {descriptor.get('name')!r} is not the declared "
+                    f"{declared_operation!r} cohort operation")
+
+    operands = {name for descriptor in members for name in _inputs_by_name(descriptor)}
+    tracking: list[dict[str, Any]] = []
+    for operand in sorted(operands):
+        allowed = free.get(operand, set())
+        shapes = {str(descriptor.get("name")): _shape_of(descriptor, operand)
+                  for descriptor in members}
+        ranks = {len(shape) for shape in shapes.values()}
+        if len(ranks) != 1:
+            raise _Refusal(f"operand {operand!r} changes rank across the cohort")
+        if allowed == "all":
+            continue
+        for axis in range(ranks.pop()):
+            if axis in allowed:
+                continue
+            extents = {name: shape[axis] for name, shape in shapes.items()}
+            if len(set(extents.values())) == 1:
+                continue
+            # An axis may still move, but ONLY because the independent variable moved: an im2col
+            # weight's contracted extent is the window times the channel depth, so it is a fixed
+            # multiple of the depth the fit varies and holding it "fixed" would admit no cohort at
+            # all. Anything else moving is a second variable, and a two-variable cohort cannot
+            # attribute its slope to either.
+            ratios = {Fraction(extents[name], xs[name]) for name in extents}
+            if len(ratios) != 1:
+                raise _Refusal(
+                    f"the cohort control does not hold operand {operand!r} axis {axis} fixed, and "
+                    "it does not move in proportion to the declared independent variable either; "
+                    "more than one quantity varies across this cohort")
+            tracking.append({"operand": operand, "axis": axis,
+                             "ratio_to_independent_variable": str(ratios.pop())})
+
+    falsifier = _mapping(members[0]["performance"].get("falsifier"),
+                         "the family's falsifier")
+    control = falsifier.get("negative_control")
+    if not isinstance(control, str) or not control:
+        raise _Refusal("the family declares no negative control")
+
+    cohort_record = {
+        "negative_control": control,
+        "operation": declared_operation,
+        "capsules": [str(descriptor.get("name")) for descriptor in members],
+        "independent_variable": fit.get("independent_variable"),
+        "independent_values": [xs[str(descriptor.get("name"))] for descriptor in members],
+        "dependent_metric": metric,
+        "fixed_fields": [str(field) for field in (cohort.get("fixed_fields") or ())],
+        "axes_tracking_the_independent_variable": tracking,
+        "replicates": list(schedule.identities),
+        "replicate_source": schedule.source,
+        "evidence_lanes": [{"simulator": simulator, "tier": tier} for simulator, tier in lanes],
+    }
+    return members, cohort_record, {"contract": contract, "lanes": lanes,
+                                    "identities": schedule.identities}
+
+
+def preflight_affine_claim(descriptors: object) -> dict[str, Any]:
+    """Validate a frozen affine declaration before a claim-bearing run is admitted.
+
+    Takes the descriptors alone: this family's contract freezes its own replicate identities, so a
+    run has no schedule to offer and none is accepted.
+    """
+    family = _family_of(descriptors)
+    try:
+        members, cohort, resolved = _validated_declaration(descriptors)
+    except (_Refusal, KeyError, TypeError, ValueError) as exc:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "family": family,
+            "claim": "PREDICTS",
+            "status": REFUSED,
+            "declaration": None,
+            "cohort": None,
+            "replicates": [],
+            "expected_identities": [],
+            "refusal_reasons": [str(exc)],
+        }
+    expected = [{"family": family, "capsule": str(descriptor.get("name")),
+                 "simulator": simulator, "replicate": replicate, "tier": tier}
+                for descriptor in members
+                for replicate in resolved["identities"]
+                for simulator, tier in resolved["lanes"]]
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "family": family,
+        "claim": "PREDICTS",
+        "status": "READY",
+        "declaration": copy.deepcopy(dict(resolved["contract"])),
+        "cohort": cohort,
+        "replicates": list(resolved["identities"]),
+        "expected_identities": expected,
+        "refusal_reasons": [],
+    }

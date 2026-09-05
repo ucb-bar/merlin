@@ -508,3 +508,160 @@ def test_evidence_that_covers_only_part_of_the_cohort_must_not_be_accepted(descr
     assert result["verdict"] == AF.REFUSED, (
         "two of four cohort members carry no evidence and the replicate identities are "
         f"undeclared, yet the claim was {result['verdict']}")
+
+
+# --------------------------------------------------------------------------------------
+# PREFLIGHT: the same bounds, asked of the DECLARATION before a cycle is spent.
+#
+# Every check below is paired with its mutation: the unmutated cohort is admitted in the same
+# test, and the mutated one is refused for its own distinct reason. A precondition that cannot
+# fail is worth nothing, and this repo has shipped several.
+# --------------------------------------------------------------------------------------
+
+def _refusal(result: dict) -> str:
+    assert result["status"] == AF.REFUSED, result
+    assert result["declaration"] is None and result["expected_identities"] == []
+    return " ".join(result["refusal_reasons"])
+
+
+def test_the_module_publishes_exactly_one_preflight_entry_point():
+    """The reporting gate resolves the entry point by prefix and requires exactly one."""
+    names = sorted(name for name in dir(AF)
+                   if name.startswith("preflight_") and callable(getattr(AF, name)))
+    assert names == ["preflight_affine_claim"]
+
+
+def test_a_complete_declaration_is_admitted_with_its_derived_cohort(descriptors):
+    result = AF.preflight_affine_claim(descriptors)
+    assert result["status"] == "READY" and result["refusal_reasons"] == []
+    assert result["family"] == "PM" and result["claim"] == "PREDICTS"
+    assert result["declaration"] == _contract()
+    assert result["replicates"] == list(REPLICATES)
+    cohort = result["cohort"]
+    assert cohort["capsules"] == [d["name"] for d in descriptors]
+    assert cohort["independent_values"] == [_x(d) for d in descriptors]
+    assert cohort["negative_control"] == "fixed_K_across_all_M_and_N_points"
+    assert cohort["dependent_metric"] == METRIC
+    # Two lanes per member per replicate: the correctness screen and the timing certification,
+    # both named by the contract's own evidence block rather than by this test.
+    assert len(result["expected_identities"]) == len(descriptors) * len(REPLICATES) * 2
+    assert {row["simulator"] for row in result["expected_identities"]} == {"spike", "gsim"}
+
+
+def test_a_cohort_that_is_not_the_predeclared_size_is_refused(descriptors):
+    assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
+    assert "predeclared" in _refusal(AF.preflight_affine_claim(descriptors[:-1]))
+
+
+def test_a_missing_threshold_is_refused_rather_than_defaulted(descriptors):
+    assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
+
+    without_r2 = copy.deepcopy(descriptors)
+    for descriptor in without_r2:
+        descriptor["performance"]["acceptance"]["thresholds"].pop("r_squared_min_inclusive")
+    assert "r-squared threshold" in _refusal(AF.preflight_affine_claim(without_r2))
+
+    without_floor = copy.deepcopy(descriptors)
+    for descriptor in without_floor:
+        descriptor["performance"]["acceptance"]["thresholds"]["residual_bound"].pop(
+            "absolute_floor_cycles")
+    assert "residual bound is not fully specified" in _refusal(
+        AF.preflight_affine_claim(without_floor))
+
+
+def test_a_cohort_that_never_moves_its_independent_variable_is_refused(descriptors):
+    """A law fitted over one x is unrefutable: no measurement could contradict it."""
+    assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
+    flattened = copy.deepcopy(descriptors)
+    for descriptor in flattened:
+        descriptor["inputs"][1]["shape"][0] = 16
+    assert "no slope is identifiable" in _refusal(AF.preflight_affine_claim(flattened))
+
+
+def test_a_second_moving_quantity_breaks_the_cohort_control(descriptors):
+    """The declared control is that only the fitted variable moves; K moving too is refused."""
+    assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
+    drifted = copy.deepcopy(descriptors)
+    drifted[1]["inputs"][1]["shape"][1] = 32      # the contracted extent, which must stay fixed
+    drifted[1]["inputs"][0]["shape"][0] = 32
+    assert "does not hold operand" in _refusal(AF.preflight_affine_claim(drifted))
+
+
+def test_an_axis_that_moves_in_proportion_to_the_variable_is_admitted(descriptors):
+    """An im2col weight's contracted extent is the window times the depth being fitted.
+
+    Holding it fixed would admit no convolution cohort at all, so an axis that is a CONSTANT
+    MULTIPLE of the independent variable is admitted -- and the multiple is recorded, so a member
+    whose ratio differs is still a second moving quantity.
+    """
+    proportional = copy.deepcopy(descriptors)
+    for descriptor in proportional:
+        m = descriptor["inputs"][1]["shape"][0]
+        descriptor["inputs"][0]["shape"][1] = 16          # N stays fixed; x = M*16
+        descriptor["inputs"][1]["shape"][1] = m // 8      # K tracks M, hence tracks x
+        descriptor["inputs"][0]["shape"][0] = m // 8
+    admitted = AF.preflight_affine_claim(proportional)
+    assert admitted["status"] == "READY", admitted["refusal_reasons"]
+    assert admitted["cohort"]["axes_tracking_the_independent_variable"]
+
+    broken = copy.deepcopy(proportional)
+    broken[2]["inputs"][1]["shape"][1] += 1
+    broken[2]["inputs"][0]["shape"][0] += 1
+    assert "proportion" in _refusal(AF.preflight_affine_claim(broken))
+
+
+def test_a_fixed_field_the_procedure_cannot_read_is_refused_not_skipped(descriptors):
+    """An unread control is not a control, so a field nobody can check refuses the cohort."""
+    assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
+    unreadable = copy.deepcopy(descriptors)
+    for descriptor in unreadable:
+        descriptor["performance"]["acceptance"]["cohort"]["fixed_fields"].append("mesh_rows")
+    assert "cannot read" in _refusal(AF.preflight_affine_claim(unreadable))
+
+
+def test_a_declared_fixed_field_that_actually_moves_is_refused(descriptors):
+    assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
+    drifted = copy.deepcopy(descriptors)
+    drifted[0]["operation"]["attributes"]["output_dtype"] = "i16"
+    assert "does not hold 'accum_dtype' fixed" in _refusal(AF.preflight_affine_claim(drifted))
+
+
+def test_a_single_replicate_leaves_the_dispersion_undeterminable(descriptors):
+    assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
+    thin = copy.deepcopy(descriptors)
+    for descriptor in thin:
+        descriptor["performance"]["acceptance"]["replicates"] = {
+            "exact_count": 1, "identities": ["r000"]}
+    assert "UNDETERMINABLE" in _refusal(AF.preflight_affine_claim(thin))
+
+
+def test_a_contract_naming_another_analyzer_or_another_claim_is_refused(descriptors):
+    assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
+
+    borrowed = copy.deepcopy(descriptors)
+    for descriptor in borrowed:
+        descriptor["performance"]["acceptance"]["analyzer"] = "perf_pk_claim.analyze_pk_claim/v3"
+    assert "not " + repr(AF.ANALYZER) in _refusal(AF.preflight_affine_claim(borrowed))
+
+    differential = copy.deepcopy(descriptors)
+    for descriptor in differential:
+        descriptor["performance"]["claim"] = "DIFFERENTIAL"
+    assert "PREDICTS claims only" in _refusal(AF.preflight_affine_claim(differential))
+
+
+def test_every_shipped_family_declaring_this_analyzer_is_admissible_as_frozen():
+    """The point of the procedure: the corpus's own PREDICTS families reach a preflight verdict."""
+    perf_root = repo_root() / "merlin/contract/capsules/_perf"
+    by_family: dict[str, list[dict]] = {}
+    for source in sorted(perf_root.iterdir()):
+        capsule = source / "capsule.yaml"
+        if not capsule.is_file():
+            continue
+        descriptor = yaml.safe_load(capsule.read_text(encoding="utf-8"))
+        acceptance = (descriptor.get("performance") or {}).get("acceptance") or {}
+        if acceptance.get("analyzer") == AF.ANALYZER:
+            by_family.setdefault(str(descriptor["performance"]["family"]), []).append(descriptor)
+    assert by_family, "no frozen family declares the affine analyzer; retarget this test"
+    for family, descriptors in sorted(by_family.items()):
+        result = AF.preflight_affine_claim(descriptors)
+        assert result["status"] == "READY", (family, result["refusal_reasons"])

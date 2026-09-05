@@ -280,3 +280,258 @@ def test_the_shipped_synchronization_family_declares_the_growth_falsifier():
     assert declaring, (
         "no shipped family declares the per-unit growth observation, so the growth gate is wired to "
         "nothing -- either a family lost its falsifier or the constant drifted")
+
+
+# --------------------------------------------------------------------------------------
+# PREFLIGHT: the questions the analyzer asks about the declaration, asked before the run.
+#
+# Deciding a differential family costs two arms times two replicates times every member of the
+# cohort. Discovering at report time that the declaration predicted no direction, or that its
+# band is measured over a schedule nobody declared, wastes all of it -- so the same questions are
+# asked of the declaration alone. Every check here is paired with its mutation: the unmutated
+# cohort is admitted in the same test and the mutated one refused by its own reason.
+# --------------------------------------------------------------------------------------
+
+import copy  # noqa: E402
+
+from merlin.common.paths import repo_root as _repo_root  # noqa: E402
+
+EVIDENCE = {"timing_simulator": "gsim", "timing_tier": "L3",
+            "correctness_simulator": "spike", "correctness_tier": "L2"}
+NOISE_BAND = {"kind": "measured_replicate_dispersion", "declared_constant": None,
+              "minimum_replicate_count": 2,
+              "predicate": "a_saving_counts_iff_it_exceeds_the_measured_replicate_dispersion"}
+SCHEDULE = ("r000", "r001")
+
+
+def _preflight_contract(**over):
+    contract = _contract(evidence=dict(EVIDENCE))
+    contract["band"] = {"kind": "measured_replicate_dispersion", "declared_constant": None,
+                        "predicate": "a_difference_counts_iff_it_exceeds_the_pair_s_own_band"}
+    contract.update(over)
+    return contract
+
+
+_DEFAULT = object()
+
+
+def _preflight_descriptors(contract=None, names=("PZ00", "PZ01"), falsifier=None,
+                           noise_band=_DEFAULT):
+    contract = _preflight_contract() if contract is None else contract
+    band = NOISE_BAND if noise_band is _DEFAULT else noise_band
+    rows = []
+    for name in names:
+        performance = {"family": "PZ", "claim": "DIFFERENTIAL", "acceptance": contract,
+                       "falsifier": dict(falsifier or DIRECTION_FALSIFIER)}
+        if band is not None:
+            performance["noise_band"] = dict(band)
+        rows.append({"name": name, "performance": performance})
+    return rows
+
+
+def _preflight_refusal(result: dict) -> str:
+    assert result["status"] == P.REFUSED, result
+    assert result["declaration"] is None and result["expected_identities"] == []
+    return " ".join(result["refusal_reasons"])
+
+
+def test_the_module_publishes_exactly_one_preflight_entry_point():
+    """The reporting gate resolves the entry point by prefix and requires exactly one."""
+    names = sorted(name for name in dir(P)
+                   if name.startswith("preflight_") and callable(getattr(P, name)))
+    assert names == ["preflight_paired_claim"]
+
+
+def test_a_complete_two_arm_declaration_is_admitted_with_its_derived_cells():
+    result = P.preflight_paired_claim(_preflight_descriptors(), replicates=SCHEDULE)
+    assert result["status"] == "READY" and result["refusal_reasons"] == []
+    assert result["family"] == "PZ" and result["claim"] == "DIFFERENTIAL"
+    cohort = result["cohort"]
+    assert cohort["roles"] == ROLES and cohort["expected_faster"] == "resident"
+    assert cohort["replicates"] == list(SCHEDULE)
+    assert cohort["replicate_floor"] == 2
+    assert cohort["replicate_source"] == "noise_band.minimum_replicate_count"
+    # Both arms of both members at both replicates, on both declared evidence lanes.
+    assert len(result["expected_identities"]) == 2 * len(ROLES) * len(SCHEDULE) * 2
+    assert {row["arm"] for row in result["expected_identities"]} == set(ROLES)
+
+
+def test_a_pair_with_no_predicted_direction_cannot_be_admitted():
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+
+    without = _preflight_descriptors(_preflight_contract(expected_faster=None))
+    assert "predicts neither" in _preflight_refusal(
+        P.preflight_paired_claim(without, replicates=SCHEDULE))
+
+    foreign = _preflight_descriptors(_preflight_contract(expected_faster="a_third_arm"))
+    assert "predicts neither" in _preflight_refusal(
+        P.preflight_paired_claim(foreign, replicates=SCHEDULE))
+
+
+def test_a_symmetric_family_may_predict_only_that_the_two_differ():
+    """``either`` is the honest shape for two operand encodings, and stays admissible."""
+    result = P.preflight_paired_claim(
+        _preflight_descriptors(_preflight_contract(expected_faster=P.EITHER)),
+        replicates=SCHEDULE)
+    assert result["status"] == "READY"
+    assert result["cohort"]["expected_faster"] == P.EITHER
+
+
+def test_a_cohort_without_two_distinct_roles_is_refused():
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+    for roles in ([ROLES[0]], [ROLES[0], ROLES[0]], [ROLES[0], ROLES[1], "third"]):
+        broken = _preflight_descriptors(
+            _preflight_contract(roles=list(roles), expected_faster=ROLES[0]))
+        assert "two distinct comparison roles" in _preflight_refusal(
+            P.preflight_paired_claim(broken, replicates=SCHEDULE))
+
+
+def test_one_replicate_leaves_the_band_undeterminable_and_is_refused():
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+    reason = _preflight_refusal(
+        P.preflight_paired_claim(_preflight_descriptors(), replicates=("r000",)))
+    assert "declared floor of 2" in reason
+
+    # ...and a declaration whose own floor is one is refused before any schedule is considered.
+    floor_of_one = _preflight_descriptors(
+        noise_band={**NOISE_BAND, "minimum_replicate_count": 1})
+    assert "UNDETERMINABLE" in _preflight_refusal(
+        P.preflight_paired_claim(floor_of_one, replicates=SCHEDULE))
+
+
+def test_a_family_declaring_no_replicate_count_at_all_is_refused():
+    """The band is MEASURED; a schedule nobody declared would make it whatever the run did."""
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+    assert "states no replicate count" in _preflight_refusal(
+        P.preflight_paired_claim(_preflight_descriptors(noise_band=None), replicates=SCHEDULE))
+
+
+def test_a_constant_band_is_refused_because_the_analyzer_would_never_read_it():
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+
+    constant = _preflight_contract()
+    constant["band"] = {"kind": "measured_replicate_dispersion", "declared_constant": 50}
+    assert "constant band" in _preflight_refusal(
+        P.preflight_paired_claim(_preflight_descriptors(constant), replicates=SCHEDULE))
+
+    other = _preflight_contract()
+    other["band"] = {"kind": "fixed_percentage_of_cycles", "declared_constant": None}
+    assert "band; this procedure decides" in _preflight_refusal(
+        P.preflight_paired_claim(_preflight_descriptors(other), replicates=SCHEDULE))
+
+
+def test_a_negative_control_must_be_declared_and_must_be_in_the_cohort():
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+
+    undeclared = _preflight_descriptors(
+        falsifier={**DIRECTION_FALSIFIER, "negative_control": ""})
+    assert "declares no negative control" in _preflight_refusal(
+        P.preflight_paired_claim(undeclared, replicates=SCHEDULE))
+
+    elsewhere = _preflight_descriptors(
+        _preflight_contract(negative_control_capsule="PZ99"))
+    assert "not in this cohort" in _preflight_refusal(
+        P.preflight_paired_claim(elsewhere, replicates=SCHEDULE))
+
+    bound = P.preflight_paired_claim(
+        _preflight_descriptors(_preflight_contract(negative_control_capsule="PZ00")),
+        replicates=SCHEDULE)
+    assert bound["status"] == "READY"
+    assert bound["cohort"]["negative_control_capsule"] == "PZ00"
+    assert [fact["fact"] for fact in bound["unresolved_facts"]] == []
+
+
+def test_an_unbound_negative_control_is_surfaced_rather_than_silently_unchecked():
+    """The analyzer skips the control when nothing binds it to a member; that must be VISIBLE."""
+    result = P.preflight_paired_claim(_preflight_descriptors(), replicates=SCHEDULE)
+    assert result["status"] == "READY"
+    unresolved = {fact["fact"]: fact for fact in result["unresolved_facts"]}
+    assert "negative_control_capsule" in unresolved
+    assert "NOT verified" in unresolved["negative_control_capsule"]["detail"]
+
+
+def test_a_growth_falsifier_needs_more_than_one_pair_and_declares_its_missing_counts():
+    one_member = _preflight_descriptors(names=("PZ00",), falsifier=GROWTH_FALSIFIER)
+    assert "cannot show growth" in _preflight_refusal(
+        P.preflight_paired_claim(one_member, replicates=SCHEDULE))
+
+    result = P.preflight_paired_claim(
+        _preflight_descriptors(falsifier=GROWTH_FALSIFIER), replicates=SCHEDULE)
+    assert result["status"] == "READY"
+    assert result["cohort"]["per_unit_growth_falsifier"] is True
+    assert "per_unit_counts" in {fact["fact"] for fact in result["unresolved_facts"]}
+
+
+def test_a_cohort_spanning_two_families_or_two_questions_is_refused():
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+
+    mixed = _preflight_descriptors()
+    mixed[1]["performance"]["family"] = "PY"
+    assert "span 2 families" in _preflight_refusal(
+        P.preflight_paired_claim(mixed, replicates=SCHEDULE))
+
+    two_questions = _preflight_descriptors()
+    two_questions[1]["performance"]["falsifier"] = dict(GROWTH_FALSIFIER)
+    assert "disagree about the falsifier" in _preflight_refusal(
+        P.preflight_paired_claim(two_questions, replicates=SCHEDULE))
+
+
+def test_a_contract_naming_another_analyzer_or_another_claim_is_refused():
+    assert P.preflight_paired_claim(
+        _preflight_descriptors(), replicates=SCHEDULE)["status"] == "READY"
+
+    borrowed = _preflight_descriptors(_preflight_contract(analyzer="perf_pk_claim.x/v1"))
+    assert "not " + repr(P.ANALYZER) in _preflight_refusal(
+        P.preflight_paired_claim(borrowed, replicates=SCHEDULE))
+
+    predicts = _preflight_descriptors()
+    for descriptor in predicts:
+        descriptor["performance"]["claim"] = "PREDICTS"
+    assert "DIFFERENTIAL claims only" in _preflight_refusal(
+        P.preflight_paired_claim(predicts, replicates=SCHEDULE))
+
+
+def test_the_shipped_families_declaring_this_analyzer_reach_a_preflight_verdict():
+    """The shipped corpus: which differential families are admissible, and which say why not."""
+    perf_root = _repo_root() / "merlin/contract/capsules/_perf"
+    by_family: dict[str, list[dict]] = {}
+    for source in sorted(perf_root.iterdir()):
+        capsule = source / "capsule.yaml"
+        if not capsule.is_file():
+            continue
+        descriptor = yaml.safe_load(capsule.read_text(encoding="utf-8"))
+        acceptance = (descriptor.get("performance") or {}).get("acceptance") or {}
+        if acceptance.get("analyzer") == P.ANALYZER:
+            by_family.setdefault(str(descriptor["performance"]["family"]), []).append(descriptor)
+    assert by_family, "no frozen family declares the paired analyzer; retarget this test"
+    verdicts = {family: P.preflight_paired_claim(rows, replicates=SCHEDULE)
+                for family, rows in by_family.items()}
+    admitted = {family for family, row in verdicts.items() if row["status"] == "READY"}
+    assert admitted, f"no differential family is admissible: {verdicts}"
+    for family, row in verdicts.items():
+        if row["status"] != "READY":
+            # A refusal must name the declaration it is missing, never be silent.
+            assert row["refusal_reasons"] and "replicate count" in row["refusal_reasons"][0], (
+                family, row["refusal_reasons"])
+
+
+def test_the_synchronization_family_is_admissible_as_frozen():
+    """The family the campaign is blocked on: it must reach READY from its shipped declaration."""
+    perf_root = _repo_root() / "merlin/contract/capsules/_perf"
+    descriptors = [yaml.safe_load((source / "capsule.yaml").read_text(encoding="utf-8"))
+                   for source in sorted(perf_root.iterdir())
+                   if (source / "capsule.yaml").is_file()]
+    growth = [row for row in descriptors
+              if ((row.get("performance") or {}).get("falsifier") or {}).get("observation")
+              == BA.PER_UNIT_GROWTH_OBSERVATION]
+    assert growth, "no shipped family declares the per-unit growth falsifier"
+    result = P.preflight_paired_claim(growth, replicates=SCHEDULE)
+    assert result["status"] == "READY", result["refusal_reasons"]
+    assert result["cohort"]["per_unit_growth_falsifier"] is True
