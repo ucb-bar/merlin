@@ -349,3 +349,93 @@ def test_what_the_profiler_cannot_attribute_is_named_rather_than_missing():
     assert set(opf.CATEGORIES_NOT_ATTRIBUTABLE) == {"allocator", "fork_join", "intra_op"}
     for why in opf.CATEGORIES_NOT_ATTRIBUTABLE.values():
         assert len(why) > 60          # each says WHY, and what to do instead
+
+
+# =================================================================================================
+# 8. Body evidence: an untagged `linalg.generic` is not a mystery, it is an unread one.
+#
+# The quantization rewrites rebuild ops without re-stamping provenance. Measured on lstmnetvit's
+# prepared module, 261 of 2656 marks reach the table as `linalg.generic` with no family — and 76 of
+# those bodies carry `math.roundeven` + `arith.fptosi` (the activation-quantize step) and 80 carry
+# `math.absf` + `arith.maximumf` (the per-row amax that finds its scale). Bucketing all of them as
+# UNKNOWN reports the quantize chain as 71 ops when it is ~250, against a contraction total of 224 —
+# which is exactly the comparison the profile is being run to settle.
+# =================================================================================================
+
+def test_round_to_int_is_the_quantize_step():
+    assert opf.classify_generic_body(["math.roundeven", "arith.fptosi", "arith.divf"]) == (
+        "quantize_requant", "body:round_to_int")
+    # a narrowing convert alone is enough; not every spelling rounds explicitly
+    assert opf.classify_generic_body(["arith.fptosi"])[0] == "quantize_requant"
+
+
+def test_int_to_float_times_a_scale_is_the_dequantize_step():
+    assert opf.classify_generic_body(["arith.sitofp", "arith.mulf"]) == (
+        "quantize_requant", "body:int_to_float_scale")
+
+
+def test_abs_max_is_the_scale_search_and_keeps_its_own_bucket():
+    """An abs-then-max reduction is ALSO a legitimate model op, so it gets a bucket a reader can
+    discount separately instead of being folded into the quantize total."""
+    cat, rule = opf.classify_generic_body(["math.absf", "arith.maximumf"])
+    assert (cat, rule) == ("quantize_scale_search", "body:abs_max")
+    assert cat in opf.QUANTIZE_CHAIN_CATEGORIES and "quantize_requant" in opf.QUANTIZE_CHAIN_CATEGORIES
+
+
+def test_a_body_no_rule_reads_stays_unknown():
+    """Fail closed. A bare `arith.divf` is the scale-apply AND an ordinary elementwise divide; the
+    profiler cannot tell, so it must not claim to."""
+    assert opf.classify_generic_body(["arith.divf"]) is None
+    assert opf.classify_generic_body([]) is None
+    assert opf.classify_generic_body(None) is None
+    assert opf.resolve_category({"mlir_op": "linalg.generic", "body_ops": ["arith.divf"]}) == (
+        "unclassified_generic", "unknown")
+
+
+def test_body_evidence_names_itself_so_it_can_be_audited():
+    cat, src = opf.resolve_category({"mlir_op": "linalg.generic",
+                                     "body_ops": ["math.roundeven", "arith.fptosi"]})
+    assert cat == "quantize_requant" and src.startswith("body:")
+
+
+def test_a_tagged_op_is_decided_by_its_tag_not_its_body():
+    """Body evidence is the LAST resort, not a competing signal: a contraction whose epilogue was
+    fused into it still carries a convert, and must not be re-bucketed as a quantize op."""
+    rec = {"mlir_op": "linalg.generic", "family": "contraction", "op": "matmul",
+           "role": "contraction", "body_ops": ["math.roundeven", "arith.fptosi"]}
+    assert opf.resolve_category(rec) == ("contraction", "prov.role")
+
+
+def test_body_ops_are_attached_only_where_they_can_answer_something():
+    """Carrying a fingerprint for all 5000+ ops would bloat every artifact for no gain: an op the
+    frontend already tagged needs no body evidence."""
+    mlir = """module {
+  func.func @forward(%a: tensor<4xf32>) -> tensor<4xf32> {
+    %0 = linalg.generic {indexing_maps = []} ins(%a : tensor<4xf32>) outs(%a : tensor<4xf32>) {
+    ^bb0(%x: f32, %y: f32):
+      %r = math.roundeven %x : f32
+      %i = arith.fptosi %r : f32 to i32
+      linalg.yield %x : f32
+    } -> tensor<4xf32>
+    %1 = linalg.generic {prov.family = "elementwise", prov.op = "add"} ins(%a : tensor<4xf32>) outs(%a : tensor<4xf32>) {
+    ^bb0(%x: f32, %y: f32):
+      %s = arith.addf %x, %y : f32
+      linalg.yield %s : f32
+    } -> tensor<4xf32>
+    return %1 : tensor<4xf32>
+  }
+}
+"""
+    _, _, ops = opf.find_forward_ops(mlir)
+    untagged, tagged = ops[0], ops[1]
+    assert "body_ops" in untagged and "math.roundeven" in untagged["body_ops"]
+    assert "arith.fptosi" in untagged["body_ops"]
+    assert "body_ops" not in tagged
+    assert opf.resolve_category(untagged)[0] == "quantize_requant"
+
+
+def test_body_ops_reads_both_print_forms():
+    """Bundles ship GENERIC form and the printer emits CUSTOM; a scan that reads only one silently
+    finds no body at all, which reads as 'unknown' rather than as a failed match."""
+    assert "arith.mulf" in opf._body_ops('      %3 = arith.mulf %1, %2 : f32')
+    assert "arith.mulf" in opf._body_ops('      %3 = "arith.mulf"(%1, %2) : (f32, f32) -> f32')

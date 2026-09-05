@@ -389,7 +389,30 @@ def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float)
         r["share_denominator"] = "wall" if wall_ms else "attributed"
         r["profiler_coverage"] = cov_scalar
 
+    # THE HEADLINE COMPARISON, computed rather than left to a reader to assemble from two rows: is
+    # the quantize chain really more expensive than every contraction combined? A static census says
+    # its `roundeven` chain emits ~2.4x the instructions of every matmul; this is the same question
+    # asked in MEASURED milliseconds. Both sides are stated with their op counts and the unknown
+    # that could still move them, so the ratio is never quoted without its error bars.
+    _by_cat = {r["category"]: r for r in by_category}
+    _chain_ms = sum(_by_cat[c]["ms"] for c in opf.QUANTIZE_CHAIN_CATEGORIES if c in _by_cat)
+    _contr_ms = _by_cat.get("contraction", {}).get("ms", 0.0)
+    _unknown_ms = _by_cat.get("unclassified_generic", {}).get("ms", 0.0)
+    quantize_vs_contraction = {
+        "quantize_chain_ms": round(_chain_ms, 3),
+        "quantize_chain_categories": list(opf.QUANTIZE_CHAIN_CATEGORIES),
+        "contraction_ms": round(_contr_ms, 3),
+        "ratio": (_chain_ms / _contr_ms) if _contr_ms else None,
+        "unclassified_generic_ms": round(_unknown_ms, 3),
+        "note": ("Measured ms, not instructions. Both sides are LOWER BOUNDS in opposite ways: an "
+                 "untagged linalg.generic the body rules could not read sits in "
+                 "unclassified_generic and may belong to either, and a contraction the int8 rewrite "
+                 "left untagged sits there too. Quote the ratio with unclassified_generic_ms beside "
+                 "it, and only when coverage says the shares are of runtime."),
+    }
+
     return {
+        "quantize_vs_contraction": quantize_vs_contraction,
         "total_attributed_ms": round(total_ms, 3),
         "measured_wall_ms": round(_ticks_to_ms(wall_ticks), 3) if wall_ticks else None,
         # The denominator every `share_of_runtime` below is a share OF: the wall of one @forward
@@ -590,6 +613,12 @@ def main() -> None:
                   f"n_ops={row['n_ops']}")
         print("  (categories this profiler CANNOT attribute: "
               + ", ".join(sorted(b["categories_not_attributable"])) + " — see the artifact)")
+        q = b["quantize_vs_contraction"]
+        ratio = f"{q['ratio']:.2f}x" if q["ratio"] else "n/a"
+        print(f"\nQUANTIZE CHAIN vs CONTRACTION: {q['quantize_chain_ms']:.2f} ms vs "
+              f"{q['contraction_ms']:.2f} ms = {ratio}  "
+              f"(unread untagged generics: {q['unclassified_generic_ms']:.2f} ms, which could "
+              f"belong to either side)")
         print(f"\n=== TOP FAMILIES (measured ms, share {denom}) ===")
         for row in b["by_family"][:12]:
             share = row["share_of_runtime"] if ok else row["share_of_attributed"]

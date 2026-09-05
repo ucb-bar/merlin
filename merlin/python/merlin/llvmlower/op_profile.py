@@ -175,6 +175,27 @@ def _elem_count(ty: str | None) -> int | None:
     return n
 
 
+#: Dialects whose op names inside a ``linalg.generic`` body say what the body COMPUTES. Kept small
+#: on purpose: these two carry the arithmetic, and nothing else in the body changes what the op is.
+_BODY_DIALECTS = ("arith", "math")
+
+
+def _body_ops(line: str) -> list[str]:
+    """The ``arith.*``/``math.*`` op names named on one region-body line. Structural, not regex.
+
+    Both print forms are handled — the pretty ``%3 = arith.mulf %1, %2 : f32`` and the generic
+    ``"arith.mulf"(%1, %2)`` — because which one a consumer sees depends on who last round-tripped
+    the module (bundles ship generic form; the printer emits custom).
+    """
+    out = []
+    for tok in line.replace("(", " ").replace(")", " ").replace(",", " ").split():
+        tok = tok.strip('"')
+        head, dot, rest = tok.partition(".")
+        if dot and head in _BODY_DIALECTS and rest and rest.replace("_", "").isalnum():
+            out.append(f"{head}.{rest}")
+    return out
+
+
 def find_forward_ops(mlir_text: str) -> tuple[int, int, list[dict]]:
     """Locate the top-level ops of ``func.func @forward``.
 
@@ -195,9 +216,22 @@ def find_forward_ops(mlir_text: str) -> tuple[int, int, list[dict]]:
     ops: list[dict] = []
     ret_line = None
     depth = 0                              # nesting relative to the function body
+    body: dict[int, set[str]] = {}         # op index -> the arith/math ops inside its region
     for i in range(start + 1, len(lines)):
         line = lines[i]
         stripped = line.strip()
+        if depth > 0 and ops:
+            # Inside the current top-level op's region. WHY collect this: the quantization rewrites
+            # rebuild ops without re-stamping provenance, so ~40 % of the table reaches us as an
+            # untagged `linalg.generic` whose family is unknowable from the printed op line. The
+            # BODY is knowable, and it is decisive: a body carrying `math.roundeven` + a float->int
+            # convert is the activation-quantize step, not a mystery. Measured on lstmnetvit, 240 of
+            # the 261 untagged generics are exactly that chain -- bucketing them as UNKNOWN
+            # understates the quantize/requant cost by roughly 4x against the very matmul total it
+            # is being compared with.
+            found = _body_ops(line)
+            if found:
+                body.setdefault(len(ops) - 1, set()).update(found)
         if depth == 0:
             # Both spellings. MLIR prints func's terminator as bare `return` in the pretty form and
             # `func.return` in the generic one, and which you get depends on who last round-tripped
@@ -231,8 +265,12 @@ def find_forward_ops(mlir_text: str) -> tuple[int, int, list[dict]]:
             raise OpProfileError("unbalanced braces before the terminator of @forward")
     if ret_line is None:
         raise OpProfileError("no `return`/`func.return` found in @forward")
-    for rec in ops:
+    for idx, rec in enumerate(ops):
         rec["elems"] = _elem_count(rec["result_type"])
+        # Only where it can answer a question the op line cannot: an op the frontend already tagged
+        # needs no body evidence, and carrying it for all 5000+ ops would bloat every artifact.
+        if not rec.get("family") and rec.get("mlir_op") == "linalg.generic":
+            rec["body_ops"] = sorted(body.get(idx, ()))
     return start, ret_line, ops
 
 
@@ -660,9 +698,9 @@ MLIR_OP_CATEGORY = {
 #: The categories the tool ranks, in the order a reader should see them. A category absent from a
 #: given model simply does not appear; a category the profiler CANNOT see at all is listed in
 #: :data:`CATEGORIES_NOT_ATTRIBUTABLE` so its absence is never read as "it costs nothing".
-CATEGORY_ORDER = ("contraction", "quantize_requant", "elementwise", "normalization",
-                  "reduction_softmax", "gather", "layout_copy", "spectral", "layout_view",
-                  "fill_init", "alloc", "constant", "unclassified_generic")
+CATEGORY_ORDER = ("contraction", "quantize_requant", "quantize_scale_search", "elementwise",
+                  "normalization", "reduction_softmax", "gather", "layout_copy", "spectral",
+                  "layout_view", "fill_init", "alloc", "constant", "unclassified_generic")
 
 #: What a per-op mark interval structurally CANNOT attribute, and why. Reported in the artifact so a
 #: reader does not mistake a missing row for a measured zero.
@@ -680,6 +718,60 @@ CATEGORIES_NOT_ATTRIBUTABLE = {
                  "inner loop versus its tail, an epilogue the compiler fused into the op — is below "
                  "this profiler's resolution."),
 }
+
+
+# --------------------------------------------------------------------------------------------
+# BODY EVIDENCE — what an untagged `linalg.generic` actually computes.
+#
+# `resolve_category`'s four signals (role, op, family, mlir_op) all read the op LINE, and the
+# quantization rewrites rebuild ops without re-stamping provenance. Measured on lstmnetvit's
+# prepared module: 261 of 2656 marks are `linalg.generic` with no family at all, and their bodies
+# are not a mystery -- 76 carry `math.roundeven` + `arith.fptosi` (the activation-quantize step),
+# 80 carry `math.absf` + `arith.maximumf` (the per-row amax that finds its scale), 76 carry the
+# `arith.divf` that applies it. Left as UNKNOWN, the quantize/requant bucket on that model reads as
+# 71 ops when it is really ~310 -- and the question being asked is precisely "how does the quantize
+# chain compare against every matmul combined". An unknown that large silently answers it wrong.
+#
+# The rules below are deliberately narrow, and each one names its evidence in `category_source`
+# (`body:<rule>`) with the fingerprint kept in the op record, so every body-derived attribution can
+# be audited from the artifact rather than trusted. A body none of them matches stays
+# `unclassified_generic`: this replaces some of the unknown, not all of it.
+# --------------------------------------------------------------------------------------------
+
+#: float -> int narrowing. Together with round-to-nearest-even this IS the quantize step; there is
+#: no other reason for `math.roundeven` to appear in these graphs.
+_TO_INT = frozenset({"arith.fptosi", "arith.fptoui"})
+#: int -> float widening. With a scale multiply/divide this is the dequantize step.
+_TO_FLOAT = frozenset({"arith.sitofp", "arith.uitofp"})
+_SCALE = frozenset({"arith.mulf", "arith.divf"})
+_ABS = frozenset({"math.absf"})
+_MAX = frozenset({"arith.maximumf", "arith.maxnumf", "arith.maxsi", "arith.maxui"})
+
+#: Categories that together make up the quantize chain. A consumer that wants "the whole chain"
+#: sums these EXPLICITLY rather than having the sum made for it, because the scale search is a
+#: reduction and a reader may reasonably want it counted with the reductions instead.
+QUANTIZE_CHAIN_CATEGORIES = ("quantize_requant", "quantize_scale_search")
+
+
+def classify_generic_body(body_ops) -> tuple[str, str] | None:
+    """``(category, rule)`` for an untagged ``linalg.generic``, from what its body computes.
+
+    ``None`` when no rule fires — the op then stays ``unclassified_generic``, which is the honest
+    answer for a body we cannot read.
+    """
+    ops = frozenset(body_ops or ())
+    if not ops:
+        return None
+    if "math.roundeven" in ops or (ops & _TO_INT):
+        return "quantize_requant", "body:round_to_int"
+    if (ops & _TO_FLOAT) and (ops & _SCALE):
+        return "quantize_requant", "body:int_to_float_scale"
+    if (ops & _ABS) and (ops & _MAX):
+        # The per-row |x|.max() that finds an activation scale. Kept as its OWN category rather than
+        # folded into quantize_requant: an abs-then-max reduction is also a legitimate model op, and
+        # a bucket that can be wrong should be one a reader can see and discount separately.
+        return "quantize_scale_search", "body:abs_max"
+    return None
 
 
 def resolve_category(rec: dict) -> tuple[str, str]:
@@ -704,6 +796,9 @@ def resolve_category(rec: dict) -> tuple[str, str]:
     if name in CONTRACTION_OPS:
         return "contraction", "mlir_op"
     if is_unclassified_generic(rec):
+        from_body = classify_generic_body(rec.get("body_ops"))
+        if from_body is not None:
+            return from_body
         return "unclassified_generic", "unknown"
     return f"unclassified:{name or '(unknown)'}", "unknown"
 
