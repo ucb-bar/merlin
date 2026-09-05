@@ -80,9 +80,384 @@ def _select_targets(targets, select, key=None):
     return [t for t in targets if select(k(t))]
 
 
+# --- quantize-before-gather ---------------------------------------------------------------------
+#
+# WHY THIS EXISTS. model2MLIR rewrites EVERY convolution into `im2col gather + linalg.matmul`
+# before merlin sees the module (`prov.conv_path = "im2col_matmul"`; measured 190 such ops in
+# deepjscc int8 and 175 in lstmnetvit int8, and ZERO ops carrying `prov.op = "conv2d"` anywhere in
+# either). The gather is an all-parallel `linalg.generic` with an EMPTY body -- a pure element copy
+# -- whose result is `kh*kw` times larger than the activation it reads (deepjscc `enc.net.1`:
+# tensor<1x3x70x70xf32> -> tensor<3x7x7x1x64x64xf32>, 6.55 MB, ~41x the input).
+#
+# `lower_contraction_int8` then dynamically quantizes whichever contraction operand is f32 -- which
+# for an im2col matmul IS that expanded matrix. Per contraction it emits an abs-max reduction and a
+# quantize map over 602112 elements instead of over the 14700 the activation actually holds, and
+# the gather keeps moving f32. A trip-weighted instruction model of `forward` put 44.4% of deepjscc
+# in the gather and 31.1% in activation-quantize+amax, against 18.2% in the vectorized contraction.
+#
+# THE ALGEBRA. Quantization is ELEMENTWISE, so it commutes exactly with any pure gather:
+# `quantize_s(G(A)) == G(quantize_s(A))` for a single shared scale `s`. What blocks the commutation
+# today is not the gather, it is the SCALE: the per-parallel-row scheme gives one element of A a
+# different scale in every im2col column it appears in, so there is no single `s` to push through.
+# A PER-TENSOR scale unblocks it -- which is exactly the scheme `lower_conv_int8`'s own docstring
+# argues for ("a conv pixel feeds many outputs, so a per-output-row act scale is ill-defined").
+# With it, all three costs move at once: the amax reads A, the quantize writes A-sized i8, and the
+# gather moves i8 instead of f32 (4x less traffic for the same trip count).
+#
+# THE SCALE HAS TO BE amax(G(A)), NOT amax(A), and that is what the coverage analysis is for.
+# `amax(A) >= amax(G(A))` whenever the gather skips elements -- deepjscc's stride-2 3x3 convs reach
+# column 64 of their 66-wide padded input and never column 65 -- so substituting it would coarsen the
+# scale without saying so. Two exact ways to get it without materializing `G(A)`:
+#   * FULL COVERAGE PROVEN -- the indexing map and iteration bounds together read every element of A
+#     at least once, so `amax(A) == amax(G(A))` and the reduction runs over |A|.
+#   * COVERED BOX -- the read set is a gap-free box strictly inside A, so the reduction runs over
+#     that `tensor.extract_slice` and is still exactly `amax(G(A))`. Read-only, so bufferization
+#     takes the slice as a subview.
+# What does NOT work, and was tried: reducing over A THROUGH the gather's own indexing map. It is
+# algebraically right and MLIR REJECTS IT -- an iteration dim appearing only inside a compound
+# result (`d4 * 2 + d1`) binds no extent, so the op is non-invertible and the module fails to parse
+# ("invalid indexing maps are non-invertible", measured on deepjscc `enc.net.4`). A gather whose read
+# set has holes (dilation stepping past the window's reach) or whose maps cannot be priced is
+# REFUSED, with the reason counted -- never approximated.
+#
+# WHAT IS NOT EXACT: the per-tensor activation scale is a GENUINE numeric change against the
+# shipped per-parallel-row scheme. This rewrite is NOT bit-identical to today's build and must
+# never be reported as such. It is default-off behind the `quantize_before_gather` feature.
+
+#: Shape-only ops between a gather and its consumer. Both are pure metadata on the same elements,
+#: so an elementwise quantization commutes through them exactly as it does through the gather.
+_RESHAPE_OPS = ("tensor.collapse_shape", "tensor.expand_shape")
+
+#: A reshape chain produced by an im2col rewrite is two ops (collapse + expand). The bound exists so
+#: an unexpected shape keeps the walk terminating rather than following an arbitrary def chain.
+_MAX_RESHAPE_CHAIN = 8
+
+
+def _bump(report, key: str) -> None:
+    if report is not None:
+        report[key] = report.get(key, 0) + 1
+
+
+def _live_uses(val) -> int:
+    """Uses held by ops still attached to a block.
+
+    The rewrite DETACHES the contraction it replaces without erasing it, so the detached op keeps
+    holding its operands. Counting those would make every chain look live and the dead f32
+    expansion would survive -- which is the whole cost this pass exists to remove.
+    """
+    return sum(1 for u in val.uses if u.operation.parent_block() is not None)
+
+
+def _yields_only_input(op) -> bool:
+    """Body is a pure element copy: exactly ``linalg.yield %arg0``.
+
+    Checked STRUCTURALLY against the block, never inferred from the op's provenance: a body that
+    computes anything at all does not commute with quantization, and a `prov` tag is a claim about
+    where an op came from, not about what its region does.
+    """
+    blocks = op.body.blocks
+    if len(blocks) != 1:
+        return False
+    body = list(blocks[0].ops)
+    if len(body) != 1 or body[0].name != "linalg.yield":
+        return False
+    if len(body[0].operands) != 1 or not blocks[0].args:
+        return False
+    return body[0].operands[0] is blocks[0].args[0]
+
+
+def _is_pure_gather(op) -> bool:
+    """All-parallel, single-input, single-result f32 ``linalg.generic`` that only copies elements."""
+    from xdsl.dialects.builtin import TensorType, f32
+    from xdsl.dialects.linalg import ops as L
+    if getattr(op, "name", None) != "linalg.generic":
+        return False
+    if len(op.inputs) != 1 or len(op.outputs) != 1 or len(op.results) != 1:
+        return False
+    if not op.body.blocks:
+        return False
+    iters = [getattr(a, "data", a) for a in op.iterator_types]
+    if not iters or any(i != L.IteratorType.PARALLEL for i in iters):
+        return False
+    src_t, res_t = op.inputs[0].type, op.results[0].type
+    if not (isinstance(src_t, TensorType) and isinstance(res_t, TensorType)):
+        return False
+    if src_t.element_type != f32 or res_t.element_type != f32:
+        return False
+    try:
+        shp = list(src_t.get_shape()) + list(res_t.get_shape())
+    except Exception:
+        return False
+    if any(d < 0 for d in shp):
+        return False                              # dynamic extent: nothing here is priceable
+    return _yields_only_input(op)
+
+
+def _gather_chain(value):
+    """``((gather, reshapes), "ok")`` for a contraction operand produced by a pure gather.
+
+    ``reshapes`` is producer-to-consumer ordered. Every op on the path must have exactly ONE live
+    use, because the rewrite's win is that the f32 expansion stops existing -- a shared
+    intermediate would keep it alive and the rewrite would only ADD an i8 copy. Returns
+    ``(None, reason)`` and leaves the operand alone whenever that cannot be established.
+    """
+    from xdsl.ir import Operation
+    cur = value
+    reshapes = []
+    for _ in range(_MAX_RESHAPE_CHAIN):
+        owner = getattr(cur, "owner", None)
+        if not isinstance(owner, Operation):
+            return None, "block_argument"
+        if _live_uses(cur) != 1:
+            return None, "shared_value"
+        if owner.name in _RESHAPE_OPS:
+            if len(owner.results) != 1:
+                return None, "multi_result_reshape"
+            reshapes.append(owner)
+            cur = owner.operands[0]
+            continue
+        if _is_pure_gather(owner):
+            reshapes.reverse()
+            return (owner, reshapes), "ok"
+        return None, "producer_not_gather"
+    return None, "chain_too_long"
+
+
+def _affine_terms(expr):
+    """``([(dim, coeff), ...], const)`` for a sum of ``dim`` / ``dim * const`` terms; else ``(None, 0)``.
+
+    Parsed structurally off the affine expression tree -- no pattern is assumed about how the
+    frontend SPELLS a stride (``d4 * 2 + d1`` and ``d1 + 2 * d4`` are the same map). Anything this
+    cannot decompose (mod, floordiv, symbol, a product of two dims) returns ``None``, and the caller
+    refuses the rewrite rather than guessing what the gather reads.
+
+    A NEGATIVE coefficient is deliberately left unpriced. It appears here only as a weight FLIP
+    (`(-d2) + 2`, the 3x3 kernel reversal a transposed convolution needs; two such gathers in
+    deepjscc int8, on `dec.model.0` and `dec.model.3`). Teaching this to price it would make the
+    coverage proof succeed and put a PER-TENSOR scale on a WEIGHT whose per-row scale is per output
+    channel -- a precision regression dressed as a win. The refusal is counted, not silent.
+    """
+    from xdsl.ir.affine import (AffineBinaryOpExpr, AffineBinaryOpKind, AffineConstantExpr,
+                                AffineDimExpr)
+    terms, const = [], 0
+    stack = [(expr, 1)]
+    while stack:
+        e, mul = stack.pop()
+        if isinstance(e, AffineDimExpr):
+            terms.append((e.position, mul))
+            continue
+        if isinstance(e, AffineConstantExpr):
+            const += mul * e.value
+            continue
+        if isinstance(e, AffineBinaryOpExpr) and e.kind == AffineBinaryOpKind.Add:
+            stack.append((e.lhs, mul))
+            stack.append((e.rhs, mul))
+            continue
+        if isinstance(e, AffineBinaryOpExpr) and e.kind == AffineBinaryOpKind.Mul:
+            if isinstance(e.rhs, AffineConstantExpr):
+                stack.append((e.lhs, mul * e.rhs.value))
+                continue
+            if isinstance(e.lhs, AffineConstantExpr):
+                stack.append((e.rhs, mul * e.lhs.value))
+                continue
+        return None, 0
+    return terms, const
+
+
+def _gather_coverage(gather) -> "tuple[str | None, list[int], str]":
+    """Which elements of its source does the gather read? ``(kind, covered_extents, reason)``.
+
+    ``kind`` is ``"full"`` (every element of A is read at least once, so ``amax(A) == amax(G(A))``),
+    ``"slice"`` (the read set is a gap-free box strictly inside A, so ``amax`` over that box is still
+    EXACTLY ``amax(G(A))``), or ``None`` (cannot be established -- the caller must not rewrite).
+
+    The distinction is a correctness one, not a tuning one: a stride-2 3x3 window over a 66-wide
+    padded input reaches column 64 and never column 65, so ``amax(A) >= amax(G(A))`` there and using
+    it would silently coarsen the scale. Reducing over the gather's OWN indexing map would be the
+    obvious alternative and is NOT AVAILABLE: an iteration dim that appears only inside a compound
+    result binds no extent, and MLIR rejects the op outright ("invalid indexing maps are
+    non-invertible") -- measured, that lowering fails to parse. Hence the explicit box.
+
+    Fails closed everywhere: any expression, bound or rank this cannot price returns ``None``.
+    """
+    from xdsl.ir.affine import AffineDimExpr
+    maps = list(gather.indexing_maps)
+    if len(maps) != 2:
+        return None, [], "unexpected_map_count"
+    in_map, out_map = maps[0].data, maps[-1].data
+    ndim = in_map.num_dims
+    out_shape = list(gather.results[0].type.get_shape())
+    if len(out_map.results) != len(out_shape):
+        return None, [], "output_rank_mismatch"
+    bounds: list = [None] * ndim
+    for pos, r in enumerate(out_map.results):
+        if not isinstance(r, AffineDimExpr):
+            return None, [], "output_map_not_projection"
+        prev = bounds[r.position]
+        if prev is not None and prev != out_shape[pos]:
+            return None, [], "inconsistent_bound"
+        bounds[r.position] = out_shape[pos]
+    if any(b is None or b < 1 for b in bounds):
+        return None, [], "unbounded_iteration_dim"
+    src_shape = list(gather.inputs[0].type.get_shape())
+    if len(in_map.results) != len(src_shape):
+        return None, [], "input_rank_mismatch"
+    extents = []
+    used: set = set()
+    for pos, r in enumerate(in_map.results):
+        terms, const = _affine_terms(r)
+        if terms is None or const != 0 or not terms or any(c <= 0 for _, c in terms):
+            return None, [], "unpriceable_index_expr"
+        if any(d >= ndim for d, _ in terms):
+            return None, [], "index_expr_out_of_range"
+        # EACH ITERATION DIM MAY DRIVE AT MOST ONE SOURCE AXIS. The per-axis reasoning below is only
+        # valid when the read set is a product of per-axis ranges; a dim shared between two axes ties
+        # them together and the set is a diagonal, not a box. `(d0, d0)` over a square source reads
+        # only the diagonal, yet every axis would price as fully covered -- which would substitute
+        # `amax(A)` for a strictly smaller `amax(G(A))` and coarsen the scale with nothing to show
+        # for it. A dim repeated inside ONE axis (`d0 + d0`) breaks the same reach arithmetic.
+        dims = [d for d, _ in terms]
+        if len(set(dims)) != len(dims) or used & set(dims):
+            return None, [], "coupled_iteration_dim"
+        used |= set(dims)
+        # gap-free? sweep the terms cheapest-coefficient first: a term of coefficient c extends a
+        # contiguous prefix only if c is within one of the reach already established. A dilation that
+        # steps past that reach leaves holes, and the box below would then be a superset of what the
+        # gather reads -- a coarser scale, so it is refused instead.
+        reach = 0
+        for d, c in sorted(terms, key=lambda tc: tc[1]):
+            if c > reach + 1:
+                return None, [], "strided_holes"
+            reach += c * (bounds[d] - 1)
+        if reach > src_shape[pos] - 1:
+            return None, [], "index_exceeds_extent"
+        extents.append(reach + 1)
+    if extents == src_shape:
+        return "full", extents, "full_coverage"
+    return "slice", extents, "covered_box"
+
+
+def _emit_prequant_gather(gather, reshapes):
+    """Build ``quantize(A) -> i8 gather -> i8 reshapes`` and the per-tensor scale that prices it.
+
+    Returns ``(i8_value, scale_ssa, pre_ops, dead_ops, mode)``. ``pre_ops`` are to be inserted before
+    the contraction; ``dead_ops`` are the f32 chain this replaces, erased once nothing live reads it.
+    """
+    from xdsl.dialects import arith, tensor
+    from xdsl.dialects import math as mathd
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, TensorType, f32, i8
+    from xdsl.dialects.linalg import ops as L
+    from xdsl.ir import Block, Region
+    from xdsl.ir.affine import AffineMap
+
+    par, red = L.IteratorType.PARALLEL, L.IteratorType.REDUCTION
+
+    def amap(n, dims):
+        return AffineMapAttr(AffineMap(n, 0, tuple(dims)))
+
+    src = gather.inputs[0]
+    ash = list(src.type.get_shape())
+    r = len(ash)
+    sc_t = TensorType(f32, [])
+    kind, extents, _why = _gather_coverage(gather)
+    if kind is None:
+        return None
+    mode = "source_amax" if kind == "full" else "slice_amax"
+    pre_amax = []
+    # The abs-max reads exactly what the gather reads. When the gather does not reach every element
+    # (a stride-2 window over a 66-wide padded input stops at column 64), reduce over the covered BOX
+    # instead of over A -- `amax(A) >= amax(G(A))` there, and taking the larger one would coarsen the
+    # scale without saying so. Read-only, so bufferization takes it as a subview rather than a copy.
+    amax_src = src
+    if kind == "slice":
+        sl = tensor.ExtractSliceOp.from_static_parameters(src, [0] * r, extents, [1] * r)
+        sl.attributes.update({k: v for k, v in gather.attributes.items() if k.startswith("prov.")})
+        pre_amax.append(sl)
+        amax_src = sl.results[0]
+
+    # --- per-TENSOR abs-max (rank-0 result) ---
+    amx_e = tensor.EmptyOp((), sc_t)
+    zero_f = arith.ConstantOp(FloatAttr(0.0, f32))
+    amx_f = L.FillOp(inputs=[zero_f.results[0]], outputs=[amx_e.results[0]], res=[sc_t])
+    rb = Block(arg_types=[f32, f32]); a_in, acc_in = rb.args
+    ab = mathd.AbsFOp(a_in); mx = arith.MaximumfOp(ab.result, acc_in)
+    rb.add_ops([ab, mx, L.YieldOp(mx.result)])
+    in_map = amap(r, AffineMap.identity(r).results)
+    amx = L.GenericOp(inputs=(amax_src,), outputs=(amx_f.results[0],), body=Region(rb),
+                      indexing_maps=ArrayAttr([in_map, amap(r, [])]),
+                      iterator_types=ArrayAttr([L.IteratorTypeAttr(red)] * r),
+                      result_types=(sc_t,))
+    # --- s = amax / 127 ---
+    sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
+    sb = Block(arg_types=[f32, f32]); s_in, _unused = sb.args
+    sd = arith.DivfOp(s_in, c127.results[0]); sb.add_ops([sd, L.YieldOp(sd.result)])
+    s_a = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
+                      indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
+                      iterator_types=ArrayAttr([]), result_types=(sc_t,))
+    # --- quantize the SOURCE (not the expansion): q = fptosi(clamp(roundeven(x/s), +-127)) ---
+    # Quantizes ALL of A, including elements outside the covered box, which may therefore saturate at
+    # +-127. That is sound because the gather never reads them: the only consumer of this i8 tensor is
+    # the gather rebuilt below, whose read set is exactly the box the scale was derived from.
+    ident_r = AffineMap.identity(r).results
+    i8_src_t = TensorType(i8, ash)
+    q_e = tensor.EmptyOp((), i8_src_t); c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
+    qb = Block(arg_types=[f32, f32, i8]); xv, sv, _q = qb.args
+    q1 = arith.DivfOp(xv, sv); q2 = mathd.RoundEvenOp(q1.result)
+    q3 = arith.MinimumfOp(q2.result, c127.results[0])
+    q4 = arith.MaximumfOp(q3.result, c127n.results[0]); q5 = arith.FPToSIOp(q4.result, i8)
+    qb.add_ops([q1, q2, q3, q4, q5, L.YieldOp(q5.result)])
+    q = L.GenericOp(inputs=(src, s_a.results[0]), outputs=(q_e.results[0],), body=Region(qb),
+                    indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, []), amap(r, ident_r)]),
+                    iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
+                    result_types=(i8_src_t,))
+    # --- the SAME gather, now moving i8 (identical maps, iterators and empty body) ---
+    g_t = TensorType(i8, list(gather.results[0].type.get_shape()))
+    g_e = tensor.EmptyOp((), g_t)
+    gb = Block(arg_types=[i8, i8]); gb.add_ops([L.YieldOp(gb.args[0])])
+    g8 = L.GenericOp(inputs=(q.results[0],), outputs=(g_e.results[0],), body=Region(gb),
+                     indexing_maps=gather.indexing_maps, iterator_types=gather.iterator_types,
+                     result_types=(g_t,))
+    g8.attributes.update({k: v for k, v in gather.attributes.items() if k.startswith("prov.")})
+    pre = pre_amax + [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a, q_e, c127n, q, g_e, g8]
+    # The quantization ops belong to the region the gather came from, so they carry ITS identity with
+    # a role of their own. Without this a profile joining on `prov.fqn` falls back to the MLIR op name
+    # and every activation quantize in the model collapses into one `linalg.generic` bucket.
+    _carry_prov(gather, act_amax=amx, act_scale=s_a, act_quantize=q, gather=g8)
+
+    # --- the same shape metadata, on i8 ---
+    cur = g8.results[0]
+    for rs in reshapes:
+        rt = TensorType(i8, list(rs.results[0].type.get_shape()))
+        new = type(rs).create(operands=[cur, *list(rs.operands[1:])], result_types=[rt],
+                              properties=dict(rs.properties), attributes=dict(rs.attributes))
+        pre.append(new)
+        cur = new.results[0]
+
+    dead = [gather, *reshapes]
+    out_owner = getattr(gather.outputs[0], "owner", None)
+    if getattr(out_owner, "name", None) == "tensor.empty":
+        dead.insert(0, out_owner)
+    return cur, s_a.results[0], pre, dead, mode
+
+
 def lower_contraction_int8(module, *, named_contraction: bool = False,
-                           select=None) -> int:
-    """Rewrite f32 contractions into i8×i8→i32 + dynamic act-quant + requant. Returns count."""
+                           select=None, prequant_gather: bool = False,
+                           report_out: "dict | None" = None) -> int:
+    """Rewrite f32 contractions into i8×i8→i32 + dynamic act-quant + requant. Returns count.
+
+    ``prequant_gather`` (default False, so the shipped datapath is byte-identical) turns on the
+    ``quantize_before_gather`` feature: when a contraction's f32 activation operand is produced by a
+    pure data-movement op, quantize BEFORE that op with a per-tensor scale instead of after it with a
+    per-parallel-row one. See the block comment above ``_RESHAPE_OPS`` for the algebra, the exactness
+    argument for both abs-max modes, and what this does NOT preserve (it is a genuine numeric change
+    against the per-row scheme -- not bit-identical, and it must not be reported as such).
+
+    ``report_out``, when given, is filled with counters: ``prequant_gather_rewrites``, one
+    ``prequant_gather_mode_*`` per abs-max mode taken, one ``prequant_gather_refused_*`` per reason an
+    operand was left alone, and ``prequant_gather_erased_ops`` for the f32 expansion chain removed.
+    A rewrite that fires zero times has to be VISIBLE rather than silent, which is the whole reason
+    the refusal reasons are counted instead of being an early ``continue``.
+    """
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
     from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr, TensorType,
@@ -147,6 +522,7 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
     targets = _select_targets(targets, select, key=lambda t: t[0])
 
     n = 0
+    dead_chain_ops: list = []
     for op, (ndim, in_maps, out_dims, red_flags) in targets:
         block = op.parent_block()
         out_t = op.results[0].type
@@ -178,6 +554,33 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
                 i8_inputs.append(operand)                # already integer
                 scale_vals.append((None, par_outpos))
                 continue
+
+            # QUANTIZE BEFORE THE GATHER, when the operand is one. `quantize(G(A)) == G(quantize(A))`
+            # holds for a pure gather and a single shared scale, so the abs-max, the quantize and the
+            # data movement all move off the expanded matrix and onto the activation itself. Refuses
+            # (counting why) rather than approximating; default-off.
+            if prequant_gather:
+                chain, why = _gather_chain(operand)
+                if chain is None:
+                    _bump(report_out, f"prequant_gather_refused_{why}")
+                    built = None
+                else:
+                    g_op, g_reshapes = chain
+                    built = _emit_prequant_gather(g_op, g_reshapes)
+                    if built is None:
+                        # coverage unprovable: leave the operand on the per-row path rather than
+                        # quantize it against a scale derived from elements the gather never reads.
+                        _bump(report_out,
+                              f"prequant_gather_refused_{_gather_coverage(g_op)[2]}")
+                if built is not None:
+                    i8_val, s_ssa, g_pre, g_dead, g_mode = built
+                    pre += g_pre
+                    dead_chain_ops.extend(g_dead)
+                    i8_inputs.append(i8_val)
+                    scale_vals.append((s_ssa, []))          # PER-TENSOR: no output dim to index by
+                    _bump(report_out, "prequant_gather_rewrites")
+                    _bump(report_out, f"prequant_gather_mode_{g_mode}")
+                    continue
 
             # dynamic per-(parallel-row) quant of an f32 activation
             ident_r = AffineMap.identity(r).results
@@ -284,6 +687,20 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
         op.results[0].replace_all_uses_with(requant.results[0])
         block.detach_op(op)
         n += 1
+
+    # ERASE the f32 expansion the rewrite replaced. Not cosmetic: the ENTIRE point of quantizing
+    # before the gather is that the f32 matrix stops being materialized, and nothing else in this
+    # pipeline deletes it -- leaving it would keep every byte of the traffic while ADDING an i8 copy,
+    # i.e. the lever would measure as a regression and read as a bad idea. Consumer-first, and only
+    # once no op still attached to a block reads it, so a shared producer survives untouched.
+    for cand in reversed(dead_chain_ops):
+        if not cand.results or cand.parent_block() is None:
+            continue
+        if any(_live_uses(res) for res in cand.results):
+            continue
+        cand.detach()
+        cand.erase(safe_erase=False)
+        _bump(report_out, "prequant_gather_erased_ops")
     return n
 
 
@@ -291,14 +708,32 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
 lower_matmul_int8 = lower_contraction_int8
 
 
-def lower_conv_int8(module, *, select=None) -> int:
+def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) -> int:
     """Rewrite an f32 conv (``linalg.generic`` whose input map carries stride/dilation affine
     expressions, ``prov.op = conv2d``) into an i8×i8→i32 conv: the activation is dynamically
     quantized **per-tensor** (a conv pixel feeds many outputs, so a per-output-row act scale is
     ill-defined — one scalar ``s_a = max|x|/127`` over the whole activation), the weight is used
     as i8 with its per-output-channel scale, the contraction keeps the **exact** original
     indexing maps + iterator types (so the RVV schedule can tile/vectorize it), and the i32
-    accumulator is requantized by ``acc * s_a * s_w[out_channel]``. Returns count."""
+    accumulator is requantized by ``acc * s_a * s_w[out_channel]``. Returns count.
+
+    **THIS PASS IS UNREACHABLE ON EVERY CONVOLUTIONAL MODEL IN THIS FLEET, AND SAYS SO.** Its
+    predicate wants a 2-input ``linalg.generic`` whose indexing maps carry a compound affine term.
+    model2MLIR never produces one: it rewrites every conv into ``im2col gather + linalg.matmul``
+    ahead of merlin (``prov.conv_path = "im2col_matmul"``; measured 190 such ops in deepjscc int8,
+    175 in lstmnetvit int8, and ZERO ops tagged ``prov.op = "conv2d"`` in either). The compound term
+    that this pass keys on lives in the GATHER, which has one input and an empty body, so nothing
+    matches and the pass has never fired on any conv here. ``contraction_view``'s comment that convs
+    "are handled by lower_conv_int8" describes an intent, not a fact.
+
+    It is kept rather than deleted because its ARITHMETIC is the correct scheme and is the thing
+    ``quantize_before_gather`` reuses (a per-tensor activation scale computed before the expansion);
+    a frontend that hands us a fused conv would put it straight back in reach. But a pass that cannot
+    fire must not be indistinguishable from one that had nothing to do, so it now COUNTS what it
+    scanned into ``report_out`` (``generics_scanned``, ``compound_map_generics``, ``conv_prov_ops``,
+    ``lowered``) and prints one ``INERT`` line when a module full of convolution provenance yields
+    zero candidates. ``merlin/tests/ir/test_quantize_before_gather.py`` asserts that on a real bundle,
+    so the deadness is a gated fact instead of a comment."""
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
     from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr, TensorType,
@@ -313,13 +748,36 @@ def lower_conv_int8(module, *, select=None) -> int:
         return AffineMapAttr(AffineMap(n, 0, tuple(dims)))
 
     targets = []
+    n_generics = n_compound = n_windowed = n_conv_prov = 0
     for op in module.walk():
+        # Counted only on ops the FRONTEND tagged. `prov.role` is added exclusively by this file's
+        # own rewrites, so excluding it keeps the diagnostic reporting the module as captured rather
+        # than inflating with the ops an earlier quant pass just minted (measured: 190 -> 228 on
+        # deepjscc once `quantize_before_gather` had run).
+        if "prov.role" not in op.attributes and (
+                "prov.conv_path" in op.attributes
+                or getattr(op.attributes.get("prov.op"), "data", "").startswith("conv")):
+            n_conv_prov += 1
         if op.name != "linalg.generic" or len(op.inputs) != 2 or not op.body.blocks:
             continue
+        n_generics += 1
         maps = list(op.indexing_maps)
         if not any(not isinstance(r, AffineDimExpr)
                    for m in maps for r in m.data.results):
             continue                                     # not a conv (no compound map term)
+        n_compound += 1
+        # "compound" is not the same as "windowed". The predicate above also admits a BROADCAST,
+        # whose non-dim map result is a bare constant index (`(d0, d1, 0, 0)`) with no stride in it
+        # -- on deepjscc int8 all four of its candidates are exactly that (elementwise mul/add on
+        # `*.res_list.1`), and each is then dropped for having a one-op body. Counting them as
+        # near-misses would make this pass look like it merely missed by a hair on a model where it
+        # has no candidate at all, so the window count is kept separately.
+        # Fails OPEN on the diagnostic side: an expression `_affine_terms` cannot decompose (mod,
+        # floordiv) counts as windowed, so an unrecognised window can never make this pass claim it
+        # was inert when it was merely unlucky.
+        if any(not isinstance(r, AffineDimExpr) and _affine_terms(r)[0] != []
+               for m in maps for r in m.data.results):
+            n_windowed += 1
         out_t = op.results[0].type
         if not (isinstance(out_t, TensorType) and out_t.element_type == f32):
             continue
@@ -471,6 +929,19 @@ def lower_conv_int8(module, *, select=None) -> int:
         op.results[0].replace_all_uses_with(requant.results[0])
         block.detach_op(op)
         n += 1
+    if report_out is not None:
+        report_out.update({"generics_scanned": n_generics, "compound_map_generics": n_compound,
+                           "windowed_map_generics": n_windowed, "conv_prov_ops": n_conv_prov,
+                           "lowered": n})
+    # SAY SO when a module is full of convolutions and this pass found none of them. Silence here is
+    # exactly how a dead pass passes for a live one: "0 lowered" reads as "nothing to do" whether the
+    # module had no convs or had 190 the predicate cannot see.
+    if n == 0 and n_windowed == 0 and n_conv_prov:
+        print(f"[quant] conv_int8 INERT: {n_conv_prov} ops carry convolution provenance but 0 "
+              f"linalg.generic of {n_generics} carries a WINDOWED (stride/dilation) indexing map "
+              f"({n_compound} carry a constant-index one, which is a broadcast, not a conv) -- the "
+              f"frontend already expanded every conv into im2col + matmul, so this pass cannot "
+              f"reach one")
     return n
 
 

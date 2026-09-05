@@ -162,6 +162,22 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # `impr_features` itself, where its `edit_pipeline` hook lives.
     ("fuse_elementwise_post_contraction", False),         # tail: broadcast/elementwise -> fused, 50 -> 13
     ("vectorized_transcendental_activation", True),       # gelu/sigmoid/silu: closes the 10-17x activation gap
+    # The convolutional half of the same tail, and the only lever here that DELETES an intermediate
+    # tensor rather than scheduling one better. model2MLIR expands every conv into im2col + matmul
+    # before merlin sees it, so the operand the int8 pass dynamically quantizes IS the expanded
+    # matrix: on deepjscc's `enc.net.1` a 147x4096 f32 im2col matrix, ~41x the 1x3x70x70 activation
+    # it was gathered from. A trip-weighted instruction model of `forward` put 44.4% of deepjscc int8
+    # in the scalar gather and 31.1% in activation quantize+amax against 18.2% in the vectorized
+    # contraction (lstmnetvit: 43.8% / 35.7% / 13.2%). Moving the scale from per-parallel-row to
+    # per-tensor makes the quantization commute with the gather, which puts the abs-max and the
+    # quantize on the activation, moves the gather in i8, and erases the f32 expansion.
+    # Ranked LAST on purpose: the numbers above are STATIC, the wall is UNMEASURED, and it is the
+    # only lever on this list that is not bit-exact (a per-tensor activation scale is a real numeric
+    # change), so it must earn its rank against the accuracy gate and a board measurement rather than
+    # against an op count -- on this same model `fold_weight_transpose` had flawless static evidence
+    # and measured 1.09x SLOWER, and `vectorize_non_contraction_generics` emitted 4.9x more vector
+    # instructions, bit-identical output, and 1.28x slower.
+    ("quantize_before_gather", False),                    # im2col: quantize A, not G(A); erase the f32 expansion
 ]
 
 

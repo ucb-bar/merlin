@@ -1792,6 +1792,41 @@ register(ImprFeature(
                 "than a missed optimization. Default-off; baseline byte-identical.",
 ))
 
+#: Quantize an activation BEFORE the pure data-movement op that expands it, not after.
+#:
+#: Registered EAGERLY, at import of this module, and listed in `wholemodel_proposer.RANKED_LEVERS`.
+#: Both are load-bearing: `_composes` swallows the KeyError for an unregistered name and returns
+#: False, so a lazily-registered lever is not declined by the search, it is INVISIBLE to it.
+QUANTIZE_BEFORE_GATHER_NAME = "quantize_before_gather"
+
+register(ImprFeature(
+    name=QUANTIZE_BEFORE_GATHER_NAME,
+    action_class="PASS",
+    description=(
+        "When a contraction's f32 activation operand is produced by a PURE data-movement op (an "
+        "all-parallel linalg.generic whose body only yields its input, i.e. an element copy), "
+        "quantize the op's SOURCE with a per-tensor scale instead of quantizing its expanded result "
+        "with a per-parallel-row one. Quantization is elementwise, so quantize(G(A)) == G(quantize(A)) "
+        "exactly for a single shared scale; what blocks the commutation today is only the per-row "
+        "scale, under which one element of A carries a different scale in every im2col column it "
+        "appears in. This is the case that matters on every convolutional model here: model2MLIR "
+        "expands every conv into im2col + matmul before merlin sees it (190 such ops in deepjscc "
+        "int8, 175 in lstmnetvit int8, zero fused conv2d), so the operand being quantized IS the "
+        "expanded matrix -- deepjscc enc.net.1 quantizes a 147x4096 f32 matrix, ~41x the "
+        "1x3x70x70 activation it was gathered from. With the scale moved, the abs-max and the "
+        "quantize both run on the activation and the gather itself moves i8, 4x less traffic for the "
+        "same trip count, and the f32 expansion is erased entirely. The abs-max is EXACT in both "
+        "modes: over the source when the indexing maps and bounds PROVE the gather reads every "
+        "element, otherwise reduced through the gather's own map (same reads, scalar result, no "
+        "materialization) -- so a strided or dilated gather that skips elements is handled, not "
+        "approximated with the coarser amax(A) >= amax(G(A)). Refuses and counts the reason for a "
+        "computed body, a shared intermediate, a dynamic extent or a non-gather producer. "
+        "NOT bit-identical: the per-tensor activation scale is a genuine numeric change against the "
+        "shipped per-row scheme and must pass the accuracy gate on its own. Default-off; with the "
+        "feature absent the int8 datapath is byte-identical."
+    ),
+))
+
 VEC_NONCONTRACTION_NAME = "vectorize_non_contraction_generics"
 #: Default lane count for the bare feature name. The lane width is a KNOB SPACE, not a
 #: constant: `ensure_vec_noncontraction(lanes)` registers a point per width so a search can

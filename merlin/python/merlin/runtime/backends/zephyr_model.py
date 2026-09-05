@@ -404,6 +404,7 @@ def _ram_for_weights(weights_bytes: int, activation_bytes: int | None = None,
 def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                         tag_vec_ranks: bool = False,
                         named_contraction: bool = False,
+                        prequant_gather: bool = False,
                         op_counts_out: "dict[str, int] | None" = None,
                         vec_lanes: int = _VEC_RANK_LANES) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
@@ -427,7 +428,20 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
         # lower_quant_ext stays AFTER as the f32 fallback for any dequant the int8 passes did not
         # convert (nonzero-zp, embeddings).
         from ...llvmlower.quant_passes import apply_quant
-        apply_quant(module, named_contraction=named_contraction)
+        # `prequant_gather` (the `quantize_before_gather` feature) moves the activation quantization
+        # to BEFORE the im2col expansion. Reported, not silent: a pass that rewrote nothing and a
+        # pass that could not reach anything both return 0, and only the counters separate them.
+        _qrep: dict = {}
+        apply_quant(module, named_contraction=named_contraction,
+                    prequant_gather=prequant_gather, report_out=_qrep)
+        _pg = _qrep.get("contraction_int8", {})
+        if prequant_gather:
+            print(f"[quant] quantize_before_gather: "
+                  f"rewrote={_pg.get('prequant_gather_rewrites', 0)} "
+                  f"erased_f32_chain_ops={_pg.get('prequant_gather_erased_ops', 0)} "
+                  + " ".join(f"{k}={v}" for k, v in sorted(_pg.items())
+                             if k.startswith(("prequant_gather_mode_",
+                                              "prequant_gather_refused_"))))
     lower_quant_ext(module)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
@@ -556,11 +570,13 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
     features = frozenset(features or frozenset())
     _lanes = _vec_lanes(features)
-    from ...llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME
+    from ...llvmlower.impr_features import (NAMED_INT8_CONTRACTION_NAME,
+                                            QUANTIZE_BEFORE_GATHER_NAME)
     _op_counts: dict[str, int] = {}
     prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    named_contraction=NAMED_INT8_CONTRACTION_NAME in features,
+                                   prequant_gather=QUANTIZE_BEFORE_GATHER_NAME in features,
                                    op_counts_out=_op_counts,
                                    vec_lanes=_lanes or _VEC_RANK_LANES)
     # SAY SO when a requested lever cannot fire on this module. A transform schedule matches by op

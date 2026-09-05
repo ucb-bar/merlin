@@ -50,6 +50,8 @@ def known() -> tuple[str, ...]:
 
 def apply_quant(module: Any, passes: "list[str] | None" = None, *,
                 named_contraction: bool = False,
+                prequant_gather: bool = False,
+                report_out: "dict[str, dict] | None" = None,
                 select: "Callable[[Any], bool] | None" = None) -> dict[str, int]:
     """Run the selected int8 quant passes IN CANONICAL ORDER (mutating ``module``). ``passes=None`` runs
     all six = the historical sequence (byte-identical datapath). Returns per-pass lowered-op counts.
@@ -65,6 +67,15 @@ def apply_quant(module: Any, passes: "list[str] | None" = None, *,
     canonical 2-D case instead of a ``linalg.generic``. Default False keeps the datapath
     byte-identical; True is what makes the 39 named-op transform-schedule levers reachable on int8
     at all (they match on the op NAME, and this pass otherwise leaves zero of them in the module).
+
+    ``prequant_gather`` asks the contraction pass to quantize an activation BEFORE the pure gather
+    that expands it (the ``quantize_before_gather`` feature). Default False keeps the datapath
+    byte-identical; True is a genuine NUMERIC change (per-tensor instead of per-parallel-row
+    activation scale) and is gated on the accuracy check like any other, never assumed bit-exact.
+
+    ``report_out``, when given, collects each pass's own counters under its registry name — how many
+    ops it rewrote, and for the two passes that can find nothing to do, WHY. A pass reporting only
+    "0" cannot be told apart from a pass that cannot fire at all.
     """
     reg = registry()
     want = set(_ORDER) if passes is None else set(passes)
@@ -80,5 +91,9 @@ def apply_quant(module: Any, passes: "list[str] | None" = None, *,
         # quant pass to a decision that is not theirs to make.
         if named_contraction and n == "contraction_int8":
             kw["named_contraction"] = True
+        if prequant_gather and n == "contraction_int8":
+            kw["prequant_gather"] = True
+        if report_out is not None and n in ("contraction_int8", "conv_int8"):
+            kw["report_out"] = report_out.setdefault(n, {})
         out[n] = fn(module, **kw)
     return out

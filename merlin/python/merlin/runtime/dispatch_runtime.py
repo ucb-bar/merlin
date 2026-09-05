@@ -1176,6 +1176,7 @@ def run_model(model_dir: str | Path, workdir: str | Path,
               int8_compute: bool = False,
               quant_passes: "list[str] | None" = None,
               quant_select=None,
+              prequant_gather: bool = False,
               kernel_backend: str | None = None, mesh_target: str | None = None,
               mesh_package: str | None = None) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
@@ -1185,6 +1186,10 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     ``int8_compute=True`` runs the integer (W8A8) datapath: each ``dequant(weight)→f32 matmul``
     becomes ``quantize(act)→ i8×i8→i32 matmul → requant`` (real integer contraction on RVV),
     instead of dequantizing the weight to f32 (the default weight-only path).
+
+    ``prequant_gather=True`` additionally moves each gathered activation's quantization to BEFORE
+    the gather with a per-tensor scale (the ``quantize_before_gather`` feature). It is meaningful
+    only with ``int8_compute=True`` and it is NOT bit-exact against the default per-row scheme.
 
     ``quant_passes`` / ``quant_select`` narrow that datapath and are meaningful only when
     ``int8_compute=True``. ``quant_passes`` is a subset of ``quant_passes.known()`` (default None =
@@ -1215,7 +1220,15 @@ def run_model(model_dir: str | Path, workdir: str | Path,
         # edit-point). apply_quant() with the default set runs the six lower_*_int passes in the
         # canonical order — byte-identical to the historical hardcoded sequence, now toggleable.
         from ..llvmlower.quant_passes import apply_quant
-        apply_quant(module, quant_passes, select=quant_select)
+        # `prequant_gather` = the `quantize_before_gather` feature. Threaded through the HOST
+        # interpreter too, not only the device build: the per-tensor activation scale it introduces is
+        # a genuine numeric change, so it has to be gradeable against golden_w8a8.npy here before any
+        # board measurement is worth taking.
+        # Passed ONLY when asked for: `test_default_reach_passes_no_select_at_all` gates that the
+        # default path hands the passes no kwargs at all, so a pass that never learned this flag keeps
+        # working and the shipped datapath cannot drift behind a default argument.
+        extra = {"prequant_gather": True} if prequant_gather else {}
+        apply_quant(module, quant_passes, select=quant_select, **extra)
     lower_quant_ext(module)                   # residual dequants (unconverted) -> f32 fallback
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
