@@ -100,8 +100,14 @@ _ATTENTION_QK_OPERATION = "attention_qk"
 #: BATCHED_MATMUL, and the declared price refused it for not being rank-2 -- so the one shape the
 #: target contract was corrected to admit still could not be scored.
 _BATCHED_OPERATION = "gemv_batched"
-_WORK_OPERATIONS = ("matmul", "resident_reuse", _CONV_OPERATION, _FUSED_CONTRACTION,
-                    _ATTENTION_QK_OPERATION, _BATCHED_OPERATION)
+#: The SAME contraction under another declared name: `linear` is bound to `build_matmul` in
+#: `corpus_spec.BUILDERS`, declares the identical rank-2 `lhs`/`weight` attributes, and emits a plain
+#: MATMUL that `work_volume` counts. Only this tuple refused it, so twelve members whose emitted
+#: program IS priced by the work counter carried no declared price at all -- the two paths disagreeing
+#: over a spelling.
+_LINEAR_OPERATION = "linear"
+_WORK_OPERATIONS = ("matmul", _LINEAR_OPERATION, "resident_reuse", _CONV_OPERATION,
+                    _FUSED_CONTRACTION, _ATTENTION_QK_OPERATION, _BATCHED_OPERATION)
 
 #: How many member measurements the sweep may run at once. DECLARED, never guessed: this is a shared
 #: host, and the fan-out a measurement ran at is stamped on its own result. Default 1, so a launch
@@ -456,7 +462,6 @@ class DevelopmentGsimFeedback:
             spec, workspace, timeout_s, self.target_experiment, self.rtl_identity,
             hardware_counters=False, workers=_sweep_workers())
 
-    @staticmethod
     @staticmethod
     def _tier_skipped_beyond_declared_ceiling(measurement: Mapping[str, Any],
                                               required_tiers: Sequence[str]) -> bool:
@@ -2458,9 +2463,15 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
         if rows <= 0 or cols <= 0:
             return None, (f"the declared convolution geometry leaves no output position "
                           f"({rows}x{cols})")
-        return rows * cols * weight[0] * weight[1], (
-            f"declared convolution geometry: {rows}x{cols} output positions x {weight[0]} window taps "
-            f"x {weight[1]} output channels")
+        # THE BATCH IS PART OF THE WORK, and reading the extent while ignoring N is exactly how the
+        # two pricing paths come to disagree over the same program. `work_volume._conv_work` multiplies
+        # by the NHWC batch; every conv capsule in the tree today declares N=1, so this factor changes
+        # no existing price -- which is the point: it is added while it is provably inert, rather than
+        # discovered as an N-fold under-price by the first member that carries a batch.
+        batch = int(ifm[0])
+        return batch * rows * cols * weight[0] * weight[1], (
+            f"declared convolution geometry: {batch} image(s) x {rows}x{cols} output positions x "
+            f"{weight[0]} window taps x {weight[1]} output channels")
 
     # A REUSED WEIGHT IS STILL DECLARED WORK. Twelve of the thirty-eight corpus members declare one
     # resident weight and a LIST of activations sharing it, and reading only a single `lhs` left

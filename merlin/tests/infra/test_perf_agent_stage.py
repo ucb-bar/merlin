@@ -2014,3 +2014,139 @@ def test_the_declared_price_agrees_with_what_the_emitted_program_counts():
 def test_an_inconsistent_declaration_refuses_rather_than_pricing_one_reading(descriptor, fragment):
     macs, basis = PAS.declared_capsule_macs(descriptor)
     assert macs is None and fragment in basis
+
+
+# --------------------------------------------- the pricing rule, validated by mutation on real members
+
+def _shipped_descriptor(relative: str) -> dict:
+    """One SHIPPED capsule declaration, read from the corpus rather than retyped.
+
+    A hand-written descriptor proves the branch computes an arithmetic expression; it cannot prove the
+    corpus's own members reach that branch, which is the property that decides whether the perf
+    objective has a price for them.
+    """
+    from merlin.common.paths import merlin_dir as _merlin_dir
+    path = _merlin_dir() / "contract/capsules" / relative / "capsule.yaml"
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def test_the_shipped_conv_and_attention_members_carry_a_real_price():
+    """The gap this rule closed, asserted on the members themselves.
+
+    A None price is not cosmetic: it nulls `declared_macs`, `ideal_cycles_at_peak`, both utilizations
+    and both `share_of_achievable` fields, and because the corpus-wide attainment stop condition
+    requires every member to carry a positive MAC count, ONE unpriced member disables it for the whole
+    corpus.
+    """
+    conv = PAS.declared_capsule_macs(_shipped_descriptor("_perf/PV00_c16"))
+    assert conv[0] == 1 * 6 * 6 * 144 * 16, "8x8 image, 3x3 window, no padding: a 6x6 output"
+    assert "output positions" in conv[1]
+
+    attention = PAS.declared_capsule_macs(_shipped_descriptor("model_slices/C7_attention_qk_i8"))
+    assert attention[0] and attention[0] > 0 and "queries" in attention[1]
+
+
+@pytest.mark.parametrize("relative,expected_fragment", [
+    ("_perf/PV00_c16", "conv2d"),
+    ("model_slices/C7_attention_qk_i8", "attention_qk"),
+])
+def test_removing_the_rule_returns_the_member_to_no_price(monkeypatch, relative, expected_fragment):
+    """MUTATION, in the only direction that proves the rule is load-bearing.
+
+    Asserting a member prices does not show WHAT priced it -- a member reaching some other branch by
+    accident would assert identically. Withdrawing its operation from the priced set must return it to
+    exactly the state this work found it in: no number, and a reason naming the operation.
+    """
+    descriptor = _shipped_descriptor(relative)
+    assert PAS.declared_capsule_macs(descriptor)[0] is not None, "the member prices with the rule"
+
+    surviving = tuple(op for op in PAS._WORK_OPERATIONS if op != expected_fragment)
+    monkeypatch.setattr(PAS, "_WORK_OPERATIONS", surviving)
+    macs, basis = PAS.declared_capsule_macs(descriptor)
+    assert macs is None, "withdrawing the rule must withdraw the price"
+    assert expected_fragment in basis, "and must name the operation it will not price"
+
+
+def test_an_operation_with_no_rule_still_prices_as_none():
+    """FAIL CLOSED, on shipped declarations rather than an invented op name.
+
+    The set is a whitelist and must stay one: an operation nobody has written a rule for gets no
+    number and says why, rather than a zero or a nearest-neighbour reading. `rmsnorm` and `softmax`
+    are shipped members whose work `work_volume` also refuses to count.
+    """
+    from merlin.common.paths import merlin_dir as _merlin_dir
+    root = _merlin_dir() / "contract/capsules"
+    unruled = []
+    for path in sorted(root.rglob("capsule.yaml")):
+        descriptor = yaml.safe_load(path.read_text(encoding="utf-8"))
+        operation = (descriptor or {}).get("operation")
+        if not isinstance(operation, dict) or operation.get("op") in PAS._WORK_OPERATIONS:
+            continue
+        unruled.append(operation.get("op"))
+        macs, basis = PAS.declared_capsule_macs(descriptor)
+        assert macs is None, f"{path} declares {operation.get('op')!r}, which has no pricing rule"
+        assert str(operation.get("op")) in basis, "the refusal must name the operation"
+    assert unruled, "the corpus must still contain an operation nobody has priced, or this proves nothing"
+
+
+def test_a_convolutions_declared_price_equals_what_the_work_counter_counts():
+    """THE TWO PATHS MUST AGREE, and conv is where they most easily would not.
+
+    `declared_capsule_macs` reads the SPECIFICATION and `work_volume` reads the EMITTED PROGRAM; a
+    member's utilization divides the first by cycles while the achievable ceiling it is measured
+    against is harvested from the second. Conv is the risk case because the two carry the geometry in
+    DIFFERENT FIELDS -- the capsule declares `ci/kh/kw` beside a packed weight, the command buffer
+    declares a `kernel` 4-tuple -- and because each path derives the output extent separately.
+    """
+    from merlin.perf.work_volume import work_from_command_buffer
+
+    for stride, padding, dilation, batch in (([1, 1], [0, 0, 0, 0], [1, 1], 1),
+                                             ([1, 1], [1, 1, 1, 1], [1, 1], 1),
+                                             ([2, 2], [0, 0, 0, 0], [1, 1], 1),
+                                             ([1, 1], [1, 1, 1, 1], [2, 2], 1),
+                                             ([1, 1], [0, 0, 0, 0], [1, 1], 3)):
+        kh, kw, ci, co, H, W = 3, 3, 4, 8, 8, 8
+        descriptor = {
+            "operation": {"op": "conv2d",
+                          "attributes": {"ifm": "IFM", "weight": "W", "out": "Y0", "ci": ci,
+                                         "kh": kh, "kw": kw, "stride": stride, "padding": padding,
+                                         "dilation": dilation, "layout": "nhwc"}},
+            "inputs": [{"name": "W", "shape": [kh * kw * ci, co]},
+                       {"name": "IFM", "shape": [batch, H, W, ci]}]}
+        command_buffer = {
+            "abi_version": "0.1", "target": "t", "version": "0.1", "params": {},
+            "tensors": {"IFM": {"role": "input", "shape": [batch, H, W, ci], "dtype": "i8"},
+                        "W": {"role": "weight", "shape": [kh * kw * ci, co], "dtype": "i8"},
+                        "Y0": {"role": "output", "shape": [1, co], "dtype": "i32"}},
+            "commands": [{"opcode": "CONV2D", "operands": {"ifm": "IFM", "weight": "W", "dst": "Y0"},
+                          "attributes": {"kernel": [kh, kw, ci, co], "stride": stride,
+                                         "padding": padding, "dilation": dilation}}],
+            "outputs": ["Y0"]}
+        counted = work_from_command_buffer(command_buffer).exact_macs
+        declared = PAS.declared_capsule_macs(descriptor)[0]
+        assert counted is not None and declared == counted, (
+            f"stride={stride} padding={padding} dilation={dilation} batch={batch}: the specification "
+            f"priced {declared} while the emitted program counts {counted}")
+
+
+def test_the_linear_alias_prices_as_the_contraction_it_is():
+    """`linear` is bound to `build_matmul` and emits a plain MATMUL the work counter prices.
+
+    Only the operation whitelist refused it, so members whose EMITTED program is counted carried no
+    DECLARED price -- the two paths disagreeing over a spelling rather than over arithmetic.
+    """
+    from merlin.perf.work_volume import work_from_command_buffer
+
+    descriptor = _shipped_descriptor("saturn_opu/model_slices/OPM0_ffn_up")
+    assert descriptor["operation"]["op"] == "linear"
+    macs, basis = PAS.declared_capsule_macs(descriptor)
+    assert macs == 196 * 256 * 1024 and "M x K x N" in basis
+    command_buffer = {
+        "abi_version": "0.1", "target": "t", "version": "0.1", "params": {},
+        "tensors": {"X": {"role": "input", "shape": [196, 256], "dtype": "i8"},
+                    "W": {"role": "weight", "shape": [256, 1024], "dtype": "i8"},
+                    "Y0": {"role": "output", "shape": [196, 1024], "dtype": "i32"}},
+        "commands": [{"opcode": "MATMUL", "operands": {"lhs": "X", "rhs": "W", "dst": "Y0"},
+                      "attributes": {}}],
+        "outputs": ["Y0"]}
+    assert work_from_command_buffer(command_buffer).exact_macs == macs

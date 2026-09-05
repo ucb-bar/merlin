@@ -163,29 +163,53 @@ the question is what breaks downstream. The four gates a member must clear:
 - **declared pricing** — `perf_agent_stage.declared_capsule_macs:2229`, whose `_WORK_OPERATIONS` is
   `("matmul", "resident_reuse")` and which requires rank-2 shapes (`:2253`).
 
-Measured state of each builder:
+State of each builder, re-measured 2026-09-05 by pricing every shipped `capsule.yaml` in the tree
+(586 descriptors) through `declared_capsule_macs` and comparing against `work_from_command_buffer`:
 
 | builder | golden | reference engine | work_volume | declared_macs | verdict |
 |---|---|---|---|---|---|
-| `matmul` / `linear` | ✅ | ✅ `MATMUL` | ✅ | ✅ | in use |
+| `matmul` | ✅ | ✅ `MATMUL` | ✅ | ✅ | in use |
+| `linear` | ✅ | ✅ `MATMUL` | ✅ | ✅ (**was ❌**) | priced 2026-09-05; alias of `build_matmul` |
 | `resident_reuse` | ✅ | ✅ `MATMUL_RESIDENT` | ✅ | ✅ | in use |
-| `conv2d` | ✅ | ✅ `CONV2D` | ✅ | ❌ | **one gap: pricing** |
-| `attention_qk` | ✅ | ✅ `ATTENTION_QK` | ✅ | ❌ | **one gap: pricing** |
-| `movement` | ✅ | ✅ `MOVEMENT` | ✅ (non-compute) | ❌ | one gap: pricing |
-| `gemv_batched` | ✅ | ❌ `BATCHED_MATMUL` | ❌ | ❌ (rank-3) | 3 gaps |
+| `fused_matmul_bias` | ✅ | ✅ `MATMUL`+`BIAS_ADD` | ✅ | ✅ | in use (`PF`) |
+| `conv2d` | ✅ | ✅ `CONV2D` | ✅ | ✅ (**was ❌**) | priced; live as `PV` |
+| `attention_qk` | ✅ | ✅ `ATTENTION_QK` | ✅ | ✅ (**was ❌**) | priced; no `_perf` member yet |
+| `gemv_batched` | ✅ | ✅ `BATCHED_MATMUL` | ✅ | ✅ (**was ❌**) | all three gaps closed |
+| `movement` | ✅ | ✅ `MOVEMENT` | ✅ (non-compute) | ❌ | no MACs to price; see below |
 | `rmsnorm`, `rmsnorm_qkv` | ✅ | ❌ `RMSNORM` | ❌ | ❌ | 3 gaps |
 | `rope_qkv` | ✅ | ❌ `ROPE` | ❌ | ❌ | 3 gaps |
 | `attention_mx` | ✅ | ❌ `SOFTMAX` | ❌ | ❌ | 3 gaps; also mx-only dtype regime |
 
 Reference: `MODELED_OPCODES = {RES_PACK, MATMUL_RESIDENT, MATMUL, COMMIT, VECTOR_MAP, VREDUCE,
-ATTENTION_QK, ATTENTION_PV, CONV2D, MOVEMENT}`. The emitter can produce `SOFTMAX`, `ROPE`,
-`RMSNORM` and `BATCHED_MATMUL` (`targetgen/contract/interface_emit.py:56-83`), none of which is
-modeled.
+BIAS_ADD, ATTENTION_QK, ATTENTION_PV, CONV2D, MOVEMENT, BATCHED_MATMUL}`. The emitter can still
+produce `SOFTMAX`, `ROPE` and `RMSNORM` (`targetgen/contract/interface_emit.py:56-83`), none of which
+is modeled.
 
-**This is the actionable core of the note.** "We have no large capsules" is not a vague gap; it is
-this table. `attention_qk` and `conv2d` are each **one field away** — they clear the golden, the
-reference engine and work counting today, and fail only at `declared_capsule_macs`. A pricing rule
-for the ops `work_volume` already counts unlocks the two highest-value shapes immediately.
+**This was the actionable core of the note, and it has been acted on.** `attention_qk` and `conv2d`
+were each one field away — they cleared the golden, the reference engine and work counting, and failed
+only at `declared_capsule_macs`. Pricing now covers every op `work_volume` counts:
+
+- **conv2d** is priced by its OUTPUT EXTENT, not by its operand shapes, because two conv members with
+  byte-identical operands do different work at different padding or stride. The extent comes from
+  `runtime.commandbuffer.conv_out_dims` — the same helper the golden and the harness use — rather than
+  from a second copy of the arithmetic, and the NHWC batch is a factor of the price (every shipped
+  conv declares N=1, so that factor is currently inert; it exists so the first batched member is not
+  priced N-fold low against a work counter that does multiply by it).
+- **attention_qk** is `queries × depth × keys`, matching `work_volume`'s `ATTENTION_QK` rule exactly.
+- Both of these, plus `gemv_batched`, precede the rank-2 WEIGHT check rather than relaxing it: they
+  declare no `weight` operand at all (attention names q/k and transposes by definition; a batched
+  contraction is rank-3 on both sides), so the matmul/`resident_reuse` path is untouched and its
+  members price byte-identically — verified over all 330 previously-priced descriptors, zero drift in
+  either the MAC count or the basis string.
+- `movement` stays unpriced ON PURPOSE. It is a data-movement command with no multiply-accumulate;
+  `work_volume` classes it non-compute rather than counting it, and giving it a MAC price would be a
+  category error, not a missing number. The same holds for `bias_add`, whose verdict is a paired
+  difference.
+
+**What is still missing is a member, not a rule.** `_perf/` now carries a conv family (`PV`, four
+members, `window_reuse_amplification`) but **no attention member**: the pricing for `attention_qk`
+is exercised only by functional capsules such as `model_slices/C7_attention_qk_i8`. Until a `_perf`
+attention family exists, the objective still cannot see the QK shape that motivated this note.
 
 Note that a `None` price is not cosmetic. It nulls `declared_macs`, `ideal_cycles_at_peak`, both
 utilizations and both `share_of_achievable` fields, and it **disables the corpus-wide attainment stop
