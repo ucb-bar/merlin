@@ -236,6 +236,45 @@ Do not re-litigate these here:
   (`self_hosted_program: false`; `multiple_operand_encodings: false`). Both carry full tri-state gate
   evidence in `MANIFEST.yaml:292-345`.
 
+## How a member too large to run gets a number
+
+Measured 2026-09-04; artifact `out/artifacts/perf-bench/<target>/composed_band_validation.json`,
+produced by `validate_composed_bands.py`, module `merlin/python/merlin/perf/compose_estimate.py`.
+
+A large member cannot be measured — the oracle runs at ~217 simulated cycles/s over a fitted domain of
+161..28,118 cycles, and `cert_cost.predict` refuses to extrapolate past twice that. What can be
+composed from measurements of smaller siblings is a **band**: a structural floor (priced MAC demand
+over the derived peak) and an empirical ceiling. Never a point.
+
+**The obvious ceiling is refuted, and this is worth recording so nobody re-derives it.** The serial
+per-command cost model looked correct in principle — its own artifact declares
+`fidelity: "L2.5 calibrated (linear, serial; no overlap)"`, and this machine's measured composition is
+partial (η = 0.1667), so a serial sum ought to credit no overlap the machine achieves and therefore
+over-predict. Over **25 labelled programs on 24 workloads it contained zero of them**, every
+measurement above it by **2.0× to 39.2×, median 2.9×**. The cause is structural and is the same one
+`tiled-unit-needs-two-k-points` records: the model prices a *histogram of command kinds*, and one
+`MATMUL` is one command whether it contracts over 16 or over 16384. Its ceiling sat near-constant at
+~133 cycles across workloads whose true cost spans 269..3877. **A per-command constant cannot price a
+tiled unit.**
+
+The work-scaled ceiling — the same priced MACs over the slowest rate anything on this machine has been
+*measured* at — contains **16 of 17 held-out programs**. Rates are split by compute class because one
+global rate, though sound at 18/18, produced bands **95.7× wide** with measurements sitting at a
+median position of 0.12 inside them: convolution runs at 2.67 MACs/cycle here and a resident matmul at
+94.1, so a single bound covering both is 35× looser than either needs. Per class the median width is
+**18.9×**. The single miss is `GP2_conv2d_maxpool_i8`, a fused conv+pool whose pooling work the MAC
+counter does not price — so the ceiling under-counts the work and the measurement lands above it.
+
+Two consequences for corpus design:
+
+- **The band eliminates; it never certifies.** `compare` speaks only when two bands are disjoint, so
+  the screen is sound whatever the overlap operator does — it never subtracts two composed envelopes,
+  which is what `differential.compare` correctly refuses on a partial-overlap machine.
+- **It needs about an order of magnitude to speak.** At 18.9× width a 2× difference does not separate,
+  and a test pins that. This bounds what the screen is *for*: it will not rank two tilings of one
+  shape, and it will separate a kernel issuing thousands of redundant synchronisations from one
+  issuing two. That second case is the 4,098-fence pathology, which is the point.
+
 ## Two false records this note supersedes
 
 A wrong "blocked" record is worse than no record, because it reads as a settled capability finding.
