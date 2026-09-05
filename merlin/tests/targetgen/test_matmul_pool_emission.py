@@ -44,13 +44,18 @@ def test_matmul_builder_emits_pool_geometry_and_pooled_result_extent():
     assert attrs["pool_size"] == [2, 2]
     assert attrs["pool_stride"] == [2, 2]
     assert attrs["pool_padding"] == [0, 0, 0, 0]
-    assert "tensor<4x16xi32>" in mlir
+    # i8, NOT the accumulator width: a fused max-pool runs in the STORE DMA, which reads the
+    # target's operand width rather than the full-width accumulator container, so the commit is at
+    # `binding.operand_dtype` (see `_resolve_output_dtype`, landed in c9a404d2). An i32 pool store
+    # is one the backend refuses to compile -- a previous change that produced one turned 16 tests
+    # red. The property this test is about is the pooled EXTENT; the dtype rides along.
+    assert "tensor<4x16xi8>" in mlir
 
     parsed = IE.parse_interface_mlir(mlir)
     commit = next(c for c in parsed["commands"] if c["opcode"] == "COMMIT")
     assert commit["operands"]["dst"] == "Y0"
     assert commit["attributes"] == {
-        "epilogue": ["maxpool"], "output_dtype": "i32",
+        "epilogue": ["maxpool"], "output_dtype": "i8",
         "pool_in_dims": [4, 4], "pool_size": [2, 2], "pool_stride": [2, 2],
         "pool_padding": [0, 0, 0, 0],
     }
@@ -62,7 +67,7 @@ def test_matmul_builder_emits_ragged_pool_extent_without_folding_the_tail():
     """A 5x5 plane under 2x2/2 drops its fifth row/column and commits a 2x2 plane."""
     _, mlir = CS.build_matmul(
         _entry(M=25, N=17, pool_in_dims=[5, 5]), _binding())
-    assert "tensor<4x17xi32>" in mlir
+    assert "tensor<4x17xi8>" in mlir      # operand width, per the store-DMA rule above
     output = reference_outputs(IE.parse_interface_mlir(mlir))["Y0"]
     assert (len(output), len(output[0])) == (4, 17)
 
