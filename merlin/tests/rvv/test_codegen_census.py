@@ -208,3 +208,119 @@ def test_build_paths_call_the_census():
     compile_at = src.index('"-c", res.ll_path, "-o", model_o')
     census_at = src.index("_census_require(prepared, model_o", compile_at)
     assert census_at > compile_at
+
+
+# --- the module the census actually receives is not always in the form xDSL can read -----------
+#
+# REGRESSION. The census reads the PREPARED module — the one lowering receives — and two prepared-
+# module rewrites (`perop_blocks.tag_prepared_mlir` for `perop_register_block`,
+# `prov_cse.rewrite_prepared_file` for `cse_through_provenance`) round-trip that module through the
+# MLIR printer, which prints CUSTOM form. xDSL's tensor dialect has no custom-format parser for
+# `tensor.extract_slice`, so the census raised
+#     ParseError: Operation tensor.extract_slice does not have a custom format.
+# and every tiny_llama int8 build carrying either feature was BLOCKED — a model that had built
+# minutes earlier. The op is not special (`tensor.insert_slice` is the same), so the fix cannot be
+# to teach xDSL one more spelling: the module is normalized to generic form and re-read.
+
+#: A prepared module as the MLIR PRINTER emits it: custom form, with two ops xDSL cannot spell
+#: (`tensor.extract_slice`, `tensor.insert_slice`) on the path from the argument to the result.
+_CUSTOM_FORM_MODULE = """module {
+  func.func @forward(%arg0: tensor<1x8xf32>) -> tensor<1x8xf32> {
+    %extracted_slice = tensor.extract_slice %arg0[0, 0] [1, 4] [1, 1] : tensor<1x8xf32> to tensor<1x4xf32>
+    %0 = tensor.empty() : tensor<1x4xf32>
+    %1 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%extracted_slice : tensor<1x4xf32>) outs(%0 : tensor<1x4xf32>) {
+    ^bb0(%in: f32, %out: f32):
+      %3 = arith.mulf %in, %in : f32
+      linalg.yield %3 : f32
+    } -> tensor<1x4xf32>
+    %inserted_slice = tensor.insert_slice %1 into %arg0[0, 0] [1, 4] [1, 1] : tensor<1x4xf32> into tensor<1x8xf32>
+    %2 = tensor.empty() : tensor<1x8xf32>
+    %4 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%inserted_slice : tensor<1x8xf32>) outs(%2 : tensor<1x8xf32>) {
+    ^bb0(%in: f32, %out: f32):
+      %5 = arith.addf %in, %in : f32
+      linalg.yield %5 : f32
+    } -> tensor<1x8xf32>
+    return %4 : tensor<1x8xf32>
+  }
+}
+"""
+
+
+def _m2m_python():
+    from merlin.llvmlower.toolchain import m2m_python
+
+    p = m2m_python()
+    return p if p.is_file() else None
+
+
+@pytest.mark.skipif(_m2m_python() is None, reason="model2MLIR venv (MLIR bindings) missing")
+def test_custom_form_module_is_counted_the_same_as_its_generic_form(tmp_path):
+    """THE regression. A module the MLIR printer left in custom form must census identically to the
+    same module in generic form — not raise, and (see the next test) not quietly count zero."""
+    from merlin.llvmlower.codegen_census import live_structured_ops_in_file
+    from merlin.llvmlower.generic_form import to_generic_form
+
+    custom = _write(tmp_path, "model.prov_stripped.mlir", _CUSTOM_FORM_MODULE)
+    generic = to_generic_form(custom, tmp_path)
+    assert live_structured_ops_in_file(custom) == live_structured_ops_in_file(generic) == (2, 2)
+
+
+@pytest.mark.skipif(_m2m_python() is None, reason="model2MLIR venv (MLIR bindings) missing")
+def test_census_runs_on_a_custom_form_prepared_module(tmp_path):
+    """End to end through the entry point the build calls: prepared module in custom form, real
+    object. Before the fix this raised ParseError and the build reported BLOCKED."""
+    if not _clang() or not _objdump():
+        pytest.skip("clang-23 / llvm-objdump missing")
+    from merlin.llvmlower.codegen_census import require_commensurate
+
+    prepared = _write(tmp_path, "model.prov_stripped.mlir", _CUSTOM_FORM_MODULE)
+    obj = _compile(tmp_path, "real.o", _REAL_FORWARD)
+    c = require_commensurate(prepared, obj, "forward")
+    assert c.live_structured_ops == 2
+    assert c.emitted_instructions >= c.live_structured_ops
+
+
+def test_an_unreadable_prepared_module_raises_rather_than_counting_zero(tmp_path, monkeypatch):
+    """FAIL CLOSED, and this is the whole reason the fix is a normalization and not a tolerance.
+
+    Counting an unreadable module as zero live ops would make ``emitted >= live`` vacuously true
+    for EVERY object, including the 3,654-byte empty ``forward`` this census exists to catch. So a
+    module that can be read in neither form is an error, never a pass.
+    """
+    from merlin.llvmlower.codegen_census import live_structured_ops_in_file
+    from merlin.llvmlower.generic_form import GenericFormError
+
+    # No MLIR-capable interpreter => the custom form cannot be normalized.
+    monkeypatch.setenv("MERLIN_M2M_VENV", str(tmp_path / "no-such-venv"))
+    custom = _write(tmp_path, "model.prov_stripped.mlir", _CUSTOM_FORM_MODULE)
+    with pytest.raises(GenericFormError):
+        live_structured_ops_in_file(custom)
+
+
+def test_generic_form_reprint_does_not_touch_the_source(tmp_path):
+    """The normalization is a printing mode, not a rewrite: the module the build lowers is the one
+    on disk, and this must never edit it."""
+    if _m2m_python() is None:
+        pytest.skip("model2MLIR venv (MLIR bindings) missing")
+    from merlin.llvmlower.generic_form import to_generic_form
+
+    custom = _write(tmp_path, "model.prov_stripped.mlir", _CUSTOM_FORM_MODULE)
+    before = custom.read_bytes()
+    out = to_generic_form(custom, tmp_path)
+    assert out != custom
+    assert custom.read_bytes() == before
+
+
+def test_census_does_not_reintroduce_the_form_assuming_parse():
+    """A gate that reads the prepared module must not assume the form it was printed in.
+
+    Asserted on the source: re-introducing a bare ``parse_mlir_file`` here is exactly how the
+    tiny_llama block came back, and it only shows up on a model that happens to contain an op xDSL
+    has no custom-format parser for.
+    """
+    from merlin.common.paths import merlin_dir
+
+    src = (merlin_dir() / "python" / "merlin" / "llvmlower"
+           / "codegen_census.py").read_text(encoding="utf-8")
+    assert "parse_mlir_file_any_form" in src
+    assert "from ..frontends.linalg_mlir import parse_mlir_file" not in src

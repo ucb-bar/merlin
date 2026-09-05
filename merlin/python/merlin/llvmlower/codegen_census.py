@@ -23,7 +23,10 @@ The check here is the missing sight. It is a *census*, not a threshold:
 
 FAIL CLOSED. A missing objdump, an absent symbol, an object that disassembles to nothing, and an
 unparseable prepared module are all REFUSALS, never skips: this file exists because a check that
-could not fail reported success.
+could not fail reported success. "Unparseable" means unparseable in BOTH MLIR forms -- see
+:func:`live_structured_ops_in_file`; a module the MLIR printer left in custom form is normalized,
+not refused, because refusing it would make this census a build-breaker for every model containing
+an op xDSL has no custom-format parser for.
 """
 from __future__ import annotations
 
@@ -101,8 +104,21 @@ def live_structured_ops(module) -> tuple[int, int]:
 
 
 def live_structured_ops_in_file(prepared_mlir: str | Path) -> tuple[int, int]:
-    from ..frontends.linalg_mlir import parse_mlir_file
-    return live_structured_ops(parse_mlir_file(Path(prepared_mlir)))
+    """``live_structured_ops`` of the module on disk, in whichever form MLIR printed it.
+
+    The module lowering receives is NOT always the generic-form text a capture ships. Two prepared-
+    module rewrites (`perop_blocks.tag_prepared_mlir`, `prov_cse.rewrite_prepared_file`) round-trip
+    it through the MLIR printer, which prints CUSTOM form -- and xDSL, whose tensor dialect has no
+    custom-format parser for `tensor.extract_slice` (nor for the next op nobody has hit yet),
+    refuses the whole module. MEASURED: that refusal blocked every tiny_llama int8 build carrying
+    `perop_register_block` / `cse_through_provenance` the day this census started reading the
+    prepared module. `parse_mlir_file_any_form` re-prints through the same interpreter that did the
+    printing and parses that; it is not a tolerance for unparseable input -- an un-normalizable
+    module still raises, because a census that quietly counted zero live ops would pass every
+    erased model, which is the exact failure this file exists to catch.
+    """
+    from .generic_form import parse_mlir_file_any_form
+    return live_structured_ops(parse_mlir_file_any_form(Path(prepared_mlir)))
 
 
 def disassembly_census(obj: str | Path, objdump: str | Path | None = None) -> dict[str, int]:
