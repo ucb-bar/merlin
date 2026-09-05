@@ -18,9 +18,15 @@ def test_gemmini_config_matches_capsule_runner_constants():
     assert cfg.suite == "gemmini-capsule-bench"
     assert cfg.dtype == "i8xi8_i32"
     assert cfg.fourth_output_name == "lowered.llvm.mlir"      # inline_asm_insn endpoint
-    assert cfg.tier_sim == {"L2": "spike", "L3": "verilator", "L4": "vcs", "L5": "firesim"}
-    assert cfg.rtl_tiers == frozenset({"L3", "L4", "L5"})
-    assert cfg.oracle_tiers == ("L2", "L3", "L4", "L5")
+    # A TIER IS A FIDELITY, NOT A SIMULATOR. This used to read
+    # `{L3: verilator, L4: vcs, L5: firesim}`, which ranked VCS ABOVE Verilator as though it were a
+    # higher fidelity -- it is the same elaborated RTL, only better licensed -- and left GSIM
+    # unnameable, so a GSIM certification had to be forced past the contract by an env override. L3 is
+    # now "the elaborated design ran it" and `rtl_engine_policy` picks which engine answers; FireSim is
+    # a genuinely different rung (FPGA-emulated), so it keeps one.
+    assert cfg.tier_sim == {"L2": "spike", "L3": "elaborated_rtl", "L4": "firesim"}
+    assert cfg.rtl_tiers == frozenset({"L3", "L4"})
+    assert cfg.oracle_tiers == ("L2", "L3", "L4")
     assert cfg.perf_fields == ()                              # systolic: cycles only
     assert cfg.trace_gate == "rocc_insn"
 

@@ -50,7 +50,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 | case | functional_pass | integrity | fails_closed |
 |---|---|---|---|
 | import_merlin_injected | 0 | FAIL[integrity]: integrity violation in CANARY_import.py: contains 'merlin.runtime.reference' (a non-exempt package must not read the reference/oracle) | True |
-| missing_manifest | 0 | FAIL[contract]: no manifest.yaml in package /scratch/agustin/tmp/negfix_2hxeeyqv/pkg | True |
+| missing_manifest | 0 | FAIL[contract]: no manifest.yaml in package /scratch/agustin/tmp/negfix_zpp5t94g/pkg | True |
 
 ### trace_check / numeric / cb-schema (the gates the grader composes)
 
@@ -62,7 +62,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 
 ## C. Freeze enforcement
 
-- tamper detected: **True** (0f8dc0532767d06d → f82b88ced623a03b); the hidden phase re-hashes the submission and refuses to grade if it changed after freeze.
+- tamper detected: **True** (605b4114230030a9 → 1fc3e35e44e0bd6a); the hidden phase re-hashes the submission and refuses to grade if it changed after freeze.
 
 ## D. Input-bundle hash reproducibility
 
@@ -86,7 +86,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 
 ## E. Real token/cost capture
 
-- tested on a real `claude --output-format stream-json`: available=True, tokens_total=44812, cost=$None, unique_messages=None (dedup verified).
+- tested on a real `claude --output-format stream-json`: available=True, tokens_total=38440897, cost=$None, unique_messages=None (dedup verified).
 
 ## F. bareMetalC corroboration (exact anchors)
 

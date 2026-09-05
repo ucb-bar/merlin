@@ -32,6 +32,7 @@ def test_the_recorded_core_dialect_is_the_one_mlc_resolves() -> None:
         assert rec["core_hw_mlir"] == resolved.name
         assert rec["core_hw_sha"] not in _SENTINELS, f"{target}: resolved dialect but no digest"
         assert len(rec["core_hw_sha"]) == 16
+        assert len(rec["core_hw_sha256"]) == 64
 
 
 def test_it_is_target_agnostic() -> None:
@@ -54,7 +55,8 @@ def test_an_unresolvable_dialect_is_named_not_faked() -> None:
     The distinction between "mlc resolved nothing" and "the file is resolved but absent" is load
     bearing: only the second is fixable by rebuilding, and collapsing them onto one value loses that."""
     rec = circt_introspect._core_hw_input("a-target-that-does-not-exist")
-    assert rec == {"core_hw_mlir": "unresolved", "core_hw_sha": "unresolved"}
+    assert rec == {"core_hw_mlir": "unresolved", "core_hw_sha": "unresolved",
+                   "core_hw_sha256": "unresolved"}
 
 
 def test_the_recorded_digest_agrees_with_the_pinned_artifact() -> None:
@@ -71,3 +73,5 @@ def test_the_recorded_digest_agrees_with_the_pinned_artifact() -> None:
     assert check.digest.startswith(recorded), (
         f"facts recorded {recorded!r} but the pin is {check.digest!r} -- "
         "the facts and the pin name different files")
+    recorded_full = circt_introspect._core_hw_input("atlas")["core_hw_sha256"]
+    assert check.digest == recorded_full

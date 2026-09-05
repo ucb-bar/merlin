@@ -241,6 +241,18 @@ def _grade_with(mesh_exec: dict, declared=("L0", "L1", "L2", "L3"), *, on_mesh=1
     from merlin import compile_cli as CCLI
     from merlin.targetgen import capsule_runner as CR
 
+    # These cases are about the CERT rung. A model also has to earn the SCREEN rung below it (its tiles
+    # clear the cheap functional oracle before the expensive one runs), and a verified tile with no
+    # screen tally is a real hole -- but it is not what any case here is probing, and leaving it open
+    # would make every one of them fail on the wrong rung. So default the screen to "every tile was
+    # screened and passed" unless the case states otherwise; `test_model_earns_screen_tier` owns that
+    # rung's own behaviour.
+    if isinstance(mesh_exec, dict) and "n_tiles" in mesh_exec and "n_screened" not in mesh_exec:
+        _n = int(mesh_exec["n_tiles"])
+        mesh_exec = {**mesh_exec, "n_screened": _n, "n_screen_passed": _n,
+                     "n_screen_failed": 0, "n_screen_unavailable": 0,
+                     "screen_tier": "L2", "screen_sim": "spike"}
+
     capsule = {"name": "M_probe", "kind": "model",
                "operation": {"op": "model", "attributes": {"model": "probe", "compile_dtype": "int8",
                                                            "dtype": "i8"}},

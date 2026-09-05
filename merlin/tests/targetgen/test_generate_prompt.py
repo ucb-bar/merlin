@@ -36,7 +36,9 @@ def test_corpus_families_are_globbed_not_a_hardcoded_list():
 
 def test_sim_tiers_and_isa_facts_come_from_manifest_and_discovery():
     s = _gem_slots()
-    assert s["sim_tiers"] == {"L2": "spike", "L3": "verilator", "L4": "vcs", "L5": "firesim"}
+    # The prompt shows the tier LADDER, which names fidelities; `elaborated_rtl` at L3 is deliberate,
+    # since which of vcs/gsim/verilator answers there is an availability decision made per run.
+    assert s["sim_tiers"] == {"L2": "spike", "L3": "elaborated_rtl", "L4": "firesim"}
     assert s["isa_facts"].startswith("# Target ISA facts: gemmini")   # the derived provenance-tagged brief
 
 
