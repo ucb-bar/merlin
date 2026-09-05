@@ -80,6 +80,8 @@ def _instrument_command(plan, a) -> list:
            "--n", str(a.n), "--warmup", str(a.warmup), "--iters", str(a.iters),
            "--et-n-lo", str(a.et_n_lo), "--et-n-hi", str(a.et_n_hi),
            "--compile-timeout-s", str(a.compile_timeout_s)]
+    if a.parallel_harts:
+        cmd += ["--parallel-harts", str(a.parallel_harts)]
     if a.features is not None:
         cmd += ["--features", a.features]
     if a.also_weight_only:
@@ -176,6 +178,10 @@ def main() -> int:
     ap.add_argument("--et-n-hi", type=int, default=6)
     ap.add_argument("--also-weight-only", action="store_true")
     ap.add_argument("--cell-timeout", type=int, default=7200, help="seconds per cell")
+    ap.add_argument("--parallel-harts", type=int, default=None,
+                    help="cores OUR arm may use (default 1). The board has 8 and the reference's "
+                         "runner links pthreadpool, so the default compares our one core against "
+                         "however many ExecuTorch takes. Recorded on every cell either way.")
     ap.add_argument("--compile-timeout-s", type=int, default=3600,
                     help="ceiling on any single build command inside a cell (see the instrument). "
                          "Must be under --cell-timeout: a compile allowed to outlive its own cell "

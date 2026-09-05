@@ -85,7 +85,7 @@ _MERLIN_PY = repo_root() / "merlin" / "python"
 
 
 def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
-             n: int, warmup: int, iters: int) -> dict:
+             n: int, warmup: int, iters: int, parallel_harts: int | None = None) -> dict:
     """Our side: n gated launches, each min-of-`iters` after `warmup` untimed.
 
     The verdict is ``zephyr_model._gate``'s OWN ``ok``, not a threshold re-implemented here. That
@@ -110,7 +110,8 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
         conds.append(_conditions())
         try:
             res = k1.run_on_k1(model_dir, work_root / f"ours_{i}", pkg, timeout=1800,
-                               op_profile=False, iters=iters, warmup=warmup)
+                               op_profile=False, iters=iters, warmup=warmup,
+                               parallel_harts=parallel_harts)
             g = zm._gate(res["prefix"], golden_refs)
             cos, rel, ok = g.get("cos"), g.get("rel"), g.get("ok")
             last_gate = {k: v for k, v in g.items() if isinstance(v, (int, float, bool))}
@@ -310,6 +311,12 @@ def main() -> None:
     ap.add_argument("--also-weight-only", action="store_true",
                     help="additionally measure ExecuTorch's weight-only recipe as a LABELLED second "
                          "column (it is not int8 compute; kept because it is the historical cell)")
+    ap.add_argument("--parallel-harts", type=int, default=None,
+                    help="cores OUR arm may use (default: 1, single-threaded). The board has 8, and "
+                         "the reference is built with pthreadpool ON and a shared XNNPACK "
+                         "workspace, so a default run compares our ONE core against however many "
+                         "ExecuTorch takes. Recorded on every cell either way, so no ratio is "
+                         "readable without knowing the core counts it was taken at.")
     ap.add_argument("--compile-timeout-s", type=int, default=3600,
                     help="ceiling on any single build command for OUR arm. The module default is "
                          "900s, which is a KERNEL budget: a whole-model int8 clang invocation "
@@ -404,12 +411,20 @@ def main() -> None:
                  # this; the compile ceiling is not, so a compile-timeout refusal has to be readable
                  # as "the host was saturated" vs "this model cannot be built in that budget".
                  "host": _host_conditions(),
-                 "compile_timeout_s": int(a.compile_timeout_s)}
+                 "compile_timeout_s": int(a.compile_timeout_s),
+                 # Cores each side was allowed. Ours defaults to 1; the reference's runner links
+                 # pthreadpool and is built with a shared XNNPACK workspace, so its count is
+                 # whatever its threadpool chooses and is NOT controlled here. A ratio taken across
+                 # different core counts is a system comparison, not a compiler one, and the row has
+                 # to carry enough for a reader to tell which it is looking at.
+                 "cores": {"ours": int(a.parallel_harts) if a.parallel_harts else 1,
+                           "reference": "UNKNOWN (pthreadpool default; not pinned by this harness)"}}
 
     # INTERLEAVED, ours first, so a board that drifts during the session moves both arms rather than
     # landing the drift entirely on one of them.
     print("== ours ==", flush=True)
-    rec["ours"] = ours_arm(md, pkg, refs, work, n=a.n, warmup=a.warmup, iters=a.iters)
+    rec["ours"] = ours_arm(md, pkg, refs, work, n=a.n, warmup=a.warmup, iters=a.iters,
+                           parallel_harts=a.parallel_harts)
     print("== executorch qd8 (the matching arithmetic) ==", flush=True)
     rec["executorch_qd8"] = et_arm(a.model, qd8=True, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
     if a.also_weight_only:
@@ -417,6 +432,7 @@ def main() -> None:
         rec["executorch_weight_only"] = et_arm(a.model, qd8=False, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
     print("== ours (second pass, brackets the ET arms) ==", flush=True)
     rec["ours_after"] = ours_arm(md, pkg, refs, work, n=a.n, warmup=a.warmup, iters=a.iters,
+                                 parallel_harts=a.parallel_harts,
       )
 
     rec["verdict_qd8"] = verdict(rec["ours"], rec["executorch_qd8"], md.name)
