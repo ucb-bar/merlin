@@ -479,10 +479,49 @@ def last_message_path(ws: Path, final_path: Path, sandbox: str) -> Path:
     return ws / ".codex_out" / final_path.name
 
 
+#: A continuation needs enough budget left to be worth a turn; below this the session stops cleanly
+#: rather than spawning a process that will be killed mid-thought.
+_CONTINUE_MIN_S = 120
+#: A backstop so a pathological loop cannot spin against the API for the whole budget.
+_CONTINUE_MAX_TURNS = 200
+
+
+def _resume_cmd(cmd: list[str], thread_id: str, prompt_path: Path) -> list[str]:
+    """Rewrite a ``codex exec`` argv into ``codex exec resume <thread_id>``, preserving every flag.
+
+    The prompt is passed as ``-`` (stdin) exactly as the first turn does, so the continuation text is
+    an artifact on disk rather than an argv fragment. Under bwrap the argv is wrapped in
+    ``bash -c <inner>``; the rewrite therefore edits the INNER command, or the resume would run
+    outside the sandbox."""
+    def _rewrite(argv: list[str]) -> list[str]:
+        out = list(argv)
+        try:
+            i = out.index("exec")
+        except ValueError:
+            return out
+        return out[:i + 1] + ["resume", str(thread_id)] + out[i + 1:]
+
+    if cmd and cmd[0] == "bash" and len(cmd) >= 3 and cmd[1] == "-c":
+        inner = shlex.split(cmd[2])
+        return [cmd[0], cmd[1], " ".join(shlex.quote(c) for c in _rewrite(inner))] + list(cmd[3:])
+    return _rewrite(cmd)
+
+
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
-              effort: str = "", prompt: str | None = None, **_ignored) -> tuple[int, Path]:
+              effort: str = "", prompt: str | None = None, continue_session: bool = False,
+              **_ignored) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
+
+    ``continue_session`` makes ONE session span the whole ``timeout`` budget. It exists because
+    ``codex exec`` is one TURN, not one session: it returns as soon as the model stops, which the
+    harness reads as "the agent session ended". Measured on atlas arm-4, three runs in a row ended
+    that way -- the last after 83 minutes with 23890s of its 28901s budget unspent, having emitted
+    exactly one ``turn.started``/``turn.completed`` pair. Continuation re-invokes
+    ``codex exec resume <thread_id>``, so the SAME thread (and its accumulated understanding) keeps
+    working; ``keep_launching``'s "one invocation per process" contract is preserved, because this is
+    still one session -- just delivered over several processes. Off by default: in ROUNDS mode a
+    round ending is how the harness re-grades and re-prompts, and continuing would break that cadence.
 
     Tier-within-agent (``subagent_model`` / ``background_model``) has no Codex
     equivalent — ``codex exec`` exposes no subagent mechanism — so a request for
@@ -557,8 +596,20 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
 
     raw_f = open(raw_path, "wb")
     stamped_f = open(stamped_path, "w")
+    #: Sent when resuming. Deliberately the SAME standing instruction, never a hint: an arm that got
+    #: extra guidance mid-session would not be comparable to one that did not.
+    _CONTINUE_MSG = ("Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
+                     "backend under submission/ and re-running agent_selfcheck until capsules pass.")
+    turn_index = 0
+    rc = 0
     try:
-        with open(stderr_path, "wb") as err_f, open(prompt_path, "rb") as in_f:
+      while True:
+        cur_prompt = prompt_path if turn_index == 0 else prompt_path.with_name(
+            f"{prompt_path.stem}.cont{turn_index:02d}{prompt_path.suffix}")
+        if turn_index:
+            cur_prompt.write_text(_CONTINUE_MSG)
+            cmd = _resume_cmd(cmd, thread_id, cur_prompt)
+        with open(stderr_path, "ab") as err_f, open(cur_prompt, "rb") as in_f:
             try:
                 proc = subprocess.Popen(cmd, stdin=in_f, stdout=subprocess.PIPE, stderr=err_f,
                                         cwd=str(ws), env=dict(os.environ), start_new_session=True)
@@ -695,6 +746,20 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                 proc.stdout.close()
             except OSError:
                 pass
+        # CONTINUE only while every reason to stop is absent, and say which one stopped it. A silent
+        # stop here would look identical to the defect this exists to fix.
+        turn_index += 1
+        remaining = deadline - time.monotonic()
+        stop = ("" if continue_session else "continuation not enabled") or \
+               ("no thread id to resume" if not thread_id else "") or \
+               ("wall budget spent" if remaining <= _CONTINUE_MIN_S else "") or \
+               ("the turn did not complete" if timed_out or rc != 0 else "") or \
+               (f"turn cap {_CONTINUE_MAX_TURNS}" if turn_index >= _CONTINUE_MAX_TURNS else "")
+        tr.emit({"type": "codex_session_turn", "turn": turn_index, "continuing": not stop,
+                 "stopped_because": stop, "remaining_s": round(max(remaining, 0.0), 1),
+                 "thread_id": thread_id, "arrived_at": _now()})
+        if stop:
+            break
     finally:
         for handle in (raw_f, stamped_f):
             try:

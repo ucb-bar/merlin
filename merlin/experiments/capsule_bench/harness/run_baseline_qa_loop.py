@@ -1480,7 +1480,8 @@ def _billing_mode(model: str) -> str:
 
 
 def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
-                 bundle: dict, rnd: int, timeout: int, arm: str = "raw_baseline") -> tuple[int, Path]:
+                 bundle: dict, rnd: int, timeout: int, arm: str = "raw_baseline",
+                 continuous: bool = False) -> tuple[int, Path]:
     # TASK.md must live INSIDE the bound workspace: run_dir is under runs/ which bwrap tmpfs-masks,
     # so a stdin redirect from run_dir/TASK.md is invisible inside the sandbox (empty stdin).
     ws_task = ws / "TASK.md"
@@ -1529,9 +1530,13 @@ def launch_agent(ws: Path, run_dir: Path, model: str, effort: str, sandbox: str,
                 raise SystemExit(f"--driver codex is not available: {e}")
             # effort is threaded through: codex takes it as a config override, and an
             # arm that silently ran at a different reasoning effort is a different arm.
+            # `codex exec` is one TURN, not one session -- it returns when the model stops. Under
+            # --schedule continuous the harness launches ONE session and expects it to spend the wall
+            # budget, so without this the run ends after a single turn with most of the budget unspent
+            # (measured: 23890s of 28901s). The driver keeps the SAME thread alive instead.
             return _CA.run_round(ws, run_dir, model, bundle, _te(), sandbox, rnd, timeout,
                                  subagent_model=_SUBAGENT_MODEL, background_model=_BACKGROUND_MODEL,
-                                 effort=effort)
+                                 effort=effort, continue_session=continuous)
         # claudecode. The claude CLI speaks the Anthropic Messages API, so a NON-Anthropic model reaches
         # it only through the LiteLLM bridge (ANTHROPIC_BASE_URL -> our proxy -> Bedrock). This is what
         # makes the harness the experimental variable instead of a fixed property of the model: nemotron
@@ -2578,7 +2583,8 @@ def main(argv: list[str] | None = None) -> int:
         bg.start()      # certified continuous only: grade a snapshot UNDER the running agent
         try:
             rc, tpath = launch_agent(ws, run_dir, a.model, a.effort, a.sandbox, bundle, rnd,
-                                     _agent_wall_cap(), arm=arm)
+                                     _agent_wall_cap(), arm=arm,
+                                     continuous=(a.schedule == "continuous"))
         except subprocess.TimeoutExpired:
             rc, tpath = 124, run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             print(f"[round {rnd}] agent TIMEOUT")
