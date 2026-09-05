@@ -655,3 +655,53 @@ def test_a_declared_blocker_that_was_overtaken_is_removed_not_kept():
     assert "CAPABILITY" in b["not_a_fallback"], (
         "running a model the reference cannot export is not a speedup, and the row must say so")
     assert ec.expectation_status("smolvla", "measured") == "stale_expectation"
+
+
+# --- a score is never published without the fraction of the output it covers ----------------------
+
+
+def test_a_prefix_score_is_labelled_a_prefix_score_not_a_bare_cosine(recaps):
+    """tiny_llama's board console prints 4096 of 256000 logits; the row published only the cos."""
+    rec = _measured_record()
+    rec["ours"]["gate"].update(n_compared=4096, n_reference=256_000,
+                               compared_fraction=4096 / 256_000, comparison_complete=False)
+    acc = ec.campaign_row(_plan(recaps), rec)["accuracy"]
+    assert acc["ours_comparison_complete"] is False
+    assert acc["ours_n_compared"] == 4096
+    assert acc["ours_n_reference"] == 256_000
+    assert acc["ours_compared_fraction"] == 4096 / 256_000
+    assert "PREFIX SCORE" in acc["ours_coverage_note"]
+    assert "1.60%" in acc["ours_coverage_note"]
+
+
+def test_a_whole_output_score_carries_the_coverage_without_a_caveat(recaps):
+    rec = _measured_record()
+    rec["ours"]["gate"].update(n_compared=256_000, n_reference=256_000,
+                               compared_fraction=1.0, comparison_complete=True)
+    acc = ec.campaign_row(_plan(recaps), rec)["accuracy"]
+    assert acc["ours_comparison_complete"] is True
+    assert acc["ours_compared_fraction"] == 1.0
+    assert acc["ours_coverage_note"] == ""
+
+
+def test_a_record_with_no_coverage_at_all_is_unknown_not_complete(recaps):
+    """The records written before the gate reported coverage are exactly the truncated ones."""
+    acc = ec.campaign_row(_plan(recaps), _measured_record())["accuracy"]
+    assert acc["ours_comparison_complete"] is None
+    assert acc["ours_compared_fraction"] is None
+    assert "UNKNOWN" in acc["ours_coverage_note"]
+    assert "PREFIX" in acc["ours_coverage_note"]
+
+
+def test_output_arity_coverage_does_not_see_element_truncation(recaps):
+    """golden_coverage says tiny_llama is fully covered -- and it is, in results. The 1.6% is a
+    different axis, which is why the row has to carry both."""
+    _make_bundle(recaps, "small_int8_consistent")
+    gcov = ec.golden_coverage(recaps / "small_int8_consistent")
+    assert gcov["partial"] is False and gcov["cannot_fail"] is False
+    rec = _measured_record()
+    rec["ours"]["gate"].update(n_compared=4096, n_reference=256_000,
+                               compared_fraction=0.016, comparison_complete=False)
+    plan = ec.plan_cell("small", recaptures_root=recaps)
+    assert plan.golden_coverage["partial"] is False
+    assert ec.campaign_row(plan, rec)["accuracy"]["ours_comparison_complete"] is False

@@ -671,6 +671,39 @@ def _first(runs, key):
     return None
 
 
+def element_coverage(gate: dict) -> dict:
+    """What FRACTION of the output our arm's cos/rel actually scored, as row fields.
+
+    ``_gate`` already measures this (``n_compared`` / ``n_reference`` / ``compared_fraction`` /
+    ``comparison_complete``) because the board console is capped at ``dump_cap`` elements and the
+    reference is truncated to match. The row dropped it, so a tier verdict taken over 1.6% of the
+    logits was published as a bare cosine beside one taken over 100%.
+
+    A record that carries no coverage at all is UNKNOWN, never assumed complete: those are exactly
+    the records written before the gate reported it, and a silent "complete" on one of them is the
+    same claim the truncation already made once.
+    """
+    complete = gate.get("comparison_complete")
+    fraction = gate.get("compared_fraction")
+    if complete is None and fraction is None:
+        note = ("element coverage UNKNOWN: this record carries no comparison_complete/"
+                "compared_fraction, so every ours_* score above may be a PREFIX score over the "
+                "leading output elements rather than the model's accuracy")
+    elif complete:
+        note = ""
+    else:
+        n_c, n_r = gate.get("n_compared"), gate.get("n_reference")
+        pct = f"{float(fraction):.2%}" if isinstance(fraction, (int, float)) else "an unknown share"
+        note = (f"PREFIX SCORE: every ours_* score above covers {n_c} of {n_r} output elements "
+                f"({pct}) -- the leading elements the board harness printed, not the model's "
+                "accuracy. A tier verdict at this coverage decides only that slice.")
+    return {"ours_n_compared": gate.get("n_compared"),
+            "ours_n_reference": gate.get("n_reference"),
+            "ours_compared_fraction": fraction,
+            "ours_comparison_complete": complete,
+            "ours_coverage_note": note}
+
+
 def campaign_row(plan: CellPlan, record: dict | None = None, *, refusal: str = "",
                  command: list | None = None, elapsed_s: float | None = None,
                  arm: str = "verdict_qd8") -> dict:
@@ -734,13 +767,20 @@ def campaign_row(plan: CellPlan, record: dict | None = None, *, refusal: str = "
         "source_dirty": (record or {}).get("source_dirty"),
         # --- what ExecuTorch did not pay for inside the timed window --------------------------------
         "executorch_load_ns": _first(runs, "load_ns"),
-        # --- accuracy, with WHAT each side was scored against ----------------------------------------
+        # --- accuracy, with WHAT each side was scored against, and HOW MUCH of the output ----------
+        # Every ours_* score below is accompanied by the fraction of the output it covers. The board
+        # harness prints at most `dump_cap` elements and `_gate` truncates the reference to match, so
+        # a prefix score is arithmetically indistinguishable from a whole-output one. On tiny_llama
+        # that is 4096 of 256000 logits -- 1.6%, a slice of token 0's vocabulary axis -- and the row
+        # published a bare cos for it. `golden_coverage` does not catch this: it prices output ARITY
+        # (one golden per @forward result) and reports tiny_llama complete, which it is.
         "accuracy": {
             "ours_reference": OURS_ACCURACY_REFERENCE,
             "reference_reference": _first(runs, "accuracy_reference") or "",
             "ours_fp32_cos": gate.get("fp32_cos"), "ours_fp32_rel": gate.get("fp32_rel"),
             "ours_w8a8_cos": gate.get("w8a8_cos"), "ours_w8a8_rel": gate.get("w8a8_rel"),
             "ours_tiers": gate.get("tiers"), "ours_tier_ok": gate.get("tier_ok"),
+            **element_coverage(gate),
             "reference_cos": _first(runs, "cos"), "reference_rel": _first(runs, "rel"),
             "comparability": (verdict.get("accuracy") or {}).get("status") or "not_evaluated",
             "comparability_reason": (verdict.get("accuracy") or {}).get("reason", ""),
