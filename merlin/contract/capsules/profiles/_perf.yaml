@@ -293,6 +293,72 @@ sweeps:
   name: '{id}{i:02d}_k{K}'
   source_reference: 'shared inter-layer declaration: one resident weight, two matmuls, and the A/B is
     the command list of THIS capsule permuted by command_stream_gen at measurement time'
+- id: PF
+  fit_axes: [K]
+  comparison_roles: [fused, part]
+  base:
+    cat: _perf
+    kind: model_slice
+    out: Y0
+    label: dev
+    source_role: derived_sweep
+    performance:
+      level: L5_fusion
+      family: PF
+      lever: epilogue_fusion
+      claim: DIFFERENTIAL
+      comparand:
+        kind: group_arithmetic
+        against: sum_of_unfused_parts
+        cancels: [operation_shape, operands, numeric_policy]
+        demand_equal: [M, N, operand_dtype, accum_dtype]
+      falsifier:
+        observation: fused_cycles_minus_sum_of_parts
+        fires_when: fused_cycles_are_not_lower_than_the_sum_of_parts
+        negative_control: unfused_matmul_plus_bias_add
+      gate:
+        traits: [structural_pipeline_depth]
+        instrument: cycle_count
+        capacity: complete_fused_and_part_comparison_group
+        on_missing: skip_with_evidence
+      regime:
+        separation: one_identical_shape_per_group
+        layout: fused_member_and_all_parts_share_inputs
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs: {members: [fused_matmul_bias, matmul, bias_add]}
+      cost:
+        tier: 1
+        runs: three_per_shape
+        projected_cycles: derived_at_preflight
+        basis: one_fused_member_and_two_parts
+  # The group name carries the shape, so no member writes it down: `_render_variant`
+  # resolves `{M}`/`{K}`/`{N}` against the point the variant is paired with, and the
+  # generator refuses a group with fewer than two members.
+  variants:
+  - op: fused_matmul_bias
+    comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: fused}
+  - op: matmul
+    comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: part}
+  - op: bias_add
+    comparison_group: {name: 'fmb_m{M}k{K}n{N}', role: part}
+  axes:
+    M: [tile]
+    N: [tile]
+    K: [tile, 2*tile]
+  name: '{id}{i:02d}_{op}_m{M}k{K}n{N}'
+  source_reference: >-
+    shared epilogue-fusion group: one fused matmul+bias against the matmul and
+    the bias add it replaces, at one identical shape per group
+
+# The cross-regime amortization pair. Declared as a sweep rather than blocked
+# because the lever IS expressible: `resident_reuse` pushes ONE weight and runs
+# N matmuls against it, so the tile regime is N=1 and the layer regime is N=4 --
+# identical per-tile work, identical lever, different regime scale, which is
+# exactly what the comparand asks to be held equal and what it asks to vary.
+# The promotion policy ("only passing tier-one members are promoted") is a RUN
+# ordering, not a materialization problem, and lives in `cost` where it always did.
 - id: PL
   fit_axes:
   - K
@@ -1230,60 +1296,3 @@ blocked_unimplemented:
       runs: 4
       projected_cycles: derived_at_preflight
       basis: four_members_before_repetition_at_fixed_drained_output_bytes
-- family: PF
-  status: blocked_unimplemented
-  reason: this family's comparison group needs a fused matmul+bias member and a standalone bias member,
-    so it requires a target backend that implements a bias-add epilogue. Where the backend implements
-    no epilogue beyond the activation, two of the three member kinds fail code generation and the capacity
-    rule -- a complete fused-and-parts group -- can never be met, while the surviving plain-contraction
-    arms duplicate a workload the reduction-depth family already covers. Restoring it is backend functional
-    work, not a tuning lever. The per-target measurement that established this is recorded with that target's
-    run, not in this shared template.
-  fit_axes:
-  - K
-  comparison_roles:
-  - fused
-  - part
-  performance:
-    level: L5_fusion
-    family: PF
-    lever: epilogue_fusion
-    claim: DIFFERENTIAL
-    comparand:
-      kind: group_arithmetic
-      against: sum_of_unfused_parts
-      cancels:
-      - operation_shape
-      - operands
-      - numeric_policy
-      demand_equal:
-      - M
-      - N
-      - operand_dtype
-      - accum_dtype
-    falsifier:
-      observation: fused_cycles_minus_sum_of_parts
-      fires_when: fused_cycles_are_not_lower_than_the_sum_of_parts
-      negative_control: unfused_matmul_plus_bias_add
-    gate:
-      traits:
-      - structural_pipeline_depth
-      instrument: cycle_count
-      capacity: complete_fused_and_part_comparison_group
-      on_missing: skip_with_evidence
-    regime:
-      separation: one_identical_shape_per_group
-      layout: fused_member_and_all_parts_share_inputs
-    emitter:
-      status: existing
-      entry: merlin.targetgen.corpus_spec.build
-      knobs:
-        members:
-        - fused_matmul_bias
-        - matmul
-        - bias_add
-    cost:
-      tier: 1
-      runs: three_per_shape
-      projected_cycles: derived_at_preflight
-      basis: one_fused_member_and_two_parts
