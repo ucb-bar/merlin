@@ -1,15 +1,23 @@
-"""The rank bound of the bounded-vectorize lever is a MEASURED coverage decision, not a constant.
+"""The rank bound of the bounded-vectorize lever is a knob, and on these captures it is INERT.
 
 The non-contraction vectorize arms covered loop ranks 2..4 because that is how many arms had been
 written out by hand, and the tagging predicate refused everything else with no counter saying so.
-MEASURED on the int8 recaptures (frozen-baseline lowering, per-op attribution of the emitted
-``forward`` -- ``build_tools/scripts/scalar_remainder.py``), the ops whose ONLY reason for being
-refused is that bound account for **19.2 % of one model's entire scalar remainder** (52 ops, 5,653
-scalar instructions), 1.6 % of a second model's and 0.7 % of a third's. The high ranks come from the
-shape the frontend expands a convolution into -- a rank-7 ``tensor<64x8x3x3x1x8x12xf32>`` weight
-expansion -- so this is a property of the captured graphs, not of any one device.
+Per-op attribution of the emitted ``forward`` (``build_tools/scripts/scalar_remainder.py``, frozen
+baseline, three int8 captures) first read the ops refused for that bound alone as 19.2 % of one
+model's entire scalar remainder -- which is why the bound became a knob.
 
-What is pinned here:
+MEASURING THE KNOB DISPROVED THAT READING, and the disproof is the useful part. Every one of those
+high-rank ops is a convolution's im2col WINDOW read: an all-parallel generic whose body only yields
+its input, so the body-level gather test sees nothing, while its input map is
+``(d0..d5) -> (d3, d0, d4 + d1, d5 + d2)``. A ``vector.transfer_read`` needs a projected
+permutation, so ``structured.vectorize`` cannot build one and FAILS THE WHOLE PIPELINE rather than
+declining the op. Raising the bound with those ops still tagged aborted the host lowering on two of
+the three captures; on the board build, whose lowering falls back to the scalar pipeline, it
+silently devectorized the whole model instead (static coverage of ``forward`` 0.4055 -> 0.2799).
+With the tagger's compound-map refusal in place the raised bound is exactly inert on all three:
+the emitted ``forward`` is instruction-for-instruction identical to the rank-2..4 arms.
+
+So what is pinned here is the knob's SAFETY, not a payoff:
 
 * the DEFAULT is byte-identical. Generating the arms in a loop must reproduce the hand-written
   rank-2..4 text exactly, and a feature set that names nothing must leave the tagger switched off,
@@ -17,14 +25,17 @@ What is pinned here:
 * the bound is ONE number driving BOTH halves. The tagger admits a rank only if the schedule carries
   an arm for it; tagging a rank no arm matches leaves the op scalar while the tagger reports it as
   tagged -- the same silent-coverage failure the specialization pass caused for the tags themselves.
+* a COMPOUND indexing map is refused, and a CONSTANT one is not. The refusal has to be exactly this
+  narrow: refusing every non-projected-permutation map costs 23 / 20 / 4 tagged ops on the three
+  captures -- ops that were vectorizing correctly.
 * the sub-byte REFUSAL extends to the new arms. The miscompile ``test_vec_subbyte_element`` documents
   is a property of the arm shape, so an arm added at a new rank without the gate would reintroduce
   it at that rank.
 * the point is DERIVABLE FROM ITS NAME, so it resolves in the lowering subprocess, which re-imports
   the registry and cannot see a registration the parent made at run time.
 
-Deliberately NOT asserted here: that raising the bound is a speedup. That is a board measurement,
-and the emitted-code delta is what this change is entitled to claim.
+Deliberately NOT asserted here: any speedup. That is a board measurement, and the emitted-code
+delta above is what these changes are entitled to claim.
 """
 from __future__ import annotations
 
@@ -200,3 +211,68 @@ def test_the_refused_ranks_are_counted_not_silently_dropped(tmp_path, capsys):
     """A predicate that drops work without a counter is how the whole class stayed invisible."""
     _tag_count(tmp_path, impr.VEC_NONCONTRACTION_MAX_RANK)
     assert "outside the rank bound" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------------------------
+# 5. the refusal that makes the knob safe -- and that is narrow enough not to cost coverage
+# ---------------------------------------------------------------------------------------------
+
+#: A convolution's im2col WINDOW read, in the form the frontend emits it: all-parallel, body yields
+#: its input (so the body-level gather test sees nothing), input map carrying `d3 + d1`.
+WINDOW_GATHER = """
+#w = affine_map<(d0, d1, d2, d3) -> (d0, d2 + d1, d3)>
+#p = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+func.func @forward(%a: tensor<2x9x16xf32>) -> tensor<2x3x8x16xf32> {
+  %e = tensor.empty() : tensor<2x3x8x16xf32>
+  %r = linalg.generic {indexing_maps = [#w, #p],
+                       iterator_types = ["parallel", "parallel", "parallel", "parallel"]}
+      ins(%a : tensor<2x9x16xf32>) outs(%e : tensor<2x3x8x16xf32>) {
+  ^bb0(%in: f32, %out: f32):
+    linalg.yield %in : f32
+  } -> tensor<2x3x8x16xf32>
+  return %r : tensor<2x3x8x16xf32>
+}
+"""
+
+#: The BROADCAST form, whose map is not a projected permutation either (a constant result index) and
+#: which the vectorizer handles. The refusal must not take this one with it.
+CONSTANT_INDEX = """
+#c = affine_map<(d0, d1) -> (0, d1)>
+#p = affine_map<(d0, d1) -> (d0, d1)>
+func.func @forward(%a: tensor<1x16xf32>) -> tensor<4x16xf32> {
+  %e = tensor.empty() : tensor<4x16xf32>
+  %r = linalg.generic {indexing_maps = [#c, #p], iterator_types = ["parallel", "parallel"]}
+      ins(%a : tensor<1x16xf32>) outs(%e : tensor<4x16xf32>) {
+  ^bb0(%in: f32, %out: f32):
+    linalg.yield %in : f32
+  } -> tensor<4x16xf32>
+  return %r : tensor<4x16xf32>
+}
+"""
+
+
+def _tags(tmp_path, src: str, name: str, max_rank: int = 8) -> str:
+    from merlin.runtime.backends.zephyr_model import _prepare_model_mlir
+
+    f = tmp_path / f"{name}.mlir"
+    f.write_text(src, encoding="utf-8")
+    work = tmp_path / f"w_{name}"
+    work.mkdir(parents=True, exist_ok=True)
+    return _prepare_model_mlir(f, work, tag_vec_ranks=True,
+                               vec_max_rank=max_rank).read_text(encoding="utf-8")
+
+
+def test_a_window_read_is_refused_even_though_its_body_holds_no_gather(tmp_path):
+    """``structured.vectorize`` cannot build a transfer for a compound map: it fails the pipeline
+    rather than declining the op, so the refusal has to happen here."""
+    assert "merlin.vec_r" not in _tags(tmp_path, WINDOW_GATHER, "window")
+
+
+def test_a_constant_result_index_is_still_tagged(tmp_path):
+    """Refusing every non-projected-permutation map costs ops that vectorize correctly."""
+    assert "merlin.vec_r2" in _tags(tmp_path, CONSTANT_INDEX, "constant")
+
+
+def test_the_refused_maps_are_counted(tmp_path, capsys):
+    _tags(tmp_path, WINDOW_GATHER, "window_counted")
+    assert "non-projected-permutation indexing map" in capsys.readouterr().out

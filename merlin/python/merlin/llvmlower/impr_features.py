@@ -2052,15 +2052,26 @@ def _vec_bytewise_annotate(prefix: str, *, max_inputs: int = VEC_BYTEWISE_MAX_IN
 #: (measured on deepjscc). Tiling first also means the vector shape is exactly the tile, so nothing is
 #: masked -- the tagging predicate only admits extents that are whole multiples of the lane count.
 #: Loop ranks the per-rank arms cover. The LOW bound is structural -- a rank-1 op has no outer dim
-#: to tile by 1, so the arm shape does not apply to it. The HIGH bound is not: it is the highest
-#: rank anyone had written an arm for, and it was silently costing coverage. MEASURED on the int8
-#: recaptures (baseline lowering, per-op attribution of the emitted `forward` --
-#: build_tools/scripts/scalar_remainder.py), the ops whose ONLY reason for being refused is this
-#: bound account for 19.2 % of one model's whole scalar remainder (52 ops, 5,653 scalar
-#: instructions), 1.6 % of another's and 0.7 % of the third's. The high rank comes from the shape
-#: the frontend expands a convolution into -- e.g. a rank-7 `tensor<64x8x3x3x1x8x12xf32>` weight
-#: expansion -- which is why it is a model-shape fact rather than a tuning choice, and why raising
-#: the bound is a COVERAGE fix rather than a new heuristic.
+#: to tile by 1, so the arm shape does not apply to it. The HIGH bound is a KNOB
+#: (``vectorize_non_contraction_generics_r<N>``) rather than a constant, because the value 4 was
+#: only ever "how many arms someone wrote out by hand" and nothing said what it cost.
+#:
+#: MEASURED, AND THE ANSWER IS "NOTHING, HERE" -- recorded so the next reader does not re-derive it.
+#: Per-op attribution of the emitted `forward` (build_tools/scripts/scalar_remainder.py, frozen
+#: baseline, three int8 captures) first read the ops refused for this bound as 19.2 % of one model's
+#: whole scalar remainder. They are not reachable: every one of them is a convolution's im2col
+#: WINDOW read, an all-parallel generic whose body only yields its input while its input map is
+#: `(d0..d5) -> (d3, d0, d4 + d1, d5 + d2)`. A `vector.transfer_read` needs a projected permutation,
+#: so `structured.vectorize` cannot build one and FAILS THE PIPELINE. Raising the bound with those
+#: ops still tagged aborted the host lowering on two of the three captures, and on the board build
+#: took the whole-model SCALAR fallback instead -- static coverage of `forward` 0.4055 -> 0.2799,
+#: i.e. the lever read as a devectorization. With the tagger's compound-map refusal in place
+#: (runtime/backends/zephyr_model.py) the raised bound is exactly INERT on all three captures: the
+#: emitted `forward` is instruction-for-instruction identical to the rank-2..4 arms
+#: (14050/19096, 25652/41950, 9272/13594 vector/scalar), and every output digest matches the
+#: baseline across three environment paddings. The knob stays because the refusal, not the bound, is
+#: what holds these ops back, and a model whose high-rank generics have plain maps would use it --
+#: but nobody should expect it to pay on a convolutional capture.
 VEC_NONCONTRACTION_MIN_RANK = 2
 VEC_NONCONTRACTION_MAX_RANK = 4
 
