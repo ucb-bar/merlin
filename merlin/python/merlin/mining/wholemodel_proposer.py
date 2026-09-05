@@ -183,7 +183,10 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # change), so it must earn its rank against the accuracy gate and a board measurement rather than
     # against an op count -- on this same model `fold_weight_transpose` had flawless static evidence
     # and measured 1.09x SLOWER, and `vectorize_non_contraction_generics` emitted 4.9x more vector
-    # instructions, bit-identical output, and 1.28x slower.
+    # instructions and 1.28x slower. Its "bit-identical output" was a MISREADING corrected in
+    # d4f86238: the digest was compared on deepjscc alone and generalised. On small_llama the lever
+    # computed a WRONG answer (cos 0.968) that varied with the initial stack address, because a
+    # packed `vector<8xi1>` store was read back one byte per element from the causal mask.
     ("quantize_before_gather", False),                    # im2col: quantize A, not G(A); erase the f32 expansion
 ]
 

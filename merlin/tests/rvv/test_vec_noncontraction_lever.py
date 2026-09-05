@@ -8,7 +8,9 @@ space, that its tagging predicate refuses the cases that break the build, and th
 default-off.
 
 Deliberately NOT asserted here: that the lever is a speedup. Measured on deepjscc int8 (spike) it emits
-4.9x more vector instructions with bit-identical output and runs 1.28x SLOWER at every lane width. That
+4.9x more vector instructions and runs 1.28x SLOWER at every lane width. Its output was NOT
+bit-identical everywhere -- that claim held on deepjscc and lstmnetvit and was false on small_llama
+(a packed vector<Nxi1> store read back per-byte; cos 0.968, layout-dependent; fixed d4f86238). That
 negative result is the reason the axis is routed — the loop has to be able to try it and reject it.
 """
 from __future__ import annotations
