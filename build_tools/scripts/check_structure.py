@@ -79,6 +79,9 @@ REQUIRED_SCHEMAS = [
     # DSE-guidance + rvvgen subsystem schemas (were used but unlisted).
     "baseline_cost", "cpu_coupling", "dse_axis_triage", "temporal_workload_metadata",
     "rvv_package_manifest", "rvv_result",
+    # Frozen-compiler paper methodology (study input + one matrix-cell result).
+    "paper_study", "paper_run_result", "session_contract", "compiler_freeze",
+    "cpu_host_experiment",
     # Quantization-format registry entry schema (merlin.common.quant_formats).
     "quant_format",
 ]

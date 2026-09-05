@@ -10,6 +10,14 @@
 #                                no concrete capsule declares the pass's requirement class
 #   dialect:<fields>             input_dialect / output_dialect could not be determined
 #   exercise:no-capsule-runs-it  MEASURED dead: instrumented, and no recorded capsule run invoked it
+#   verification:no-static-or-formal-verdict
+#                                MEASURED unverified: a capsule reaches the pass, and no static
+#                                (lit/FileCheck) or formal (SMT refinement) layer has reached a
+#                                verdict about it
+#
+# There is deliberately NO axis for a REFUTED pass. A ratchet accepts evidence we do not have yet; a
+# refutation is evidence we have — a check that did not match, or a counterexample. The gate fails on
+# one unconditionally and never consults this file for it.
 #
 # NEVER ADD A LINE. A new entry means a pass whose reason to exist nobody can state, or one nothing
 # runs — delete the pass, or state the obligation, instead.
