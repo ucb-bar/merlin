@@ -70,8 +70,11 @@ FILES = {
     "mlir_oot/codegen.py": "cg v1\n",
 }
 
-# capsule -> the component it declares it rides on.
-CORPUS = {"matmul_tile": "lower_interface_to_target", "conv_codegen": "lower_target_to_llvm"}
+# The two capsules the retention tests drive. They declare NOTHING: `depends_on` was retired because a
+# truthful per-capsule declaration cannot exist (`run_entrypoints` invokes every command for every
+# capsule, and every package maps all four commands onto the same argv). What distinguishes one capsule
+# from another is its EXECUTION identity -- the program it actually emits -- not a claim it makes.
+CORPUS = ("matmul_tile", "conv_codegen")
 
 
 def _mod():
@@ -98,19 +101,30 @@ def _ws(tmp_path, files=None, name="ws"):
 
 
 def _plain_ws(tmp_path, name="ws"):
-    """A submission that declares NO components -- the undeterminable-decomposition case."""
-    return _ws(tmp_path, {"manifest.yaml": MANIFEST.split("components:")[0],
+    """A submission nothing can be decomposed FROM -- the genuinely undeterminable case.
+
+    It declares no `components:` block AND no `commands:`, so neither source of a decomposition applies:
+    the declared path has no block to read and the derivation has no command surface to trace. That is
+    what leaves the whole-submission digest as the only comparison.
+
+    NOTE it used to be the components block alone that was stripped. That is no longer undeterminable:
+    the harness DERIVES a decomposition from the submission's own declared surface when no block is
+    given, so such a submission gets four components and never reaches the fallback under test.
+    """
+    return _ws(tmp_path, {"manifest.yaml": "artifact_type: mlir_oot_target_backend\ntarget: t\n",
                           "mlir_oot/opt": "#!/usr/bin/env python3\n"}, name=name)
 
 
-def _corpus(tmp_path):
-    root = tmp_path / "corpus"
-    for name, dep in CORPUS.items():
-        d = root / name
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "capsule.yaml").write_text(
-            f"name: {name}\nkind: isa\nlabel: public\ndepends_on: [{dep}]\n")
-    return root
+def _derived_ws(tmp_path, extra=None, name="ws"):
+    """A submission with NO `components:` block, so the decomposition is DERIVED from its own surface.
+
+    That is the only path with an `inert` bucket -- bytes the derivation proved no declared command can
+    open. A declared block has no such bucket (every file is either a component's or UNATTRIBUTED).
+    """
+    files = dict(FILES)
+    files["manifest.yaml"] = MANIFEST.split("components:")[0]
+    files.update(extra or {})
+    return _ws(tmp_path, files, name=name)
 
 
 def _v(rows):
@@ -137,6 +151,24 @@ def _identity_of(ch, capsule):
     raise AssertionError(f"no request was enqueued for {capsule}")
 
 
+def _certify_x(B, ws, ch, verdict, cover=None):
+    """:func:`_certify` for rows that CARRY an execution identity -- the result echoes the one it ran.
+
+    A pending record naming an exact artifact may only be resolved by a result naming that same artifact
+    (see `test_a_request_identity_never_overrides_the_artifact_the_job_actually_ran`), so a result that
+    dropped the identity would be refused here rather than recorded.
+    """
+    by_name = {r["capsule"]: r.get("execution_digest") for r in verdict["per_capsule"]}
+    promoted = B.promote(ws, ch, verdict, "L2", "L3", cover, sys.stderr)
+    for capsule in promoted:
+        B.record_cert(ws, {"per_capsule": [{"capsule": capsule, "pass": True,
+                                            "execution_digest": by_name[capsule]}]},
+                      "L3", sys.stderr, identity=_identity_of(ch, capsule))
+    for f in ch.glob("simreq_*.json"):
+        f.unlink()
+    return promoted
+
+
 def _certify(B, ws, ch, verdict, cover=None):
     """Promote, then hand each promotion's result back the way the broker's reap does."""
     promoted = B.promote(ws, ch, verdict, "L2", "L3", cover, sys.stderr)
@@ -149,45 +181,83 @@ def _certify(B, ws, ch, verdict, cover=None):
 
 
 # ---------------------------------------------------------------------------------------------
-# 1. an edit to a component the capsule does NOT depend on keeps its certificate
+# 1. an edit that does not change a capsule's PROGRAM keeps its certificate
+#
+# REWRITTEN. These three tests used to drive a per-capsule `depends_on:` declaration -- capsule X keeps
+# its certificate across an edit to a component X did not name. That design was retired (0 of the 509
+# corpus capsules ever declared one) because a truthful narrow declaration cannot exist: the shared ABI
+# front half `capsule_common.run_entrypoints` invokes EVERY declared command for EVERY capsule, and every
+# package maps all four commands onto the same argv, so an edit to any command's files can flip any
+# capsule's verdict. A capsule naming a subset would keep a certificate its current bytes did not earn --
+# the one direction `oracle_schedule` calls far worse than re-running.
+#
+# The property those tests were reaching for is real and is preserved here, one layer down, where it IS
+# truthful: the EXECUTION identity. Each capsule emits its own program, so "capsule 1 moved and capsule 2
+# did not" is a statement about emitted bytes rather than a claim a capsule makes about itself.
 # ---------------------------------------------------------------------------------------------
-def test_an_edit_to_an_unrelated_component_keeps_the_certificate(tmp_path, monkeypatch):
+def test_an_edit_that_leaves_a_capsules_program_alone_keeps_its_certificate(tmp_path):
+    """The saving the whole scheme is for: an optimization phase edits the compiler continuously, and an
+    edit that re-emits only ONE capsule's code must not re-buy the cert tier for the whole corpus."""
     B = _mod()
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
-    ws, ch = _ws(tmp_path), None
-    ch = ws / ".qa_channel"
-    v = _v([(n, True) for n in CORPUS])
-    assert _certify(B, ws, ch, v) == sorted(CORPUS)
-    assert B._tier_state(ws)["conv_codegen"]["L3"]["status"] == "pass"
-
-    # touch ONLY the tiling component; `conv_codegen` declares `lower_target_to_llvm`
-    (ws / "submission" / "mlir_oot" / "lowering" / "tile.py").write_text("tile v2\n")
-    assert B.promote(ws, ch, v, "L2", "L3", None, sys.stderr) == ["matmul_tile"], (
-        "an edit to an unrelated component re-certified a capsule that does not ride on it")
-    assert _requests(ch) == ["matmul_tile"]
-    assert B._tier_state(ws)["conv_codegen"]["L3"]["status"] == "pass", (
-        "the unrelated capsule's certificate was discarded")
-
-
-def test_an_edit_to_a_declared_dependency_invalidates_the_certificate(tmp_path, monkeypatch):
-    """The converse, and the reason this is not simply "invalidate less": a stale certificate standing
-    for code that no longer exists is the failure this whole mechanism is guarding against."""
-    B = _mod()
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
-    v = _v([(n, True) for n in CORPUS])
-    assert _certify(B, ws, ch, v) == sorted(CORPUS)
+    before = _vx([("matmul_tile", True, "a"), ("conv_codegen", True, "b")])
+    assert _certify_x(B, ws, ch, before) == sorted(CORPUS)
+    assert B._tier_state(ws)["conv_codegen"]["L3"]["status"] == "pass"
+
+    # a real source edit -- so the whole-submission AND component digests both move -- that changes only
+    # what `matmul_tile` emits. `conv_codegen` still emits byte-identical code.
+    (ws / "submission" / "mlir_oot" / "lowering" / "tile.py").write_text("tile v2\n")
+    after = _vx([("matmul_tile", True, "c"), ("conv_codegen", True, "b")])
+    assert B.promote(ws, ch, after, "L2", "L3", None, sys.stderr) == ["matmul_tile"], (
+        "an edit that did not change a capsule's emitted program re-certified it anyway")
+    assert _requests(ch) == ["matmul_tile"]
+    assert B._tier_state(ws)["conv_codegen"]["L3"]["status"] == "pass", (
+        "the unchanged capsule's certificate was discarded")
+
+
+def test_a_changed_program_invalidates_that_capsules_certificate(tmp_path):
+    """The converse, and the reason this is not simply "invalidate less": a certificate standing for a
+    program that is no longer emitted is the failure the whole mechanism guards against."""
+    B = _mod()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    assert _certify_x(B, ws, ch, _vx([("matmul_tile", True, "a"),
+                                      ("conv_codegen", True, "b")])) == sorted(CORPUS)
 
     (ws / "submission" / "mlir_oot" / "codegen.py").write_text("cg v2\n")
-    assert B.promote(ws, ch, v, "L2", "L3", None, sys.stderr) == ["conv_codegen"]
+    after = _vx([("matmul_tile", True, "a"), ("conv_codegen", True, "d")])
+    assert B.promote(ws, ch, after, "L2", "L3", None, sys.stderr) == ["conv_codegen"]
     assert _requests(ch) == ["conv_codegen"]
 
 
-def test_the_log_names_the_component_that_invalidated_the_capsule(tmp_path, monkeypatch, capsys):
-    """That log line is how this defect was diagnosed; it has to stay diagnostic."""
+def test_a_capsule_that_reports_no_program_identity_is_never_spared(tmp_path):
+    """FAIL CLOSED. A verdict row that carries no execution identity must fall back to the submission
+    comparison, never be read as "unchanged". Absence of evidence is the direction that would let a stale
+    certificate stand, and `execution_digest` returns None for exactly the honest reasons (no ELF, no
+    target, no concrete hardware revision) -- so this is the common case, not an exotic one."""
     B = _mod()
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    assert _certify_x(B, ws, ch, _vx([("matmul_tile", True, "a"),
+                                      ("conv_codegen", True, "b")])) == sorted(CORPUS)
+
+    (ws / "submission" / "mlir_oot" / "lowering" / "tile.py").write_text("tile v2\n")
+    # the reader could not identify either program this round
+    assert B.promote(ws, ch, _v([(n, True) for n in CORPUS]), "L2", "L3",
+                     None, sys.stderr) == sorted(CORPUS), (
+        "a row with no execution identity was treated as evidence the program had not changed")
+
+
+def test_the_log_names_the_component_that_invalidated_the_capsule(tmp_path, capsys):
+    """That log line is how this defect was diagnosed; it has to stay diagnostic.
+
+    REWRITTEN in its second half. With no execution identity every capsule rides on the same component
+    set, so an edit to a component requeues BOTH capsules -- and the log must say so for both rather than
+    imply a narrowing that no longer exists. The component is still NAMED, which is the part that made
+    the whole-submission-only log undiagnosable.
+    """
+    B = _mod()
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
     v = _v([(n, True) for n in CORPUS])
@@ -197,16 +267,36 @@ def test_the_log_names_the_component_that_invalidated_the_capsule(tmp_path, monk
     B.promote(ws, ch, v, "L2", "L3", None, sys.stderr)
     err = capsys.readouterr().err
     assert "matmul_tile L3 invalidated by lower_interface_to_target (changed)" in err
+    assert "conv_codegen L3 invalidated by lower_interface_to_target (changed)" in err, (
+        "the honest ceiling: with no execution identity no capsule may narrow, and the log must show it")
     assert "<whole-submission>" not in err, "a narrower cause was known and the log still said everything"
-    assert "conv_codegen L3 invalidated" not in err
+
+
+def test_bytes_no_command_can_read_invalidate_nothing(tmp_path):
+    """The saving the DERIVED decomposition delivers, and the reason it is kept alongside the execution
+    identity: 17% of a live round's submission-mutating operations touched only the agent's notes, its
+    report, and a scratch assembly file no declared command can open. Each one used to wipe every
+    recorded verdict."""
+    B = _mod()
+    ws = _derived_ws(tmp_path, {"REPORT.md": "round 1\n"})
+    ch = ws / ".qa_channel"
+    assert B.decomposition(ws)["source"] == "derived"
+    assert "REPORT.md" in B.decomposition(ws)["inert"], (
+        "the fixture no longer exercises the inert bucket, so this test proves nothing")
+    v = _v([(n, True) for n in CORPUS])
+    assert _certify(B, ws, ch, v) == sorted(CORPUS)
+
+    (ws / "submission" / "REPORT.md").write_text("round 2\n")
+    assert B.promote(ws, ch, v, "L2", "L3", None, sys.stderr) == [], (
+        "an edit to bytes the derivation proved no command can read discarded every certificate")
 
 
 # ---------------------------------------------------------------------------------------------
-# 2. an undeterminable dependency set falls back to the whole submission -- and SAYS SO
+# 2. no narrower identity at all falls back to the whole submission -- and SAYS SO
 # ---------------------------------------------------------------------------------------------
-def test_an_undeterminable_dependency_set_falls_back_to_the_whole_submission(tmp_path, capsys):
-    """No components block and no `depends_on`: staleness cannot be decided any more narrowly, so the
-    conservative rule stands. Under-invalidating here would credit an RTL certification to bytes that did
+def test_no_narrower_identity_falls_back_to_the_whole_submission(tmp_path, capsys):
+    """No execution identity and no decomposition, declared or derivable: staleness cannot be decided any
+    more narrowly, so the conservative rule stands. Under-invalidating here would credit an RTL certification to bytes that did
     not earn it, which is strictly worse than re-running."""
     B = _mod()
     ws = _plain_ws(tmp_path)
@@ -224,8 +314,10 @@ def test_an_undeterminable_dependency_set_falls_back_to_the_whole_submission(tmp
     # conservative behaviour for a whole round.
     assert "no narrower cause:" in err
     assert "no execution identity for this capsule in this verdict" in err
-    assert "the capsule declares no depends_on" in err
-    assert "the submission manifest declares no components" in err
+    assert "the submission has no component decomposition, declared or derived" in err
+    # The retired clause. `depends_on` no longer exists, so naming it here would report a missing input
+    # that cannot be supplied -- an UNKNOWN pointing at nothing, which is worse than silence.
+    assert "depends_on" not in err
 
 
 def test_the_fallback_reason_is_recorded_on_disk_too(tmp_path):
@@ -236,13 +328,12 @@ def test_the_fallback_reason_is_recorded_on_disk_too(tmp_path):
     B.promote(ws, ws / ".qa_channel", _v([("A", True)]), "L2", "L3", None, sys.stderr)
     st = json.loads((ws / "qa" / "tier_state.json").read_text())
     assert "no execution identity" in st["A"]["L2"]["fallback_reason"]
-    assert "declares no components" in st["A"]["L3"]["fallback_reason"]
+    assert "no component decomposition" in st["A"]["L3"]["fallback_reason"]
 
 
-def test_a_narrow_comparison_records_no_fallback_reason(tmp_path, monkeypatch):
+def test_a_narrow_comparison_records_no_fallback_reason(tmp_path):
     """Guard on the guard: the reason must not be written unconditionally, or it says nothing."""
     B = _mod()
-    monkeypatch.setattr(B, "_graded_roots", lambda: (_corpus(tmp_path),))
     ws = _ws(tmp_path)
     B.promote(ws, ws / ".qa_channel", _vx([("matmul_tile", True, "a")]), "L2", "L3", None, sys.stderr)
     st = json.loads((ws / "qa" / "tier_state.json").read_text())
@@ -339,6 +430,35 @@ def test_a_result_whose_artifact_holds_no_record_is_refused(tmp_path):
     B.promote(ws, ch, _vx([("A", True, "a")]), "L2", "L3", None, sys.stderr)
     assert B.record_cert(ws, _vx([("A", True, "c")]), "L3", sys.stderr) == []
     assert B._tier_state(ws)["A"]["L3"]["status"] == "pending"
+
+
+def test_a_late_result_does_not_move_the_readable_record_onto_its_own_bytes(tmp_path):
+    """The ledger is not the only thing a reader sees. ``tier_state[capsule][tier]`` is the READABLE
+    per-tier record -- what a report, a round brief, or `_slots_ro`'s fallback reads -- and a cert job
+    launched before an edit routinely finishes after it. Resolving that late job must leave the record
+    for the CURRENT bytes outstanding: moving the readable record onto the old job's identity publishes
+    a cert-tier `pass` for a program the current bytes never emitted, AND discards the pending record
+    the in-flight job still has to resolve, so that job's own result then has nothing to land on.
+
+    Mutation-checked 2026-09-05: dropping the ``record_identity(mirror) == key`` guard in `record_cert`
+    left all 54 tests in these two files green and only this one red.
+    """
+    B = _mod()
+    ws = _plain_ws(tmp_path)
+    ch = ws / ".qa_channel"
+    B.promote(ws, ch, _vx([("A", True, "a")]), "L2", "L3", None, sys.stderr)   # job 1 runs bytes "a"
+    B.promote(ws, ch, _vx([("A", True, "b")]), "L2", "L3", None, sys.stderr)   # edit -> job 2 runs "b"
+    mirror = B._tier_state(ws)["A"]["L3"]
+    assert mirror["status"] == "pending" and mirror["execution_digest"] == "b" * 64
+
+    # job 1 finishes LAST. Its certificate belongs to "a", and to nothing else.
+    assert B.record_cert(ws, _vx([("A", True, "a")]), "L3", sys.stderr) == ["A=pass"]
+    st = B._tier_state(ws)
+    assert st["A"]["<certs>"]["L3"]["a" * 64]["status"] == "pass", "the cert it paid for was dropped"
+    assert st["A"]["L3"]["execution_digest"] == "b" * 64, (
+        "the readable record was re-attributed to the bytes of an older job")
+    assert st["A"]["L3"]["status"] == "pending", (
+        "the record the in-flight job still has to resolve was overwritten with a pass it did not earn")
 
 
 @pytest.mark.parametrize("ran", ["d",     # a well-formed identity for a DIFFERENT program

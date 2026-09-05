@@ -31,16 +31,41 @@ submission-mutating operations touched only the agent's notes, its report, and a
 declared command can open. Nothing survives an edit it should have survived, and the cert tier is minutes
 per capsule.
 
+ON TOP of that source-level decomposition sits the identity that is actually PER CAPSULE: the EXECUTION
+digest (`execution_digest`) -- the exact executable bytes plus the target and hardware revisions the cert
+tier ran them on. The decomposition and the execution digest answer two different questions and the
+scheme needs both, narrowest first:
+
+  * `execution_digest` -- "is this capsule's PROGRAM the one that was certified?" It is per capsule, so a
+    compiler edit that changes capsule 1's emitted code while capsule 2 still emits byte-identical code
+    keeps capsule 2's certificate. It deliberately excludes Merlin's own source commit: an edit that
+    emits identical code has not changed the program RTL certified.
+  * the component decomposition -- "could any declared command even READ the bytes that moved?" Same
+    answer for every capsule (see WHY NO CAPSULE DECLARES ITS OWN DEPENDENCY SET below), so it can only
+    spare the inert bucket -- docs, notes, a scratch kernel.S -- measured at 17% of a live round's
+    submission-mutating operations.
+  * the whole-submission digest -- the fail-closed floor, which distinguishes nothing.
+
+The source decomposition alone cannot make an optimization phase affordable, and this file's own history
+is the evidence: the phase edits the compiler continuously, every such edit lands in some component, and
+every component is charged to every capsule. Only the execution digest makes "capsule 1 moved, capsule 2
+did not" a truthful statement. Where a narrower identity is unavailable the fallback is taken but it is
+NEVER SILENT -- `_no_narrower_cause` names the missing input, on disk in `fallback_reason` and in the log,
+because a correct conservative answer and a broken decomposition otherwise read identically.
+
 The reconciliation rule the whole scheme rests on is unchanged and must stay that way: a certificate
-belongs to the BYTES that earned it. `record_cert` resolves a pending entry against the digest recorded
+belongs to the BYTES that earned it. `record_cert` resolves a pending entry against the identity recorded
 when the job was enqueued and never re-hashes, so a result that cannot be attributed is not recorded
-rather than credited to bytes edited since. The derivation only ever narrows WHICH bytes a capsule rides
-on; it never lets a verdict be re-read against different ones.
+rather than credited to bytes edited since. Narrowing only ever changes WHICH bytes a capsule rides on;
+it never lets a verdict be re-read against different ones.
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
+
+from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL as _ELABORATED_RTL
 
 _NEUTRAL_SIM = "contract"   # "grade on whatever tier this target's contract resolves to"
 
@@ -76,7 +101,24 @@ def cert_sim(cert_tier: str) -> str | None:
                                                         load_target_experiment)
         te = load_target_experiment(_C.EXP / "target_experiment.yaml")
         cfg = runner_config_from_manifest(load_capability_manifest(te.target))
+        required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
+        if required and cert_tier in set(cfg.rtl_tiers or ()):
+            # A tier is a FIDELITY, not a historical binary binding. Under an experiment-wide engine pin
+            # the required engine serves every elaborated-RTL tier it implements; consulting `tier_sim`
+            # first would recover the manifest's old Verilator label, find it excluded by the broker, and
+            # silently disable promotion for the whole of a GSIM-only run.
+            return required if required in allowed else None
         sim = (cfg.tier_sim or {}).get(cert_tier)
+        # THE CONTRACT NAMES A FIDELITY, NOT A BINARY. `tier_sim` used to read `{L3: verilator}` and the
+        # broker's allowlist happened to contain that word, so this returned an engine by accident. Once
+        # the contract said what it means -- `{L3: elaborated_rtl}` -- the sentinel matched no `--sim`
+        # token, this returned None, and promotion silently switched off for every unpinned run: the
+        # caller logs "no --sim serves L3" once and then never enqueues, which is indistinguishable from
+        # a round with nothing to promote. Resolve the sentinel through the SAME availability policy the
+        # contract comment names, so the fidelity is declared once and the engine chosen once.
+        if sim == _ELABORATED_RTL:
+            from merlin.targetgen.capsule_runner import chipyard_l3_selection
+            sim = str((chipyard_l3_selection(te.target) or {}).get("engine") or "").strip() or None
     except Exception:  # noqa: BLE001 -- unresolvable map: no promotion, and the caller says so
         return None
     return sim if sim in allowed else None
@@ -736,13 +778,178 @@ def _tier_state(ws) -> dict:
 
 
 def _save_tier_state(ws, st) -> None:
+    """Replace the state file ATOMICALLY.
+
+    Two brokers write this file (the synchronous self-check broker and the async simjob broker). A plain
+    ``write_text`` truncates first, so the other broker can read a half-written one; `_tier_state` answers
+    an unparseable read with ``{}``, and the next save then PERSISTS that empty dict -- every capsule's
+    recorded verdict gone, and re-bought at minutes each. A temp file in the same directory plus
+    ``os.replace`` makes the swap atomic, so a concurrent reader sees either the old state or the new one
+    and never an empty one.
+    """
     import json as _j
     f = Path(ws, "qa", "tier_state.json")
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(_j.dumps(st, indent=2))
+    tmp = f.with_name(f".{f.name}.{os.getpid()}.tmp")
+    tmp.write_text(_j.dumps(st, indent=2))
+    os.replace(tmp, f)
 
 
-def record_cert(ws, verdict, cert_tier, log=None) -> list[str]:
+# ------------------------------------------------------------------------------------------------
+# The certificate LEDGER: one recorded verdict per (capsule, tier, the bytes it belongs to).
+#
+# The single-slot record this replaces was the reason a paid-for certificate was thrown away. A cert job
+# takes minutes; the agent keeps editing while it runs; the next loop verdict re-enqueued the capsule and
+# OVERWROTE the pending record. When the in-flight job then finished, `record_cert` found a record for
+# different bytes, could not attribute the result (correctly -- see its docstring), and dropped it. So the
+# RTL time bought nothing and the capsule read `certified: None` forever. Measured on
+# merlincirct_arm4_func_20260901_codex1 round 1: 17 cert jobs, all passing 1/1, zero certificates recorded.
+#
+# Keyed per identity, a verdict is RETAINED instead of discarded: a completed job resolves the record that
+# was enqueued FOR IT, and an edit that changes a capsule's program leaves the old record in place rather
+# than destroying it -- so if those exact bytes come back, so does their certificate. Nothing is ever
+# consulted unless its identity matches the current bytes EXACTLY, which is why retaining cannot turn a
+# stale certificate into a valid one.
+# ------------------------------------------------------------------------------------------------
+_LEDGER = "<certs>"   # reserved key inside a capsule's tier map; delimiters no tier label can produce
+
+# How many records one (capsule, tier) retains. The state file is re-read and re-written on EVERY verdict,
+# and a continuous round produces dozens per hour, so an unbounded ledger would grow the hot file without
+# limit. The bound only ever costs a re-run (the conservative direction): an evicted record means the
+# scheduler no longer knows those bytes passed, never that it believes they did. An OUTSTANDING record is
+# never evicted -- that is an in-flight job whose result would otherwise become unattributable.
+_LEDGER_KEEP = 16
+
+
+def _valid_execution(value) -> bool:
+    """Whether *value* is the artifact identity the result readers emit.
+
+    Imported, never restated: two copies of this predicate is how the recorder and the scheduler come to
+    disagree about what counts as an identity, and the disagreement always resolves as a silent fallback.
+    """
+    from merlin.targetgen.oracle_schedule import valid_execution_digest
+    return valid_execution_digest(value)
+
+
+def record_identity(entry) -> str:
+    """Which bytes one recorded verdict belongs to, as a ledger key.
+
+    The exact executable identity when the run that earned it produced one, else the whole-submission
+    digest. The two key spaces cannot collide: an execution identity is 64 hex characters, and the
+    fallback carries a prefix no digest can spell.
+    """
+    ed = (entry or {}).get("execution_digest")
+    if _valid_execution(ed):
+        return str(ed)
+    return "submission:" + str((entry or {}).get("digest") or "")
+
+
+def current_identity(execution_digest, digest) -> str:
+    """The ledger key for the bytes on disk RIGHT NOW, in the same space as :func:`record_identity`."""
+    if _valid_execution(execution_digest):
+        return str(execution_digest)
+    return "submission:" + str(digest)
+
+
+def _slots_ro(st, name, tier) -> dict:
+    """``{identity: entry}`` for one (capsule, tier). READ-ONLY.
+
+    It must not create the capsule: a result for a capsule nobody promoted has to leave no trace at all
+    (that is what makes an unattributable result recordable as "nothing happened" rather than as a guess).
+
+    A state file written before the ledger existed carries only the single mirror entry. That is seeded
+    into the returned map rather than reported as absent -- absent would read as "nothing was ever
+    recorded here" and re-buy the cert tier for bytes that already hold a verdict.
+    """
+    led = (st.get(name) or {}).get(_LEDGER)
+    slots = led.get(tier) if isinstance(led, dict) else None
+    if isinstance(slots, dict) and slots:
+        return slots
+    mirror = (st.get(name) or {}).get(tier)
+    return {record_identity(mirror): mirror} if isinstance(mirror, dict) else {}
+
+
+def _slots(st, name, tier) -> dict:
+    """:func:`_slots_ro`, materialized in ``st`` so it can be written to."""
+    per = st.setdefault(name, {})
+    led = per.get(_LEDGER)
+    if not isinstance(led, dict):
+        led = per[_LEDGER] = {}
+    slots = led.get(tier)
+    if not isinstance(slots, dict):
+        slots = led[tier] = dict(_slots_ro(st, name, tier))
+    return slots
+
+
+def _record(st, name, tier, entry) -> None:
+    """Store one verdict for (capsule, tier): in the ledger under the bytes it belongs to, AND as the
+    ``st[capsule][tier]`` mirror every existing reader of this file already uses. The mirror is the most
+    recently written record; the ledger is every record, bounded by :data:`_LEDGER_KEEP`."""
+    key = record_identity(entry)
+    slots = _slots(st, name, tier)
+    slots.pop(key, None)                 # re-insert so the most recently touched record is the newest
+    slots[key] = entry
+    st.setdefault(name, {})[tier] = entry
+    # Evict oldest-first (dict order is insertion order, and the state file round-trips it), skipping the
+    # record just written and every outstanding one.
+    for old in list(slots):
+        if len(slots) <= _LEDGER_KEEP:
+            break
+        if old == key or (slots[old] or {}).get("status") == "pending":
+            continue
+        del slots[old]
+
+
+def _recorded_tiers(per) -> list:
+    """Every tier one capsule holds a verdict for, from the mirror and the ledger both. The reserved
+    ledger key is never mistaken for a tier -- a phantom tier would enter the scheduler as a verdict."""
+    out = {t for t, v in (per or {}).items() if t != _LEDGER and isinstance(v, dict)}
+    led = (per or {}).get(_LEDGER)
+    if isinstance(led, dict):
+        out |= {t for t, v in led.items() if isinstance(v, dict)}
+    return sorted(out)
+
+
+def _verdict_for(st, name, tier, identity):
+    """The record to judge (capsule, tier) by: the one earned by EXACTLY the current bytes when the
+    ledger holds it, otherwise the mirror.
+
+    Preferring the exact-identity record is what stops a certificate being discarded by an edit it does
+    not depend on. It cannot loosen anything: the record that comes back is still put through
+    ``CapsuleState.invalidated_by``, so a record for other bytes is invalidated rather than trusted, and
+    a capsule with no matching record falls back to exactly today's comparison.
+    """
+    slots = _slots_ro(st, name, tier)
+    hit = slots.get(identity)
+    if isinstance(hit, dict):
+        return hit
+    mirror = (st.get(name) or {}).get(tier)
+    return mirror if isinstance(mirror, dict) else None
+
+
+def _no_narrower_cause(execution_digest, comps) -> str | None:
+    """Why this capsule's staleness cannot be decided by anything narrower than bytes every capsule
+    shares, or ``None`` when the narrowest identity was available.
+
+    The conservative fallback stays the fallback, but it stops being SILENT. Every line of the log that
+    diagnosed this defect read ``invalidated by <whole-submission> (changed)`` and named none of the
+    inputs that were missing, so a correct conservative answer and a broken decomposition looked
+    identical. Each clause below names one input that was absent -- so the reason is recorded, on disk
+    and in the log, rather than inferred.
+
+    NOTE the two clauses are different KINDS of loss and both are worth naming. Without an execution
+    identity, every capsule rides on the same submission bytes and one capsule's edit requeues the whole
+    corpus. Without a decomposition on top of that, even bytes no declared command can read count.
+    """
+    if execution_digest is not None:
+        return None                      # the narrowest identity is available; no fallback happened
+    why = ["no execution identity for this capsule in this verdict"]
+    if not comps:
+        why.append("the submission has no component decomposition, declared or derived")
+    return "; ".join(why)
+
+
+def record_cert(ws, verdict, cert_tier, log=None, identity=None) -> list[str]:
     """Write a COMPLETED promotion's result into the tier state, against the bytes that earned it.
 
     `promote()` marks a capsule `pending` when it enqueues the cert job, and the broker's reap skips
@@ -751,13 +958,26 @@ def record_cert(ws, verdict, cert_tier, log=None) -> list[str]:
     earned on real RTL and discarded, and the next loop verdict re-certified the same bytes.
 
     Measured on merlincirct_arm4_func_20260901_v4 and _p2: promotions fired and COMPLETED (21 and 3
-    `simdone_promo*` respectively, one verified `barrier_tier=L3 barrier_status=pass`), while both
-    tier states showed only `L3: pending` and never once `L3: pass`.
+    `simdone_promo*` respectively, one verified `barrier_tier=L3 barrier_status=pass`), while both tier
+    states showed only `L3: pending` and never once `L3: pass`.
 
     The digest is NOT recomputed here. A cert belongs to the exact bytes that were pending when the job
     was enqueued; re-hashing now would attribute it to whatever the agent has edited since. So this only
     resolves an existing pending entry, and leaves anything else alone -- a result with no pending entry
     is a result we cannot attribute, and that is recorded by doing nothing rather than by guessing.
+
+    That property is enforced against the per-identity LEDGER rather than against a single slot. The
+    single slot was overwritten by the next re-enqueue, so a completed job routinely arrived to find a
+    record for OTHER bytes: with an artifact identity that was refused (the cert was dropped), and
+    WITHOUT one it was silently accepted and the certificate was re-attributed to bytes that never earned
+    it. Looking the completed job's own identity up in the ledger resolves exactly the record it belongs
+    to, and refuses when no such record exists.
+
+    ``identity`` is the ledger key the ENQUEUER wrote onto the request, forwarded by the reap. It is what
+    lets a result whose reader produced no artifact identity still be attributed exactly, instead of
+    falling back to "the one outstanding record" (which cannot be used at all once two are outstanding).
+    A result that DOES carry an artifact identity always decides for itself: the job may have launched
+    after an edit, and then only the identity it actually ran may be credited.
     """
     rows = (verdict or {}).get("per_capsule") or []
     if not rows:
@@ -768,12 +988,68 @@ def record_cert(ws, verdict, cert_tier, log=None) -> list[str]:
         name = str((row or {}).get("capsule") or "")
         if not name:
             continue
-        entry = (st.get(name) or {}).get(cert_tier)
-        if not isinstance(entry, dict) or entry.get("status") != "pending":
-            continue                      # nothing pending for these bytes: not ours to resolve
+        slots = _slots_ro(st, name, cert_tier)
+        completed = row.get("execution_digest")
+        if _valid_execution(completed):
+            # The identity the job ACTUALLY ran. It selects its own record; a job whose bytes hold no
+            # record is unattributable, however many other records this capsule has.
+            key = str(completed)
+            entry = slots.get(key)
+            if not isinstance(entry, dict) or entry.get("status") != "pending":
+                if log is not None:
+                    print(f"[promote] {name} {cert_tier} result not recorded: no outstanding record "
+                          f"for the execution identity this job ran", file=log, flush=True)
+                continue
+        elif identity is not None:
+            # The enqueuer stated which record this job was launched for. That is a fact about the
+            # request, not a guess about the result, so it attributes exactly -- including when several
+            # records are outstanding at once, which is the case the heuristic below cannot serve.
+            key = str(identity)
+            entry = slots.get(key)
+            if not isinstance(entry, dict) or entry.get("status") != "pending":
+                if log is not None:
+                    print(f"[promote] {name} {cert_tier} result not recorded: the record this job was "
+                          f"enqueued for is no longer outstanding", file=log, flush=True)
+                continue
+            if _valid_execution(entry.get("execution_digest")):
+                # The record names an exact artifact and the result does not carry one -- so whether the
+                # job ran THAT artifact cannot be established. The request only says what was asked for;
+                # the agent may have edited between enqueue and launch. Fail closed: an unreadable
+                # artifact identity is never evidence that the right artifact ran.
+                if log is not None:
+                    print(f"[promote] {name} {cert_tier} result not recorded: the record names an "
+                          f"execution identity and the result carries none", file=log, flush=True)
+                continue
+        else:
+            # No artifact identity on the result and none on the request: the only attributable case is a
+            # single outstanding record that ALSO carries no artifact identity. Two outstanding records
+            # and a result that cannot say which it belongs to is precisely the misattribution this
+            # guards -- refuse.
+            outstanding = {i: e for i, e in slots.items()
+                           if isinstance(e, dict) and e.get("status") == "pending"}
+            if len(outstanding) != 1:
+                if log is not None and outstanding:
+                    print(f"[promote] {name} {cert_tier} result not recorded: {len(outstanding)} "
+                          f"outstanding records and the result carries no execution identity, so which "
+                          f"bytes earned it cannot be determined", file=log, flush=True)
+                continue
+            key, entry = next(iter(outstanding.items()))
+            if _valid_execution(entry.get("execution_digest")):
+                if log is not None:
+                    print(f"[promote] {name} {cert_tier} result not recorded: the outstanding record "
+                          f"names an execution identity this result does not carry", file=log, flush=True)
+                continue
         passed = bool(row.get("pass"))
+        entry = dict(entry)
         entry["status"] = "pass" if passed else "fail"
-        st[name][cert_tier] = entry
+        slots_w = _slots(st, name, cert_tier)
+        slots_w.pop(key, None)           # re-insert: a just-resolved record is the freshest, not the oldest
+        slots_w[key] = entry
+        # The mirror moves only when it is the SAME record. Moving it to a different identity is exactly
+        # the re-attribution this function exists to prevent.
+        mirror = (st.get(name) or {}).get(cert_tier)
+        if isinstance(mirror, dict) and record_identity(mirror) == key:
+            st[name][cert_tier] = entry
         resolved.append(f"{name}={'pass' if passed else 'fail'}")
     if resolved:
         _save_tier_state(ws, st)
@@ -790,7 +1066,8 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     routing around it.
     """
     import json as _j
-    from merlin.targetgen.oracle_schedule import CapsuleState, Verdict, schedule
+    from merlin.targetgen.oracle_schedule import (WHOLE_SUBMISSION, CapsuleState, Verdict, schedule,
+                                                  valid_execution_digest)
 
     digest, comps, rejected = submission_digests(ws)
     d = decomposition(ws)
@@ -809,42 +1086,78 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     # command can read. With no decomposition the fallback is `None`, which is the whole digest, i.e. the
     # behaviour before the decomposition existed. No capsule may narrow this -- see WHY NO CAPSULE
     # DECLARES ITS OWN DEPENDENCY SET above for why a per-capsule claim cannot be truthful.
+    #
+    # The per-capsule saving comes from the EXECUTION identity instead, one layer down: the source-level
+    # decomposition can only spare bytes no command reads (the same set for every capsule), while the
+    # executable identity distinguishes capsule from capsule, because each capsule emits its own program.
+    # That is the layer at which "capsule 1 moved, capsule 2 did not" is a truthful statement.
     deps = tuple(sorted(comps)) or None
 
-    # Record what the loop tier just learned, keyed by the bytes that earned it -- BOTH the whole digest
-    # and the per-component decomposition, because a verdict that carries only the whole digest cannot be
+    # Record what the loop tier just learned, keyed by the bytes that earned it -- the exact per-capsule
+    # executable identity when the reader produced one, and BOTH the whole digest and the per-component
+    # decomposition regardless, because a verdict that carries only the whole digest cannot be
     # re-examined per component later (it comes back UNDETERMINABLE, which re-runs).
+    execution_by_name = {}
     for row in (verdict.get("per_capsule") or []):
         name = row.get("capsule")
         if not name:
             continue
-        st.setdefault(name, {})[loop_tier] = {
-            "status": "pass" if row.get("pass") else "fail", "digest": digest, "components": dict(comps)}
+        name = str(name)
+        execution_digest = row.get("execution_digest")
+        if not valid_execution_digest(execution_digest):
+            execution_digest = None
+        execution_by_name[name] = execution_digest
+        entry = {"status": "pass" if row.get("pass") else "fail",
+                 "digest": digest, "components": dict(comps)}
+        if execution_digest is not None:
+            entry["execution_digest"] = execution_digest
+        # RECORD WHY, on disk, when this verdict can only be compared against bytes every capsule shares.
+        # A conservative fallback that says nothing is why the defect read as correct behaviour for a
+        # whole round.
+        _why_broad = _no_narrower_cause(execution_digest, comps)
+        if _why_broad:
+            entry["fallback_reason"] = _why_broad
+        _record(st, name, loop_tier, entry)
 
     # WHAT to run next is `oracle_schedule`'s decision, not this file's. The rules (a cert tier is gated
     # on the loop tier passing; the cert tier runs a representative cover; a verdict already earned by
     # these bytes is never re-run) were implemented here once and in the scheduler once, which is one
     # implementation too many -- two expressions of the same policy drift, and the one that drifts is
     # whichever has no tests. The scheduler has them; this is now only plumbing.
-    states = [CapsuleState(name=n, digest=digest,
-                           verdicts={t: Verdict(v.get("status"), v.get("digest"),
-                                                dict(v.get("components") or {}))
-                                     for t, v in (e or {}).items() if isinstance(v, dict)},
-                           components=dict(comps), depends_on=deps)
-              for n, e in st.items()]
+    # Each capsule is judged against the record earned by EXACTLY its current bytes when the ledger holds
+    # one, so an edit elsewhere does not throw its certificate away; anything else keeps today's
+    # comparison and is still put through `invalidated_by`.
+    identity_by_name = {n: current_identity(execution_by_name.get(n), digest) for n in st}
+    states = []
+    for n, e in st.items():
+        _id = identity_by_name[n]
+        verdicts = {}
+        for t in _recorded_tiers(e):
+            v = _verdict_for(st, n, t, _id)
+            if isinstance(v, dict):
+                verdicts[t] = Verdict(v.get("status"), v.get("digest"),
+                                      dict(v.get("components") or {}), v.get("execution_digest"))
+        states.append(CapsuleState(name=n, digest=digest, verdicts=verdicts,
+                                   components=dict(comps), depends_on=deps,
+                                   execution_digest=execution_by_name.get(n)))
     want = [w for w in schedule(states, tier_order=[loop_tier, cert_tier], cert_tiers=(cert_tier,),
                                 cert_cover=cover)
             if w.tier == cert_tier]
 
     # WHICH component requeued each capsule, so a reader of the log can see why a certificate was dropped
     # rather than only that the count went up. A run that requeues everything and one that requeues one
-    # capsule are indistinguishable from the promotion count alone.
-    for s in states:
+    # capsule are indistinguishable from the promotion count alone. A whole-submission cause additionally
+    # NAMES the inputs that were missing -- the diagnosis of this defect stalled on 21 identical
+    # `<whole-submission> (changed)` lines that named none of them.
+    for s_ in states:
+        _broad = _no_narrower_cause(execution_by_name.get(s_.name), comps)
         for tier in (loop_tier, cert_tier):
             # Only tiers that HAD a verdict: a tier nobody ever ran was not invalidated by anything, and
             # logging that would bury the real signal under one line per capsule per round.
-            for why in (s.invalidated_by(tier) if tier in s.verdicts else ()):
-                print(f"[promote] {s.name} {tier} invalidated by {why}", file=log, flush=True)
+            for why in (s_.invalidated_by(tier) if tier in s_.verdicts else ()):
+                _extra = f"; no narrower cause: {_broad}" if (why.component == WHOLE_SUBMISSION
+                                                              and _broad) else ""
+                print(f"[promote] {s_.name} {tier} invalidated by {why}{_extra}", file=log, flush=True)
 
     promoted = []
     _sim = cert_sim(cert_tier)
@@ -856,15 +1169,40 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     for w in want:
         if _sim is None:
             continue
-        jid = f"promo{len(promoted)}_{digest}_{w.capsule}"[:80]
-        if not (ch / f"simreq_{jid}.json").exists():
-            (ch / f"simreq_{jid}.json").write_text(_j.dumps(
-                {"sim": _sim, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
-                 "promoted": True, "submitted_at": time.time()}))
-            # Mark pending only once the request is actually on the queue.
-            st.setdefault(w.capsule, {})[cert_tier] = {
-                "status": "pending", "digest": digest, "components": dict(comps)}
-            promoted.append(w.capsule)
+        execution_digest = execution_by_name.get(w.capsule)
+        token = execution_digest[:16] if execution_digest is not None else digest
+        key = identity_by_name.get(w.capsule) or current_identity(execution_digest, digest)
+        if key in _slots_ro(st, w.capsule, cert_tier):
+            # These exact bytes already hold a cert-tier record -- outstanding, passed, or failed. Buying
+            # a second copy of a verdict we already own is the 17-jobs-for-two-capsules waste itself.
+            continue
+        jid = f"promo{len(promoted)}_{token}_{w.capsule}"[:80]
+        req = ch / f"simreq_{jid}.json"
+        if req.exists():
+            # The ledger says these bytes hold no record, yet a request for them is on the queue. That is
+            # a state the ledger cannot explain (a hand-cleared state file, a request written by a broker
+            # whose state write was lost). Say so instead of skipping silently: the silent version is how
+            # a capsule stranded with a request nobody would ever answer.
+            print(f"[promote] {w.capsule} {cert_tier}: {req.name} is already queued while the tier "
+                  f"state holds no record for these bytes; NOT re-enqueued and NOT marked outstanding",
+                  file=log, flush=True)
+            continue
+        req.write_text(_j.dumps(
+            # `identity` travels WITH the request so the reap can hand a completed result back to the
+            # exact record it was launched for. Without it, a result whose reader produced no artifact
+            # identity is unattributable as soon as a second record is outstanding -- and the certificate
+            # the RTL just paid for is dropped.
+            {"sim": _sim, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
+             "promoted": True, "identity": key, "submitted_at": time.time()}))
+        # Mark pending only once the request is actually on the queue.
+        pending = {"status": "pending", "digest": digest, "components": dict(comps)}
+        if execution_digest is not None:
+            pending["execution_digest"] = execution_digest
+        _why_broad = _no_narrower_cause(execution_digest, comps)
+        if _why_broad:
+            pending["fallback_reason"] = _why_broad
+        _record(st, w.capsule, cert_tier, pending)
+        promoted.append(w.capsule)
     _save_tier_state(ws, st)
     if promoted:
         print(f"[promote] {loop_tier} pass -> {cert_tier}: {promoted}", file=log, flush=True)

@@ -364,10 +364,54 @@ def test_the_enqueued_sim_is_one_the_broker_accepts(tmp_path):
 
 
 def test_cert_sim_names_the_ladder_sim_when_one_is_declared(tmp_path, monkeypatch):
+    """A tier whose contract names a concrete simulator resolves to that simulator.
+
+    REWRITTEN from an assertion that L3 is `verilator`. That was true only while `tier_sim` named a
+    BINARY; the contract now names a FIDELITY (`elaborated_rtl`) and the engine is chosen by
+    `chipyard_l3_selection`, so hardcoding the old label here would pin a binding the contract no longer
+    expresses. The L3 half of the old assertion is covered by the two tests below, against the derived
+    engine rather than a literal.
+    """
     B = _broker()
     _allowed(monkeypatch, ("spike", "verilator", "vcs"))
-    assert B.cert_sim("L3") == "verilator"
     assert B.cert_sim("L2") == "spike"
+
+
+def _declared_l3_engine():
+    """The engine this target's own contract resolves its cert tier to — DERIVED, never a literal."""
+    import _common as _C
+    from merlin.targetgen.capsule_runner import chipyard_l3_selection
+    from merlin.targetgen.target_experiment import load_target_experiment
+    te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+    return str((chipyard_l3_selection(te.target) or {}).get("engine") or "").strip() or None
+
+
+def test_cert_sim_resolves_the_fidelity_sentinel_to_a_real_engine(monkeypatch):
+    """`tier_sim: {L3: elaborated_rtl}` is a fidelity, not a `--sim` token.
+
+    Left unresolved it matches no token the broker accepts, `cert_sim` returns None, and promotion
+    switches off for every unpinned run — announced once as "no --sim serves L3" and thereafter
+    indistinguishable from a round with nothing to promote. That is the silent-failure shape this whole
+    module is written against, so it gets a falsifier.
+    """
+    B = _broker()
+    engine = _declared_l3_engine()
+    if engine is None:
+        pytest.skip("this target's contract names no elaborated-RTL engine")
+    _allowed(monkeypatch, ("spike", engine))
+    assert B.cert_sim("L3") == engine
+    assert B.cert_sim("L3") != B._ELABORATED_RTL, "the fidelity sentinel leaked out as a --sim token"
+
+
+def test_cert_sim_refuses_an_engine_the_broker_would_reject(monkeypatch):
+    """Fails closed: the resolved engine still has to be one this broker accepts. Returning it anyway
+    would mark a capsule pending for a request the broker refuses — the stranding this file exists for."""
+    B = _broker()
+    engine = _declared_l3_engine()
+    if engine is None:
+        pytest.skip("this target's contract names no elaborated-RTL engine")
+    _allowed(monkeypatch, tuple(x for x in ("spike", "verilator", "vcs") if x != engine))
+    assert B.cert_sim("L3") is None
 
 
 def test_cert_sim_keeps_the_sentinel_when_that_is_all_that_is_accepted(monkeypatch):
