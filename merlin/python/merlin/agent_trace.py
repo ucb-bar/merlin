@@ -42,9 +42,12 @@ ACTIVITIES = (THINKING, READING, WRITING, BASH, TOOL_WAIT)
 #: without this module ever learning what a simulator is called.
 WAIT_SECONDS = 20.0
 
-#: Headroom on the tool-time-vs-wall-time invariant, for clock jitter and the odd genuinely
-#: backgrounded call. Anything beyond this is a stamping artefact, not concurrency.
+#: Headroom on the occupancy invariant, for clock jitter.
 _BUSY_TOLERANCE = 1.05
+
+#: How many calls may share ONE end stamp before the stream is judged buffered. Two can coincide at
+#: this resolution; a pile cannot.
+_BURST_TIES = 3
 
 #: Tool names that inspect without mutating, and those that author. Tool NAMES are harness vocabulary
 #: (the same strings `conformance` matches on), not target facts.
@@ -111,11 +114,11 @@ class Timeline:
         return centres, acc
 
     def totals(self) -> dict[str, float]:
-        out = {a: 0.0 for a in ACTIVITIES}
-        for sp in self.spans:
-            if sp.activity in out:
-                out[sp.activity] += sp.duration_s
-        return out
+        """Occupied seconds per activity -- the UNION within each activity, so a backgrounded call
+        that overlaps others is counted once. Shares across activities may still exceed the wall
+        clock, because genuinely concurrent work occupies the same seconds twice; that is a property
+        of the run, not an error."""
+        return {a: _union_seconds([sp for sp in self.spans if sp.activity == a]) for a in ACTIVITIES}
 
 
 def _stamp(obj: dict) -> float | None:
@@ -179,6 +182,23 @@ def _events(path: Path) -> Iterable[dict]:
             continue
         if isinstance(obj, dict):
             yield obj
+
+
+def _union_seconds(spans: list[Span]) -> float:
+    """Wall seconds covered by at least one span -- overlap counted once.
+
+    The distinction from a plain sum is the whole point: an agent that backgrounds a long build and
+    keeps working genuinely occupies both intervals at once, and summing them manufactures more time
+    than the clock has."""
+    if not spans:
+        return 0.0
+    merged: list[list[float]] = []
+    for sp in sorted(spans, key=lambda s: s.start_s):
+        if merged and sp.start_s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], sp.end_s)
+        else:
+            merged.append([sp.start_s, sp.end_s])
+    return sum(hi - lo for lo, hi in merged)
 
 
 def timeline(transcript: Path) -> Timeline:
@@ -246,24 +266,25 @@ def timeline(transcript: Path) -> Timeline:
     # look plausible on a chart, which is exactly why this refuses instead of drawing them.
     tool_spans = [sp for sp in spans if sp.activity != THINKING]
     wall_est = max((sp.end_s for sp in spans), default=0.0)
-    # EVERY span counts: thinking that overlaps a running tool is as impossible as two tools at once,
-    # and an inflated thinking share is the easiest error to miss because it looks like a busy agent.
-    busy = sum(sp.duration_s for sp in spans)
     ends: dict[float, int] = {}
     for sp in tool_spans:
         ends[round(sp.end_s, 3)] = ends.get(round(sp.end_s, 3), 0) + 1
     worst = max(ends.values(), default=0)
-    # THE INVARIANT: a single-threaded agent cannot spend more tool time than wall time. When it
-    # appears to, the stamps are the reader's rather than the event's, and every duration built on
-    # them is fiction. Both symptoms are reported because they point at the same cause and the tie
-    # count says how badly.
-    if wall_est > 0 and busy > wall_est * _BUSY_TOLERANCE:
+    # NOTE: a guard comparing occupied seconds against the clock was tried here and REMOVED, because
+    # it could not fail: the clock is DEFINED as the last span's end, so the union of spans is bounded
+    # by it by construction. It would have sat in the file looking like a safety net while testing
+    # nothing -- the exact shape this module exists to avoid. The union helper stays because
+    # `totals()` needs honest occupancy; the real guard is the flush test below.
+    # A PILE OF IDENTICAL END STAMPS IS A FLUSH, NOT CONCURRENCY. `arrived_at` records when the
+    # harness READ a line; when the agent buffers and releases several completions together they all
+    # take the flush instant. Measured on a real round: eight calls sharing one end stamp, which put
+    # 169 min of tool time inside 43.6 min of wall. Distinct from the union test above, and the two
+    # must stay separate -- conflating them rejects genuine background concurrency.
+    if worst >= _BURST_TIES:
         return Timeline(basis="bursty", tokens=tokens, wall_s=wall_est, reason=(
-            f"tool time ({busy / 60:.1f} min) exceeds wall time ({wall_est / 60:.1f} min), and "
-            f"{worst} calls share one end stamp: the transcript's `arrived_at` marks when the harness "
-            f"READ each event, not when the tool finished, so per-tool durations cannot be derived "
-            f"from this stream. Fix the reader (or the agent's output buffering) before charting a "
-            f"time axis from it."))
+            f"{worst} tool calls share one end stamp, so the transcript's `arrived_at` marks when the "
+            f"harness READ each event rather than when the tool finished; per-tool durations cannot "
+            f"be derived from this stream."))
 
     if not stamped:
         return Timeline(basis="unstamped", reason=(

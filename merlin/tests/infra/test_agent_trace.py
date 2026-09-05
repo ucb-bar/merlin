@@ -42,21 +42,37 @@ def test_a_clean_transcript_yields_a_measured_axis(tmp_path):
     assert tl.totals()[THINKING] > 0, "the gap between a result and the next call is thinking"
 
 
-def test_tool_time_exceeding_wall_time_is_refused(tmp_path):
-    """The invariant: a single-threaded agent cannot spend more tool time than wall time.
+def test_background_concurrency_is_accepted_not_mistaken_for_a_flush(tmp_path):
+    """An agent may background a long build and keep working under it.
 
-    This is the real defect, reproduced: a later call is issued BEFORE an earlier one's result
-    arrives, so the derived spans overlap and the totals exceed the clock."""
+    Measured on a real round: a 986 s call with SIX further calls opening and closing strictly inside
+    it, every end stamp distinct. An earlier version of this module summed span durations, called that
+    impossible, and refused a perfectly good transcript. Occupancy is the UNION of intervals."""
     p = _write(tmp_path / "t.jsonl", [
-        _use("a", _T % (0, 0)),
-        _use("b", _T % (5, 0)),
-        _res("a", _T % (9, 0)),
-        _res("b", _T % (9, 30)),
+        _use("long", _T % (0, 0)),
+        _use("q1", _T % (1, 0)), _res("q1", _T % (1, 10)),
+        _use("q2", _T % (2, 0)), _res("q2", _T % (2, 10)),
+        _res("long", _T % (9, 0)),
     ])
     tl = timeline(p)
-    assert not tl.measured and tl.basis == "bursty"
-    assert "exceeds wall time" in tl.reason
-    assert tl.spans == [] or True  # the point is the refusal, not the spans
+    assert tl.measured, f"background concurrency was refused: {tl.reason}"
+
+
+def test_a_pile_of_identical_end_stamps_is_still_refused(tmp_path):
+    """The other half, kept separate: identical end stamps are a buffered flush, not concurrency."""
+    rows = [_use(f"t{i}", _T % (i, 0)) for i in range(4)]
+    rows += [_res(f"t{i}", _T % (9, 0)) for i in range(4)]      # all completing at one instant
+    tl = timeline(_write(tmp_path / "t.jsonl", rows))
+    assert not tl.measured and "share one end stamp" in tl.reason
+
+
+def test_no_guard_here_is_unfalsifiable(tmp_path):
+    """An 'occupancy exceeds wall' guard was tried and removed: wall IS the last span's end, so the
+    union is bounded by it by construction and the check could never fire. Keeping it would have been
+    a safety net that tested nothing. This pins that it stays gone."""
+    from merlin.common.paths import merlin_dir
+    src = (merlin_dir() / "python/merlin/agent_trace.py").read_text()
+    assert "exceeds wall time" not in src, "an unfalsifiable guard came back"
 
 
 def test_an_unstamped_transcript_is_refused_not_guessed(tmp_path):

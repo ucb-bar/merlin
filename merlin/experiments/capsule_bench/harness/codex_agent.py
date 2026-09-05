@@ -486,25 +486,58 @@ _CONTINUE_MIN_S = 120
 _CONTINUE_MAX_TURNS = 200
 
 
+def _splice_resume(text: str, thread_id: str) -> str | None:
+    """Insert ``resume <id>`` after the codex binary's ``exec`` inside a shell string, byte-exactly.
+
+    Returns None when this string does not contain a codex invocation, so the caller can keep
+    looking. Structural scanning only -- no regex, and nothing else in the string is touched."""
+    at = text.find("codex")
+    while at != -1:
+        rest = text[at:]
+        head, sep, tail = rest.partition(" exec ")
+        if sep and " " not in head:            # `codex exec ` / `/path/codex exec `
+            cut = at + len(head) + len(sep)
+            return f"{text[:cut]}resume {thread_id} {text[cut:]}"
+        at = text.find("codex", at + 1)
+    return None
+
+
 def _resume_cmd(cmd: list[str], thread_id: str, prompt_path: Path) -> list[str]:
     """Rewrite a ``codex exec`` argv into ``codex exec resume <thread_id>``, preserving every flag.
 
-    The prompt is passed as ``-`` (stdin) exactly as the first turn does, so the continuation text is
-    an artifact on disk rather than an argv fragment. Under bwrap the argv is wrapped in
-    ``bash -c <inner>``; the rewrite therefore edits the INNER command, or the resume would run
-    outside the sandbox."""
-    def _rewrite(argv: list[str]) -> list[str]:
-        out = list(argv)
-        try:
-            i = out.index("exec")
-        except ValueError:
-            return out
-        return out[:i + 1] + ["resume", str(thread_id)] + out[i + 1:]
+    Two traps, both hit for real before this was right:
 
-    if cmd and cmd[0] == "bash" and len(cmd) >= 3 and cmd[1] == "-c":
-        inner = shlex.split(cmd[2])
-        return [cmd[0], cmd[1], " ".join(shlex.quote(c) for c in _rewrite(inner))] + list(cmd[3:])
-    return _rewrite(cmd)
+    * The sandbox argv NESTS: ``bash -c "bwrap ... bash -c 'export PATH=...; exec codex exec ...'"``.
+      The codex tokens live inside a quoted string, sometimes two levels down, so a single unwrap
+      finds nothing and the command runs unmodified -- the continuation silently repeats turn one.
+    * That inner string contains the shell's own ``exec`` BUILTIN before the codex binary. Anchoring
+      on the first token spelled ``exec`` produced ``exec resume ...``, which the shell tried to run
+      as a program: ``bash: line 1: exec: resume: not found``.
+
+    So: recurse into nested command strings, and anchor on the ``exec`` that FOLLOWS the codex binary.
+    """
+    def _rewrite(argv: list[str]) -> tuple[list[str], bool]:
+        out = list(argv)
+        for i, tok in enumerate(out):
+            if Path(tok).name.startswith("codex"):
+                for j in range(i + 1, len(out)):
+                    if out[j] == "exec":
+                        return out[:j + 1] + ["resume", str(thread_id)] + out[j + 1:], True
+                return out, False
+        for i, tok in enumerate(out):
+            if "codex" in tok and (" " in tok or "\n" in tok):
+                # TEXTUAL insertion, never split-and-requote. Re-quoting a shell string destroys its
+                # own syntax: `export PATH=/x; exec codex ...` came back as `export 'PATH=/x;' exec
+                # codex ...`, swallowing the `;` and merging two commands into one. Splice the
+                # subcommand in and leave every other byte exactly as it was.
+                spliced = _splice_resume(tok, thread_id)
+                if spliced is not None:
+                    out[i] = spliced
+                    return out, True
+        return out, False
+
+    rewritten, ok = _rewrite(list(cmd))
+    return rewritten if ok else list(cmd)
 
 
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,

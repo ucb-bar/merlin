@@ -29,6 +29,26 @@ def test_resume_keeps_every_flag_and_targets_the_thread():
         assert flag in out, f"{flag} lost on resume"
 
 
+def test_resume_survives_the_real_nested_sandbox_argv():
+    """The shape that actually ships, and the two bugs it exposed.
+
+    `bash -c "bwrap ... bash -c 'export PATH=...; exec codex exec ...'"` nests the codex tokens inside
+    a quoted string AND puts the shell's own `exec` BUILTIN before the binary. Anchoring on the first
+    token spelled `exec` produced `exec resume ...`, which the live run reported as
+    `bash: line 1: exec: resume: not found`. Splitting and re-quoting the inner string then swallowed
+    the `;` separator, merging two commands into one."""
+    import shlex
+    inner = "export PATH=/x:/y; exec codex exec --json --model m -C /ws"
+    out = CA._resume_cmd(["bash", "-c", f"bwrap --args 10 bash -c {shlex.quote(inner)}"],
+                         "uuid-9", Path("/p"))
+    assert "export PATH=/x:/y; exec codex exec resume uuid-9 --json" in out[2], out[2]
+    assert out[2].count("resume") == 1
+
+
+def test_a_command_with_no_codex_is_untouched():
+    assert CA._resume_cmd(["bash", "-c", "echo hi"], "u", Path("/p")) == ["bash", "-c", "echo hi"]
+
+
 def test_resume_stays_inside_the_sandbox():
     """Under bwrap the argv is `bash -c <inner>`; rewriting the OUTER command would run the
     continuation outside the sandbox, with the answer surfaces unmasked."""
