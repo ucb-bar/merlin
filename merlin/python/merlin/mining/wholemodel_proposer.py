@@ -50,11 +50,19 @@ from ..llvmlower.weight_prepack import ensure_registered as _register_prepack_we
 # lever of its own being skipped: it is in the config the search currently calls best, so while it was
 # missing here NO lever could be proposed on top of the winner, and the beam silently had nothing to
 # build on. Exactly the failure the comment above describes, one import short of being prevented.
+from ..llvmlower.concat_dps import ensure_registered as _register_concat_dps
+from ..llvmlower.epilogue_fusion import ensure_registered as _register_fuse_epilogue_loops
 from ..llvmlower.prov_cse import ensure_registered as _register_cse_through_provenance
 
 _register_fold_weight_transpose()
 _register_prepack_weight_layout()
 _register_cse_through_provenance()
+# Registered here even though neither is in RANKED_LEVERS. Registration and RANKING are different
+# decisions: `_composes` catches the KeyError for an unregistered name and returns False, so an
+# unregistered feature is not "declined", it is INVISIBLE -- it can never be proposed, and a later
+# improvement to it stays invisible too. Ranking stays the owning lever's call.
+_register_concat_dps()
+_register_fuse_epilogue_loops()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
