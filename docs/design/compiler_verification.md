@@ -1021,9 +1021,12 @@ third_party/llvm-build/bin/mlir-translate --help | grep export-smtlib
 third_party/llvm-build/bin/mlir-opt        --help | grep irdl-file
 .venv/bin/python -c "from xdsl.dialects import smt; print(hasattr(smt, 'SolverOp'))"   # False
 
-# the two audit findings
+# the two audit findings. NOTE the second no longer reproduces as first written: at the time
+# `compiler_obligations` had exactly one consumer, and that consumer was a DOCSTRING mention.
+# This work added real ones (lit_check_compiler, plots), so the count is now higher by
+# construction. Kept, with the correction, rather than quietly re-tuned to still look right.
 sed -n '167,183p' merlin/python/merlin/xdsl_dialects/contract.py       # prove compares strings
-grep -rn compiler_obligations --include=*.py merlin/python build_tools  # one docstring consumer
+grep -rln compiler_obligations --include=*.py merlin/python build_tools  # was 1 file, now several
 
 # the layers themselves
 .venv/bin/python -m merlin.xdsl_dialects.opt --list-merlin-passes      # 10 registered, 2 explained
@@ -1032,9 +1035,31 @@ third_party/llvm-build/bin/llvm-lit -sv merlin/tests/data/lit          # the sta
 .venv/bin/python -m merlin.targetgen.lit_suite --all --write           # the obligation ledger
 third_party/llvm-build/bin/llvm-lit -s out/artifacts/verify/lit        # the derived suite
 
-# the tests, including the mutation and refutation controls
+# the command-buffer layer: what a BACKEND emits, not what it receives
+.venv/bin/python -m merlin.verify.cli --help
+.venv/bin/python -c "
+from merlin.verify.evaluate import run_cb_matrix, render
+print(render(run_cb_matrix(m=4, k=4, n=4, timeout_ms=120000)))"   # cb_narrow_output: golden misses
+
+# the agent-facing check, on files alone -- no in-tree lowering, no simulator.
+# Exit 0 verified / 1 refuted with the counterexample printed / 2 abstained.
+.venv/bin/python -m merlin.verify.cli compile \
+    --interface <interface.mlir> --command-buffer <command_buffer.json>
+
+# the derived extent lattice, and the shape-space comparison that does not favour us
+.venv/bin/python -m merlin.verify.lattice --target gemmini            # 7 shapes, all unsat
+.venv/bin/python -m merlin.verify.lattice --target gemmini --emit-counterexamples
+
+# the tests, including the mutation and refutation controls, the differential test against
+# merlin.runtime.simulate, and the assertion that every schema opcode lands in a named class
 .venv/bin/python -m pytest merlin/tests/ir -q -m "not slow"
 ```
+
+Two commands above are worth running for what they DISPROVE rather than what they show. The
+`run_cb_matrix` line prints `cb_narrow_output` as caught by the compilation check and missed by the
+numeric golden — the only fault in the corpus where that happens. The `lattice` line prints the shape
+space, where the formal sweep's 7 shapes sit against the dynamic ladder's 144; the formal layer is the
+narrower of the two and the output says so.
 
 ## 8. Open questions
 
