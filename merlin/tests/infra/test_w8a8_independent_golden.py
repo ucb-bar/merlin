@@ -182,3 +182,77 @@ def test_bundle_inputs_are_read_in_capture_order(tool, tmp_path):
     np.savez(bundle / "inputs.npz", **arrays)
     got = tool.load_bundle_inputs(bundle)
     assert [float(a[0]) for a in got] == list(range(12))
+
+
+# ------------------------------------------------- the OTHER container the integers can live in
+def test_bundle_qinner_reads_only_the_quantized_leaves(tool, tmp_path):
+    """Some captures never put the integer weight in ``weights.safetensors``.
+
+    m2m leaves an uninitialized ``prov.quant_inner``-tagged empty there and the capture writes the
+    real ``int_data``/``scale`` into ``extra.npz`` under ``qinner::``. Measured on the resnet50
+    W8A8 bundle: ZERO int8 tensors in the safetensors, both integer tensors under ``qinner::``.
+    Gating only on the safetensors there finds an empty intersection, which the gate must (and
+    does) refuse — so the reference could never be written for such a bundle at all.
+    """
+    np.savez(tmp_path / "extra.npz",
+             **{"buf::running_mean": np.zeros(3, dtype=np.float32),
+                "c_lifted_tensor_0": np.zeros(2, dtype=np.float32),
+                "qinner::fc.weight.tensor_impl.int_data": np.arange(-4, 4, dtype=np.int8),
+                "qinner::fc.weight.tensor_impl.scale": np.array([0.25], dtype=np.float32)})
+    got = tool.bundle_quantized_parameters(tmp_path)
+    assert set(got) == {"fc.weight.tensor_impl.int_data", "fc.weight.tensor_impl.scale"}
+    assert got["fc.weight.tensor_impl.int_data"].dtype == np.dtype(np.int8)
+
+
+def test_bundle_qinner_is_empty_without_an_extra_npz(tool, tmp_path):
+    assert tool.bundle_quantized_parameters(tmp_path) == {}
+
+
+def test_flatten_quantized_parameters_names_leaves_like_the_capture_does(tool):
+    """The fresh side must key its leaves exactly as ``capture_consistent.py`` keys the bundle's.
+
+    A naming drift here would not fail loudly: it would empty the intersection, and the gate would
+    then refuse EVERY bundle of this shape with a message about the weights rather than about the
+    names. Pinned with numpy-backed stand-ins so the assertion RUNS in merlin's own venv (torch
+    lives in the model capture venvs); an importorskip here would report success without checking.
+    """
+    class _Leaf:                       # the torch.Tensor surface flatten_quantized_parameters uses
+        def __init__(self, array):
+            self._array = array
+            self.dtype = array.dtype
+
+        def detach(self):
+            return self
+
+        def cpu(self):
+            return self
+
+        def float(self):
+            return _Leaf(self._array.astype(np.float32))
+
+        def numpy(self):
+            return self._array
+
+    class _Node:
+        def __init__(self, **children):
+            self.__dict__.update(children)
+            self._children = tuple(children)
+
+        def __tensor_flatten__(self):
+            return list(self._children), {}
+
+    class Parameter(_Leaf):        # named so the "is this a plain torch Parameter" filter sees it
+        pass
+
+    quantized = _Node(tensor_impl=_Node(int_data=_Leaf(np.arange(-4, 4, dtype=np.int8)),
+                                        scale=_Leaf(np.array([0.25], dtype=np.float32))))
+
+    class _Model:
+        def named_parameters(self):
+            yield "fc.weight", quantized
+            yield "fc.bias", Parameter(np.zeros(3, dtype=np.float32))  # plain leaf: not flattened
+
+    got = tool.flatten_quantized_parameters(_Model())
+    assert set(got) == {"fc.weight.tensor_impl.int_data", "fc.weight.tensor_impl.scale"}
+    assert got["fc.weight.tensor_impl.int_data"].dtype == np.dtype(np.int8)
+    assert np.array_equal(got["fc.weight.tensor_impl.int_data"], np.arange(-4, 4, dtype=np.int8))

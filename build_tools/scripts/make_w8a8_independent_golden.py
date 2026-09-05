@@ -143,6 +143,54 @@ def quantized_weight_diff(bundle_weights, fresh_weights) -> dict:
     }
 
 
+def flatten_quantized_parameters(model) -> dict[str, np.ndarray]:
+    """The ``qinner::`` leaf tensors of a model's quantized parameters, named exactly as
+    ``capture_consistent.py`` names them (the ``__tensor_flatten__`` access chain).
+
+    Some captures never put the integer weight in ``weights.safetensors`` at all: m2m leaves an
+    uninitialized ``prov.quant_inner``-tagged empty there and the capture writes the real
+    ``int_data``/``scale`` into ``extra.npz`` under ``qinner::<attr-path>`` (measured: the
+    resnet50 W8A8 bundle ships ZERO int8 tensors in its safetensors and both of its integer
+    tensors under ``qinner::``). Comparing only the safetensors on such a bundle finds an empty
+    intersection — which is an unmeasured comparison, not agreement — so the gate needs to be
+    able to read the other container too.
+    """
+    flat: dict[str, np.ndarray] = {}
+
+    def walk(obj, prefix: str) -> None:
+        flatten = getattr(obj, "__tensor_flatten__", None)
+        if callable(flatten):
+            try:
+                names, _ = flatten()
+            except Exception:                                           # noqa: BLE001
+                names = []
+            for name in names:
+                child = getattr(obj, name, None)
+                if child is not None:
+                    walk(child, f"{prefix}.{name}")
+        elif hasattr(obj, "detach"):
+            tensor = obj.detach().cpu()
+            text = str(tensor.dtype)
+            flat[prefix] = (tensor.float().numpy()
+                            if ("float8" in text or "bfloat16" in text) else tensor.numpy())
+
+    for name, parameter in model.named_parameters():
+        if type(parameter).__name__ not in ("Parameter", "Tensor") or hasattr(
+                parameter, "__tensor_flatten__"):
+            walk(parameter, name)
+    return flat
+
+
+def bundle_quantized_parameters(bundle: Path) -> dict[str, np.ndarray]:
+    """The bundle's own ``qinner::`` entries, keyed the same way (prefix stripped)."""
+    path = bundle / "extra.npz"
+    if not path.is_file():
+        return {}
+    with np.load(path) as data:
+        return {k[len("qinner::"):]: np.asarray(data[k])
+                for k in data.files if k.startswith("qinner::")}
+
+
 def cosine(a: np.ndarray, b: np.ndarray) -> float:
     x, y = a.ravel().astype(np.float64), b.ravel().astype(np.float64)
     denom = np.linalg.norm(x) * np.linalg.norm(y)
@@ -339,6 +387,16 @@ def _inner(bundle: Path, model: str, root: Path, out_name: str, scheme: str) -> 
         # weights the bundle ships. See the module docstring: this refusal is the artifact.
         report = quantized_weight_diff(read_safetensors(bundle / "weights.safetensors"),
                                        read_safetensors(Path(weights_path)))
+        report["source"] = "weights.safetensors"
+        if not report["n_quantized"]:
+            # The safetensors carry no integer tensor to compare: this capture externalized the
+            # integer data as qinner:: in extra.npz instead. Compare THAT container rather than
+            # reporting an empty intersection, which would be an unmeasured comparison. Read only
+            # in this branch — extra.npz is a gigabyte on the LLM bundles, which do carry their
+            # integer weights in the safetensors.
+            report = quantized_weight_diff(bundle_quantized_parameters(bundle),
+                                           flatten_quantized_parameters(mdl))
+            report["source"] = "extra.npz qinner::"
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if not report["ok"]:
