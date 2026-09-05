@@ -3482,12 +3482,25 @@ def main(argv: list[str] | None = None) -> int:
             # effectively unbounded cap keeps the decision to 'done' or 'iterate', so an L3 that has not
             # passed yet keeps being worked instead of stopping because an arithmetic budget expired.
             _cap = a.max_rounds if a.schedule == "rounds" else (rnd + 1_000_000)
+            _budget_reason = "max_rounds"
+            # THE ROUND COUNT IS NOT A TERMINATOR IN CONTINUOUS MODE; THE DECLARED WALL BUDGET IS.
+            # Without this a "48 h" run keeps opening L3 fix rounds forever, because the cap above is
+            # deliberately unbounded and nothing else in this loop consults time. Collapsing the cap to
+            # the current round is how the driver spends its budget and still stops through the decision
+            # function, so the stop stays honest rather than becoming a bare `break`.
+            # ACTIVE wall only. `--max-wall-s` is declared as "ACTIVE agent wall time" and
+            # `rate_limit_wait_s` is tracked separately for exactly this reason: charging a five-hour
+            # window sleep against a work budget would end a heavily rate-limited run early having done
+            # a fraction of the work its operator asked for, and with eight permitted waits that is
+            # hours of sleep spending a budget nothing worked through.
+            if a.max_wall_s and active_wall_s >= float(a.max_wall_s):
+                _cap, _budget_reason = rnd, "max_wall_s"
             _decision = _l3_barrier_decision(vv["all_pass"], rnd, _cap)
             if _decision == "done":
                 break                                    # ONLY success exit
             if _decision == "budget":
                 print(f"[verilator] round budget exhausted at L3 ({vv['n_passed']}/{vv['n_capsules']}) — "
-                      f"stopping honestly (not converged; reason=max_rounds, NOT a barrier timeout)")
+                      f"stopping honestly (not converged; reason={_budget_reason}, NOT a barrier timeout)")
                 break
             # 'iterate' — NON-terminal: redacted L3 failures back + clear a false READY (agent must earn it again) + fix round
             (ws / "qa").mkdir(exist_ok=True)
