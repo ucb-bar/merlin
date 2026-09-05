@@ -113,6 +113,17 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
                                op_profile=False, iters=iters, warmup=warmup,
                                parallel_harts=parallel_harts)
             g = zm._gate(res["prefix"], golden_refs)
+            # WHAT FRACTION OF THE OUTPUT THIS SCORE COVERS. The board harness prints at most
+            # MERLIN_DUMP_CAP elements, and _gate truncates the reference to match, so a prefix
+            # score reads exactly like a whole-output one. On tiny_llama that meant grading 4096 of
+            # 256000 logits -- 1.6%, and specifically token 0, the one position W8A8 quantization
+            # destroys for every implementation including the independent reference (torchao itself
+            # scores -0.32 there). It reported cos 0.8925 and looked like a codegen defect; the full
+            # tensor is cos 0.9532, slightly BETTER than the reference's own 0.9487.
+            if not g.get("comparison_complete", True):
+                print(f"  [ours {i}] PARTIAL OUTPUT: gate compared {g.get('n_compared')} of "
+                      f"{g.get('n_reference')} elements ({g.get('compared_fraction', 0):.1%}) — "
+                      "the cos/rel below are a PREFIX score, NOT the model's accuracy", flush=True)
             cos, rel, ok = g.get("cos"), g.get("rel"), g.get("ok")
             last_gate = {k: v for k, v in g.items() if isinstance(v, (int, float, bool))}
             last_tiers, last_tier_ok = g.get("tiers"), g.get("tier_ok")
