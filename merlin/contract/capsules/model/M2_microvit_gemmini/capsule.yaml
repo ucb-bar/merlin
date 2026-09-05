@@ -5,8 +5,6 @@ source_reference: "microvit int8 \u2014 tile-sized vision+recurrent control net 
   \ patch-merge, pooled-reduction attention, depthwise MixFFN, pixel-shuffle/max-pool\
   \ fusion, LSTM cell), composed across the systolic mesh and the host lane"
 label: public
-pass_requirements:
-- model-boundary-capstone
 interface_mlir: capsule.interface.mlir
 inputs:
 - name: I0
@@ -72,7 +70,10 @@ semantic:
   semantic_family: contraction
   generalization_axis: model
   must_accelerate: false
-  not_asserted_reason: The model deliberately contains required scalar/RVV host islands, so
-    whole-model all-region acceleration is not the claim; lanes.require independently requires
-    mesh execution.
   eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 0.5303999769687653
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

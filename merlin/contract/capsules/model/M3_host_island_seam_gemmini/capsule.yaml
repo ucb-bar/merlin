@@ -4,8 +4,6 @@ source_role: pytorch_model_slice
 source_reference: 'int8 GEMM -> host LayerNorm -> int8 GEMM: the A->H->A seam as the
   subject of a capsule rather than a by-product of a whole model'
 label: public
-pass_requirements:
-- model-boundary-capstone
 interface_mlir: capsule.interface.mlir
 inputs:
 - name: I0
@@ -59,3 +57,9 @@ semantic:
   generalization_axis: model
   must_accelerate: true
   eligible: auto
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.03125
+  ceiling_atol: 19.62
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

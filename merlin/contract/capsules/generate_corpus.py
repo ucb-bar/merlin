@@ -24,6 +24,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import shutil
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -31,16 +32,21 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "merlin" / "python"))
+# Bootstrap only: this module lives at ``<repo>/merlin/contract/capsules/`` and must put the
+# in-tree package on ``sys.path`` before it can import ``merlin.common.paths``. Everything after
+# the import derives its roots from that module rather than from ``__file__``.
+_MERLIN_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_MERLIN_DIR / "python"))
 
-from merlin.common.paths import _dotenv                   # noqa: E402
+from merlin.common.paths import _dotenv, repo_root        # noqa: E402
 from merlin.perf import workload_gen as WG                   # noqa: E402
 from merlin.perf.profile import TRAITS, derive_profile       # noqa: E402
 from merlin.targetgen import capsule_golden as CG            # noqa: E402
 from merlin.targetgen import corpus_spec as CS               # noqa: E402
+from merlin.targetgen import numeric_falsifiability as NF    # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
+REPO = repo_root()
 HERE = Path(__file__).resolve().parent
 PROFILES = HERE / "profiles"
 
@@ -48,6 +54,21 @@ _PERFORMANCE_FIELDS = frozenset({
     "level", "family", "lever", "comparand", "falsifier", "gate", "regime", "emitter", "cost",
 })
 _PERFORMANCE_CLAIMS = frozenset({"RECOVERS", "PREDICTS", "DIFFERENTIAL"})
+#: The optimization LEVELS a performance family may declare. DOCUMENTED rather than enforced: several
+#: test fixtures declare synthetic levels to prove the validator is generic, so closing this set is a
+#: change to make deliberately alongside those fixtures rather than as a side effect. What it is for:
+#:
+#: The ladder is tile -> layer -> inter-layer -> global, and two rungs were missing from it. `L4_boundary`
+#: is the host/accelerator seam -- the H->A break-even and the cost of an A->H->A island -- which is
+#: where a placement decision is actually made and paid for. `L6_global` is the whole-program decision:
+#: quantization, packing, encoding, layout propagation. Declaring them here does not create the
+#: families; it makes them nameable, so a family that needs one is not forced to file under a level
+#: that means something else. `merlin.perf.profile` now carries the canonical trait an L6 family needs
+#: (`multiple_operand_encodings`), which was the part that could not be added in YAML at all.
+_PERFORMANCE_LEVELS = frozenset({
+    "L1_tile", "L1_separation_floor", "L2_intra_layer", "L3_inter_layer",
+    "L4_boundary", "L5_fusion", "L6_global",
+})
 _PERFORMANCE_NESTED_FIELDS = {
     "comparand": frozenset({"kind", "against", "cancels", "demand_equal"}),
     "falsifier": frozenset({"observation", "fires_when", "negative_control"}),
@@ -148,6 +169,21 @@ def _validate_declared_fit_axes(sweep: dict, *, owner: str) -> None:
         raise ValueError(f"{owner}: fitted axes {unknown} are not declared in axes")
     for axis in fit_axes:
         points = axes[axis]
+        if isinstance(points, dict):
+            # A DERIVED axis cannot be checked here -- its points are a function of the target's own
+            # facts and no target is bound at profile load. What IS checkable at load is the promise:
+            # the declaration must ask for at least two points per band, and `expand_sweeps` re-checks
+            # the resolved values. A derivation that silently returned one point would otherwise ship a
+            # one-point fit under a contract that says it is fitted.
+            if str(points.get("derive") or "") not in _DERIVED_AXES:
+                raise ValueError(
+                    f"{owner}: fitted axis {axis} declares an unknown derivation "
+                    f"{points.get('derive')!r}; known derivations are {list(_DERIVED_AXES)}")
+            if int(points.get("points_per_regime", 0)) < 2:
+                raise ValueError(
+                    f"{owner}: fitted axis {axis} derives fewer than two points per regime; a rate "
+                    "and a fixed intercept are two parameters and one point cannot separate them")
+            continue
         if not isinstance(points, list) or len({repr(point) for point in points}) < 2:
             raise ValueError(
                 f"{owner}: fitted axis {axis} must declare at least two distinct points")
@@ -251,9 +287,16 @@ def _merge_shared_perf(profile: dict, *, source: Path) -> None:
             "comparison_roles": list(item.get("comparison_roles") or []),
         })
     profile["sweeps"] = list(profile.get("sweeps") or []) + sweeps
+    # Recorded repo-root-relative so a consumer can resolve it against `repo_root()` alone.
+    # It is derived from the same `shared_path` this function read, never re-spelled by hand: a
+    # hand-typed (or mis-rooted) prefix is exactly how this record went stale after the tree moved
+    # under `merlin/` and the campaign gate started refusing its own corpus.
     try:
-        template_path = str(shared_path.relative_to(REPO))
+        template_path = shared_path.relative_to(REPO).as_posix()
     except ValueError:
+        # A template outside the checkout (test fixtures point PROFILES at a tmp dir) can only be
+        # named absolutely. Consumers resolve an absolute record as-is and refuse it when it does
+        # not exist, so this stays fail-closed rather than becoming a second relative spelling.
         template_path = str(shared_path)
     profile["_performance_template"] = {
         "path": template_path,
@@ -279,6 +322,18 @@ def load_profile(target: str, *, include_holdouts: bool = True) -> dict:
     public = PROFILES / f"{target}.yaml"
     prof = yaml.safe_load(public.read_text(encoding="utf-8")) or {}
     _merge_shared_perf(prof, source=public)
+    # SYNTHESIZED ENTRIES, appended after the hand-authored ones. They come from the target's own
+    # derived conformance requirement (build_tools/scripts/synth_capsule_corpus.py --write) and carry
+    # the cell each was synthesized for in `source_reference`. Appended rather than prepended so
+    # `expand_sweeps`' documented declaration-order semantics are untouched; its `seen` set already
+    # raises on a duplicate name, and every synthesized name is `SY_`-prefixed, so a collision with a
+    # hand-authored capsule is impossible rather than merely unlikely.
+    synth = PROFILES / f"{target}.synth.yaml"
+    if synth.is_file():
+        doc = yaml.safe_load(synth.read_text(encoding="utf-8")) or {}
+        extra = list(doc.get("capsules") or ())
+        if extra:
+            prof["capsules"] = list(prof.get("capsules") or []) + extra
     side = PROFILES / f"{target}.hidden.yaml"
     if include_holdouts and side.is_file():
         held = yaml.safe_load(side.read_text(encoding="utf-8")) or {}
@@ -457,6 +512,39 @@ def _float_golden(entry, binding):
         prov[name] = {"shape": list(shape), "fp8_raw_hex": [f"0x{r:02x}" for r in raw], "decoded": vals}
         return raw
 
+    def reg_acc(name, shape):
+        """An operand that lives in the ACCUMULATOR's format, not the input format.
+
+        A bias is added to the accumulator, so it is declared and generated there. Its VALUES still come
+        from the operand format's palette, and that is the load-bearing part: the accumulator format's
+        own palette spans its entire exponent range, which for bf16 reaches ~1e-31, and a bias that
+        small added to a matmul output of order one rounds away to nothing. The golden would then be
+        byte-identical to the unfused matmul's, so a backend that DROPPED the bias entirely would pass
+        the fused capsule -- the failure mode where a gate is satisfied by arithmetic nobody performed.
+        Drawing from the operand palette keeps the addend on the same scale as the sum it lands on.
+
+        Returns the decoded values (not raw codes): everything downstream of an accumulator-format
+        operand is float arithmetic, and the byte-level palette-preload path is for input operands.
+        """
+        from merlin.targetgen import corpus_operands as CO
+        if len(shape) == 2:
+            _, vals = _det_fp8(D, name, shape, salt, fmt_token, BF16)
+        else:
+            # A bias is a VECTOR, and `operand_values` shapes a matrix. Ask it for one row and flatten.
+            # The per-row/per-column rigor `_det_fp8` enforces is not the right check for a vector --
+            # it has one row -- but the part that still matters is: a constant bias is satisfied by a
+            # kernel that adds any single number, and would not detect a broadcast along the wrong
+            # axis. So distinctness ALONG the vector is asserted here instead of skipped.
+            (n,) = shape
+            salt_int = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
+            vals = list(CO.operand_values((1, n), fmt_token, salt_int))
+            if n > 1 and len(set(vals)) < 2:
+                raise AssertionError(
+                    f"non-rigorous bias {name}({n},): every element is {vals[0]!r}, so a kernel that "
+                    f"broadcast one value along the wrong axis would still match the golden")
+        prov[name] = {"shape": list(shape), "decoded": vals}
+        return vals
+
     def rnd(x):
         return D.round_to_format(x, BF16, "rne")
 
@@ -488,6 +576,54 @@ def _float_golden(entry, binding):
         if "relu" in epi:
             y = [[v if D.decode_float(v, BF16) > 0 else 0 for v in row] for row in y]
         outputs[entry.get("out", "Y0")] = floats(y)
+    elif op == "fused_matmul_bias":
+        # The matmul branch above with the bias stage, which is where the op name says it happens. The
+        # addend is in the accumulator format (see `reg_acc`) because that is where it lands.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("K_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        a = reg(entry.get("lhs", "A0"), (M, K))
+        w = reg(entry.get("weight", "W"), (K, N))
+        y = mm(a, (M, K), w, (K, N))
+        # EXACT rationals, like the acc_scale stage above: `round_to_format` needs a Fraction, and a
+        # bf16 palette value is a dyadic rational, so Fraction(v) is exact -- no limit_denominator,
+        # which would perturb the very addend whose effect the golden has to record.
+        b = [Fraction(v) for v in reg_acc(entry.get("bias", "B"), (N,))]
+        y = [[rnd(D.decode_float_exact(v, BF16) + b[j]) for j, v in enumerate(row)] for row in y]
+        if "relu" in entry.get("epilogue", []):
+            y = [[v if D.decode_float(v, BF16) > 0 else 0 for v in row] for row in y]
+        outputs[entry.get("out", "Y0")] = floats(y)
+    elif op == "bias_add":
+        # The same addition standing alone. Both operands are in the accumulator format, because this op
+        # IS the fused capsule's bias stage lifted out of it -- so the two members add the same numbers.
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        x = [Fraction(v) for v in reg_acc(entry.get("src", "X"), (M, N))]
+        b = [Fraction(v) for v in reg_acc(entry.get("bias", "B"), (N,))]
+        outputs[entry.get("out", "Y0")] = floats([[rnd(x[i * N + j] + b[j]) for j in range(N)]
+                                                  for i in range(M)])
+    elif op in ("gemv_batched", "batch_matmul"):
+        # A BATCHED CONTRACTION IS B INDEPENDENT ONES, and that is the whole of it: the device's shim
+        # loops over B calling the same (M,N,K) kernel per slice, so the golden is the same `mm` per
+        # slice with the results stacked row-major into [B*M, N]. It exists because the corpus could not
+        # express a rank-3 region on this datapath at all -- the only batched golden was block-scaled,
+        # so a target whose contract admits batching had its `contraction.batched` requirement reported
+        # as "no builder materializes a rank-3 region" while the rewrite, the device kernel and the
+        # shim's B loop were all already there.
+        B = int(entry.get("B", 2))
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("H", entry.get("K_tiles", 2) * dim))
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        lhs, weight = entry.get("lhs", "A0"), entry.get("weight", "W")
+        rows: list = []
+        for b in range(B):
+            # One operand PER SLICE, salted by the slice index. Reusing one operand across B would make
+            # every slice's output identical, and a kernel that computed one slice and broadcast it
+            # would match the golden exactly -- the degeneracy this corpus already refuses elsewhere.
+            a = reg(f"{lhs}_b{b}", (M, K))
+            w = reg(f"{weight}_b{b}", (K, N))
+            rows.extend(mm(a, (M, K), w, (K, N)))
+        outputs[entry.get("out", "Y0")] = floats(rows)
     elif op == "movement":
         M = entry.get("M", entry.get("M_tiles", 1) * dim)
         N = entry.get("N", entry.get("N_tiles", 1) * dim)
@@ -818,13 +954,22 @@ def _mx_attention_golden(entry, binding):
     if tok not in ("fp8_e4m3", "fp6_e3m2", "fp4_e2m1"):
         raise ValueError(f"MX attention operand dtype {binding.operand_dtype!r} -> {tok!r} unsupported")
     sub = (tok != "fp8_e4m3")
-    row_tile = 32 if sub else mx.DIM                           # mx_matmul TILE for this format
     max_alpha = 16 if tok == "fp6_e3m2" else None              # fp6 draws from a 16-value LUT pool
     dim = binding.tile_dim
+    # ONE definition of this datapath's shape granularity, shared with the requirement and the
+    # synthesizer (corpus_spec.shape_quantum). The local `32 if sub else DIM` said the same thing for
+    # this format and said it in a second place, so the DEFAULTS below -- which are what an attention
+    # entry actually gets, since a cell carries only M/K/N -- kept spelling `dim` and `2*dim` and landed
+    # under the row tile for every sub-byte format.
+    _q = CS.shape_quantum(binding.operand_dtype, tile_dim=dim,
+                          scale_block=(binding.scale_block or mx.GROUP))
+    row_tile, red_q = int(_q["row"]), int(_q["reduction"])
+    def _up(n: int, q: int) -> int:
+        return -(-int(n) // int(q)) * int(q)
     M = entry.get("M", entry.get("M_tiles", 1) * dim)
-    H = entry.get("H", entry.get("head_dim", 2 * dim))         # QK contraction (head dim), must be %GROUP
-    Skv = entry.get("Skv", entry.get("keys", 2 * dim))         # key positions
-    Dv = entry.get("Dv", dim)                                  # value dim
+    H = entry.get("H", entry.get("head_dim", _up(2 * dim, red_q)))   # QK contraction (head dim), %GROUP
+    Skv = entry.get("Skv", entry.get("keys", _up(2 * dim, red_q)))   # key positions
+    Dv = entry.get("Dv", _up(dim, row_tile))                         # value dim
     if H % mx.GROUP or Skv % mx.GROUP or M % row_tile or Dv % row_tile:
         raise ValueError(f"MX attention dims must satisfy H%{mx.GROUP}=Skv%{mx.GROUP}=0 and "
                          f"M%{row_tile}=Dv%{row_tile}=0 for {tok} (got M={M} H={H} Skv={Skv} Dv={Dv})")
@@ -1038,6 +1183,23 @@ def _simt_golden(entry, binding):
         prov[entry.get("lhs", "A0")] = {"shape": [M, K], "decoded": A.reshape(-1).tolist()}
         prov[entry.get("weight", "W")] = {"shape": [K, N], "decoded": W.reshape(-1).tolist()}
         outputs[entry.get("out", "Y0")] = rnd_out(y)
+    elif op in ("gemv_batched", "batch_matmul"):
+        # B independent GEMMs stacked row-major into [B*M, N] -- the same decomposition the integer and
+        # specir engines make, because it is the one the device's shim performs: a loop over B calling
+        # the (M,N,K) kernel once per slice. One operand PER SLICE, salted by index, so a kernel that
+        # computed one slice and broadcast it does not match.
+        B = int(entry.get("B", 2))
+        M = entry.get("M", entry.get("M_tiles", 1) * dim)
+        K = entry.get("K", entry.get("H", entry.get("K_tiles", 2) * dim))
+        N = entry.get("N", entry.get("N_tiles", 1) * dim)
+        lhs, weight = entry.get("lhs", "A0"), entry.get("weight", "W")
+        A = np.stack([synth(f"{lhs}_b{b}", (M, K)) for b in range(B)])
+        W = np.stack([synth(f"{weight}_b{b}", (K, N)) for b in range(B)])
+        y = np.concatenate([(A[b].astype(np.float32) @ W[b].astype(np.float32)).astype(np.float64)
+                            for b in range(B)], axis=0)
+        prov[lhs] = {"shape": [B, M, K], "decoded": A.reshape(-1).tolist()}
+        prov[weight] = {"shape": [B, K, N], "decoded": W.reshape(-1).tolist()}
+        outputs[entry.get("out", "Y0")] = rnd_out(y)
     elif op == "movement":
         # A load->store movement (mvin/mvout) moves data and computes nothing, so the reference is the
         # operand itself at the OUTPUT format. Its value as a capsule is that it exercises the movement
@@ -1130,21 +1292,12 @@ def _entry_regime(entry, binding):
     """Route an entry to its numeric regime + return a per-entry binding (operand/accum overridden). ``int``
     (gemmini), ``specir`` (atlas fp8), ``mx`` (microscaling block-scaled FP), ``simt`` (IEEE fp16/bf16/f32).
     Routed purely by the entry's operand dtype token — no target name."""
-    from merlin.runtime.fp8_formats import canonical_float
     tok = entry.get("operand_dtype") or binding.operand_dtype
-    if CS.is_block_scaled(tok):
-        regime, acc = "mx", "bf16"
-    else:
-        try:
-            canon = canonical_float(tok)
-        except KeyError:
-            canon = None
-        if canon in ("fp8_e4m3", "fp8_e5m2"):
-            regime, acc = "specir", binding.accum_dtype
-        elif canon in ("fp16", "bf16", "f32"):
-            regime, acc = "simt", "f32"
-        else:
-            regime, acc = "int", binding.accum_dtype
+    # ONE definition of the routing, in corpus_spec, so the synthesizer can ask the same question this
+    # answers. A second copy here drifted from the synthesizer's view and let entries be emitted that no
+    # writer could materialize.
+    regime = CS.regime_for_dtype(tok)
+    acc = {"mx": "bf16", "simt": "f32"}.get(regime, binding.accum_dtype)
     eb = dataclasses.replace(
         binding, operand_dtype=tok, accum_dtype=acc, integer=(regime == "int"),
         compare=("exact_int" if regime == "int" else "tolerance_float"))
@@ -1175,7 +1328,28 @@ def _write_capsule(entry, binding, out_root):
         cap["semantic"] = CS._semantic_block(entry, eb)
         dirty = True
     dirty = _backfill_required_classes(cap, binding) or dirty
+    _validate_lane_declaration(entry, binding)
     dirty = _carry_declared_blocks(entry, cap) or dirty
+    # AFTER the declared blocks are carried, because `lanes` reaches the capsule THERE. Checking before
+    # it read an empty lanes block and passed everything -- a verification that cannot see what it
+    # verifies is worse than none, because it reports the assertion as checked.
+    _verify_a_forbidden_lane_is_provable(d, cap, getattr(binding, "target", None))
+    dirty = _cap_oracle_tiers(entry, cap) or dirty
+    # THE TOLERANCE MUST BE FALSIFIABLE AT THIS GOLDEN'S SCALE, and here is the first point at which
+    # both the capsule and its golden exist for EVERY writer -- the same reason the generalization stamp
+    # lives here. A profile declares ONE absolute tolerance for a whole target, which is the right shape
+    # for a datapath error budget and the wrong shape for a small-magnitude output: a softmax capsule
+    # whose golden spans 0.0139..0.1523 was graded at `atol: 0.25`, so zeros, the mean and the midrange
+    # all passed it. It reported a numeric pass and proved nothing.
+    _gp = d / "golden.yaml"
+    if _gp.is_file() and (cap.get("numeric_policy") or {}).get("atol") is not None:
+        _gdoc = yaml.safe_load(_gp.read_text(encoding="utf-8")) or {}
+        _pol, _prov = NF.falsifiable_policy(cap["numeric_policy"], _gdoc.get("outputs") or {},
+                                            name=str(entry.get("name") or d.name))
+        if cap.get("numeric_policy") != _pol or cap.get("numeric_falsifiability") != _prov:
+            cap["numeric_policy"] = _pol
+            cap["numeric_falsifiability"] = _prov
+            dirty = True
     if dirty:
         capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     _write_capsule_readme(entry, cap, d)
@@ -1194,14 +1368,17 @@ def _write_capsule(entry, binding, out_root):
 #:                      a fused implementation against the parts it replaces. The field has been declared
 #:                      on four capsules since they were written and consumed by nothing, which is the
 #:                      same thing as not existing.
-#:                      `max_oracle_tier` / `max_timing_tier` / `extends` ride here too: a
-#:                      per-capsule oracle-tier CEILING and the sibling whose deeper
-#:                      certification a capped capsule rests on are declared once in the
-#:                      profile and carried onto every member it derives, so the link between a
-#:                      derived sweep member and the functional capsule it extends is
-#:                      machine-readable instead of prose in `source_reference`.
-_DECLARED_BLOCKS = ("performance", "comparison_group",
-                    "max_oracle_tier", "max_timing_tier", "extends")
+#: ``pass_requirements`` the compiler-obligation classes a capsule demands, which is the ONLY link
+#:                      between a catalogued pass and a concrete capsule that requires it
+#:                      (``check_pass_obligations.py`` rejects a pass no capsule obliges). It was
+#:                      hand-written onto two capsules and unknown to this generator, so every
+#:                      regeneration silently deleted the corpus's only pass obligations.
+#: ``lanes``               the interop/negative-lane contract: which execution lanes must have carried
+#:                      work, and (``forbid``) which must have carried none. Only the whole-model writer
+#:                      emitted it, so a model_slice capsule declaring lanes silently lost them -- which
+#:                      is how the first host-only capsule generated with `lanes: None` and asserted
+#:                      nothing at all.
+_DECLARED_BLOCKS = ("performance", "comparison_group", "pass_requirements", "lanes")
 
 
 def _carry_declared_blocks(entry: dict, cap: dict) -> bool:
@@ -1215,6 +1392,115 @@ def _carry_declared_blocks(entry: dict, cap: dict) -> bool:
         cap[key] = dict(value) if isinstance(value, dict) else value
         dirty = True
     return dirty
+
+
+def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
+    """Trim a capsule's required tiers to the deepest one its SIZE can afford, and say what it rests on.
+
+    ``corpus_spec.build`` gives every capsule the target's full tier list, which is right for a
+    capsule sized to the tile edge and wrong for one sized to an application: a shape too large to
+    simulate cycle-accurately cannot demand the cycle-accurate tier, and demanding it anyway makes
+    the whole corpus unrunnable rather than making the capsule affordable.
+
+    ``extends`` is carried onto the capsule for the same reason it exists at all -- an L2-only
+    capsule is admissible only as an extension of a sibling that WAS certified, so the thing it rests
+    on has to be readable from the capsule itself rather than inferred from a naming convention.
+    """
+    cap_to = str(entry.get("max_oracle_tier") or "")
+    if not cap_to:
+        return False
+    tiers = [str(t) for t in (cap.get("required_oracle_tiers") or ())]
+    if cap_to not in tiers:
+        raise ValueError(
+            f"{cap.get('name')!r} caps its oracle tier at {cap_to!r}, which is not among the tiers "
+            f"this target declares ({tiers}); a cap onto a tier that does not exist would silently "
+            f"leave the capsule demanding everything")
+    trimmed = tiers[:tiers.index(cap_to) + 1]
+    changed = trimmed != tiers
+    cap["required_oracle_tiers"] = trimmed
+    if entry.get("extends"):
+        cap["extends"] = str(entry["extends"])
+        changed = True
+    return changed
+
+
+#: ``source_role`` the corpus synthesizer stamps on every entry it derives. Mirrors
+#: ``corpus_synth.SOURCE_ROLE``; compared as data so a hand-authored capsule and a derived
+#: one can be told apart where the two need different handling.
+SYNTH_ROLE = "derived_sweep"
+
+
+class UnprovableForbid(ValueError):
+    """A capsule forbids the mesh on a program the target would legitimately accelerate.
+
+    A distinct type because the right response depends on who wrote the capsule. A HAND-AUTHORED one
+    is a contradiction its author must resolve, and aborting is how they find out. A SYNTHESIZED one
+    is not: synthesis is pure -- it derives entries from the requirement without building or
+    classifying anything -- so the axis genuinely cannot know that `normalization` decomposes into
+    regions this target admits. The generator is the first place that fact exists, and the honest
+    response there is to drop the capsule and REPORT the family as uncovered, which is the same
+    fail-closed shape as `host_only_unsynthesizable`: a requirement that produced no capsule stays
+    visible, and nothing can pass in its place.
+    """
+
+
+def _verify_a_forbidden_lane_is_provable(d: Path, cap: dict, target: "str | None") -> None:
+    """A capsule may only forbid the mesh if its own program has nothing the mesh may legitimately take.
+
+    CLASSIFIED, not predicted. Whether a capsule is host-only is a property of the regions its written
+    interface contains, and the only honest way to know is to ask the classifier the coverage gate asks
+    (`boundary.profile_capsule`). Deriving it from the family instead is nearly right and not right
+    enough: `normalization` decomposes into a reduction and an elementwise map, so the family-level rule
+    catches a target that admits either -- and still passed a target admitting NEITHER whose rmsnorm
+    program turned out to contain an eligible region anyway.
+
+    Why it must raise rather than quietly drop the assertion. `forbid: [on_mesh]` says the submission
+    must NOT accelerate this; on a program containing admitted work that is a demand to leave
+    performance on the table, and a compiler doing the right thing is recorded as violating a lane. The
+    capsule is wrong, not the compiler, and the generator is where that is still cheap to fix.
+    """
+    if not target:
+        return
+    forbid = {str(x) for x in ((cap.get("lanes") or {}).get("forbid") or ())}
+    if "on_mesh" not in forbid:
+        return
+    from merlin.targetgen import boundary as BD
+    prof = BD.profile_capsule(d, str(target))
+    if prof.kind == BD.HOST_ONLY:
+        return
+    raise UnprovableForbid(
+        f"{cap.get('name')!r} forbids `on_mesh`, but {str(target)!r} classifies its program as "
+        f"{prof.kind!r} rather than host-only: it contains region(s) the manifest admits, so the "
+        f"assertion demands the compiler decline work it is entitled to do. Choose a family whose "
+        f"decomposition this target admits nothing of, or drop the forbid")
+
+
+def _validate_lane_declaration(entry: dict, binding) -> None:
+    """Refuse an unreachable or self-contradictory lane declaration AT GENERATION TIME.
+
+    The whole-model writer already ran ``_checked_lanes``; the other writers did not, because they never
+    carried lanes at all. Now that every writer does, the check has to move with it -- a bar the target's
+    declared units make unreachable is not a capability test, it is a wall, and the place to catch it is
+    where an author can still fix it.
+    """
+    lanes = entry.get("lanes") or {}
+    if not lanes:
+        return
+    from merlin.targetgen.capsule_source import _checked_lanes
+    _checked_lanes(entry, binding)                      # raises on an unreachable `require`
+    forbid = [str(x) for x in (lanes.get("forbid") or ())]
+    both = sorted(set(str(x) for x in (lanes.get("require") or ())) & set(forbid))
+    if both:
+        raise ValueError(f"{entry.get('name')!r}: lane(s) {both} are both required and forbidden; one "
+                         f"of the two assertions can never hold")
+    target = getattr(binding, "target", None)
+    if forbid and target:
+        from merlin.targetgen.routing import reachable_lanes
+        unreachable = sorted(set(forbid) - reachable_lanes(target))
+        if unreachable:
+            raise ValueError(
+                f"{entry.get('name')!r}: forbids lane(s) {unreachable} that {target!r} cannot populate "
+                f"anyway, so the assertion is vacuously true and tests nothing")
 
 
 def _write_capsule_readme(entry: dict, cap: dict, d: Path) -> None:
@@ -1283,6 +1569,59 @@ def _backfill_required_classes(cap: dict, binding) -> bool:
     return True
 
 
+def _roster_captures() -> dict:
+    """Captured bundles available as derivation evidence, keyed by model name.
+
+    Same store and key normalisation as `check_conformance_coverage._captures`, so a micro model is
+    derived from exactly the captures the requirement was derived from.
+    """
+    from merlin.common.paths import artifacts_dir
+
+    root = artifacts_dir() / "recaptures"
+    if not root.is_dir():
+        return {}
+    out = {}
+    for d in sorted(root.iterdir()):
+        m = d / "model.mlir"
+        if m.is_file():
+            out[d.name.replace("_fp32_consistent", "").replace("_consistent", "")] = m
+    return out
+
+
+def _emit_micro_model_loader(entry: dict, target: str, out_root) -> bool:
+    """Write the derived micro model's loader into its capsule directory, or say why not.
+
+    `micro_model.spec` states what a target's minimal whole-model capsule must contain -- one layer per
+    admitted family, one per family real captures contain that the manifest does not admit, sized to the
+    target's own tile edge, host layers interleaved into the INTERIOR. `emit_pytorch` turns that into the
+    loader. Doing it here rather than in `corpus_synth` is deliberate: the spec needs the captures, which
+    is I/O, and the synthesizer is pure.
+    """
+    from merlin.targetgen import micro_model as MM
+
+    captures = _roster_captures()
+    if not captures:
+        print(f"  [skip] {entry['name']}: no captured model is available to derive the inventory from")
+        return False
+    try:
+        spec = MM.spec(target, captures)
+        src = MM.emit_pytorch(spec)
+    except MM.UnwritableLayer as exc:
+        print(f"  [skip] {entry['name']}: {exc}")
+        return False
+    except Exception as exc:                       # noqa: BLE001 -- an underivable spec is not a crash
+        print(f"  [skip] {entry['name']}: micro-model spec unavailable: {type(exc).__name__}: {exc}")
+        return False
+    d = Path(out_root) / entry["cat"] / entry["name"]
+    d.mkdir(parents=True, exist_ok=True)
+    loader = d / "capsule.pytorch.py"
+    loader.write_text(src, encoding="utf-8")
+    entry["loader"] = str(loader)
+    entry.setdefault("model", entry["name"])
+    print(f"  [micro] {entry['name']}: {spec.composition()} over {len(spec.layers)} derived layer(s)")
+    return True
+
+
 def _write_capsule_inner(entry, binding, out_root):
     regime, eb = _entry_regime(entry, binding)
     # Whole-model capsule: a small representative network lowered end-to-end via model2MLIR, graded vs its
@@ -1294,6 +1633,10 @@ def _write_capsule_inner(entry, binding, out_root):
         if not src.available():
             print(f"  [skip] {entry['name']}: model capsule needs the m2m venv (set MERLIN_M2M_PYTHON)")
             return None
+        # A DERIVED micro model writes its own loader first. Without this the entry names a loader that
+        # does not exist, and the capsule that the composition axis exists to produce cannot be built.
+        if entry.get("micro_model") and not _emit_micro_model_loader(entry, eb.target, out_root):
+            return None
         return CSRC.write_model_capsule(entry, eb, out_root, source=src)
     # PREFERRED source: a capsule defined in PyTorch (frontend-faithful), lowered to linalg via model2MLIR
     # with a host torch-eager golden. Opt in per entry (``source: pytorch``). Restricted to the float
@@ -1301,7 +1644,15 @@ def _write_capsule_inner(entry, binding, out_root):
     # interface; int/MX datapaths keep the direct-MLIR engines below (the endorsed fallback for the
     # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
     if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
-        if regime != "simt":
+        # AN ENTRY THAT NAMES A QUANTIZATION SCHEME has said which arithmetic its program must contain,
+        # so the float-regime restriction below does not apply to it. The restriction exists because a
+        # host-eager float reference cannot grade an int/MX datapath -- but that is a statement about
+        # the DEFAULT weight-only capture, which emits a float matmul over dequantized weights. A W8A8
+        # scheme emits `aten._int_mm` accumulating in i32, which IS the mesh's arithmetic, and torch
+        # eager then computes the same quantized math, so the golden is right by construction.
+        if entry.get("quant_scheme"):
+            pass
+        elif regime != "simt":
             raise ValueError(f"pytorch source for capsule {entry['name']!r} needs a float dtype "
                              f"(got regime {regime!r} for {eb.operand_dtype!r}); author int/MX capsules "
                              f"via the direct-MLIR engine")
@@ -1411,6 +1762,106 @@ _TILE_TOKEN = "tile"
 _MAX_SWEEP_CAPSULES = 128
 
 
+#: Entry keys whose value is a SHAPE EXTENT, and may therefore be written tile-relative.
+_EXTENT_KEYS = ("M", "K", "N", "H", "Skv", "Dv", "B")
+
+
+def _resolve_flat_extents(entry: dict, binding) -> dict:
+    """Resolve tile-relative extent tokens on a FLAT capsule entry.
+
+    ``resolve_extent`` was reachable only from sweep axes, so a flat entry had to spell its shape as
+    integers -- which bakes one target's geometry into a file that is supposed to describe a shape
+    RELATIVE to whatever edge the hardware has. Synthesized entries are written ``tile`` / ``tile-1``
+    precisely so the same entry means the same thing on a target with a different edge, and this is
+    where that promise is kept.
+
+    Inert on every existing entry: an int passes through ``resolve_extent`` unchanged, and a key that
+    is absent is not touched.
+    """
+    tile = getattr(binding, "tile_dim", None)
+    if not tile:
+        return entry
+    out = None
+    for key in _EXTENT_KEYS:
+        value = entry.get(key)
+        if not isinstance(value, str):
+            continue
+        if out is None:
+            out = dict(entry)
+        out[key] = resolve_extent(value, int(tile))
+    resolved = out if out is not None else entry
+    # A POOLING EPILOGUE NEEDS ITS SPATIAL SHAPE, and this is the first point at which it can be had:
+    # the entry's rows are known only after the tile-relative tokens resolve. A synthesized entry
+    # declares the pool WINDOW (a 2x2 with stride 2 is the shape every pooling datapath has) and leaves
+    # the input geometry to be derived, because the number of rows to factor is the target's tile edge.
+    if "maxpool" in [str(x) for x in (resolved.get("epilogue") or ())] and not resolved.get("pool_in_dims"):
+        rows = int(resolved.get("M") or 0)
+        side = int(rows ** 0.5)
+        if side >= 2 and side * side == rows:
+            resolved = {**resolved, "pool_in_dims": [side, side]}
+        else:
+            # NOT a square number of rows: there is no H x W the rows can mean. Left absent so the
+            # builder refuses with its own message rather than this inventing a geometry that silently
+            # pools over the wrong axis.
+            pass
+    return resolved
+
+
+def target_encodings(target: str) -> list[str]:
+    """The operand encodings this target can compute a contraction in, in capsule spelling.
+
+    The axis an ``L6_global`` (encoding / packing / layout) family sweeps. Derived from the same place
+    the gate trait ``multiple_operand_encodings`` reads -- the contraction family's declared dtypes --
+    so the family's members and the gate that admits it cannot disagree about how many encodings exist.
+
+    Sorted, because the corpus must regenerate byte-identically and a capability map is a mapping.
+    Empty when the map cannot be resolved: a family that needs a choice then has none to make, and the
+    gate refuses it with evidence rather than this inventing one.
+    """
+    try:
+        from merlin.targetgen.conformance import capsule_dtype
+        from merlin.targetgen.eligibility import capability_map_for_target
+        cap = (capability_map_for_target(target) or {}).get("contraction")
+    except Exception:                              # noqa: BLE001 -- an unresolvable map is no choice
+        return []
+    out = []
+    for d in sorted(getattr(cap, "dtypes", ()) or ()):
+        try:
+            out.append(capsule_dtype(str(d)))
+        except Exception:                          # noqa: BLE001 -- keep an unmappable token visible
+            out.append(str(d))
+    return list(dict.fromkeys(out))
+
+
+def resolve_encoding(token, encodings: "list[str]") -> str:
+    """Resolve a sweep ENCODING token against the target's own encodings.
+
+    ``encoding<N>`` selects the Nth encoding the target declares for a contraction, exactly as
+    ``resolve_extent`` selects a geometry relative to the tile edge -- and for the same reason: a
+    profile must never write down a dtype. `_perf.yaml` is shared by every target, so a family that
+    named ``int8`` and ``bf16`` would be describing one machine and silently mis-describing the rest.
+
+    An index past the end RAISES. That case means the family was admitted on a target with fewer
+    encodings than it compares, which the gate is supposed to have refused; resolving it to the last
+    one instead would emit a comparison group whose two members are the same encoding, and a
+    differential over identical work always reads as "no effect".
+    """
+    if not isinstance(token, str):
+        raise ValueError(f"sweep encoding {token!r} is not an encoding token")
+    head, digits = token.strip(), ""
+    prefix = "encoding"
+    if not head.startswith(prefix) or not head[len(prefix):].isdigit():
+        raise ValueError(f"sweep encoding {token!r} is not of the form 'encoding<N>'")
+    digits = head[len(prefix):]
+    idx = int(digits)
+    if idx >= len(encodings):
+        raise ValueError(
+            f"sweep encoding {token!r} asks for encoding {idx} of a target declaring "
+            f"{len(encodings)} ({encodings}); the family's gate should have refused it here rather "
+            f"than letting two members resolve to the same encoding")
+    return encodings[idx]
+
+
 def resolve_extent(token, tile: int) -> int:
     """Resolve a sweep extent token against *tile* (the binding's tile edge).
 
@@ -1465,6 +1916,101 @@ def resolve_extent(token, tile: int) -> int:
     if value < 1:
         raise ValueError(f"sweep extent {token!r} resolves to {value} at tile={tile}; must be >= 1")
     return value
+
+
+#: Axis DERIVATIONS a sweep may name in place of writing extents down. A derived axis exists for the
+#: same reason ``encoding<N>`` does: the points the family needs are a function of the target's own
+#: derived facts, and any literal the one shared template wrote down would describe a single machine.
+#:
+#: ``memory_regime_reduction_depth`` is the residency axis. A performance model is only valid in the
+#: regimes it was fitted in, and a rate cannot be separated from a fixed fill/drain intercept from one
+#: point -- so this axis asks the target's OWN operand store for several reduction depths inside each
+#: residency band, spread across the band rather than piled against its edge. Measured on the
+#: interlocked target here before it existed: the whole `_perf` corpus sat in ``fits_double`` while the
+#: overwhelming majority of contraction regions in the real captures land in ``spills``, so every
+#: coefficient was fitted where almost no real work lands.
+_DERIVED_AXES = ("memory_regime_reduction_depth",)
+
+
+class AxisDerivationUnavailable(ValueError):
+    """The declaration is well formed but THIS target cannot host the axis it derives.
+
+    Kept distinct from a plain ``ValueError`` on purpose. A malformed declaration is an authoring
+    error and must stop generation; a target that declares no operand store simply cannot be given a
+    residency ladder, and that is the same kind of answer a refuted trait gate gives -- a skip with
+    evidence. Conflating them meant one such target aborted `expand_sweeps` outright and took every
+    OTHER family's members down with it, which reads downstream as "the corpus has no perf families"
+    rather than "this family does not apply here".
+    """
+
+
+def _memory_regime_axis(spec: dict, *, owner: str, target: str, tile: int, dtype: "str | None",
+                        fixed: "dict[str, list[int]]") -> tuple[list[int], dict, dict]:
+    """``(K extents, {extent: regime}, derivation record)`` for a residency-banded reduction sweep.
+
+    The parallel extents are read from the sweep's OWN ``M``/``N`` axes so the two cannot disagree
+    about the shape whose residency is being banded; each must be single-valued, because a band is a
+    property of one shape family and crossing it with a second parallel extent would put two different
+    residency ladders under one name.
+    """
+    from merlin.targetgen import memory_regime as MR
+
+    regimes = [str(r) for r in (spec.get("regimes") or MR.ORDER)]
+    points_per_regime = int(spec.get("points_per_regime", 2))
+    if points_per_regime < 2:
+        raise ValueError(
+            f"{owner}: points_per_regime={points_per_regime} -- a rate and a fixed intercept are two "
+            "parameters and cannot be separated by fewer than two points in the same regime")
+    ceiling = float(spec.get("spills_max_fraction_of_capacity", 2.0))
+    tiles = {}
+    for axis in ("M", "N"):
+        points = fixed.get(axis) or []
+        if len(set(points)) != 1:
+            raise ValueError(
+                f"{owner}: a memory-regime reduction axis needs a single-valued {axis} axis "
+                f"(got {points}); the band is a property of one parallel shape")
+        extent = int(points[0])
+        if extent % tile:
+            raise ValueError(f"{owner}: {axis}={extent} is not a whole number of {tile}-wide tiles")
+        tiles[axis] = extent // tile
+    record = MR.reduction_depth_regimes(
+        target, regimes, tile_dim=tile, dtype=dtype, m_tiles=tiles["M"], n_tiles=tiles["N"],
+        points_per_regime=points_per_regime, spills_max_fraction=ceiling)
+    values: list[int] = []
+    labels: dict[int, str] = {}
+    for regime in regimes:
+        got = (record["by_regime"] or {}).get(regime) or {}
+        for point in got.get("points") or []:
+            k = int(point["K"])
+            if k in labels:                                  # bands cannot overlap; check, do not trust
+                raise ValueError(
+                    f"{owner}: reduction depth {k} was assigned to both {labels[k]!r} and {regime!r}")
+            labels[k] = regime
+            values.append(k)
+    if not values:
+        raise AxisDerivationUnavailable(
+            f"{owner}: no regime in {regimes} is reachable on {target!r}: "
+            + "; ".join(f"{r}: {(record['by_regime'].get(r) or {}).get('unreachable')}"
+                        for r in regimes))
+    return values, labels, record
+
+
+def _resolve_derived_axis(spec: dict, *, owner: str, axis: str, target: str, tile: int,
+                          dtype: "str | None", fixed: "dict[str, list[int]]"):
+    """Dispatch one ``axes: {<name>: {derive: ...}}`` declaration to its derivation."""
+    kind = str(spec.get("derive") or "")
+    if kind not in _DERIVED_AXES:
+        raise ValueError(
+            f"{owner}: axis {axis!r} declares derive={kind!r}; known derivations are "
+            f"{list(_DERIVED_AXES)}")
+    if kind == "memory_regime_reduction_depth":
+        if axis != "K":
+            raise ValueError(
+                f"{owner}: {kind!r} derives the REDUCTION depth, so it must be declared on K, not "
+                f"{axis!r}")
+        return _memory_regime_axis(spec, owner=owner, target=target, tile=tile, dtype=dtype,
+                                   fixed=fixed)
+    raise ValueError(f"{owner}: axis derivation {kind!r} has no resolver")  # unreachable; fail closed
 
 
 def _performance_facts(target: str) -> dict:
@@ -1528,6 +2074,41 @@ def evaluate_gate(gate: dict, trait_facts: "dict | None") -> tuple[bool, dict]:
     return outcome == "satisfied", decision
 
 
+def _accum_for_encoding(target: str, operand: str, fallback: "str | None") -> str:
+    """The accumulate format ``target`` declares for a contraction whose operands are ``operand``.
+
+    ASKED OF THE ROUTER, not re-derived. `routing._legal_on` is the one predicate that answers "what
+    does this unit accumulate this contraction in", and it answers by taking the FIRST declared
+    accumulate rule that matches -- which is what every other path in the repo computes for the same
+    contraction. A second derivation here would be a second answer to one question, and on a target
+    declaring several rules for one operand (atlas declares both bf16 and f32 for fp8_e4m3, which is a
+    real capability rather than an ambiguity) the two would disagree.
+
+    Falls back to the corpus binding's accumulator only when no unit accepts the operand at all, and
+    raises when there is no fallback either: a member whose accumulator is unknown cannot be built,
+    and guessing one emits a capsule that measures arithmetic the target does not perform.
+    """
+    from merlin.targetgen import compute_units as _cu
+    from merlin.targetgen.routing import OpDemand, _legal_on        # noqa: PLC2701 -- one predicate
+    from merlin.targetgen.target_registry import load_contract
+
+    demand = OpDemand(op="matmul", in_fmt=operand, weight_fmt=operand, site="encoding_probe")
+    try:
+        units = list(_cu.compute_units(load_contract(target)))
+    except Exception:                              # noqa: BLE001 -- an unreadable contract is no answer
+        units = []
+    for unit in (_cu.effective(u, units) for u in units):
+        legal, acc = _legal_on(unit, demand)
+        if legal and acc:
+            return str(acc)
+    if fallback:
+        return str(fallback)
+    raise ValueError(
+        f"no unit of {target!r} declares an accumulate rule for operand {operand!r}, and no corpus "
+        f"binding accumulator is available; an encoding member cannot be built without knowing which "
+        f"datapath it accumulates in")
+
+
 def _materialize_performance_entry(entry: dict, binding) -> dict:
     """Resolve a performance member onto a runnable direct corpus path.
 
@@ -1540,7 +2121,22 @@ def _materialize_performance_entry(entry: dict, binding) -> dict:
         raise ValueError("performance materialization needs binding.target")
     binding_operand = getattr(binding, "operand_dtype", None)
     binding_accum = getattr(binding, "accum_dtype", None)
-    if binding_operand and binding_accum:
+    declared = entry.pop("_encoding_variant", None)
+    derived_axes = entry.pop("_derived_axes", None)
+    if declared:
+        # AN ENCODING FAMILY'S WHOLE CONTENT IS THAT ITS MEMBERS DIFFER HERE. This function otherwise
+        # overwrites `operand_dtype` with the target's single corpus binding, which is right for every
+        # other family -- they compare geometry or fusion at ONE datapath and must not drift off it --
+        # and fatal for an L6_global comparison: both members would collapse onto the same encoding and
+        # the differential would read "no effect" for a lever that was never exercised.
+        #
+        # The accumulate format is DERIVED for that operand rather than carried over from the binding:
+        # an accumulator belongs to the datapath the operand feeds, and pairing one encoding's operand
+        # with another's accumulator describes a machine that does not exist.
+        operand_dtype = str(declared)
+        accum_dtype = _accum_for_encoding(target, operand_dtype, binding_accum)
+        datatype_basis = "declared_encoding_variant"
+    elif binding_operand and binding_accum:
         # This is the binding _write_capsule will actually consume, derived by
         # corpus_spec from the target experiment + numeric profile. Prefer it
         # over re-deriving through a second capability-manifest representation.
@@ -1565,6 +2161,13 @@ def _materialize_performance_entry(entry: dict, binding) -> dict:
         "datatype_basis": datatype_basis,
         "builder": "merlin.targetgen.corpus_spec.build",
     }
+    if derived_axes:
+        # THE UNREACHABLE REGIMES TRAVEL WITH THE CAPSULE. The derivation knows which bands it could
+        # not reach and why, and that answer is worth exactly as much as the points it did reach: a
+        # regime nothing covers because nothing CAN is a result, while one that is merely absent from
+        # the corpus is a hole. Recorded on every member so a corpus-side gate can read it out of the
+        # tracked capsule rather than out of a generation report that may not have been rewritten.
+        performance["emitter"]["derived_axes"] = copy.deepcopy(derived_axes)
     entry["performance"] = performance
     return entry
 
@@ -1629,6 +2232,7 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                 f"{variant_performance}; every member of a family shares one claim contract")
         performance = base.get("performance")
         is_performance = base.get("cat") in {"perf", "_perf"} or performance is not None
+        gate_decision = None
         if is_performance:
             if legacy_traits_supplied:
                 raise ValueError(
@@ -1647,6 +2251,7 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                         f"performance sweep {sweep_id}: no trait facts supplied and binding.target is absent")
                 facts = _performance_facts(target)
             ok, decision = evaluate_gate(performance["gate"], facts)
+            gate_decision = decision
             if not ok:
                 if skipped is not None:
                     skipped.append({
@@ -1673,14 +2278,50 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
         axes = sweep.get("axes") or {}
         if not isinstance(axes, dict) or not axes:
             raise ValueError(f"sweep {sweep_id!r} declares no axes")
+        encodings = target_encodings(str(getattr(binding, "target", "") or ""))
 
         # Resolve each axis to concrete extents, preserving declaration order so
         # the generated corpus is reproducible.
         resolved: dict[str, list[int]] = {}
+        derived_axes = {a: t for a, t in axes.items() if isinstance(t, dict)}
         for axis, tokens in axes.items():
+            if axis in derived_axes:
+                continue
             if not isinstance(tokens, list) or not tokens:
                 raise ValueError(f"sweep {sweep_id!r} axis {axis!r} must be a non-empty list")
             resolved[axis] = [resolve_extent(t, tile) for t in tokens]
+        # DERIVED axes come second, because a derivation reads the literal axes it is banded against
+        # (a residency band is a property of one parallel shape). The order is a dependency, not a
+        # convenience: resolving them together would make the M/N a derivation sees depend on dict
+        # iteration order.
+        axis_labels: dict[str, dict] = {}
+        axis_records: dict[str, dict] = {}
+        unhostable = None
+        for axis, spec in derived_axes.items():
+            try:
+                values, labels, record = _resolve_derived_axis(
+                    spec, owner=f"sweep {sweep_id!r}", axis=axis,
+                    target=str(getattr(binding, "target", "") or ""), tile=tile,
+                    dtype=getattr(binding, "operand_dtype", None), fixed=resolved)
+            except AxisDerivationUnavailable as exc:
+                unhostable = {"axis": axis, "derive": str(spec.get("derive")), "detail": str(exc)}
+                break
+            resolved[axis] = values
+            axis_labels[axis] = labels
+            axis_records[axis] = record
+        if unhostable is not None:
+            if skipped is not None:
+                skipped.append({
+                    "family": sweep_id,
+                    "sweep": sweep_id,
+                    "status": "skipped_inapplicable",
+                    "reason": unhostable["detail"],
+                    "axis_derivation": unhostable,
+                    "gate": gate_decision,
+                    "fit_axes": list(sweep.get("fit_axes") or []),
+                    "comparison_roles": _comparison_roles(sweep),
+                })
+            continue
 
         declared_fit_axes = sweep.get("fit_axes") or []
         if not isinstance(declared_fit_axes, list) or any(
@@ -1739,8 +2380,23 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
             for variant in variants:
                 entry = copy.deepcopy(base)
                 entry.update(combo)
-                entry.update(_render_variant(variant, combo))
-                entry["name"] = template.format(id=sweep_id, i=index, **{**combo, **variant})
+                rendered = _render_variant(variant, combo)
+                # An `operand_dtype: encoding<N>` variant names an encoding POSITIONALLY, so the shared
+                # template never writes a dtype down. Resolved here, where the target is known, and
+                # stashed under a private key so `_materialize_performance_entry` can tell "this member
+                # chose its encoding" from "this member inherited the corpus binding".
+                enc_token = rendered.get("operand_dtype")
+                if isinstance(enc_token, str) and enc_token.startswith("encoding"):
+                    rendered["operand_dtype"] = resolve_encoding(enc_token, encodings)
+                    rendered["_encoding_variant"] = rendered["operand_dtype"]
+                entry.update(rendered)
+                # A derived axis contributes a LABEL as well as a value, so a member can be named by
+                # the band it was derived for (`{K_label}` -> "spills") rather than only by an extent
+                # whose meaning a reader would have to recompute against the store.
+                name_ns = {**combo, **variant}
+                for _axis, _labels in axis_labels.items():
+                    name_ns[f"{_axis}_label"] = _labels.get(combo.get(_axis), "unknown")
+                entry["name"] = template.format(id=sweep_id, i=index, **name_ns)
                 index += 1
                 entry.setdefault("source_role", "derived_sweep")
                 # Provenance survives generation: say which sweep and which point.
@@ -1749,6 +2405,14 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                 if variant:
                     axis_note += "; " + ", ".join(f"{k}={v}" for k, v in sorted(variant.items())
                                                   if not isinstance(v, dict))
+                if axis_records:
+                    entry["_derived_axes"] = {
+                        a: {"derive": str(axes[a].get("derive")), "value": combo.get(a),
+                            "label": axis_labels[a].get(combo.get(a)), "derivation": r}
+                        for a, r in axis_records.items()}
+                    axis_note += "; " + ", ".join(
+                        f"{a}={combo.get(a)} is {axis_labels[a].get(combo.get(a))}"
+                        for a in sorted(axis_records))
                 entry["source_reference"] = f"{reference} (tile={tile}; {axis_note})"
                 if entry["name"] in seen:
                     raise ValueError(
@@ -1769,6 +2433,40 @@ def expand_sweeps(profile: dict, binding, *, trait_facts: "dict | None" = None,
                         })
                         continue
                 generated.append(entry)
+
+    # A GROUP REDUCED TO ONE MEMBER IS NOT A COMPARISON. The declaration-time check above refuses a
+    # group AUTHORED with a single member, but a member can also disappear afterwards: materialization
+    # is allowed to fail per member and record an error, and the survivors were shipped anyway. A lone
+    # member then carries a `comparison_group` and a DIFFERENTIAL claim with nothing to difference
+    # against -- which is the same silent vacuity the single-member check exists to prevent, arriving by
+    # a different route. Measured while opening the encoding family: one target's second encoding could
+    # not resolve its accumulator, and the first shipped alone.
+    if generated:
+        members: dict[str, int] = {}
+        for e in generated:
+            g = e.get("comparison_group")
+            name = g.get("name") if isinstance(g, dict) else g
+            if name:
+                members[str(name)] = members.get(str(name), 0) + 1
+        lonely = {g for g, n in members.items() if n < 2}
+        if lonely:
+            kept = []
+            for e in generated:
+                g = e.get("comparison_group")
+                name = str(g.get("name") if isinstance(g, dict) else g or "")
+                if name in lonely:
+                    fam = (e.get("performance") or {}).get("family")
+                    if errors is not None:
+                        errors.append({
+                            "family": fam, "member": e.get("name", "?"), "status": "error",
+                            "error_type": "IncompleteComparisonGroup",
+                            "detail": (f"comparison group {name!r} kept only this member; a "
+                                       f"differential needs both, so it is dropped rather than "
+                                       f"shipped as a comparison against nothing"),
+                        })
+                    continue
+                kept.append(e)
+            generated = kept
 
     return entries + generated
 
@@ -1836,8 +2534,10 @@ def generate_target(target: str) -> list[Path]:
     entries = expand_sweeps(
         profile, binding, trait_facts=facts, skipped=_sweep_skips,
         blocked_unimplemented=_runtime_blocked, errors=_performance_errors)
+    entries = [_resolve_flat_extents(e, binding) for e in entries]
     for _s in _sweep_skips:
-        print(f"  [skip] performance family {_s['family']}: gate {_s['gate']['outcome']}")
+        _why = _s.get("reason") or f"gate {(_s.get('gate') or {}).get('outcome')}"
+        print(f"  [skip] performance family {_s['family']}: {_why}")
     template = copy.deepcopy(profile.get("_performance_template") or {})
     declared_families = [dict(row) for row in (template.get("families") or [])]
     family_counts = {
@@ -1862,13 +2562,45 @@ def generate_target(target: str) -> list[Path]:
     # registered) aborted the run before any of the tail-path sweep capsules were written, so a coverage
     # gap stayed open for a reason that had nothing to do with it. Failures are COLLECTED, reported by
     # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
-    written, failures = [], []
+    written, failures, unbuilt_roster, unprovable_forbids = [], [], [], []
     for e in entries:
         family = (e.get("performance") or {}).get("family")
         try:
             w = _write_capsule(e, binding, out_root)
         except Exception as exc:                              # noqa: BLE001 — reported, never swallowed
             detail = f"{type(exc).__name__}: {str(exc)[:300]}"
+            if isinstance(exc, UnprovableForbid) and str(e.get("source_role") or "") == SYNTH_ROLE:
+                # See `UnprovableForbid`. The capsule is removed rather than left on disk: a directory
+                # the corpus does not list is exactly the kind of half-written state the seal cannot
+                # see, and a stale one would be picked up by the next glob as though it had been built.
+                shutil.rmtree(out_root / str(e.get("cat") or "") / str(e.get("name") or ""),
+                              ignore_errors=True)
+                unprovable_forbids.append({"capsule": e.get("name", "?"),
+                                           "family": e.get("op"), "reason": str(exc)[:400]})
+                print(f"  [lane] {e.get('name')}: NOT BUILT — its forbid is not provable on this target")
+                continue
+            if _is_roster_capsule(e):
+                # A ROSTER MODEL IS A DECLARED INPUT, NOT A COMPILER RESULT. The roster axis emits one
+                # whole-model capsule per model the target's `workload_spec` names, at the format the
+                # target admits -- and whether a given network can be CAPTURED at that format depends on
+                # things outside this repo: whether the loader's dataset is present, whether the m2m venv
+                # has the model's package, whether torchAO's scheme runs on this host, whether
+                # torch.export accepts the module under quantization. Measured on the four declared
+                # models: one captures, one needs an ImageNet npz, one needs a package the venv lacks,
+                # one is refused by torch.export under W8A8 while its weight-only capture succeeds.
+                #
+                # Aborting the corpus for those would make a fact about the ROSTER read as a broken
+                # generator, and would take every other capsule down with it. Recording it keeps the rule
+                # that matters -- a requirement that produced no capsule is never indistinguishable from
+                # one that is met -- because the manifest names the model and the reason, and no capsule
+                # exists to be graded, so nothing can pass in its place.
+                why = _capture_failure_reason(exc)
+                unbuilt_roster.append({"capsule": e.get("name", "?"), "model": e.get("model"),
+                                       "operand_dtype": e.get("operand_dtype"),
+                                       "quant_scheme": e.get("quant_scheme"),
+                                       "status": "not_built", "reason": why})
+                print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
+                continue
             failures.append((e.get("name", "?"), detail))
             if family:
                 _performance_errors.append({
@@ -1922,7 +2654,19 @@ def generate_target(target: str) -> list[Path]:
         "blocked_unimplemented": declared_blocked + _runtime_blocked,
         "errors": _performance_errors,
     }
-    update_provenance_manifest(written, target=target, performance_record=performance_record)
+    if unbuilt_roster:
+        print(f"  [roster] {len(unbuilt_roster)} declared roster model(s) could not be captured at this "
+              f"target's derived format; they are recorded as not_built, never as covered")
+    if unprovable_forbids:
+        print(f"  [lane] {len(unprovable_forbids)} synthesized host-lane capsule(s) were dropped: their "
+              f"program contains regions this target admits, so the forbid they assert is not provable")
+    superseded = _prune_superseded_synth(entries, written, target=target)
+    if superseded:
+        print(f"  [prune] {len(superseded)} synthesized capsule(s) whose requirement cell no longer "
+              f"exists were removed: {', '.join(superseded)}")
+    update_provenance_manifest(written, target=target, performance_record=performance_record,
+                               unbuilt_roster=unbuilt_roster, unprovable_forbids=unprovable_forbids,
+                               superseded=superseded)
     if failures:
         raise RuntimeError(
             f"{len(failures)} capsule(s) failed to generate: {', '.join(n for n, _ in failures)}; the "
@@ -1930,8 +2674,76 @@ def generate_target(target: str) -> list[Path]:
     return written
 
 
+def _prune_superseded_synth(entries, written, *, target: str) -> list:
+    """Remove synthesized capsule directories the profile no longer asks for, and name them.
+
+    THE PROFILE IS THE WHOLE AUTHORITY for `derived_sweep` capsules -- it is regenerated from the
+    requirement, so a directory of that role which is not in it is evidence for a cell that is no
+    longer required. Nothing removed one, and they do not merely sit there: a superseded
+    `SY_kdepth_certified` inflated a sealed cohort count by one and broke the MANIFEST, and twelve
+    superseded MX capsules survived the alignment classes their own datapath cannot express, each one
+    still offering itself to the cover as evidence for a cell the requirement had dropped.
+
+    Deliberately narrow: only directories whose capsule declares this generator's synthesized role, and
+    only under the roots this target just wrote to. A hand-authored capsule is never touched, and a
+    target whose profile carries no synthesized entries at all prunes nothing (a profile that failed to
+    synthesize must not be read as "every cell was dropped").
+    """
+    keep = {str(e.get("name")) for e in entries if str(e.get("source_role") or "") == SYNTH_ROLE}
+    if not keep:
+        return []
+    roots = {d.parent for d in written if isinstance(d, Path)}
+    removed = []
+    for root in sorted(roots):
+        for cy in sorted(root.glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError:
+                continue
+            name = str(cap.get("name") or cy.parent.name)
+            if str(cap.get("source_role") or "") != SYNTH_ROLE or name in keep:
+                continue
+            shutil.rmtree(cy.parent, ignore_errors=True)
+            removed.append(name)
+    return sorted(removed)
+
+
+def _capture_failure_reason(exc: Exception) -> str:
+    """The one line that says WHY a capture failed, safe to write into a tracked file.
+
+    Two things go wrong with the obvious ``str(exc)[:300]``. A capture failure carries the worker's
+    stderr, and a traceback puts its cause LAST -- so the leading 300 characters are the frames that
+    name nothing, and the recorded reason ends mid-path with no error in it, which is the same as
+    recording nothing. And the frames are absolute local paths, which must not reach MANIFEST.yaml:
+    this repo is published.
+
+    So: the last UNINDENTED line, with local paths redacted by the same helper the capsule scrubber
+    uses. Indentation is the structural signal, not a guess about wording -- a traceback indents its
+    frame and source lines and leaves the exception flush left, so the last flush-left line is the
+    thing that was raised. Taking merely the last non-empty line got this wrong on a real case: the
+    export refusal ends with a trailing frame, and the recorded reason came out as ``next(self.gen)``.
+    """
+    lines = [ln for ln in str(exc).splitlines() if ln.strip()]
+    flush = [ln for ln in lines if ln[:1] not in (" ", "\t")]
+    tail = (flush or lines or [f"{type(exc).__name__} with no message"])[-1].strip()
+    return _redact_local_paths(f"{type(exc).__name__}: {tail}")[:400]
+
+
+def _is_roster_capsule(entry: dict) -> bool:
+    """A whole-model capsule the ROSTER axis emitted, as opposed to any other model capsule.
+
+    Read off the entry's own generalization axis rather than its name, so a renamed prefix does not
+    silently reclassify a capsule into the lane that is allowed not to build.
+    """
+    return (str(entry.get("kind")) == "model"
+            and str((entry.get("semantic") or {}).get("generalization_axis") or "") == "roster")
+
+
 def update_provenance_manifest(written, cap_root=None, *, target: str | None = None,
-                               performance_record: "dict | None" = None) -> Path:
+                               performance_record: "dict | None" = None,
+                               unbuilt_roster: "list | None" = None,
+                               unprovable_forbids: "list | None" = None,
+                               superseded: "list | None" = None) -> Path:
     """Rewrite ``MANIFEST.yaml``'s generated/hand_authored split from what this run actually emitted.
 
     The file's own header has always claimed the generator rewrites it, but no writer existed, so it was
@@ -1989,6 +2801,32 @@ def update_provenance_manifest(written, cap_root=None, *, target: str | None = N
         per_target = dict(man.get("performance_generation") or {})
         per_target[target] = copy.deepcopy(performance_record or {})
         man["performance_generation"] = per_target
+        # WHICH DECLARED ROSTER MODELS THIS TARGET HAS NO WHOLE-MODEL CAPSULE FOR, and why. Recorded
+        # per target and rewritten on every full run, so a model that starts capturing stops being
+        # listed rather than lingering as stale debt. An EMPTY list is written -- "no roster model is
+        # unbuilt" is a result -- while ``None`` leaves the record untouched, because a caller that did
+        # not walk the roster (a test rebuilding the split, say) has not learned that nothing is
+        # missing. The two absences must not be spelled the same way.
+        if unbuilt_roster is not None:
+            per_roster = dict(man.get("roster_generation") or {})
+            per_roster[target] = {"not_built": copy.deepcopy(unbuilt_roster)}
+            man["roster_generation"] = per_roster
+        # WHICH SYNTHESIZED NEGATIVE-LANE CAPSULES THIS TARGET HAS NONE OF, and why. Same two-absence
+        # rule as the roster above: an empty list is the result "every forbid this axis derived is
+        # provable", while `None` means nobody looked. Without this the family simply vanishes between
+        # the requirement and the corpus, which is the one failure mode the whole axis exists to avoid.
+        if unprovable_forbids is not None:
+            per_lane = dict(man.get("lane_generation") or {})
+            per_lane[target] = {"forbid_not_provable": copy.deepcopy(unprovable_forbids)}
+            man["lane_generation"] = per_lane
+        # WHICH SYNTHESIZED CAPSULES THIS RUN REMOVED because the requirement stopped asking for their
+        # cell. Recorded for the same reason as the two above: a capsule that quietly disappears between
+        # one regeneration and the next is indistinguishable from one that was never derived, and the
+        # cover would go on citing it from disk until somebody noticed the count.
+        if superseded is not None:
+            per_sup = dict(man.get("superseded_generation") or {})
+            per_sup[target] = {"removed": list(superseded)}
+            man["superseded_generation"] = per_sup
     head = man_path.read_text(encoding="utf-8").split("generated_by:")[0] if man_path.is_file() else ""
     man_path.write_text(head + yaml.safe_dump(man, sort_keys=False), encoding="utf-8")
     return man_path
