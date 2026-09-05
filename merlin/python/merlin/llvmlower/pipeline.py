@@ -674,6 +674,8 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
 from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
+from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
+from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
@@ -797,17 +799,21 @@ _ORIG_RUN_STAGES = _run_stages
 _SINK_MARK = 'optimize-allocation-liveness'
 
 
-def _run_stages(ctx, module, pipeline, erase, mid=()):
+def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
     passes = [p for p in pipeline.split(',') if p]
     k = next((i for i, p in enumerate(passes) if _SINK_MARK in p), -1)
     if k < 0:
-        return _ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid)
+        return _ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late)
     head, tail = passes[:k + 1], passes[k + 1:]
-    # `erase`/`mid` open their window after buffer-loop-hoisting; hand them to whichever half
-    # contains it, or they would be accepted here and silently never run.
+    # `erase`/`mid` open their window after buffer-loop-hoisting, and `late` opens its own before
+    # convert-scf-to-openmp; hand each to whichever half contains its anchor, or it would be
+    # accepted here and silently never run. A `late` whose anchor is in neither half goes to the
+    # tail, where the wrapped runner still applies it at the end rather than dropping it.
     hoist_head = any('buffer-loop-hoisting' in p for p in head)
+    late_head = any('convert-scf-to-openmp' in p for p in head)
     _ORIG_RUN_STAGES(ctx, module, ','.join(head),
-                     erase if hoist_head else 0, mid if hoist_head else ())
+                     erase if hoist_head else 0, mid if hoist_head else (),
+                     late if late_head else ())
     bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
     print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
     if bad:
@@ -815,7 +821,8 @@ def _run_stages(ctx, module, pipeline, erase, mid=()):
                            '(' + str(len(bad)) + ' violations):\n  ' + '\n  '.join(bad[:20]))
     if tail:
         _ORIG_RUN_STAGES(ctx, module, ','.join(tail),
-                         0 if hoist_head else erase, () if hoist_head else mid)
+                         0 if hoist_head else erase, () if hoist_head else mid,
+                         () if late_head else late)
 """
 
 #: The line the runner prints once the check has run. `lower_to_llvm_ir` REQUIRES it whenever the
@@ -899,7 +906,7 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _MID_STAGE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _MID_STAGE_SRC + _PARALLEL_GRAIN_LATE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -927,7 +934,7 @@ if _CONCAT_DPS:
     for _cd_kind, _cd_detail in _cd_report:
         print("OK concat_dps", _cd_kind, _cd_detail)
     print("OK concat_dps rewrote", _cd_n)
-_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES)
+_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES)
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
 print("OK")
@@ -953,7 +960,8 @@ from torch_mlir.dialects import llvm
 
 _RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE
                          + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE
-                         + _CONCAT_DPS_PRELUDE + _MID_STAGE_SRC
+                         + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _MID_STAGE_SRC
+                         + _PARALLEL_GRAIN_LATE_SRC
                          + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
@@ -988,7 +996,7 @@ if _CONCAT_DPS:
     print("OK concat_dps rewrote", _cd_n)
 with ctx, ir.Location.unknown():
     _n = apply_activation_polynomial(module, ctx)
-_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES)
+_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES)
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
 print("OK act_poly rewrote", _n)
@@ -1163,13 +1171,26 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # straight into the concatenated buffer. See llvmlower/concat_dps.py.
     from .concat_dps import FEATURE as _CONCAT_DPS_FEATURE
     _concat_dps_gate = "1" if _CONCAT_DPS_FEATURE in feats else "0"
+    # argv[9] carries the multicore fork/join GRAIN threshold (default-off: "0"). Every
+    # `scf.parallel` cheaper than it becomes a serial `scf.for` nest before convert-scf-to-openmp,
+    # so no fork is emitted for it. See llvmlower/parallel_grain.py; 0 -> byte-identical lowering.
+    from .parallel_grain import threshold_of as _parallel_grain_threshold
+    _grain = _parallel_grain_threshold(feats)
+    if _grain is not None and not omp:
+        import sys as _sys
+        # Say so rather than shipping a build whose named lever cannot fire: without the multicore
+        # lowering there is no `scf.parallel` at all, so the grain would report 0 and read as inert.
+        print("[parallel_grain] WARNING: a grain threshold is named but this lowering is SERIAL "
+              "(no parallel_harts/parallel), so there is no scf.parallel to price; the feature "
+              "will serialize nothing.", file=_sys.stderr, flush=True)
+    _grain_gate = str(int(_grain)) if _grain is not None else "0"
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
     stage_out = (work / "model.llvmdialect.mlir") if omp else out
     proc = subprocess.run(
         [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb,
-         _expand_copy, _fold_wt, _concat_dps_gate],
+         _expand_copy, _fold_wt, _concat_dps_gate, _grain_gate],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")

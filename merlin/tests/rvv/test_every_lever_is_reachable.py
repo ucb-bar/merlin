@@ -24,14 +24,69 @@ _NOT_LEVERS = {"pipeline.py", "lower.py"}
 
 
 def _registrar_modules() -> set[str]:
+    """Lever modules whose registration is an IMPORT, i.e. one fixed feature name.
+
+    A registrar whose ``ensure_registered`` REQUIRES an argument is a name-derived FAMILY (the
+    argument is the tuning point), so there is no single name for the proposer to import and
+    register; those resolve through ``impr_features._try_lazy_register`` instead, and are covered by
+    :func:`test_every_name_derived_lever_family_resolves_from_its_name_alone`."""
+    import importlib
+    import inspect
+
     llvm = merlin_dir() / "python" / "merlin" / "llvmlower"
     out = set()
     for path in sorted(llvm.glob("*.py")):
         if path.name in _NOT_LEVERS:
             continue
-        if "def ensure_registered" in path.read_text(encoding="utf-8"):
-            out.add(path.stem)
+        if "def ensure_registered" not in path.read_text(encoding="utf-8"):
+            continue
+        fn = getattr(importlib.import_module(f"merlin.llvmlower.{path.stem}"),
+                     "ensure_registered", None)
+        if fn is not None and any(
+                p.default is inspect.Parameter.empty
+                and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+                for p in inspect.signature(fn).parameters.values()):
+            continue                     # a family, not a name: reachable lazily, tested below
+        out.add(path.stem)
     return out
+
+
+#: One name from each name-derived lever family, and the module that owns it. These cannot be
+#: registered by import (the point IS the name), so what has to hold is that a proposer-only process
+#: resolves them from the string alone -- the same property the import gives the fixed levers.
+_NAME_DERIVED_LEVERS = [("parallel_grain", "parallel_grain_10000")]
+
+
+def test_every_name_derived_lever_family_resolves_from_its_name_alone():
+    """`_composes` swallows the KeyError for an unregistered name and returns False, so a family the
+    lazy registrar does not know is invisible to the search exactly like an unimported registrar."""
+    import importlib
+    import inspect
+
+    llvm = merlin_dir() / "python" / "merlin" / "llvmlower"
+    families = set()
+    for path in sorted(llvm.glob("*.py")):
+        if path.name in _NOT_LEVERS or "def ensure_registered" not in path.read_text():
+            continue
+        fn = getattr(importlib.import_module(f"merlin.llvmlower.{path.stem}"),
+                     "ensure_registered", None)
+        if fn is not None and any(
+                p.default is inspect.Parameter.empty
+                and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+                for p in inspect.signature(fn).parameters.values()):
+            families.add(path.stem)
+    covered = {m for m, _ in _NAME_DERIVED_LEVERS}
+    assert families <= covered, (
+        f"name-derived lever families with no reachability case here: {sorted(families - covered)}")
+    code = ("import json\n"
+            "from merlin.mining.wholemodel_proposer import _composes\n"
+            f"names = {[n for _, n in _NAME_DERIVED_LEVERS]!r}\n"
+            "print(json.dumps([n for n in names if not _composes([n])]))\n")
+    env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin"}
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       cwd=repo_root(), env=env)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert r.stdout.strip().splitlines()[-1] == "[]", r.stdout
 
 
 def test_every_lever_registrar_is_imported_by_the_proposer():

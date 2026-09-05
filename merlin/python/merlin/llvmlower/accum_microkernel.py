@@ -50,6 +50,8 @@ from __future__ import annotations
 from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
+from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
+from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 
@@ -397,8 +399,10 @@ def run_source() -> str:
         + _COPY_EXPAND_PRELUDE
         + _CONCAT_DPS_PRELUDE
         + _TRANSPOSE_MAPS_PRELUDE
+        + _PARALLEL_GRAIN_PRELUDE
         + _REWRITER_SRC
-        + _MID_STAGE_SRC +
+        + _MID_STAGE_SRC
+        + _PARALLEL_GRAIN_LATE_SRC +
         f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         "passes = pipeline.split(',')\n"
@@ -428,7 +432,7 @@ def run_source() -> str:
         "    _n = scalarize_a_reads(module, ctx)\n"
         "    _m += sink_extf_through_extract(module, ctx)\n"
         "if stage2:\n"
-        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY, _MID_STAGES)\n"
+        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES)\n"
         "with open(out_path, 'w') as f:\n"
         "    __MERLIN_EMIT__\n"
         "print('OK scalarize_a rewrote', _n, 'sink_extf', _m)\n"

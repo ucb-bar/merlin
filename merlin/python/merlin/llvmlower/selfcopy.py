@@ -50,7 +50,7 @@ def _erase_self_copies(module):
     return n
 
 
-def _run_stages(ctx, module, pipeline, erase, mid=()):
+def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
     """Run `pipeline`; when `erase` (or any `mid` rewrite is requested), split it after the
     post-bufferization canonicalize/cse and run the rewrites in between. Splitting on
     buffer-loop-hoisting (not a fixed index) so the hook stays put if the pass list moves.
@@ -58,15 +58,45 @@ def _run_stages(ctx, module, pipeline, erase, mid=()):
     `mid` is a sequence of `(label, fn(ctx, module) -> int)` rewrites that need the SAME window as
     the erase: after bufferization has created the buffer ops, before finalize-memref-to-llvm turns
     them into opaque runtime calls. Each reports its count as `OK <label> <n>` so a rewrite that
-    matched nothing is visible in the build log instead of passing for applied."""
+    matched nothing is visible in the build log instead of passing for applied.
+
+    `late` is the same shape, in a DIFFERENT window: after the forall/linalg -> `scf.parallel`
+    conversions and before `convert-scf-to-openmp` turns each `scf.parallel` into a fork. It is a
+    separate list rather than more `mid` entries because at the `mid` point no `scf.parallel` exists
+    yet -- a grain decision made there would price loops that have not been formed. Empty `late`
+    (the default) leaves the pass string split exactly as before, so the lowering is byte-identical.
+    """
     from torch_mlir.passmanager import PassManager
+
+    def _run(sub):
+        if sub:
+            PassManager.parse('builtin.module(' + ','.join(sub) + ')', ctx).run(module.operation)
+
+    def _late_split(sub):
+        """Run `sub`, pausing before `convert-scf-to-openmp` to run the `late` rewrites."""
+        if not late:
+            _run(sub)
+            return
+        j = next((i for i, p in enumerate(sub) if 'convert-scf-to-openmp' in p), -1)
+        if j < 0:
+            # No OpenMP conversion in this pass list: run the rewrites at the END, where they still
+            # see whatever `scf.parallel` survives, rather than dropping them silently.
+            _run(sub)
+            for label, fn in late:
+                print('OK ' + label, fn(ctx, module))
+            return
+        _run(sub[:j])
+        for label, fn in late:
+            print('OK ' + label, fn(ctx, module))
+        _run(sub[j:])
+
     passes = [p for p in pipeline.split(',') if p]
     if not passes:
         return
     want_split = bool(erase) or bool(mid)
     k = next((i for i, p in enumerate(passes) if 'buffer-loop-hoisting' in p), -1) if want_split else -1
     if k < 0:
-        PassManager.parse('builtin.module(' + ','.join(passes) + ')', ctx).run(module.operation)
+        _late_split(passes)
         return
     # ...hoisting, canonicalize, cse -- but NEVER past the pass that lowers linalg to loops. A mid
     # rewrite may EMIT linalg (expand_memref_copy rewrites a copy to `linalg.copy` and relies on
@@ -80,13 +110,12 @@ def _run_stages(ctx, module, pipeline, erase, mid=()):
             end = min(end, i)
             break
     head, tail = passes[:end], passes[end:]
-    PassManager.parse('builtin.module(' + ','.join(head) + ')', ctx).run(module.operation)
+    _run(head)
     if erase:
         print('OK erase_self_copy', _erase_self_copies(module))
     for label, fn in mid:
         print('OK ' + label, fn(ctx, module))
-    if tail:
-        PassManager.parse('builtin.module(' + ','.join(tail) + ')', ctx).run(module.operation)
+    _late_split(tail)
 
 
 _ERASE_SELF_COPY = len(sys.argv) > 4 and sys.argv[4] == '1'
