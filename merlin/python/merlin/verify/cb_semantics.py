@@ -70,10 +70,18 @@ ENCODABLE_EPILOGUE = frozenset({"bias_add", "bias", "requant", "relu"})
 #: Signed range by dtype spelling, for the readout narrow.
 _SIGNED_RANGE = {"i8": (-128, 127), "i16": (-32768, 32767)}
 
-#: The reference's own default when a COMMIT carries no ``output_dtype``. It is ``i8`` — i.e. absent
-#: means SATURATE — and the reference narrows only on an exact ``"i8"`` match, so ``i16``/``i32`` are
-#: passthroughs there. Mirroring either of these wrongly would refute a correct backend.
-_COMMIT_DEFAULT_DTYPE = "i8"
+#: The reference's default when a COMMIT carries no ``output_dtype``: ``i32`` — absent means DO NOT
+#: NARROW.
+#:
+#: This was ``i8`` and had to change WITH the engine. The runtime defaulted to ``i8`` and narrowed
+#: on an exact match, while ``capsule_golden`` defaulted to ``i32`` and narrowed any width; they
+#: diverged for 77 days and a correct backend omitting the attribute failed L0 on 85 of 130
+#: capsules. Both runtime COMMIT sites now route through the shared ``_narrow_int_readout``.
+#:
+#: The rule this constant serves is unchanged: MIRROR the engine the corpus grades against,
+#: whatever it says. An encoder that keeps its own opinion refutes correct backends — which is
+#: what this line would have started doing the moment the engine moved.
+_COMMIT_DEFAULT_DTYPE = "i32"
 
 
 def safe_k_bound(operand_width: int, acc_width: int) -> int:
@@ -217,12 +225,10 @@ class CommandBufferEncoder:
                 t = self.enc.requant(t, shift)
             elif stage == "relu":
                 t = self.enc.relu(t)
-        # The narrow happens AFTER the whole epilogue, unconditionally, and the reference tests an
-        # exact "i8" — so anything else is a passthrough THERE and must be here too.
-        dtype = str(attrs.get("output_dtype", _COMMIT_DEFAULT_DTYPE))
-        if dtype == "i8":
-            lo, hi = _SIGNED_RANGE["i8"]
-            t = self.enc.saturate(t, lo, hi, 8)
+        # The narrow happens AFTER the whole epilogue, unconditionally, and now follows the engine's
+        # SHARED rule: saturate to any integer width below the accumulator, derived from the dtype
+        # rather than tested against "i8". The old exact-i8 test could not express i16/i4/u8 at all.
+        t = self._narrow(t, attrs, default=_COMMIT_DEFAULT_DTYPE)
         self.env[dst] = t
         return dst, t
 
@@ -347,10 +353,10 @@ class CommandBufferEncoder:
         attention family to i32), so it is passed in rather than assumed. Mirroring either wrongly
         would refute a correct backend.
         """
-        if str(attrs.get("output_dtype", default)) == "i8":
-            lo, hi = _SIGNED_RANGE["i8"]
-            return self.enc.saturate(t, lo, hi, 8)
-        return t
+        bits = _narrow_bits(str(attrs.get("output_dtype", default)))
+        if bits is None:
+            return t
+        return self.enc.saturate(t, -(1 << (bits - 1)), (1 << (bits - 1)) - 1, bits)
 
     # -- helpers ---------------------------------------------------------------------------------
     def _bias_name(self, operands: dict, attrs: dict, dst: str) -> str:
@@ -388,6 +394,19 @@ def _why_not_encodable(index: int, op: str) -> str:
     return (f"command {index} uses opcode {op!r}, which this encoder has no definition for. "
             f"Encodable: {sorted(ENCODABLE_OPCODES)}. Refusing rather than skipping it — a skipped "
             f"command silently changes what the query is about.")
+
+
+def _narrow_bits(dtype: str) -> int | None:
+    """Bits to saturate to, or None when nothing narrows — mirroring ``_narrow_int_readout``.
+
+    Derived from the spelling rather than tested against "i8", so a target narrowing to i16/i4/u8 is
+    handled instead of silently passed through. A width at or above the accumulator has nothing to
+    narrow; a non-integer spelling is not this function's business (floats are refused earlier).
+    """
+    if not dtype or dtype[0] not in ("i", "u") or not dtype[1:].isdigit():
+        return None
+    bits = int(dtype[1:])
+    return None if bits >= 32 else bits
 
 
 def _width_of(dtype: str, name: str) -> int:

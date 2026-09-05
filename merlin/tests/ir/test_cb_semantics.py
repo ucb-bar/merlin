@@ -235,3 +235,71 @@ def _null_encoder():
     blk = Block()
     with ImplicitBuilder(blk):
         return Encoder()
+
+
+@pytest.mark.parametrize("mutate,label", [
+    (lambda cb: [c["attributes"].pop("output_dtype", None)
+                 for c in cb["commands"] if c["opcode"] == "COMMIT"], "output_dtype ABSENT"),
+    (lambda cb: [c["attributes"].__setitem__("output_dtype", "i16")
+                 for c in cb["commands"] if c["opcode"] == "COMMIT"], "output_dtype i16"),
+])
+def test_the_encoder_tracks_the_engine_on_readout_variants(mutate, label):
+    """The differential test above only ever saw a DECLARED i32, so it could not see this.
+
+    Measured 2026-09-05: a defect replay found `_COMMIT_DEFAULT_DTYPE` still set to "i8" AFTER both
+    runtime engines had been changed to default i32 — and every existing test passed, because the
+    in-tree pipeline always declares the attribute. An encoder silently holding an older opinion than
+    the engine it mirrors refutes correct backends, which is the one outcome that makes this tool
+    worse than nothing. These cases exercise the readout paths the pipeline never produces.
+    """
+    from xdsl.builder import ImplicitBuilder
+    from xdsl.dialects import builtin, smt
+    from xdsl.ir import Block, Region
+
+    from merlin.runtime import simulate
+    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.verify.cb_semantics import encode_command_buffer
+    from merlin.verify.refine import check_module
+    from merlin.verify.smt_ops import SolverOp
+    from merlin.verify.smt_semantics import Encoder
+
+    _, cb, _ = _pair(m=4, k=64, n=4)          # K large enough that the accumulator leaves i8 range
+    cb = copy.deepcopy(cb)
+    mutate(cb)
+    concrete = materialize_inputs(cb, None)
+    golden = simulate(cb)["outputs"]
+
+    blk = Block()
+    with ImplicitBuilder(blk):
+        enc = Encoder()
+        outs, leaves = encode_command_buffer(enc, cb)
+        pins, diffs = [], []
+        for name, tensor in leaves.items():
+            ref = concrete.get(name)
+            if ref is None:
+                continue
+            rows, cols = ref.shape
+            for r in range(rows):
+                for c in range(cols):
+                    lit = enc.const(int(ref.data[r * cols + c]), tensor.width)
+                    pins.append(smt.EqOp(tensor.at(r, c), lit).results[0])
+        for name, tensor in outs.items():
+            want = golden[name]
+            for r in range(tensor.rows):
+                for c in range(tensor.cols):
+                    lit = enc.const(int(want[r][c]), tensor.width)
+                    diffs.append(smt.NotOp(smt.EqOp(tensor.at(r, c), lit).results[0]).results[0])
+        assert pins and diffs, "vacuous"
+        term = diffs[0]
+        for d in diffs[1:]:
+            term = smt.OrOp(term, d).results[0]
+        for pin in pins:
+            smt.AssertOp(pin)
+        smt.AssertOp(term)
+        smt.YieldOp()
+
+    verdict = check_module(builtin.ModuleOp([SolverOp.from_region(Region([blk]))]),
+                           timeout_ms=180_000)
+    assert verdict.status == "unsat", (
+        f"with {label} the encoder disagrees with merlin.runtime.simulate "
+        f"(status={verdict.status}). The encoder must MIRROR the engine, whatever it says.")
