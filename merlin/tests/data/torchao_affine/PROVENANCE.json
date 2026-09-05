@@ -1,0 +1,22 @@
+{
+  "produced_by": "torchao.quantization.quant_primitives.choose_qparams_affine / quantize_affine",
+  "torchao_version": "0.16.0",
+  "torch_version": "2.10.0+cu128",
+  "venv": "/scratch/agustin/projects/model2MLIR/.venv (python3.12)",
+  "call": "MappingType.SYMMETRIC, block_size=per-token, target_dtype=torch.int8, quant_min=-127, quant_max=127, eps=1e-5, scale_dtype=None",
+  "why_these_args": "torchao.quantization.quant_api._int8_symm_per_token_reduced_range_quant, the activation quantizer Int8DynamicActivationInt8WeightConfig selects with its default act_mapping_type=MappingType.SYMMETRIC; confirmed against the exported FX node args of a quantize_'d nn.Linear(2048, 1000)",
+  "second_reference": {
+    "op": "torch.ops.quantized_decomposed.quantize_per_token (ExecuTorch's portable kernel library ships the out-variant; torch registers the CompositeExplicitAutograd impl)",
+    "agrees_with_torchao_on_quantize": true,
+    "checked": "handed the same (scale, zero_point=0, quant_min=-127, quant_max=127), it produces the identical int8 on every case here",
+    "does_NOT_agree_on_choose_qparams": "quantized_decomposed.choose_qparams_per_token_asymmetric is a DIFFERENT scheme: ASYMMETRIC, quant_min/max -128/127, scale=(max_pos-min_neg)/255 in float64, a derived and rounded zero point, eps=finfo(f32).eps. torchao's int8_dyn_act_int8_weight is SYMMETRIC, -127/127, max|x|/127, zero point 0, eps=1e-5. Measured on the resnet50 fc activation the two schemes disagree on 2047 of 2048 int8 values.",
+    "zero_point_placement_differs": "torchao rounds THEN adds the zero point; quantized_decomposed adds THEN rounds. With round-half-to-even and an ODD zero point these differ (measured). Immaterial here because a SYMMETRIC scheme's zero point is 0."
+  },
+  "cases": {
+    "ties": "values landing exactly on .5 after scaling (round-half-to-EVEN)",
+    "ulp": "an element where round(x*(1/s)) != round(x/s) (reciprocal-then-multiply)",
+    "tiny": "magnitudes below eps, so scale hits the eps floor",
+    "zeros": "all-zero block (scale = 0/127 -> eps)",
+    "r3": "rank-3 per-token, scale rank 2"
+  }
+}

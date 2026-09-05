@@ -213,10 +213,15 @@ K1_RUNNABLE: frozenset[str] = frozenset(
 # shape-only window operand emitted at capture, as upstream linalg.pooling_* does. The FP32 bundle
 # now lowers and gates clean: fp32_cos 1.0, rel 5.05e-07, argmax True.
 #
-# What still blocks the INT8 bundle is unrelated: its W8A8 capture leaves
+# The int8 bundle's second blocker is also FIXED. Its W8A8 capture left
 # `torchao.choose_qparams_affine` / `torchao.quantize_affine` as opaque external calls (m2m has a
-# decomposition for `dequantize_affine` only), which nothing in merlin defines. So the fp32 bundle is
-# the realistic CNN cell today, and int8 needs those two decompositions first.
+# decomposition for `dequantize_affine` only), which nothing in merlin defined -- an undefined
+# reference at link and an OutlineError in the interpreter. `llvmlower.torchao_affine` now decomposes
+# both into linalg (bit-exact against torchao's own implementation) on both paths, and the K1 ELF
+# links. What remains before an int8 CNN cell is citable is the FC weight: `%323`/`%324` are
+# `prov.quant_inner`-tagged empties the interpreter binds from `extra.npz` and the COMPILED path does
+# not, so a compiled classifier head reads uninitialized memory until the bundle is rewritten
+# (`build_tools/scripts/fix_qinner.py`).
 K1_RAM_INFEASIBLE: frozenset[str] = frozenset({"openvla", "molmoact", "pi05"})
 
 # Full-fidelity capture env (the exact loader settings the recapture used to build the REAL/native

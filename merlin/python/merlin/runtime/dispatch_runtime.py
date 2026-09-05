@@ -1202,8 +1202,10 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     from ..frontends.linalg_mlir import parse_mlir_file
     from ..xdsl_dialects.lowering.outline import outline_dispatches
 
-    from ..llvmlower.passes_xdsl import (collapse_overrank_matmul, fix_bool_sitofp,
-                                         lower_bf16_matmul_f32acc, lower_quant_ext)
+    from ..llvmlower.passes_xdsl import (collapse_overrank_matmul, fix_bool_fptosi,
+                                         fix_bool_sitofp, lower_bf16_matmul_f32acc,
+                                         lower_quant_ext)
+    from ..llvmlower.torchao_affine import lower_torchao_affine_quant
 
     model_dir = Path(model_dir)
     module = parse_mlir_file(model_dir / "model.mlir")
@@ -1213,6 +1215,9 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     #  - bf16 matmuls: accumulate in f32 then truncate (matches torch), else ~bf16 round-off;
     #  - bool->float casts: sitofp(i1) (true -> -1.0) -> uitofp (true -> 1.0), matching torch
     #    (fixes the eager-attention causal-mask sign flip; molmoact decoder).
+    # An activation-quant capture leaves torchao's choose_qparams/quantize as opaque calls to
+    # externs nothing defines; without this the module cannot even be outlined.
+    lower_torchao_affine_quant(module)
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)            # dequant prov.quant_inner_{w,s} -> source empties
     if int8_compute:
@@ -1232,6 +1237,9 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     lower_quant_ext(module)                   # residual dequants (unconverted) -> f32 fallback
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
+    # Keep the interpreter on the SAME bool-cast semantics as the compiled path: `fptosi f32 -> i1`
+    # is poison in LLVM but `int(x)` here, so leaving it out is exactly how the two paths diverge.
+    fix_bool_fptosi(module)
     outlined = outline_dispatches(module)
     driver = next(op for op in outlined.module.walk()
                   if op.name == "func.func" and "$kernel_" not in op.sym_name.data)

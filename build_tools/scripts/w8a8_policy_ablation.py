@@ -74,8 +74,10 @@ def _prepared_module(bundle: Path):
     quant passes here are the ops offered there."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.llvmlower.passes_xdsl import collapse_overrank_matmul
+    from merlin.llvmlower.torchao_affine import lower_torchao_affine_quant
     from merlin.runtime.dispatch_runtime import _propagate_quant_inner
     module = parse_mlir_file(bundle / "model.mlir")
+    lower_torchao_affine_quant(module)
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)
     return module

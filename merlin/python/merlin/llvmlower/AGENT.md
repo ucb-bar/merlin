@@ -7,6 +7,7 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 ## What belongs here
 
 - `passes_xdsl.py` — Merlin-authored rewrites: `quant_ext.dequantize_per_channel` → `linalg.generic`; `llvm.emit_c_interface`; (future) `scf.parallel` → `merlin_parallel_for`.
+- `torchao_affine.py` — decompose the two torchao activation-quant ops a dynamic-activation capture leaves as opaque `func.call`s to body-less externs (`choose_qparams_affine`, `quantize_affine`) into linalg. Bit-exact against torchao's own implementation (`merlin/tests/ir/test_torchao_affine.py`); the block layout comes from the call's types and the quant range/eps from the scheme the bundle records in `prov.quantization`, and anything underivable raises rather than defaulting. Runs first in BOTH `dispatch_runtime.run_model` and `zephyr_model._prepare_model_mlir`.
 - `pipeline.py` — upstream pass pipeline + `translate_module_to_llvmir` (in the model2MLIR venv).
 - `codegen.py`, `toolchain.py`, `weights_pack.py` (manifest/safetensors → blob + arg table), `abi.py` (`_mlir_ciface_forward` host runner + `ScalarArg`), `lower.py`/`cli.py`.
 - `kernel_backend.py` — compile one outlined kernel func in isolation + check it vs a numpy reference (the per-kernel bisection harness; used by `runtime.dispatch_runtime`).

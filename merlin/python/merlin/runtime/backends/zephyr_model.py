@@ -423,11 +423,17 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     sitofp(i1) bool-cast sign). Without them only clean LLMs (small_llama) lower."""
     from ...frontends.linalg_mlir import parse_mlir_file
     from ...xdsl_dialects._common import text as to_text
-    from ...llvmlower.passes_xdsl import (collapse_overrank_matmul, fix_bool_sitofp,
-                                          lower_bf16_matmul_f32acc, lower_quant_ext)
+    from ...llvmlower.passes_xdsl import (collapse_overrank_matmul, fix_bool_fptosi,
+                                          fix_bool_sitofp, lower_bf16_matmul_f32acc,
+                                          lower_quant_ext)
+    from ...llvmlower.torchao_affine import lower_torchao_affine_quant
     from ..dispatch_runtime import _propagate_quant_inner
 
     module = parse_mlir_file(mlir_path)
+    # Same first step as the interpreter path (dispatch_runtime.run_model): torchao's
+    # choose_qparams/quantize arrive as opaque calls to externs nothing defines, and the two paths
+    # diverging here is precisely how a bundle ends up interpretable but unlinkable.
+    lower_torchao_affine_quant(module)
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)
     if int8_compute:
@@ -453,6 +459,10 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     lower_quant_ext(module)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
+    # The other half of the bool-cast repair, and the one that erases models rather than skewing
+    # them: a float->i1 `arith.fptosi` is POISON in LLVM for every value but 0 and -1, and the
+    # poison propagates until a branch on it lets simplifycfg delete the rest of `forward`.
+    fix_bool_fptosi(module)
     # PER-RANK VECTORIZE TAGGING (default OFF -> baseline byte-identical): tag each all-parallel
     # (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
     # BOUNDED-vectorize the scalar non-matmul ops by rank (the win lever for openvla — ~900ms of scalar
