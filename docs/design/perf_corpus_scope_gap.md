@@ -3,7 +3,7 @@ title: "Design note: the perf corpus cannot express the optimizations that matte
 kind: design
 status: current
 owner: core
-last_verified: 2026-09-04
+last_verified: 2026-09-05
 related: [performance_levers_per_archetype, performance_budget_unit, expert_gap_attribution]
 code_refs: [merlin/contract/capsules/profiles/_perf.yaml, merlin/contract/capsules/generate_corpus.py, merlin/python/merlin/targetgen/corpus_spec.py, merlin/python/merlin/runtime/reference.py, merlin/python/merlin/perf/work_volume.py, merlin/python/merlin/targetgen/capsule_golden.py, merlin/python/merlin/targetgen/tier_policy.py]
 ---
@@ -287,6 +287,77 @@ Two consequences for corpus design:
   shape, and it will separate a kernel issuing thousands of redundant synchronisations from one
   issuing two. That second case is the 4,098-fence pathology, which is the point.
 
+## The corpus is not on the census, it is off it
+
+The scope gap above is stated as an empty intersection of `(M,K,N)` triples. Measured again through
+the repo's own deterministic classifier (`dse_guidance.shape_taxonomy.classify_geometry`, fixed
+documented thresholds, no clustering) against the measured census in
+`conformance/gemmini.yaml` → `shape_geometry.required`, it is worse than a sampling gap.
+
+Of the 31 `OBJECTIVE` members, 29 declare a contraction geometry. **27 of those 29 classify as
+`projection_like` — a class the census does not contain at all.** The remaining two classify as
+`wide_skinny`, which is the class the census marks **unreachable** (its heaviest shape carries a
+589,824,000-element tensor against a 262,144-element operand store).
+
+| census class | regions | mac_fraction | OBJECTIVE members |
+|---|---:|---:|---:|
+| `gemv_like` | 2 | 0.000000 | **0** |
+| `squareish_gemm` | 58 | 0.001016 | **0** |
+| `tall_skinny` | 441 | 0.004431 | **0** |
+| `odd_tail_heavy` | 16 | 0.000413 | **0** |
+| `wide_skinny` (unreachable) | 1674 | 0.994138 | 2 |
+| *`projection_like` — not in the census* | — | — | **27** |
+
+**Every reachable class the captures present has zero members, and the class 27 members do land in
+is one no capture presents.** The corpus does not under-sample the models; it is not on their
+manifold.
+
+That classification depends on documented thresholds, so here is the same finding without any:
+**output size.** The corpus's `OBJECTIVE` members produce **256 output elements (27 of them) or 1,024
+(2 of them)**. The census's smallest class, `gemv_like`, produces 1,000, and the class carrying 99.4%
+of the MAC mass produces 32,768,000 — **32,000× larger**. Twenty-seven of twenty-nine members are
+below the smallest shape any captured model presents.
+
+This is the same fact as the cheapness of the corpus rather than a separate one: the L3 engine's wall
+cost tracks output size, so a corpus small enough to sweep per candidate is small *because* it is
+unrepresentative. The two properties cannot be separated by tuning the member list; only a member
+whose cost is carried by something other than an L3 measurement escapes it, which is what composed
+bands are for.
+
+## The cost model on this branch cannot price a census-anchored member
+
+Sizing those members needs `targetgen.cert_cost.fit_cycles_for`, and on this checkout it returns a
+fit whose **domain is 159 … 1,174 cycles** (`n = 34`, `r² = 0.821`, intercept 54.93 s, slope
+0.2292 s/cycle). With `_EXTRAPOLATION_MARGIN = 2.0` the fit therefore **refuses any prediction past
+2,348 cycles**.
+
+The four reachable census classes need, at this target's peak arithmetic rate, on the order of
+16,000 (`gemv_like`, with `M` padded to the tile edge) to 200,704 (`squareish_gemm`) cycles — **7× to
+85× past that refusal threshold**. That rate is derived, not assumed: the target's own RTL facts
+report one `mesh` array of 16×16 `Tile` elements, 256 instances, `corroborated: true`, so a cycle
+retires at most 256 MACs and the figures above are floors on an infinitely fast memory path. Refusing is the correct behaviour; the point is that nothing on this branch can size
+them, so the plan's route through composed bands is not a preference but the only available one.
+
+Two causes, both worth repairing and neither visible from the fit's output:
+
+1. **The evidence that would widen the domain is not in this tree.** All 34 records come from
+   Verilator-era `capsule-bench` runs plus two perf-bench probe cells; a search for GSIM records
+   under this checkout's run root returns **zero**. The GSIM measurements that reach 28,118 cycles
+   live in another worktree's `out/runs`, which `_cycle_records` never looks at. A cost model is
+   only as wide as the runs its own root can see.
+
+2. **The fit cannot say which engine it describes.** `_cycle_records` accepts any tier declaring
+   `cycle_accurate` or `derived_from_rtl` and pools them, and the tier records carry no engine
+   field — all 34 resolve to the bare tier name `L3`. The per-cycle cost of the two L3 engines
+   differs by roughly fifty-fold, so a pooled fit belongs to neither. The observed per-record cost
+   spans 0.185 … 0.903 s/cycle, a 4.9× spread across a 7× cycle range, which is most of why `r²` is
+   0.82 rather than near one. This is the same defect the hardware-provenance convention exists to
+   prevent, one level up: a number attributed to no particular machine.
+
+Until (1) is fixed the affordability question for every large member is unanswerable rather than
+answered pessimistically, and until (2) is fixed widening the domain would pool the two engines
+harder rather than resolve them.
+
 ## Two false records this note supersedes
 
 A wrong "blocked" record is worse than no record, because it reads as a settled capability finding.
@@ -301,10 +372,24 @@ A wrong "blocked" record is worse than no record, because it reads as a settled 
    `merlin/tests/infra/test_perf_conv_family.py:51` guards the false claim's return.
    Note the members still carry `padding=[0,0,0,0] stride=[1,1] dilation=[1,1]`, so the stale-row
    conv bug remains unreachable until those axes are varied.
-2. **Eleven `PQ` capsules declare `emitter.entry: merlin.perf.barrier_arms.pair_from_emitter` with
-   `emitter.status: existing`, and that function does not exist.** `barrier_arms.py` defines only
-   `count_barriers`, `paired_removal` and `analyze_barrier_claim`. The family's second arm has never
-   been emitted; its own module docstring records that ten capsules measured one arm against nothing.
-   `analyze_barrier_claim` — which decides exactly the claim `PQ` declares — has no caller anywhere.
-   This must be repaired before the synchronization family is deepened toward the regime where the
-   4,098-fence pathology lives.
+2. **`PQ` declared `emitter.entry: merlin.perf.barrier_arms.pair_from_emitter` against a name the
+   module did not define.** This note previously recorded that the function had never existed and
+   that no emitter carried a retire knob. **Both halves of that were wrong, and this entry is the
+   correction.** `pair_from_emitter` was defined in the tracked module and was dropped when the
+   module was rewritten, while the declaration went on naming it; the knob is a parameter of the
+   target's own driver emitter, and two tests resolve both. Retargeting the entry at
+   `paired_removal` on the false premise contradicted the family's own `regime.separation` ("the
+   pair is two emissions of that one capsule") and its `negative_control` ("the single job member
+   whose two arms are the byte-identical program"), and left those two tests red.
+
+   **RESOLVED**: the module is now the union of both readings — `pair_from_emitter` BUILDS the pair
+   through the emitter's retire knob and proves the arms are the same program plus barriers;
+   `count_barriers`/`paired_removal` READ a pair the measurement path already built, where the two
+   arms are two compilers. `analyze_barrier_claim` decides the growth falsifier for either. `PQ`
+   points back at `pair_from_emitter`.
+
+   The general lesson is not "someone declared vapourware". A declaration and its definition drifted
+   apart **in both directions** with nothing between them to notice, and the second drift was caused
+   by trusting a grep over the working tree instead of resolving the name.
+   `test_perf_family_satisfiability.py::test_an_emitter_declared_existing_actually_exists` is that
+   something; it imports the module and getattrs the name, and it catches the drift either way.
