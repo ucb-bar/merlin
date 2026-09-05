@@ -210,3 +210,22 @@ def test_network_is_available_and_is_not_a_launch_isolation_gate() -> None:
     assert "--unshare-net" not in prompt
     assert "Do not access the network" not in prompt
     assert "network is unshared" not in prompt.lower()
+
+
+def test_the_prompt_documents_every_summary_field_the_feedback_actually_carries() -> None:
+    """A field the document carries and the prompt never names is a field nobody reads.
+
+    Measured: the agent was given declared work, baseline cycles and share-of-achievable per member
+    and would have had to multiply, subtract and rank across every row to see that seven members held
+    92.4% of the objective. It never did, and three trials of search went into the other 7%. The
+    ranking is now computed for it -- this pins that the prompt says so, and that it says what the
+    ranking may NOT be read as.
+    """
+    prompt = PP.render_initial_prompt(_inputs())
+    for field in ("summary.recoverable", "recoverable_cycles", "share_of_corpus_cycles",
+                  "recoverable_share_of_corpus", "total_recoverable_share"):
+        assert field in prompt, f"the feedback carries {field} and the prompt never names it"
+    # The two things it must NOT be read as. Both are refusals, and a prompt that reported the
+    # ranking without them would read as a licence to work only the top row.
+    assert "not a claim that the cycles are reachable" in prompt
+    assert "not permission to ignore small members" in prompt

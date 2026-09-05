@@ -436,6 +436,29 @@ of different size. Each tuning verdict therefore also reports, per member:
 **Optimise toward the ACHIEVABLE ceiling, and report both.** Quote utilization against the structural
 peak for context only.
 
+### Where the objective's cycles are: `summary.recoverable`
+
+A share of achievable tells you how ONE member is doing. It does not tell you what that member is
+WORTH, and those are different questions -- a member at 3% of achievable holding 40 cycles is worth
+less than a member at 60% holding fifty thousand. `summary.recoverable` answers the second one:
+
+- `ranked` -- members ordered by `recoverable_cycles`, the baseline cycles minus what that member's
+  own declared work would cost at the achievable rate. Each carries `share_of_corpus_cycles` (how
+  much of the total it IS) and `recoverable_share_of_corpus` (how much of the total you would win by
+  perfecting it).
+- `total_recoverable_share` -- the whole corpus's headroom, as a fraction of its cycles.
+
+**Read this before choosing what to work on.** It is reported because the last campaign did not have
+it: the objective was concentrated so that seven members held 92.4% of all cycles while the eighteen
+members that looked worst held 7.2%, and a search that improved fourteen of those eighteen, with no
+regressions, moved the total by 0.2%. Every number needed to see that was already in the cells, and
+deriving it required multiplying and ranking across every row.
+
+Two things it does NOT say. It is not a claim that the cycles are reachable -- a member may top this
+list because its lever is one the compiler cannot express, and finding that out and SAYING so in
+`iteration_notes.md` is a real result. And it is not permission to ignore small members: a cheap fix
+that generalises is worth more than its own row.
+
 ### The free screen: `analyze-command-buffers`
 
 `baseline_json` and `candidate_json` are paths to emitted command buffers. **A relative path is
