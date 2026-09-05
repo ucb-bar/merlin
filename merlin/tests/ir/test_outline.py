@@ -126,6 +126,40 @@ def test_outline_separates_dequant_from_matmul():
     assert res.dispatches[1].root_op == "linalg.matmul"
 
 
+EXTERNAL_CALL = """
+builtin.module {
+  func.func private @quantize_activations(tensor<4x8xf32>) -> tensor<4x8xf32>
+  func.func @forward(%w: tensor<8x6xf32>, %x: tensor<4x8xf32>) -> tensor<4x6xf32> {
+    %q = func.call @quantize_activations(%x) : (tensor<4x8xf32>) -> tensor<4x8xf32>
+    %e0 = tensor.empty() : tensor<4x6xf32>
+    %c0 = arith.constant 0.0 : f32
+    %f0 = linalg.fill ins(%c0 : f32) outs(%e0 : tensor<4x6xf32>) -> tensor<4x6xf32>
+    %y0 = linalg.matmul ins(%q, %w : tensor<4x8xf32>, tensor<8x6xf32>)
+          outs(%f0 : tensor<4x6xf32>) -> tensor<4x6xf32>
+    func.return %y0 : tensor<4x6xf32>
+  }
+}
+"""
+
+
+def test_an_external_declaration_is_not_mistaken_for_the_driver():
+    """A body-less ``func.func private`` printed first must not be picked as the function to outline.
+
+    A capture that leaves an operation to an outside implementation prints its declaration ahead of
+    ``@forward``; selecting it used to die on ``fn.body.blocks[0]`` with a bare ``IndexError`` that
+    named neither the module nor the symbol. The undefined symbol is what should be reported, and
+    it should be reported BY NAME.
+    """
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import OutlineError, outline_dispatches
+
+    with pytest.raises(OutlineError) as excinfo:
+        outline_dispatches(parse_mlir_text(EXTERNAL_CALL))
+    message = str(excinfo.value)
+    assert "@quantize_activations" in message
+    assert "forward" in message
+
+
 def test_missing_forward_raises():
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.xdsl_dialects.lowering.outline import OutlineError, outline_dispatches

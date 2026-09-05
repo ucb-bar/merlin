@@ -229,9 +229,14 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
     from xdsl.dialects.func import CallOp, FuncOp, ReturnOp
     from xdsl.ir import Block, Region
 
-    fns = [op for op in module.walk() if op.name == "func.func"]
+    # DECLARATIONS ARE NOT DEFINITIONS. A capture that leaves an operation to an external symbol
+    # (a `func.func private @…` with no body) prints that declaration FIRST, so picking `fns[0]`
+    # blind used to select it and die on `fn.body.blocks[0]` with a bare IndexError -- naming
+    # neither the module nor the symbol. Filtering by "has a body" is what makes the driver the
+    # function that HAS one; a symbol that stays undefined is named as such below.
+    fns = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
     if not fns:
-        raise OutlineError("no func.func in module")
+        raise OutlineError("no func.func with a body in module (only external declarations)")
     if forward is not None:
         fns = [f for f in fns if f.sym_name.data == forward]
         if not fns:
@@ -304,6 +309,30 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
     for key, val in fn.attributes.items():
         if key not in ("sym_name", "function_type", "sym_visibility"):
             new_fn.attributes[key] = val
+
+    # AN OP NOTHING DEFINES IS A CAPTURE GAP, NOT A SYMBOL-TABLE PROBLEM. Calls the source function
+    # made to external symbols are cloned into the driver verbatim, and the declarations that
+    # satisfied them do not survive into the rebuilt module -- so `out.verify()` would fail with
+    # "could not be found in symbol table", pointing at the table instead of at the operation the
+    # capture left undefined (measured: an activation-quant capture whose `torchao.quantize_affine`
+    # reached the runtime as an opaque call). Carrying the declarations across is not the fix
+    # either: every func in this module is compiled as a kernel, so a body-less one fails later and
+    # even further from its cause. Name them here.
+    defined = {k.sym_name.data for k in kernels} | {fname}
+    undefined: list[str] = []
+    for op in driver.walk():
+        if op.name != "func.call":
+            continue
+        callee = op.callee.string_value()
+        if callee not in defined and callee not in undefined:
+            undefined.append(callee)
+    if undefined:
+        raise OutlineError(
+            f"@{fname} calls {len(undefined)} symbol(s) this module never defines: "
+            + ", ".join(f"@{sym}" for sym in undefined)
+            + ". The capture left these operations to an external implementation, so there is "
+              "nothing to outline, compile or run for them -- they must be decomposed into linalg "
+              "at capture time (or defined here) before this model can execute.")
 
     out = ModuleOp([new_fn, *kernels])
     out.verify()
