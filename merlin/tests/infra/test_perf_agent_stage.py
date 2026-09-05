@@ -1082,6 +1082,55 @@ def test_declared_work_comes_from_the_capsule_spec_and_refuses_a_non_contracting
     assert macs is None and basis
 
 
+def _conv_descriptor(**geometry):
+    attributes = {"ifm": "IFM", "weight": "W", "out": "Y0", "ci": 4, "kh": 3, "kw": 3}
+    attributes.update(geometry)
+    return {"operation": {"op": "conv2d", "attributes": attributes},
+            "inputs": [{"name": "W", "shape": [3 * 3 * 4, 8]},
+                       {"name": "IFM", "shape": [1, 8, 8, 4]}]}
+
+
+def test_a_convolution_is_priced_by_its_output_extent_not_by_its_operand_shapes():
+    """Conv was priced None, and one unpriced member costs more than itself.
+
+    A None price nulls that member's utilization, both shares of the achievable rate and its verdict
+    -- and because the corpus-wide attainment stop condition requires every member to carry a positive
+    MAC count, a single unpriced member disables the stop condition for the whole corpus.
+    """
+    macs, basis = PAS.declared_capsule_macs(_conv_descriptor())
+    assert macs == 6 * 6 * 36 * 8, "unpadded 8x8 image with a 3x3 window has a 6x6 output"
+    assert "output positions" in basis
+
+
+def test_geometry_changes_the_work_at_identical_operand_shapes():
+    """THE PROPERTY THAT MAKES THIS A SEPARATE BRANCH. Every other operation reads its M from an
+    activation's row count; a convolution's output rows are Ho x Wo, so two members with byte-identical
+    operand shapes do different amounts of work when their padding or stride differ. Pricing conv from
+    operand shapes alone would give all three of these the same answer."""
+    plain = PAS.declared_capsule_macs(_conv_descriptor())[0]
+    padded = PAS.declared_capsule_macs(_conv_descriptor(padding=[1, 1, 1, 1]))[0]
+    strided = PAS.declared_capsule_macs(_conv_descriptor(stride=[2, 2]))[0]
+    assert padded == 8 * 8 * 36 * 8, "same-padding restores the input extent"
+    assert strided == 3 * 3 * 36 * 8, "stride 2 over an 8x8 image with a 3x3 window leaves 3x3"
+    assert len({plain, padded, strided}) == 3, "the three geometries must not price alike"
+
+
+def test_a_window_that_disagrees_with_the_packed_weight_refuses():
+    """The packed weight's row count IS the window, so a declaration where the two disagree describes
+    no single convolution. Refusing beats pricing one of the two readings and being quietly wrong."""
+    macs, basis = PAS.declared_capsule_macs(_conv_descriptor(kh=5))
+    assert macs is None and "do not describe one convolution" in basis
+
+    macs, basis = PAS.declared_capsule_macs(_conv_descriptor(ci=8))
+    assert macs is None and "disagrees with the declared" in basis
+
+
+def test_a_geometry_that_leaves_no_output_position_refuses_rather_than_pricing_zero():
+    macs, basis = PAS.declared_capsule_macs(_conv_descriptor(kh=9, kw=9,
+                                                            ci=4))
+    assert macs is None and basis
+
+
 def test_utilization_above_the_derived_peak_is_refused():
     """Against the STRUCTURAL peak a ratio over 1.0 is a broken derivation, not a fast program.
 

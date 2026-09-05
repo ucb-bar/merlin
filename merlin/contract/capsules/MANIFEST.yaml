@@ -78,6 +78,8 @@ generated:
 - layers/B1_linear_relu_i8
 - layers/B2_linear_acc_scale_relu_i8
 - layers/GC0_conv2d_i8
+- layers/GC7_conv2d_pad_i8
+- layers/GC8_conv2d_stride2_i8
 - layers/GM0_deep_k_fits_single_i8
 - layers/GM1_deep_k_spills_i8
 - layers/GP0_matmul_maxpool_i8

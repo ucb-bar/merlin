@@ -384,6 +384,31 @@ capsules:
 - {cat: layers, name: GC0_conv2d_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8, kh: 3, kw: 3,
    source_role: uplifted_from_bareMetalC, source_reference: 'im2col conv2d int8 (bareMetalC/conv.c)',
    label: public}
+# THE GEOMETRY AXES, WHICH EVERY CONV CAPSULE HELD AT ITS DEFAULT. Until these, all four convolution
+# capsules in the corpus declared padding [0,0,0,0], unit stride and unit dilation over an identical
+# 3x3 window -- the same geometry four times. The builder has accepted all three parameters all along
+# and nothing ever passed a non-default, so a lowering defect that only shows up when the window
+# leaves the image had no capsule that could observe it.
+#
+# Padding is the one that matters most. An out-of-bounds tap must read as ZERO, and the im2col the
+# golden and the harness share does exactly that ("zero-pad OOB taps"); a lowering that instead reuses
+# whatever the on-chip staging buffer held from a previous tile computes a wrong result that is only
+# wrong in the border rows, which is why an unpadded corpus never sees it. Same-padding is chosen so
+# the output extent matches the input and the border is the majority of the difference.
+- {cat: layers, name: GC7_conv2d_pad_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8,
+   kh: 3, kw: 3, padding: [1, 1, 1, 1],
+   source_role: derived_sweep,
+   source_reference: 'im2col conv2d int8 at same-padding: the out-of-bounds taps must read as zero
+     rather than as whatever the staging buffer last held',
+   label: public}
+# Non-unit stride moves the window by more than one position, so consecutive output rows no longer
+# read overlapping input taps. A schedule that assumes the overlap is what makes a stale-row reuse
+# look correct at stride 1.
+- {cat: layers, name: GC8_conv2d_stride2_i8, kind: layer, op: conv2d, Himg: 8, Wimg: 8, ci: 4, N: 8,
+   kh: 3, kw: 3, stride: [2, 2],
+   source_role: derived_sweep,
+   source_reference: 'im2col conv2d int8 at stride 2: consecutive output positions share no input tap',
+   label: public}
 - {cat: model_slices, name: GC1_depthwise_bf16_pt, kind: model_slice, op: depthwise_conv2d,
    operand_dtype: bf16, source: pytorch, Cin: 8, Himg: 8, Wimg: 8, P: 3, out: Y0,
    source_role: pytorch_model_slice, source_reference: 'PyTorch depthwise conv bf16 (MixFFN depthwise)',

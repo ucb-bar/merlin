@@ -79,7 +79,10 @@ ROUND_DEADLINE_EXIT = 124
 #: Declared operations whose required work this stage can derive from the capsule's own shapes.
 #: These are the emitted ABI's operation names, carried by the corpus rather than assumed about any
 #: device. An operation outside this set yields no declared work and says so, rather than a zero.
-_WORK_OPERATIONS = ("matmul", "resident_reuse")
+#: The declared operation whose work depends on a GEOMETRY rather than only on operand shapes, so it
+#: is priced through its own branch below.
+_CONV_OPERATION = "conv2d"
+_WORK_OPERATIONS = ("matmul", "resident_reuse", _CONV_OPERATION)
 
 #: How many member measurements the sweep may run at once. DECLARED, never guessed: this is a shared
 #: host, and the fan-out a measurement ran at is stamped on its own result. Default 1, so a launch
@@ -2251,6 +2254,46 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
     weight = shapes.get(str(attributes.get("weight")))
     if weight is None or len(weight) != 2:
         return None, "the declared weight operand is not a rank-2 shape"
+
+    # A CONVOLUTION'S WORK IS ITS OUTPUT EXTENT, WHICH ITS OPERAND SHAPES DO NOT CARRY. The other
+    # operations read M from an activation row count; a conv's output rows are Ho x Wo, a function of
+    # the image, the window, the stride, the padding and the dilation -- so a member whose geometry
+    # differs does different work at identical operand shapes. Priced as None until now, which cost
+    # the whole conv family its utilization, its share of the achievable rate and its verdict, and
+    # disabled the corpus-wide attainment stop condition for every other member too (one unpriced
+    # member is enough).
+    #
+    # The extent is DERIVED through the same helper the golden and the harness use, never recomputed
+    # here: a second implementation of this arithmetic is a second thing to keep in sync, and it would
+    # be wrong in exactly the padded and strided cases this pricing was added to reach.
+    if operation.get("op") == _CONV_OPERATION:
+        ifm = shapes.get(str(attributes.get("ifm")))
+        if ifm is None or len(ifm) != 4:
+            return None, "the declared convolution input is not a rank-4 NHWC shape"
+        for field in ("ci", "kh", "kw"):
+            if not isinstance(attributes.get(field), int) or isinstance(attributes.get(field), bool):
+                return None, f"the declared convolution carries no integer {field}"
+        ci, kh, kw = int(attributes["ci"]), int(attributes["kh"]), int(attributes["kw"])
+        if ifm[3] != ci:
+            return None, (f"the declared input channel count {ifm[3]} disagrees with the declared "
+                          f"ci {ci}")
+        if weight[0] != kh * kw * ci:
+            return None, (f"the packed weight's {weight[0]} rows are not the {kh}x{kw}x{ci} window "
+                          f"the declaration names, so the two do not describe one convolution")
+        from merlin.runtime.commandbuffer import conv_out_dims  # noqa: PLC0415
+        try:
+            rows, cols = conv_out_dims(int(ifm[1]), int(ifm[2]), kh, kw,
+                                       list(attributes.get("stride") or [1, 1]),
+                                       list(attributes.get("padding") or [0, 0, 0, 0]),
+                                       list(attributes.get("dilation") or [1, 1]))
+        except Exception as exc:  # noqa: BLE001 - an underivable extent refuses, never defaults
+            return None, f"the declared convolution geometry has no output extent ({exc})"
+        if rows <= 0 or cols <= 0:
+            return None, (f"the declared convolution geometry leaves no output position "
+                          f"({rows}x{cols})")
+        return rows * cols * weight[0] * weight[1], (
+            f"declared convolution geometry: {rows}x{cols} output positions x {weight[0]} window taps "
+            f"x {weight[1]} output channels")
 
     # A REUSED WEIGHT IS STILL DECLARED WORK. Twelve of the thirty-eight corpus members declare one
     # resident weight and a LIST of activations sharing it, and reading only a single `lhs` left
