@@ -200,23 +200,41 @@ def _dtype_preserving_quantizer(quantizer_cls, qcfg):
 
 
 def _bound_dynamic_qdq_channels_last_walk() -> str:
-    """Stop XNNPACK's NHWC-tagging pass from re-targeting its copy at a DIFFERENT-RANK ancestor.
+    """Keep XNNPACK's NHWC-tagging pass inside the qdq chain it is allowed to relayout.
 
     ``ChannelsLastTaggedReshapePass.input_to_nhwc`` validates its argument with
     ``can_be_converted_to_nhwc(input_node)`` — which requires a rank-4 tensor — and only then, in
-    the ``is_dynamic_qdq(input_node)`` branch, walks ``input_node = input_node.args[0]`` to the root
-    of the arg chain. The walk REBINDS the name the check was made about, so the
-    ``_to_copy(memory_format=torch.channels_last)`` it then inserts can land on an ancestor of a
-    different rank:
+    the ``is_dynamic_qdq(input_node)`` branch, walks ``input_node = input_node.args[0]``. Its own
+    comment says the walk finds "the original source node" of the quantize chain, but nothing stops
+    it: it runs to the root of the arg chain, and then ``input_node.replace_all_uses_with(...)``
+    re-points EVERY consumer of wherever it landed at the inserted
+    ``_to_copy(memory_format=torch.channels_last)``. Two distinct failures come out of that, both
+    reachable only on qd8 (the branch is gated on ``is_dynamic_qdq``), which is why the model
+    exports fine as fp32 and as qs8 and this read as "qd8 is impossible for this model":
 
-        RuntimeError: required rank 4 tensor to use channels_last format
+    1. The walk REBINDS the name the rank check was made about, so the copy can land on an ancestor
+       of a different rank — ``RuntimeError: required rank 4 tensor to use channels_last format``
+       at export.
+    2. Bounded to the validated rank, the walk still leaves the quantize chain, and the unbounded
+       ``replace_all_uses_with`` then re-points consumers that never asked for NHWC — including a
+       consumer that is a PARTITION OUTPUT. ``call`` tags nodes in graph order over a snapshot taken
+       before any of this, so a node already tagged NCHW silently starts consuming an NHWC value;
+       the ``output`` handler later reads that stale NCHW tag and inserts no compensating copy. The
+       delegate then hands back an NHWC buffer for a tensor ExecuTorch planned NCHW, and the model
+       LOADS but dies at execute:
 
-    The branch is guarded by ``is_dynamic_qdq``, so this reaches qd8 (dynamic per-row activation
-    quant) and nothing else: the same model exports fine as fp32 and as qs8, which is why it read as
-    "qd8 is impossible for this model" rather than as a bug with a bounded blast radius.
+           Attempted to resize a static tensor. Expected shape (1, 32, 15, 23),
+                                                 but received (1, 15, 23, 32).
+           Failed to resize output tensor for XNNExecutor
+           CALL_DELEGATE execute failed at instruction 31: 0x10
 
-    The fix keeps the walk but refuses to leave the rank the check validated. That is the invariant
-    the code already assumes; it just was not enforced across the rebinding.
+       MEASURED on lstmnetvit: the shared value is ``x.view(1,15,23,-1).permute(0,3,1,2)``, which
+       feeds the patchmerge conv AND leaves the partition as a skip connection.
+
+    The fix bounds both. The walk stops at the first non-qdq ancestor — the "original source node"
+    the upstream comment names — and still refuses to leave the validated rank; and the rewiring
+    re-points only the qdq consumers of that source, so a value that also leaves the partition keeps
+    its NCHW identity. Both are invariants the code already assumes; neither was enforced.
 
     Applied by hand-porting the pinned upstream method (ExecuTorch is pinned by sha and its identity
     is recorded with every result). It is therefore FAIL-CLOSED on drift: if the installed
@@ -224,7 +242,9 @@ def _bound_dynamic_qdq_channels_last_walk() -> str:
     patched and the returned status says so, rather than silently running a stale copy of someone
     else's pass. Returns the status string to record in the export summary.
 
-    MEASURED: lstmnetvit qd8 goes from failing this pass to lowering with 10 conv2d + 22 linear int8.
+    MEASURED: lstmnetvit qd8 goes from failing this pass to lowering with 33 delegated nodes of 172
+    and EXECUTING (host x86 ``executor_runner``, 3 iterations, output cos 0.99996 vs the eager fp32
+    golden); unbounded it raised at export, rank-bounded alone it aborted at CALL_DELEGATE 31.
     """
     import inspect
 
@@ -245,9 +265,22 @@ def _bound_dynamic_qdq_channels_last_walk() -> str:
         src = inspect.getsource(cls.input_to_nhwc)
     except (OSError, TypeError) as e:
         return f"channels-last qd8 walk NOT bounded (source unavailable: {e})"
-    if "is_dynamic_qdq(input_node)" not in src or "input_node = input_node.args[0]" not in src:
+    if ("is_dynamic_qdq(input_node)" not in src or "input_node = input_node.args[0]" not in src
+            or "input_node.replace_all_uses_with(input_node_nhwc)" not in src):
         return ("channels-last qd8 walk NOT bounded (upstream input_to_nhwc no longer matches the "
                 "pinned shape this fix was written against — re-verify before re-applying)")
+
+    # The chain the relayout is allowed to move through, named as OP IDENTITIES rather than as
+    # spellings of their names, so a renamed overload fails loudly instead of quietly matching
+    # nothing (which would collapse the walk to a no-op and re-open failure 1).
+    _qd = exir_ops.edge.quantized_decomposed
+    _QDQ_TARGETS = {_qd.quantize_per_tensor.default, _qd.quantize_per_tensor.tensor,
+                    _qd.dequantize_per_tensor.default, _qd.dequantize_per_tensor.tensor,
+                    _qd.choose_qparams.tensor}
+
+    def _is_qdq(node) -> bool:
+        """True iff the node is part of the quantize chain the copy may be pushed under."""
+        return getattr(node, "op", None) == "call_function" and node.target in _QDQ_TARGETS
 
     def _rank(node) -> int | None:
         val = getattr(node, "meta", {}).get("val")
@@ -276,19 +309,22 @@ def _bound_dynamic_qdq_channels_last_walk() -> str:
             is_dynamic_input = clp.is_dynamic_qdq(input_node)
             if is_dynamic_input:
                 validated_rank = _rank(input_node)
-                while (getattr(input_node, "args", None)
+                while (_is_qdq(input_node) and getattr(input_node, "args", None)
                        and isinstance(input_node.args[0], torch.fx.Node)):
                     candidate = input_node.args[0]
                     if _rank(candidate) != validated_rank:
-                        break            # the bound: never leave the rank that was validated
-                    input_node = candidate
+                        break            # bound 1a: never leave the rank that was validated
+                    input_node = candidate   # bound 1b: `while _is_qdq` — stop at the source node
             with graph_module.graph.inserting_after(input_node):
                 input_node_nhwc = self.create_call_function_node(
                     graph_module=graph_module, target=exir_ops.edge.aten._to_copy.default,
                     args=(input_node,), memory_format=torch.channels_last)
                 cls.mark_as_nhwc_node(input_node_nhwc)
             if is_dynamic_input:
-                input_node.replace_all_uses_with(input_node_nhwc)
+                # Bound 2: only the quantize chain follows the relayout. Any other consumer of the
+                # source — notably one that is a partition output — keeps the NCHW value, which is
+                # the identity ExecuTorch's memory plan gave it.
+                input_node.replace_all_uses_with(input_node_nhwc, delete_user_cb=_is_qdq)
                 input_node_nhwc.args = (input_node,)
 
         self.insert_copy_and_assign_partner_nodes_quantization_sensitive(
@@ -296,7 +332,8 @@ def _bound_dynamic_qdq_channels_last_walk() -> str:
             copy_node=input_node_nhwc, target_node=target_node)
 
     cls.input_to_nhwc = input_to_nhwc
-    return "channels-last qd8 walk bounded to the validated rank"
+    return ("channels-last qd8 walk bounded to the qdq chain; "
+            "NHWC rewiring bounded to qdq consumers")
 
 
 def _linear_subgraph(model):

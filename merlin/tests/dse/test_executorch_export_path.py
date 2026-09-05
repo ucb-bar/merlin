@@ -249,16 +249,24 @@ def test_every_rostered_model_has_a_torch_loader():
 def test_bounding_the_channels_last_walk_always_reports_whether_it_applied():
     """The qd8 NHWC fix is a hand-port of a PINNED upstream method, so it must never apply silently.
 
-    It patches ``ChannelsLastTaggedReshapePass.input_to_nhwc`` to stop the ``is_dynamic_qdq``
-    ancestor walk from leaving the rank ``can_be_converted_to_nhwc`` validated. A hand-port is only
-    correct against the upstream shape it was written against, so the function is fail-closed on
-    drift: it either applies and says so, or declines and says why. A silent no-op would read as
-    "qd8 is impossible for this model" — exactly the misreading that kept lstmnetvit refused.
+    It patches ``ChannelsLastTaggedReshapePass.input_to_nhwc`` to bound BOTH halves of the
+    ``is_dynamic_qdq`` branch: the ancestor walk (which must stop at the source of the quantize
+    chain, and inside the rank ``can_be_converted_to_nhwc`` validated) and the
+    ``replace_all_uses_with`` that follows it (which must re-point only the quantize chain, never a
+    consumer that is a partition output). A hand-port is only correct against the upstream shape it
+    was written against, so the function is fail-closed on drift: it either applies and says so, or
+    declines and says why. A silent no-op would read as "qd8 is impossible for this model" — exactly
+    the misreading that kept lstmnetvit refused.
+
+    The status names BOTH bounds, so dropping either one is visible in the recipe recorded with the
+    numbers rather than only in a runtime abort a reader would blame on the model.
     """
     mod = _load_et_export_helper()
     status = mod._bound_dynamic_qdq_channels_last_walk()
     assert isinstance(status, str) and status
-    assert ("walk bounded to the validated rank" in status) or ("NOT bounded (" in status), status
+    assert (("walk bounded to the qdq chain" in status
+             and "rewiring bounded to qdq consumers" in status)
+            or "NOT bounded (" in status), status
 
 
 @pytest.mark.slow
@@ -279,14 +287,23 @@ def test_qd8_export_of_a_float_graph_is_byte_for_byte_unaffected_by_the_dtype_fi
 @pytest.mark.slow
 @pytest.mark.integration
 def test_lstmnetvit_qd8_exports_now_that_the_nhwc_walk_is_bounded():
-    """lstmnetvit was a REFUSED int8 cell purely because of the unbounded dynamic-qdq NHWC walk.
+    """lstmnetvit was a REFUSED int8 cell purely because of the unbounded dynamic-qdq NHWC branch.
 
     fp32 and qs8 both exported fine; only qd8 — the one recipe comparable to merlin's datapath —
-    died in ``ChannelsLastTaggedReshapePass`` with ``required rank 4 tensor to use channels_last``.
+    died in ``ChannelsLastTaggedReshapePass``, first at export (``required rank 4 tensor to use
+    channels_last``) and then, once the walk was rank-bounded, at execute: the pass re-pointed a
+    partition OUTPUT at its NHWC copy, so the delegate returned a (1,15,23,32) buffer for a tensor
+    ExecuTorch had planned as (1,32,15,23) and the run aborted at ``CALL_DELEGATE`` 31 with 0x10.
     A recurrent+ViT controller is the only non-llama, non-CNN architecture in the set, so this cell
     is what makes the int8 comparison a diverse set rather than a family of llamas.
+
+    Delegation is pinned: the point of the second bound is that it changes WHICH value the copy is
+    attached to, not how much of the model XNNPACK takes. If this count moves, the bound has started
+    changing the partition instead of only keeping a boundary tensor's layout honest.
     """
     b = _require_int8_bundle("lstmnetvit", "lstmnetvit_int8_consistent")
     exp = _export_qd8("lstmnetvit", b)
-    assert exp.delegated_nodes and exp.delegated_nodes > 0
-    assert "walk bounded to the validated rank" in (exp.summary or {}).get("subgraph_note", "")
+    assert (exp.delegated_nodes, exp.total_call_nodes) == (33, 172)
+    note = (exp.summary or {}).get("subgraph_note", "")
+    assert "walk bounded to the qdq chain" in note, note
+    assert "rewiring bounded to qdq consumers" in note, note
