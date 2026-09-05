@@ -68,6 +68,19 @@ def apply_pool_stage(t: Tensor, stage: str, attrs: dict[str, Any], *, op: str) -
                             pad_value=p["pad_value"])
 
 
+#: The epilogue stages the command-buffer ABI admits, in the order a COMMIT applies them. This is the
+#: single definition the ABI, its JSON schema and the interface dialect all read, so a stage exists here
+#: or it does not exist. It is NOT a claim that a given target implements one: an engine that does not
+#: RAISES by name, and a target that cannot execute it fails at its oracle. Widening this tuple is a
+#: contract change and needs both an engine that implements the stage and a target rung evidencing it.
+EPILOGUE_STAGES: tuple[str, ...] = ("bias_add", "bias", "requant", "acc_scale", "relu", "maxpool")
+
+#: Set form, for membership tests.
+EPILOGUE_STAGE_SET = frozenset(EPILOGUE_STAGES)
+
+#: The subset of the epilogue that adds a per-column bias, which is the one stage needing an operand
+#: NAME resolved rather than a flag. Kept as its own tuple because a bias dropped in silence leaves
+#: every element off by exactly its column's bias, which reads as a plausible answer.
 BIAS_STAGES = ("bias_add", "bias")
 
 

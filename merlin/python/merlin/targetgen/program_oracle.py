@@ -33,6 +33,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -254,6 +255,22 @@ def _bundle_preload(bundle: dict, cb: dict | None) -> list[tuple[int, bytes]]:
     return preload
 
 
+
+#: WHY EVERY PROGRAM-ORACLE RESULT CARRIES A ``timing`` BLOCK.
+#: ``cert_cost`` reads ``timing.sim_active_s`` to build a target's certification price sheet, and it is
+#: the ONLY field it reads. The ELF/RoCC adapters emit that block; these program-driven adapters did
+#: not, so ``capsule_runner`` filled ``sim_active_s`` with ``None`` and put the whole wall into
+#: ``oracle_wait_s``. Measured consequence on one target: 1,281 cycle-accurate tier records on disk,
+#: every one with ``sim_active_s = None``, and a cost model reporting "no measured certification
+#: history" for a target that had been certified over a thousand times -- so its entire corpus was
+#: undecidable for phase membership, and any new run would have added nothing.
+#: This is the "a check that could not see reported nothing" shape: the records were there and unread.
+def _sim_timing(seconds: float, *, build_s: float = 0.0) -> dict:
+    """The timing block the cost model reads. ``oracle_wait_s`` is zero here by construction: these
+    adapters call the simulator in-process, so there is no queue wait to attribute."""
+    return {"build_s": float(build_s), "sim_active_s": float(seconds), "oracle_wait_s": 0.0}
+
+
 def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
                        kernel_s: Path | None = None, program: str | None = None,
                        inputs: list[dict] | None = None, fix_itype_rd: bool = True,
@@ -295,6 +312,7 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
                 f"mlc backend mlc.backends.{backend_name} for target {target!r} exposes no run_program "
                 f"(not a self-hosted-ISA program cosim)")
         ap = fingerprint.artifact_paths(arc_name, base=modeling)
+        _t0 = time.monotonic()
         res = large_stack_call(backend.run_program, str(ap["so"]), str(ap["man"]),
                                words, preload=preload, max_cycles=max_cycles)
     if not res.halted:
@@ -315,6 +333,7 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     # Declaring `derived_from_rtl` here is the seam capsule_runner already reads (it defaults to the tier
     # name only when the adapter stays silent) and the shape muon's gsim adapter already returns.
     arc_out: dict[str, Any] = {"outputs": outputs, "cycles": int(res.cycles),
+                               "timing": _sim_timing(time.monotonic() - _t0),
                                "oracle": {"kind": f"{target}-arc-arcilator-cosim",
                                           "derived_from_rtl": False,
                                           "fidelity": "rtl_derived_model"}}
@@ -498,6 +517,7 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
         "max_cycles": int(max_cycles),
         "dram_base": reloc_base,
     }
+    _t0 = time.monotonic()
     res = _run_func_helper(target, model_ext, req, Path(workdir), timeout)
     if not res.get("halted"):
         raise ProgramDidNotHalt(
@@ -513,6 +533,7 @@ def run_program_functional_oracle(target: str, *, model_ext: str, cb: dict | Non
         outputs[name] = _decode_output(base64.b64decode(outmap[key]), spec["shape"], spec["dtype"],
                                        spec["physical"]).tolist()
     return {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
+            "timing": _sim_timing(time.monotonic() - _t0),
             "oracle": {"kind": f"{target}-functional", "derived_from_rtl": False,
                        "fidelity": "functional_model"}}
 
@@ -956,6 +977,7 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
         _derived_trace = Path(workdir) / "per_cycle_trace.csv"
         _derived_trace.parent.mkdir(parents=True, exist_ok=True)
         _kw["per_cycle_csv"] = str(_derived_trace)
+    _t0 = time.monotonic()
     res = runner.run_program(words, preload=preload,
                              reads=[(int(s["base"]), _out_nbytes(s)) for s in specs.values()],
                              max_cycles=max_cycles, timeout=timeout, **_kw)
@@ -972,6 +994,7 @@ def run_program_verilator_oracle(target: str, *, model_ext: str, vsim_dir, cb: d
                                        spec["physical"]).tolist()
     # The one tier here that runs the ELABORATED Verilog, so the only one entitled to say RTL.
     out: dict[str, Any] = {"outputs": outputs, "cycles": int(res.get("cycles") or 0),
+                           "timing": _sim_timing(time.monotonic() - _t0),
                            "oracle": {"kind": f"{target}-{engine}-rtl", "derived_from_rtl": True,
                                       "fidelity": "elaborated_rtl", "engine": engine,
                                       "provenance": _engine_provenance(target, engine,
