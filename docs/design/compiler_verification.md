@@ -1425,6 +1425,85 @@ grading engine has settled. What remains is a paid campaign, which is a decision
 
 ---
 
+### 2026-09-05 — PRE-REGISTRATION: what does the formal layer buy, as an ablation
+
+Written and committed **before** any solver verdict is drawn. The point of pre-registering is that the
+obvious response to a disappointing number is to narrow the population until it improves, and choosing
+the scope after seeing the result is the move this design exists to prevent. Same discipline as the
+historical replay, which recorded 1/21 rather than re-cutting the population.
+
+**The question.** Not "does the checker work" — the seeded fault matrix answers that. The question is
+what the formal layer buys **over the dynamic grade we already run**, measured on artifacts that
+already exist. No agent, no spend, no new capsules.
+
+**The material.** Every archived capsule-bench submission carrying all three of
+`generated/input.interface.mlir` (the spec the backend was handed), `generated/command_buffer.json`
+(what it produced) and `capsule_result.json` (how the dynamic ladder graded it). Enumerated at this
+commit: **4,111 complete units** — 2,108 gemmini, 1,877 atlas, 90 saturn_opu, 36 radiance, across 234
+distinct capsules. 8 units were dropped for a missing grade record and are reported, not hidden.
+
+**Eligibility, measured before drawing and the reason this is not a coverage number.** Parsing each
+interface program back to a command buffer and comparing it to the submitted one:
+
+| | count | share |
+|---|---|---|
+| **IDENTICAL** — agent buffer is the spec, command for command | 2,500 | 60.8% |
+| different opcode sequence | 990 | 24.1% |
+| same opcodes, different operands/attributes | 621 | 15.1% |
+
+**The 2,500 identical pairs are excluded, and excluding them is the finding.** An equivalence theorem
+over two copies of the same program is `X == X`: trivially `unsat`, and it verifies nothing. Reporting
+4,111 verified buffers would have been 61% vacuous. The eligible population is the **1,611** pairs that
+genuinely differ. This is the same failure shape as the ten gates wired to nothing — a check that
+cannot fail, reporting success — and it is only visible because the split was measured rather than
+assumed.
+
+**The comparison is `numeric.status`, not the overall grade.** A capsule can fail for a build error, a
+trace violation or an RTL timeout, none of which the command buffer can be blamed for. The dynamic
+counterpart of this formal claim is the numeric tier, so that is the axis; the overall status is
+recorded alongside but is not the comparison.
+
+**What the dynamic layer actually tests, verified today rather than recalled.** `Tensor.deterministic`
+fills from a `(row, col)` index, so rows and columns do differ — an earlier note in my memory saying
+the fill was period-4 and produced identical rows is **stale and has been corrected**. But every value
+is drawn from `{0, 1, 2, 3}`: four of the 256 i8 values, all non-negative. So the dynamic grade
+evaluates the buffer at **one input point, with small non-negative operands**. Sign handling, i8
+saturation, accumulator overflow and negative-operand paths are not exercised by construction. The
+formal layer quantifies over the whole input space at that shape. That gap is the hypothesis under
+test, and it is falsifiable: if nothing is found there, the gap is real but empty.
+
+**Pre-declared cells, and what each is allowed to mean.**
+
+| verdict × numeric | interpretation fixed in advance |
+|---|---|
+| refuted ∧ numeric **pass** | the headline cell. Each one adjudicated by hand into *encoder bug* or *real escape*. **Not reportable as a win before adjudication** — the encoder is the prime suspect, per the standing rule that a refutation of a correct backend is our bug until proven otherwise. |
+| verified ∧ numeric **fail** | formal blind spot. The buffer computes the right function and the capsule still failed, so the defect is downstream. Classified by the recorded failure reason. |
+| refuted ∧ numeric fail | agreement. Asks a second question: is the counterexample inside `{0..3}`? If yes the stimulus could have found it; if no, only the formal layer could. |
+| verified ∧ numeric pass | agreement, no new information. |
+| abstained | coverage gap, broken out by reason (rank > 2, float dtype, unencodable epilogue, output-count mismatch, solver timeout). Never counted as a pass. |
+
+**Headline metrics, fixed now.** (1) adjudicated real defects the numeric grade passed; (2) the share
+of refutations whose counterexample falls outside the stimulus range; (3) abstention rate with reasons.
+
+**A null result is the result.** If (1) is zero, that is the answer and it will be reported as the
+answer, exactly as 1/21 was.
+
+**One caveat that weakens this relative to `validate_compilation`, stated up front.** That function
+encodes the spec side with `encode_interface` and the target side with `encode_command_buffer` — two
+different encoders, so an encoder bug does not cancel. Here both sides go through
+`encode_command_buffer`, because the archived spec is `merlin_iface` contract text and
+`cli._load_interface` has no parser for that grammar (a limitation already documented in its
+docstring). A bug in the shared encoder therefore cancels wherever the two structures coincide. That
+cancellation is total for identical pairs — a second, independent reason to exclude them — and only
+partial for the eligible ones, where the same opcode is applied to different structures. The theorem
+being measured is precisely: *the two buffers denote the same function under our shared bitvector
+semantics.* Nothing stronger.
+
+**Run shape.** The full eligible population, not a sample — 1,611 is affordable, which removes the
+sampling question entirely. Abstentions are raised during encoding and cost milliseconds; only the
+~29% that reach the solver cost seconds. Solver budget fixed at 15,000 ms; a unit exceeding it is
+`unknown`, never a pass.
+
 ## 7. Reproducing what is claimed here
 
 NOTE: the shared `.venv` may resolve `merlin` from a different worktree, so pin `PYTHONPATH`:
