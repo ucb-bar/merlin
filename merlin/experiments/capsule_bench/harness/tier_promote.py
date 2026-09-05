@@ -66,6 +66,10 @@ import time
 from pathlib import Path
 
 from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL as _ELABORATED_RTL
+# The two verdict words this module records. Imported from the scheduler rather than restated here, so
+# the recorder and the policy cannot come to disagree about how a passing tier is spelled -- that
+# disagreement is the class of defect `row_status` below exists to close.
+from merlin.targetgen.oracle_schedule import FAIL as _FAIL, PASS as _PASS
 
 _NEUTRAL_SIM = "contract"   # "grade on whatever tier this target's contract resolves to"
 
@@ -122,6 +126,38 @@ def cert_sim(cert_tier: str) -> str | None:
     except Exception:  # noqa: BLE001 -- unresolvable map: no promotion, and the caller says so
         return None
     return sim if sim in allowed else None
+
+
+def row_status(row) -> str | None:
+    """``"pass"`` / ``"fail"`` for one per-capsule row, or ``None`` when the row states no verdict.
+
+    TWO verdict producers feed this module and they SPELL THE ANSWER DIFFERENTLY. The brokers' runner
+    emits a boolean ``pass``; ``qa_check`` -- the reader behind the round grade and the in-turn grade --
+    emits a ``status`` string over the vocabulary ``pass | fail | declined | incomplete | gated`` and no
+    ``pass`` key at all. Reading only ``pass`` therefore answered "did not pass" for EVERY row a round
+    grade ever produced, which is not "no verdict" but a FABRICATED FAILURE: it was recorded into the
+    ledger as ``fail``, ``oracle_schedule``'s first gate ("the shallower tier must have PASSED") then
+    refused every capsule, and the round grade enqueued nothing while logging only the two lines it logs
+    when there is genuinely nothing to do.
+
+    Measured on out/runs/gemmini/capsule-bench/merlin_assisted/merlincirct_g4p1_20260905, round 5: the
+    verdict says 82/96 passed, promotion recorded 96/96 as ``fail``, 62 of the 82 genuine passes are on
+    disk in ``qa/tier_state.json`` as ``fail`` under their exact execution identity, and the run's whole
+    launch log holds 18 ``[promote]`` lines and zero enqueued cert jobs across 8 hours.
+
+    Read STRUCTURALLY and FAIL CLOSED. A boolean ``pass`` decides when the row carries one. Otherwise a
+    ``status`` of exactly ``pass``/``fail`` decides. Anything else -- a refusal, an ungradeable capsule,
+    a third producer with a fourth spelling -- returns ``None``, which the callers record as NOTHING
+    rather than as a failure. "Nobody has run this" re-runs; an invented ``fail`` retires the capsule.
+    """
+    if isinstance(row, dict):
+        flag = row.get("pass")
+        if isinstance(flag, bool):
+            return _PASS if flag else _FAIL
+        status = row.get("status")
+        if isinstance(status, str) and status.strip() in (_PASS, _FAIL):
+            return status.strip()
+    return None
 
 
 def resolve_tiers(ws):
@@ -1039,9 +1075,18 @@ def record_cert(ws, verdict, cert_tier, log=None, identity=None) -> list[str]:
                     print(f"[promote] {name} {cert_tier} result not recorded: the outstanding record "
                           f"names an execution identity this result does not carry", file=log, flush=True)
                 continue
-        passed = bool(row.get("pass"))
+        status = row_status(row)
+        if status is None:
+            # The job ran and came back saying nothing this recorder can read. Resolving the pending
+            # record to `fail` would spend a real RTL certificate on a fabricated verdict; leaving it
+            # pending re-runs it, which is the fail-closed direction.
+            if log is not None:
+                print(f"[promote] {name} {cert_tier} result not recorded: the result states no verdict "
+                      f"this recorder can read (neither a boolean 'pass' nor a 'status' of pass/fail)",
+                      file=log, flush=True)
+            continue
         entry = dict(entry)
-        entry["status"] = "pass" if passed else "fail"
+        entry["status"] = status
         slots_w = _slots(st, name, cert_tier)
         slots_w.pop(key, None)           # re-insert: a just-resolved record is the freshest, not the oldest
         slots_w[key] = entry
@@ -1050,7 +1095,7 @@ def record_cert(ws, verdict, cert_tier, log=None, identity=None) -> list[str]:
         mirror = (st.get(name) or {}).get(cert_tier)
         if isinstance(mirror, dict) and record_identity(mirror) == key:
             st[name][cert_tier] = entry
-        resolved.append(f"{name}={'pass' if passed else 'fail'}")
+        resolved.append(f"{name}={status}")
     if resolved:
         _save_tier_state(ws, st)
         if log is not None:
@@ -1098,6 +1143,8 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     # decomposition regardless, because a verdict that carries only the whole digest cannot be
     # re-examined per component later (it comes back UNDETERMINABLE, which re-runs).
     execution_by_name = {}
+    n_pass = n_fail = 0
+    unreadable = []
     for row in (verdict.get("per_capsule") or []):
         name = row.get("capsule")
         if not name:
@@ -1107,7 +1154,15 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
         if not valid_execution_digest(execution_digest):
             execution_digest = None
         execution_by_name[name] = execution_digest
-        entry = {"status": "pass" if row.get("pass") else "fail",
+        # WHAT the row said, over BOTH producers' spellings, or nothing. A row that states no verdict is
+        # not a failed row: recording it as one is what silently retired 96 capsules a round.
+        status = row_status(row)
+        if status is None:
+            unreadable.append(name)
+            continue
+        n_pass += status == _PASS
+        n_fail += status == _FAIL
+        entry = {"status": status,
                  "digest": digest, "components": dict(comps)}
         if execution_digest is not None:
             entry["execution_digest"] = execution_digest
@@ -1143,6 +1198,17 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     want = [w for w in schedule(states, tier_order=[loop_tier, cert_tier], cert_tiers=(cert_tier,),
                                 cert_cover=cover)
             if w.tier == cert_tier]
+
+    # WHAT THIS VERDICT ACTUALLY SAID, every time, in one line. An idle promotion and a broken one are
+    # indistinguishable by design -- the call is wrapped in a try/except so it can never gate a run -- so
+    # the only thing that can tell them apart is an accounting line that is printed unconditionally. The
+    # defect this closes ran for 8 hours behind exactly two log lines, neither of which was a count.
+    # `unreadable` is named, not summarised away: it is the shape a THIRD verdict producer would take.
+    print(f"[promote] {loop_tier}: {n_pass} pass, {n_fail} fail"
+          + (f", {len(unreadable)} stating no verdict ({', '.join(sorted(unreadable)[:3])}"
+             + (", ..." if len(unreadable) > 3 else "") + ")" if unreadable else "")
+          + f"; {cert_tier} cover={len(cover) if cover is not None else 'all'}"
+          + f"; {len(want)} capsule(s) want {cert_tier}", file=log, flush=True)
 
     # WHICH component requeued each capsule, so a reader of the log can see why a certificate was dropped
     # rather than only that the count went up. A run that requeues everything and one that requeues one

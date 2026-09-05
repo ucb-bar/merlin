@@ -534,3 +534,141 @@ def test_the_broker_reap_actually_calls_the_recorder(tmp_path):
     reap = src[src.index('if not j.get("promoted")'):]
     assert 'elif j.get("promoted")' in reap[:800], (
         "the recorder is not on the promoted-job branch of the reap")
+
+
+# ---------------------------------------------------------------------------------------------
+# the ROUND-GRADE verdict schema — the path that produced 18 promote calls and 0 cert jobs
+# ---------------------------------------------------------------------------------------------
+def _grade_verdict(rows):
+    """A verdict shaped the way ``qa_check`` writes one: a ``status`` STRING and no ``pass`` key.
+
+    Every test above this line feeds the BROKER's schema (a boolean ``pass``). That is why the suite was
+    green while the round grade and the in-turn grade -- the two calls that fire while a converged agent
+    has stopped self-checking -- promoted nothing for a whole 8-hour run.
+    """
+    return {"per_capsule": [{"capsule": n, "status": s} for n, s in rows]}
+
+
+def test_the_round_grade_verdict_schema_enqueues_a_cert_job(tmp_path):
+    """A capsule that PASSED the loop tier in a round grade must get a cert job, same as in a broker
+    verdict. Measured failure this closes: merlincirct_g4p1_20260905 round 5 said 82/96 passed and
+    promotion enqueued zero, because it asked the row for a key that schema does not have."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    promoted = B.promote(ws, ch, _grade_verdict([("A", "pass")]), "L2", "L3", None, sys.stderr)
+    assert promoted == ["A"], "a passing round-grade row produced no cert job"
+    reqs = list(ch.glob("simreq_*.json"))
+    assert len(reqs) == 1, f"expected exactly one enqueued cert job, found {[r.name for r in reqs]}"
+    r = json.loads(reqs[0].read_text())
+    assert r["capsules"] == "A" and r["tiers"] == "L3" and r["promoted"] is True
+    assert json.loads((ws / "qa" / "tier_state.json").read_text())["A"]["L2"]["status"] == "pass"
+
+
+def test_a_failing_round_grade_row_buys_no_cert_time(tmp_path):
+    """The converse, in the same schema: RTL minutes are never spent on a capsule the screen failed."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    assert B.promote(ws, ch, _grade_verdict([("A", "fail")]), "L2", "L3", None, sys.stderr) == []
+    assert list(ch.glob("simreq_*.json")) == []
+    assert json.loads((ws / "qa" / "tier_state.json").read_text())["A"]["L2"]["status"] == "fail"
+
+
+@pytest.mark.parametrize("word", ["declined", "incomplete", "gated", "", None])
+def test_a_row_stating_no_verdict_is_not_recorded_as_a_failure(tmp_path, word):
+    """A row that states nothing must be recorded as NOTHING, never as a failure.
+
+    This is the direction that made the defect invisible for 8 hours: reading the wrong key returned a
+    falsy value, and a falsy value was written to the ledger as ``fail``. A fabricated failure does not
+    just skip promotion, it RETIRES the capsule -- ``oracle_schedule`` treats a known verdict as settled
+    for those bytes, so nothing re-runs it either. "Nobody has run this" re-runs; an invented ``fail``
+    does not.
+    """
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    assert B.promote(ws, ch, _grade_verdict([("A", word)]), "L2", "L3", None, sys.stderr) == []
+    assert list(ch.glob("simreq_*.json")) == []
+    st = json.loads((ws / "qa" / "tier_state.json").read_text())
+    assert "L2" not in st.get("A", {}), f"a {word!r} row was recorded as a loop-tier verdict"
+
+
+def test_row_status_reads_both_producers_and_refuses_to_invent_one():
+    """One reader, both schemas, and ``None`` for anything else -- asserted directly so a third producer
+    with a fourth spelling fails here rather than silently retiring a corpus."""
+    B = _broker()
+    assert B.row_status({"pass": True}) == "pass"
+    assert B.row_status({"pass": False}) == "fail"
+    assert B.row_status({"status": "pass"}) == "pass"
+    assert B.row_status({"status": "fail"}) == "fail"
+    # The boolean wins when both are present: it is the runner's own answer about its own run.
+    assert B.row_status({"pass": True, "status": "fail"}) == "pass"
+    for junk in ({}, {"status": "declined"}, {"status": "gated"}, {"status": None},
+                 {"pass": None}, {"pass": "yes"}, None, "pass"):
+        assert B.row_status(junk) is None, f"{junk!r} was read as a verdict"
+
+
+def test_the_grade_reader_and_the_promoter_agree_on_the_verdict_key(tmp_path):
+    """EXECUTE the producer, feed its real rows to the consumer, demand a cert job.
+
+    The two sides of this contract live in different files and neither imports the other's spelling. A
+    test that builds the row by hand can only prove the promoter reads what the TEST writes; this one
+    proves it reads what ``qa_check`` actually emits.
+    """
+    Q, B = _harness_module("qa_check"), _broker()
+    root, _ = _runs_root(tmp_path)
+    rows = Q._per_capsule_from_results(root)
+    assert "A" in rows
+    assert "pass" not in rows["A"], (
+        "the grade reader now emits a 'pass' key; keep row_status reading both, and re-point this test "
+        "at whatever key it dropped")
+
+    ws = _ws(tmp_path / "prom")
+    ch = ws / ".qa_channel"
+    verdict = {"per_capsule": [dict(row, capsule=name) for name, row in rows.items()]}
+    assert B.promote(ws, ch, verdict, "L2", "L3", None, sys.stderr) == ["A"], (
+        "a verdict built by the real grade reader promoted nothing")
+    assert len(list(ch.glob("simreq_*.json"))) == 1
+
+
+def test_promotion_always_accounts_for_what_the_verdict_said(tmp_path, capsys):
+    """An idle promotion and a broken one must not log the same thing.
+
+    Promotion is wrapped in a try/except so it can never gate a run, so the log is the only instrument
+    there is. The defect this closes ran for 8 hours behind two lines that never carried a count.
+    """
+    B = _broker()
+    ws = _ws(tmp_path)
+    B.promote(ws, ws / ".qa_channel",
+              _grade_verdict([("A", "pass"), ("B", "fail"), ("C", "declined")]),
+              "L2", "L3", None, sys.stdout)
+    line = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[promote] L2:")]
+    assert line, "promotion produced no accounting line"
+    assert "1 pass" in line[0] and "1 fail" in line[0] and "1 stating no verdict" in line[0]
+    assert "want L3" in line[0]
+
+
+# ---------------------------------------------------------------------------------------------
+# a cert job that starts must be able to RUN
+# ---------------------------------------------------------------------------------------------
+def test_a_promoted_cert_job_keeps_the_harness_interpreter_ahead_of_the_sim_toolchain():
+    """A submission entrypoint is a `#!/usr/bin/env python3` script, so PATH decides which interpreter
+    compiles the capsule. The sim toolchain's conda env has its own python3 and none of the compiler's
+    dependencies; prepending it made every promoted job die in its first declared command.
+
+    Measured on merlincirct_g4p1_20260905: 41 of 41 promoted L3 jobs returned
+    `parse rc=1: ModuleNotFoundError: No module named 'xdsl'`. The job started, so promotion looked
+    alive; nothing was ever certified.
+    """
+    import os
+
+    S = _harness_module("simjob_broker")
+    parts = S._sim_env()["PATH"].split(os.pathsep)
+    own = os.path.dirname(S.PY)
+    assert own in parts, "the harness interpreter's own bin dir is not on the cert job's PATH"
+    sim_entries = [i for i, p in enumerate(parts) if p.startswith(str(S.CE))]
+    assert sim_entries, "the sim toolchain is not on the cert job's PATH"
+    assert parts.index(own) < min(sim_entries), (
+        "the sim toolchain's python3 shadows the harness interpreter, so a submission entrypoint runs "
+        "under an interpreter that does not have the compiler's dependencies")

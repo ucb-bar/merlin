@@ -97,7 +97,21 @@ def _valid_capsules(spec: str) -> list[str] | None:
 
 def _sim_env() -> dict:
     e = dict(os.environ)
-    e["PATH"] = f"{CE}/bin:{CE}/riscv-tools/bin:" + e.get("PATH", "")
+    # THE SUBMISSION'S OWN INTERPRETER COMES FIRST. A submission entrypoint is a script with a
+    # `#!/usr/bin/env python3` shebang, so whatever `python3` PATH resolves to is what compiles the
+    # capsule. Prepending the sim toolchain's conda env put ITS python3 in front of the harness's, and
+    # that interpreter has none of the compiler's dependencies -- so every cert job died in its FIRST
+    # declared command with `ModuleNotFoundError`, before any RTL ran.
+    #
+    # Measured on merlincirct_g4p1_20260905: 41 of 41 promoted L3 jobs returned
+    # `parse rc=1: ModuleNotFoundError: No module named 'xdsl'`, all with `barrier_status: None` and no
+    # execution identity -- so every one was then discarded as unattributable, and the capsule went back
+    # to `pending`. The sibling self-check broker launches the same child with the inherited environment
+    # and works, which is why this was invisible: only the PROMOTED path was broken.
+    #
+    # The conda env still supplies spike / riscv-gcc / the RTL engines; it just no longer shadows the
+    # interpreter the harness itself is running under.
+    e["PATH"] = f"{os.path.dirname(PY)}:{CE}/bin:{CE}/riscv-tools/bin:" + e.get("PATH", "")
     e["RISCV"] = f"{CE}/riscv-tools"
     # .compat_lib first: the conda cmake needs libidn.so.11 (host has only .12) during C++ build configure
     compat = str(HERE.parents[3] / ".compat_lib")   # scripts -> capsule_bench_v0 -> experiments -> <repo>/.compat_lib
