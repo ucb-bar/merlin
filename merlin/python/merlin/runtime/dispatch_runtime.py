@@ -1174,6 +1174,8 @@ def _propagate_quant_inner(module) -> int:
 def run_model(model_dir: str | Path, workdir: str | Path,
               cache_dir: str | Path | None = None, tap=None,
               int8_compute: bool = False,
+              quant_passes: "list[str] | None" = None,
+              quant_select=None,
               kernel_backend: str | None = None, mesh_target: str | None = None,
               mesh_package: str | None = None) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
@@ -1183,6 +1185,14 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     ``int8_compute=True`` runs the integer (W8A8) datapath: each ``dequant(weight)→f32 matmul``
     becomes ``quantize(act)→ i8×i8→i32 matmul → requant`` (real integer contraction on RVV),
     instead of dequantizing the weight to f32 (the default weight-only path).
+
+    ``quant_passes`` / ``quant_select`` narrow that datapath and are meaningful only when
+    ``int8_compute=True``. ``quant_passes`` is a subset of ``quant_passes.known()`` (default None =
+    all six, byte-identical to the shipped path); ``quant_select`` is an ``(op) -> bool`` predicate
+    restricting which ops those passes may rewrite. Together they make the datapath's REACH a
+    variable, which is what separates "our arithmetic is wrong" from "we quantize more operations
+    than the reference does" when grading against a reference (e.g. torchao, which quantizes
+    ``nn.Linear`` only) whose quantization policy is narrower than ours.
     """
     from ..frontends.linalg_mlir import parse_mlir_file
     from ..xdsl_dialects.lowering.outline import outline_dispatches
@@ -1205,7 +1215,7 @@ def run_model(model_dir: str | Path, workdir: str | Path,
         # edit-point). apply_quant() with the default set runs the six lower_*_int passes in the
         # canonical order — byte-identical to the historical hardcoded sequence, now toggleable.
         from ..llvmlower.quant_passes import apply_quant
-        apply_quant(module)
+        apply_quant(module, quant_passes, select=quant_select)
     lower_quant_ext(module)                   # residual dequants (unconverted) -> f32 fallback
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)

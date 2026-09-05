@@ -49,9 +49,17 @@ def known() -> tuple[str, ...]:
 
 
 def apply_quant(module: Any, passes: "list[str] | None" = None, *,
-                named_contraction: bool = False) -> dict[str, int]:
+                named_contraction: bool = False,
+                select: "Callable[[Any], bool] | None" = None) -> dict[str, int]:
     """Run the selected int8 quant passes IN CANONICAL ORDER (mutating ``module``). ``passes=None`` runs
     all six = the historical sequence (byte-identical datapath). Returns per-pass lowered-op counts.
+
+    ``select`` is an ``(op) -> bool`` predicate restricting WHICH ops the selected passes may
+    rewrite (default None = every op the pass recognizes, i.e. the shipped datapath). It makes the
+    pass set's REACH measurable independently of its arithmetic: running only the contractions that
+    descend from one framework construct answers "how much of the gap against a reference that
+    quantizes fewer operations is policy rather than error". The predicate is the caller's policy —
+    this module never assumes one.
 
     ``named_contraction`` asks the contraction pass to emit a mixed-type ``linalg.matmul`` for the
     canonical 2-D case instead of a ``linalg.generic``. Default False keeps the datapath
@@ -65,8 +73,12 @@ def apply_quant(module: Any, passes: "list[str] | None" = None, *,
         if n not in want:
             continue
         fn = reg[n].fn
+        kw: dict[str, Any] = {}
+        if select is not None:
+            kw["select"] = select          # every pass honors the reach restriction
         # Only the contraction pass takes the flag; passing it to the others would couple every
         # quant pass to a decision that is not theirs to make.
-        out[n] = (fn(module, named_contraction=True)
-                  if (named_contraction and n == "contraction_int8") else fn(module))
+        if named_contraction and n == "contraction_int8":
+            kw["named_contraction"] = True
+        out[n] = fn(module, **kw)
     return out

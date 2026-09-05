@@ -65,7 +65,23 @@ def _is_canonical_matmul(ndim: int, in_maps, out_dims, red_flags) -> bool:
             and list(out_dims) == [0, 1])
 
 
-def lower_contraction_int8(module, *, named_contraction: bool = False) -> int:
+def _select_targets(targets, select, key=None):
+    """Keep only the targets the caller's ``select`` predicate admits.
+
+    ``select`` is ``(op) -> bool`` and defaults to None = admit everything, so the shipped
+    datapath is byte-identical. It exists so a caller can run the SAME pass over a RESTRICTED
+    set of ops (e.g. only the contractions that descend from one framework construct) and
+    measure what the pass's reach — as opposed to its arithmetic — costs. The predicate is the
+    caller's policy, never a fact this module assumes.
+    """
+    if select is None:
+        return targets
+    k = (lambda t: t) if key is None else key
+    return [t for t in targets if select(k(t))]
+
+
+def lower_contraction_int8(module, *, named_contraction: bool = False,
+                           select=None) -> int:
     """Rewrite f32 contractions into i8×i8→i32 + dynamic act-quant + requant. Returns count."""
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
@@ -128,6 +144,7 @@ def lower_contraction_int8(module, *, named_contraction: bool = False) -> int:
         if not any(i.type.element_type == f32 or _is_dequant(i.owner) for i in op.inputs):
             continue
         targets.append((op, view))
+    targets = _select_targets(targets, select, key=lambda t: t[0])
 
     n = 0
     for op, (ndim, in_maps, out_dims, red_flags) in targets:
@@ -274,7 +291,7 @@ def lower_contraction_int8(module, *, named_contraction: bool = False) -> int:
 lower_matmul_int8 = lower_contraction_int8
 
 
-def lower_conv_int8(module) -> int:
+def lower_conv_int8(module, *, select=None) -> int:
     """Rewrite an f32 conv (``linalg.generic`` whose input map carries stride/dilation affine
     expressions, ``prov.op = conv2d``) into an i8×i8→i32 conv: the activation is dynamically
     quantized **per-tensor** (a conv pixel feeds many outputs, so a per-output-row act scale is
@@ -319,6 +336,7 @@ def lower_conv_int8(module) -> int:
                 or (isinstance(wt.type, TensorType) and wt.type.element_type == f32)):
             continue
         targets.append(op)
+    targets = _select_targets(targets, select)
 
     n = 0
     for op in targets:
@@ -519,7 +537,7 @@ def _iexp_body(arith, i32, i64, q):
     return [zc, nq, ck, z, zs, r, cb, t, t64, tt, ca, att, cc, ep, z64, e, ef, inv, exf]
 
 
-def lower_softmax_int(module) -> int:
+def lower_softmax_int(module, *, select=None) -> int:
     """Replace softmax's ``math.exp`` with an integer (I-BERT) exp: a fixed-point 2nd-order
     polynomial + power-of-two shift evaluated in integer arithmetic on the FIXED exponent grid
     ``_IEXP_S``, producing the same f32 exp values the downstream sum/divide consume. The
@@ -555,6 +573,7 @@ def lower_softmax_int(module) -> int:
                 and any(b.name == "arith.subf" for b in src.body.blocks[0].ops))
 
     targets = [op for op in module.walk() if _is_softmax_exp(op)]
+    targets = _select_targets(targets, select)
     n = 0
     for op in targets:
         xs = op.inputs[0]                          # x = scores - rowmax, f32 [.., L], <= 0
@@ -605,7 +624,7 @@ def lower_softmax_int(module) -> int:
 _IGELU_A, _IGELU_B = -0.2888, -1.769
 
 
-def lower_gelu_int(module) -> int:
+def lower_gelu_int(module, *, select=None) -> int:
     """Replace GELU's ``math.erf`` with an integer (I-BERT) i-GELU: per-row dynamic scale, the
     erf approximated by a fixed-point 2nd-order polynomial in integer arithmetic, then
     ``0.5*x*(1+erf)``. The transcendental ``math.erf`` is gone. Anchors on each erf generic.
@@ -628,6 +647,7 @@ def lower_gelu_int(module) -> int:
     targets = [op for op in module.walk()
                if op.name == "linalg.generic" and len(op.inputs) == 1 and op.body.blocks
                and any(b.name == "math.erf" for b in op.body.blocks[0].ops)]
+    targets = _select_targets(targets, select)
     n = 0
     for op in targets:
         x = op.inputs[0]; st = op.results[0].type
@@ -722,7 +742,7 @@ def lower_gelu_int(module) -> int:
     return n
 
 
-def lower_silu_int(module) -> int:
+def lower_silu_int(module, *, select=None) -> int:
     """Replace the logistic ``sigmoid`` generic (``1/(1+exp(-x))``, the SiLU/swish nonlinear)
     with an integer (I-BERT) version: the shared integer-exp (``_iexp_body``, the same fixed-point
     poly + power-of-two shift softmax uses, on the same fixed exponent grid) evaluated on
@@ -749,6 +769,7 @@ def lower_silu_int(module) -> int:
                 and any(b.name == "math.exp" for b in op.body.blocks[0].ops))
 
     targets = [op for op in module.walk() if _is_sigmoid(op)]
+    targets = _select_targets(targets, select)
     n = 0
     for op in targets:
         x = op.inputs[0]; st = op.results[0].type
@@ -801,7 +822,7 @@ def lower_silu_int(module) -> int:
 _RSQRT_MAGIC = 0x5f3759df
 
 
-def lower_rsqrt_int(module) -> int:
+def lower_rsqrt_int(module, *, select=None) -> int:
     """Replace RMSNorm/LayerNorm's transcendental ``math.rsqrt`` with the fast inverse square
     root: a bit-hack initial guess (an integer subtract + shift on the f32 bit pattern) refined
     by Newton steps in f32 (``y = y*(1.5 - 0.5*v*y*y)``). No libm call, no integer per-lane
@@ -814,6 +835,7 @@ def lower_rsqrt_int(module) -> int:
 
     NEWTON = 4
     rsqrts = [op for op in module.walk() if op.name == "math.rsqrt" and op.operands[0].type == f32]
+    rsqrts = _select_targets(rsqrts, select)
     n = 0
     for op in rsqrts:
         v = op.operands[0]
