@@ -46,7 +46,7 @@ from typing import Any, Mapping, Sequence
 __all__ = [
     "YES", "NO", "UNKNOWN", "Verdict", "PhaseVerdict",
     "PHASE1", "PHASE2", "BOTH", "NEITHER", "UNDETERMINED",
-    "certifiable", "priceable", "phase_of", "declared_macs", "split_report",
+    "certifiable", "priceable", "phase_of", "declared_macs", "split_report", "anchors",
 ]
 
 #: Tri-state. ``UNKNOWN`` is not a soft ``NO``: it says the question could not be answered here, which
@@ -376,3 +376,63 @@ def split_report(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any
         "single_phase_reasons": reasons,
         "verdicts": verdicts,
     }
+
+
+# --------------------------------------------------------------------------------- the anchor relation
+
+def _obligation_key(capsule: Mapping[str, Any]) -> tuple:
+    """What makes two capsules witnesses of the SAME obligation, independent of scale.
+
+    Family, datapath and epilogue decide what is being computed; extents decide how much of it. A
+    phase-2 member is the same claim as its anchor at a larger scale, so the key deliberately excludes
+    every extent -- that is the whole content of "bigger sibling".
+    """
+    sem = capsule.get("semantic") or {}
+    op = capsule.get("operation") or {}
+    attrs = op.get("attributes") or {}
+    epilogue = tuple(sorted(str(e) for e in (attrs.get("epilogue") or ())))
+    dtypes = tuple(sorted({str(r.get("dtype")) for r in (capsule.get("inputs") or ())
+                           if isinstance(r, Mapping) and r.get("dtype")}))
+    return (str(sem.get("semantic_family") or op.get("op") or "?"), dtypes, epilogue,
+            str(attrs.get("output_dtype") or ""))
+
+
+def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = None,
+            budget_s: float | None = None) -> dict[str, Any]:
+    """Pair every phase-2 member with the certified sibling it can rest on.
+
+    The relation this computes is the one ``extends`` already declares and nothing verifies: a member
+    too large to certify is admissible only as an EXTENSION of a sibling that was certified, so the
+    anchor must exist, must be certifiable, and must witness the same obligation. Where no such sibling
+    exists the member is reported as ORPHANED rather than silently accepted -- an L2 pass on a shape
+    nothing ever certified cycle-accurately is exactly the "read tier_reached, never a bare score"
+    failure this corpus already has scar tissue for.
+
+    The anchor chosen is the LARGEST certifiable witness of the obligation, not the smallest. A bigger
+    anchor is a stronger guarantee for the same certification floor, and the floor is what dominates
+    the cost.
+    """
+    by_ob: dict[tuple, list[tuple[Mapping[str, Any], PhaseVerdict]]] = {}
+    for c in capsules:
+        v = phase_of(c, target=target, fit=fit, budget_s=budget_s)
+        by_ob.setdefault(_obligation_key(c), []).append((c, v))
+
+    paired: list[dict[str, Any]] = []
+    orphaned: list[dict[str, Any]] = []
+    for key, members in sorted(by_ob.items(), key=lambda kv: str(kv[0])):
+        certified = [(c, v) for c, v in members if v.cert.value == YES]
+        extensions = [(c, v) for c, v in members if v.cert.value != YES and v.price.value == YES]
+        if not extensions:
+            continue
+        if certified:
+            anchor = max(certified, key=lambda cv: largest_operand_elements(cv[0]))
+            for c, v in extensions:
+                paired.append({"member": str(c.get("name") or ""), "anchor": str(anchor[0].get("name") or ""),
+                               "obligation": key, "why": v.cert.reason})
+        else:
+            for c, v in extensions:
+                orphaned.append({"member": str(c.get("name") or ""), "obligation": key,
+                                 "why": "no certifiable witness of this obligation exists on this target"})
+    return {"target": target, "n_obligations": len(by_ob),
+            "paired": paired, "orphaned": orphaned,
+            "n_paired": len(paired), "n_orphaned": len(orphaned)}

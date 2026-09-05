@@ -81,6 +81,7 @@ def main() -> int:
     report: dict[str, dict] = {}
     unexplained: list[str] = []
     undecided: list[str] = []
+    orphaned: list[str] = []
 
     for t in targets:
         caps = []
@@ -99,6 +100,14 @@ def main() -> int:
                      "cert_fit_samples": getattr(fit, "n_samples", None),
                      "single_phase_reasons": rep["single_phase_reasons"]}
 
+        anc = PP.anchors(caps, target=t, fit=fit, budget_s=args.budget_s)
+        report[t]["obligations"] = anc["n_obligations"]
+        report[t]["paired"] = anc["n_paired"]
+        report[t]["orphaned"] = anc["n_orphaned"]
+        if anc["n_orphaned"]:
+            orphaned.append(f"{t}: {anc['n_orphaned']} phase-2 member(s) rest on nothing "
+                            f"({anc['orphaned'][0]['why']})")
+
         for v in rep["verdicts"]:
             if v.phase in (PP.PHASE1, PP.PHASE2, PP.NEITHER) and not v.reason.strip():
                 unexplained.append(f"{t}: {v.name} is {v.phase} with no recorded reason")
@@ -109,12 +118,14 @@ def main() -> int:
     if args.json:
         print(json.dumps(report, indent=1, default=str))
     else:
-        print(f"{'target':<16}{'caps':>5}{'both':>6}{'p1':>5}{'p2':>5}{'neither':>9}{'undet':>7}  cert-fit")
+        print(f"{'target':<16}{'caps':>5}{'both':>6}{'p1':>5}{'p2':>5}{'neither':>9}{'undet':>7}"
+              f"{'oblig':>7}{'anchored':>10}{'orphan':>8}  cert-fit")
         for t, r in report.items():
             c = r["counts"]
             n = r["cert_fit_samples"]
             print(f"{t:<16}{r['n_capsules']:>5}{c[PP.BOTH]:>6}{c[PP.PHASE1]:>5}{c[PP.PHASE2]:>5}"
-                  f"{c[PP.NEITHER]:>9}{c[PP.UNDETERMINED]:>7}  {('n=%d' % n) if n else 'none'}")
+                  f"{c[PP.NEITHER]:>9}{c[PP.UNDETERMINED]:>7}{r['obligations']:>7}{r['paired']:>10}"
+                  f"{r['orphaned']:>8}  {('n=%d' % n) if n else 'none'}")
 
     if unexplained:
         print("\n[FAIL] phase-split: a single-phase verdict with no recorded reason is indistinguishable "
@@ -122,6 +133,14 @@ def main() -> int:
         for line in unexplained[:20]:
             print(f"  - {line}")
         return 1
+
+    if orphaned:
+        head = "[FAIL]" if args.strict else "[note]"
+        print(f"\n{head} phase-split: a phase-2 member is admissible only as an EXTENSION of a sibling "
+              "that WAS certified; one resting on nothing is an L2 pass on a shape nothing ever "
+              "certified cycle-accurately:")
+        for line in orphaned:
+            print(f"  - {line}")
 
     if undecided:
         head = "[FAIL]" if args.strict else "[note]"
@@ -131,6 +150,8 @@ def main() -> int:
             print(f"  - {line}")
         if args.strict:
             return 1
+    if orphaned and args.strict:
+        return 1
 
     print("\n[  ok] phase-split: every single-phase verdict carries a derived reason.")
     return 0

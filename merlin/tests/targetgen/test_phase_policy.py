@@ -179,3 +179,54 @@ def test_both_is_reachable_and_is_the_anchor_state():
 
     v = PP.phase_of(_capsule(), target="t", fit=None, budget_s=None)
     assert v.phase == PP.BOTH, v.reason
+
+
+# ----------------------------------------------------------------------------- the anchor relation
+
+def _sized(name, m, k, n, tiers=("L0", "L1", "L2", "L3")):
+    c = _capsule(name=name, required_oracle_tiers=list(tiers))
+    c["inputs"] = [{"name": "A", "role": "input", "shape": [m, k], "dtype": "i8"},
+                   {"name": "W", "role": "weight", "shape": [k, n], "dtype": "i8"}]
+    return c
+
+
+def test_a_large_member_rests_on_a_certifiable_sibling_of_the_SAME_obligation():
+    small = _sized("small", 16, 16, 16)
+    big = _sized("big", 512, 512, 512, tiers=("L0", "L1", "L2"))  # no cycle-accurate tier
+    a = PP.anchors([small, big], target="t")
+    assert a["n_orphaned"] == 0
+    assert a["paired"] and a["paired"][0]["member"] == "big"
+    assert a["paired"][0]["anchor"] == "small"
+
+
+def test_a_member_with_no_certifiable_sibling_is_reported_orphaned_not_accepted():
+    """An L2 pass on a shape nothing ever certified cycle-accurately is the failure this relation
+    exists to catch, so the absence of an anchor must be loud."""
+    big = _sized("big", 512, 512, 512, tiers=("L0", "L1", "L2"))
+    a = PP.anchors([big], target="t")
+    assert a["n_paired"] == 0
+    assert a["n_orphaned"] == 1
+    assert "no certifiable witness" in a["orphaned"][0]["why"]
+
+
+def test_an_anchor_is_never_drawn_from_a_different_obligation():
+    """Resting an attention member on a contraction anchor would certify the wrong thing."""
+    other = _sized("contraction_anchor", 16, 16, 16)
+    att = _capsule(name="att_big", required_oracle_tiers=["L0", "L1", "L2"],
+                   semantic={"semantic_family": "attention"},
+                   operation={"op": "attention_full", "attributes": {"out": "Y"}},
+                   inputs=[{"name": "Q", "role": "input", "shape": [256, 64], "dtype": "i8"},
+                           {"name": "K", "role": "input", "shape": [256, 64], "dtype": "i8"},
+                           {"name": "V", "role": "input", "shape": [256, 64], "dtype": "i8"}])
+    a = PP.anchors([other, att], target="t")
+    assert a["n_paired"] == 0 and a["n_orphaned"] == 1
+
+
+def test_the_largest_certifiable_witness_is_chosen_as_the_anchor():
+    """A bigger anchor is a stronger guarantee for the same certification floor, and the floor is what
+    dominates the cost -- so the anchor is the largest affordable witness, not the smallest."""
+    tiny = _sized("tiny", 8, 8, 8)
+    mid = _sized("mid", 32, 32, 32)
+    big = _sized("big", 512, 512, 512, tiers=("L0", "L1", "L2"))
+    a = PP.anchors([tiny, mid, big], target="t")
+    assert a["paired"][0]["anchor"] == "mid"
