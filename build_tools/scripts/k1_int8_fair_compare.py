@@ -214,7 +214,7 @@ OURS_ACCURACY_REFERENCE = "capture_golden_fp32"
 def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
     """The ratio, or a concrete refusal. Never a number whose basis cannot be shown."""
     from merlin.compare.executorch_column import (accuracy_reference_mismatch_reason,
-                                                  bundle_mismatch_reason,
+                                                  bundle_mismatch_reason, layout_equivalence,
                                                   quant_recipe_mismatch_reason)
     ours_w = ours.get("min_wall_ns")
     et_w = arm.get("warm_ns")
@@ -256,7 +256,13 @@ def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
     # ExecuTorch's weight prepacking happens at delegate init, OUTSIDE the execute line this ratio
     # divides. Surfaced beside the ratio so the reader can see what each side did not pay for.
     load = next((r.get("load_ns") for r in arm["runs"] if r.get("load_ns")), None)
+    # If the bundle check passed only because the two are a DECLARED layout-only pair, say so in the
+    # artifact -- the ratio is legitimate only while both sides do their weight layout once outside
+    # the timed window (theirs at delegate init, ours at build time), and a reader must be able to
+    # see that assumption rather than infer it.
+    _layout_eq = layout_equivalence(ours_bundle, ref_bundle) if ours_bundle != ref_bundle else None
     return {"status": "measured", "ours_ns": ours_w, "executorch_warm_ns": et_w,
+            "bundle_layout_equivalence": _layout_eq,
             "ours_over_executorch": ours_w / et_w,
             "speedup_vs_executorch": et_w / ours_w,
             "beats_executorch": et_w > ours_w,
@@ -280,6 +286,13 @@ def main() -> None:
     ap.add_argument("--also-weight-only", action="store_true",
                     help="additionally measure ExecuTorch's weight-only recipe as a LABELLED second "
                          "column (it is not int8 compute; kept because it is the historical cell)")
+    ap.add_argument("--compile-timeout-s", type=int, default=3600,
+                    help="ceiling on any single build command for OUR arm. The module default is "
+                         "900s, which is a KERNEL budget: a whole-model int8 clang invocation "
+                         "exceeds it (tiny_llama's was killed at ~880s), and the cell then reports "
+                         "BLOCKED, indistinguishable from a real codegen defect. Sized to the cell "
+                         "here so the ceiling is a stated parameter of the run, not an ambient "
+                         "constant nobody passed.")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
@@ -336,6 +349,10 @@ def main() -> None:
     # Feature-keyed build dirs key on features and codegen_env keys on the environment; neither sees
     # source state. `source_digest` is over the bytes actually read, so a dirty tree is identifiable
     # instead of looking pinned.
+    # Bound at import from MERLIN_COMPILE_TIMEOUT_S, so it has to be re-bound after parsing.
+    k1._K1_CMD_TIMEOUT_S = int(a.compile_timeout_s)
+    print(f"[budget] compile ceiling {a.compile_timeout_s}s per build command", flush=True)
+
     from merlin.common import provenance as _prov
     _src = [_MERLIN_PY / "merlin" / "llvmlower" / "passes_quant_int.py",
             _MERLIN_PY / "merlin" / "llvmlower" / "impr_features.py",

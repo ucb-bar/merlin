@@ -78,7 +78,8 @@ def _instrument_command(plan, a) -> list:
            "--model-dir", str(plan.ours_bundle_root),
            "--baseline", str(_ROOT / a.package),
            "--n", str(a.n), "--warmup", str(a.warmup), "--iters", str(a.iters),
-           "--et-n-lo", str(a.et_n_lo), "--et-n-hi", str(a.et_n_hi)]
+           "--et-n-lo", str(a.et_n_lo), "--et-n-hi", str(a.et_n_hi),
+           "--compile-timeout-s", str(a.compile_timeout_s)]
     if a.features is not None:
         cmd += ["--features", a.features]
     if a.also_weight_only:
@@ -175,10 +176,19 @@ def main() -> int:
     ap.add_argument("--et-n-hi", type=int, default=6)
     ap.add_argument("--also-weight-only", action="store_true")
     ap.add_argument("--cell-timeout", type=int, default=7200, help="seconds per cell")
+    ap.add_argument("--compile-timeout-s", type=int, default=3600,
+                    help="ceiling on any single build command inside a cell (see the instrument). "
+                         "Must be under --cell-timeout: a compile allowed to outlive its own cell "
+                         "cannot be what stops the cell.")
     ap.add_argument("--clean-work", action="store_true",
                     help="delete the instrument's build tree after each cell (bounds host disk; the "
                          "emitted object is then no longer available to explain the result)")
     a = ap.parse_args()
+    if a.compile_timeout_s >= a.cell_timeout:
+        ap.error(f"--compile-timeout-s={a.compile_timeout_s} is not under "
+                 f"--cell-timeout={a.cell_timeout}: a build allowed to outlive its own cell "
+                 "can never be the thing that stops the cell, and the cell would time out "
+                 "with no record instead of reporting which command ran long.")
 
     models = [m.strip() for m in a.models.split(",") if m.strip()]
     plans = ec.plan_campaign(models, variant=a.variant, int8=True,
