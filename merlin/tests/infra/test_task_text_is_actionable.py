@@ -32,12 +32,14 @@ def test_no_unresolved_path_placeholder_reaches_an_agent():
 
 def test_the_arm_task_does_not_tell_the_agent_to_bake_an_interpreter_into_argv():
     """`oot_runner._needs_interpreter` supplies it; instructing otherwise produces a manifest that fails."""
-    for p in _agent_facing_text():
-        t = p.read_text()
-        if "argv" in t and ".venv/bin/python" in t:
-            assert "invoke your tool with **that interpreter**" not in t, (
-                f"{p.parent.name}/{p.name} tells the agent to put an interpreter in argv; the runner "
-                f"already does that for a language: python tool")
+    # NO PRE-GUARD. This used to run the assertion only for files mentioning BOTH "argv" and
+    # ".venv/bin/python"; no file in the corpus matched both, so the assertion executed zero times and
+    # the test was green by construction. The forbidden instruction is forbidden everywhere -- and a
+    # file that phrases the interpreter differently is exactly the one the guard would have skipped.
+    bad = [f"{p.parent.name}/{p.name}" for p in _agent_facing_text()
+           if "invoke your tool with **that interpreter**" in p.read_text()]
+    assert not bad, ("agent-facing text tells the agent to put an interpreter in argv; the runner "
+                     "already does that for a `language: python` tool: " + ", ".join(bad))
 
 
 @pytest.mark.parametrize("bundle", ["merlin_assisted_rtlchecks_hwbringup_v0"])

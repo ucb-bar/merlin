@@ -70,8 +70,14 @@ def test_the_certified_continuous_path_still_ignores_the_round_cap():
     """
     src = (HARNESS / "run_baseline_qa_loop.py").read_text(encoding="utf-8")
     assert 'a.schedule == "rounds"' in src, "the rounds/continuous distinction is gone"
-    assert "1_000_000" in src, (
-        "continuous mode no longer lifts the round cap, so a productive run can be cut at --max-rounds")
+    # Pin the literal TO THE LINE THAT USES IT. A bare `"1_000_000" in src` was satisfied by an
+    # unrelated plateau sentinel elsewhere in the file, so rewriting the cap to `a.max_rounds` in both
+    # branches -- the exact regression this test names -- left it green.
+    cap_lines = [ln.strip() for ln in src.splitlines() if "_cap = a.max_rounds" in ln]
+    assert cap_lines, "the round-cap computation is gone"
+    assert any("1_000_000" in ln for ln in cap_lines), (
+        "continuous mode no longer lifts the round cap, so a productive run can be cut at "
+        f"--max-rounds; cap computation reads: {cap_lines}")
 
 
 def test_a_loop_pass_still_enqueues_the_cert_tier_immediately():

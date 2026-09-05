@@ -36,8 +36,13 @@ def score(tiers: dict, status: str, declared: str, declared_ran: bool = False,
     # not evidence against it. `passed` is either; only `certified` clears a mandatory tier, so a
     # screen can eliminate but can never certify.
     certified = (status == "pass") and (bar == "pass")
-    screened = (not certified) and blocked_by_selection and bar in ("pass", None) \
-        and all(v == "pass" for v in tiers.values() if v not in (None, "skipped", "unavailable"))
+    # `bool(ran)` is load-bearing and was missing here: `all()` over an EMPTY generator is True, so a
+    # capsule where NOTHING ran (every tier skipped/unavailable) screened as passed in the mirror while
+    # the shipped code refused it. That is the repo's own NOT_RUN_IS_NOT_PASS hole, reopened in the
+    # very helper the barrier tests score against.
+    ran_tiers = {t: v for t, v in tiers.items() if v not in (None, "skipped", "unavailable")}
+    ran_clean = bool(ran_tiers) and all(v == "pass" for v in ran_tiers.values())
+    screened = (not certified) and blocked_by_selection and ran_clean and bar in ("pass", None)
     return (certified or screened), used
 
 
@@ -105,10 +110,20 @@ def test_the_helper_matches_the_shipped_implementation():
     # The BARRIER RESOLUTION lines (unchanged), then the SCORING lines as shipped. The scoring moved
     # from a mandatory/did-not-run test to certified-vs-screened during branch integration; the mirror
     # above tracks the shipped form, and this guard is what stops the two drifting apart again.
-    assert "bar_used = max(ran)" in src
-    assert 'certified = (d.get("status") == "pass") and (bar == "pass")' in src
-    assert "screened = (not certified) and _blocked_by_selection" in src
-    assert "passed = certified or screened" in src
-    # the whole-corpus gate: without it the fallback is a leniency hole
-    assert "if bar is None and not _declared_ran:" in src
-    assert "_declared_ran = True" in src
+    # WHOLE LINES, not prefixes. `"screened = (not certified) and _blocked_by_selection"` is a PREFIX
+    # of the shipped predicate, so deleting the `_ran_clean` conjunct -- which is what stops a capsule
+    # that ran NOTHING from screening as passed -- satisfied every guard here. Matching the full
+    # stripped line is what makes a dropped conjunct visible.
+    lines = {ln.strip() for ln in src.splitlines()}
+    for want in (
+        'bar_used = max(ran)',
+        'certified = (d.get("status") == "pass") and (bar == "pass")',
+        'screened = (not certified) and _blocked_by_selection and _ran_clean and bar in ("pass", None)',
+        'passed = certified or screened',
+        '_ran_clean = bool(_ran) and all(v == "pass" for v in _ran.values())',
+        'if bar is None and not _declared_ran:',
+        '_declared_ran = True',
+    ):
+        assert want in lines, (
+            f"agent_selfcheck's barrier resolution no longer contains this exact line, so the mirror "
+            f"in this file may have drifted from what ships:\n    {want}")
