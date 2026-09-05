@@ -285,6 +285,9 @@ def main() -> int:
         entry["seconds"] = round(time.time() - t0, 1)
         entry["n_kernels"] = res.get("n_kernels")
         report["runs"][name] = entry
+        if args.out:                       # write after EVERY arm: a long multi-arm run that
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)   # dies mid-way must not
+            Path(args.out).write_text(json.dumps(report, indent=2))    # lose the arms it finished
         print(f"{args.bundle:28s} {name:20s} "
               f"w8a8_cos={g.get('w8a8_cos'):.6f} rel={g.get('w8a8_rel'):.5f} "
               f"max_rel={g.get('w8a8_max_rel'):.4g} "
