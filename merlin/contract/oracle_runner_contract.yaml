@@ -35,11 +35,23 @@ execution_artifact:
     # parsed by the {target} runtime backend's parse_output (resolved through the registry:
     # merlin.runtime.backends.base.get_backend("{target}").parse_output).
     lines:
-      - "OUT <name> <rows> <cols> <v0> <v1> ... <v(rows*cols-1)>   # row-major integers"
+      - "OUT <name> <rows> <cols> <v0> <v1> ... <v(rows*cols-1)>   # row-major integer WORDS"
       - "METRIC <name> <int>                                       # e.g. METRIC cycles 308"
       - "DONE                                                      # MUST be reached"
     notes:
       - "outputs mapped by <name> back to the command buffer's committed tensor names"
       - "cycles are anchors, not a calibrated cost model; cycle_window = {target}_region"
+      # A FLOAT RESULT IS DELIVERABLE OVER THIS PROTOCOL. The words on an OUT line are the destination
+      # buffer's STORED CONTAINER, not necessarily a decimal number: a bare-metal harness has no float
+      # formatting, and a decimal round-trip would be the lossy step anyway. So an output whose tensor
+      # is DECLARED f32 is printed as the 32-bit pattern that was stored, one declared bf16/f16 as its
+      # 16-bit pattern, and the runner decodes the value back from that declared dtype
+      # (merlin.runtime.backends.base.decode_float_readback). The hand-back is lossless and the
+      # declaration is what makes it readable -- so declare the output dtype you actually store.
+      - "a float-declared output is carried as its stored bit pattern and decoded from that dtype"
+      - "the harness sizes each buffer at its declared dtype's own storage width (a bf16 store is 2 bytes)"
 
-correctness: "integer, exact == across all three (reference, simulate, oracle); no FP tolerance"
+correctness: >-
+  each capsule's own numeric_policy: `exact_int` compares exactly across all three engines
+  (reference, simulate, oracle); `tolerance_float` compares the oracle's decoded output against the
+  capsule's independent golden within its declared atol/rtol.

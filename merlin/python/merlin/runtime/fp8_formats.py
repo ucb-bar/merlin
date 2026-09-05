@@ -140,6 +140,29 @@ def fp8_to_f32(u8: np.ndarray, fmt: str) -> np.ndarray:
     return _decode(np.ascontiguousarray(u8, np.uint8), fmt)
 
 
+def codes_to_f32(codes, fmt: str) -> np.ndarray:
+    """Decode integer code patterns of ANY registered float format to float32.
+
+    The wider sibling of :func:`fp8_to_f32` (which fails closed on a non-fp8 format) and the exact
+    inverse of :func:`float_to_codes`, so ``codes_to_f32(float_to_codes(v, f), f) == v`` for every
+    value ``f`` can hold. It exists for the *readback* direction: a device console that prints a
+    float result's STORED CONTAINER as an integer (which is what an integer-only ``OUT`` protocol
+    does) hands back a code pattern, not a value, and decoding it needs the declared format.
+
+    Each code is masked to the format's own storage width first, because a console that printed a
+    signed container sign-extends: an ``int16_t`` holding ``0xBF80`` arrives as ``-16512``, and the
+    mask is what turns it back into the pattern that was stored. A format at least 32 bits wide is
+    reinterpreted directly (a float32 already IS its stored pattern), matching what
+    :func:`float_to_codes` does in the same width range."""
+    t = canonical_float(fmt)
+    bits = storage_bits(t)
+    mask = (1 << bits) - 1
+    u = np.asarray(codes, dtype=np.int64) & np.int64(mask)
+    if bits >= 32:
+        return np.ascontiguousarray(u.astype(np.uint32)).view(np.float32).copy()
+    return _decode(u.astype(np.uint32), t)
+
+
 def _grid_values(fmt: str) -> list[float]:
     """A bf16-safe exactly-representable value set for a WIDE format (f32) whose 2**bits code space is too
     large to enumerate. Values ``±(1 + m/8) * 2**e`` use a 3-bit mantissa (exact on the bf16 grid, hence

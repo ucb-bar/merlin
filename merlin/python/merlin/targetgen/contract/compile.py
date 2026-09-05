@@ -20,14 +20,63 @@ from pathlib import Path
 from typing import Any
 
 
-def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path) -> Path:
-    """Lower package-emitted llvm-dialect MLIR to a rv64gcv object (.o)."""
+def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path, *, target: str | None = None) -> Path:
+    """Lower package-emitted llvm-dialect MLIR to an rv64 object (.o) for ``target``'s own ISA.
+
+    THE MARCH IS THE TARGET'S, NOT A DEFAULT. This object and the runner-owned harness are linked into
+    one ELF and executed on one core, so they have to be built for the same instruction set. The
+    default here is the vector-capable ``rv64gcv``, while a systolic target's harness recipe declares
+    ``rv64gc`` -- and for years that disagreement was invisible, because every kernel on such a target
+    was inline-asm accelerator instructions with nothing for the auto-vectorizer to take. The first
+    kernel that gives it something (a scalar float program placed on the host lane) was compiled with
+    ``vsetivli``/``vle32.v``/``vfadd.vv`` for a core with no vector unit, trapped on the first one, and
+    was reported as the submission's kernel faulting at runtime.
+
+    ``target=None`` keeps the previous default, for callers with no target in hand.
+    """
     from merlin.llvmlower.pipeline import lower_to_llvm_ir
     from merlin.llvmlower import codegen
     workdir.mkdir(parents=True, exist_ok=True)
     ll = lower_to_llvm_ir(lowered_mlir_text, workdir=workdir)
     (workdir / "kernel.ll").write_text(ll, encoding="utf-8")
-    return Path(codegen.compile_ll(workdir / "kernel.ll", workdir / "kernel.o", "riscv"))
+    extra: tuple[str, ...] = ()
+    if target is not None:
+        from merlin.runtime.backends import base as _backends
+        extra = (_backends.harness_build_recipe(target).march(),)
+    return Path(codegen.compile_ll(workdir / "kernel.ll", workdir / "kernel.o", "riscv",
+                                   extra_flags=extra))
+
+
+def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
+    """The operands a FLOAT-graded buffer must be run on, or ``None``.
+
+    A capsule graded under a float policy cannot have had its answer recomputed on the integer engine,
+    so its golden is the INDEPENDENT one — computed off-device, on the operands the runner attached to
+    the buffer as ``canonical_inputs``. The device is only answerable against that golden if it runs
+    on those same operands; nothing consumed them on this path, so the harness materialized each leaf
+    from its NAME and the device computed the right function of the wrong inputs — a guaranteed
+    mismatch, reported as a functional failure of the submission.
+
+    THE FLOAT CONDITION IS LOAD-BEARING, not decoration. A buffer whose declared output is an INTEGER
+    is graded against a golden RECOMPUTED from the deterministic name-materialized fill, and its
+    capsule may still record different operands beside it — measured on ``GS0_matmul_spec``, whose
+    recorded ``W``/``A0`` and materialized ``W``/``A0`` are different numbers and which passes today
+    precisely because the device materializes. Embedding recorded operands unconditionally breaks
+    exactly those capsules; embedding them nowhere leaves every float capsule unwinnable. The declared
+    output dtype is what separates the two, and it is read from the buffer itself.
+    """
+    from merlin.runtime.backends import base as _backends
+    from merlin.runtime.commandbuffer import declared_output_dtypes
+    recorded = cb.get("canonical_inputs") or {}
+    tensors = cb.get("tensors") or {}
+    if not recorded:
+        return None
+    dtypes = declared_output_dtypes(cb)
+    outputs = [n for n, s in tensors.items() if (s or {}).get("role") == "output"]
+    if not outputs or not all(_backends.float_format_of(dtypes.get(n, "")) for n in outputs):
+        return None
+    return {name: spec["values"] for name, spec in recorded.items()
+            if isinstance(spec, dict) and spec.get("values") is not None and name in tensors} or None
 
 
 def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
@@ -46,6 +95,7 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
     # while the reference and simulator use injected data produces a guaranteed three-way mismatch that
     # reads as a functional failure of the TARGET, so an injecting caller is told instead.
     _render = _backends.harness_renderer(target)
+    inputs = inputs or _recorded_operands(cb) or None
     if inputs:
         import inspect
         if "inputs" not in inspect.signature(_render).parameters:
@@ -99,7 +149,7 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
                            inputs: dict | None = None) -> Path:
     """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link)."""
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_compile_"))
-    obj = llvm_mlir_to_object(lowered_mlir_text, work)
+    obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
     return link_elf(cb, obj, work, target=target, inputs=inputs)
 
 
@@ -156,6 +206,17 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     console = backend.run_elf(elf, simulator=simulator, timeout=timeout)
     _t2 = time.perf_counter()
     outputs, raw = backend.parse_output(console)
+    # DECODE A FLOAT RESULT THAT CAME BACK AS ITS CONTAINER WORD. `parse_output` yields whatever the
+    # console carried; a target whose harness has integer-only formatting prints a float destination
+    # buffer's stored PATTERN, so an f32 result arrives as its 32-bit word and a bf16 result as its
+    # 16-bit one. That is a lossless hand-back, not a broken one -- but only once the pattern is read
+    # back as the value, which needs the dtype the buffer was DECLARED in. Read here, from the command
+    # buffer itself (the same declaration the harness sized the buffer from), so the writer and the
+    # reader cannot disagree; keyed on that dtype and on nothing target-specific. A no-op for an
+    # integer-declared output and for a backend that already prints decimals, so every existing
+    # readback is byte-identical.
+    from merlin.runtime.commandbuffer import declared_output_dtypes
+    outputs = _backends.decode_float_readback(outputs, declared_output_dtypes(cb))
     # WHICH BUILD of the simulator answered — recorded beside the oracle's declared kind, not inferred
     # afterwards. The tier record identifies the ELF, the RTL pins and the tools, and identified the one
     # remaining input to the verdict not at all: the prebuilt simulator binary. Derived, never assumed:

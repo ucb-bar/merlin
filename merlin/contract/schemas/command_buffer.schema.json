@@ -39,7 +39,7 @@
           "dtype": {
             "type": "string",
             "minLength": 1,
-            "description": "Tensor dtype — open vocabulary validated by the quant_formats registry (formerly a narrower enum than capsule.schema, which made a microscaling target self-reject its own operands); not a hardcoded list."
+            "description": "Tensor dtype \u2014 open vocabulary validated by the quant_formats registry (formerly a narrower enum than capsule.schema, which made a microscaling target self-reject its own operands); not a hardcoded list."
           },
           "role": {
             "type": "string",
@@ -134,7 +134,7 @@
               "output_dtype": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Output dtype — open vocabulary validated by the quant_formats registry (same as the tensor dtype above)."
+                "description": "Output dtype \u2014 open vocabulary validated by the quant_formats registry (same as the tensor dtype above)."
               },
               "acc_scale": {
                 "type": "number"
@@ -199,6 +199,7 @@
   "additionalProperties": true,
   "allOf": [
     {
+      "$comment": "AN EMPTY COMMAND LIST HAS TWO LEGITIMATE MEANINGS, told apart by `declined`. (1) A DECLINE: the backend could not lower this capsule and says why; there is no program to run. (2) A HOST-LANE PROGRAM: every region was placed on the CPU lane, so this accelerator issues no instruction for it -- a routing decision and a complete answer, which the runner still harnesses, runs and grades. The second case must still declare its tensors, because those declarations ARE the pointer ABI the kernel is called with and the output is what gets read back; without that rule, requiring a non-empty list was the only thing standing between a correct host-lane program and a fabricated matmul emitted purely to look non-empty.",
       "if": {
         "required": [
           "declined"
@@ -212,9 +213,45 @@
         }
       },
       "else": {
-        "properties": {
-          "commands": {
-            "minItems": 1
+        "if": {
+          "properties": {
+            "commands": {
+              "maxItems": 0
+            }
+          },
+          "required": [
+            "commands"
+          ]
+        },
+        "then": {
+          "$comment": "host-lane program: no command, but a declared output to read back. Spelled as \"NOT (every declared tensor is a non-output)\" because JSON Schema has no `contains` for objects and the tensor names are arbitrary.",
+          "required": [
+            "tensors"
+          ],
+          "not": {
+            "properties": {
+              "tensors": {
+                "additionalProperties": {
+                  "not": {
+                    "required": [
+                      "role"
+                    ],
+                    "properties": {
+                      "role": {
+                        "const": "output"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "commands": {
+              "minItems": 1
+            }
           }
         }
       }

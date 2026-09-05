@@ -476,7 +476,8 @@ def harness_build_recipe():
 # strings, so it belongs with the backend rather than behind a contract key no second target could
 # implement. What the CONTRACT still supplies is the harness ABI (entry symbol, fence, includes,
 # metric), read through `harness_abi.for_target` below.
-from .gemmini_codegen_mlir import _harness_c, _measurement_c_fragments
+from .gemmini_codegen_mlir import (_harness_c, _measurement_c_fragments, container_for,
+                                   container_words)
 
 
 def _is_movement_cb(cb: dict) -> bool:
@@ -507,15 +508,6 @@ def _native_interface_command(cb: dict) -> dict | None:
         raise CodegenError(
             f"native interface harness supports exactly one whole op, got {len(native)}")
     return native[0]
-
-
-#: Declared output dtype -> (C type, alignment macro) for a harness-allocated destination buffer. The
-#: SAME two spellings the tiled harness (`gemmini_codegen_mlir._harness_c`) allocates its outputs with:
-#: an i8 readout lands in the operand type `elem_t`, and a full accumulator readout lands in `int32_t`
-#: (NOT `acc_t` — see that function for why the typedef cannot be trusted). Kept as a table, and
-#: consulted rather than defaulted, so an output dtype nobody has sized is a REFUSAL and never a buffer
-#: quietly allocated at the wrong width.
-_DEST_CTYPE = {"i8": ("elem_t", "row_align"), "i32": ("int32_t", "row_align_acc")}
 
 
 def _declared_output_dtype(cb: dict, cmd: dict, dst: str) -> str:
@@ -563,18 +555,21 @@ def _movement_harness_c(cb: dict, *, target: str, inputs: dict | None = None) ->
     # CORRECT 4-byte store into a 1-byte-per-element buffer ran ~700 bytes off the end of .bss and
     # trapped AFTER printing DONE — a harness overrun reported as a failure of the submission.
     odt = _declared_output_dtype(cb, mv, dst)
-    if odt not in _DEST_CTYPE:
-        raise CodegenError(
-            f"movement destination {dst!r} declares output dtype {odt!r}, which this harness has no "
-            f"buffer width for (sized: {sorted(_DEST_CTYPE)}). Refusing rather than allocating a "
-            f"guessed width")
-    dst_ctype, dst_align = _DEST_CTYPE[odt]
-    decls = [f"static const elem_t T_{src}[{mp * np_}] row_align(1) = "
-             f"{{{','.join(str(int(v)) for v in sp)}}};",
-             f"static {dst_ctype} T_{dst}[{mp * np_}] {dst_align}(1);"]
+    # Both containers come from the DECLARED dtype's own storage width (`container_for`), so the
+    # source is embedded and the destination read at the width the kernel actually moves. A float
+    # operand is carried as its stored bit pattern in an unsigned container of the same width — the
+    # readback decodes it back to a value from this same declared dtype — rather than being refused
+    # for having no "integer" spelling.
+    src_container = container_for(str(cb["tensors"][src].get("dtype") or ""))
+    dst_container = container_for(odt)
+    decls = [src_container.decl(f"T_{src}", mp * np_, const=True,
+                                initializer=",".join(
+                                    str(w) for w in container_words(
+                                        sp, str(cb["tensors"][src].get("dtype") or "")))),
+             dst_container.decl(f"T_{dst}", mp * np_)]
     prints = [f'  printf("OUT {dst} {m} {n}");',
               f"  for (long i = 0; i < {m}; i++) for (long j = 0; j < {n}; j++)"
-              f" printf(\" %d\", (int)T_{dst}[i * {np_} + j]);", '  printf("\\n");']
+              f" {dst_container.printf_element(f'T_{dst}[i * {np_} + j]')}", '  printf("\\n");']
     # Print METRIC cycles BEFORE the (possibly huge) OUT tensor dump: large-output kernels flood the
     # UART and the per-ELF capture truncates mid-dump, so a trailing METRIC line would be lost. Emitting
     # the (tiny) cycle metric first guarantees it is always captured; the OUT dump follows for correctness.
@@ -670,12 +665,7 @@ def _native_interface_harness_c(cb: dict, command: dict, *, inputs: dict | None 
         layouts[name] = (rows, cols, prows, pcols)
         if spec.get("role") == "output":
             dtype = str(spec.get("dtype") or "")
-            if dtype not in _DEST_CTYPE:
-                raise CodegenError(
-                    f"native interface output {name!r} declares dtype {dtype!r}, which this harness "
-                    f"has no buffer width for (sized: {sorted(_DEST_CTYPE)})")
-            ctype, align = _DEST_CTYPE[dtype]
-            decls.append(f"static {ctype} T_{name}[{prows * pcols}] {align}(1);")
+            decls.append(container_for(dtype).decl(f"T_{name}", prows * pcols))
             continue
         if spec.get("dtype") != "i8":
             raise CodegenError(
@@ -695,10 +685,11 @@ def _native_interface_harness_c(cb: dict, command: dict, *, inputs: dict | None 
             raise CodegenError(
                 f"native interface output {name!r} must be a rank-2 flattened tensor, got {shape!r}")
         rows, cols, _, pcols = layouts[name]
+        container = container_for(str(tensors[name].get("dtype") or ""))
         prints.extend([
             f'  printf("OUT {name} {rows} {cols}");',
             f"  for (long i = 0; i < {rows}; i++) for (long j = 0; j < {cols}; j++)"
-            f" printf(\" %d\", (int)T_{name}[i * {pcols} + j]);",
+            f" {container.printf_element(f'T_{name}[i * {pcols} + j]')}",
             '  printf("\\n");',
         ])
 
@@ -719,6 +710,103 @@ def _native_interface_harness_c(cb: dict, command: dict, *, inputs: dict | None 
             '  printf("DONE\\n");\n  return 0;\n}\n')
 
 
+#: External buffer roles — the tensors a harness allocates and passes to the kernel. An intermediate
+#: (a scratchpad handle, an accumulator) is produced by a command and never appears in the ABI.
+_EXTERNAL_ROLES = ("input", "weight", "bias", "output")
+
+
+def _is_host_lane_cb(cb: dict) -> bool:
+    """Does this buffer describe a program with NO accelerator command?
+
+    Structural, not a claim about intent and not keyed on any ``params`` spelling: a buffer that
+    declares tensors including at least one output, and declares no command at all, is a program the
+    compiler routed entirely onto the host lane. There is nothing for the accelerator to do and
+    nothing for the harness to schedule — only buffers in, buffers out.
+
+    This is deliberately distinct from the zero-tensor, zero-command CALIBRATION buffer (which has no
+    output to read back and goes on to the tiled path), and from a declined buffer (which never
+    reaches a harness at all: the runner reads ``declined`` before it compiles anything).
+    """
+    if cb.get("commands"):
+        return False
+    tensors = cb.get("tensors") or {}
+    return any((spec or {}).get("role") == "output" for spec in tensors.values())
+
+
+def _host_lane_harness_c(cb: dict, *, target: str, inputs: dict | None = None) -> str:
+    """Harness for a program that runs entirely on the host lane: embed the leaves, print the outputs.
+
+    A region this datapath admits no lowering for belongs on the CPU lane, and a compiler that says so
+    and generates the CPU-lane program has done the right thing. Until this existed the right thing was
+    not deliverable: the only harnesses here were the tiled resident-matmul one (which REFUSES a buffer
+    with no ``RES_PACK``/matmul/commit) and the movement one (which needs a movement command), so a
+    correct host-lane program had no shape to be handed back in at all. A compiler had to fabricate a
+    matmul it never ran just to get a buffer allocated — which is a false claim about the mesh sitting
+    in the command buffer, and it also breaks the operand attachment (the fabricated carrier tensors
+    outnumber the interface's real leaves, so the canonical stimulus no longer binds by position).
+
+    Everything is derived from the buffer's own declarations: the pointer ABI is the tensor
+    DECLARATION order restricted to external buffers (the same rule the whole-op harness uses, and
+    what a positional binder on the emitting side produces), each buffer is sized and printed through
+    :func:`container_for` at its declared dtype, and rows are padded to the accelerator's tile edge so
+    the layout is the one every other harness here uses.
+    """
+    from .gemmini_codegen import _ceil_dim, _pad_rowmajor
+    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.targetgen.contract.harness_abi import for_target
+
+    tensors = cb.get("tensors") or {}
+    args = [name for name, spec in tensors.items() if (spec or {}).get("role") in _EXTERNAL_ROLES]
+    outputs = [name for name in args if tensors[name].get("role") == "output"]
+    if not outputs:
+        raise CodegenError("a host-lane buffer declares no output tensor to read back")
+    leaves = materialize_inputs(cb, inputs)
+
+    decls: list[str] = []
+    prints: list[str] = []
+    for name in args:
+        spec = tensors[name]
+        dtype = str(spec.get("dtype") or "")
+        rows, cols = _flat_matrix_shape(spec, name=name)
+        prows, pcols = _ceil_dim(rows), _ceil_dim(cols)
+        container = container_for(dtype)
+        if spec.get("role") == "output":
+            decls.append(container.decl(f"T_{name}", prows * pcols))
+            prints.extend([
+                f'  printf("OUT {name} {rows} {cols}");',
+                f"  for (long i = 0; i < {rows}; i++) for (long j = 0; j < {cols}; j++)"
+                f" {container.printf_element(f'T_{name}[i * {pcols} + j]')}",
+                '  printf("\\n");',
+            ])
+            continue
+        if name not in leaves:
+            raise CodegenError(f"host-lane input {name!r} was not materialized")
+        padded = _pad_rowmajor(list(leaves[name].data), rows, cols, prows, pcols)
+        decls.append(container.decl(f"T_{name}", prows * pcols, const=True,
+                                    initializer=",".join(str(w) for w in
+                                                         container_words(padded, dtype))))
+
+    abi = for_target(target)
+    window = abi.cycle_window_line()
+    measured_call = abi.call(", ".join(f"(void*)T_{name}" for name in args))
+    fragments = _measurement_c_fragments(measured_call)
+    # METRIC before the OUT dump, for the same reason as every other harness here: a large output
+    # floods the console and a trailing metric line is what gets truncated away.
+    return ("#include <stdint.h>\n#include <stdio.h>\n" + abi.declarations() + "\n"
+            + fragments["include"]
+            + "\n".join(decls) + "\nint main() {\n"
+            + fragments["warmup"]
+            + fragments["prologue"]
+            + "  uint64_t c0 = read_cycles();\n"
+            + measured_call + "\n"
+            + "  uint64_t c1 = read_cycles();\n"
+            + fragments["epilogue"]
+            + '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
+            + (window + "\n" if window else "")
+            + "\n".join(prints) + "\n"
+            '  printf("DONE\\n");\n  return 0;\n}\n')
+
+
 def render_harness(cb: dict, *, target: str, inputs: dict | None = None) -> str:
     """Render the runner-owned harness for ``cb`` — the `harness_renderer` capability.
 
@@ -731,6 +819,8 @@ def render_harness(cb: dict, *, target: str, inputs: dict | None = None) -> str:
     simulator saw the injected operands and the device saw different ones -- guaranteed to mismatch, and
     reported as a functional failure of the target.
     """
+    if _is_host_lane_cb(cb):
+        return _host_lane_harness_c(cb, target=target, inputs=inputs)
     if _is_movement_cb(cb):
         return _movement_harness_c(cb, target=target, inputs=inputs)
     native = _native_interface_command(cb)

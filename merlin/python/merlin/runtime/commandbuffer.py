@@ -362,6 +362,41 @@ def dataflow_operands(cb: dict[str, Any]) -> tuple[list[str], str] | None:
     return leaves, out
 
 
+def declared_output_dtypes(cb: dict[str, Any]) -> dict[str, str]:
+    """``{tensor name: declared element dtype}`` for every tensor a readback can land in.
+
+    ONE fact, read the way the harness reads it, so the writer and the reader of a buffer cannot
+    disagree about what is in it. A command that names a destination may DECLARE the container its
+    result lands in (``attributes.output_dtype`` — a movement is precisely a container widening, and
+    a commit's readout dtype is not the accumulator's), and that declaration is what a harness sizes
+    the destination buffer from; a tensor that no command re-declares carries its own ``dtype``. The
+    command's declaration wins for exactly the destination it names, which is the same resolution
+    order a target harness applies when it allocates the buffer.
+
+    Target-agnostic: only the buffer's own vocabulary is read (``dst``/``out``/``output`` keys, the
+    ``role`` a tensor declares, the ``output_dtype`` attribute the ABI defines). A buffer with no
+    commands still answers — its declared outputs are its ``role: output`` tensors — which is the
+    case a program that runs entirely on the host lane presents.
+    """
+    tensors = cb.get("tensors") or {}
+    dtypes: dict[str, str] = {}
+    for name, spec in tensors.items():
+        if not isinstance(spec, dict):
+            continue
+        dtype = spec.get("dtype")
+        if dtype:
+            dtypes[str(name)] = str(dtype)
+    for cmd in cb.get("commands") or []:
+        ops = (cmd.get("operands") or {})
+        declared = ((cmd.get("attributes") or {}).get("output_dtype"))
+        if not declared:
+            continue
+        for key, name in ops.items():
+            if isinstance(name, str) and _produces(key, name, tensors) and name in dtypes:
+                dtypes[name] = str(declared)
+    return dtypes
+
+
 def _flatten(nested) -> list[int]:
     """Flatten a nested list of ANY rank to its scalars, row-major.
 

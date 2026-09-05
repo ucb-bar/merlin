@@ -58,6 +58,12 @@ def vcs_adapter(target: str) -> Callable:
         _t2 = time.perf_counter()
         console = proc.stdout
         outputs, raw = gem.parse_output(console)
+        # Same float readback decode the shared oracle path applies: this adapter builds the ELF
+        # through `compile_lowered_to_elf` and so gets the same harness, which prints a float
+        # destination buffer as its stored bit pattern. Decoding it here keeps this tier's verdict
+        # comparable with L2/L3's instead of comparing raw words against a float golden.
+        from merlin.runtime.commandbuffer import declared_output_dtypes
+        outputs = _bk.decode_float_readback(outputs, declared_output_dtypes(cb))
         # The ELF is independently validated at L2/L3 in the same run; if the available VCS sim
         # crashes or yields no DONE marker on it, that is a VCS/config incompatibility in this
         # environment, not a backend defect -> honest unavailable (never a fabricated pass).

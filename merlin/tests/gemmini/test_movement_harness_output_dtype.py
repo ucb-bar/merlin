@@ -57,12 +57,27 @@ def test_source_buffer_stays_the_operand_type():
     assert len(src) == 1 and "elem_t" in src[0]
 
 
-def test_unsized_output_dtype_is_refused_not_guessed():
+@pytest.mark.parametrize("dtype", ["i1", "mxfp4", "not_a_dtype"])
+def test_unsized_output_dtype_is_refused_not_guessed(dtype):
     """FAIL CLOSED. An output dtype this harness has no buffer width for is a REFUSAL — never a buffer
-    quietly allocated at a guessed width, which is the defect being fixed."""
-    cb = _movement_cb(16, 16, "i64")
-    with pytest.raises(Exception, match="no.*buffer width|output dtype"):
-        gem.render_harness(cb, target="gemmini")
+    quietly allocated at a guessed width, which is the defect being fixed.
+
+    The set that qualifies narrowed once the width became DERIVED from the dtype rather than looked up
+    in a two-row table: a whole-byte container (i16/i64/f32/bf16) is now sized correctly instead of
+    refused, which is strictly more answer. What stays a refusal is what genuinely has no answer — a
+    sub-byte format, whose element has no standalone container and whose packing is a layout decision
+    this harness does not get to make, and a spelling no format registry knows a width for.
+    """
+    with pytest.raises(Exception):
+        gem.render_harness(_movement_cb(16, 16, dtype), target="gemmini")
+
+
+@pytest.mark.parametrize("dtype,ctype", [("i16", "int16_t"), ("i64", "int64_t"),
+                                         ("f32", "uint32_t"), ("bf16", "uint16_t")])
+def test_a_whole_byte_output_dtype_is_sized_at_its_own_width(dtype, ctype):
+    """The other half of the same rule: a container the dtype actually declares a width for is laid out
+    at that width. Sizing every non-i8 destination as `int32_t` read a 2-byte store at a 4-byte stride."""
+    assert ctype in _decl(gem.render_harness(_movement_cb(16, 16, dtype), target="gemmini"), "Y0")
 
 
 def test_output_dtype_falls_back_to_the_declared_tensor():

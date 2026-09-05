@@ -695,7 +695,9 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         from merlin.llvmlower import toolchain as llvm_tc
         if llvm_tc.available():
             try:
-                obj = oot_compile.llvm_mlir_to_object(p.stdout, paths.generated)
+                # target= so the object is built for the ISA this target's own harness recipe
+                # declares; a default march is the other half of an ELF built for a different core.
+                obj = oot_compile.llvm_mlir_to_object(p.stdout, paths.generated, target=target)
                 artifacts_recorded["object"] = obj.exists()
             except Exception as e:
                 raise CertFailure("codegen", FailureCategory.ELABORATION_ERROR,

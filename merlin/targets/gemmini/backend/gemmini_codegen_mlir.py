@@ -837,6 +837,79 @@ def _measurement_c_fragments(warmup_work: str) -> dict[str, str]:
 _BLOB_MIN_ELEMS = 1024
 
 
+#: The element type of this accelerator's operand storage, and the header typedef that names it. An
+#: i8 buffer IS an operand-typed buffer here, and the header's ``row_align`` macro derives its
+#: alignment from ``sizeof(elem_t)``, so the two travel together.
+OPERAND_DTYPE, OPERAND_CTYPE = "i8", "elem_t"
+
+
+@dataclass(frozen=True)
+class Container:
+    """How one harness buffer of a declared dtype is spelled in C: storage type, row-alignment macro,
+    and how one element is printed onto the ``OUT`` line."""
+    ctype: str
+    align: str
+    cast: str
+    conv: str
+
+    def decl(self, symbol: str, elems: int, *, const: bool = False,
+             initializer: str | None = None) -> str:
+        body = f" = {{{initializer}}}" if initializer is not None else ""
+        return (f"static {'const ' if const else ''}{self.ctype} {symbol}[{elems}] "
+                f"{self.align}(1){body};")
+
+    def printf_element(self, expr: str) -> str:
+        return f'printf(" {self.conv}", ({self.cast}){expr});'
+
+
+def container_for(dtype: str) -> Container:
+    """The C container a harness buffer of ``dtype`` is allocated and printed in — DERIVED from that
+    dtype's own storage width, never tabulated per spelling.
+
+    What a buffer must get right is how many bytes one element occupies (the kernel's stores and the
+    harness's reads have to agree on the stride) and how its rows are aligned. Both follow from the
+    width, so a dtype nobody has thought about is sized correctly or REFUSED, not quietly given four
+    bytes. Sizing every non-i8 destination as ``int32_t`` was the actual defect a bf16 result hit: the
+    kernel stores 2 bytes per element and the readback walked it at 4.
+
+    A FLOAT dtype lands in the UNSIGNED integer container of its own width and is printed as its
+    stored bit PATTERN. That is what makes a float result deliverable over a console whose ``printf``
+    has no float formatting: the pattern is lossless, and the value is recovered at the readback from
+    the same declared dtype (:func:`merlin.runtime.backends.base.decode_float_readback`). Unsigned so
+    a top-bit-set pattern is printed as the pattern rather than through an implementation-defined
+    conversion.
+    """
+    from merlin.targetgen.capsule_dram import dtype_bits
+    from merlin.runtime.backends.base import float_format_of
+    if dtype == OPERAND_DTYPE:
+        return Container(OPERAND_CTYPE, "row_align", "int", "%d")
+    bits = dtype_bits(dtype)                       # fails closed on an unregistered spelling
+    if bits % 8 or bits not in (8, 16, 32, 64):
+        raise CodegenError(
+            f"a harness buffer of dtype {dtype!r} stores {bits} bits per element; this harness lays "
+            f"out whole 8/16/32/64-bit containers only, and guessing a width mis-strides the buffer")
+    if float_format_of(dtype) is not None:
+        return Container(f"uint{bits}_t", "row_align_acc",
+                         "unsigned long long" if bits > 32 else "unsigned", "%llu" if bits > 32 else "%u")
+    return Container(f"int{bits}_t", "row_align_acc",
+                     "long long" if bits > 32 else "int", "%lld" if bits > 32 else "%d")
+
+
+def container_words(values, dtype: str) -> list[int]:
+    """``values`` as the integer words a ``container_for(dtype)`` buffer holds.
+
+    An integer dtype contributes its values; a float dtype contributes its stored CODE PATTERNS, via
+    the one registry that defines the code<->value mapping — so what the harness embeds and what a
+    readback decodes are inverse by construction rather than by two hand-written conversions.
+    """
+    from merlin.runtime.backends.base import float_format_of
+    fmt = float_format_of(dtype)
+    if fmt is None:
+        return [int(v) for v in values]
+    from merlin.runtime import fp8_formats as _ff
+    return [int(c) for c in _ff.float_to_codes(list(values), fmt)]
+
+
 def _blob_asm(symbol: str, payload: Path, *, align: int, elems: int) -> str:
     """An assembler stub defining ``symbol`` from ``payload``'s bytes, aligned as the C form was.
 
@@ -930,27 +1003,27 @@ def _harness_c(cb: dict, inputs: dict | None = None, *,
     for out, m, n, out_dtype in outs:
         np_ = _ceil_dim(n)
         mp = _ceil_dim(m)
-        if out_dtype == "i8":               # scaled/clamped i8 readout buffer (elem_t)
-            decls.append(f"static elem_t T_{out}[{mp * np_}] row_align(1);")
-        else:
-            # Full-i32 accumulator readout is 4 bytes/elem — this is what the RoCC sequence
-            # emits for (config_st out-row-stride = np_*4, mvout tile offset *4). Declare the
-            # buffer as int32_t, NOT `acc_t`: the gemmini-rocc-tests gemmini_params.h typedefs
-            # acc_t=uint64_t (8 B) while the spike --extension=gemmini libgemmini was built with
-            # acc_t=int32_t (4 B, the value it actually DMAs). Reading an 8-byte type from the
-            # 4-byte readout halved every row (Y[i][j] read C[i][2j]) and zeroed the bottom half.
-            decls.append(f"static int32_t T_{out}[{mp * np_}] row_align_acc(1);")
+        # The buffer is sized from the DECLARED readout dtype's own storage width (`container_for`).
+        # An i8 readout is the scaled/clamped operand-typed buffer; a full accumulator readout is
+        # 4 bytes/elem — what the RoCC sequence emits for (config_st out-row-stride = np_*4, mvout
+        # tile offset *4) — and is declared `int32_t`, NOT `acc_t`: the gemmini-rocc-tests
+        # gemmini_params.h typedefs acc_t=uint64_t (8 B) while the spike --extension=gemmini
+        # libgemmini was built with acc_t=int32_t (4 B, the value it actually DMAs). Reading an
+        # 8-byte type from the 4-byte readout halved every row (Y[i][j] read C[i][2j]) and zeroed
+        # the bottom half. Deriving the width also gets a 2-byte readout right, which the old
+        # "i8 or else int32_t" branch read at a 4-byte stride.
+        decls.append(container_for(out_dtype).decl(f"T_{out}", mp * np_))
 
     decls.extend(bias_decls)
     # must mirror emit_kernel_mlir: weights + lhss + outs + biases
     args = weights + lhss + [o[0] for o in outs] + biases
     call = ", ".join(f"(void*)T_{a}" for a in args)
     prints = []
-    for out, m, n, _ in outs:
+    for out, m, n, out_dtype in outs:
         npo = _ceil_dim(n)                          # this output's own padded column stride
         prints.append(f'  printf("OUT {out} {m} {n}");')
         prints.append(f"  for (long i = 0; i < {m}; i++) for (long j = 0; j < {n}; j++)"
-                      f" printf(\" %d\", (int)T_{out}[i * {npo} + j]);")
+                      f" {container_for(out_dtype).printf_element(f'T_{out}[i * {npo} + j]')}")
         prints.append('  printf("\\n");')
     # Print METRIC cycles BEFORE the (possibly huge) OUT tensor dump: large-output kernels flood the UART
     # and the per-ELF FireSim capture truncates mid-dump, losing a trailing METRIC line. Emitting the tiny

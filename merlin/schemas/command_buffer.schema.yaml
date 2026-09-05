@@ -50,8 +50,18 @@ decline_semantics: >-
   could not be lowered (a shape outside the mesh, a dtype the datapath lacks, an unimplemented op);
   `shape` and `op` are optional and let the grader and the round feedback quote the decline back.
   A decline is scored as NOT PASSED, never as wrong arithmetic — the distinction is the point.
-  Emitting nothing and hoping it grades is the behaviour this field exists to make unnecessary,
-  and `commands` is empty exactly when `declined` is present.
+  Emitting nothing and hoping it grades is the behaviour this field exists to make unnecessary.
+
+  An EMPTY `commands` list is not by itself a decline. It has a second, legitimate meaning: a program
+  every region of which the compiler placed on the HOST LANE, i.e. one this accelerator issues no
+  instruction for. That is a routing decision and a complete answer -- the emitted kernel still
+  computes the declared operation on the CPU lane, and the runner still harnesses it, runs it and
+  grades its outputs. The two cases are told apart by `declined`, which is present in one and absent
+  in the other; a buffer with no commands and no `declined` MUST still declare its tensors (including
+  the output), because those declarations are the whole pointer ABI its kernel is called with.
+  Fabricating a command the program does not execute -- a matmul, purely to make the buffer look
+  non-empty -- is the behaviour this paragraph exists to make unnecessary: it puts a false claim about
+  the datapath in the one artifact the lane gate reads.
 decline_example: |
   abi_version: "0.1"
   target: toy_npu

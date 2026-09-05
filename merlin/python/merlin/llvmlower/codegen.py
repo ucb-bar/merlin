@@ -46,10 +46,11 @@ def _run(cmd: list[str]) -> None:
         raise CodegenError(f"clang failed: {' '.join(map(str, cmd))}\n{proc.stderr}")
 
 
-def compile_ll(ll_path: str | Path, out_obj: str | Path, target: str = "riscv") -> Path:
+def compile_ll(ll_path: str | Path, out_obj: str | Path, target: str = "riscv", *,
+               extra_flags: tuple[str, ...] = ()) -> Path:
     """Compile LLVM IR to an object file for ``riscv`` (rv64gcv) or ``x86``."""
     flags = RISCV_FLAGS if target == "riscv" else X86_FLAGS
-    _run([clang(), *flags, "-c", ll_path, "-o", out_obj])
+    _run([clang(), *flags, *extra_flags, "-c", ll_path, "-o", out_obj])
     return Path(out_obj)
 
 

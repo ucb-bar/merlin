@@ -369,6 +369,23 @@ class HarnessBuildRecipe:
             cmd += ["-I", str(root)]
         return cmd + ["-c", str(source), "-o", str(output)]
 
+    def march(self) -> str:
+        """The ISA string this target's bare-metal build declares (``-march=...``), or a refusal.
+
+        Read rather than assumed, because it has to agree with the OTHER half of the same ELF. The
+        runner compiles the package's kernel object itself, and that step carried its own hardcoded
+        march: on a core whose recipe says ``rv64gc`` the kernel was built ``rv64gcv``, so the moment
+        a kernel had anything the auto-vectorizer could take (a scalar host-lane float program is the
+        first one that does), it emitted ``vsetivli``/``vle32.v`` for a core with no vector unit and
+        trapped -- reported as the submission's kernel faulting at runtime.
+        """
+        for flag in self.cflags:
+            if flag.startswith("-march="):
+                return flag
+        raise self.error_cls(
+            "this target's build recipe declares no -march=; the runner cannot compile the package "
+            "kernel for the same ISA the harness is built for, and a mismatch is a runtime trap")
+
     def link_command(self, *, objects: "Sequence[Path]", output: Path,
                      link_script: Path | None = None) -> list[str]:
         """Link already-compiled objects. Support sources are NOT re-appended: they are among them."""
@@ -498,3 +515,58 @@ def parse_console(text: str, *, error_cls: type[Exception] = RuntimeError,
     if not done:
         raise error_cls(f"run did not reach DONE; output was:\n{text[:2000]}")
     return outputs, raw
+
+
+def float_format_of(dtype: str) -> str | None:
+    """The registered FLOAT format ``dtype`` names, or ``None`` when it names an integer/unknown one.
+
+    A predicate, not a converter: it answers "is a value of this dtype a float pattern?" through the
+    one registry that defines the code<->value mapping (:mod:`merlin.runtime.fp8_formats`), so a
+    format added there is understood here without an edit. Never raises — an unknown or integer
+    spelling is simply "not a float", which is the answer a readback decoder needs.
+    """
+    from merlin.runtime import fp8_formats as _ff
+    try:
+        return _ff.canonical_float(str(dtype))
+    except KeyError:
+        return None
+
+
+def decode_float_readback(outputs: dict[str, list], dtypes: dict[str, str]) -> dict[str, list]:
+    """Decode a FLOAT-declared output that arrived over the console as its stored CONTAINER word.
+
+    The shared ``OUT <name> <rows> <cols> <v...>`` protocol carries whatever the device harness
+    printed. A harness whose ``printf`` is integer-only (the systolic/CPU targets: no float formatting
+    in a bare-metal libc, and none wanted — a decimal round-trip would be the lossy step) prints the
+    destination buffer's raw word, so an ``f32`` result comes back as the 32-bit pattern that was
+    stored and a ``bf16`` result as its 16-bit pattern. The VALUE is recovered here, from the dtype
+    the buffer was DECLARED in — the same fact the harness sized that buffer from.
+
+    Keyed on the declared dtype, never on a target: a backend prints floats or it prints containers,
+    and which one it did is visible in the values themselves. An output is decoded only when its
+    declared dtype is a float format AND every value arrived as an integer; a backend that already
+    formats decimals (the fp SIMT consoles parse with ``value_parser=float``) hands back floats and is
+    left untouched. Integer-declared outputs are returned unchanged, so the integer path is
+    byte-identical.
+
+    Returns a new mapping; the input is not mutated.
+    """
+    from merlin.runtime import fp8_formats as _ff
+    decoded: dict[str, list] = {}
+    for name, rows in outputs.items():
+        fmt = float_format_of(dtypes.get(name, ""))
+        flat = [v for row in rows for v in row] if rows and isinstance(rows[0], list) else list(rows)
+        if fmt is None or not flat or not all(
+                isinstance(v, int) and not isinstance(v, bool) for v in flat):
+            decoded[name] = rows
+            continue
+        values = [float(v) for v in _ff.codes_to_f32(flat, fmt)]
+        if rows and isinstance(rows[0], list):
+            out, at = [], 0
+            for row in rows:
+                out.append(values[at:at + len(row)])
+                at += len(row)
+            decoded[name] = out
+        else:
+            decoded[name] = values
+    return decoded
