@@ -796,6 +796,10 @@ _DRIVER = "auto"        # set in main(): agent driver (auto|converse|claudecode|
 #: inference-profile id is not serveable by a subscription CLI, and handing it one kills the agent turn
 #: in 0 ms while the round goes on to report a workflow failure as if the agent had run.
 _PROVIDER = "subscription"
+#: set in main() from --sim-max-jobs; 0 = leave the simjob broker on its own default. How many cert
+#: jobs the async oracle may run at once is a property of THIS machine and THIS engine, not of the
+#: harness, so it is an operator flag rather than a constant here.
+_SIM_MAX_JOBS = 0
 _SUBAGENT_MODEL = ""    # set in main(): delegate/subagent model for tier-within-agent (converse driver)
 _BACKGROUND_MODEL = ""  # set in main(): background/mechanical model (converse driver; reserved)
 READY_MARKER = "READY_FOR_BARRIER"  # realistic: agent drops submission/<this> to self-declare done
@@ -1492,7 +1496,17 @@ def bwrap_cmd(inner: str, ws: Path, bundle: dict, extra_binds: list[str] | None 
     # its prompt arg, e.g. "…(if present)…"), so a naive f"…'{inner}'" would let those quotes close the
     # wrapper early and expose a `(` to the outer shell (opencode arm died rc=2 on exactly this). The
     # INNER bash still re-parses the payload as a script, so $(…)/\( \) in mask_selftest keep working.
-    return " ".join(parts) + " bash -c '" + payload.replace("'", "'\\''") + "'"
+    # Through the SHARED composer, which moves the bind list into a file descriptor once the string
+    # would exceed the execve per-argument limit. This whole string is handed to `bash -c` as ONE
+    # argument, and a single execve argument may not exceed MAX_ARG_STRLEN (128 KiB). At the 1,172
+    # answer surfaces this checkout carries, the /dev/null and tmpfs masks alone are ~167 KB, so the
+    # inline form dies with E2BIG naming `bash` before the first round -- for every arm.
+    #
+    # This line was already fixed once (34e0296f, "one composer for the argv size rule") and the fix
+    # was lost again in a later merge that took the pre-fix side of this file. Restored here, and now
+    # pinned by merlin/tests/infra/test_bwrap_cmd_argv_size.py so a merge cannot silently drop it a
+    # third time.
+    return _BW.compose_command(parts, " bash -c '" + payload.replace("'", "'\\''") + "'", ws)
 
 
 def _corpus_probe_paths() -> tuple[Path, Path]:
@@ -1785,7 +1799,15 @@ def _billing_mode(model: str) -> str:
         pass
     mod_name = _DRIVER_MODULES.get(drv)
     if not mod_name:
-        return ET.METERED
+        # NO DRIVER MODULE means the `claude` CLI driven directly, and for that one only the PROVIDER
+        # knows whether the tokens are billed: `--provider subscription` runs on the machine's own
+        # ~/.claude SEAT, which is not charged per token at all, while `--provider bedrock` runs on our
+        # AWS key and is. Returning METERED for both made the two indistinguishable in the ledger and
+        # priced a seat run's tokens at Anthropic list rates -- exactly the defect
+        # `subscription_notional` was introduced to fix for the codex seat, one driver over. A seat run
+        # keeps `estimated_cost_usd: None` and reports the projection as `subscription_notional_usd`,
+        # so a notional figure can never be spent against a real budget ceiling.
+        return ET.SUBSCRIPTION_NOTIONAL if _PROVIDER == "subscription" else ET.METERED
     try:
         import importlib
         return getattr(importlib.import_module(mod_name), "BILLING_MODE", ET.METERED)
@@ -1925,9 +1947,20 @@ def _start_selfcheck_broker(ws: Path):
         broker_specs.append((bs.module, bs.log))
     brokers = []
     for name, log in broker_specs:
-        brokers.append(subprocess.Popen(
-            [sys.executable, str(SCRIPTS / name), "--ws", str(ws)],
-            stdout=open(ch / log, "w"), stderr=subprocess.STDOUT))
+        argv = [sys.executable, str(SCRIPTS / name), "--ws", str(ws)]
+        # HOW MANY CERT JOBS MAY RUN AT ONCE is an operator decision about THIS machine, and until now
+        # it could not be made: the broker was launched with only --ws, so it always fell back to its
+        # own default of 4 no matter what engine was certifying. That default was set when the cert tier
+        # meant Verilator, which the broker separately caps at 2 global slots because one instance eats a
+        # core for ~45 min. GSIM is a different animal -- measured on this host: 10.4 MB RSS, one thread,
+        # ~12 s per capsule, and 24 concurrent instances returned bit-identical cycle counts while total
+        # throughput rose 13.4x. Capping that at 4 leaves the cert tier running at a sixth of what the
+        # machine will give. Forwarded ONLY to the broker that has the flag (the tool brokers and the
+        # self-check broker take --ws alone), and only when the operator set it, so the default path is
+        # byte-identical to before.
+        if _SIM_MAX_JOBS and name == "simjob_broker.py":
+            argv += ["--max-jobs", str(_SIM_MAX_JOBS)]
+        brokers.append(subprocess.Popen(argv, stdout=open(ch / log, "w"), stderr=subprocess.STDOUT))
     return brokers
 
 
@@ -2457,6 +2490,15 @@ def main(argv: list[str] | None = None) -> int:
                          "rate-limit-boundary exposure, and can cut a productive round mid-fix (rc=124). "
                          "The original abc runs used 4h and converged in ~1 productive round.")
     ap.add_argument("--qa-timeout", type=int, default=900)
+    ap.add_argument("--sim-max-jobs", type=int, default=0, metavar="N",
+                    help="how many async oracle jobs the simjob broker may run at once (0 = the "
+                         "broker's own default of 4). The default was chosen when the cert tier meant "
+                         "Verilator, which is separately capped at 2 global slots because one instance "
+                         "holds a core for ~45 min. A cheap cert engine is a different machine problem: "
+                         "GSIM measured on this host at 10.4 MB RSS, one thread and ~12 s per gemmini "
+                         "capsule, with 24 concurrent instances returning bit-identical cycle counts. "
+                         "Raise this when the cert engine is cheap; leave it alone when it is not. "
+                         "Verilator's own global slot budget is unaffected either way.")
     ap.add_argument("--model-budget-s", type=int, default=None,
                     help="wall-clock ceiling for ONE whole-model capsule inside a round grade (s). "
                          "Default: --qa-timeout, i.e. the capstone may cost at most what this operator "
@@ -2556,11 +2598,12 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.pop("MERLIN_MODEL_BUDGET_S", None)
     arm = a.arm
     global _EXPERIMENT, _ARM, _DRIVER, _SUBAGENT_MODEL, _BACKGROUND_MODEL, _ADD_TOOLS, _DROP_TOOLS
-    global _PROVIDER
+    global _PROVIDER, _SIM_MAX_JOBS
     _EXPERIMENT = a.experiment
     _ARM = arm
     _DRIVER = a.driver
     _PROVIDER = a.provider
+    _SIM_MAX_JOBS = max(0, int(a.sim_max_jobs))
     _SUBAGENT_MODEL = a.subagent_model
     _BACKGROUND_MODEL = a.background_model
     # Fail closed on an unknown tool name BEFORE any spend: a typo would otherwise ablate nothing and
