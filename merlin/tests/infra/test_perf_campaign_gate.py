@@ -71,6 +71,8 @@ def _functional_run(tmp_path: Path, run_id: str = "arm4_explicit") -> tuple[Path
         "bundle_input_snapshot": {
             "version": 2, "content_sha256": "a" * 64, "n_files": 7, "n_bytes": 41,
         },
+        "task_scope": {"target": "gemmini", "required_public_dev_capsules": 2,
+                       "held_out_capsules": 1},
         "isolation_violations": [],
         "golden_mask_selftest": {"n_answer_files_masked": 3, "leaked_answer_files": []},
     }))
@@ -101,6 +103,15 @@ def _functional_run(tmp_path: Path, run_id: str = "arm4_explicit") -> tuple[Path
             "n_capsules": len(rows), "n_passed": len(rows), "functional_pass": 1,
             "gradeable": True, "integrity_status": "clean", "integrity_exempt": False,
             "per_capsule": rows,
+            # A grade must say how its cohort was admitted, so a capsule ABSENT from it can be told
+            # apart from one silently dropped. This fixture admits everything it discovered, which is
+            # the simplest closing record: admitted + capability + resource == source.
+            "cohort_admission": {
+                "version": 1, "policy": "all_discovered",
+                "n_source_capsules": len(rows), "n_admitted_capsules": len(rows),
+                "n_capability_excluded": 0, "n_resource_excluded": 0,
+                "admitted_name_set_sha256": "b" * 64,
+            },
         }))
     return run, digest
 
@@ -142,6 +153,22 @@ def test_functional_run_must_have_frozen_bundle_inputs_v2(tmp_path: Path) -> Non
     environment.pop("bundle_input_snapshot")
     (run / "environment.yaml").write_text(yaml.safe_dump(environment))
     with pytest.raises(PC.CampaignGateError, match="immutable bundle-input snapshot v2"):
+        PC.inspect_functional_run(tmp_path, run.name, digest)
+
+
+def test_functional_grade_must_cover_the_sealed_task_scope(tmp_path: Path) -> None:
+    run, digest = _functional_run(tmp_path)
+    environment = yaml.safe_load((run / "environment.yaml").read_text())
+    environment["task_scope"]["required_public_dev_capsules"] = 3
+    (run / "environment.yaml").write_text(yaml.safe_dump(environment))
+    with pytest.raises(PC.CampaignGateError, match="public functional grade does not cover"):
+        PC.inspect_functional_run(tmp_path, run.name, digest)
+
+    run, digest = _functional_run(tmp_path, "arm4_hidden_scope_mismatch")
+    environment = yaml.safe_load((run / "environment.yaml").read_text())
+    environment["task_scope"]["held_out_capsules"] = 2
+    (run / "environment.yaml").write_text(yaml.safe_dump(environment))
+    with pytest.raises(PC.CampaignGateError, match="hidden functional grade does not cover"):
         PC.inspect_functional_run(tmp_path, run.name, digest)
 
 

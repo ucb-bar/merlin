@@ -33,7 +33,7 @@ def _inputs():
     cells = tuple(
         PP.PerfCell("PK", capsule, simulator, replicate)
         for capsule in ("pk_k2", "pk_k4")
-        for simulator in ("spike", "verilator")
+        for simulator in ("spike", "gsim")
         for replicate in ("r000", "r001")
     )
     return PP.PerfPromptInputs(
@@ -63,8 +63,8 @@ def _inputs():
                          "enumerate compiler levers", True),
             PP.ToolGrant("rtl-facts", "python3 perf_broker.py request rtl-facts",
                          "derive target facts", True),
-            PP.ToolGrant("verilator", "python3 perf_broker.py request probe-verilator",
-                         "harness-owned L3 simulator"),
+            PP.ToolGrant("gsim", "python3 perf_broker.py request probe-gsim",
+                         "harness-owned elaborated-RTL L3 simulator"),
         ),
         allowed_paths=(frozen, submission, workload, manifest, host, host_manifest,
                        "perf_broker.py", receipts, "perf_selfcheck.py", "cca_contract.py", "rtl_facts.py"),
@@ -100,7 +100,7 @@ def test_prompt_is_deterministic_and_carries_every_campaign_boundary() -> None:
         inputs.host_lane.package_sha256,
         "hidden host lowering",
         "Spike is a correctness screen only",
-        "Verilator is performance certification",
+        "GSIM is performance certification",
         "cycles must be recorded as `null`/absent",
         "(family, capsule, simulator, replicate)",
         "measured negative-control result",
@@ -160,7 +160,7 @@ def test_completion_identity_requires_exact_l2_l3_pairs_without_duplicates() -> 
     inputs = _inputs()
     without_l3 = tuple(cell for cell in inputs.expected_cells
                        if not (cell.capsule == "pk_k2" and cell.replicate == "r000"
-                               and cell.simulator == "verilator"))
+                               and cell.simulator == "gsim"))
     with pytest.raises(PP.PerfPromptContractError, match="both the L2 and L3"):
         PP.render_initial_prompt(replace(inputs, expected_cells=without_l3))
     with pytest.raises(PP.PerfPromptContractError, match="repeats a cell"):

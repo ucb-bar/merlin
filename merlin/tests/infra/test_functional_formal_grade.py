@@ -167,6 +167,32 @@ def test_chipyard_formal_model_sim_refuses_non_rtl_policy_result(monkeypatch):
         grader._formal_model_simulator("gemmini")
 
 
+def test_formal_model_install_overwrites_ambient_verilator_with_required_gsim(monkeypatch):
+    grader = _mod("grade_agent_run")
+    monkeypatch.setenv("MERLIN_MESH_SIM", "verilator")
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    monkeypatch.setattr(
+        grader, "_formal_model_simulator",
+        lambda _target: {"engine": "gsim", "fidelity": "elaborated_rtl"})
+
+    selected, inherited = grader._install_formal_model_simulator("gemmini")
+
+    assert selected["engine"] == "gsim"
+    assert inherited == "verilator"
+    assert grader.os.environ["MERLIN_MESH_SIM"] == "gsim"
+
+
+def test_formal_model_install_refuses_engine_different_from_pin(monkeypatch):
+    grader = _mod("grade_agent_run")
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    monkeypatch.setattr(
+        grader, "_formal_model_simulator",
+        lambda _target: {"engine": "verilator", "fidelity": "elaborated_rtl"})
+
+    with pytest.raises(RuntimeError, match="differs from required"):
+        grader._install_formal_model_simulator("gemmini")
+
+
 @pytest.mark.parametrize("field", ["integrity_status", "numeric_all_exact", "trace_all_pass"])
 def test_formal_completion_requires_clean_exact_structural_evidence(field):
     grader = _mod("grade_agent_run")

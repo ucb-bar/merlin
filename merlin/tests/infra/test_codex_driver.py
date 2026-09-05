@@ -181,6 +181,28 @@ def test_model_aliases_resolve_to_a_slug_this_auth_mode_accepts(alias, expected)
     assert CA.resolve_model(alias) == expected
 
 
+def test_preflighted_effective_model_bypasses_later_ambient_remapping(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    script = _fake_codex(tmp_path, _stream())
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "TASK.md").write_text("do the thing\n", encoding="utf-8")
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    monkeypatch.setenv("CODEX_BIN", str(script))
+    monkeypatch.setenv("CODEX_MODEL_MAP", "declared-model=wrong-later-model")
+
+    rc, transcript = CA.run_round(
+        ws, run_dir, "declared-model", {}, None, "none", 0, 60,
+        effort="high", effective_model="preflighted-model")
+    rows = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+    init = next(row for row in rows if row.get("subtype") == "init")
+
+    assert rc == 0
+    assert init["model_requested"] == "declared-model"
+    assert init["model"] == "preflighted-model"
+
+
 def test_an_explicit_model_map_wins(monkeypatch):
     monkeypatch.setenv("CODEX_MODEL_MAP", "claude-opus-4-8=gpt-5.6-terra,x=y")
     assert CA.resolve_model("claude-opus-4-8") == "gpt-5.6-terra"
