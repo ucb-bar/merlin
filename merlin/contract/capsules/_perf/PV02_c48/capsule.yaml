@@ -111,6 +111,22 @@ performance:
   regime:
     separation: input_channel_count_is_the_only_varied_axis
     layout: target_native_direct_corpus_builder
+  lowering_obligation:
+    id: operands_materialized_by_emitted_program
+    on_violation: fail_member
+    why: this member's verdict is the cycle count of the program the compiler emitted,
+      so every operand that program contracts over must be produced by that program.
+      The command-buffer ABI also lets a buffer DECLARE an operand the harness derives
+      (params.im2col_recipes gathers the conv windows out of the NHWC activation),
+      and a member that contracts over one of those is measuring a plain matmul over
+      a matrix it never built -- the window gather this family's lever is named for
+      is absent from the emitted code, which the task contract's own rule ("a lever
+      that does not change the emitted code is inert by definition") makes unreachable
+      as a lever. Emit it instead - the whole-operation opcode whose datapath does
+      the windowing, or an explicit gather command that PRODUCES the matrix the contraction
+      then reads. The stimulus is unaffected either way, because the reference, the
+      simulator and the device still materialize one tensor from one command all three
+      execute.
   emitter:
     status: existing
     entry: merlin.targetgen.corpus_spec.build

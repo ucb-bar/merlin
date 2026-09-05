@@ -391,6 +391,15 @@ even once, stop and spend the remaining budget measuring something.
   candidate, not a trade-off to discuss.
 - **A lever that does not change the emitted code is inert by definition.** Diff the emitted artifact
   before spending an oracle cell on it.
+- **Your program must build every operand it computes over.** The ABI lets a command buffer declare
+  that a tensor is derived from another one (`params.<recipe>`), and the harness then materializes it
+  before your program runs. That exists so the reference, the simulator and the device are handed one
+  byte-identical stimulus -- it is not a lowering. An operand your program *contracts over* has to be
+  produced by one of your own commands: emit the whole-operation opcode and let the datapath do the
+  work, or emit an explicit command that produces the intermediate and then contract over it. A
+  performance member whose program reads a harness-built operand is **failed, not measured** -- the
+  transformation that would have built it is absent from the code whose cycles are being counted, so
+  by the rule above no compiler change to it could ever move the number.
 - **Report cycles against the frozen baseline, per member,** including every regression. Selecting a
   variant on any criterion other than measured cycles is a choice you must state and justify in
   `iteration_notes.md`.

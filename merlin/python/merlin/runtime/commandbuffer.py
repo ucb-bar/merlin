@@ -236,6 +236,70 @@ def conv_im2col(ifm: Tensor, *, kh: int, kw: int, ci: int, stride, padding, dila
     return Tensor((N * Ho * Wo, kh * kw * ci), rows, ifm.dtype)
 
 
+#: Every ``params`` key under which a command buffer may DECLARE that one of its tensors is derived
+#: from another by the HARNESS rather than produced by a command. Each entry names its result in
+#: ``target`` and its source in ``source``.
+#:
+#: This tuple exists so the two readers of that declaration cannot drift apart.
+#: :func:`materialize_inputs` BUILDS the derived tensors from it (that is the mechanism's legitimate
+#: job: the reference, the simulator and the device must be handed byte-identical stimulus, or the
+#: numeric comparison between them compares three different inputs), and
+#: :func:`harness_derived_tensors` REPORTS which tensors were built that way, which is what a caller
+#: needs in order to ask whether the emitted program computed its own operands. A key added to the
+#: materializer and not to this tuple would silently become invisible to that question.
+IM2COL_RECIPE_KEY = "im2col_recipes"
+DERIVATION_RECIPE_KEYS: tuple[str, ...] = (IM2COL_RECIPE_KEY,)
+
+
+def harness_derived_tensors(cb: dict[str, Any]) -> dict[str, str]:
+    """``{derived tensor name: the params key that derives it}`` for one command buffer.
+
+    Reads only the ABI's own vocabulary (``params.<recipe key>[].target``), so it is target-agnostic
+    and opcode-agnostic: it answers "which of this buffer's tensors did the HARNESS build, rather
+    than the emitted program", for any endpoint that speaks this ABI. An empty result means every
+    tensor in the buffer is either a declared leaf or produced by a command.
+    """
+    out: dict[str, str] = {}
+    params = cb.get("params") or {}
+    if not isinstance(params, dict):
+        return out
+    for key in DERIVATION_RECIPE_KEYS:
+        for recipe in params.get(key) or ():
+            if not isinstance(recipe, dict):
+                continue
+            name = recipe.get("target")
+            if isinstance(name, str) and name:
+                out[name] = key
+    return out
+
+
+def operand_flow(cb: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """``(names WRITTEN by a command, every name any command REFERENCES)``.
+
+    Answers "did the emitted program compute this tensor, or was it handed to it?". Purely
+    structural — no opcode, dtype or target fact is read.
+
+    A write is recognised BY KEY SPELLING ONLY (:data:`PRODUCING_KEYS`), deliberately without
+    :func:`_produces`' fallback to the named tensor's declared ``role``. That fallback is right for
+    :func:`dataflow_operands`, which is trying to find a buffer's result and must tolerate a
+    destination spelled ``result`` or ``y``. It is wrong here, because a caller asking this question is
+    asking whether a COMMAND produced the tensor, and ``role: output`` on a tensor that appears only in
+    read slots would answer "yes" on the strength of a label the buffer wrote about itself — which is
+    exactly the claim under examination. Read positions and written positions are therefore separated
+    by the ABI's own write-slot vocabulary and by nothing else.
+    """
+    written: set[str] = set()
+    referenced: set[str] = set()
+    for cmd in cb.get("commands") or []:
+        for key, name in (cmd.get("operands") or {}).items():
+            if not isinstance(name, str) or not name:
+                continue
+            referenced.add(name)
+            if key in PRODUCING_KEYS:
+                written.add(name)
+    return written, referenced
+
+
 def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, Tensor]:
     """Create the leaf input tensors declared in the command buffer's ``tensors`` table.
 
@@ -264,8 +328,10 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
             env[name] = Tensor(shape, flat, dtype)
         else:
             env[name] = Tensor.deterministic(name, shape, dtype)
-    # additive: overwrite derived im2col activations from their source leaf
-    for r in cb.get("params", {}).get("im2col_recipes", []):
+    # additive: overwrite derived im2col activations from their source leaf. Keyed off the shared
+    # DERIVATION_RECIPE_KEYS so a recipe kind cannot be materialized here while staying invisible to
+    # harness_derived_tensors (which is what decides whether the emitted program owes this gather).
+    for r in cb.get("params", {}).get(IM2COL_RECIPE_KEY, []):
         src = env[r["source"]]
         env[r["target"]] = conv_im2col(
             src, kh=int(r["kh"]), kw=int(r["kw"]), ci=int(r["ci"]),

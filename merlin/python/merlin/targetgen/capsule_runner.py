@@ -3353,6 +3353,28 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         pkg, cb, llvm_text = run_entrypoints(pkg, package_dir, capsule, paths, contract=contract,
                                              timeout=timeout, fourth_output_name=cfg.fourth_output_name)
 
+        # A PERFORMANCE MEMBER MUST EMIT THE TRANSFORMATION ITS CYCLES ARE ATTRIBUTED TO.
+        #
+        # The ABI lets a buffer declare an operand the HARNESS derives from another (a conv's im2col
+        # gather). That is legitimate for STIMULUS -- reference, simulator and device must be handed one
+        # byte-identical tensor -- and it is untouched for a functional capsule, which is answering
+        # whether the arithmetic is right. It is NOT legitimate for a member whose verdict is a cycle
+        # count: the gather then costs the emitted program nothing, so the lowering that would perform it
+        # never appears in what is measured and the task contract's own rule ("a lever that does not
+        # change the emitted code is inert by definition") makes it unreachable as a lever.
+        #
+        # Scoped by the capsule's own `performance` block, so it fires for every performance member and
+        # for no functional one; and derived from that block's PRESENCE rather than from a declared
+        # field, so it cannot be switched off by editing a capsule. An obligation this build cannot
+        # evaluate is refused too -- never silently satisfied. Judged HERE, right after the compiler's
+        # own entrypoints and before the golden and the oracle ladder: a member measuring a program
+        # that never did the work is refused before anything is spent measuring it.
+        from merlin.perf import lowering_obligation as _LOB
+        _lowering = _LOB.assess(capsule, cb)
+        if _lowering.get("status") in _LOB.REFUSING_STATUSES:
+            raise CertFailure("lowering_obligation", _cat("PROTOCOL_VIOLATION"),
+                              str(_lowering.get("detail")))
+
         # --- golden + L0/L1 -----------------------------------------------------------------
         # The golden is the INDEPENDENT oracle's answer. For an integer capsule (gemmini / exact_int /
         # golden_source merlin_tensor_int) it is RECOMPUTED on the Tensor engine (byte-identical). For a
