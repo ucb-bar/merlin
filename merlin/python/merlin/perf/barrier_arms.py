@@ -1,30 +1,165 @@
-"""Count synchronization points in an emitted program, and decide a barrier-removal claim.
+"""Two arms of one kernel that differ ONLY in how many completion barriers the compiler inserted.
 
-The synchronization family declares this module as its emitter and it did not exist, so the family's
-second arm could never be built and ten capsules measured one arm against nothing.  What follows is
-the part that is actually derivable, and it is deliberately narrower than "emit two arms":
+The sibling scheduling family reorders a command stream (:mod:`merlin.perf.command_stream_gen`) on the
+theory that issue order is the lever a hardware-interlocked, command-driven accelerator gives a
+compiler.  MEASURED on this repo's command-driven target, it is not: a legal permutation of the same
+multiset cost **exactly zero** cycles at two depths, with the reorder verified to reach the ELF and the
+counter verified to move with work.  Both results have the same cause -- the dispatch queue tracks the
+dependence itself -- and read together they say where the lever actually is: not in what order the
+commands issue, but in **how many barriers the compiler inserted that the hardware did not need**.
 
-A barrier arm is NOT something a corpus file can synthesize.  The expensive arm is what the baseline
-compiler already emits -- a completion point after every unit of work -- and the cheap arm is what an
-optimizing compiler produces instead.  That is precisely the baseline/candidate pair the measurement
-path already builds, so the honest job here is to READ the two emitted programs, count what each one
-synchronizes, and decide whether removing those points bought the cycles the claim predicts.
+There are two ways to obtain the pair, and this module carries both because they answer different
+questions and neither subsumes the other.
 
-Counting is structural.  A completion point is an ABI opcode in the emitted command buffer, taken
-from the buffer's own declared vocabulary -- not a regex over a listing, and not a target ISA
-constant: the same abstract vocabulary appears for any backend that speaks this ABI.  A buffer that
-declares no completion opcode yields UNKNOWN with a reason rather than a count of zero, because
-"no barriers found" and "cannot see barriers" must never read the same.
+BUILD THE PAIR (:func:`pair_from_emitter`).  Ask the TARGET'S OWN emitter for the same kernel twice, at
+two settings of its retire knob, and then PROVE the two sources are the same program plus barriers
+rather than asserting it:
 
-The claim this decides is the family's own falsifier: the saving must GROW with the number of
-barriers removed.  A single paired point cannot show that, so a cohort of one is REFUSED rather than
-scored -- one subtraction is an anecdote, and the pathology this family exists for is precisely that
-the cost is per barrier.
+* the low-barrier arm's line sequence must be a SUBSEQUENCE of the high-barrier arm's -- so every
+  instruction of one appears, in order, in the other, and nothing was added, dropped or reworded;
+* every line the high-barrier arm adds must be the SAME line -- one repeated statement, which is what
+  makes "the lever is barrier count" true by construction rather than by reading.
+
+This is the arm-construction path, and it is what the synchronization family's declared regime asks
+for: one shape per pair, and the pair is two emissions of that ONE capsule.  ⚠️ NOTHING HERE KNOWS HOW
+A BARRIER IS SPELLED.  The barrier statement is *discovered* as the line the two arms differ by, so a
+target whose emitter spells its retire differently is served without an edit, and a target whose two
+settings differ by something OTHER than a repeated inserted line is REFUSED with its reason rather
+than measured as if the difference were a barrier.  Refusing is the point: a pair that differs by more
+than the lever prices the difference and calls it the lever, which is how a neighbouring family came
+to compare an ~82-cycle lever against an ~280-cycle uncancelled term.
+
+READ A PAIR THAT ALREADY EXISTS (:func:`count_barriers`, :func:`paired_removal`).  A tuning campaign
+does not emit both arms itself: the expensive arm is what the baseline compiler already produced and
+the cheap arm is what the candidate produced instead.  Those two command buffers are already in hand,
+so the job is to count what each one synchronizes.  Counting is structural.  A completion point is an
+ABI opcode in the emitted command buffer, taken from the buffer's own declared vocabulary -- not a
+regex over a listing, and not a target ISA constant: the same abstract vocabulary appears for any
+backend that speaks this ABI.  A buffer that declares no completion opcode yields UNKNOWN with a
+reason rather than a count of zero, because "no barriers found" and "cannot see barriers" must never
+read the same.
+
+⚠️ A ZERO-BARRIER PAIR IS A RESULT, NOT A FAILURE.  A kernel with one job has no redundant barrier to
+remove, so both settings emit the identical program and ``removed`` is 0.  That member is this family's
+NEGATIVE CONTROL: its measured differential must be exactly zero, and it is the only member for which
+that is true by construction.
+
+Either way the verdict is the family's own falsifier (:func:`analyze_barrier_claim`): the saving must
+GROW with the number of barriers removed.  A single paired point cannot show that, so a cohort of one
+is REFUSED rather than scored -- one subtraction is an anecdote, and the pathology this family exists
+for is precisely that the cost is per barrier.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
+
+__all__ = [
+    "BarrierPair", "COMPLETION_OPCODES", "ESTABLISHED", "PER_UNIT_GROWTH_OBSERVATION",
+    "REFUSED", "REFUSED_HETEROGENEOUS_INSERTION", "REFUSED_KNOB_UNSUPPORTED",
+    "REFUSED_NOT_A_PURE_INSERTION", "REFUTED", "RetireArmsError", "UNKNOWN",
+    "analyze_barrier_claim", "count_barriers", "paired_removal", "pair_from_emitter",
+]
+
+
+# --- Building the pair: two emissions of one capsule through the target's own emitter ---
+
+#: The emitter did not accept the retire knob at all, so this target cannot express the lever.
+REFUSED_KNOB_UNSUPPORTED = "knob_unsupported"
+#: The high-barrier arm is not the low-barrier arm plus inserted lines: something was reworded.
+REFUSED_NOT_A_PURE_INSERTION = "not_a_pure_insertion"
+#: The inserted lines are not all the same statement, so "the difference" is not one repeated barrier.
+REFUSED_HETEROGENEOUS_INSERTION = "heterogeneous_insertion"
+
+
+class RetireArmsError(RuntimeError):
+    """A pair that would not be the same work with a different barrier count. Carries its ``reason``."""
+
+    def __init__(self, reason: str, detail: str):
+        super().__init__(f"{reason}: {detail}")
+        self.reason = reason
+        self.detail = detail
+
+
+@dataclass(frozen=True)
+class BarrierPair:
+    """One kernel emitted at two retire settings, with the difference established rather than assumed."""
+
+    #: Source at the setting that emits the fewest barriers.
+    minimal: str
+    #: Source at the setting that emits one barrier per unit of work.
+    maximal: str
+    #: The two settings, in the order (minimal, maximal) they were requested.
+    settings: tuple[str, str]
+    #: The line the two arms differ by, taken from the diff rather than from any target vocabulary.
+    #: ``None`` when the two arms are the identical program (the negative-control member).
+    barrier_statement: str | None
+    #: How many barriers the lever removes. Zero is a legitimate result, not an error.
+    removed: int
+
+    def to_dict(self) -> dict:
+        return {"settings": list(self.settings), "barrier_statement": self.barrier_statement,
+                "removed": self.removed,
+                "identical_programs": self.minimal == self.maximal}
+
+
+def _inserted_lines(low: Sequence[str], high: Sequence[str]) -> list[str]:
+    """The lines ``high`` has and ``low`` does not, or raise when ``low`` is not a subsequence.
+
+    A two-pointer walk, not a diff library and not a pattern: the question is exactly "does every line
+    of the short source appear, in order, in the long one", and answering it any other way would admit
+    a pair whose shared lines had been reordered.
+    """
+    extra: list[str] = []
+    i = 0
+    for line in high:
+        if i < len(low) and low[i] == line:
+            i += 1
+        else:
+            extra.append(line)
+    if i != len(low):
+        raise RetireArmsError(
+            REFUSED_NOT_A_PURE_INSERTION,
+            f"the low-barrier arm's line {i + 1} ({low[i]!r}) has no match in emission order in the "
+            "high-barrier arm; the two settings changed the kernel, not only its barrier count")
+    return extra
+
+
+def pair_from_emitter(emit: Callable[..., str], command_buffer: dict, *,
+                      settings: tuple[str, str], knob: str = "retire") -> BarrierPair:
+    """Emit ``command_buffer`` twice through ``emit`` and return the established barrier pair.
+
+    ``emit`` is the target's OWN driver emitter, called as ``emit(command_buffer, **{knob: setting})``.
+    The knob name is a parameter because it belongs to the emitter's signature, not to this module; a
+    target whose emitter does not accept it is refused with :data:`REFUSED_KNOB_UNSUPPORTED` rather than
+    silently measured at one setting twice.
+    """
+    if len(settings) != 2 or settings[0] == settings[1]:
+        raise ValueError(f"settings must be two DISTINCT emitter settings, got {settings!r}")
+    sources = []
+    for setting in settings:
+        try:
+            sources.append(emit(command_buffer, **{knob: setting}))
+        except TypeError as exc:
+            raise RetireArmsError(
+                REFUSED_KNOB_UNSUPPORTED,
+                f"this target's emitter does not accept {knob}={setting!r} ({exc}); it cannot express "
+                "the barrier lever, so no pair exists to measure") from exc
+    low_src, high_src = sources
+    extra = _inserted_lines(low_src.split("\n"), high_src.split("\n"))
+    distinct = set(extra)
+    if len(distinct) > 1:
+        raise RetireArmsError(
+            REFUSED_HETEROGENEOUS_INSERTION,
+            f"the high-barrier arm adds {len(distinct)} distinct statements {sorted(distinct)!r}; the "
+            "difference between the arms is then not one repeated barrier and pricing it as one would "
+            "attribute the rest of the difference to the lever")
+    return BarrierPair(minimal=low_src, maximal=high_src, settings=(settings[0], settings[1]),
+                       barrier_statement=(extra[0] if extra else None), removed=len(extra))
+
+
+# --- Reading a pair the measurement path already built, and deciding the claim ---
 
 #: Opcodes that force the issuing host to observe that prior work retired.  Named at the ABI level,
 #: which is target-independent: a backend that speaks this ABI emits these regardless of its ISA.

@@ -74,12 +74,19 @@ def test_an_emitter_declared_existing_actually_exists(family_id):
     """``emitter.status: existing`` is a claim about this tree, so resolve it rather than trust it.
 
     MEASURED, and this is why the test exists: the synchronization family declared
-    ``entry: merlin.perf.barrier_arms.pair_from_emitter`` with ``status: existing``. The module
-    exists; that function never did, and neither did the ``retire knob`` its ``knobs`` named. Eleven
-    capsules shipped declaring an emitter against nothing, so the family's second arm could not be
-    built and ten of them measured one arm against no comparand. Generation succeeded, the capsules
-    materialised, and the gap was invisible from every artifact -- an emitter is only consulted when
-    someone tries to build the arm, and nobody had.
+    ``entry: merlin.perf.barrier_arms.pair_from_emitter`` with ``status: existing``, and for a
+    stretch the module defined no such name -- a later revision of it dropped the function while the
+    declaration kept pointing at it. Eleven capsules shipped declaring an emitter against a name that
+    did not resolve, so the family's second arm could not be built and ten of them measured one arm
+    against no comparand. Generation succeeded, the capsules materialised, and the gap was invisible
+    from every artifact -- an emitter is only consulted when someone tries to build the arm, and
+    nobody had.
+
+    Both halves of that declaration are real and are restored: the function is defined again, and the
+    ``retire`` knob it drives is a parameter of the target's own driver emitter. What the episode
+    actually shows is narrower and worse than "someone declared vapourware" -- a declaration and its
+    definition drifted apart with nothing between them to notice, in BOTH directions. This test is
+    that something, and it decides by resolving the name rather than by reading either side's prose.
 
     Import-and-getattr is the whole check. It is cheap, it cannot pass vacuously, and it fails in the
     one direction that matters: a declaration naming something absent.
