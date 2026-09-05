@@ -127,10 +127,14 @@ the verdict (host int8 datapath, 2026-09-04, after the i-exp softmax fix `3d74bb
 | `spectformer_int8_full` | cos 0.9999709, rel 0.0153 | **cos 0.9976, rel 0.175** |
 
 `spectformer` looks all but converged against its own frozen output and is a long way from the
-real W8A8 arithmetic. Note also that T1's per-element term (`max_rel < 0.05`) is not satisfiable
-by any correct implementation: the independent reference itself measures per-element max-rel
-1.313 against the fp32 golden under the same mask. Quote `tiers` / `tier_ok` / `per_element_basis`
-rather than a bare `ok`.
+real W8A8 arithmetic.
+
+Note also that T1's per-element term (`max_rel < 0.05`) is not satisfiable by any correct
+implementation. Under the gate's own RMS mask the **reference itself** measures, against the fp32
+golden, per-element max-rel 1.149 (`spectformer_int8_full`), 1.277 (`small_llama_int8_consistent`)
+and 79.5 (`gemma2_2b_int8_full`) — that is what W8A8 quantization does to a small logit, not a
+defect. Do not relax the threshold to make a run pass; quote `tiers` / `tier_ok` /
+`per_element_basis` and say which term failed.
 
 ## 0. Prerequisites
 
