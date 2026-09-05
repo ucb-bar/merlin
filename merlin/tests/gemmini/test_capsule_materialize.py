@@ -112,10 +112,22 @@ def test_public_capsules_for_is_target_aware_and_gemmini_parity():
     assert set(gem) == set(source) - set(te_g.graded_exclude)
     assert len(source) == n_source and len(gem) == n_admitted
     record = json.loads((gem_root / ".cohort_admission.json").read_text(encoding="utf-8"))
-    assert record["policy"] == "descriptor_capability_and_resource_v1"
+    # The policy NAME tracks which classes the record accounts for, so it is derived from the descriptor
+    # rather than spelled out here: a descriptor that also declares a PHASE partition records a
+    # three-class policy, and pinning the two-class name would make adding the third read as corruption.
+    assert record["policy"] == ("descriptor_capability_resource_and_phase_v1"
+                               if te_g.graded_phase is not None
+                               else "descriptor_capability_and_resource_v1")
     assert (record["n_source_capsules"], record["n_admitted_capsules"],
             record["n_capability_excluded"], record["n_resource_excluded"]) == (
                 n_source, n_admitted, n_capability, n_resource)
+    if te_g.graded_phase is not None:
+        # A phase partition is RECORDED and not subtracted, so it must leave the denominator alone --
+        # this is the assertion that would catch someone later "applying" it and shrinking the cohort.
+        assert record["n_phase_excluded"] == len(te_g.graded_phase_exclude) == 0
+        assert record["n_phase2_only"] == len(te_g.graded_phase2_only) > 0
+        assert set(te_g.graded_phase2_only) <= set(gem)
+        assert record["phase_budget_s"] == te_g.graded_phase_budget_s
     assert record["required_admitted_models"] == sorted(te_g.graded_required_models)
     assert record["descriptor_sha256"] == te_g.descriptor_sha256
     assert record["excluded_name_set_sha256"] == _name_digest(te_g.graded_exclude)

@@ -57,6 +57,7 @@ PASS, FAIL, UNKNOWN = "pass", "fail", "unknown"
 # component name can produce so they can never collide with a real one.
 WHOLE_SUBMISSION = "<whole-submission>"   # "this capsule rides on every byte" -- the undeclared default
 UNATTRIBUTED = "<unattributed>"           # submission bytes no declared component claims
+EXECUTION_ARTIFACT = "<execution-artifact>"  # the exact per-capsule executable + hardware identity
 
 # Why a verdict is not a verdict about the current bytes. Kept as three distinct reasons because they are
 # three distinct states: NO_VERDICT is not-yet-known (nobody has run it), CHANGED is known-to-be-stale,
@@ -80,6 +81,10 @@ class Staleness:
 class Verdict:
     """What is known about one (capsule, tier), and for WHICH bytes it was known.
 
+    ``execution_digest`` identifies the exact executable and hardware revision this verdict was earned on,
+    when the run that earned it produced one. It is the NARROWEST identity available and it is per
+    capsule, which the submission digests are not.
+
     ``components`` is the per-component digest map AS OF THE RUN THAT EARNED THIS VERDICT. A verdict
     recorded before per-component digests existed carries an empty map, which makes every declared
     dependency UNDETERMINABLE and re-runs the capsule -- the fail-closed direction.
@@ -87,15 +92,21 @@ class Verdict:
     status: str
     digest: str
     components: dict[str, str] = field(default_factory=dict)
+    execution_digest: str | None = None
 
 
 @dataclass
 class CapsuleState:
     """Everything the scheduler knows about one capsule.
 
-    ``digest`` is the whole submission; ``components`` decomposes those same bytes by component, and
-    ``depends_on`` is which of those components the certificate rides on -- supplied by the caller from
-    the decomposition, never claimed by the capsule.
+    ``execution_digest`` identifies this capsule's CURRENT executable and hardware revision, when the
+    verdict reader could compute one. ``digest`` is the whole submission; ``components`` decomposes those
+    same bytes by component, and ``depends_on`` is which of those components the certificate rides on --
+    supplied by the caller from the decomposition, never claimed by the capsule.
+
+    The three form a ladder, narrowest first: the executable identity distinguishes capsule from capsule;
+    the component decomposition distinguishes live bytes from inert ones; the whole submission
+    distinguishes nothing and is the fail-closed floor.
 
     The reason the decomposition exists: Phase P forks a functionally-complete compiler and then edits it
     continuously, and a whole-submission digest makes EVERY edit invalidate EVERY certificate. The cert
@@ -107,6 +118,7 @@ class CapsuleState:
     verdicts: dict[str, Verdict] = field(default_factory=dict)   # tier -> Verdict
     components: dict[str, str] = field(default_factory=dict)     # component -> digest of the CURRENT bytes
     depends_on: tuple[str, ...] | None = None      # None/() == unset == depends on the whole submission
+    execution_digest: str | None = None            # the exact CURRENT executable + hardware identity
 
     def _dep_components(self) -> tuple[str, ...] | None:
         """The components this capsule's certificate rides on, or ``None`` for "the whole submission".
@@ -141,6 +153,16 @@ class CapsuleState:
         v = self.verdicts.get(tier)
         if v is None:
             return (Staleness(WHOLE_SUBMISSION, NO_VERDICT),)
+        # The executable is the narrowest safe identity for a HARDWARE verdict, and the only one that is
+        # per capsule. Source bytes may change without changing the program the cert tier executes;
+        # conversely each capsule emits its own executable, so one capsule's changed artifact must not
+        # invalidate an unrelated capsule's certificate. BOTH sides must be well-formed SHA-256 values: a
+        # missing, legacy or malformed value falls through to the component or whole-submission
+        # comparison below, because absence is never evidence of freshness.
+        if (valid_execution_digest(self.execution_digest)
+                and valid_execution_digest(v.execution_digest)):
+            return (() if self.execution_digest == v.execution_digest
+                    else (Staleness(EXECUTION_ARTIFACT, CHANGED),))
         deps = self._dep_components()
         if deps is None:
             return () if v.digest == self.digest else (Staleness(WHOLE_SUBMISSION, CHANGED),)
@@ -162,6 +184,17 @@ class CapsuleState:
         if v is None or self.invalidated_by(tier):
             return UNKNOWN
         return v.status
+
+
+def valid_execution_digest(value: object) -> bool:
+    """Whether *value* is the lowercase, full-width SHA-256 the verdict readers emit.
+
+    ONE definition, imported by every caller. Two copies of this predicate is how the recorder and the
+    scheduler come to disagree about what counts as an identity, and that disagreement always resolves as
+    a silent fallback to the whole submission -- which looks exactly like correct conservative behaviour.
+    """
+    return (isinstance(value, str) and len(value) == 64
+            and all(c in "0123456789abcdef" for c in value))
 
 
 def _why(stale: tuple[Staleness, ...]) -> str | None:

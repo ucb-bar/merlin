@@ -460,6 +460,29 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                                  "from these facts -- corroborate() against the RTL row width", name))
             else:
                 row_bytes = row_elems * (bits // 8)
+        # A STORE MAY DECLARE ITS OWN ROW WIDTH, and where it does that is better evidence than the
+        # array-times-datapath product this derives everywhere else: it is the width the RTL wrote down.
+        # Without this, a target whose facts carry a row width but no `datapaths` had no row at all --
+        # its byte capacity said nothing about how many rows are addressable, `capacity_rows` answered
+        # None, and every memory-regime cell for it read `unknown` over a store whose geometry is fully
+        # stated. Read only where the array path produced nothing, so no target's existing derivation
+        # moves; where BOTH exist and disagree, the disagreement is surfaced rather than resolved.
+        declared_bits = mem.get("row_bits_rtl")
+        declared_bytes = (int(declared_bits) // 8
+                          if isinstance(declared_bits, int) and declared_bits > 0
+                          and declared_bits % 8 == 0 else None)
+        if row_bytes is None and declared_bytes:
+            row_bytes = declared_bytes
+            srcs_row_bytes = (f"memories[{name!r}].row_bits_rtl ({declared_bits} bits): the row width "
+                              f"this store's own RTL declares")
+        elif row_bytes and declared_bytes and declared_bytes != row_bytes:
+            unknowns.append(Unknown(
+                "row_bytes", f"the array-derived row width ({row_bytes} bytes) and the width this "
+                             f"store's RTL declares ({declared_bytes} bytes) DISAGREE; one of them is "
+                             f"wrong and a capacity computed from either is suspect", name))
+            srcs_row_bytes = None
+        else:
+            srcs_row_bytes = None
         total_rows = row_residue = banks = bank_residue = None
         if nbytes and row_bytes:
             total_rows, row_residue = nbytes // row_bytes, nbytes % row_bytes
@@ -485,7 +508,9 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         srcs = {"bytes_depth": str(mem.get("source") or "facts.memories")}
         if how:
             srcs["element_dtype"] = how
-        if row_bytes:
+        if srcs_row_bytes:
+            srcs["row_bytes"] = srcs_row_bytes
+        elif row_bytes:
             srcs["row_bytes"] = f"array cols {row_elems} x {dtype} ({bits} bits)"
         stores.append(Store(name=name, nbytes=nbytes, depth=depth, row_elems=row_elems,
                             element_dtype=dtype, element_bits=bits, row_bytes=row_bytes,

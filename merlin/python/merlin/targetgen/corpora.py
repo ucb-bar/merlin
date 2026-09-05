@@ -28,6 +28,20 @@ def capsule_corpus_roots() -> list[Path]:
     return [r for r in roots if r.is_dir()]
 
 
+def capsule_store_targets() -> list[str]:
+    """Every target that owns a capsule store, discovered from the tree.
+
+    A caller that has no target name yet needs this before it can call anything keyed on one, and the
+    alternative — each caller listing the directory itself — is how a target path gets duplicated in
+    five modules and how a target NAME gets typed into library code. It is deliberately NOT
+    :func:`~merlin.targetgen.capability_manifests.discovered_targets`: that set is targets shipping a
+    capability residual, which is a different (and differently-sized) population. Ordered, so a report
+    built from it is stable across runs.
+    """
+    root = merlin_dir() / "experiments" / "capsule_bench" / "targets"
+    return sorted(p.name for p in root.iterdir() if p.is_dir()) if root.is_dir() else []
+
+
 def descriptor_path(target: str) -> Path:
     """Where ``target``'s experiment descriptor lives — the per-target convention path, or whatever
     ``MERLIN_TARGET_EXPERIMENT`` overrides it to. Lives here because this module is the one allowed to

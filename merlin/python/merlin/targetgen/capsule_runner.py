@@ -53,8 +53,8 @@ from .contract import schemas
 from .capsule_common import (NOT_MEASURED_STATUSES, _cat, _flat,  # noqa: F401
                              discover_capsules, load_capsule,
                              make_run_paths, run_entrypoints)
-from .oot_runner import (BackendDeclined, CertFailure, Package, build_package, integrity_scan,
-                         load_package, run_entrypoint)
+from .oot_runner import (BackendDeclined, CertFailure, InfraFailure, Package, build_package,
+                         integrity_scan, load_package, run_entrypoint)
 
 SUITE = "gemmini-capsule-bench"
 CONTRACT_VERSION = "0.1"
@@ -3329,6 +3329,15 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         }, indent=2), encoding="utf-8")
         result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout,
                                       package_dir=package_dir, budget_s=_budget)
+        # A whole model is compiled as many buffers, not one, so there is no single command buffer to
+        # price it from. Say that explicitly rather than leaving the keys off: a performance consumer
+        # reading an absent key concludes the compute axis does not apply, and would then attribute
+        # this row's cycles to nothing at all.
+        from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
+        _mw, _ma = _cb_evidence(None, compiler_provenance="whole-model compilation (no single "
+                                                          "command buffer)")
+        result.setdefault("work_volume", _mw)
+        result.setdefault("command_buffer_artifact", _ma)
         (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         # Persist the ARR coverage certificate as its own durable artifact (not only inside
         # capsule_result.json) so the report/grader can read it back per compilation.
@@ -3341,6 +3350,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
 
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}
+    # THE PROGRAM WHOSE CYCLES ARE BEING REPORTED, kept out here so the result can carry it even when
+    # the run never got as far as producing one. A performance consumer prices a member from this
+    # buffer; if the key were simply absent whenever the entrypoints failed, an unpriceable member
+    # would be indistinguishable from one that needs no pricing. See the finalize call below.
+    cb: dict | None = None
     decoded_trace: dict | None = None            # kept for the advisory divergence localizer (D2)
     numeric = {"status": "skipped"}
     executability: dict = {}                      # advisory RTL-executability smoke result(s), by tier
@@ -3942,6 +3956,16 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         status = "declined"
         declined = bd.to_dict()
         failure = {"plane": "backend_declined", "category": "DECLINED", "detail": bd.reason}
+    except InfraFailure as inf:
+        # The harness could not stage this capsule's declared inputs, so NOTHING about the submission was
+        # measured. `fail` would be a lie in the agent's direction and `pass` a lie in ours; this is the
+        # third thing, and it is excluded from the pass/fail denominators (NOT_MEASURED_STATUSES) while
+        # `capsule_grade.grade` refuses to call the run gradeable at all. Caught BEFORE CertFailure
+        # because InfraFailure IS one -- the handler order is the whole mechanism, and with the narrower
+        # clause absent a staging outage was recorded as 31 of 33 structurally invalid SUBMISSIONS.
+        status = "infrastructure_fault"
+        cat = inf.category.value if hasattr(inf.category, "value") else str(inf.category)
+        failure = {"plane": inf.plane, "category": cat, "detail": inf.detail}
     except CertFailure as cf:
         status = "fail"
         cat = cf.category.value if hasattr(cf.category, "value") else str(cf.category)
@@ -3952,12 +3976,24 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                    "detail": f"{type(e).__name__}: {e}",
                    "traceback": _traceback.format_exc()}
 
+    # WHAT WORK THIS RESULT'S CYCLES BOUGHT, said by the result itself. A performance consumer
+    # attributes a member's cycles to a compute axis it derives from the emitted command buffer, and
+    # it needs both halves: the counted work AND the raw buffer under the digest they agree on, so it
+    # can recount the program and refuse the pair when the two disagree. Emitted for EVERY graded
+    # capsule, including one whose entrypoints never produced a buffer -- that case carries an
+    # explicit UNKNOWN (`exact_macs: null` plus the counter's refusals), never a zero and never an
+    # absent key. An absent key reads as "no compute axis applies here"; a zero reads as "this
+    # program does no work", which on a perf bench means "infinitely fast". Both are lies.
+    from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
+    _work_volume, _cb_artifact = _cb_evidence(
+        cb, compiler_provenance="submission command-buffer contract entrypoint")
     return _finalize_capsule_result(
         submission=submission_identity(package_dir, run_id=run_id),
         name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
         trace_check_res=trace_check_res, numeric=numeric, required=required,
         no_oracle=no_oracle, eff_target=eff_target, paths=paths, run_id=run_id,
-        cfg=cfg, contract=contract, executability=executability, declined=declined)
+        cfg=cfg, contract=contract, executability=executability, declined=declined,
+        extra={"work_volume": _work_volume, "command_buffer_artifact": _cb_artifact})
 
 
 def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,

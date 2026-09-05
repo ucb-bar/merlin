@@ -87,9 +87,13 @@ def validate_materialized_cohort(root: str | Path, te) -> dict:
     admitted = sorted(p.name for p in cohort_root.iterdir() if p.is_dir())
     capability = sorted(getattr(te, "graded_capability_exclude", ()) or ())
     resource = sorted(getattr(te, "graded_resource_exclude", ()) or ())
+    phase = sorted(getattr(te, "graded_phase_exclude", ()) or ())
+    phase2_only = sorted(getattr(te, "graded_phase2_only", ()) or ())
+    declared_phase = getattr(te, "graded_phase", None)
     excluded = sorted(getattr(te, "graded_exclude", ()) or ())
-    explicit = bool(capability or resource)
-    expected_policy = ("descriptor_capability_and_resource_v1" if explicit else
+    explicit = bool(capability or resource or phase or declared_phase is not None)
+    expected_policy = ("descriptor_capability_resource_and_phase_v1" if declared_phase is not None else
+                       "descriptor_capability_and_resource_v1" if explicit else
                        "descriptor_exclusions_legacy" if excluded else "all_discovered")
     expected_capability_n = len(capability)
     expected_resource_n = len(resource) if explicit else len(excluded)
@@ -103,6 +107,16 @@ def validate_materialized_cohort(root: str | Path, te) -> dict:
         "resource_policy": getattr(te, "graded_resource_policy", None),
         "required_admitted_models": sorted(getattr(te, "graded_required_models", ()) or ()),
     }
+    if declared_phase is not None:
+        # Only asserted when the descriptor HAS a phase class. A record written before this field
+        # existed carries no `n_phase_excluded`, and demanding one would turn every pre-existing sealed
+        # cohort into a validation failure rather than reporting it as the zero it is.
+        expected["n_phase_excluded"] = len(phase)
+        expected["n_phase2_only"] = len(phase2_only)
+        expected["phase2_only_name_set_sha256"] = _name_set_sha256(phase2_only)
+        expected["phase_policy"] = getattr(te, "graded_phase_policy", None)
+        expected["phase"] = declared_phase
+        expected["phase_budget_s"] = getattr(te, "graded_phase_budget_s", None)
     for field, value in expected.items():
         if record.get(field) != value:
             raise ValueError(
@@ -505,11 +519,19 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     admitted_names = sorted(written)
     capability_excluded = sorted(getattr(te, "graded_capability_exclude", ()) or ())
     resource_excluded = sorted(getattr(te, "graded_resource_exclude", ()) or ())
+    phase_excluded = sorted(getattr(te, "graded_phase_exclude", ()) or ())
+    phase2_only = sorted(getattr(te, "graded_phase2_only", ()) or ())
+    declared_phase = getattr(te, "graded_phase", None)
     declared_excluded = sorted(getattr(te, "graded_exclude", ()) or ())
-    if capability_excluded or resource_excluded:
-        policy = "descriptor_capability_and_resource_v1"
-        if sorted(set(capability_excluded) | set(resource_excluded)) != declared_excluded:
-            raise ValueError("explicit capability/resource exclusions do not equal graded_exclude")
+    if capability_excluded or resource_excluded or phase_excluded or declared_phase is not None:
+        # The policy NAME says which classes the record can account for. A cohort sealed with a phase
+        # partition read back under the two-class name would have that partition silently dropped, and
+        # the reader could no longer tell a screened member from a certified one.
+        policy = ("descriptor_capability_resource_and_phase_v1" if declared_phase is not None
+                  else "descriptor_capability_and_resource_v1")
+        if sorted(set(capability_excluded) | set(resource_excluded)
+                  | set(phase_excluded)) != declared_excluded:
+            raise ValueError("explicit capability/resource/phase exclusions do not equal graded_exclude")
     elif declared_excluded:
         # A claim-bearing formal run must migrate this ambiguous legacy form; keeping a named policy in
         # the record makes the phase gate reject it rather than silently guessing why rows disappeared.
@@ -541,6 +563,18 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
         "required_admitted_models": sorted(getattr(te, "graded_required_models", ()) or ()),
         "descriptor_sha256": descriptor_sha,
     }
+    if declared_phase is not None:
+        # The partition itself, added only when a descriptor declares one, so a cohort sealed before
+        # this existed keeps the exact record it had. A digest, not the names, for the same reason the
+        # excluded set is a digest -- and it is what catches a swap that leaves the count intact.
+        cohort_record.update({
+            "n_phase_excluded": len(phase_excluded),
+            "n_phase2_only": len(phase2_only),
+            "phase2_only_name_set_sha256": _name_set_sha256(phase2_only),
+            "phase_policy": getattr(te, "graded_phase_policy", None),
+            "phase": declared_phase,
+            "phase_budget_s": getattr(te, "graded_phase_budget_s", None),
+        })
     (ver / ".cohort_admission.json").write_text(
         json.dumps(cohort_record, indent=2) + "\n", encoding="utf-8")
     validate_materialized_cohort(ver, te)

@@ -6,19 +6,34 @@ operand/result/property definitions and a custom verifier, a registered `Dialect
 `build_example`/round-trip helper. The companion test builds a module, verifies it, and
 round-trips it through the xDSL parser/printer.
 
-If the plan's ops/types are not the known ToyNPU set (e.g. a conservative non-toy plan), a
-minimal but real registered dialect is emitted instead. Either way the module imports as
-plain Python; if xDSL is not installed, `HAS_XDSL` is False and the helpers no-op safely.
+Every other reviewed plan gets a concrete IRDL operation and type class for each declaration.
+The generic classes accept variadic operands/results until their signatures are refined during
+human review. Either way the module imports as plain Python; if xDSL is not installed,
+`HAS_XDSL` is False and the helpers no-op safely.
 """
 from __future__ import annotations
 
 from typing import Any
 
 from ...common.artifacts import Artifact
-from ...runtime.commandbuffer import EPILOGUE_STAGES
 
 KNOWN_TYPES = {"resident_tensor", "accumulator"}
 KNOWN_OPS = {"res_pack", "matmul", "commit", "evict"}
+
+
+def _class_token(name: str) -> str:
+    words: list[str] = []
+    current = ""
+    for char in name:
+        if char.isalnum():
+            current += char
+        elif current:
+            words.append(current)
+            current = ""
+    if current:
+        words.append(current)
+    token = "".join(word[:1].upper() + word[1:] for word in words) or "Declared"
+    return f"N{token}" if token[0].isdigit() else token
 
 _REAL_DIALECT = '''"""Generated xDSL prototype dialect for `{dialect}` (real IRDL).
 
@@ -31,11 +46,14 @@ from __future__ import annotations
 DIALECT_NAME = "{dialect}"
 OPS = {ops!r}
 TYPES = {types!r}
+EXTRA_OP_SPECS = {extra_op_specs!r}
+EXTRA_TYPE_SPECS = {extra_type_specs!r}
 
 try:
     from xdsl.ir import Dialect, TypeAttribute, Attribute, Block, Region
     from xdsl.irdl import (irdl_op_definition, IRDLOperation, irdl_attr_definition,
-                           operand_def, result_def, prop_def, ParametrizedAttribute)
+                           operand_def, result_def, prop_def, ParametrizedAttribute,
+                           var_operand_def, var_result_def)
     from xdsl.dialects.builtin import StringAttr, ArrayAttr, TensorType, i8, i32, ModuleOp, FunctionType
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.utils.exceptions import VerifyException
@@ -44,10 +62,7 @@ except Exception:  # noqa: BLE001 - xDSL is an optional prototyping dependency
     HAS_XDSL = False
 
 
-# The command-buffer ABI's epilogue vocabulary, rendered from the ONE definition
-# (merlin.runtime.commandbuffer.EPILOGUE_STAGES) at generation time. A generated dialect is
-# standalone, so the value is baked -- but it is baked FROM the single definition, never re-typed.
-_KNOWN_EPILOGUE = {epilogue}
+_KNOWN_EPILOGUE = {{"bias_add", "bias", "requant", "acc_scale", "relu", "maxpool"}}
 
 if HAS_XDSL:
 
@@ -101,7 +116,22 @@ if HAS_XDSL:
         handle = operand_def(ResidentTensorType)
 
     _OP_CLASSES = [ResPackOp, MatmulOp, CommitOp, EvictOp]
+    for _op_name, _class_name in EXTRA_OP_SPECS:
+        _OP_CLASSES.append(irdl_op_definition(type(
+            _class_name,
+            (IRDLOperation,),
+            {{"name": f"{dialect}.{{_op_name}}",
+             "inputs": var_operand_def(),
+             "outputs": var_result_def()}},
+        )))
+
     _TYPE_CLASSES = [ResidentTensorType, AccumulatorType]
+    for _type_name, _class_name in EXTRA_TYPE_SPECS:
+        _TYPE_CLASSES.append(irdl_attr_definition(type(
+            _class_name,
+            (ParametrizedAttribute, TypeAttribute),
+            {{"name": f"{dialect}.{{_type_name}}"}},
+        )))
     {DIALECT_CONST} = Dialect("{dialect}", _OP_CLASSES, _TYPE_CLASSES)
 
     def get_dialect():
@@ -148,27 +178,54 @@ else:  # pragma: no cover - exercised only when xDSL is absent
         return module
 '''
 
-_MINIMAL_DIALECT = '''"""Generated xDSL prototype dialect for `{dialect}` (minimal).
+_DECLARED_DIALECT = '''"""Generated concrete xDSL dialect for `{dialect}`.
 
-The dialect plan declared no concrete ops/types yet (conservative non-toy synthesis), so this
-emits a real but empty registered dialect. Fill in ops/types after human review, mirroring the
-ToyNPU reference dialect.
+Every operation and type below comes directly from the reviewed dialect plan. Operation
+signatures stay variadic until target-specific verification is authored, but the declarations
+are registered IRDL classes and can be parsed, constructed, walked, and rewritten.
 """
 from __future__ import annotations
 
 DIALECT_NAME = "{dialect}"
 OPS = {ops!r}
 TYPES = {types!r}
+OP_SPECS = {op_specs!r}
+TYPE_SPECS = {type_specs!r}
 
 try:
-    from xdsl.ir import Dialect
+    from xdsl.ir import Dialect, TypeAttribute
+    from xdsl.irdl import (IRDLOperation, ParametrizedAttribute,
+                           irdl_attr_definition, irdl_op_definition,
+                           var_operand_def, var_result_def)
     HAS_XDSL = True
-    {DIALECT_CONST} = Dialect("{dialect}", [], [])
+
+    OP_CLASSES = [
+        irdl_op_definition(type(
+            class_name,
+            (IRDLOperation,),
+            {{"name": f"{dialect}.{{op_name}}",
+             "inputs": var_operand_def(),
+             "outputs": var_result_def()}},
+        ))
+        for op_name, class_name in OP_SPECS
+    ]
+    TYPE_CLASSES = [
+        irdl_attr_definition(type(
+            class_name,
+            (ParametrizedAttribute, TypeAttribute),
+            {{"name": f"{dialect}.{{type_name}}"}},
+        ))
+        for type_name, class_name in TYPE_SPECS
+    ]
+    {DIALECT_CONST} = Dialect("{dialect}", OP_CLASSES, TYPE_CLASSES)
 
     def get_dialect():
         return {DIALECT_CONST}
 except Exception:  # noqa: BLE001
     HAS_XDSL = False
+
+    OP_CLASSES = []
+    TYPE_CLASSES = []
 
     def get_dialect():
         return None
@@ -193,6 +250,10 @@ def test_module_metadata():
     assert d.DIALECT_NAME == "{dialect}"
     assert d.OPS == {ops!r}
     assert d.TYPES == {types!r}
+    registered_ops = {{op.name for op in d.get_dialect().operations}}
+    registered_types = {{typ.name for typ in d.get_dialect().attributes}}
+    assert registered_ops == {{f"{dialect}.{{name}}" for name in d.OPS}}
+    assert registered_types == {{f"{dialect}.{{name}}" for name in d.TYPES}}
 
 
 def test_build_verifies():
@@ -212,7 +273,7 @@ def test_roundtrip_is_stable():
     assert text(mod) == text(parsed)
 '''
 
-_MINIMAL_TEST = '''"""Import/registration test for the generated xDSL dialect `{dialect}`."""
+_DECLARED_TEST = '''"""Import/registration test for the generated xDSL dialect `{dialect}`."""
 from __future__ import annotations
 
 import sys
@@ -220,13 +281,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import pytest  # noqa: E402
 import {dialect}_dialect as d  # noqa: E402
 
 
-def test_module_imports():
+def test_module_metadata_and_registration():
     assert d.DIALECT_NAME == "{dialect}"
-    # get_dialect() never raises whether or not xDSL is installed.
-    d.get_dialect()
+    assert d.OPS == {ops!r}
+    assert d.TYPES == {types!r}
+    if not d.HAS_XDSL:
+        pytest.skip("xDSL not installed")
+    dialect = d.get_dialect()
+    registered_ops = {{op.name for op in dialect.operations}}
+    registered_types = {{typ.name for typ in dialect.attributes}}
+    assert registered_ops == {{f"{dialect}.{{name}}" for name in d.OPS}}
+    assert registered_types == {{f"{dialect}.{{name}}" for name in d.TYPES}}
 '''
 
 
@@ -238,13 +307,27 @@ def generate(dialect_plan: dict[str, Any]) -> list[Artifact]:
     const = dialect.upper() + "_DIALECT"
 
     real = set(ops) >= KNOWN_OPS and set(types) >= KNOWN_TYPES
-    dia_tmpl, test_tmpl = (_REAL_DIALECT, _REAL_TEST) if real else (_MINIMAL_DIALECT, _MINIMAL_TEST)
+    op_specs = [(name, f"{_class_token(name)}Op") for name in ops]
+    type_specs = [(name, f"{_class_token(name)}Type") for name in types]
+    extra_op_specs = [(name, class_name) for name, class_name in op_specs if name not in KNOWN_OPS]
+    extra_type_specs = [
+        (name, class_name) for name, class_name in type_specs if name not in KNOWN_TYPES
+    ]
+    dia_tmpl, test_tmpl = (
+        (_REAL_DIALECT, _REAL_TEST) if real else (_DECLARED_DIALECT, _DECLARED_TEST)
+    )
     return [
         Artifact(f"xdsl/{dialect}_dialect.py",
-                 dia_tmpl.format(dialect=dialect, ops=ops, types=types, DIALECT_CONST=const,
-                                 # a set LITERAL in the canonical tuple order: `repr(set(...))`
-                                 # varies with the hash seed and a generated file must not.
-                                 epilogue="{" + ", ".join(map(repr, EPILOGUE_STAGES)) + "}")),
+                 dia_tmpl.format(
+                     dialect=dialect,
+                     ops=ops,
+                     types=types,
+                     op_specs=op_specs,
+                     type_specs=type_specs,
+                     extra_op_specs=extra_op_specs,
+                     extra_type_specs=extra_type_specs,
+                     DIALECT_CONST=const,
+                 )),
         Artifact(f"xdsl/test_{dialect}.py",
                  test_tmpl.format(dialect=dialect, ops=ops, types=types)),
     ]

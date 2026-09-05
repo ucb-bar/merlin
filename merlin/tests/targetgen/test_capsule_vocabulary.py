@@ -85,6 +85,71 @@ def test_the_op_enum_covers_every_builder():
     assert not missing, f"corpus_spec.BUILDERS can emit {missing}, which capsule.schema.json rejects"
 
 
+def _axes_in_the_tree() -> set[str]:
+    """Every ``semantic.generalization_axis`` any capsule in this checkout declares."""
+    import yaml
+    axes = set()
+    for path in CAPSULES.rglob("capsule.yaml"):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        axis = (doc.get("semantic") or {}).get("generalization_axis")
+        if axis:
+            axes.add(str(axis))
+    return axes
+
+
+def test_the_axis_enum_covers_every_axis_the_corpus_declares():
+    """The FOURTH closed list in this schema, and it went stale the same way the other three did.
+
+    ``generalization_axis`` was written when the only axes were the hand-authored ones. The corpus
+    builder has since derived six more from each target's own conformance requirement -- epilogue,
+    accumulation_depth, shape_geometry, conv_window, application, roster, rank, host_lane -- and the
+    enum knew about none of them. The cost is not one rejected capsule: ``discover_capsules`` validates
+    the whole root, so a single unlisted axis makes EVERY capsule under it unloadable and the target
+    ungradeable, which is exactly how the graded path failed with a schema violation on one row.
+    """
+    enum = set(load_schema("capsule")["properties"]["semantic"]["properties"][
+        "generalization_axis"]["enum"])
+    declared = _axes_in_the_tree()
+    assert declared, "no capsule in the tree declares a generalization axis; this test is vacuous"
+    missing = sorted(declared - enum)
+    assert not missing, f"the corpus declares axes {missing}, which capsule.schema.json rejects"
+
+
+def test_an_invented_axis_still_fails_closed():
+    """Opening the list must not open the door — the axis is a claim about which held-out dimension a
+    capsule probes, and a typo would silently land it in an axis nothing reports on."""
+    cap = _a_capsule()
+    cap.setdefault("semantic", {})["generalization_axis"] = "shpae_geometry"
+    with pytest.raises(ContractViolation) as e:
+        validate_capsule(cap)
+    assert "shpae_geometry" in str(e.value)
+
+
+def test_the_conv_window_signature_rides_with_its_axis():
+    """The conv-geometry axis carries the window it stands for beside the axis name. ``semantic`` is
+    ``additionalProperties: false``, so the sidecar has to be declared or the axis is unusable in
+    practice — every conv capsule the builder emits carries it."""
+    cap = _a_capsule()
+    cap.setdefault("semantic", {})["generalization_axis"] = "conv_window"
+    cap["semantic"]["conv_window"] = "k3x3/s1x1/d1x1/pad1x1"
+    validate_capsule(cap)
+
+
+def test_every_capsule_in_the_tree_validates():
+    """The end-to-end form of the three tests above: no capsule this repo ships may fail its own
+    contract. A corpus that does not validate cannot be discovered, and a target whose corpus cannot be
+    discovered fails at launch rather than at commit."""
+    import yaml
+    bad = []
+    for path in sorted(CAPSULES.rglob("capsule.yaml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        try:
+            validate_capsule(doc)
+        except ContractViolation as exc:
+            bad.append(f"{path.parent.relative_to(CAPSULES)}: {exc}")
+    assert not bad, "capsules in the tree do not satisfy capsule.schema.json:\n" + "\n".join(bad[:20])
+
+
 def test_a_corpus_declared_mode_is_counted_not_dropped():
     """A mode outside gemmini's eight must appear in the coverage report of the corpus that declares
     it. The aggregator used to filter on the baseline list, so such a mode was declared, graded, and

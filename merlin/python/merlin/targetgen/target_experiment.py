@@ -348,6 +348,29 @@ class TargetExperiment:
     graded_resource_exclude: tuple[str, ...] = ()
     graded_resource_policy: str | None = None
     graded_required_models: tuple[str, ...] = ()
+    # THE PHASE PARTITION of the admitted cohort -- a third, independent fact, and deliberately NOT a
+    # third exclusion list by default. ``phase_policy.phase_of`` DERIVES which phase a member can serve
+    # from what can be checked about it at this target's declared certification budget: whether its
+    # answer can be certified inside that budget, and whether its work can be priced.
+    #
+    # ``graded_phase2_only`` records the members that CANNOT serve the declared phase. Recording is the
+    # point: a headline "n/N" over a cohort whose members reach different tiers is the misreading this
+    # bench keeps producing, and the fix is to make the tier visible, not to shrink N. ``check_phase_split``
+    # says so about itself -- a gate on the ratio "would be satisfiable by DELETING the members that serve
+    # one phase, which improves the ratio and destroys coverage" -- and the runner already prices
+    # certification separately (it certifies a derived covering set and marks the rest ``budget_deferred``),
+    # so admission was never a promise to certify.
+    #
+    # ``graded_phase_exclude`` is the narrower thing: members actually REMOVED from the denominator on
+    # phase grounds. It must be a subset of ``graded_phase2_only`` -- a row cannot be dropped for failing
+    # a verdict it did not fail -- and it is kept apart from the capability and resource lists because
+    # collapsing a derived verdict into a human decision loses the only thing that says which rows would
+    # come back if the budget moved.
+    graded_phase2_only: tuple[str, ...] = ()
+    graded_phase_exclude: tuple[str, ...] = ()
+    graded_phase: int | None = None
+    graded_phase_budget_s: float | None = None
+    graded_phase_policy: str | None = None
     # Claim-bearing descriptors pin their expected source/admitted cardinalities.  Exclusion lists pin
     # the public names; hidden names stay sealed and only their counts are declared.
     graded_expected_source_capsules: int | None = None
@@ -597,9 +620,11 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     if not isinstance(grading, dict):
         raise ValueError(f"{p}: grading must be a mapping")
     resource_bound = grading.get("resource_bound") or {}
+    phase_bound = grading.get("phase_bound") or {}
     expected_cohort = grading.get("expected_cohort") or {}
     hidden_admission = grading.get("hidden_capability_admission") or {}
     for field, value in (("grading.resource_bound", resource_bound),
+                         ("grading.phase_bound", phase_bound),
                          ("grading.expected_cohort", expected_cohort),
                          ("grading.hidden_capability_admission", hidden_admission)):
         if not isinstance(value, dict):
@@ -630,15 +655,43 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
                              field="grading.resource_bound.exclude_capsules")
     required_models = names(resource_bound.get("required_admitted_models"),
                             field="grading.resource_bound.required_admitted_models")
-    split_exclude = capability_exclude + resource_exclude
+    phase_exclude = names(phase_bound.get("exclude_capsules"),
+                          field="grading.phase_bound.exclude_capsules")
+    phase2_only = names(phase_bound.get("phase2_only_capsules"),
+                        field="grading.phase_bound.phase2_only_capsules")
+    outside = sorted(set(phase_exclude) - set(phase2_only))
+    if outside:
+        raise ValueError(
+            f"{p}: grading.phase_bound.exclude_capsules names {outside}, which the recorded phase-2-only "
+            "set does not contain; a row may not be dropped for failing a verdict it did not fail")
+    split_exclude = capability_exclude + resource_exclude + phase_exclude
     if legacy_exclude and split_exclude:
         raise ValueError(f"{p}: grading may use legacy exclude_capsules or the explicit capability/"
                          "resource split, not both")
-    overlap = sorted(set(capability_exclude) & set(resource_exclude))
-    if overlap:
-        raise ValueError(f"{p}: capability and resource exclusions overlap: {overlap}")
+    # Each row leaves the denominator for exactly ONE reason. An overlap is not a harmless duplicate: it
+    # would let a row be reported under whichever heading reads best, and the arithmetic below (source ==
+    # admitted + the three lists) would double-count it.
+    for a_name, a, b_name, b in (("capability", capability_exclude, "resource", resource_exclude),
+                                 ("capability", capability_exclude, "phase", phase_exclude),
+                                 ("resource", resource_exclude, "phase", phase_exclude)):
+        overlap = sorted(set(a) & set(b))
+        if overlap:
+            raise ValueError(f"{p}: {a_name} and {b_name} exclusions overlap: {overlap}")
     if resource_exclude and (not resource_bound.get("policy") or not required_models):
         raise ValueError(f"{p}: resource exclusions require a named policy and admitted model capstones")
+    phase_number = phase_bound.get("phase")
+    phase_budget = phase_bound.get("budget_s")
+    if phase_bound:
+        if not isinstance(phase_number, int) or isinstance(phase_number, bool) or phase_number < 1:
+            raise ValueError(f"{p}: grading.phase_bound.phase must name the phase this run serves")
+        if not phase_bound.get("policy"):
+            raise ValueError(f"{p}: phase exclusions require a named policy")
+        if not isinstance(phase_budget, (int, float)) or isinstance(phase_budget, bool) \
+                or phase_budget <= 0:
+            raise ValueError(
+                f"{p}: grading.phase_bound.budget_s must state the certification budget the phase "
+                "verdict was derived at -- the verdict is meaningless without it, because a member "
+                "priced out at one budget is admitted at another")
     if set(required_models) & set(split_exclude):
         raise ValueError(f"{p}: a required admitted model is also excluded")
 
@@ -684,6 +737,13 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         graded_resource_exclude=resource_exclude,
         graded_resource_policy=(lambda s: str(s) if s else None)(resource_bound.get("policy")),
         graded_required_models=required_models,
+        graded_phase2_only=phase2_only,
+        graded_phase_exclude=phase_exclude,
+        graded_phase=(int(phase_number) if isinstance(phase_number, int)
+                      and not isinstance(phase_number, bool) else None),
+        graded_phase_budget_s=(float(phase_budget) if isinstance(phase_budget, (int, float))
+                               and not isinstance(phase_budget, bool) else None),
+        graded_phase_policy=(lambda s: str(s) if s else None)(phase_bound.get("policy")),
         graded_expected_source_capsules=expected_source,
         graded_expected_admitted_capsules=expected_admitted,
         hidden_expected_source_capsules=hidden_source,
