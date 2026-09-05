@@ -76,28 +76,68 @@ def _continuous_branch() -> ast.If:
     raise AssertionError("no `if a.continuous:` branch in main()")
 
 
+def _grader_fn() -> ast.FunctionDef:
+    """The interval grader inside the continuous branch, found by what it DOES.
+
+    ⚠️ THIS USED TO LOOK FOR A CLASS NAMED ``BackgroundGrader``, AND THAT CLASS HAS NEVER EXISTED.
+    `git log -S` finds no commit that added it anywhere in the tree; the grader has always been a
+    thread started inside ``main()``. So this gate -- one of the three properties the run shape is
+    supposed to GUARANTEE, "no round barrier" -- could not fail for a reason that had nothing to do
+    with the property. Ten tests across two files asserted the same absent name.
+
+    Finding it structurally instead: it is the nested function, inside the continuous branch, whose
+    body calls ``qa_grade`` in a loop. That is the grader by definition rather than by name, so a
+    rename cannot blind this again.
+    """
+    br = _continuous_branch()
+    for node in ast.walk(br):
+        if isinstance(node, ast.FunctionDef) and "qa_grade" in _calls(node):
+            if any(isinstance(n, (ast.While, ast.For)) for n in ast.walk(node)):
+                return node
+    raise AssertionError(
+        "no nested function in the continuous branch loops over qa_grade — nothing grades while the "
+        "agent works, so the run has a round barrier in all but name")
+
+
 def test_continuous_runs_one_session_and_grades_on_an_interval():
     """The interval grader runs ALONGSIDE the session, not after it.
 
-    It used to be an inline ``threading.Thread`` here; it is now the shared ``BackgroundGrader`` (which
-    still owns the thread) so that ``--schedule continuous`` -- the CERTIFIED path -- can install the very
-    same mechanism instead of silently having none. See
-    ``test_continuous_schedule_grades_under_the_agent.py`` for the gate on that path.
+    This is the first of the three gated run-shape properties: a background grader re-grades on an
+    interval and refreshes the verdict, so feedback reaches the agent WHILE it works rather than at a
+    round boundary.
     """
     br = _continuous_branch()
     calls = _calls(br)
-    assert "BackgroundGrader" in calls and "start" in calls, (
-        "the interval grader must run alongside the session, not after it")
-    assert "Thread" in _calls(_fn("start")), (
-        "BackgroundGrader.start no longer starts a thread, so nothing grades while the agent works")
+
+    grader = _grader_fn()                      # raises if nothing grades in a loop
+    # The grader must run on its own thread, or "alongside the session" is false — it would grade
+    # before or after, which is the barrier this mode exists to remove.
+    assert "Thread" in calls, (
+        "the interval grader is not started on a thread, so it cannot run alongside the agent session")
+    started_names = {n.func.attr for n in ast.walk(br)
+                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    assert "start" in started_names, "a grader thread is constructed but never started"
+
+    # It must WAIT on an interval rather than spin, and the wait must be interruptible so the session
+    # teardown below can stop it.
+    assert any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "wait"
+               for n in ast.walk(grader)), (
+        "the grader does not wait on a stop event — it cannot be an INTERVAL grader that also stops "
+        "when the session does")
+
     assert "qa_grade" in calls, "continuous mode must grade through the same path a round does"
     assert "launch_agent" in calls, "continuous mode still runs one real agent session"
 
 
 def test_a_failed_grade_cannot_kill_the_run():
-    """A grade racing a mid-write submission is expected; it must degrade to a skipped tick."""
-    loop = _fn("_loop")   # BackgroundGrader._loop -- the interval grader itself
-    handlers = [h for h in ast.walk(loop) if isinstance(h, ast.ExceptHandler)]
+    """A grade racing a mid-write submission is expected; it must degrade to a skipped tick.
+
+    The grader reads a workspace the agent is actively writing, so a torn read is normal traffic, not
+    an incident. If one raises out of the thread the run keeps going with a grader that is silently
+    dead — which looks exactly like a run whose agent stopped improving.
+    """
+    grader = _grader_fn()
+    handlers = [h for h in ast.walk(grader) if isinstance(h, ast.ExceptHandler)]
     assert handlers, "the interval grader must guard qa_grade — a mid-write submission is normal"
     assert any(isinstance(n, ast.Continue) for h in handlers for n in ast.walk(h)), (
         "a failed grade must be a SKIPPED TICK: the grader has to keep grading after one raises")
