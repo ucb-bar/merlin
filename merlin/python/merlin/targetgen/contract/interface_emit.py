@@ -557,3 +557,78 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
             cb["commands"].append({"opcode": "EVICT", "operands": {"handle": srcs[0]}})
 
     return cb
+
+
+def to_generic_form(text: str) -> str:
+    """Re-spell a ``merlin_iface`` module in MLIR's GENERIC op syntax, semantics unchanged.
+
+    The pretty form this module emits is the contract surface and stays the contract surface. But an
+    MLIR dialect registered DYNAMICALLY from IRDL (``mlir-opt --irdl-file=``, ``irdl::loadDialects``)
+    has no custom parser -- a generated dialect has no ``assemblyFormat`` to run -- so it can read
+    only the generic spelling. Measured before this existed: ``mlir-opt --irdl-file`` parsed 0 of the
+    370 ``merlin_iface`` capsules, and did so with rc=1 and an EMPTY stderr, which is why the gap sat
+    unnoticed. This is the one-way bridge that makes the IRDL contract checkable against the real
+    corpus instead of against hand-written fixtures.
+
+    Only the SPELLING changes::
+
+        %Y = merlin_iface.commit %acc {name = "Y"} : (!merlin_iface.acc<i32>) -> tensor<4x4xi8>
+        %Y = "merlin_iface.commit"(%acc) {name = "Y"} : (!merlin_iface.acc<i32>) -> tensor<4x4xi8>
+
+    Reuses :func:`_op_line`, the module's ONE shape decomposition, so this cannot drift from what
+    :func:`parse_interface_mlir` reads. FAILS CLOSED, for the same reason that function does: a line
+    it cannot re-spell raises rather than passing through in pretty form, because a partially
+    converted module parses as a DIFFERENT, shorter program with nothing to point at.
+    """
+    undefined = undefined_op_mnemonics(text)
+    if undefined:
+        raise InterfaceGrammarError(
+            f"cannot re-spell in generic form: interface grammar v{GRAMMAR_VERSION} does not define "
+            f"merlin_iface op(s) {', '.join(repr(m) for m in undefined)}")
+
+    out: list[str] = []
+    for raw in text.splitlines():
+        op = _op_line(raw.strip()) if raw.strip() and not raw.strip().startswith("//") else None
+        if op is None or not op["mnemonic"] or not _is_op_statement(raw, op["mnemonic"]):
+            out.append(raw)
+            continue
+        indent = raw[: len(raw) - len(raw.lstrip())]
+        ftype = _functional_type(op)
+        attrs = f' {{{op["attrs_body"]}}}' if op["attrs_body"] else ""
+        operands = ", ".join(f"%{s}" for s in op["operands"])
+        lhs = f'%{op["result"]} = ' if op["result"] else ""
+        out.append(f'{indent}{lhs}"{_IFACE_MARKER}{op["mnemonic"]}"({operands}){attrs} : {ftype}')
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
+def _functional_type(op: dict) -> str:
+    """The ``(operands) -> results`` type the generic form requires, from a pretty line's tail.
+
+    Which of the two ODS type formats an op uses is read off the tail itself rather than tabled per
+    mnemonic: ``functional-type(operands, results)`` already prints the parenthesised operand list,
+    while ``type($result)`` prints a bare result type (``merlin_iface.tensor``, whose operand list is
+    empty). Deriving it keeps a new grammar op from needing a new table row.
+    """
+    tail = op["tail"].strip()
+    if tail.startswith("("):
+        return tail
+    if op["operands"]:
+        # A bare result type with operands would silently become `() -> T`, dropping the operand
+        # types from the module's own signature. Refuse instead of guessing them.
+        raise InterfaceGrammarError(
+            f"merlin_iface.{op['mnemonic']} prints a bare result type but takes "
+            f"{len(op['operands'])} operand(s); its operand types cannot be recovered from the line")
+    return f"() -> {tail}"
+
+
+def _is_op_statement(line: str, mnemonic: str) -> bool:
+    """False when ``merlin_iface.<mnemonic>`` on this line is an ATTRIBUTE KEY, not an op.
+
+    The module header spells its metadata in the same namespace
+    (``module attributes {merlin_iface.version = "0.1", ...}``), so the shape decomposition finds a
+    "version" op there. The discriminator is the one :func:`op_mnemonics` already uses: an attribute
+    key is followed by ``=``, an op never is. Without it the header is rewritten into a bogus
+    ``"merlin_iface.version"() : () ->`` and the module loses its version, target and abi_version.
+    """
+    at = line.find(_IFACE_MARKER)
+    return not line[at + len(_IFACE_MARKER) + len(mnemonic):].lstrip().startswith("=")

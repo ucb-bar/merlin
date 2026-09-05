@@ -11,7 +11,7 @@ from merlin.baselines.buddy import _repair_malformed_select_slices
 from merlin.frontends.linalg_mlir import strip_paren_results
 from merlin.llvmlower.passes_xdsl import preprocess_text_textual
 from merlin.llvmlower.pipeline import _fix_f0x_literals
-from merlin.targetgen.rtl.gen_iface_irdl import _relax_string_base
+from merlin.targetgen.rtl.gen_iface_irdl import _fix_string_base_sigil
 
 # --- pipeline: MLIR's `f0x` float literal, which LLVM's textual parser has no rule for ------
 # Real lines from out/runs/.../GF5_gelu_bf16_pt/generated/model.ll (a bf16 gelu capsule).
@@ -142,8 +142,10 @@ def test_buddy_leaves_an_unreconstructable_slice_alone():
 
 
 # --- gen_iface_irdl: the tblgen-to-irdl StrAttr base mlir-opt cannot register ---------------
-def test_string_base_is_relaxed_without_swallowing_the_newline():
-    """Real tblgen-to-irdl output carries a TRAILING SPACE before the newline; absorbing the
-    newline too would join two SSA defs onto one line and corrupt the IRDL."""
+def test_the_string_attr_base_gets_the_attribute_sigil_not_the_type_sigil():
+    """`tblgen-to-irdl` writes StringAttr's base with the TYPE sigil (`!builtin.string`). The IRDL
+    runtime resolves `!` through AbstractType and `#` through AbstractAttribute, so the `!`
+    spelling does not resolve and the whole dialect fails to load. The repair CORRECTS the sigil;
+    it used to relax the whole constraint to `irdl.any`, which then accepted `name = 42 : i64`."""
     raw = '      %5 = irdl.base "!builtin.string" \n      %6 = irdl.any \n'
-    assert _relax_string_base(raw) == '      %5 = irdl.any\n      %6 = irdl.any \n'
+    assert _fix_string_base_sigil(raw) == '      %5 = irdl.base "#builtin.string" \n      %6 = irdl.any \n'

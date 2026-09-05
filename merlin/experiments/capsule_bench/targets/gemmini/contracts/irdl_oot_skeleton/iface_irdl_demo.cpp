@@ -1,6 +1,18 @@
 //===- iface_irdl_demo.cpp - register merlin_iface from IRDL (NO hand-ODS) ===//
 // Proves: a C++ OOT tool registers the merlin_iface input dialect dynamically from
 // merlin_iface.irdl.mlir via mlir::irdl::loadDialects(), then parses a capsule.
+//
+// THE CAPSULE MUST BE IN GENERIC OP FORM. A dynamically registered dialect has no custom parser --
+// there is no assemblyFormat to run -- so `"merlin_iface.matmul"(%a, %b) : (...) -> ...` parses and
+// the pretty `merlin_iface.matmul %a, %b : ...` does not. A pretty capsule fails here with rc=1 and
+// nothing on stderr, which is exactly how this went unnoticed. Re-spell it first:
+//
+//   python -c 'import sys; from merlin.targetgen.contract.interface_emit import to_generic_form; \
+//              sys.stdout.write(to_generic_form(open(sys.argv[1]).read()))' \
+//          capsule.interface.mlir > capsule.generic.mlir
+//
+// The pretty form remains the contract surface; this is a one-way spelling bridge for tools that
+// read the IRDL contract.
 #include "mlir/Dialect/IRDL/IR/IRDL.h"
 #include "mlir/Dialect/IRDL/IRDLLoading.h"
 #include "mlir/IR/BuiltinOps.h"
