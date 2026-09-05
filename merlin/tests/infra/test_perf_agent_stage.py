@@ -87,7 +87,12 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
                     "peak_macs_per_cycle": 256,
                     "peak_basis": "facts-derived peak of compute unit 'systolic_mesh'",
                     "achievable_macs_per_cycle": 80.01,
-                    "achievable_basis": "best rate over 38 measured points in phase-1 run"},
+                    "achievable_basis": "best rate over 38 measured points in phase-1 run",
+                    "recoverable": {"status": "derived", "corpus_total_cycles": 120.0,
+                                    "total_recoverable_cycles": 20.0,
+                                    "total_recoverable_share": 20.0 / 120.0,
+                                    "ranked": [], "ranked_members": 0, "priced_members": 1,
+                                    "basis": "test", "licence": "test"}},
     }
 
 
@@ -1796,3 +1801,73 @@ def test_a_refused_inner_command_still_gets_a_receipt_so_the_ledger_has_no_gap(t
     assert rows[0]["state"] == "rejected" and rows[0]["returncode"] != 0
     # And the ledger stays gapless: indices are exactly their positions.
     assert [r["index"] for r in rows] == list(range(len(rows)))
+
+
+# ------------------------------------------------------------- where the objective's cycles actually are
+
+def _priced_cell(family, capsule, macs, cycles):
+    return {"family": family, "capsule": capsule, "measured": True,
+            "declared_macs": macs, "baseline_gsim_cycles": cycles}
+
+
+def test_recoverable_ranks_by_cycles_not_by_how_bad_a_member_looks():
+    """THE CAMPAIGN SHAPE THIS EXISTS FOR, in miniature.
+
+    One deep member runs at a respectable 0.6 of the achievable rate and holds most of the corpus's
+    cycles. Two small members run at a dismal 0.1 and hold almost none. Ranked by share-of-achievable
+    the small ones look like the problem; ranked by RECOVERABLE CYCLES the deep one is the whole
+    objective. A real campaign converged at 0.2% for exactly this reason: the agent improved the
+    members that looked worst and they were worth 7% of the total.
+    """
+    rate = 100.0
+    cells = [
+        _priced_cell("PR", "deep", macs=600_000, cycles=10_000),   # 0.60 of achievable
+        _priced_cell("PL", "small_a", macs=10, cycles=100),        # 0.001 of achievable
+        _priced_cell("PL", "small_b", macs=10, cycles=100),
+    ]
+    out = PAS.recoverable_cycles(cells, rate)
+    assert out["status"] == "derived"
+    assert out["corpus_total_cycles"] == 10_200.0
+    assert [row["capsule"] for row in out["ranked"]][0] == "deep"
+    deep = out["ranked"][0]
+    assert deep["recoverable_cycles"] == pytest.approx(10_000 - 6_000)
+    assert deep["share_of_corpus_cycles"] == pytest.approx(10_000 / 10_200)
+    # The two members that look worst are together worth under 2% of the objective.
+    small = sum(row["recoverable_cycles"] for row in out["ranked"] if row["family"] == "PL")
+    assert small / out["corpus_total_cycles"] < 0.02
+
+
+def test_a_member_at_or_past_the_achievable_rate_recovers_nothing_not_a_negative():
+    """share_of_achievable may exceed 1 -- the ceiling is empirical, and a member beating it is a
+    faster program, not a broken derivation. Its headroom is zero, never a negative that would
+    subtract from the corpus total."""
+    out = PAS.recoverable_cycles([_priced_cell("PR", "at_ceiling", macs=200_000, cycles=1_000)], 100.0)
+    assert out["ranked"][0]["recoverable_cycles"] == 0.0
+
+
+def test_unmeasured_and_unpriced_members_are_skipped_rather_than_counted_as_zero():
+    """A cell the sweep never paid for has no cycles to attribute, and counting it as zero headroom
+    would understate the total it is a share of."""
+    cells = [_priced_cell("PR", "real", macs=600_000, cycles=10_000),
+             {"family": "PL", "capsule": "skipped", "measured": False,
+              "declared_macs": None, "baseline_gsim_cycles": None},
+             {"family": "PV", "capsule": "unpriced", "measured": True,
+              "declared_macs": None, "baseline_gsim_cycles": 500}]
+    out = PAS.recoverable_cycles(cells, 100.0)
+    assert out["priced_members"] == 1
+    assert out["corpus_total_cycles"] == 10_000.0, "the unpriced member's cycles are not in the total"
+
+
+def test_no_achievable_rate_refuses_rather_than_pricing_against_the_peak():
+    """No program on this machine has reached the structural peak, so headroom priced against it is a
+    number that does not exist. Absent an achievable rate this says so."""
+    out = PAS.recoverable_cycles([_priced_cell("PR", "deep", 600_000, 10_000)], None)
+    assert out["status"] == "unavailable" and out["ranked"] == []
+    assert "cannot be priced" in out["reason"]
+
+
+def test_the_ranked_list_is_bounded_so_the_summary_stays_a_summary():
+    cells = [_priced_cell("PR", f"m{i:02d}", macs=1_000, cycles=10_000 - i) for i in range(20)]
+    out = PAS.recoverable_cycles(cells, 100.0)
+    assert out["priced_members"] == 20
+    assert len(out["ranked"]) == PAS.RECOVERABLE_RANK_LIMIT

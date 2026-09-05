@@ -889,7 +889,9 @@ class DevelopmentGsimFeedback:
                         "peak_macs_per_cycle": self.peak_macs_per_cycle,
                         "peak_basis": self.peak_basis,
                         "achievable_macs_per_cycle": self.achievable_macs_per_cycle,
-                        "achievable_basis": self.achievable_basis},
+                        "achievable_basis": self.achievable_basis,
+                        "recoverable": recoverable_cycles(
+                            cells, self.achievable_macs_per_cycle)},
         })
 
 
@@ -2057,6 +2059,68 @@ def _capsule_verdict_fields(**kwargs: Any) -> dict[str, Any]:
                 "verdict_reason": f"the verdict could not be computed: {type(exc).__name__}"}
 
 
+#: How many members the ranked recoverable list names. Enough to show where the objective actually
+#: lives without turning the summary into a second copy of the cell table.
+RECOVERABLE_RANK_LIMIT = 8
+
+
+def recoverable_cycles(cells: Sequence[Mapping[str, Any]],
+                       achievable_macs_per_cycle: float | None) -> dict[str, Any]:
+    """Which members hold the cycles, ranked, and what fraction of the objective each one is.
+
+    ⚠️ WHY THIS EXISTS, measured on a completed campaign. The corpus total was 171,739 cycles and the
+    search converged at ~0.2%. It was not a search failure: the agent improved 9-14 members a trial
+    with ZERO regressions. It was an Amdahl problem nobody had told it about. Seven deep-K residency
+    members were **92.4% of all cycles**, already at 0.59-0.94 of the achievable rate, while the 18
+    members with real headroom were **7.2% of the total** -- so perfecting every member the agent
+    could reach was worth at most 4.64%. One member, the deepest spilling one, held 21,500 recoverable
+    cycles by itself: **12.5% of the entire objective**, more than every small member combined.
+
+    Every number above was already derivable from the cells: the agent was given `declared_macs`,
+    `baseline_gsim_cycles` and `share_of_achievable` per member and would have had to multiply,
+    subtract and rank across 38 rows to find it. It never did, and three trials of search went into
+    7% of the objective. Reporting a share of the ACHIEVABLE rate tells a member how it is doing;
+    reporting recoverable CYCLES tells the corpus where its time is. Those are different questions and
+    only the second one orders the work.
+
+    Recoverable is measured against the achievable rate, never the structural peak: no program on this
+    machine has reached the peak (31.3% is the best observed), so pricing headroom against it would
+    hand back a number that does not exist. A member already at or past the achievable rate recovers
+    nothing rather than a negative amount.
+    """
+    if not achievable_macs_per_cycle or achievable_macs_per_cycle <= 0:
+        return {"status": "unavailable",
+                "reason": "no achievable rate was derived, so headroom cannot be priced in cycles",
+                "ranked": [], "corpus_total_cycles": None}
+    priced, total = [], 0.0
+    for row in cells:
+        macs, cycles = row.get("declared_macs"), row.get("baseline_gsim_cycles")
+        if not row.get("measured") or not isinstance(macs, int) or not isinstance(cycles, int):
+            continue
+        total += float(cycles)
+        ideal = float(macs) / float(achievable_macs_per_cycle)
+        priced.append({"family": row["family"], "capsule": row["capsule"],
+                       "baseline_cycles": int(cycles),
+                       "recoverable_cycles": max(0.0, float(cycles) - ideal)})
+    if not priced or total <= 0:
+        return {"status": "unavailable",
+                "reason": "no measured member declares the work its headroom would be priced from",
+                "ranked": [], "corpus_total_cycles": None}
+    for row in priced:
+        row["share_of_corpus_cycles"] = row["baseline_cycles"] / total
+        row["recoverable_share_of_corpus"] = row["recoverable_cycles"] / total
+    ranked = sorted(priced, key=lambda row: -row["recoverable_cycles"])[:RECOVERABLE_RANK_LIMIT]
+    recoverable_total = sum(row["recoverable_cycles"] for row in priced)
+    return {"status": "derived", "corpus_total_cycles": total,
+            "total_recoverable_cycles": recoverable_total,
+            "total_recoverable_share": recoverable_total / total,
+            "ranked": ranked, "ranked_members": len(ranked), "priced_members": len(priced),
+            "basis": ("baseline cycles minus the cycles this member's own declared work would take at "
+                      "the best rate anything on this machine has reached"),
+            "licence": ("where the objective's cycles are, not a prediction that they are reachable; "
+                        "a member's lever may not exist")}
+
+
 def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
     """Exact non-answer schema returned to the authoring agent."""
     required = {"schema_version", "kind", "round", "invocation", "tuning_corpus_sha256",
@@ -2182,7 +2246,12 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
     if (not isinstance(summary, Mapping)
             or set(summary) != {"members", "comparable", "all_correct",
                                 "peak_macs_per_cycle", "peak_basis",
-                                "achievable_macs_per_cycle", "achievable_basis"}
+                                "achievable_macs_per_cycle", "achievable_basis",
+                                # WHERE THE OBJECTIVE'S CYCLES ARE. Derivable from the cells all
+                                # along and never derived: a campaign converged at 0.2% because 92.4%
+                                # of its cycles sat in members the agent never aimed at. Required, so
+                                # a future summary cannot quietly stop saying it.
+                                "recoverable"}
             or summary.get("members") != len(cells)
             or summary.get("comparable") != sum(bool(row["comparable"]) for row in cells)
             # "all correct" is a claim about what was MEASURED. Counting a member the sweep never
