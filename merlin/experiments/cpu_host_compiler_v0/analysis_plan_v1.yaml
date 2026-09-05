@@ -1,0 +1,89 @@
+version: 1
+status: frozen_definition
+label: k1_cpu_host_four_arm_descriptive_analysis
+
+design:
+  kind: balanced_williams_4x4
+  repeats: 4
+  purpose: balance every arm across ordinal position and every ordered first-order carryover pair
+  sequences:
+    - [arm1_raw_cpp, arm2_cpp_scaffold, arm4_agentic_pass_authoring,
+       arm3_generated_cpu_dialect]
+    - [arm2_cpp_scaffold, arm3_generated_cpu_dialect, arm1_raw_cpp,
+       arm4_agentic_pass_authoring]
+    - [arm3_generated_cpu_dialect, arm4_agentic_pass_authoring, arm2_cpp_scaffold,
+       arm1_raw_cpp]
+    - [arm4_agentic_pass_authoring, arm1_raw_cpp, arm3_generated_cpu_dialect,
+       arm2_cpp_scaffold]
+  repeat_identifier: paired_block_id
+  provider_sampling_seeded: false
+  provider_seed_claim_forbidden: true
+  carryover_scope: within_block_transitions_only
+  cross_block_transition_policy: excluded_after_mandatory_washout_and_requalification
+  block_boundary:
+    required_before_first_cell: true
+    authority: frozen_k1_board_environment_gate
+    mandatory_washout_seconds_from: board_environment.settle_interval_seconds
+    stabilization_attempts_from: board_environment.settle_attempts
+    retained_receipt_required: true
+
+estimand:
+  population: all_sixteen_predeclared_arm_block_cells
+  policy: intention_to_treat
+  primary_unit: scheduled_arm_block_cell
+  contrasts:
+    - id: scaffold_increment
+      treatment: arm2_cpp_scaffold
+      control: arm1_raw_cpp
+    - id: generated_cpu_system_increment
+      treatment: arm3_generated_cpu_dialect
+      control: arm2_cpp_scaffold
+      interpretation: bundled_generated_dialect_deterministic_search_and_budget_allocation_effect
+    - id: pass_authoring_increment
+      treatment: arm4_agentic_pass_authoring
+      control: arm3_generated_cpu_dialect
+      interpretation: incremental_permission_to_author_general_passes
+
+endpoints:
+  primary:
+    - terminal_outcome_counts
+    - L0_L1_L2_L3_pass_counts
+    - total_tokens
+    - reasoning_tokens
+    - cache_read_tokens
+    - cache_write_tokens
+    - agent_active_seconds
+    - cell_wall_seconds
+    - grader_seconds
+  secondary:
+    - selected_generic_policy_action_count
+    - generic_train_validation_speedup
+    - compiler_package_size_bytes
+  summaries: [count, median, minimum, maximum, every_cell]
+  inferential_significance_claims: forbidden
+  interpretation: descriptive_small_n
+
+missingness:
+  treatment_agent_fail: observed_failure
+  treatment_build_fail: observed_failure
+  treatment_search_fail: observed_failure
+  graded_fail: observed_failure
+  graded_pass: observed_success
+  infrastructure_invalid: missing_replace_only_by_predeclared_protocol
+  post_outcome_retry: forbidden
+
+selection:
+  method: predeclared_primary_no_outcome_selection
+  primary_arm: arm4_agentic_pass_authoring
+  primary_repeat_index: 0
+  heldout_outcome_selection: forbidden
+  fallback_after_primary_failure: forbidden
+
+reporting:
+  retain_all_scheduled_cells: true
+  report_order_and_block: true
+  report_block_boundary_receipts: true
+  report_terminal_failure_class: true
+  report_full_fidelity_aet_tokens_and_time: true
+  separate_development_from_holdout: true
+  no_model_holdout_used_in_this_experiment: true

@@ -1,0 +1,224 @@
+version: 1
+status: draft
+label: k1_cpu_host_four_arm_v0
+target_contract: merlin/targets/k1_cpu/contracts/target_contract.yaml
+dialect_plan: merlin/targets/k1_cpu/contracts/dialect_plan.yaml
+task: merlin/experiments/cpu_host_compiler_v0/TASK.md
+
+analysis:
+  plan: merlin/experiments/cpu_host_compiler_v0/analysis_plan_v1.yaml
+  sha256: 271a34c113a05d2982ef1e84bc314e26a7cfa4bca2b58ef0c44a660a51497edf
+
+search:
+  space: merlin/experiments/cpu_host_compiler_v0/optimization_space_v1.yaml
+  space_sha256: 470a69ea8273827e4469eb52af52b9ad853193d7ec8e9c6d58a3a6a5a9c739ad
+  runner: merlin/experiments/cpu_host_compiler_v0/beam_search.py
+  runner_sha256: 6308268b96fa6478982b301f06962ad08df343041e741314ef50cdb6fd48cf4a
+  trusted_evaluator: merlin/experiments/cpu_host_compiler_v0/trusted_evaluator.py
+  trusted_evaluator_sha256: cee6575f5ff5b0e1553598074c9c5f6e4546cf41c079ea7ebf667e9b23b804e2
+  trusted_broker: merlin/experiments/cpu_host_compiler_v0/trusted_search_broker.py
+  trusted_broker_sha256: f5ca0ba606c3398ff8a943f78bf9a4ab6bbaf3766a3df95ed08176bc21f7c9b2
+  trusted_replay: merlin/experiments/cpu_host_compiler_v0/trusted_search_replay.py
+  trusted_replay_sha256: c4d6c1c28f39f2fe4ed9863ed035d657e3988b289790178d9789b74c97a09c09
+  cost_calibrator: merlin/experiments/cpu_host_compiler_v0/calibrate_search_costs.py
+  cost_calibrator_sha256: 1294d3e06cea9a89b75b25da736eb6555816a7d7e124af7bac14751a93c59b10
+  noise_calibrator: merlin/experiments/cpu_host_compiler_v0/calibrate_search_noise.py
+  noise_calibrator_sha256: 398d084c8aa37cb410917334da954632bf13b579c444a9724d3f1ad8effd7d9d
+  measurement_authority: spacemit_k1_elapsed_ns_div_completed_calls
+  required_paired_measurements: 6
+  trusted_seal_required_for: [arm3_generated_cpu_dialect, arm4_agentic_pass_authoring]
+  calibration:
+    # These four public-only authorities share one raw compiler package and one content-addressed
+    # A/A -> final-space -> cost lineage. Failed diagnostic calibrations remain outside the spec.
+    k1_artifact: out/runs/k1_cpu/cpu-host-compiler/20260831T233952Z_k1-program-calibration_seed000_149205a/metrics/k1_program_calibration.json
+    k1_sha256: 2ff16f96a4177fd24d55f3564cf2bd2dfd878c46d920c6efa54c65b5dc0b9b77
+    spike_artifact: out/runs/k1_cpu/cpu-host-compiler/20260831T233749Z_spike-screen-calibration_seed000_149205a/metrics/spike_screen_calibration.json
+    spike_sha256: cfd7cb9616e877b01cd6ff6c285636a63226697dce4902dcfc957afcff2b98af
+    confirmation_overhead_artifact: out/runs/k1_cpu/cpu-host-compiler/20260831T233858Z_confirmation-overhead-calibration_seed000_149205a/metrics/confirmation_overhead_calibration.json
+    confirmation_overhead_sha256: 3b955e88c5a4cbe7aa3bce1024aa03a6e77906d5de66a9a4e215b57cd5a75c47
+    noise_artifact: out/runs/k1_cpu/cpu-host-compiler/20260831T232623Z_k1-aa-noise-calibration_seed000_149205a/metrics/k1_aa_noise_calibration.json
+    noise_sha256: af54db1d0de9f27af84fcbdae2f1b5104fdcc325b1e9a027816d56d31f60235e
+
+development_corpus:
+  manifest: merlin/benchmarks/rvv_paper/development_corpus_v2.yaml
+  sha256: b525091203d6362cf42d619b08ac7768f408f49c963aa9ba7cc656c2f4950024
+  materialized_capsules: out/artifacts/rvv-development-corpus/k1_cpu/v2/latest
+  materialized_sha256: 4d7d34a0f6e8ad5b3c6efaa5c0d54261aa84510cc42196f3e5dd8db2ade4b7e9
+  forbidden_during_selection: [heldout]
+
+paper_holdouts: [gemma2_2b, tinyllama_1_1b, smolvla, resnet50_v1_5, lstmnetvit]
+
+arms:
+  - id: arm1_raw_cpp
+    order: 1
+    capabilities: [public_contract, llvm_mlir_toolchain]
+    treatment: raw C++ out-of-tree MLIR implementation
+  - id: arm2_cpp_scaffold
+    order: 2
+    capabilities: [public_contract, llvm_mlir_toolchain, cpp_targetgen_scaffold]
+    treatment: arm 1 plus a neutral generated C++ target-repository skeleton (no dialect ops or lowering)
+  - id: arm3_generated_cpu_dialect
+    order: 3
+    capabilities:
+      [public_contract, llvm_mlir_toolchain, cpp_targetgen_scaffold, generated_cpu_dialect,
+       deterministic_candidate_search, frozen_generic_search_space, cca_feedback]
+    treatment: arm 2 plus the target-generated CPU dialect and deterministic generic mining loop
+  - id: arm4_agentic_pass_authoring
+    order: 4
+    capabilities:
+      [public_contract, llvm_mlir_toolchain, cpp_targetgen_scaffold, generated_cpu_dialect,
+       deterministic_candidate_search, frozen_generic_search_space, cca_feedback, pass_authoring]
+    treatment: arm 3 plus permission to author general compiler passes when existing levers are insufficient
+
+agent:
+  driver: codex
+  model: gpt-5.6-sol
+  reasoning_effort: high
+  billing: subscription_notional
+  orchestrator: chia
+  repeats: 4
+  schedule: continuous
+  # Audit metadata only. Codex provider sampling is unseeded and no provider-seed claim is made.
+  launch_seed: 20260831
+  launch_seed_role: campaign_metadata_only_not_provider_sampling
+  # The exact order comes from analysis_plan_v1.yaml's balanced 4x4 Williams design. ``seed`` is
+  # retained by the AET/run-ID API as the paired block identifier; it is never sent to Codex.
+  launch_plan:
+    - {ordinal: 0, repeat: 0, seed: 1, arm: arm1_raw_cpp}
+    - {ordinal: 1, repeat: 0, seed: 1, arm: arm2_cpp_scaffold}
+    - {ordinal: 2, repeat: 0, seed: 1, arm: arm4_agentic_pass_authoring}
+    - {ordinal: 3, repeat: 0, seed: 1, arm: arm3_generated_cpu_dialect}
+    - {ordinal: 4, repeat: 1, seed: 2, arm: arm2_cpp_scaffold}
+    - {ordinal: 5, repeat: 1, seed: 2, arm: arm3_generated_cpu_dialect}
+    - {ordinal: 6, repeat: 1, seed: 2, arm: arm1_raw_cpp}
+    - {ordinal: 7, repeat: 1, seed: 2, arm: arm4_agentic_pass_authoring}
+    - {ordinal: 8, repeat: 2, seed: 3, arm: arm3_generated_cpu_dialect}
+    - {ordinal: 9, repeat: 2, seed: 3, arm: arm4_agentic_pass_authoring}
+    - {ordinal: 10, repeat: 2, seed: 3, arm: arm2_cpp_scaffold}
+    - {ordinal: 11, repeat: 2, seed: 3, arm: arm1_raw_cpp}
+    - {ordinal: 12, repeat: 3, seed: 4, arm: arm4_agentic_pass_authoring}
+    - {ordinal: 13, repeat: 3, seed: 4, arm: arm1_raw_cpp}
+    - {ordinal: 14, repeat: 3, seed: 4, arm: arm3_generated_cpu_dialect}
+    - {ordinal: 15, repeat: 3, seed: 4, arm: arm2_cpp_scaffold}
+  active_wall_seconds_per_arm: 32000
+  sequential: true
+  runner: merlin/experiments/cpu_host_compiler_v0/run_arm.py
+  launcher: merlin/experiments/cpu_host_compiler_v0/launch.py
+  protocol_controller: merlin/experiments/cpu_host_compiler_v0/preflight.py
+  completion_controller: merlin/experiments/cpu_host_compiler_v0/complete_campaign.py
+
+telemetry:
+  sink: aet
+  bridge: merlin/python/merlin/benchharness/chia_bridge.py
+  aet_source: /scratch/agustin/projects/aet
+  chia_source: /scratch/agustin/projects/chia
+  chia_python: build/chia-venv/bin/python
+  raw_events: true
+  arrival_timestamps: true
+  token_subsets: true
+  reasoning_tokens: true
+  cache_read_tokens: true
+  cache_write_tokens: true
+  active_time: true
+  wall_time: true
+  grader_time: true
+  tool_calls: true
+  billing_mode: true
+  output_layout: out/runs/k1_cpu/cpu-host-compiler
+
+grading:
+  same_grader_all_arms: true
+  grader: merlin/experiments/cpu_host_compiler_v0/grader.py
+  trusted_harness: merlin/experiments/cpu_host_compiler_v0/trusted_harness.c
+  k1_monitor: merlin/experiments/cpu_host_compiler_v0/k1_monitor.py
+  submission_contract: merlin/experiments/cpu_host_compiler_v0/SUBMISSION_CONTRACT.md
+  levels:
+    - {id: L0, authority: compiler, checks: [build, schema, verifier, emitted_code_change]}
+    - {id: L1, authority: scalar_reference, checks: [numeric_correctness, memory_safety]}
+    - {id: L2, authority: spike_rv64gcv, checks: [rvv_correctness, instruction_evidence, tail_cases]}
+    - {id: L3, authority: k1_silicon, checks: [exact_mode, exact_core_count, csr_vlen, wall_time, peak_rss]}
+  k1_probe_source: merlin/targets/k1_cpu/examples/probe.c
+  expected_harts: 8
+  expected_vlenb: 32
+  fallback_policy: forbid
+  required_families: [contraction, elementwise_map, reduction, movement_layout, fusion_epilogue, runtime_parallel]
+
+replacement:
+  kind: whole_campaign_protocol_design_replacement
+  predecessor_campaign_run_id: 20260831T213208Z_launcher_seed20260831_b66ab07
+  predecessor_protocol_inputs_sha256: 48e80eb31c3824ca8bd580cdcb8f4ab6a9371b16c20cbdb67f7f7945c93a9d07
+  scope: all_sixteen_cells
+  treatment_or_provider_started: true
+  excluded_from_arm_outcomes: true
+  reason_codes:
+    - undisclosed_capsule_descriptor_abi
+    - persistent_worker_audit_contract_contradiction
+  evidence:
+    frozen_protocol:
+      path: out/runs/k1_cpu/cpu-host-compiler/protocols/20260831T212936Z/experiment.protocol_frozen.yaml
+      sha256: d208aa3d465f9519421c38cdf6b434c7de1f662fa59dc83925215047f450e86f
+    protocol_claim:
+      path: out/runs/k1_cpu/cpu-host-compiler/.protocol_claims/48e80eb31c3824ca8bd580cdcb8f4ab6a9371b16c20cbdb67f7f7945c93a9d07.json
+      sha256: b5fd9eabe26d00038c36338f8ff51edd761044e57ec8e1ef8c183fc2e3515eb7
+    design_audit:
+      path: out/artifacts/cpu-host-authority/protocol-design-audits/20260831T224749Z/design_audit.json
+      sha256: bf5f2713f74021a510f27005045c93a239eafb1d951071213abbd8e79fc1a7e9
+    claim_revocation:
+      path: out/runs/k1_cpu/cpu-host-compiler/.protocol_claims/48e80eb31c3824ca8bd580cdcb8f4ab6a9371b16c20cbdb67f7f7945c93a9d07.cancelled.json
+      sha256: 83058bc36fc8b87597d99acc3370a54d98841ba41605968ca9dadb68fd14ed2c
+    campaign_exclusion:
+      path: out/runs/k1_cpu/cpu-host-compiler/.campaign_exclusions/20260831T213208Z_launcher_seed20260831_b66ab07.json
+      sha256: fb2b08930878e37929642962b0ad86d1005a2d5e15875ea3643660e459e84cd2
+    arm1_terminal_outcome:
+      path: out/runs/k1_cpu/cpu-host-compiler/20260831T213208Z_launcher_seed20260831_b66ab07__arm1_raw_cpp__r00__seed001/contracts/terminal_outcome.json
+      sha256: b144c784051ef958600818592bd50bad86da659dfc53ad676981f156db03d140
+    arm1_grader_result:
+      path: out/runs/k1_cpu/cpu-host-compiler/20260831T213208Z_launcher_seed20260831_b66ab07__arm1_raw_cpp__r00__seed001/metrics/grader_result.json
+      sha256: 61be4128d8eaf9974d21c6b1cbed4252573d62722e03afd0fdc99c21c9d71fc3
+    arm2_terminal_outcome:
+      path: out/runs/k1_cpu/cpu-host-compiler/20260831T213208Z_launcher_seed20260831_b66ab07__arm2_cpp_scaffold__r00__seed001/contracts/terminal_outcome.json
+      sha256: 2416036769079d0757ea82406b68590f03a1aea0019ff116ba582a7823b238b5
+    arm2_grader_result:
+      path: out/runs/k1_cpu/cpu-host-compiler/20260831T213208Z_launcher_seed20260831_b66ab07__arm2_cpp_scaffold__r00__seed001/metrics/grader_result.json
+      sha256: 7ddc323e6672f542713fec7e9874770d1d59fbf396beeab4e773a5a549d7a901
+    arm4_run_record:
+      path: out/runs/k1_cpu/cpu-host-compiler/20260831T213208Z_launcher_seed20260831_b66ab07__arm4_agentic_pass_authoring__r00__seed001/run_record.json
+      sha256: 6531f83f8c2183bf8729c9b1250f89d5494b737bbad75fb9fa9da2408e29f0ee
+    arm4_raw_events:
+      path: out/runs/k1_cpu/cpu-host-compiler/20260831T213208Z_launcher_seed20260831_b66ab07__arm4_agentic_pass_authoring__r00__seed001/agent/raw/codex_attempt_0001.events.jsonl
+      sha256: 77f14e1e21ba63b8c4b66a45c3bf43ad94d943f3e2db646b0ea23af15fe08dfd
+    arm4_controller_cancellation:
+      path: out/runs/k1_cpu/cpu-host-compiler/20260831T213208Z_launcher_seed20260831_b66ab07__arm4_agentic_pass_authoring__r00__seed001/contracts/controller_cancellation.json
+      sha256: 9c79e1d1279ec135de67b2ff840f35a3c714364727e566de3973230aa11bf4a0
+
+environment:
+  # Populated atomically by preflight.py --freeze-protocol. A live campaign never accepts these
+  # placeholders: local tools/config/dependencies are rehashed before every cell, and the K1
+  # device/kernel/OS/ISA identity is reprobed together with the board-state gate.
+  manifest: unresolved
+  sha256: unresolved
+  require_exact_local_before_each_cell: true
+  require_exact_k1_before_each_cell: true
+
+freeze:
+  protocol_inputs_sha256: unresolved
+  forbid_model_name_dispatch: true
+  forbid_post_freeze_tuning: true
+  required_empty_sweeps: 1
+  require_all_four_arms_complete: true
+  failure_policy:
+    launch_all_scheduled_attempts: true
+    retry_terminal_outcomes: false
+    failed_primary_fallback: forbidden
+    one_shot_protocol_claim: true
+    per_cell_atomic_consumption: true
+  selection:
+    method: predeclared_primary_no_outcome_selection
+    primary_arm: arm4_agentic_pass_authoring
+    primary_repeat_index: 0
+    eligible_evidence: none_used_for_final_selection
+    development_evidence_scope: generic_train_validation_only
+    heldout_outcomes_allowed: false
+  selected_policy_sha256: unresolved
+  runtime_sha256: unresolved
+  compiler_sha256: unresolved
