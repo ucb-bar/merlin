@@ -485,11 +485,42 @@ def _numeric_policy(binding: CorpusBinding, output_dtype: str, acc_scale: float 
     return np_
 
 
-def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str]) -> str:
-    """Output dtype: the accumulate dtype, unless an acc_scale epilogue requants to a narrow output (the
-    target declares that narrow dtype in its datapath as ``requant_output_dtype``, e.g. i8 for gemmini)."""
+def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str],
+                          entry: dict | None = None) -> str:
+    """Output dtype: the entry's own declaration if it makes one, else the accumulate dtype, unless an
+    acc_scale epilogue requants to a narrow output (the target declares that narrow dtype in its
+    datapath as ``requant_output_dtype``, e.g. i8 for gemmini).
+
+    **An entry's declaration wins, and that ordering is the fix for a real defect.** This function used
+    to read only the epilogue, so a profile entry that explicitly declared ``output_dtype: i8`` had the
+    declaration silently discarded and got the accumulator width instead. Nothing failed at generation
+    time -- a well-formed capsule came out, just not the one the entry asked for. It surfaced only
+    downstream, when `2f06e353` first regenerated the three hand-authored gemmini pooling capsules from
+    their profile entries and turned every one of them from ``i8`` to ``i32``: the backend refuses a
+    native max-pool that is not an i8 store (pooling runs in the store DMA at the input width, not over
+    the full-width accumulator container), so the capsules became uncompilable and 16 tests went red.
+
+    Only ``acc_scale`` has a derivable answer here -- the target *declares* its requant output width.
+    Every other reason a commit narrows is a property of the capsule, which is why the entry has to be
+    able to say so, and why a declaration it makes must not be second-guessed. Unknown tokens raise
+    (``dtype_info``) rather than falling back, so a typo is a generation failure and not another
+    silently substituted default.
+    """
+    declared = (entry or {}).get("output_dtype")
+    if declared:
+        dtype_info(str(declared))          # raises on an unknown token -- fail closed, never fall back
+        return str(declared)
     if "acc_scale" in epilogue and binding.requant_output_dtype:
         return binding.requant_output_dtype
+    if "maxpool" in epilogue:
+        # A fused max-pool is not an accumulator-side stage: it runs in the STORE DMA, which reads the
+        # target's own operand width (gemmini's `inputType`), not the full-width accumulator container.
+        # So the committed dtype is the operand dtype, derived from the descriptor rather than named
+        # here. This is what the three hand-authored pooling entries were saying with their explicit
+        # `output_dtype: i8`, and deriving it means the SYNTHESIZED pooling capsule -- which declares no
+        # dtype and cannot, since the axis that builds it knows nothing about a store path -- gets the
+        # same answer instead of an accumulator-width commit the backend refuses to compile.
+        return binding.operand_dtype
     return binding.accum_dtype
 
 
@@ -661,7 +692,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         # Ahead of _resolve_output_dtype, which reads the epilogue to decide the committed dtype.
         epilogue.insert(0, "bias_add")
     acc_scale = entry.get("acc_scale")
-    output_dtype = _resolve_output_dtype(binding, epilogue)
+    output_dtype = _resolve_output_dtype(binding, epilogue, entry)
     odt = binding.cap_dtype(output_dtype)
     idt = binding.cap_dtype(binding.operand_dtype)
     bias, bias_dt = _bias_operand(entry, epilogue, N, binding, op)
@@ -1208,7 +1239,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     Ho, Wo = conv_out_dims(H, W, kh, kw, stride, padding, dilation)
     Kdim = kh * kw * ci
     epilogue = list(entry.get("epilogue", []))
-    output_dtype = _resolve_output_dtype(binding, epilogue)
+    output_dtype = _resolve_output_dtype(binding, epilogue, entry)
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(output_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(output_dtype)
     attrs = {"ifm": ifm, "weight": weight, "out": out, "ci": ci, "kh": kh, "kw": kw,
@@ -1362,6 +1393,17 @@ def _semantic_block(entry: dict, binding: CorpusBinding) -> dict:
         block["composed_families"] = sorted(fused)
     if unresolved:
         block["composed_families_unresolved"] = sorted(unresolved)
+    # ANY OTHER AUTHORED KEY SURVIVES. The block above consumes the keys it knows and, until this,
+    # silently dropped the rest -- so a capsule synthesized to discharge a NAMED obligation could not
+    # say which one, and the coverage reader had to re-derive the answer from attributes. That works
+    # only when the obligation is expressible in attributes: a `padUNKNOWN` convolution window is not,
+    # because the member can only spell zero padding, so the obligation it was built for could never
+    # be matched by it. Carrying the reference is what closes that, and it is general rather than a
+    # special case for one axis.
+    for key, value in authored.items():
+        if key not in block and key not in ("must_accelerate", "eligible", "not_asserted_reason",
+                                            "semantic_family", "generalization_axis"):
+            block[key] = value
     return block
 
 

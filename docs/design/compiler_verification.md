@@ -1196,6 +1196,67 @@ about a format tests the guess, not the code.
 
 ---
 
+### 2026-09-05 — the readout fix over-corrected, and 37 tests said so
+
+The COMMIT readout contract fix (`95e636ae`) routed both runtime engines through one shared
+`_narrow_int_readout`, replacing a `== "i8"` test that had diverged from the golden for 77 days. The
+integer half of that change is right and stands: absent means `i32`, `i16` saturates to the `i16` range,
+and `merlin/tests/ir/test_readout_dtype_divergence.py` pins all three engines against each other for
+`i32`/`i16`/`i8`/`i4`/`u8`.
+
+The change also made the two runtime helpers **raise** on a non-integer `output_dtype`, reasoning that
+an integer engine has no definition for a float readout and should say so rather than pass it along.
+That reasoning ignored who the authority is. `capsule_golden._narrow_to_dtype` passes a non-integer
+token through unchanged, so raising did not remove a divergence — it created a second one, pointing the
+same direction as the first: a correct backend gets an error where the oracle gets a value.
+
+It fired immediately, on 37 tests across four files (`test_xdsl_vector_ops`,
+`test_xdsl_whole_model_chain`, `test_gemmini_native_pooling`, `test_rtl_checks`). All of them commit an
+`f32` tensor produced by a VECTOR_MAP chain — a shape the old `== "i8"` test had passed through for as
+long as those tests had existed. Fixed by matching the golden in every branch, and
+`test_all_three_engines_agree_on_every_declared_dtype` now carries `f32` and `bf16` cases so the
+strictness argument fails the suite instead of the corpus.
+
+Worth recording because the earlier claim in that commit — "since the golden already treated absent as
+`i32`, any buffer relying on the old clamp was already failing L0, so this can only fix and not break" —
+was true of the *default*, which is what it was reasoning about, and silently untrue of the *dtype
+vocabulary*, which the same edit widened without saying so. The safe-direction argument covered one axis
+of a two-axis change.
+
+### 2026-09-05 — a regenerated corpus lost the store dtype, and the backend caught it
+
+Found while chasing the failures above, and unrelated to them. Commit `2f06e353` regenerated the gemmini
+corpus; the three hand-authored pooling capsules (`GP0_matmul_maxpool_i8`, `GP1_matmul_maxpool_tail_i8`,
+`GP2_conv2d_maxpool_i8`) came back with `output_dtype = "i32"` where their tracked bytes had said `"i8"`,
+and `SY_epilogue_maxpool` had been `i32` from the start.
+
+`corpus_spec._resolve_output_dtype` read only the epilogue: `acc_scale` resolved to the target's declared
+requant width and everything else to the accumulator width. A profile entry's own `output_dtype: i8` —
+which all three hand-authored entries carry, with the reason written beside it — was never read. Nothing
+failed at generation time. A well-formed capsule came out; just not the one the entry described.
+
+It surfaced two layers down, where the fact lives: gemmini's native max-pool runs in the store DMA at the
+input width, so `gemmini_codegen_mlir._native_pool_spec` refuses any commit that is not an i8 store. Four
+capsules became uncompilable and 16 tests went red.
+
+Two resolution rules now, and the second is the load-bearing one:
+
+* an entry's explicit `output_dtype` wins, and an unknown token raises rather than falling back to a
+  default (a typo must be a generation failure, not a silent substitution — the original defect's shape);
+* a `maxpool` epilogue otherwise resolves to the target's **operand** dtype, derived from the descriptor.
+
+Honouring the declaration alone would have fixed only the three hand-authored entries. The synthesized
+one has no author to declare anything: `corpus_synth.declare_pool_window` supplies the window geometry,
+and the axis that builds it knows nothing about a store path. Deriving the width is what makes the
+generated capsule and the hand-authored ones agree.
+
+This is the same failure family the verification work exists to expose, arriving from the other
+direction: a generator that drops a declared fact produces output that is *well-formed and wrong*, and
+only a consumer that happens to be strict about that fact ever notices. Here one was — the gemmini
+backend refuses the store outright. Nothing in the corpus tooling would have.
+
+---
+
 ## 7. Reproducing what is claimed here
 
 NOTE: the shared `.venv` may resolve `merlin` from a different worktree, so pin `PYTHONPATH`:
