@@ -14,7 +14,8 @@ import hashlib
 import json
 from typing import Any
 
-__all__ = ["CommandWork", "ProgramWork", "work_from_command_buffer"]
+__all__ = ["CommandWork", "ProgramWork", "command_buffer_evidence", "work_from_command_buffer",
+           "NO_COMMAND_BUFFER_REFUSAL"]
 
 
 @dataclass(frozen=True)
@@ -207,3 +208,49 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
     known = sum(row.macs or 0 for row in rows)
     return ProgramWork(tuple(rows), known, bool(refusals), tuple(refusals),
                        artifact_sha256=artifact_sha256)
+
+
+#: Stated when a graded run produced no command buffer at all. The keys are still emitted carrying
+#: this: an ABSENT key reads to a consumer as "this axis does not apply", while an explicit UNKNOWN
+#: reads as "the work could not be priced" -- and only the second one is true. A zero would be worse
+#: still, because on a performance bench "this program does no work" means "infinitely fast".
+NO_COMMAND_BUFFER_REFUSAL = ("the graded run produced no compiler command buffer, so its work "
+                             "volume is UNKNOWN")
+
+
+def _unknown_evidence(refusal: str, compiler_provenance: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    work = ProgramWork((), 0, True, (refusal,)).to_dict()
+    artifact = {"command_buffer": None, "artifact_sha256": None,
+                "compiler_provenance": str(compiler_provenance), "refusal": refusal}
+    return work, artifact
+
+
+def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str
+                            ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return the ``(work_volume, command_buffer_artifact)`` pair a perf consumer reads.
+
+    ONE notion of work. The totals are :func:`work_from_command_buffer`'s and nothing else's, and the
+    artifact carries the RAW buffer they were counted from under the canonical digest that both
+    halves agree on -- so a reader can recount the program itself and refuse the pair if the two
+    disagree, instead of trusting a total it cannot check. Two independently computed notions of
+    "work" is exactly how the number and the receipt come to disagree silently.
+
+    Never returns a zero total for unpriceable work: an unknown stays ``exact_macs=None`` with the
+    counter's own refusals attached, and a buffer that is absent or not serialisable evidence yields
+    the same explicit UNKNOWN rather than a missing key.
+    """
+    if not isinstance(command_buffer, Mapping):
+        return _unknown_evidence(NO_COMMAND_BUFFER_REFUSAL, compiler_provenance)
+    try:
+        canonical = json.dumps(command_buffer, sort_keys=True, separators=(",", ":"))
+        # Round-tripped, so the bytes a reader re-digests are the bytes this digest was taken over.
+        replayed = json.loads(canonical)
+    except (TypeError, ValueError) as exc:
+        return _unknown_evidence(
+            f"command buffer is not serialisable evidence and cannot be priced: {exc}",
+            compiler_provenance)
+    work = work_from_command_buffer(command_buffer).to_dict()
+    artifact = {"command_buffer": replayed,
+                "artifact_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+                "compiler_provenance": str(compiler_provenance)}
+    return work, artifact
