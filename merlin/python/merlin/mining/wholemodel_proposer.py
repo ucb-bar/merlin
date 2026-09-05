@@ -352,7 +352,16 @@ def _feature_fork(feat: str, parent_feats: list[str], *, targets: str, evidence:
 #: quadruples (stack cap), which brackets the measured knees without asserting where they are --
 #: the knee is a per-model fact (stack promotion saturates past 256 KB on small_llama int8, MR gains
 #: nothing past 8 on small_llama fp32) and locating it is the search's job, not this list's.
-_MR_CAP_LADDER: tuple[int, ...] = (2, 4, 8, 16)
+#:
+#: 1 IS A RUNG BECAUSE THE EXPERT USES IT. XNNPACK's int8 GEMM is
+#: `xnn_qd8_f32_qc8w_gemm_minmax_ukernel_1x4v__rvv` -- MR=1 with a 4-register N group -- and the
+#: lifted expert CCA agrees (`compute.register_block (1, ('vsetvlmax', 4.0))`). The same omission
+#: was already found and fixed once on the OTHER register-block family: `MRPAD_INT8_TILES` says in
+#: its own comment that the ladder started at MR=2 and "the expert's MR was not in the search space
+#: at all". Leaving it out here made the expert's shape reachable only through the fixed-tile
+#: family, which replaces the derived per-op N as well as the M -- so the two axes could never be
+#: separated.
+_MR_CAP_LADDER: tuple[int, ...] = (1, 2, 4, 8, 16)
 _STACK_CAP_LADDER: tuple[int, ...] = (16384, 65536, 262144, 1048576)
 
 

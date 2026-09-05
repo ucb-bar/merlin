@@ -2265,6 +2265,25 @@ def perop_mr_sentinel(mr_cap: int) -> str:
     return name
 
 
+#: The MR caps the SEARCH may name, registered EAGERLY for the same reason ``MRPAD_INT8_TILES`` is:
+#: an on-demand-only registration is reachable from the proposer (which mints the name itself inside
+#: ``refinement_forks``) but NOT from a ``--features`` list, a package's ``compiler_features``, or any
+#: process that has not already called :func:`perop_mr_sentinel`. In those the name resolves to a
+#: KeyError, which ``wholemodel_proposer._composes`` swallows as "does not compose" -- so the cap
+#: reads as declined rather than as absent. Registration is default-off, so the frozen baseline is
+#: unaffected; the ladder brackets the two regimes this repo has measured without asserting either:
+#:
+#:   cap 1  the EXPERT's MR (XNNPACK ``..._gemm_minmax_ukernel_1x4v__rvv`` is MR=1) on the per-op path
+#:   cap 2  the rung between
+#:   cap 8  one M-block for an M=8 model, i.e. each weight read ONCE instead of once per row-block
+#:   cap 16 the saturation check -- on a model whose gcd(M) is 8 it derives the same table as cap 8
+#:
+#: 4 is not in the ladder because it is what the plain :data:`PEROP_BLOCK_NAME` sentinel already
+#: derives under (``zephyr_model.perop_mr_cap()``); naming it again would register a second spelling
+#: of the default and make two identical builds look like two arms.
+PEROP_MR_LADDER: tuple[str, ...] = tuple(perop_mr_sentinel(_n) for _n in (1, 2, 8, 16))
+
+
 def ensure_perop_block(table, kc: int) -> str:
     """Register (on demand) the per-op-blocked schedule for THIS model's block table.
 
