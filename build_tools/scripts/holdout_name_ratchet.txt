@@ -1,0 +1,22 @@
+# Tracked files that NAME a held-out capsule, accepted as pre-existing debt.
+#
+# ⚠️ THIS LIST MAY ONLY SHRINK. A holdout's name is an answer key: knowing which shapes are graded
+# privately is most of the advantage the holdout exists to deny. Every line here is a published file
+# that gives some of that away, kept only because it predates `check_no_holdout_names.py` and removing
+# it is a separate decision from having the gate.
+#
+# The remedy for a REPORT is the repo's standing one: UNTRACK, never delete (the artifact stays on disk
+# and regenerable). The remedy for SOURCE is to stop quoting a real name -- a docstring illustrating a
+# holdout leak does not need a live holdout to illustrate it, and `cert_cost.py` was fixed that way
+# rather than added here.
+#
+# Format: one repo-relative path per line, then `# ` and the reason it is still here.
+
+out/artifacts/capsule-bench/gemmini/METHODOLOGY.md  # published bench report; names the hidden set in its methodology section. Untrack or redact.
+out/artifacts/capsule-bench/gemmini/capsule_bench_v0_report.md  # published bench report; per-capsule results table includes the hidden rows.
+out/artifacts/capsule-bench/gemmini/cycles_by_capsule.md  # published cycle table; hidden rows carried their names.
+out/artifacts/capsule-bench/gemmini/full_suite_audit.json  # audit output over the full suite, hidden set included.
+out/artifacts/capsule-bench/gemmini/full_suite_audit.md  # rendered form of the above.
+out/artifacts/capsule-bench/gemmini/numerical_correctness_report.md  # published numerical report; hidden rows named.
+merlin/experiments/gemmini_perf_bench/scripts/perf_campaign.py  # a docstring names one holdout as an example. Fix by using a placeholder, as cert_cost.py did.
+merlin/python/merlin/perf/rate_table.py  # a docstring names one holdout while explaining the leak it fixes. Same remedy; owned by another session's in-flight work at time of writing.

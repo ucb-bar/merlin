@@ -111,7 +111,7 @@ class CostFit:
         """The fit as data. ``sources`` is WITHHELD unless explicitly asked for.
 
         ⚠️ THE SOURCE LIST NAMES HOLDOUT CAPSULES AND LOCAL ABSOLUTE PATHS. Each entry is the run file a
-        sample came from, e.g. ``/scratch/.../grading_hidden/runs/.../H0_matmul_hidden/
+        sample came from, e.g. ``/<scratch>/.../grading_hidden/runs/.../<a held-out capsule>/
         capsule_result.json``. This dict is embedded in the TRACKED conformance spec, which every arm
         reads, so emitting it by default published 10 holdout names and 60 more through the per-class
         fits -- caught by `verify_no_cheat`, which failed both targets on it. A held-out capsule's NAME
