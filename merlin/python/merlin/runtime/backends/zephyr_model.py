@@ -464,7 +464,8 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     import os as _os
     if tag_vec_ranks or _os.environ.get("MERLIN_VEC_RANK"):
         from xdsl.dialects.builtin import UnitAttr
-        n_tag = skip_gather = skip_extent = skip_math = skip_rank = 0
+        from xdsl.ir.affine import AffineBinaryOpExpr
+        n_tag = skip_gather = skip_extent = skip_math = skip_rank = skip_map = 0
         for op in module.walk():
             if op.name != "linalg.generic":
                 continue
@@ -483,6 +484,28 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
             if body is not None and any(inner.name in ("tensor.extract", "memref.load")
                                         for inner in body.ops):
                 skip_gather += 1
+                continue
+            # A NON-PROJECTED-PERMUTATION INDEXING MAP is a gather too, and the body check above
+            # cannot see it. The window read a convolution's im2col expansion emits reaches merlin as
+            # an all-parallel generic whose body only yields its input -- no `tensor.extract` at all --
+            # while its INPUT map is `(d0..d5) -> (d3, d0, d4 + d1, d5 + d2)`. A `vector.transfer_read`
+            # needs a projected permutation, so `structured.vectorize` cannot build one for a compound
+            # result expression and FAILS THE WHOLE PIPELINE ("Attempted to vectorize, but failed")
+            # rather than declining the op. MEASURED: with these ops tagged, one int8 capture's host
+            # lowering aborted outright and its board build silently took the whole-model SCALAR
+            # fallback -- static coverage of `forward` 0.4055 -> 0.2799, i.e. the lever read as a
+            # devectorization. The test is structural -- a COMPOUND result expression, whatever its
+            # operator -- so it covers strided, dilated and padded windows alike without naming any
+            # of them. It is deliberately no wider than that: a CONSTANT result index (the broadcast
+            # form, `(d0, d1) -> (0, d1)`) is not a projected permutation either and the vectorizer
+            # handles it, so refusing those as well cost 23 / 20 / 4 tagged ops on the three captures
+            # -- ops that were vectorizing correctly. The wider refusal is a coverage regression, not
+            # a safety margin.
+            maps = op.properties.get("indexing_maps")
+            if maps is not None and any(
+                    isinstance(r, AffineBinaryOpExpr)
+                    for a in maps.data for r in a.data.results):
+                skip_map += 1
                 continue
             # A TRANSCENDENTAL in the body (math.exp/erf/tanh, i.e. a sigmoid/GELU/SiLU activation) has
             # no vector form here: convert-math-to-libm scalarizes it back into per-lane extracts + libm
@@ -509,7 +532,8 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
         print(f"[vec_rank] tagged {n_tag} all-parallel generics for bounded vectorize "
               f"(ranks {_VEC_RANK_MIN_RANK}..{vec_max_rank}; skipped {skip_gather} gathers, "
               f"{skip_math} with a transcendental body, {skip_extent} on a non-multiple innermost "
-              f"extent, {skip_rank} outside the rank bound)")
+              f"extent, {skip_rank} outside the rank bound, {skip_map} on a "
+              f"non-projected-permutation indexing map)")
     if op_counts_out is not None:
         # What the PREPARED module actually contains, for the caller to check its levers against.
         # A transform lever finds its work by op NAME; one whose ops are all absent still builds,
