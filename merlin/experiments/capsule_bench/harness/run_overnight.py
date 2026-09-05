@@ -194,6 +194,7 @@ def stage_preflight(j: Journal, logs: Path, *, strict: bool) -> bool:
         ("no-target-name", [PY, "build_tools/scripts/check_no_target_name.py"]),
         ("no-regex", [PY, "build_tools/scripts/check_no_regex.py"]),
         ("contract-copies", [PY, "build_tools/scripts/check_contract_copies.py"]),
+        ("bundled-data", [PY, "build_tools/scripts/check_bundled_data.py"]),
         ("answer-keys", [PY, "build_tools/scripts/check_no_answer_keys.py"]),
     ):
         rc, tail = _run(cmd, logs / f"gate_{name}.log", timeout=900)

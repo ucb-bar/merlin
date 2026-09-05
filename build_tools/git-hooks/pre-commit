@@ -41,6 +41,14 @@ echo "[pre-commit] kernel ABI argument order (tree)…"
 echo "[pre-commit] no-answer-keys (tracked)…"
 "$PY" build_tools/scripts/check_no_answer_keys.py
 
+# Only when the commit stages a file under a bundled corpus (merlin/{schemas,prompts,benchmarks,
+# contract,targets,runtime}) — that is the moment the top-level tree and the wheel bundle part
+# company, and an installed merlin reads the bundle. The comparison itself is never narrowed; a
+# commit that stages none of those is told so and skipped, because the bundle is a build product a
+# concurrent session can leave stale for reasons this commit did not cause.
+echo "[pre-commit] bundled data vs source trees (staged)…"
+"$PY" build_tools/scripts/check_bundled_data.py --staged
+
 echo "[pre-commit] hardware provenance (staged)…"
 "$PY" build_tools/scripts/check_provenance.py --staged
 
