@@ -316,3 +316,7 @@ tmp
 # Point-in-time agent run notes: addressed to the operator, and they link private vaults / accounts.
 /out/artifacts/perf-bench/*/AUTONOMOUS_RUN_SUMMARY.md
 /out/artifacts/capsule-bench/*/AGENTIC_AB_RUNBOOK.md
+# llvm-lit writes a per-suite timing cache next to the tests on every run. It is scheduling state, not
+# a test input, and it reappears the moment anyone runs the suite -- so without this it shows up as an
+# untracked file in every session and eventually gets swept into someone's commit.
+merlin/tests/data/lit/.lit_test_times.txt
