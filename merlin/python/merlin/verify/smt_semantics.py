@@ -314,12 +314,19 @@ class Encoded:
     inputs: list[Tensor]
 
 
-def encode_interface(enc: Encoder, module, acc_width: int = 32) -> Encoded:
+def encode_interface(enc: Encoder, module, acc_width: int = 32,
+                    shared: list[Tensor] | None = None) -> Encoded:
     """Interpret an ``interface`` module, returning its committed outputs and its symbolic inputs.
 
     This walks the ACTUAL IR: a matmul the pass failed to emit, an operand it swapped, or a commit it
     duplicated all change the terms produced here, which is what makes the refinement check
     meaningful rather than a tautology.
+
+    ``shared`` binds the block arguments to tensors another encoding already declared, BY POSITION.
+    Passing it is what lets this program be compared against the source it was compiled from: two
+    sides encoded over independent symbols would make the query trivially satisfiable. A shape or
+    width mismatch is refused rather than coerced — it means the two artifacts are not about the same
+    program.
     """
     env: dict[Any, Tensor] = {}
     outputs: dict[str, Tensor] = {}
@@ -336,9 +343,22 @@ def encode_interface(enc: Encoder, module, acc_width: int = 32) -> Encoded:
 
     # Block arguments are the symbolic inputs.
     block = func.body.block
+    if shared is not None and len(shared) != len(block.args):
+        raise UnsupportedSemantics(
+            f"the interface module has {len(block.args)} block arguments but {len(shared)} shared "
+            f"leaves were offered; the two artifacts are not the same program")
     for i, arg in enumerate(block.args):
         rows, cols = _shape(arg.type)
-        env[arg] = enc.symbolic_tensor(f"arg{i}", rows, cols, _elem_width(arg.type), acc_width)
+        width = _elem_width(arg.type)
+        if shared is not None:
+            bound = shared[i]
+            if (bound.rows, bound.cols, bound.width) != (rows, cols, width):
+                raise UnsupportedSemantics(
+                    f"argument {i} is {rows}x{cols}x{width}b in the interface module but the shared "
+                    f"leaf is {bound.rows}x{bound.cols}x{bound.width}b")
+            env[arg] = bound
+        else:
+            env[arg] = enc.symbolic_tensor(f"arg{i}", rows, cols, width, acc_width)
         inputs.append(env[arg])
 
     for op in block.ops:

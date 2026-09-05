@@ -14,13 +14,18 @@ Method, following Fehr et al. (PLDI 2025) §5.1: give both sides a semantics by 
 Both sides are encoded over the SAME symbolic inputs, in one pass — encoding them independently
 would make the query trivially satisfiable and the result meaningless.
 
-**What the specification side is, stated precisely.** It is the declared workload: each committed
-output is the contraction of one activation argument with the reused weight argument, built from the
-function *signature*. It is deliberately NOT read back from the interface ops, which would make the
-check a tautology. It is also not (yet) an encoding of the ``linalg`` body the pass consumed;
-encoding ``linalg.quantized_matmul`` with its zero-point arithmetic is the natural next step, and
-until it lands this validates the interface program against the workload's declared contraction
-rather than against its source IR. Recorded here rather than blurred.
+**Two checks, and the difference between them matters.**
+
+:func:`validate_interface_module` builds its specification from the function *signature*: each
+committed output is the contraction of one activation argument with the reused weight argument. That
+is deliberately not read back from the interface ops (which would make the check a tautology), but it
+is still a RE-DERIVED model of what the pass should have done — target-vs-respecification, not
+source-to-target translation validation. A reviewer should read its ``unsat`` as "the emitted program
+computes the declared workload", not as "the pass preserved its input".
+
+:func:`validate_pass` closes that gap: it encodes the ACTUAL ``linalg`` module the pass consumed
+(:mod:`merlin.verify.linalg_semantics`) and validates ``source -> interface`` over shared leaves. Its
+``unsat`` is a per-compilation theorem about the pass on that one program at that one shape.
 
 Extents are concrete, taken from the IR's own types, so every query is quantifier-free (QF_BV).
 """
@@ -90,6 +95,80 @@ def validate_interface_module(module, *, acc_width: int = 32,
         for i, name in enumerate(sorted(got.outputs)):
             expected = enc.matmul(activations[i], weight, acc_width=acc_width)
             diffs.append(enc.any_differs(got.outputs[name], expected))
+        term = diffs[0]
+        for d in diffs[1:]:
+            term = smt.OrOp(term, d).results[0]
+        smt.AssertOp(term)
+        smt.YieldOp()
+
+    mod = builtin.ModuleOp([SolverOp.from_region(Region([blk]))])
+    return check_module(mod, timeout_ms=timeout_ms)
+
+
+def validate_pass(source_module, interface_module, *, acc_width: int = 32,
+                  timeout_ms: int = 60_000) -> Verdict:
+    """Does the emitted ``interface`` program compute the same function as its ``linalg`` SOURCE?
+
+    This is source-to-target translation validation, and it is a strictly stronger statement than
+    :func:`validate_interface_module` makes. There the specification is re-derived from the function
+    signature — a model of what the pass *should* have done, written by the same people who wrote the
+    pass. Here the specification is the pass's own INPUT IR, walked op by op
+    (:func:`merlin.verify.linalg_semantics.encode_linalg`), so the only artifacts in the query are
+    the two the compiler actually handled.
+
+    Both sides are encoded over THE SAME symbolic leaves, bound by BLOCK-ARGUMENT POSITION: the pass
+    preserves the function signature, so argument ``i`` of the source is argument ``i`` of the
+    output, and that is a structural invariant of the pass rather than a naming convention. Encoding
+    them over independent symbols would make the query trivially satisfiable and the verdict
+    worthless.
+
+    Results are paired IN ORDER — ``func.return`` operand order on the source side, ``commit`` order
+    on the interface side, which is the same order because the emitted function returns its commits
+    in the order it makes them. A count mismatch is an abstention, not a refutation: it means the two
+    modules do not declare the same number of results, which this equality query is not entitled to
+    characterise.
+
+    Three verdicts, and the middle one is load-bearing:
+
+        unsat   the pass is semantics-preserving on THIS program at THIS shape, for every integer
+                input the shape admits
+        sat     refuted, with a concrete counterexample in the model
+        unknown the solver ran out of budget, or an op had no encoding — an ABSTENTION, never a pass
+
+    A construct with no encoding raises :class:`UnsupportedSemantics` rather than being skipped: a
+    skipped op silently weakens the theorem into one nobody stated.
+    """
+    if not HAS_XDSL:
+        raise UnsupportedSemantics("xDSL is not installed")
+    from xdsl.builder import ImplicitBuilder
+    from xdsl.dialects import builtin, smt
+    from xdsl.ir import Block, Region
+
+    from .linalg_semantics import encode_linalg
+    from .smt_ops import SolverOp
+
+    blk = Block()
+    with ImplicitBuilder(blk):
+        enc = Encoder()
+
+        # SPEC side: the linalg module the pass consumed. It declares the leaves, because it is the
+        # artifact whose arguments define the program's inputs.
+        spec = encode_linalg(enc, source_module, acc_width=acc_width)
+
+        # TARGET side: the interface program the pass emitted, over those same leaves.
+        got = encode_interface(enc, interface_module, acc_width=acc_width, shared=spec.inputs)
+        if not got.outputs:
+            raise UnsupportedSemantics("the interface module commits no outputs; nothing to validate")
+
+        spec_names, got_names = list(spec.outputs), list(got.outputs)
+        if len(spec_names) != len(got_names):
+            raise UnsupportedSemantics(
+                f"the source module returns {len(spec_names)} value(s) but the interface program "
+                f"commits {len(got_names)}; they are not the same program")
+
+        diffs = []
+        for s_name, g_name in zip(spec_names, got_names):
+            diffs.append(enc.any_differs(spec.outputs[s_name], got.outputs[g_name]))
         term = diffs[0]
         for d in diffs[1:]:
             term = smt.OrOp(term, d).results[0]
