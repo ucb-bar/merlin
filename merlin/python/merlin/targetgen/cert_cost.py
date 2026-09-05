@@ -46,7 +46,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-__all__ = ["CostFit", "fit_for", "max_elements_within", "predict_seconds", "capsule_elements"]
+__all__ = ["CostFit", "CycleCostFit", "fit_for", "fit_cycles_for", "fits_cycles_for",
+           "max_elements_within", "predict_seconds", "capsule_elements"]
 
 #: How far past the largest measured capsule a prediction is still honest, as a multiple. A fit is a
 #: local linearisation of a simulator's behaviour, not a law; beyond this the answer is "unknown".
@@ -385,7 +386,7 @@ def _cycle_accurate_pick(timing: dict) -> tuple[float | None, str, str]:
                     # The engine rides in the BASIS, which is the string every caller already keeps
                     # beside the number. A fit whose samples came from two engines that differ by 26x
                     # is then readable off its own sources instead of being a silent average.
-                    eng = str(rec.get("engine") or "").strip()
+                    eng = _engine_of(rec)[0]
                     basis = f"{_CYCLE_ACCURATE_ONLY}:{name}{wall_basis}"
                     best = (float(secs), f"{basis}@{eng}" if eng else basis, eng)
         if best:
@@ -438,6 +439,9 @@ def _per_tier_from_result(doc: dict) -> dict:
                           # neither engine's cost, and until this field was carried the mixture was
                           # invisible -- the record had the engine and this reshaping dropped it.
                           "engine": rec.get("engine"),
+                          "sim": rec.get("sim"),
+                          "simulator": rec.get("simulator"),
+                          "oracle": rec.get("oracle"),
                           "evidence": rec.get("evidence")}
     return out
 
@@ -448,6 +452,21 @@ def _per_tier_from_result(doc: dict) -> dict:
 #: contract's static `tier_sim` map, which a run-time engine substitution does not update, so GSIM
 #: consoles were written under Verilator's name. An unknown engine stays unknown.
 UNKNOWN_ENGINE = ""
+
+
+def _engine_of(record: dict) -> "tuple[str, str]":
+    """``(engine, the field it was read from)`` for one tier record, or ``(UNKNOWN_ENGINE, "")``.
+
+    ONE MECHANISM, NOT A THIRD ONE. :mod:`tier_affordability` already reads the engine off a tier record
+    and normalises the several spellings of one engine onto a single bucket; this defers to it so the
+    two modules cannot disagree about which machine a sample belongs to. Its "unattributed" spelling is
+    mapped onto this module's :data:`UNKNOWN_ENGINE`, which is the value this module's own API documents
+    for a record that names no engine.
+    """
+    from . import tier_affordability as TA
+
+    engine, field = TA.engine_attribution(dict(record))
+    return (UNKNOWN_ENGINE if engine == TA.ENGINE_UNATTRIBUTED else engine), field
 
 
 def _timing_records(target: str, root: Path | None = None,
@@ -676,9 +695,14 @@ def max_elements_within(fit: "CostFit | None", budget_s: float) -> "int | None":
 # on rather than pretending to one authority.
 
 
+#: The record field that STATES an engine, as opposed to one an engine is inferred from. Named here so
+#: :attr:`CycleCostFit.engine_basis` can say which kind of attribution a fit rests on.
+_STATED_ENGINE_FIELD = "engine"
+
+
 @dataclass(frozen=True)
 class CycleCostFit:
-    """``seconds ~= intercept_s + per_cycle_s * cycles`` on the cycle-accurate tier."""
+    """``seconds ~= intercept_s + per_cycle_s * cycles`` on the cycle-accurate tier, for ONE engine."""
 
     target: str
     intercept_s: float
@@ -690,6 +714,14 @@ class CycleCostFit:
     #: median ``cycle_accurate_cycles / functional_cycles`` over capsules that ran both, or None.
     functional_ratio: float | None = None
     n_ratio_samples: int = 0
+    #: The engine whose samples this fit rests on, or :data:`UNKNOWN_ENGINE` for records naming none.
+    engine: str = UNKNOWN_ENGINE
+    #: WHICH KIND OF ATTRIBUTION put those samples in this bucket -- ``"engine"`` when every record
+    #: STATED its engine, otherwise the field(s) it was inferred from (an ``evidence`` console name).
+    #: An inference that separates two engines beats pooling them, but a reader must be able to see
+    #: that a bucket rests on one: a console name comes from a static map a run-time engine
+    #: substitution does not update.
+    engine_basis: str = ""
     sources: tuple[str, ...] = ()
 
     def to_dict(self, *, with_sources: bool = False) -> dict:
@@ -698,7 +730,8 @@ class CycleCostFit:
         they name holdout capsules. This fit has no tracked-artifact writer today, which is exactly why
         it is worth closing now -- the sibling fit did not have one either until the conformance spec
         started embedding it, and the leak was found in a tracked file rather than in review."""
-        out = {"target": self.target, "intercept_s": round(self.intercept_s, 3),
+        out = {"target": self.target, "engine": self.engine, "engine_basis": self.engine_basis,
+               "intercept_s": round(self.intercept_s, 3),
                "per_cycle_s": round(self.per_cycle_s, 6), "r2": round(self.r2, 4),
                "n_samples": self.n_samples,
                "measured_range_cycles": [self.cycles_min, self.cycles_max],
@@ -710,11 +743,21 @@ class CycleCostFit:
         return out
 
 
-def _cycle_records(target: str, root: Path | None = None, extra_roots=()) -> dict[str, dict]:
-    """``capsule -> {seconds, cycles, functional_cycles, source}`` for cycle-accurate runs.
+def _cycle_records(target: str, root: Path | None = None,
+                   extra_roots=()) -> "dict[tuple[str, str], dict]":
+    """``(capsule, engine) -> {seconds, cycles, functional_cycles, engine_field, source}``.
 
-    Only a tier that DECLARES itself cycle-accurate contributes seconds and cycles; a functional
-    tier's cycle count is kept separately, as the cheap predictor, and never as the cost itself.
+    KEYED ON THE PAIR, for the reason :func:`_timing_records` is and this function was not. Keyed on the
+    capsule alone, every engine's samples landed in one population and were fitted as one line: measured
+    on this repo's largest corpus, 88 pooled samples fit seconds against cycles at r2 0.111, while the
+    same records split by engine fit at 0.82 and 0.61 -- because the two engines' rates are 0.229 and
+    0.0035 s/cycle, 65x apart with no overlap, so the pooled "law" describes neither machine. The pooled
+    key also LOST samples: a capsule certified on both engines kept whichever file sorted last (88 of
+    110 usable records survived), so the cheap engine's evidence disappeared the moment the slow one ran.
+
+    Only a tier that DECLARES itself cycle-accurate contributes seconds and cycles; a functional tier's
+    cycle count is kept separately, as the cheap predictor, and never as the cost itself. Within one
+    (capsule, engine) bucket the longest run wins, because that is the binding cost.
     """
     from merlin.common.paths import artifacts_dir, runs_dir
 
@@ -723,7 +766,7 @@ def _cycle_records(target: str, root: Path | None = None, extra_roots=()) -> dic
     bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target),
                                        runs_dir() / str(target)]
     bases += [Path(r) for r in extra_roots]
-    out: dict[str, dict] = {}
+    out: "dict[tuple[str, str], dict]" = {}
     for base in bases:
         if not base.is_dir():
             continue
@@ -735,38 +778,36 @@ def _cycle_records(target: str, root: Path | None = None, extra_roots=()) -> dic
             name = doc.get("capsule")
             if not name:
                 continue
-            secs = cycles = func_cycles = None
+            func_cycles = None
+            accurate: dict[str, tuple[float, int, str]] = {}
             for rec in (doc.get("tiers") or {}).values():
                 if not isinstance(rec, dict):
                     continue
                 tm = rec.get("timing") if isinstance(rec.get("timing"), dict) else {}
-                accurate = rec.get("cycle_accurate") is True or rec.get("derived_from_rtl") is True
+                accurate_tier = rec.get("cycle_accurate") is True or rec.get("derived_from_rtl") is True
                 c = rec.get("cycles")
-                if accurate:
+                if accurate_tier:
                     sv = tm.get("sim_active_s")
                     if isinstance(sv, (int, float)) and sv > 0 and isinstance(c, int) and c > 0:
-                        if secs is None or sv > secs:
-                            secs, cycles = float(sv), int(c)
+                        engine, field = _engine_of(rec)
+                        prev = accurate.get(engine)
+                        if prev is None or float(sv) > prev[0]:
+                            accurate[engine] = (float(sv), int(c), field)
                 elif isinstance(c, int) and c > 0 and func_cycles is None:
                     func_cycles = int(c)
-            if secs is not None:
-                out[str(name)] = {"seconds": secs, "cycles": cycles,
-                                  "functional_cycles": func_cycles, "source": str(path)}
+            for engine, (secs, cycles, field) in accurate.items():
+                out[(str(name), engine)] = {"seconds": secs, "cycles": cycles,
+                                            "functional_cycles": func_cycles,
+                                            "engine": engine, "engine_field": field,
+                                            "source": str(path)}
     return out
 
 
-def fit_cycles_for(target: str, *, timing_root=None, extra_timing_roots=()) -> "CycleCostFit | None":
-    """Seconds-per-cycle for ``target``'s cycle-accurate tier, or None when too little was measured.
-
-    ``None`` is a real answer, honoured the same way :func:`fit_for`'s is: a target nobody has timed
-    cannot have its capsules sized to a budget, and the correct response is to leave them shallow
-    rather than certify a size on a guess.
-    """
-    recs = _cycle_records(target, timing_root, extra_timing_roots)
-    xs = [r["cycles"] for r in recs.values()]
-    ys = [r["seconds"] for r in recs.values()]
-    ratios = [r["cycles"] / r["functional_cycles"] for r in recs.values()
-              if r.get("functional_cycles")]
+def _cycle_bucket_fit(target: str, engine: str, recs: "list[dict]") -> "CycleCostFit | None":
+    """One engine's seconds-per-cycle line, or ``None`` when its samples cannot support one."""
+    xs = [r["cycles"] for r in recs]
+    ys = [r["seconds"] for r in recs]
+    ratios = [r["cycles"] / r["functional_cycles"] for r in recs if r.get("functional_cycles")]
     if len(xs) < _MIN_SAMPLES or len(set(xs)) < 2:
         return None
     n = len(xs)
@@ -782,10 +823,55 @@ def fit_cycles_for(target: str, *, timing_root=None, extra_timing_roots=()) -> "
     if ratios:
         rs = sorted(ratios)
         med = rs[len(rs) // 2] if len(rs) % 2 else (rs[len(rs) // 2 - 1] + rs[len(rs) // 2]) / 2
-    return CycleCostFit(target=str(target), intercept_s=icept, per_cycle_s=slope, r2=r2,
-                        n_samples=n, cycles_min=min(xs), cycles_max=max(xs),
+    fields = {str(r.get("engine_field") or "") for r in recs}
+    return CycleCostFit(target=str(target), engine=str(engine), intercept_s=icept, per_cycle_s=slope,
+                        r2=r2, n_samples=n, cycles_min=min(xs), cycles_max=max(xs),
                         functional_ratio=med, n_ratio_samples=len(ratios),
-                        sources=tuple(sorted({r["source"] for r in recs.values()})))
+                        engine_basis=_STATED_ENGINE_FIELD if fields == {_STATED_ENGINE_FIELD}
+                        else ("+".join(sorted(f for f in fields if f)) or ""),
+                        sources=tuple(sorted({r["source"] for r in recs})))
+
+
+def fits_cycles_for(target: str, *, timing_root=None,
+                    extra_timing_roots=()) -> "dict[str, CycleCostFit]":
+    """``engine -> CycleCostFit`` for every engine whose samples can support a line.
+
+    An EMPTY mapping is a real answer, honoured the way :func:`fit_for`'s ``None`` is: a target nobody
+    has timed cannot have its capsules sized to a budget. Samples whose record names no engine are kept
+    as their own population under :data:`UNKNOWN_ENGINE` rather than folded into a named engine's -- a
+    measurement of unknown provenance is not evidence about a particular machine.
+    """
+    buckets: dict[str, list[dict]] = {}
+    for (_name, engine), rec in _cycle_records(target, timing_root, extra_timing_roots).items():
+        buckets.setdefault(engine, []).append(rec)
+    out: dict[str, CycleCostFit] = {}
+    for engine, recs in buckets.items():
+        fit = _cycle_bucket_fit(target, engine, recs)
+        if fit is not None:
+            out[engine] = fit
+    return out
+
+
+def fit_cycles_for(target: str, *, engine: str | None = None, timing_root=None,
+                   extra_timing_roots=()) -> "CycleCostFit | None":
+    """Seconds-per-cycle for ``target``'s cycle-accurate tier, or None when too little was measured.
+
+    ``None`` is a real answer, honoured the same way :func:`fit_for`'s is: a target nobody has timed
+    cannot have its capsules sized to a budget, and the correct response is to leave them shallow
+    rather than certify a size on a guess.
+
+    With no ``engine``, the BINDING (most expensive) bucket is returned rather than a line through all
+    of them -- the same rule and the same reason as :func:`tier_affordability.fit_for`: this answers
+    "may this capsule be allowed to run here", the binding cost is what decides, and under-predicting is
+    how a run gets committed to that never finishes. Pooling instead is what this function used to do,
+    and it produced a law describing neither engine (r2 0.111 against 0.82 and 0.61 split).
+    """
+    fits = fits_cycles_for(target, timing_root=timing_root, extra_timing_roots=extra_timing_roots)
+    if engine is not None:
+        return fits.get(str(engine))
+    if not fits:
+        return None
+    return max(fits.values(), key=lambda f: (f.per_cycle_s, f.intercept_s, f.engine))
 
 
 def predict_seconds_from_cycles(fit: "CycleCostFit | None", cycles: int) -> "float | None":

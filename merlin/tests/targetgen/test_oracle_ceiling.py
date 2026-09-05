@@ -108,7 +108,8 @@ def test_the_fit_recovers_the_rate_it_was_given(costly_history):
     assert fit is not None, "six samples at six cycle counts must produce a fit"
     assert fit.intercept_s == pytest.approx(130.0, abs=1.0)
     assert fit.per_cycle_s == pytest.approx(0.07, rel=0.02)
-    assert fit.engine == "slow_rtl", "the engine bucket key is read off the record, verbatim"
+    assert fit.engine == "slow_rtl", (
+        "an engine this repo has not declared keeps its own bucket, spelled as the record spelled it")
     # The cheap predictor, measured rather than assumed to be 1.0.
     assert fit.functional_ratio == pytest.approx(6.0, rel=0.05)
 
@@ -132,6 +133,66 @@ def test_engine_buckets_are_never_pooled(tmp_path):
         assert CC.fit_for(TARGET, "L3", engine="fast", roots=[root]).engine == "fast_rtl"
     finally:
         CC.reset_cache()
+
+
+def test_one_engine_under_SEVERAL_SPELLINGS_is_one_bucket(tmp_path):
+    """THE REGRESSION. The bucket key was whatever the record said, so ONE engine arrived under several
+    spellings and was fitted as several machines: measured, Verilator's 772 cycle-accurate records split
+    into ``verilator_console.log`` (498) and ``rtl_verilator_console.log`` (274), and a second target
+    spells the same engine a third way. Two buckets of one engine are two weaker fits of one law."""
+    root = tmp_path / "spellings"
+    spellings = ("verilator_console.log", "rtl_verilator_console.log",
+                 "atlas-verilator-rtl_console.log")
+    for i, cycles in enumerate((200, 500, 1000, 2000, 4000, 8000)):
+        _write_result(root, f"V{i}", cycles=cycles, seconds=130.0 + 0.07 * cycles,
+                      engine=None, tier="L3")
+        path = root / f"V{i}" / "capsule_result.json"
+        doc = json.loads(path.read_text())
+        doc["tiers"]["L3"]["evidence"] = spellings[i % len(spellings)]
+        path.write_text(json.dumps(doc), encoding="utf-8")
+    CC.reset_cache()
+    try:
+        fits = CC.fits_for(TARGET, roots=[root], tier="L3")
+        assert {e for _t, e in fits} == {"verilator"}, fits
+        assert next(iter(fits.values())).n_samples == 6, "one engine, one population, every sample"
+    finally:
+        CC.reset_cache()
+
+
+def test_a_tier_index_or_a_FIDELITY_is_not_an_engine():
+    """``L3`` is a rung and ``elaborated_rtl`` is the fidelity every one of these engines answers at.
+    A record whose only discriminator is one of those has named neither a machine nor a bucket."""
+    from merlin.targetgen import rtl_engine_policy as REP
+
+    assert CC.normalize_engine("L3_console.log") == CC.ENGINE_UNATTRIBUTED
+    assert CC.normalize_engine(REP.ELABORATED_RTL) == CC.ENGINE_UNATTRIBUTED
+    assert CC.normalize_engine("") == CC.ENGINE_UNATTRIBUTED
+    assert CC.normalize_engine(None) == CC.ENGINE_UNATTRIBUTED
+
+
+def test_the_engine_vocabulary_is_DERIVED_not_listed_here():
+    """Every name this normaliser recognises comes from ``rtl_engine_policy.ENGINE_PRIORITY``, the one
+    place the repo declares which elaborated-RTL engines exist -- so adding an engine needs no edit in
+    the cost model. An engine that is NOT declared there keeps its own bucket rather than being folded
+    into a declared one, which is what makes an unknown engine visible instead of misattributed."""
+    from merlin.targetgen import rtl_engine_policy as REP
+
+    for name in REP.ENGINE_PRIORITY:
+        assert CC.normalize_engine(f"rtl_{name}_console.log") == name
+        assert CC.normalize_engine(name) == name
+    undeclared = "arc-arcilator-cosim_console.log"
+    assert undeclared not in REP.ENGINE_PRIORITY
+    assert CC.normalize_engine(undeclared) == undeclared
+
+
+def test_a_STATED_engine_outranks_one_inferred_from_a_filename():
+    """The two sources are not equally strong: the console name comes from a static map that a run-time
+    engine substitution does not update. Where a record states its engine, that is what counts, and the
+    attribution says which source it came from."""
+    stated = {"engine": "gsim", "evidence": "verilator_console.log"}
+    assert CC.engine_attribution(stated) == ("gsim", "engine")
+    assert CC.engine_attribution({"evidence": "rtl_gsim_console.log"}) == ("gsim", "evidence")
+    assert CC.engine_attribution({}) == (CC.ENGINE_UNATTRIBUTED, "")
 
 
 # --- 2. it fires ----------------------------------------------------------------------------------

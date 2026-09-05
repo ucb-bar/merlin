@@ -26,7 +26,7 @@ from pathlib import Path
 __all__ = ["AFFORDABLE", "TOO_EXPENSIVE", "UNKNOWN", "EXTRAPOLATION_MARGIN", "MIN_SAMPLES",
            "ENGINE_UNATTRIBUTED", "CycleCostFit", "Affordability", "Sample", "IntakeCensus",
            "fits_for", "fit_for", "measured_cycles", "affordability", "reset_cache",
-           "intake_census"]
+           "intake_census", "normalize_engine", "engine_attribution"]
 
 #: How far past the largest measured cycle count a prediction is still honest, as a multiple. A fit is
 #: a local linearisation of a simulator's behaviour, not a law; beyond this the answer is "unknown".
@@ -214,18 +214,90 @@ class Affordability:
 
 # --- reading the measurements ---------------------------------------------------------------------
 
-def _engine_key(record: dict) -> str:
-    """The opaque engine discriminator for one tier record.
+def _split_tokens(value: str) -> set[str]:
+    """``value`` broken into lowercase tokens on its delimiters. Structural, no pattern matching."""
+    text = str(value).lower()
+    for ch in "-_./\\ :":
+        text = text.replace(ch, " ")
+    return {t for t in text.split() if t}
 
-    Structural: the first of :data:`_ENGINE_FIELDS` that carries a value wins and is used VERBATIM.
-    No parsing, no meaning attached -- a key is only ever compared with another key. A record naming
-    no engine gets :data:`ENGINE_UNATTRIBUTED` rather than being guessed into a named bucket.
+
+def _engine_vocabulary() -> "tuple[tuple[str, ...], frozenset[str]]":
+    """``(engine names, tokens that name something OTHER than an engine)``, both DERIVED.
+
+    The engine names are ``rtl_engine_policy.ENGINE_PRIORITY`` -- the one place this repo declares which
+    elaborated-RTL engines exist and in what cost order -- so adding an engine needs no edit here. The
+    second set is what must never become a bucket: ``ELABORATED_RTL`` is a FIDELITY every one of those
+    engines answers at, and the ``tier_sim`` map's keys are TIER INDICES, so a record whose only
+    discriminator is one of those has named a rung and not a machine.
+    """
+    from .rtl_engine_policy import ELABORATED_RTL, ENGINE_PRIORITY
+
+    not_an_engine = {ELABORATED_RTL.lower()}
+    try:
+        from .capsule_runner import _TIER_SIM
+
+        not_an_engine |= {str(k).lower() for k in _TIER_SIM}
+    except Exception:                              # noqa: BLE001 - an unimportable map is no vocabulary
+        pass
+    return ENGINE_PRIORITY, frozenset(not_an_engine)
+
+
+def normalize_engine(value) -> str:
+    """The bucket one engine spelling belongs in.
+
+    WHY THIS IS NOT VERBATIM ANY MORE. The key used to be whatever the record said, so ONE engine
+    arrived under several spellings and was fitted as several machines: measured on this repo's largest
+    corpus, Verilator's 772 cycle-accurate records split into ``verilator_console.log`` (498) and
+    ``rtl_verilator_console.log`` (274), and on another target the same engine appears a third way
+    (``atlas-verilator-rtl_console.log``). Two buckets of one engine are two weaker fits of the same
+    law, and the caller comparing engines sees a machine that does not exist.
+
+    Structural and token-based: a value is split on its delimiters and matched against the DERIVED
+    engine vocabulary by whole-token equality (no substring matching, no patterns). The first engine in
+    cost order wins, so the answer does not depend on how a filename was ordered. A value naming a tier
+    or the elaborated-RTL FIDELITY names no engine and is :data:`ENGINE_UNATTRIBUTED`. Anything else is
+    kept VERBATIM -- an engine this repo has not declared still gets its own bucket rather than being
+    folded into another's.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return ENGINE_UNATTRIBUTED
+    known, not_an_engine = _engine_vocabulary()
+    tokens = _split_tokens(raw)
+    for name in known:
+        if str(name).lower() in tokens:
+            return str(name)
+    if raw.lower() in not_an_engine or (tokens & not_an_engine):
+        return ENGINE_UNATTRIBUTED
+    return raw
+
+
+def engine_attribution(record: dict) -> "tuple[str, str]":
+    """``(engine bucket, the FIELD it was read from)`` for one tier record.
+
+    The field is carried because the two sources are not equally strong. A record's own ``engine`` field
+    is a STATEMENT by the runner. An ``evidence`` filename is an INFERENCE, and ``cert_affordability``
+    records the measured reason to distrust it: the console name comes from the contract's static
+    ``tier_sim`` map, which a run-time engine substitution does not update, so a GSIM console could be
+    written under Verilator's name. Both are used -- an inference that separates two engines beats
+    pooling them, and where the two coexist on disk today they AGREE on every one of the 758 records
+    that carry both -- but which one a bucket rests on stays readable rather than implied.
     """
     for field in _ENGINE_FIELDS:
         value = record.get(field)
         if isinstance(value, str) and value.strip():
-            return value.strip()
-    return ENGINE_UNATTRIBUTED
+            return normalize_engine(value), str(field)
+    return ENGINE_UNATTRIBUTED, ""
+
+
+def _engine_key(record: dict) -> str:
+    """The engine discriminator for one tier record, normalized onto one bucket per engine.
+
+    A record naming no engine gets :data:`ENGINE_UNATTRIBUTED` rather than being guessed into a named
+    bucket: a sample of unknown provenance is not evidence about a particular engine.
+    """
+    return engine_attribution(record)[0]
 
 
 def _is_cycle_accurate(record: dict) -> bool:

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from merlin.targetgen import cert_cost as CC
 
 
@@ -117,4 +119,101 @@ def test_the_deepest_accurate_tier_is_the_cost_when_several_ran(tmp_path):
                "cycle_accurate": True, "derived_from_rtl": True}}}
     _write(tmp_path, [doc])
     recs = CC._cycle_records("t", root=tmp_path)
-    assert recs["multi"]["seconds"] == 900.0
+    assert recs[("multi", CC.UNKNOWN_ENGINE)]["seconds"] == 900.0
+
+
+# --- the engine is part of what identifies a cost sample ------------------------------------------
+# Two elaborated-RTL engines answer the SAME capsule at the SAME fidelity and are not interchangeable
+# as cost samples. Measured on this repo's largest corpus: 0.229 s/cycle against 0.0035 s/cycle, 65x
+# apart with no overlap, so a line through both describes neither machine -- 88 pooled samples fit at
+# r2 0.111 where the same records split by engine fit at 0.82 and 0.61.
+
+def _engine_corpus(tmp_path):
+    """One corpus, two engines, each a clean line -- and the two lines wildly apart."""
+    docs = []
+    for i in range(6):
+        cyc = 500 * (i + 1)
+        docs.append({"capsule": f"S{i}", "tiers": {"L3": {
+            "timing": {"sim_active_s": 50.0 + 0.23 * cyc}, "cycles": cyc,
+            "cycle_accurate": True, "derived_from_rtl": True,
+            "evidence": "rtl_verilator_console.log"}}})
+        docs.append({"capsule": f"F{i}", "tiers": {"L3": {
+            "timing": {"sim_active_s": 15.0 + 0.0035 * cyc}, "cycles": cyc,
+            "cycle_accurate": True, "derived_from_rtl": True, "engine": "gsim"}}})
+    _write(tmp_path, docs)
+
+
+def test_two_engines_are_never_pooled_into_one_law(tmp_path):
+    """THE REGRESSION. ``_cycle_records`` keyed on the capsule NAME and never read the engine, so both
+    engines' seconds were fitted as one line -- and the key also silently discarded a sample whenever
+    one capsule had run on both."""
+    _engine_corpus(tmp_path)
+    fits = CC.fits_cycles_for("t", timing_root=tmp_path)
+    assert set(fits) == {"verilator", "gsim"}, fits
+    assert fits["verilator"].per_cycle_s == pytest.approx(0.23, rel=1e-6)
+    assert fits["gsim"].per_cycle_s == pytest.approx(0.0035, rel=1e-6)
+    assert fits["verilator"].r2 > 0.999 and fits["gsim"].r2 > 0.999
+
+    # THE FALSIFIER: the same seconds fitted with no engine axis describe neither engine, and the
+    # pooled r2 collapses. This is the number that was measured on the real corpus (0.111).
+    pooled = _pooled_fit(tmp_path)
+    assert pooled["r2"] < 0.5, "a pooled fit through two 65x-apart engines cannot explain the variance"
+    assert pooled["per_cycle_s"] != pytest.approx(0.23, rel=1e-2)
+    assert pooled["per_cycle_s"] != pytest.approx(0.0035, rel=1e-2)
+
+
+def test_a_capsule_certified_on_BOTH_engines_keeps_both_samples(tmp_path):
+    """Keyed on the name alone, whichever file sorted last silently won -- so the cheap engine's
+    evidence disappeared the moment the slow one ran. On the real corpus that cost 22 of 110 records."""
+    _write(tmp_path, [
+        {"capsule": "shared", "tiers": {"L3": {"timing": {"sim_active_s": 800.0}, "cycles": 1000,
+                                               "cycle_accurate": True, "derived_from_rtl": True,
+                                               "evidence": "verilator_console.log"}}},
+        {"capsule": "shared", "tiers": {"L3": {"timing": {"sim_active_s": 4.0}, "cycles": 1000,
+                                               "cycle_accurate": True, "derived_from_rtl": True,
+                                               "engine": "gsim"}}}])
+    recs = CC._cycle_records("t", root=tmp_path)
+    assert {k[1] for k in recs} == {"verilator", "gsim"}
+    assert recs[("shared", "verilator")]["seconds"] == 800.0
+    assert recs[("shared", "gsim")]["seconds"] == 4.0
+
+
+def test_the_engine_bucket_says_whether_it_was_STATED_or_INFERRED(tmp_path):
+    """An evidence filename is an inference -- the console name comes from a static map a run-time
+    engine substitution does not update -- so a bucket resting on one must say so rather than read like
+    a statement by the runner."""
+    _engine_corpus(tmp_path)
+    fits = CC.fits_cycles_for("t", timing_root=tmp_path)
+    assert fits["gsim"].engine_basis == "engine", "a stated engine is not an inference"
+    assert fits["verilator"].engine_basis == "evidence"
+    assert fits["verilator"].to_dict()["engine"] == "verilator"
+
+
+def test_with_no_engine_named_the_BINDING_bucket_is_returned(tmp_path):
+    """Not a line through all of them. This answers "may this capsule be allowed to run here", the
+    binding cost is what decides, and under-predicting is how a run gets committed to that never
+    finishes."""
+    _engine_corpus(tmp_path)
+    binding = CC.fit_cycles_for("t", timing_root=tmp_path)
+    assert binding is not None and binding.engine == "verilator"
+    assert CC.fit_cycles_for("t", engine="gsim", timing_root=tmp_path).engine == "gsim"
+    assert CC.fit_cycles_for("t", engine="no_such_engine", timing_root=tmp_path) is None, (
+        "an engine with no measured history does not inherit another's law")
+
+
+def _pooled_fit(tmp_path) -> dict:
+    """The fit this module used to produce: every sample, keyed on the capsule name alone."""
+    import statistics
+
+    pooled: dict[str, tuple[float, int]] = {}
+    for (name, _engine), rec in sorted(CC._cycle_records("t", root=tmp_path).items()):
+        pooled[name] = (rec["seconds"], rec["cycles"])       # last one wins, as the old key did
+    xs = [c for _s, c in pooled.values()]
+    ys = [s for s, _c in pooled.values()]
+    mx, my = statistics.mean(xs), statistics.mean(ys)
+    den = sum((x - mx) ** 2 for x in xs)
+    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / den
+    icept = my - slope * mx
+    sst = sum((y - my) ** 2 for y in ys)
+    r2 = 1.0 - sum((y - (icept + slope * x)) ** 2 for x, y in zip(xs, ys)) / sst
+    return {"r2": r2, "per_cycle_s": slope, "n": len(xs)}

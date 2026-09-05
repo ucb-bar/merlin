@@ -219,12 +219,68 @@ def test_one_capsule_on_two_engines_keeps_both_samples(tmp_path):
 
 
 def test_an_unrecorded_engine_is_unknown_never_guessed(tmp_path):
-    """As of today NO record on disk carries an engine. Inferring one from the console FILENAME is the
-    trap this discriminator closes: `sim_name` comes from the contract's static tier_sim map, which a
-    run-time engine substitution does not update, so GSIM consoles were written under Verilator's name.
-    """
+    """A record carrying NO discriminator at all names no engine and must not be guessed into a named
+    bucket -- a sample of unknown provenance is not evidence about a particular machine."""
     _result(tmp_path, "C2", 10.0)
     assert set(CC._timing_records("t", root=tmp_path)) == {("C2", CC.UNKNOWN_ENGINE)}
+
+
+def test_an_engine_recorded_only_in_the_EVIDENCE_filename_still_separates_the_buckets(tmp_path):
+    """The recoverable history. Most cycle-accurate records on disk predate the ``engine`` field and
+    carry the engine only as a console filename -- 772 of one target's 1447, under two different
+    spellings of the same engine. Read as unattributed, all of them landed in ONE bucket with the
+    genuinely unattributed records; read verbatim, one engine became two.
+
+    The inference is weaker than a statement and the fit says which it rests on
+    (:attr:`CycleCostFit.engine_basis`), but separating two engines beats pooling them: where both
+    sources coexist on disk today they agree on every one of the 758 records that carry both."""
+    import json
+
+    for name, evidence, seconds in (("C3", "verilator_console.log", 90.0),
+                                    ("C4", "rtl_verilator_console.log", 92.0),
+                                    ("C5", "rtl_gsim_console.log", 4.0),
+                                    ("C6", None, 7.0)):
+        d = tmp_path / name
+        d.mkdir()
+        tier = {"timing": {"sim_active_s": seconds}, "cycle_accurate": True,
+                "derived_from_rtl": True}
+        if evidence:
+            tier["evidence"] = evidence
+        (d / "capsule_result.json").write_text(
+            json.dumps({"capsule": name, "tiers": {"L3": tier}}), encoding="utf-8")
+
+    recs = CC._timing_records("t", root=tmp_path)
+    assert set(recs) == {("C3", "verilator"), ("C4", "verilator"), ("C5", "gsim"),
+                         ("C6", CC.UNKNOWN_ENGINE)}, (
+        "two spellings of one engine must be one bucket, and a record naming none stays unattributed")
+
+
+def test_a_mixture_recoverable_only_from_the_EVIDENCE_is_still_reported_as_a_mixture(tmp_path,
+                                                                                     monkeypatch):
+    """THE LIVE PATH. The element fit is the one that sizes capsules today, and its callers pass no
+    ``engine=``. It read the ``engine`` field and nothing else, so a history whose engines are only
+    recoverable from the console name reported ``mixed_engines is False`` -- a two-engine mixture that
+    said it was not one. The fit is unchanged (same samples, same coefficients); what changes is that a
+    caller can now SEE it must refit per engine."""
+    import json
+
+    sizes = {}
+    for i in range(CC._MIN_SAMPLES + 1):
+        for tag, evidence, seconds in (("s", "verilator_console.log", 100.0 + 50 * i),
+                                       ("f", "rtl_gsim_console.log", 1.0 + i)):
+            name = f"{tag}{i}"
+            sizes[name] = 100 * (i + 1)
+            d = tmp_path / name
+            d.mkdir()
+            (d / "capsule_result.json").write_text(json.dumps({"capsule": name, "tiers": {"L3": {
+                "timing": {"sim_active_s": seconds}, "cycle_accurate": True,
+                "derived_from_rtl": True, "evidence": evidence}}}), encoding="utf-8")
+    fit = _fit(tmp_path, monkeypatch, sizes)
+    assert fit is not None
+    assert fit.engines == ("gsim", "verilator")
+    assert fit.mixed_engines is True, (
+        "a fit averaging two engines 50x apart reported itself as single-engine")
+    assert _fit(tmp_path, monkeypatch, sizes, engine="gsim").mixed_engines is False
 
 
 def _fit(tmp_path, monkeypatch, sizes, **kw):
