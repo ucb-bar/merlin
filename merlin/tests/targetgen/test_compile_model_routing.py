@@ -91,6 +91,98 @@ def _two_matmul_plan():
     return R.route_plan(dem, "gemmini")
 
 
+def _stub_oot_certification(monkeypatch, seen):
+    """Make both mesh paths deterministic while retaining their real simulator-selection seam."""
+    from merlin.targetgen import oot_runner
+
+    monkeypatch.setattr(oot_runner, "build_package", lambda *args, **kwargs: None)
+    monkeypatch.setattr(oot_runner, "load_package", lambda *args, **kwargs: object())
+
+    def certify(*args, **kwargs):
+        seen.append(kwargs["simulator"])
+        return {
+            "status": "pass",
+            "oracle": {"kind": "test_rtl", "result": "pass"},
+            "oracle_outputs": {"Y0": [[1]]},
+        }
+
+    monkeypatch.setattr(oot_runner, "certify", certify)
+
+
+@pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
+def test_required_gsim_reaches_dynamic_and_synthetic_mesh_paths(monkeypatch):
+    """The campaign's required RTL engine governs both whole-model calls and synthesized tiles.
+
+    Neither caller may independently revive the historical Verilator default when the trusted grader
+    pins GSIM but has not installed the compatibility-only ``MERLIN_MESH_SIM`` variable.
+    """
+    import merlin.compile_cli as CC
+    from merlin.targetgen import capsule_runner
+
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    monkeypatch.delenv("MERLIN_MESH_SIM", raising=False)
+    monkeypatch.setattr(
+        capsule_runner,
+        "chipyard_l3_selection",
+        lambda target: {
+            "engine": "gsim",
+            "fidelity": "elaborated_rtl",
+            "required_engine": "gsim",
+        },
+    )
+    seen = []
+    _stub_oot_certification(monkeypatch, seen)
+
+    CC._matmul_via_oot_cert(
+        "gemmini", "module {}", [[1]], [[1]], simulator=None, package="/pkg", timeout=1)
+    CC._mesh_verify(_two_matmul_plan(), target="gemmini", package="/pkg", timeout=1)
+
+    assert seen == ["gsim", "gsim", "gsim"]  # one dynamic call, then two synthesized tiles
+
+
+@pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
+def test_policy_selected_gsim_reaches_dynamic_and_synthetic_mesh_paths(monkeypatch):
+    """With no explicit request, both paths use the central L3 selection instead of Verilator."""
+    import merlin.compile_cli as CC
+    from merlin.targetgen import capsule_runner
+
+    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
+    monkeypatch.delenv("MERLIN_MESH_SIM", raising=False)
+    monkeypatch.setattr(
+        capsule_runner,
+        "chipyard_l3_selection",
+        lambda target: {"engine": "gsim", "fidelity": "elaborated_rtl"},
+    )
+    seen = []
+    _stub_oot_certification(monkeypatch, seen)
+
+    CC._matmul_via_oot_cert(
+        "gemmini", "module {}", [[1]], [[1]], simulator=None, package="/pkg", timeout=1)
+    CC._mesh_verify(_two_matmul_plan(), target="gemmini", package="/pkg", timeout=1)
+
+    assert seen == ["gsim", "gsim", "gsim"]
+
+
+@pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
+@pytest.mark.parametrize("path", ["dynamic", "synthetic"])
+def test_required_gsim_refuses_conflicting_mesh_simulator(monkeypatch, path):
+    """A legacy/requested Verilator value cannot override a required GSIM campaign silently."""
+    import merlin.compile_cli as CC
+
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    monkeypatch.setenv("MERLIN_MESH_SIM", "verilator")
+    seen = []
+    _stub_oot_certification(monkeypatch, seen)
+
+    with pytest.raises(RuntimeError, match="required RTL engine.*gsim.*verilator"):
+        if path == "dynamic":
+            CC._matmul_via_oot_cert(
+                "gemmini", "module {}", [[1]], [[1]], simulator=None, package="/pkg", timeout=1)
+        else:
+            CC._mesh_verify(_two_matmul_plan(), target="gemmini", package="/pkg", timeout=1)
+    assert seen == []
+
+
 @pytest.mark.skipif(not _gemmini_available(), reason="gemmini contract not resolvable in this env")
 def test_mesh_verify_synthesizes_and_passes(monkeypatch):
     """Each mesh matmul is synthesized as a real DxD merlin_iface tile and run through certify; a passing

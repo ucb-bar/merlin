@@ -18,9 +18,15 @@ def test_gemmini_config_matches_capsule_runner_constants():
     assert cfg.suite == "gemmini-capsule-bench"
     assert cfg.dtype == "i8xi8_i32"
     assert cfg.fourth_output_name == "lowered.llvm.mlir"      # inline_asm_insn endpoint
-    assert cfg.tier_sim == {"L2": "spike", "L3": "verilator", "L4": "vcs", "L5": "firesim"}
-    assert cfg.rtl_tiers == frozenset({"L3", "L4", "L5"})
-    assert cfg.oracle_tiers == ("L2", "L3", "L4", "L5")
+    # A TIER IS A FIDELITY, NOT A SIMULATOR. This used to read
+    # `{L3: verilator, L4: vcs, L5: firesim}`, which ranked VCS ABOVE Verilator as though it were a
+    # higher fidelity -- it is the same elaborated RTL, only better licensed -- and left GSIM
+    # unnameable, so a GSIM certification had to be forced past the contract by an env override. L3 is
+    # now "the elaborated design ran it" and `rtl_engine_policy` picks which engine answers; FireSim is
+    # a genuinely different rung (FPGA-emulated), so it keeps one.
+    assert cfg.tier_sim == {"L2": "spike", "L3": "elaborated_rtl", "L4": "firesim"}
+    assert cfg.rtl_tiers == frozenset({"L3", "L4"})
+    assert cfg.oracle_tiers == ("L2", "L3", "L4")
     assert cfg.perf_fields == ()                              # systolic: cycles only
     assert cfg.trace_gate == "rocc_insn"
 
@@ -75,3 +81,13 @@ def test_counters_ride_the_tier_record_only_when_reported() -> None:
     # A target whose oracle reports none is byte-identical to before.
     assert "counters" not in TierResult("L3", "pass", True, cycles=100).to_dict()
     assert "counters" not in TierResult("L3", "pass", True, cycles=100, counters={}).to_dict()
+
+
+def test_measurement_protocol_is_preserved_without_claiming_cache_state() -> None:
+    from merlin.targetgen.capsule_runner import TierResult
+
+    conditions = {"cache_state": "unknown", "cache_state_observed": False,
+                  "cache_protocol": "one_unmeasured_predecessor"}
+    row = TierResult("L3", "pass", True, measurement_conditions=conditions).to_dict()
+    assert row["measurement_conditions"] == conditions
+    assert "measurement_conditions" not in TierResult("L3", "pass", True).to_dict()

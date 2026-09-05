@@ -9,9 +9,62 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 import time
 from pathlib import Path
+
+
+_SIMS = ("spike", "verilator", "gsim", "vcs")
+
+
+def _required_rtl_engine() -> str | None:
+    return os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+
+
+def _default_sim() -> str:
+    required = _required_rtl_engine()
+    return required if required in _SIMS and required != "spike" else "verilator"
+
+
+def _sim_policy_error(sim: str) -> str | None:
+    """Mirror the driver-side enforcement so an invalid request fails before any channel work."""
+    if sim == "spike":
+        return None
+    required = _required_rtl_engine()
+    if required is None:
+        return None
+    if required not in _SIMS or required == "spike":
+        return (f"MERLIN_REQUIRED_RTL_ENGINE={required!r} is not a registered elaborated-RTL "
+                "self-check engine")
+    if sim != required:
+        return (f"--sim {sim!r} conflicts with MERLIN_REQUIRED_RTL_ENGINE={required!r}; "
+                f"use --sim 'spike' for a correctness-only screen or --sim {required!r} for RTL")
+    return None
+
+
+def _request_id() -> str:
+    """A diagnostic request id which stays unique across PID-namespace and clock reuse.
+
+    Namespace PIDs are short-lived and the previous millisecond clock component wrapped every
+    1,000,000 ms.  Both values have collided in long rounds, at which point a new shim can observe an
+    old request's response and completion marker.  Keep them for operator diagnostics, but add a
+    cryptographic nonce and use the full nanosecond clock rather than a modulo clock.
+    """
+    return f"{os.getpid()}_{time.time_ns()}_{secrets.token_hex(16)}"
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Publish one channel file only after all of its bytes are durable."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    try:
+        with tmp.open("x", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _verdict(txt: str):
@@ -48,7 +101,7 @@ def main(argv=None):
     # which PASSES the screen goes on to certify instead of stopping there. Choosing "spike"
     # explicitly is a legitimate fast screen, but it CANNOT certify: the mandatory cert tier
     # reports unavailable and the capsule is not a pass.
-    ap.add_argument("--sim", choices=["spike", "verilator", "vcs"], default="verilator")
+    ap.add_argument("--sim", choices=list(_SIMS), default=_default_sim())
     ap.add_argument("--capsules", default="all")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--timeout", type=int, default=1800)
@@ -59,15 +112,25 @@ def main(argv=None):
     ap.add_argument("--shape-coverage", action="store_true")
     a = ap.parse_args(argv)
 
+    policy_error = _sim_policy_error(a.sim)
+    if policy_error:
+        txt = json.dumps({"error": policy_error, "all_pass": False, "sim": a.sim,
+                          "required_rtl_engine": _required_rtl_engine()})
+        print(txt)
+        if a.out:
+            Path(a.out).write_text(txt)
+        return 2
+
     ws = Path(__file__).resolve().parent          # the shim lives at <ws>/agent_selfcheck.py
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
-    rid = f"{os.getpid()}_{int(time.time() * 1000) % 1000000}"
-    (ch / f"req_{rid}.json").write_text(json.dumps(
-        {"sim": a.sim, "capsules": a.capsules, "workers": a.workers, "timeout": a.timeout,
+    rid = _request_id()
+    deadline = time.time() + a.timeout + 240
+    _atomic_write(ch / f"req_{rid}.json", json.dumps(
+        {"protocol": 2, "request_id": rid, "deadline_unix_ns": int(deadline * 1_000_000_000),
+         "sim": a.sim, "capsules": a.capsules, "workers": a.workers, "timeout": a.timeout,
          "shape_coverage": bool(a.shape_coverage)}))
     resp, done = ch / f"resp_{rid}.json", ch / f"done_{rid}"
-    deadline = time.time() + a.timeout + 240
     while time.time() < deadline:
         if done.exists() and resp.exists():
             txt = resp.read_text()

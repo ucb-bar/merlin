@@ -46,9 +46,9 @@ def test_dim_matches_the_extracted_mesh_fact():
 
 
 def test_scratchpad_rows_match_the_extracted_memory_fact():
-    # The capacity-fit residency lever bounds resident operands by the scratchpad DEPTH — a
-    # CIRCT-extracted memory fact (memories[scratchpad].depth), never a hardcoded capacity. Pin it so
-    # the emitter's capacity budget can never drift from the extracted on-chip store geometry.
-    from merlin.targetgen.rtl.facts import load_facts
-    sp = next(m for m in load_facts("gemmini")["facts"]["memories"] if m["name"] == "scratchpad")
-    assert gm.SCRATCHPAD_ROWS == sp["depth"]
+    # LocalAddr indexes the complete banked scratchpad row range. Pin the emitter to the generic
+    # address-space derivation's total rows, not a single bank's CIRCT-extracted depth.
+    from merlin.targetgen.address_space import derive_address_space
+    sp = derive_address_space("gemmini").store("scratchpad")
+    assert sp is not None and sp.total_rows is not None
+    assert gm.SCRATCHPAD_ROWS == sp.total_rows

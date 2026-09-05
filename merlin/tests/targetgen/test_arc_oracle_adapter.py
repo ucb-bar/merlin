@@ -45,6 +45,23 @@ def test_bespoke_sim_overrides_when_declared():
     assert ad["L3"].__qualname__.startswith("_spike_verilator_adapter")
 
 
+def test_required_rtl_engine_pin_overrides_cost_order_and_binds_adapter(monkeypatch):
+    """A certificate-pinned experiment must run its declared engine, even if VCS is available."""
+    from merlin.runtime.backends import base as backends
+
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    monkeypatch.setattr(
+        backends, "get_backend",
+        lambda _target: type("Backend", (), {"available": lambda _self, _engine: True})())
+
+    selected = CR.chipyard_l3_selection("synthetic")
+    adapter = CR._sim_engine_adapters("chipyard", "synthetic")["L3"]
+
+    assert selected["engine"] == "gsim"
+    assert selected["required_engine"] == "gsim"
+    assert _closed_over(adapter) == {"gsim", "synthetic"}
+
+
 def test_arc_adapter_fails_closed_for_unknown_target():
     run = CR.mlc_arc_adapter("definitely_not_a_target")
     try:

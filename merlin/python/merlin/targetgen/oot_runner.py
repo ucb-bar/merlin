@@ -11,7 +11,7 @@ CLI:
     python -m merlin.targetgen.oot_runner --contract merlin/contract \\
         --package artifacts/targets/gemmini/merlin_native_v0 \\
         --input merlin/contract/examples/g0_matmul.interface.mlir \\
-        --run-id contract_smoke_g0 [--simulator spike|verilator] [--runs-root runs/gemmini_contract]
+        --run-id contract_smoke_g0 [--simulator spike|gsim|verilator] [--runs-root runs/gemmini_contract]
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +49,7 @@ CONTRACT_VERSION = "0.1"
 # graded by one of these carries a cycle-accurate cert; a functional tier (spike / the arc coarse
 # model) does not. Extensible as data: a new cycle-accurate sim adds its tool name here. These are
 # simulator tool names, never target names, so no target is baked by keying on the set.
-_CYCLE_ACCURATE_SIMULATORS = frozenset({"verilator", "vcs"})
+_CYCLE_ACCURATE_SIMULATORS = frozenset({"gsim", "verilator", "vcs"})
 
 # A package root IS the submission directory, so an argv token rooted at ``submission/`` is doubly
 # rooted. Only these prefixes are eligible for the strip below; every other token is left untouched.
@@ -118,6 +119,52 @@ class CertFailure(Exception):
         self.plane = plane
         self.category = category
         self.detail = detail
+
+
+#: The plane for a failure that is NOT about the graded artifact at all -- the harness could not put a
+#: declared input in front of it. It is deliberately NOT one of the submission planes (schema, parse,
+#: build, integrity, contract, oracle_*, ...) so that no reader, report or brief can mistake it for a
+#: verdict on the submission.
+INFRASTRUCTURE_PLANE = "infrastructure"
+
+
+class InfraCategory(str, Enum):
+    """Categories for :class:`InfraFailure`.
+
+    ``aet``'s :class:`~aet.core.failures.FailureCategory` enumerates ways a SUBMISSION can be wrong --
+    every member names something the graded artifact did (a syntax error, a numeric mismatch, a protocol
+    violation). A harness that could not stage its own inputs has done nothing of the kind, and borrowing
+    one of those names to say so is what this class exists to stop.
+    """
+
+    #: The staged capsule cohort is not on disk: never materialized, or collected mid-grade.
+    COHORT_NOT_MATERIALIZED = "cohort_not_materialized"
+
+    def __str__(self) -> str:
+        # The three recorders in this repo serialize a category differently -- `cf.category.value`
+        # (oot_runner), `str(cf.category)` (capsule_grade) and a `hasattr(..., "value")` probe
+        # (capsule_runner). Making __str__ agree with .value keeps the recorded string identical
+        # whichever one writes the row, instead of leaking "InfraCategory.COHORT_NOT_MATERIALIZED"
+        # into one report and the honest token into another.
+        return self.value
+
+
+class InfraFailure(CertFailure):
+    """The HARNESS failed, not the submission -- a declared input was missing, so nothing was measured.
+
+    A subclass of :class:`CertFailure` on purpose: every existing recorder already catches CertFailure
+    and writes ``plane``/``category``/``detail``, so an infrastructure fault is recorded honestly through
+    the paths that already exist, while a caller that wants to treat it specially (and the per-capsule
+    status mapping in ``capsule_runner`` does) can catch this narrower type first.
+
+    Why it exists. A grade resolves the per-target cohort symlink to a concrete staging dir once and then
+    reads capsules out of it for the whole grade; when a sibling materialization collected that dir, the
+    missing interface MLIR was raised as ``schema / structural_invariant_violation``, and an official
+    round-0 verdict recorded 31 of 33 capsules as structurally invalid SUBMISSIONS -- for a package that
+    scored 33/34 minutes earlier, with ``gradeable: True`` asserting the number was a real measurement.
+    The number was then handed to the next round as the agent's own failure history. A harness fault that
+    can wear a verdict's clothes is worse than a crash, because it gets believed and cited.
+    """
 
 
 class BackendDeclined(Exception):
@@ -530,7 +577,8 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
     entry = {"parse": "skipped", "lower_interface_to_target": "skipped",
              "emit_command_buffer": "skipped", "lower_target_to_llvm": "skipped"}
     semantic = {"reference_outputs_vs_simulate": "skipped"}
-    oracle = {"kind": "none", "derived_from_rtl": False, "cycle_accurate": False,
+    oracle = {"kind": "none", "engine": simulator,
+              "derived_from_rtl": False, "cycle_accurate": False,
               "result": "skipped", "cycles": None}
     oracle_outputs: dict | None = None      # the mesh's actual output values (for in-process callers)
     trace_check = {"required": bool(require_accelerator_trace), "status": "not_required",
@@ -670,7 +718,7 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
                                   f"oracle {simulator} invocation failed: {str(e)[-800:]}") from e
             ok = outputs_match(res["outputs"], ref) and outputs_match(res["outputs"], sim)
             oracle_outputs = res["outputs"]      # what the mesh actually produced (bit-exact == ref when ok)
-            oracle = {"kind": res["oracle"].get("kind"),
+            oracle = {"kind": res["oracle"].get("kind"), "engine": simulator,
                       "derived_from_rtl": res["oracle"].get("derived_from_rtl", False),
                       "cycle_accurate": simulator in _CYCLE_ACCURATE_SIMULATORS and ok,
                       "result": "pass" if ok else "fail", "cycles": res.get("cycles")}
@@ -800,7 +848,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--package", required=True)
     ap.add_argument("--input", required=True, help="path to an *.interface.mlir")
     ap.add_argument("--run-id", required=True)
-    ap.add_argument("--simulator", default="spike", choices=["spike", "verilator"])
+    ap.add_argument("--simulator", default="spike", choices=["spike", "gsim", "verilator"])
     ap.add_argument("--runs-root", default="out/runs/gemmini_contract")
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args(argv)

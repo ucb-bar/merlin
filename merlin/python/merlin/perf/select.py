@@ -461,10 +461,18 @@ class StopVerdict:
     fired: bool
     reason: str
     missing: tuple[str, ...] = ()
+    #: False when this condition CANNOT be answered in the caller's wiring, as opposed to having
+    #: been answered "no". The two are the same `fired: False` to a reader, and that is how a
+    #: condition that has never once been able to contribute comes to sit beside live ones looking
+    #: like a check that keeps passing. Measured: `predicted_remaining_below` returned the same
+    #: `missing` on 8 of 8 calls of a recorded run, because nothing in that configuration enumerates
+    #: an unevaluated candidate for it to price -- there, the search's candidate generator IS the
+    #: agent, so the host holds no pool. That is correct behaviour and it must still be visible.
+    evaluable: bool = True
 
     def to_dict(self) -> dict:
         return {"name": self.name, "fired": self.fired, "reason": self.reason,
-                "missing": list(self.missing)}
+                "missing": list(self.missing), "evaluable": self.evaluable}
 
 
 @dataclass(frozen=True)
@@ -501,10 +509,10 @@ def attainment_reached(state: SearchState, policy: StopPolicy) -> StopVerdict:
         return StopVerdict(name, False,
                            "the conservative attainable target is UNKNOWN, so attainment cannot be "
                            "evaluated; not stopping",
-                           ("a resolved structural bound for this workload",))
+                           ("a resolved structural bound for this workload",), evaluable=False)
     if is_unknown(state.best_cycles) or float(state.best_cycles) <= 0:
         return StopVerdict(name, False, "no measured cycle count yet; not stopping",
-                           ("at least one evaluated candidate",))
+                           ("at least one evaluated candidate",), evaluable=False)
     ratio = float(state.attainable_cycles) / float(state.best_cycles)
     if ratio >= policy.attainment_fraction:
         return StopVerdict(name, True,
@@ -527,12 +535,16 @@ def predicted_remaining_below(state: SearchState, policy: StopPolicy) -> StopVer
     name = "predicted_remaining_below"
     if is_unknown(state.best_cycles) or float(state.best_cycles) <= 0:
         return StopVerdict(name, False, "no measured cycle count to improve on yet; not stopping",
-                           ("at least one evaluated candidate",))
+                           ("at least one evaluated candidate",), evaluable=False)
     if is_unknown(state.predicted_best_cycles):
+        # NOT EVALUABLE, rather than evaluated and negative. A caller that never enumerates an
+        # unevaluated candidate can never supply this, so reporting it as a plain "did not fire"
+        # puts a condition that cannot contribute beside three that can.
         return StopVerdict(name, False,
                            "no remaining candidate carries a prediction, so the remaining "
                            "improvement is UNKNOWN; not stopping",
-                           ("a predicted cycle count for at least one unevaluated candidate",))
+                           ("a predicted cycle count for at least one unevaluated candidate",),
+                           evaluable=False)
     remaining = (float(state.best_cycles) - float(state.predicted_best_cycles)) / float(state.best_cycles)
     if remaining < policy.predicted_remaining:
         return StopVerdict(name, True,

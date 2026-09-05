@@ -30,6 +30,7 @@ from .capsule_common import tier_field as _tier_field
 from .capsule_common import tier_status as _tier_status
 from . import coverage_report as CV
 from .corpora import source_experiment_env
+from .oot_runner import INFRASTRUCTURE_PLANE as OOT_INFRASTRUCTURE_PLANE
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 
 
@@ -99,6 +100,16 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
     violations: list[str] = []
     execution = result.get("mesh_execution")
     tiles = result.get("mesh_tile_verification")
+    requested_engine = execution.get("simulator_requested") if isinstance(execution, dict) else None
+    if requested_engine is not None and (
+            not isinstance(requested_engine, str) or not requested_engine):
+        violations.append("model_requested_oracle_engine_malformed")
+        requested_engine = None
+    required_engine = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
+    if required_engine is not None and requested_engine is None:
+        violations.append("model_requested_oracle_engine_missing")
+    if required_engine is not None and requested_engine != required_engine:
+        violations.append("model_requested_oracle_engine_differs_from_required_engine")
 
     def _count(record, field: str, *, minimum: int = 0) -> int | None:
         value = record.get(field) if isinstance(record, dict) else None
@@ -124,6 +135,7 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
             violations.append(f"{prefix}_accelerator_trace_missing_or_invalid")
         oracle = record.get("oracle_evidence") if prefix == "model_call" else {
             "result": record.get("oracle_result"),
+            "engine": record.get("oracle_engine"),
             "derived_from_rtl": record.get("derived_from_rtl"),
             "cycle_accurate": record.get("cycle_accurate"),
         }
@@ -131,6 +143,12 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
                 or oracle.get("derived_from_rtl") is not True
                 or oracle.get("cycle_accurate") is not True):
             violations.append(f"{prefix}_oracle_fidelity_missing_or_invalid")
+        engine = oracle.get("engine") if isinstance(oracle, dict) else None
+        expected_engine = required_engine or requested_engine
+        if expected_engine is not None and (not isinstance(engine, str) or not engine):
+            violations.append(f"{prefix}_oracle_engine_missing_or_invalid")
+        elif expected_engine is not None and engine != expected_engine:
+            violations.append(f"{prefix}_oracle_engine_mismatch")
         identity = record.get("artifact_identity") if isinstance(record, dict) else None
         artifacts = identity.get("artifacts") if isinstance(identity, dict) else None
         if (not isinstance(identity, dict) or identity.get("version") != 1
@@ -237,6 +255,19 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
         violations.append("model_tile_oracle_unavailable")
     if n_unsynth not in (None, 0):
         violations.append("model_tile_unsynthesizable")
+    # THE SCREEN RUNG IS EVIDENCE, AND ITS ABSENCE IS A HOLE. A model declares
+    # `required_oracle_tiers: [L0, L1, L2, L3]`, so a cert-tier pass with no screen record means the
+    # capsule reached the cert tier without earning the tier below it -- the ordering every operator
+    # capsule obeys. Absent must never read as satisfied, so an unrecorded screen is a violation and
+    # not a silent omission.
+    n_screened = _count(tiles, "n_screened", minimum=1)   # None -> `_count` already recorded the hole
+    if n_screened is not None:
+        if _count(tiles, "n_screen_passed") != n_screened:
+            violations.append("not_all_model_tiles_screened")
+        if _count(tiles, "n_screen_failed") not in (None, 0):
+            violations.append("model_tile_screen_failed")
+        if _count(tiles, "n_screen_unavailable") not in (None, 0):
+            violations.append("model_tile_screen_oracle_unavailable")
     per_tile = tiles.get("per_tile") if isinstance(tiles, dict) else None
     if (not isinstance(per_tile, list) or n_tiles is None or len(per_tile) != n_tiles):
         violations.append("model_tile_evidence_missing_or_malformed")
@@ -303,6 +334,8 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
         "matmul_layers_unrouted": unrouted,
         "n_tiles": n_tiles,
         "n_tiles_certified": n_passed,
+        "simulator_requested": requested_engine,
+        "required_rtl_engine": required_engine,
         "dispatch_ledger_sha256": ledger_digest,
         "observed_lanes": sorted(observed_lanes),
         "dynamic_boundary": (actual_boundary or {}).get("boundary") if isinstance(
@@ -312,6 +345,46 @@ def model_execution_check(result: dict, capsule: dict | None = None) -> dict:
                  "accelerator regions executed through the submitted package and its required lanes "
                  "were exercised; it is not represented as a decoded single-kernel trace"),
     }
+
+
+def enforce_model_execution_check(result: dict, capsule: dict | None, *, target: str) -> dict:
+    """Attach and enforce a whole-model execution proof on the capsule verdict itself.
+
+    The score-level structural flag is not enough: QA and checkpoint readers intentionally re-open each
+    durable ``capsule_result.json``.  Before this enforcement a Verilator-backed model remained
+    ``status=pass, L3=pass`` under a GSIM pin; only the in-memory score carried a failing auxiliary check,
+    so those durable readers false-accepted it.  A wrong/missing required engine is ``incomplete`` (the
+    requested evidence did not run), while malformed evidence from the requested engine is a real fail.
+    """
+    check = model_execution_check(result, capsule)
+    result["model_execution_check"] = check
+    if check.get("status") == "pass":
+        return result
+
+    violations = [str(v) for v in (check.get("violations") or [])]
+    engine_unmeasured = any(
+        v.startswith("model_requested_oracle_engine_") or v.endswith("_oracle_engine_mismatch")
+        or v.endswith("_oracle_engine_missing_or_invalid")
+        for v in violations
+    )
+    status = "unavailable" if engine_unmeasured else "fail"
+    detail = "whole-model execution proof failed: " + ", ".join(violations)
+    for tier in CR._rtl_tiers_of(target):
+        record = (result.get("tiers") or {}).get(tier)
+        if isinstance(record, dict) and record.get("status") == "pass":
+            record.update(status=status, reason=detail, cycles=None,
+                          derived_from_rtl=False, cycle_accurate=False)
+
+    # Preserve a pre-existing stronger failure.  The dangerous case is the flattering pass that escaped
+    # into durable QA; convert that to an honest no-measurement or protocol verdict.
+    if result.get("status") == "pass":
+        result["status"] = "incomplete" if engine_unmeasured else "fail"
+        result["failure"] = {
+            "plane": "required_rtl_engine" if engine_unmeasured else "model_execution",
+            "category": "NOT_RUN_IS_NOT_PASS" if engine_unmeasured else "PROTOCOL_VIOLATION",
+            "detail": detail,
+        }
+    return result
 
 
 def cycles_by_tier(tiers: dict | None, *, ladder: list[str] | tuple[str, ...] = ()) -> dict[str, int]:
@@ -388,6 +461,19 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     capsules_root = ([str(Path(r).resolve()) for r in capsules_root]
                      if isinstance(capsules_root, (list, tuple))
                      else str(Path(capsules_root).resolve()))
+    # HOLD the staged cohort for the duration of this grade. `.resolve()` above is deliberate (a root that
+    # moved under a sibling thread's chdir yields an empty coverage dict instead of an error) but it also
+    # turns the per-target cohort SYMLINK into one concrete `.<target>.build.<pid>.<hex>` path that is then
+    # read for the whole grade -- 10-20 min functional, ~30-40 min per capsule on the cert tier. The
+    # materializer's collector used to drop any build older than 15 minutes, and it dropped one a live
+    # grade was mid-way through: 31 of 33 capsules were then recorded as structurally invalid SUBMISSIONS.
+    # The lease makes "still being read" a fact the collector can check rather than infer from age. It is
+    # advisory and best-effort -- if it cannot be taken, the grade proceeds exactly as before.
+    try:
+        from .contract.materialize import pin_cohort_builds
+        pin_cohort_builds(*(capsules_root if isinstance(capsules_root, list) else [capsules_root]))
+    except Exception:  # noqa: BLE001 -- pinning is an optimisation for the collector, never a gate
+        pass
 
     score: dict = {
         "task": f"{target}-mlir-oot-capsule", "package": str(pkg_dir),
@@ -482,8 +568,15 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
     _caps_by_name = {str(cap.get("name")): cap for cap in caps}
     for result in results:
         if result.get("kind") == "model":
-            result["model_execution_check"] = model_execution_check(
-                result, _caps_by_name.get(str(result.get("capsule"))))
+            enforce_model_execution_check(
+                result, _caps_by_name.get(str(result.get("capsule"))), target=target)
+            # The runner persisted the model result before this suite-level cross-record proof existed.
+            # Keep the durable row in sync because QA/selfcheck/checkpoint consumers deliberately re-glob
+            # it rather than trusting this function's in-memory score.
+            result_path = (Path(runs_root) / "runs" / CR.suite_for(target)
+                           / str(result.get("capsule")) / "capsule_result.json")
+            if result_path.is_file():
+                result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
     # collect decoded traces for coverage — read from the TARGET's own suite dir (run_capsule writes
     # under cfg.suite, e.g. atlas-capsule-bench), not the gemmini SUITE literal (which left the atlas
@@ -616,12 +709,36 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
                        f"unavailable, so the oracle never ran on them. n_passed is NOT a capability "
                        f"measurement for this run — fix the environment and re-grade before quoting it."),
         }
+    # THE HARNESS BROKE, NOT THE SUBMISSION. A capsule whose staged inputs were not on disk measured
+    # nothing at all, so it is excluded from the pass/fail denominators (NOT_MEASURED_STATUSES) — but
+    # exclusion ALONE would be the more dangerous of the two lies. Measured: 31 of 33 capsules lost their
+    # staging dir to a sibling materialization's collector; excluding them without this block leaves
+    # `2/2` and `all_pass` reachable, turning a total staging failure into a clean sweep. So the run is
+    # declared NOT gradeable and the fact is reported by name, the same fail-closed posture an empty
+    # suite and a missing oracle already get. A check that could not run must never read as success.
+    _infra = [r for r in results if r.get("status") == "infrastructure_fault"]
+    score["n_infrastructure_fault"] = len(_infra)
+    if _infra:
+        _paths = sorted({(r.get("failure") or {}).get("detail") or "unknown" for r in _infra})
+        score["infrastructure_fault"] = {
+            "n": len(_infra), "of": len(results),
+            "plane": OOT_INFRASTRUCTURE_PLANE,
+            "capsules": sorted(r["capsule"] for r in _infra)[:12],
+            "reasons": _paths[:2],
+            "detail": (f"{len(_infra)} of {len(results)} capsules could not be graded because their "
+                       f"STAGED INPUTS were missing — the capsule cohort was not materialized, or its "
+                       f"staging directory was removed while this grade was running. This is a HARNESS "
+                       f"fault: it is NOT a verdict on the submission, and n_passed/n_capsules is not a "
+                       f"measurement of it. Re-materialize the cohort and re-grade before quoting any "
+                       f"number from this run."),
+        }
     # `gradeable` means this run had a working numeric oracle. It did not, for those capsules, so it is
     # False even though an oracle was requested — the same fail-closed posture the empty suite gets.
-    score["gradeable"] = (not no_oracle) and not _empty and not _incomplete
+    score["gradeable"] = (not no_oracle) and not _empty and not _incomplete and not _infra
     score["n_not_gradeable_no_oracle"] = n_not_gradeable
     score["n_structural_pass"] = n_pass + n_not_gradeable
-    score["structural_pass"] = bool(not _empty and (n_pass + n_not_gradeable) == len(graded))
+    score["structural_pass"] = bool(not _empty and not _infra
+                                    and (n_pass + n_not_gradeable) == len(graded))
     score["numeric_all_exact"] = None if _empty else all(
         r.get("numeric", {}).get("status") == "pass" for r in graded)
     _trace_rows = [r for r in graded if r.get("kind") != "model"]

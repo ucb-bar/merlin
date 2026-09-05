@@ -14,6 +14,7 @@ fact`, while codegen_smoke reported codegen_ok: true throughout.
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 from merlin.targetgen import capsule_runner as CR
 
@@ -129,3 +130,39 @@ def test_command_buffer_backend_smoke_failure_is_not_an_n_a(monkeypatch):
     ok, reason = CR.codegen_smoke("some_accelerator")
     assert ok is False
     assert "broken kernel" in reason
+
+
+def test_gemmini_production_smoke_uses_the_shared_l3_engine_selection(monkeypatch):
+    """A required GSIM run must not secretly execute a Verilator-only production smoke first."""
+    from merlin.runtime.backends import base as backends
+    from merlin.runtime.reference import reference_outputs
+
+    backend = backends.get_backend("gemmini")
+    selected = {"engine": "gsim", "required_engine": "gsim"}
+    monkeypatch.setattr(CR, "chipyard_l3_selection", lambda target: selected)
+    seen: dict[str, str] = {}
+
+    def fake_available(engine):
+        seen["available"] = engine
+        return engine == "gsim"
+
+    def fake_run(cb, *, workdir, simulator, timeout):
+        seen["run"] = simulator
+        elf = Path(workdir) / "smoke.elf"
+        elf.write_bytes(b"ELF")
+        return {
+            "correct": True,
+            "outputs": reference_outputs(cb),
+            "oracle": {"derived_from_rtl": True},
+            "elf": str(elf),
+        }
+
+    # The public OOT backend package re-exports the implementation's functions.  Patch the globals in
+    # the implementation module where ``preflight_codegen_smoke`` resolves them.
+    monkeypatch.setattr(backend.gemmini, "available", fake_available)
+    monkeypatch.setattr(backend.gemmini, "run_command_buffer", fake_run)
+    ok, reason = backend.preflight_codegen_smoke(target="gemmini")
+
+    assert ok is True
+    assert seen == {"available": "gsim", "run": "gsim"}
+    assert "bit-exact on gsim RTL" in reason

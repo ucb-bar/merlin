@@ -324,18 +324,35 @@ def test_the_capability_report_invokes_every_analysis_and_names_each_refusal():
     """
     report = PM.capability_report("gemmini", rtl_facts_path=_facts_path())
     analyses = report["analyses"]
-    assert report["summary"]["analyses"] == len(analyses) >= 15
-    assert report["summary"]["derived"] + report["summary"]["unavailable"] == len(analyses)
-    # Every entry is one or the other, and an unavailable always says why.
+    summary = report["summary"]
+    assert summary["analyses"] == len(analyses) >= 15
+
+    # THE OUTCOME IS THREE-WAY, NOT TWO. An analysis built for another archetype is NOT_APPLICABLE
+    # on this one -- a target evidencing no vector unit has no vector term, and saying so is a
+    # RESULT. Folding that into "unavailable" would report a settled fact as missing evidence,
+    # which is the failure this report exists to avoid: it is the difference between "this target
+    # does not have one" and "we could not find out".
+    assert summary["derived"] + summary["unavailable"] + summary["not_applicable"] == len(analyses)
+    assert summary["applicable"] == len(analyses) - summary["not_applicable"]
     for name, row in analyses.items():
-        assert row["status"] in {"derived", "unavailable"}, name
-        assert ("value" in row) if row["status"] == "derived" else bool(row["reason"]), name
+        assert row["status"] in {"derived", "unavailable", "not_applicable"}, name
+        if row["status"] == "derived":
+            assert "value" in row, name
+        else:
+            # both non-derived outcomes must say why, in their own words
+            assert bool(row["reason"]), name
+    # and the distinction must actually be exercised, not merely permitted
+    assert summary["not_applicable"] >= 1, "no analysis reported a settled not-applicable result"
     # The archetype boundaries are stated, not silently missing.
     # The ISA now derives from the RoCC decode table, so this no longer refuses on the ISA. It
     # refuses further along, on a probe that needs the device -- which is a real boundary.
     assert analyses["schedule_dependence"]["status"] == "unavailable"
     assert analyses["schedule_dependence"]["reason"]
-    assert analyses["vector_term"]["status"] == "unavailable"
+    # NOT_APPLICABLE, not UNAVAILABLE. This target evidences no vector compute unit, so it HAS no
+    # vector term -- a settled fact about the machine. "unavailable" would say the analysis could
+    # not be carried out, which is a different claim and the one that hides a real gap.
+    assert analyses["vector_term"]["status"] == "not_applicable"
+    assert "no vector" in analyses["vector_term"]["reason"]
     # And the things this target genuinely establishes are established.
     assert analyses["structural_ceiling"]["status"] == "derived"
     assert analyses["tile_geometry"]["status"] == "derived"

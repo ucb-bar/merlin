@@ -132,6 +132,67 @@ def test_only_hidden_scoring_requests_capability_admission(monkeypatch):
     assert calls[1]["capability_admission"] is True
 
 
+def test_chipyard_formal_model_sim_uses_dynamic_rtl_engine_policy(monkeypatch):
+    """The formal model lane must use the same availability/cost policy as operator L3.
+
+    A static ``tier_sim[L3]`` value is only the manifest's historical binding.  It must not pin a
+    multi-hour model run to Verilator after an equally faithful GSIM adapter becomes available.
+    """
+    grader = _mod("grade_agent_run")
+    monkeypatch.setattr(grader.CR, "_bespoke_sim_via", lambda _target: "chipyard")
+    monkeypatch.setattr(
+        grader.CR, "chipyard_l3_selection",
+        lambda _target: {
+            "engine": "gsim", "fidelity": "elaborated_rtl",
+            "reason": "gsim available", "considered": [], "passed_over": ["vcs"],
+        },
+    )
+
+    resolved = grader._formal_model_simulator("gemmini")
+
+    assert resolved["engine"] == "gsim"
+    assert resolved["fidelity"] == "elaborated_rtl"
+    assert resolved["selection"] == "chipyard_l3_policy"
+
+
+def test_chipyard_formal_model_sim_refuses_non_rtl_policy_result(monkeypatch):
+    grader = _mod("grade_agent_run")
+    monkeypatch.setattr(grader.CR, "_bespoke_sim_via", lambda _target: "chipyard")
+    monkeypatch.setattr(
+        grader.CR, "chipyard_l3_selection",
+        lambda _target: {"engine": "spike", "fidelity": "functional_model"},
+    )
+
+    with pytest.raises(RuntimeError, match="elaborated_rtl"):
+        grader._formal_model_simulator("gemmini")
+
+
+def test_formal_model_install_overwrites_ambient_verilator_with_required_gsim(monkeypatch):
+    grader = _mod("grade_agent_run")
+    monkeypatch.setenv("MERLIN_MESH_SIM", "verilator")
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    monkeypatch.setattr(
+        grader, "_formal_model_simulator",
+        lambda _target: {"engine": "gsim", "fidelity": "elaborated_rtl"})
+
+    selected, inherited = grader._install_formal_model_simulator("gemmini")
+
+    assert selected["engine"] == "gsim"
+    assert inherited == "verilator"
+    assert grader.os.environ["MERLIN_MESH_SIM"] == "gsim"
+
+
+def test_formal_model_install_refuses_engine_different_from_pin(monkeypatch):
+    grader = _mod("grade_agent_run")
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    monkeypatch.setattr(
+        grader, "_formal_model_simulator",
+        lambda _target: {"engine": "verilator", "fidelity": "elaborated_rtl"})
+
+    with pytest.raises(RuntimeError, match="differs from required"):
+        grader._install_formal_model_simulator("gemmini")
+
+
 @pytest.mark.parametrize("field", ["integrity_status", "numeric_all_exact", "trace_all_pass"])
 def test_formal_completion_requires_clean_exact_structural_evidence(field):
     grader = _mod("grade_agent_run")

@@ -102,6 +102,30 @@ def _regression_section(verdicts: list[tuple[int, dict]]) -> list[str]:
             "replacement.", ""]
 
 
+def _errata_section(run_dir: Path) -> list[str]:
+    """Operator-authored RETRACTIONS of this harness's own prior output, if any.
+
+    Exists because a harness advisory can be WRONG, and a fresh session has no way to know it. Measured
+    2026-09-01 on merlincirct_arm4_func_20260901_codex1: the `out_stride_bytes` advisory derived its
+    `intended_value` from a packed row stride that did not match how the graded harness allocates the
+    buffer. The agent emitted the correct value, the advisory contradicted it, and the agent complied --
+    recording the change in `docs/iteration_notes.md`, where it then reads as settled fact to every later
+    round. Correcting the check is not enough on a resumed run: the false premise is already written into
+    the agent's own carried memory, and the brief is the only channel that can retract it.
+
+    Deliberately NOT a hint channel. An erratum states that a specific piece of OUR output was wrong and
+    must be re-derived; it never supplies the value. Placed before the progress log so it is read ahead of
+    the notes it contradicts.
+    """
+    errata = run_dir / "ERRATA.md"
+    if not errata.is_file():
+        return []
+    body = errata.read_text(encoding="utf-8", errors="replace").strip()
+    if not body:
+        return []
+    return [body, ""]
+
+
 def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> str:
     """Markdown brief for the round ABOUT TO START (``rnd`` = the round just graded)."""
     verdicts = _load_verdicts(run_dir)
@@ -109,6 +133,8 @@ def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> st
          "You are a FRESH session. Your ONLY memory of prior rounds is this brief, your `submission/` "
          "code, and `docs/iteration_notes.md`. Build on them — do not re-derive what you already worked "
          "out, and do NOT undo a change that improved a previous round.", ""]
+
+    L += _errata_section(run_dir)
 
     rows = [_row(n, v) for n, v in verdicts]
     if rows:
@@ -174,4 +200,46 @@ def write(run_dir: Path, ws: Path, rnd: int) -> Path:
     p = qa / "round_brief.md"
     p.write_text(build(run_dir, ws, rnd, notes_stale=stale), encoding="utf-8")
     stamp.write_text(cur)
+    return p
+
+
+_RESUME_NOTE_BEGIN = "<!-- merlin:resume-note:begin -->"
+_RESUME_NOTE_END = "<!-- merlin:resume-note:end -->"
+
+
+def _leading_resume_note(existing: str) -> str:
+    """Return the one harness-owned RESUME prefix, including legacy unmarked briefs.
+
+    ``write`` intentionally replaces a completed round's old banner. This parser is only used by the
+    pre-launch refresh: there the banner describes the partial turn about to resume and must survive
+    rebuilding the rest of the brief from current operator input.
+    """
+    if existing.startswith("> ## RESUME") and existing.find(_RESUME_NOTE_BEGIN) >= 0:
+        end = existing.find(_RESUME_NOTE_END, existing.find(_RESUME_NOTE_BEGIN))
+        if end >= 0:
+            end += len(_RESUME_NOTE_END)
+            return existing[:end].rstrip() + "\n\n"
+    # Compatibility for briefs written before the marker pair existed. A generated brief starts at the
+    # first top-level Round brief heading, so this cannot absorb iteration notes or arbitrary markdown.
+    if existing.startswith("> ## RESUME"):
+        end = existing.find("\n# Round brief")
+        if end >= 0:
+            return existing[:end].rstrip() + "\n\n"
+    return ""
+
+
+def refresh_before_launch(run_dir: Path, ws: Path, rnd: int) -> Path:
+    """Refresh mutable harness guidance immediately before an agent turn.
+
+    TASK.md and treatment inputs stay sealed across ``--resume``. The round brief is deliberately an
+    operator/harness feedback channel, so a late ``ERRATA.md`` must be visible even if no new grade ran.
+    Preserve only a recognized leading RESUME banner and rebuild everything else. Unlike :func:`write`,
+    this does not advance the notes-staleness stamp merely because the driver relaunched.
+    """
+    qa = ws / "qa"
+    qa.mkdir(parents=True, exist_ok=True)
+    p = qa / "round_brief.md"
+    existing = p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
+    prefix = _leading_resume_note(existing)
+    p.write_text(prefix + build(run_dir, ws, rnd), encoding="utf-8")
     return p

@@ -92,6 +92,16 @@ def _facts_to_rc(facts_rec: dict) -> dict:
         out["mesh"] = [mesh["rows"], mesh["cols"]]
     if sp.get("bytes"):
         out["scratchpad_bytes"] = sp["bytes"]
+    layouts = next((i.get("bundles", {}) for i in facts.get("interfaces", [])
+                    if i.get("name") == "register_bundle_layouts"), {})
+    mvout_layout = layouts.get("ConfigMvoutRs1") if isinstance(layouts, dict) else None
+    if isinstance(mvout_layout, dict):
+        out["config_mvout_fields"] = sorted((mvout_layout.get("fields") or {}).keys())
+    build_features = next((i for i in facts.get("interfaces", [])
+                           if i.get("name") == "elaborated_rtl_features"), {})
+    max_pool = (build_features.get("features") or {}).get("max_pool")
+    if isinstance(max_pool, bool) and build_features.get("status") == "derived":
+        out["max_pool_supported"] = max_pool
     return out
 
 
@@ -120,9 +130,10 @@ def compile_trace_checks(facts_rec: dict, capsule: dict, prefix: str = "TRACE") 
         # exact MVOUT_COUNT only when the mesh is grounded (else a mesh-less RTL would be checked against a
         # silent DIM=16 default and false-fail/false-pass).
         if mesh:
-            M, N = shape
-            tiles = math.ceil(M / mesh[0]) * math.ceil(N / mesh[1])
-            L.append(f"// {prefix}-DAG: MVOUT_COUNT {tiles}{{{{$}}}}")  # exact tile coverage (RTL DIM + shape)
+            expected = RC.expected_mvout_count(capsule, rc_facts)
+            if expected is not None:
+                tiles, _geometry = expected
+                L.append(f"// {prefix}-DAG: MVOUT_COUNT {tiles}{{{{$}}}}")  # exact RTL store geometry
         L.append(f"// {prefix}-DAG: COMPUTE_PRESENT yes")
     elif op == "resident_reuse":
         # multi-matmul lower bound is not FileCheck-exact; leave the count to rtl_checks.screen().

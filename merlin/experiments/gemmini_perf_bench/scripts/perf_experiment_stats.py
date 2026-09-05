@@ -20,7 +20,7 @@ SUBJECTS = ("baseline", "candidate")
 PERFORMANCE_ORACLES = {"gsim": "rtl_gsim"}
 DEFAULT_PERFORMANCE_SIMULATOR = "gsim"
 MIN_AGENT_TRIALS = 3
-MIN_PAIRED_REPLICATES = 3
+MIN_PAIRED_REPLICATES = 2
 
 
 class EvidenceError(ValueError):

@@ -2,7 +2,8 @@
 
 You are a compiler engineer. Your job: build an **out-of-tree (OOT) MLIR backend** for the **Gemmini**
 systolic-array accelerator that is **numerically and functionally correct** — i.e. for each benchmark
-capsule, the command buffer your backend emits, run on the **real Gemmini RTL (verilator/VCS)**, produces
+capsule, the command buffer your backend emits, run on the **real Gemmini RTL through the experiment's
+required elaborated-RTL engine**, produces
 outputs that match the expected result exactly.
 
 ## What you are given (realistic HW bring-up — what ships with the RTL)
@@ -33,27 +34,28 @@ python agent_selfcheck.py --sim spike --capsules all     # functional: same inte
 It builds your package, runs the capsules on spike, and returns **pass/fail + mismatch_count + the failing
 plane** (never the expected values). Iterate on this until it is **fully clean**.
 
-**2. verilator — the cycle-accurate RTL cert, but SLOW (~2.5 min/capsule). Run it ASYNC so it never
-blocks your turn** — fire per-capsule jobs and poll:
+**2. Required elaborated-RTL engine — the cycle-accurate RTL cert.** The harness derives and pins the
+engine for the experiment in `MERLIN_REQUIRED_RTL_ENGINE`; do not substitute an engine based on a tier
+name. Run it ASYNC so it never blocks your turn — fire per-capsule jobs and poll:
 ```
-python simjob.py submit --sim verilator --capsules A1_mvin_mvout   # returns a job_id immediately
+test -n "$MERLIN_REQUIRED_RTL_ENGINE"                              # fail closed if the pin is absent
+python simjob.py submit --sim "$MERLIN_REQUIRED_RTL_ENGINE" --capsules A1_mvin_mvout
 python simjob.py poll   --job-id <id>                              # {state: queued|running|done, result}
 python simjob.py list                                              # your jobs
 ```
-Fire several per-capsule jobs and collect results; do **NOT** `--sim verilator --capsules all` synchronously
-(that would block your turn for ~an hour). Spike to iterate, verilator (async, per-capsule) to cert.
-
-> **VCS (L4) is UNAVAILABLE** in this environment (no adapter; it segfaults). Do not attempt it — verilator
-> is the cycle-accurate cert oracle.
+Fire several per-capsule jobs and collect results; do **NOT** submit `--capsules all` synchronously
+against the pinned RTL engine (that would block your turn for a long time). Spike is for iteration; the pinned engine (async,
+per-capsule) is for certification. A request for any other RTL engine is rejected by the broker and does
+not count as certification evidence.
 
 ## Definition of done — STOP when correct
 1. First get **`agent_selfcheck.py --sim spike --capsules all` FULLY clean** (all pass + trace clean). Do
    **NOT** write `READY_FOR_BARRIER` before that — a premature READY just costs you a round.
 2. Then write the empty file `submission/READY_FOR_BARRIER` and end your turn; the harness runs the
-   verilator (L3) cert on the real RTL.
-3. **A verilator failure or timeout is NOT the end** — you get the redacted cycle-accurate failures back and
-   may fix and retry (within the round budget). You are finished the moment **all public capsules pass on
-   verilator (L3)**.
+   pinned elaborated-RTL cert on the real hardware design.
+3. **A required-engine failure or timeout is NOT the end** — you get the redacted cycle-accurate failures
+   back and may fix and retry (within the round budget). You are finished the moment **all public capsules
+   pass on the experiment-required elaborated-RTL engine**.
 
 ## Integrity (DISQUALIFYING if violated)
 **Author the dialect yourself.** You may read the vanilla Gemmini repo, its docs, and its example

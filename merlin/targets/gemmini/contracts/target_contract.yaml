@@ -25,7 +25,14 @@ endpoint_kind: inline_asm_insn
 runner:
   suite: gemmini-capsule-bench
   dtype: i8xi8_i32
-  tier_sim: {L2: spike, L3: verilator, L4: vcs, L5: firesim}
+  # A TIER IS A FIDELITY, NOT A SIMULATOR. L3 is "the elaborated design ran it"; vcs, gsim and
+  # verilator all answer at that fidelity and which one does is an availability/cost decision, resolved
+  # by merlin.targetgen.rtl_engine_policy (ENGINE_PRIORITY = vcs, gsim, verilator) and recorded per run.
+  # This used to read {L3: verilator, L4: vcs, L5: firesim}, which ranked VCS *above* Verilator as
+  # though it were a higher fidelity -- it is the same elaborated RTL, only better licensed for signoff
+  # -- and left GSIM unnameable, so a GSIM cert had to be forced past the contract by
+  # MERLIN_REQUIRED_RTL_ENGINE. FireSim is a genuinely different rung (FPGA-emulated), so it keeps one.
+  tier_sim: {L2: spike, L3: elaborated_rtl, L4: firesim}
   # The DECLARED bespoke-sim engine (chipyard elaborates the spike L2 / verilator L3 tiers). Read by
   # capsule_runner._bespoke_sim_via so the sim engine comes from this contract, never a hardcoded
   # {spike,verilator} -> chipyard inference. A target with no bespoke sim omits this (arc-only).
@@ -47,6 +54,7 @@ encoding:
   # the former {f1,c_acc,acc_i8,acc_accum,full_c_bit} hex; cross-checked by test_encoding_manifest.
   semantic_class:          # RTL funct CODE -> the compiler's shared op class (the guardrail boundary:
     0: CONFIG              # codes are RTL-derived; the MVIN/MVOUT/... vocabulary is human-owned + shared).
+    1: MVIN2               # LOAD2_CMD: load-state 1, used for an independent second operand stream.
     2: MVIN                # HEADER-DERIVED: each name == gemmini.h `#define k_<NAME> <code>` (cross-checked
     3: MVOUT               # by circt_introspect.crosscheck_semantic_class_names) — this block is the
     4: COMPUTE_PRELOADED   # human-reviewed cache of those header names, kept for the codes the compiler
@@ -91,20 +99,6 @@ compute_units:
     ops: [matmul]
     scaling: per_channel
     requant: {ref: gemmini.accumulator_scale}
-    # WHICH MODULE OF THIS DESIGN'S OWN ELABORATION SEQUENCES THIS UNIT — the one aliasing fact the
-    # engine derivation cannot derive, so it is declared here (a per-target data file) and
-    # CROSS-CHECKED, never trusted: merlin.perf.occupancy.engine_set looks this module up in the
-    # elaborated FIRRTL + the control-FSM inventory and records a MISMATCH if it is not there.
-    #
-    # It exists because the engine set an overlap term is defined over is NOT the compute-unit list.
-    # This contract names one arithmetic unit; the RTL carries three decoupled command controllers
-    # (load / store / execute), each with its own control-state FSM and its own `completed` channel,
-    # and their concurrency is the only interesting performance term the device has. The derivation
-    # widens the inventory with all three — and without this line it cannot know that the mesh and
-    # the controller that sequences it are ONE engine, so it would count the mesh twice and invent a
-    # pair whose "overlap" is a unit overlapping itself. The mesh datapath (MeshWithDelays) is driven
-    # by ExecuteController; naming it here folds the two into one engine.
-    rtl_module: ExecuteController
     # Semantic-family capability (ARR denominator): a GEMM accelerator — int8 contraction on the mesh
     # (matmul + conv2d via im2col), the fused relu/requant/bias epilogue (elementwise_map on readout),
     # mvin/mvout DMA (movement), and max pooling fused on the store path (reduction).
@@ -124,15 +118,15 @@ compute_units:
       # dedicated LOOP_CONV_WS (funct 15) plus LOOP_CONV_WS_CONFIG_1/2/3 (16-18), so a rank-4 conv
       # region IS acceleratable. Declaring ranks [2] alone made the shipped conv2d capsules score
       # ineligible and silently left them out of the ARR denominator.
-      #
-      # rank 3 is the BATCHED contraction, and it is here on the same footing: evidenced, not assumed.
-      # `capability_derive._from_lowering` reports it because `device_shim` emits a 3-D entry for a
-      # (B,M,N,K) signature -- a batch is a loop over the same (M,N,K) kernel with the leading offset
-      # advanced, so it asks nothing of the device the rank-2 entry does not. Omitting it repeated the
-      # rank-4 mistake exactly: `is_eligible` answered "rank 3 not in contraction legal ranks [2, 4]"
-      # for every batch matmul, which removed those regions from the ARR denominator and RAISED recall,
-      # while the rewrite, the device builder and the shim's B loop were all already in place. On one
-      # real capture those are 16 of 106 contractions and 8.5% of all contraction MAC work.
+      # rank 3 is the BATCHED contraction path. Unlike rank 4 this is not a distinct hardware
+      # sequence: `linalg_lower` lowers a single batched matmul (batch,m,k)@(batch,k,n) by looping
+      # the batch and calling the same (M,N,K) kernel per independent slice, so the region IS
+      # acceleratable and the evidence class is LOWERING, not RTL. Omitting it made every batched
+      # matmul ineligible before it reached the device rewrite -- the machinery existed and the
+      # contract forbade its use. Three other targets already ship batched capsules (atlas
+      # AF12, mx_gemmini MF5, radiance RP10/R11); gemmini shipped none because of this line.
+      # Declaring a narrower rank set than the target can execute is the same denominator loss the
+      # mx_gemmini rank bug was (see merlin/python/merlin/targetgen/eligibility.py).
       - {family: contraction, dtypes: [int8], ranks: [2, 3, 4]}
       # Epilogue-only: per-channel scaling + requant apply on the way OUT of the accumulator, so an
       # elementwise map exists ONLY fused behind a contraction. Standalone would be a false_fallback.

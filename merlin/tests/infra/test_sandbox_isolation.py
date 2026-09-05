@@ -31,7 +31,12 @@ import pytest
 from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen.sandbox import build_sandbox
 from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_tokens, weight_files
+from merlin.targetgen.sandbox.answer_surfaces import (
+    AnswerSurface,
+    answer_surfaces,
+    audit_tokens,
+    weight_files,
+)
 from merlin.targetgen.sandbox.toolchain import UNIVERSAL_PROBES
 from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -195,6 +200,76 @@ def test_snapshot_bytes_do_not_follow_later_source_edits(tmp_path):
         assert out.stdout.splitlines() == ["before", "before"]
     finally:
         BW.remove_bundle_snapshot(ws)
+
+
+def test_post_snapshot_answer_file_is_not_mounted_inside_frozen_parent(tmp_path):
+    """A live-tree addition is absent from the run snapshot and needs no answer overlay.
+
+    The snapshot may bind a broad directory such as ``merlin/contract``.  If another host process
+    later creates a golden below that live directory, mount-table replay must inspect the frozen
+    *source* of the controlling bind.  Treating the live destination as the source makes
+    ``apply_answer_masks`` append a ``/dev/null`` file bind for a path absent from the snapshot; real
+    bwrap then tries to create that mount point below the read-only parent and aborts before the agent
+    starts.
+    """
+    repo = tmp_path / "repo"
+    contract = repo / "merlin/contract"
+    (contract / "capsules/public/A0").mkdir(parents=True)
+    (contract / "capsules/public/A0/capsule.yaml").write_text("name: A0\n", encoding="utf-8")
+    ws = tmp_path / "run/workspace"
+    bundle = {"allowed": [{"path": "merlin/contract"}]}
+
+    try:
+        BW.materialize_bundle_inputs(ws, bundle, repo=repo)
+        ws.mkdir(parents=True)
+        late_golden = contract / "capsules/_perf/PK00/golden.yaml"
+        late_golden.parent.mkdir(parents=True)
+        late_golden.write_text("outputs: []\n", encoding="utf-8")
+        surface = AnswerSurface("late golden", late_golden, "file", "golden")
+
+        argv = BW.apply_answer_masks(BW.base_argv(ws, bundle, repo=repo), [surface])
+
+        assert not BW.is_exposed(argv, late_golden)
+        assert ["--ro-bind", "/dev/null", str(late_golden)] not in [
+            argv[index:index + 3]
+            for index, token in enumerate(argv[:-2])
+            if token == "--ro-bind"
+        ]
+        if shutil.which("bwrap"):
+            completed = subprocess.run(
+                [*argv, "bash", "-c", f'test ! -e "{late_golden}"'],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            assert completed.returncode == 0, completed.stderr
+    finally:
+        BW.remove_bundle_snapshot(ws)
+
+
+def test_pinned_submission_mount_defeats_chmod_and_byte_write(tmp_path, monkeypatch):
+    """Same-UID mode changes cannot bypass the certification boundary inside bwrap."""
+    ws = tmp_path / "run/workspace"
+    submission = ws / "submission"
+    submission.mkdir(parents=True)
+    compiler = submission / "compiler.py"
+    compiler.write_text("certified\n", encoding="utf-8")
+    monkeypatch.setenv(BW.PINNED_SUBMISSION_READ_ONLY_ENV, "1")
+
+    argv = BW.apply_pinned_submission_guard(BW.base_argv(ws, {}, repo=tmp_path), ws)
+    assert argv[-3:] == ["--ro-bind", str(submission), str(submission)]
+    if not shutil.which("bwrap"):
+        pytest.skip("bwrap unavailable — final read-only mount tested structurally only")
+
+    completed = subprocess.run(
+        [*argv, "bash", "-c",
+         "chmod -R u+w submission 2>/dev/null || true; printf mutated >> submission/compiler.py"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode != 0
+    assert compiler.read_text(encoding="utf-8") == "certified\n"
 
 
 def test_tampered_snapshot_payload_refuses_resume(tmp_path):

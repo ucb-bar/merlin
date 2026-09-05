@@ -207,6 +207,9 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
         tiers = r.get("tiers") or {}
         out[r.get("capsule", cr.parent.name)] = {
             "status": r.get("status"),
+            # Opaque content address of the exact executable plus target/RTL identity. It reveals no
+            # answer-bearing value; promotion uses it solely to retain a still-applicable certificate.
+            "execution_digest": _execution_digest_from_result(cr),
             # The backend's own STATED refusal. Redaction-safe: it is text the SUBMISSION wrote about
             # its own coverage, never corpus or golden data.
             "declined": r.get("declined"),
@@ -227,6 +230,15 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
             "failure_detail": _redact_detail(fail.get("detail")),
         }
     return out
+
+
+def _execution_digest_from_result(capsule_result: Path) -> str | None:
+    """Best-effort bridge to the shared promotion identity; absence keeps legacy invalidation."""
+    try:
+        from tier_promote import execution_digest
+        return execution_digest(capsule_result)
+    except Exception:  # noqa: BLE001 -- verdict production must not fail for an optional cache key
+        return None
 
 
 def _loop_target_sim_via() -> tuple[str, str]:
@@ -303,6 +315,7 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
             "failure_plane": rich.get("failure_plane"),
             "failure_category": rich.get("failure_category"),
             "failure_detail": rich.get("failure_detail"),
+            "execution_digest": rich.get("execution_digest"),
         })
         if rich.get("declined"):
             per_capsule[-1]["declined"] = rich["declined"]
@@ -360,6 +373,28 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
                         f"numeric bug. See `declined` on those rows."
                         if score.get("n_declined") else "")),
         }
+    # AN INFRASTRUCTURE FAULT IS NOT A ROUND RESULT. `grade` already refuses to call such a run
+    # gradeable, but this verdict is what gets ARCHIVED as qa_history/verdict_round_NN.json, fed to the
+    # next round as the agent's own failure history by round_brief, and read back by every trajectory
+    # and status reporter. Measured: a round-0 grade lost its staged cohort to a sibling
+    # materialization's collector and the archive recorded `n_passed: 2, n_capsules: 33,
+    # gradeable: true, first_failure_planes: {schema: 31}` for a submission that scored 33/34 -- then
+    # handed that to round 1 as 31 structural defects of its own making. Carry the fault through, and
+    # never let `gradeable`/`all_pass` claim otherwise.
+    if score.get("infrastructure_fault"):
+        _inf = score["infrastructure_fault"]
+        verdict["gradeable"] = False
+        verdict["all_pass"] = False
+        verdict["infrastructure_fault"] = {
+            "n": _inf.get("n"), "of": _inf.get("of"), "plane": _inf.get("plane"),
+            "capsules": _inf.get("capsules"),
+            "detail": _redact_detail(str(_inf.get("detail", ""))),
+        }
+        verdict["note"] = (
+            "THIS ROUND WAS NOT GRADED. " + str(_inf.get("detail", "")) + " The pass/fail counts below "
+            "are NOT a measurement of the submission and must not be quoted or compared against another "
+            "round. Nothing here is a defect for the agent to fix.")
+
     # top-level integrity failure (K0/K1 fail-closed)
     if "failure" in score:
         verdict["package_failure"] = {"plane": score["failure"]["plane"],

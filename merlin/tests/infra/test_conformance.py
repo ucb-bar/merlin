@@ -6,6 +6,8 @@ transcript + submission, no live run, no target.
 from __future__ import annotations
 
 import json
+import hashlib
+import shlex
 import sys
 from pathlib import Path
 
@@ -88,6 +90,45 @@ def test_regex_and_missing_tools_flagged(tmp_path):
     assert any(h["kind"] == "re.search" for h in v["regex_hits"])
 
 
+def test_byte_identical_vendored_xdsl_regex_is_attributed_not_charged(
+        tmp_path, monkeypatch: pytest.MonkeyPatch):
+    vendored = "import re\nx = re.search('a', 'b')\n"
+    digest = hashlib.sha256(vendored.encode()).hexdigest()
+    monkeypatch.setattr(C, "_vendored_xdsl_hashes", lambda: frozenset({digest}))
+    sub = _submission(tmp_path, {"compiler.py": "import ast\n"})
+    (sub / "xdsl").mkdir()
+    (sub / "xdsl/parser.py").write_text(vendored)
+    tp = _transcript(tmp_path / "t.jsonl", [
+        ("bash", {"command": "python3 agent_selfcheck.py --capsules all"}),
+    ])
+    v = C.compute(tp, sub, "merlin_assisted", "inline_asm_insn",
+                  resolved_tools={"xdsl_kit"})
+    assert v["checks"]["no_regex_ok"] is True
+    assert v["regex_hits"] == []
+    assert v["vendored_regex_files"] == [{
+        "file": "xdsl/parser.py", "n_hits": 1,
+        "attribution": "byte_identical_granted_xdsl",
+    }]
+
+
+def test_xdsl_directory_name_does_not_exempt_modified_regex(
+        tmp_path, monkeypatch: pytest.MonkeyPatch):
+    upstream = "import re\nx = re.search('a', 'b')\n"
+    digest = hashlib.sha256(upstream.encode()).hexdigest()
+    monkeypatch.setattr(C, "_vendored_xdsl_hashes", lambda: frozenset({digest}))
+    sub = _submission(tmp_path, {})
+    (sub / "xdsl").mkdir()
+    (sub / "xdsl/parser.py").write_text(upstream + "agent_change = True\n")
+    tp = _transcript(tmp_path / "t.jsonl", [
+        ("bash", {"command": "python3 agent_selfcheck.py --capsules all"}),
+    ])
+    v = C.compute(tp, sub, "merlin_assisted", "inline_asm_insn",
+                  resolved_tools={"xdsl_kit"})
+    assert v["checks"]["no_regex_ok"] is False
+    assert any(hit["file"] == "xdsl/parser.py" for hit in v["regex_hits"])
+    assert v["vendored_regex_files"] == []
+
+
 def test_prose_mention_is_not_a_tool_use(tmp_path):
     """The key false-positive guard: an agent that WRITES 'run isa_tools.py asm' into its plan but never
     executes it is NOT credited with using asm (only the executed command counts, not written content)."""
@@ -119,6 +160,39 @@ def test_failed_or_unanswered_required_commands_do_not_satisfy_conformance(tmp_p
     assert v["tool_evidence"] == {
         "n_calls": 4, "n_successful": 2, "n_failed": 1, "n_missing_results": 1,
     }
+
+
+def test_full_selfcheck_counts_complete_nonzero_grade_response(tmp_path):
+    """The CLI exits nonzero for a real all-capsule run with screened/failed tiers; it still ran all."""
+    sub = _submission(tmp_path, {})
+    calls = [("bash", {"command":
+              "python3 agent_selfcheck.py --submission submission --sim spike --capsules all"})]
+    complete = json.dumps({
+        "sim": "spike", "n_capsules": 2, "n_passed": 1, "all_pass": False,
+        "per_capsule": [
+            {"capsule": "C0", "pass": True},
+            {"capsule": "C1", "pass": False},
+        ],
+    })
+    tp = _transcript(tmp_path / "nonzero.jsonl", calls, failed={0}, outputs={0: complete})
+
+    verdict = C.compute(tp, sub, "raw_baseline", "inline_asm_insn", resolved_tools=set())
+
+    assert verdict["checks"]["full_selfcheck"] is True
+    assert verdict["conformant"] is True
+
+
+def test_full_selfcheck_does_not_credit_nonzero_error_or_partial_response(tmp_path):
+    sub = _submission(tmp_path, {})
+    calls = [("bash", {"command": "python3 agent_selfcheck.py --capsules all"})]
+    for name, output in (
+        ("error", '{"error":"broker timed out"}'),
+        ("partial", '{"n_capsules":2,"per_capsule":[{"capsule":"C0"}]}'),
+    ):
+        tp = _transcript(tmp_path / f"{name}.jsonl", calls, failed={0}, outputs={0: output})
+        verdict = C.compute(tp, sub, "raw_baseline", "inline_asm_insn", resolved_tools=set())
+        assert verdict["checks"]["full_selfcheck"] is False
+        assert verdict["conformant"] is False
 
 
 def test_asm_not_applicable_off_external_backend(tmp_path):
@@ -219,6 +293,83 @@ def test_fully_conformant_arm4_requires_successful_rtl_generator_and_readback_ev
     assert v["checks"]["scaffold_generators_used"] is True
     assert v["checks"]["rtl_checks_read"] is True
     assert v["checks"]["arm4_discovery_before_submission_mutation"] is True
+
+
+def test_native_codex_shell_wrapper_preserves_arm4_semantic_evidence(tmp_path):
+    """Codex persists Bash calls with a transport wrapper; conformance must inspect its one inner command."""
+    sub = _submission(tmp_path, {"backend.py": "import ast\n"})
+
+    def codex(command: str) -> str:
+        return f"/bin/bash -lc {shlex.quote(command)}"
+
+    calls = [
+        ("Bash", {"command": codex("python cca_contract.py check-bijection gemmini")}),
+        ("Bash", {"command": codex(
+            "python action_catalog.py escalation-ladder spatial.dataflow gemmini")}),
+        ("Bash", {"command": codex("python isa_tools.py lint submission/kernel.mlir")}),
+        ("Bash", {"command": codex(
+            "python -c \"from merlin.targetgen import rtl_backend as R; "
+            "print(R.derived_levers(R.target_profile('gemmini')))\"")}),
+        ("Bash", {"command": codex(
+            "python -c \"from merlin.targetgen.rtl.facts import load_facts; import json; "
+            "print(json.dumps(load_facts('gemmini')['facts']))\"")}),
+        ("Bash", {"command": codex(
+            "python -c \"from merlin.targetgen.generate import target_repo; "
+            "print([x.relpath for x in target_repo.generate_skeleton('gemmini')])\"")}),
+        ("Bash", {"command": codex("jq '.rtl_checks' qa/verdict.json")}),
+        ("Bash", {"command": codex("python3 agent_selfcheck.py --capsules all")}),
+    ]
+    tp = _transcript(tmp_path / "codex.jsonl", calls, outputs={
+        3: "['spatial.dataflow']",
+        4: '{"target":"gemmini","arrays":[{}],"memories":[{}]}',
+        5: "['README.md', 'dialect.py', 'CMakeLists.txt']",
+        6: '[{"capsule":"C0","verdict":"ok"}]',
+    })
+    v = C.compute(tp, sub, "merlin_assisted", "inline_asm_insn", resolved_tools={
+        "merlin_infra", "xdsl_kit", "cca_spine", "isa_tools", "cca_tools",
+        "rtl_generators", "rtl_facts",
+    })
+
+    assert v["conformant"] is True
+    assert v["checks"]["rtl_derived_levers_used"] is True
+    assert v["checks"]["rtl_facts_used"] is True
+    assert v["checks"]["scaffold_generators_used"] is True
+    assert v["checks"]["rtl_checks_read"] is True
+    assert v["checks"]["arm4_discovery_before_submission_mutation"] is True
+
+
+def test_native_codex_shell_wrapper_does_not_enable_spoof_composition_or_null_readback(tmp_path):
+    sub = _submission(tmp_path, {})
+
+    def codex(command: str) -> str:
+        return f"/bin/bash -lc {shlex.quote(command)}"
+
+    spoofed = _transcript(tmp_path / "spoofed.jsonl", [
+        ("Bash", {"command": codex("true # R.derived_levers(profile)")}),
+        ("Bash", {"command": codex("python -c \"print(['spatial.dataflow'])\"; true")}),
+        ("Bash", {"command": codex("echo load_facts gemmini")}),
+        ("Bash", {"command": codex("echo generate_skeleton")}),
+        ("Bash", {"command": codex("echo '{\"rtl_checks\":[{}]}' qa/verdict.json")}),
+    ], outputs={
+        0: "['spatial.dataflow']",
+        1: "['spatial.dataflow']",
+        2: '{"target":"gemmini","arrays":[{}],"memories":[{}]}',
+        3: "['dialect.py']",
+        4: '{"rtl_checks":[{}]}',
+    })
+    tools = {"rtl_generators", "rtl_facts"}
+    v = C.compute(spoofed, sub, "merlin_assisted", "inline_asm_insn", resolved_tools=tools)
+    assert v["checks"]["rtl_derived_levers_used"] is False
+    assert v["checks"]["rtl_facts_used"] is False
+    assert v["checks"]["scaffold_generators_used"] is False
+    assert v["checks"]["rtl_checks_read"] is False
+
+    null_read = _transcript(tmp_path / "null.jsonl", [
+        ("Bash", {"command": codex("jq '.rtl_checks' qa/verdict.json")}),
+    ], outputs={0: "null"})
+    null_v = C.compute(
+        null_read, sub, "merlin_assisted", "inline_asm_insn", resolved_tools=tools)
+    assert null_v["checks"]["rtl_checks_read"] is False
 
 
 def test_arm4_required_commands_fail_closed_on_error_missing_result_and_stale_readback(tmp_path):

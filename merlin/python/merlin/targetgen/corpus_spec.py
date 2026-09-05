@@ -124,6 +124,29 @@ _DEFAULT_SW_TILE = 16
 BLOCK_SCALED_DTYPES = frozenset({"mxfp4", "mxfp6", "mxfp8"})
 
 
+def regime_for_dtype(token: str) -> str:
+    """The numeric regime a dtype token routes to: ``int`` | ``specir`` | ``mx`` | ``simt``.
+
+    Routed purely by the token -- no target name anywhere in it. Lifted here from the generator so the
+    SYNTHESIZER can ask the same question the WRITER will answer with: an op with no direct-MLIR builder
+    can only be written by the PyTorch path, and that path is float-only, so a synthesizer that could not
+    see the regime emitted entries nothing could write.
+    """
+    from merlin.runtime.fp8_formats import canonical_float
+
+    if is_block_scaled(token):
+        return "mx"
+    try:
+        canon = canonical_float(token)
+    except KeyError:
+        canon = None
+    if canon in ("fp8_e4m3", "fp8_e5m2"):
+        return "specir"
+    if canon in ("fp16", "bf16", "f32"):
+        return "simt"
+    return "int"
+
+
 def is_block_scaled(token: str | None) -> bool:
     """Whether an operand dtype token is a block-scaled (microscaling) format."""
     return str(token or "") in BLOCK_SCALED_DTYPES
@@ -289,26 +312,15 @@ def _classes_source(te, contract: dict) -> Callable[..., list[str]]:
     classes = [c for c in order if c in pool]
 
     def _from_encoding(*, op="matmul", output_dtype=None, epilogue=(), movement=False):
-        # ⚠️ NOT `list(classes)` unconditionally. This deriver was written for the matmul family and is
-        # reached for EVERY op on a RoCC target, so it used to answer the weight-stationary systolic
-        # sequence for a pure data copy: measured, six tracked capsules (two of them HIDDEN) required
-        # PRELOAD + COMPUTE_PRELOADED of a `movement` capsule that performs no arithmetic at all. That is
-        # the fabricated requirement `isa_taxonomy.required_role_slots` fails closed to avoid, in the
-        # direction running the capsule cannot catch: a backend that correctly moves the tile and issues
-        # no multiply is marked non-conformant. `build_movement` even passes `movement=True` for exactly
-        # this reason -- the argument was accepted and discarded.
-        #
-        # Which classes belong to the contraction is READ from the shared class vocabulary
-        # (`semantic_families._ISA_CLASS_FAMILY`, whose whole job is this mapping) rather than named
-        # here. A class that table does not recognise -- CONFIG*/FLUSH plumbing, or a spelling it has
-        # not learned -- is KEPT: dropping what we cannot classify is the silent-drop this repo's
-        # parsing rule forbids, and over-requiring plumbing is harmless where over-requiring a multiply
-        # is not.
-        from merlin.targetgen import semantic_families as _sf
-
-        prims = _sf.primitives_of(_sf.from_op(op) or "")
-        if movement or (prims and "contraction" not in prims):
-            return [c for c in classes if _sf.from_isa_class(c) != "contraction"]
+        if movement:
+            # A movement capsule is a DMA load-to-store round trip, not a contraction.  The RoCC
+            # fallback previously ignored the operation and returned the full matrix sequence for every
+            # capsule, unlike both of the role-aware regimes above.  Project the target's OWN declared
+            # class labels through the same coarse-role function used to cross-check them against RTL,
+            # then omit matrix-compute commands.  Config/load/store/barrier classes remain derived from
+            # the encoding map; no target name, opcode, or per-target class list is introduced here.
+            from merlin.targetgen.rtl.mlc_bridge import _coarse_of_hand_class
+            return [c for c in classes if _coarse_of_hand_class(c) != "compute"]
         return list(classes)
     return _from_encoding
 
@@ -402,77 +414,6 @@ def derive_binding(te, datapath: dict) -> CorpusBinding:
 # dict + interface MLIR. Shapes are given in TILE units in the profile and scaled by binding.tile_dim.
 # ---------------------------------------------------------------------------------------------------
 
-
-def regime_for_dtype(token: str) -> str:
-    """The numeric regime a dtype token routes to: ``int`` | ``specir`` | ``mx`` | ``simt``.
-
-    Routed purely by the token -- no target name anywhere in it. Lifted here from the generator so the
-    SYNTHESIZER can ask the same question the WRITER will answer with: an op with no direct-MLIR builder
-    can only be written by the PyTorch path, and that path is float-only, so a synthesizer that could not
-    see the regime emitted entries nothing could write.
-    """
-    from merlin.runtime.fp8_formats import canonical_float
-
-    if is_block_scaled(token):
-        return "mx"
-    try:
-        canon = canonical_float(token)
-    except KeyError:
-        canon = None
-    if canon in ("fp8_e4m3", "fp8_e5m2"):
-        return "specir"
-    if canon in ("fp16", "bf16", "f32"):
-        return "simt"
-    return "int"
-
-
-def shape_quantum(token: str, *, tile_dim: int | None, scale_block: int | None) -> dict:
-    """The SHAPE GRANULARITY this dtype's datapath imposes: ``{"row": int, "reduction": int}``.
-
-    A dtype is not only a value encoding; on a block-scaled datapath it is also a constraint on which
-    extents can exist AT ALL. Two independent granularities, each derived, neither guessed:
-
-    * ``reduction`` -- one E8M0 exponent covers a whole run of ``scale_block`` contraction elements, and
-      that run length is the TARGET'S OWN declared scale group (``_scale_block_elems``). A K with a
-      remainder emits a scale stream covering fewer elements than the operand codes do, and the shortfall
-      is silent, so the golden refuses it. The reduction also walks the array edge, hence the lcm.
-    * ``row`` -- sub-byte codes are stored two per byte (the packer nibble-packs fp4 AND the LUT-indexed
-      fp6 alike), so the datapath addresses rows in PAIRS and its row tile is twice the array edge. At a
-      smaller row extent the reference computes zero tiles and returns an all-zero result, which is a
-      golden any broken kernel matches.
-
-    Returns ``{"row": 1, "reduction": 1}`` -- no constraint -- for a dtype whose regime imposes none, and
-    fails closed (a granularity of 1) rather than inventing one when the target declares no scale group
-    or no tile edge. The caller is `conformance.required_cells` (which alignment classes can exist) and
-    `corpus_synth.extents_for` (what shape to give the ones that can).
-    """
-    free = {"row": 1, "reduction": 1}
-    if regime_for_dtype(token) != "mx":
-        return free
-    if not scale_block or int(scale_block) <= 0:
-        # THE MANIFEST NOT SAYING IS NOT THE SAME AS THERE BEING NO GROUP. A target can declare a
-        # block-scaled unit and no group anywhere (measured: one does), and treating that as "no
-        # granularity" required three alignment classes per MX dtype and produced eight capsules the
-        # golden refuses on sight. The second source is the reference the golden itself enforces.
-        from merlin.targetgen import mx_oracle as _mo
-        scale_block = _mo.block_group()
-    if not tile_dim or int(tile_dim) <= 0 or not scale_block or int(scale_block) <= 0:
-        return free                                   # nothing derivable -> claim no constraint
-    from merlin.runtime.fp8_formats import canonical_float, storage_bits
-    try:
-        bits = int(storage_bits(canonical_float(token)))
-    except KeyError:
-        return free
-    edge = int(tile_dim)
-    per_byte = 2 if bits < 8 else 1                   # the packer's own nibble pairing
-    return {"row": edge * per_byte, "reduction": _lcm(int(scale_block), edge)}
-
-
-def _lcm(a: int, b: int) -> int:
-    import math
-    return abs(a * b) // math.gcd(a, b) if a and b else max(a, b, 1)
-
-
 def _numeric_policy(binding: CorpusBinding, output_dtype: str, acc_scale: float | None) -> dict:
     np_: dict[str, Any] = {"compare": binding.compare, "dtype": binding.cap_dtype(output_dtype)}
     if not binding.integer:
@@ -485,9 +426,15 @@ def _numeric_policy(binding: CorpusBinding, output_dtype: str, acc_scale: float 
     return np_
 
 
-def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str]) -> str:
-    """Output dtype: the accumulate dtype, unless an acc_scale epilogue requants to a narrow output (the
-    target declares that narrow dtype in its datapath as ``requant_output_dtype``, e.g. i8 for gemmini)."""
+def _resolve_output_dtype(binding: CorpusBinding, epilogue: list[str], requested: str | None = None) -> str:
+    """Resolve the operation's authored output dtype.
+
+    An explicit profile value wins: narrowing can be a property of a fused hardware readout, not only
+    of an ``acc_scale`` stage. Otherwise the historical acc-scale/default-accumulator rule remains.
+    """
+    if requested is not None:
+        binding.cap_dtype(str(requested))  # validate through the canonical dtype registry
+        return str(requested)
     if "acc_scale" in epilogue and binding.requant_output_dtype:
         return binding.requant_output_dtype
     return binding.accum_dtype
@@ -618,57 +565,21 @@ def _matmul_inputs(lhs: str, weight: str, M: int, K: int, N: int, idt: str,
     return inputs
 
 
-#: Epilogue stage spellings that consume a per-column bias VECTOR. Both are accepted because
-#: :func:`merlin.targetgen.capsule_golden._apply_epilogue` accepts both, and a builder that declared the
-#: operand for only one spelling would leave the other's golden reaching for a tensor nobody declared.
-_BIAS_STAGES = ("bias_add", "bias")
-
-
-def _bias_operand(entry: dict, epilogue: list[str], N: int, binding: CorpusBinding,
-                  op: str) -> tuple[str | None, str]:
-    """``(bias tensor name, its capsule dtype)`` for a capsule whose epilogue adds a bias, else
-    ``(None, "")``.
-
-    The dtype is the ACCUMULATOR's, not the operand's, because that is the domain the addition happens
-    in: the bias lands on the accumulator before any requant, which is exactly what
-    ``Tensor.add_bias`` does (it returns ``self.dtype``). Declaring it in the operand dtype would
-    describe a different computation from the one the golden performs -- on an int8/i32 datapath, a
-    visibly different one.
-
-    ``fused_matmul_bias`` implies the stage: the op name IS the declaration that a bias is added, so a
-    capsule need not repeat it in ``epilogue`` to get its operand.
-    """
-    fused_by_name = op == "fused_matmul_bias"
-    if not fused_by_name and not any(s in _BIAS_STAGES for s in epilogue):
-        return None, ""
-    return entry.get("bias", "B"), binding.cap_dtype(binding.accum_dtype)
-
-
 def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """A single weight-stationary matmul/linear capsule (op ∈ {matmul, linear, fused_matmul_bias}).
-
-    ``fused_matmul_bias`` is the same weight-stationary contraction with its bias epilogue forced on --
-    a distinct op name rather than a flag because the L5 fusion claim compares it against the two
-    capsules it replaces, and a group whose members differ only by an attribute cannot be named."""
+    """A single weight-stationary matmul/linear capsule (op ∈ {matmul, linear})."""
     D = binding.tile_dim
     M = entry.get("M_tiles", 1) * D if "M" not in entry else entry["M"]
     K = entry.get("K_tiles", 1) * D if "K" not in entry else entry["K"]
     N = entry.get("N_tiles", 1) * D if "N" not in entry else entry["N"]
     lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
     epilogue = list(entry.get("epilogue", []))
-    op = entry.get("op", "matmul")
-    if op == "fused_matmul_bias" and not any(s in _BIAS_STAGES for s in epilogue):
-        # Ahead of _resolve_output_dtype, which reads the epilogue to decide the committed dtype.
-        epilogue.insert(0, "bias_add")
     acc_scale = entry.get("acc_scale")
-    output_dtype = _resolve_output_dtype(binding, epilogue)
+    output_dtype = _resolve_output_dtype(binding, epilogue, entry.get("output_dtype"))
+    op = entry.get("op", "matmul")
     odt = binding.cap_dtype(output_dtype)
     idt = binding.cap_dtype(binding.operand_dtype)
-    bias, bias_dt = _bias_operand(entry, epilogue, N, binding, op)
     attrs: dict[str, Any] = {"lhs": lhs, "weight": weight, "out": out,
                              "epilogue": epilogue, "output_dtype": odt}
-    if bias:
-        attrs["bias"] = bias
     # A pooling epilogue rides on the SAME attributes the store path configures, and it changes the
     # committed extent -- the commit result type below is the POOLED row count, not M. A contraction
     # carries no spatial extent of its own, so the entry declares pool_in_dims (see _pool_epilogue).
@@ -688,8 +599,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "name": entry["name"], "kind": entry["kind"],
         "source_role": entry["source_role"], "source_reference": entry["source_reference"],
         "label": entry.get("label", "public"), "interface_mlir": "capsule.interface.mlir",
-        "inputs": (_matmul_inputs(lhs, weight, M, K, N, idt, binding)
-                   + ([{"name": bias, "role": "bias", "shape": [N], "dtype": bias_dt}] if bias else [])),
+        "inputs": _matmul_inputs(lhs, weight, M, K, N, idt, binding),
         "operation": {"op": op, "attributes": attrs},
         "numeric_policy": _numeric_policy(binding, output_dtype, acc_scale),
         "expected": expected, "required_oracle_tiers": list(binding.tiers),
@@ -700,7 +610,6 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         lhs=lhs, weight=weight, out=out, M=M, K=K, N=N, epilogue=epilogue, output_dtype=odt,
         acc_scale=acc_scale, comment=entry.get("comment", ""),
         pool_attrs=pool_attrs or None, commit_rows=commit_rows,
-        bias=bias, bias_dtype=(binding.mlir_dtype(binding.accum_dtype) if bias else None),
         target=binding.target, operand_dtype=binding.mlir_dtype(binding.operand_dtype),
         acc_dtype=binding.mlir_dtype(binding.accum_dtype),
         scale_block=(binding.scale_block if is_block_scaled(binding.operand_dtype) else None))
@@ -716,14 +625,15 @@ def _iface_prelude(target: str, comment: str) -> list[str]:
 def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """One resident weight reused across two matmuls (op == resident_reuse).
 
-    ⚠️ AN EXTENT MAY BE DECLARED EITHER WAY, and reading only the ``_tiles`` spelling silently drops
-    the other. `expand_sweeps` resolves an ``axes:`` entry to the BARE name (`K`, `N`, `M`), so a sweep
-    declaring ``K: ["4*tile", "8*tile"]`` reached `entry["K"]` while this builder read
-    ``entry["K_tiles"]``, defaulted to 1, and emitted the tile edge for BOTH points. Measured: PC00_k64
-    and PC01_k128 had BYTE-IDENTICAL interfaces and differed only in their name and a prose string --
-    the two "separation regimes" `gate.capacity: at_least_two_separation_regimes` demands were one
-    regime with two labels, so a paired differential over them would have measured the same program
-    twice. Same failure shape as the holdout sets that turned out to be renames.
+    AN EXTENT MAY BE DECLARED EITHER WAY, and reading only the ``_tiles`` spelling silently drops the
+    other. ``expand_sweeps`` resolves an ``axes:`` entry to the BARE name (``K``, ``N``), so a sweep
+    declaring ``K: ["4*tile", "8*tile"]`` lands in ``entry["K"]`` while this builder read
+    ``entry["K_tiles"]``, defaulted to 1, and emitted the tile edge for BOTH points. Reproduced
+    2026-09-04: PC00_k64 and PC01_k128 both came out ``W[16,16]`` -- byte-identical interfaces
+    differing only in a name and a prose string. The family's own gate demands two separation
+    regimes; it would have had one regime with two labels, and a paired differential over them would
+    have measured the same program twice. Same failure shape as holdout sets that turned out to be
+    renames -- see the memory `holdout-sets-were-renames`.
     """
     D = binding.tile_dim
     K = entry.get("K", entry.get("K_tiles", 1) * D)
@@ -737,7 +647,7 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
     L.append(f'  %{weight} = merlin_iface.tensor {{name = "{weight}", role = "weight"}} : tensor<{K}x{N}x{midt}>')
     for idx, mm in enumerate(entry["matmuls"]):
         an, oname = mm["lhs"], mm["out"]
-        M = mm.get("M", mm.get("M_tiles", 1) * D)
+        M = mm.get("M_tiles", 1) * D
         epi = list(mm.get("epilogue", []))
         inputs.append({"name": an, "role": "input", "shape": [M, K], "dtype": idt})
         matmuls.append({"lhs": an, "out": oname, "epilogue": epi, "output_dtype": adt})
@@ -746,7 +656,7 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
              f': (tensor<{K}x{N}x{midt}>) -> !merlin_iface.resident')
     for idx, mm in enumerate(entry["matmuls"]):
         an, oname = mm["lhs"], mm["out"]
-        M = mm.get("M", mm.get("M_tiles", 1) * D)
+        M = mm.get("M_tiles", 1) * D
         epi = ", ".join(f'"{e}"' for e in mm.get("epilogue", []))
         L.append(f'  %acc{idx} = merlin_iface.matmul %{an}, %{weight}_res '
                  f': (tensor<{M}x{K}x{midt}>, !merlin_iface.resident) -> !merlin_iface.acc<{madt}>')
@@ -800,10 +710,13 @@ def build_movement(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 
 def build_attention_qk(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """Q @ K^T attention scores (op == attention_qk): the device does the transpose internally."""
+    """Q @ K^T attention scores (op == attention_qk): the device does the transpose internally.
+
+    Reads both extent spellings, for the reason given on :func:`build_resident_reuse`: a sweep axis
+    resolves to the bare name, and taking only the ``_tiles`` form collapses every point onto the
+    tile edge without failing.
+    """
     D = binding.tile_dim
-    # Both spellings, for the reason spelled out in `build_resident_reuse`: a sweep declares the bare
-    # axis name, and reading only `_tiles` turns a declared extent into the tile edge without a word.
     M = entry.get("M", entry.get("M_tiles", 1) * D)
     Kd = entry.get("K", entry.get("K_tiles", 1) * D)
     q, k, out = entry.get("q", "Q"), entry.get("k", "K"), entry.get("out", "Y0")
@@ -861,73 +774,6 @@ def build_rmsnorm(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
          f'  %{out} = merlin_iface.rmsnorm %{x}, %{gamma} {{name = "{out}", eps = {eps:.9e} : f64, '
          f'output_dtype = "{odt}"}} : (tensor<{M}x{K}x{midt}>, tensor<1x{K}x{midt}>) -> tensor<{M}x{K}x{modt}>',
          "}"]
-    return cap, "\n".join(L) + "\n"
-
-
-def build_bias_add(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """A standalone per-column bias add (op == bias_add): X[M,N] + B[N] -> [M,N].
-
-    The unfused half of the L5 fusion pair. It exists so ``fused_matmul_bias`` has something to be
-    compared against: the claim is that the fused capsule costs less than the two capsules it replaces,
-    and a comparison group with only a fused member is a declaration with no content.
-
-    ⚠️ ITS OPERANDS DEFAULT TO THE ACCUMULATOR DOMAIN, not the operand one. As the unfused half of the
-    fusion pair this op IS the bias stage of the fused capsule standing on its own, and that stage runs
-    on the accumulator before any requant -- ``Tensor.add_bias`` returns ``self.dtype`` for exactly that
-    reason. Declaring X in the operand dtype would price a different computation from the one the fused
-    member performs, visibly so on an int8/i32 datapath, and the two members' cycles would then not be
-    summable. The fusion-pair entries declare no dtype, so they keep that domain.
-
-    AN ENTRY OUTSIDE A COMPARISON GROUP OVERRIDES IT with its own declared dtype, because a capsule
-    synthesized for a conformance cell is ABOUT that cell's operand dtype. Measured on atlas: the three
-    ``elementwise_map/fp8_e4m3`` cells chose this op (the only elementwise builder writable at fp8) and
-    it emitted bf16 tensors -- so the capsules were built, named for the cells, and covered none of
-    them, while the corpus separately reported an ``elementwise_map/bf16`` cell nothing had asked for.
-    A capsule that silently answers a different dtype than the one it is named for is worse than a
-    missing one.
-
-    The comparison group is the exception and it is the ONE case the accumulator paragraph above is
-    about: there this capsule exists to be subtracted from a fused one, and a member priced in a
-    different domain from the stage it stands in for makes the two members' cycles unsummable.
-    """
-    D = binding.tile_dim
-    M = entry.get("M", entry.get("M_tiles", 1) * D)
-    N = entry.get("N", entry.get("N_tiles", 1) * D)
-    src, bias, out = entry.get("src", "X"), entry.get("bias", "B"), entry.get("out", "Y0")
-    _dom = binding.accum_dtype if entry.get("comparison_group") else (
-        entry.get("operand_dtype") or binding.accum_dtype)
-    adt, madt = binding.cap_dtype(_dom), binding.mlir_dtype(_dom)
-    epilogue = list(entry.get("epilogue", [])) or ["bias_add"]
-    attrs: dict[str, Any] = {"src": src, "bias": bias, "out": out,
-                             "epilogue": epilogue, "output_dtype": adt}
-    if entry.get("semantic"):
-        attrs["semantic"] = entry["semantic"]
-    cap = {
-        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
-        "source_reference": entry["source_reference"], "label": entry.get("label", "public"),
-        "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": src, "role": "input", "shape": [M, N], "dtype": adt},
-                   {"name": bias, "role": "bias", "shape": [N], "dtype": adt}],
-        "operation": {"op": "bias_add", "attributes": attrs},
-        # The policy is written for the dtype the OUTPUT is actually in, which is `_dom` -- the same
-        # value the tensors carry. Pinning it to the accumulator while the tensors moved would grade an
-        # fp8 output against an integer/bf16 comparison.
-        "numeric_policy": _numeric_policy(binding, _dom, None),
-        # Derived like every other op's: on a target with a binary tensor-compute role this resolves to
-        # that class, and on one that has no such role it resolves to the data motion alone rather than
-        # to the systolic sequence this op does not use.
-        "expected": {"instruction_classes": binding.classes_for(op="bias_add", output_dtype=adt),
-                     "modes": dict(entry["modes"]) if "modes" in entry else {}},
-        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
-    }
-    L = _iface_prelude(binding.target, entry.get("comment", ""))
-    L += [
-        f'  %{src} = merlin_iface.tensor {{name = "{src}", role = "input"}} : tensor<{M}x{N}x{madt}>',
-        f'  %{bias} = merlin_iface.tensor {{name = "{bias}", role = "bias"}} : tensor<{N}x{madt}>',
-        f'  %{out} = merlin_iface.bias_add %{src}, %{bias} {{name = "{out}", '
-        f'output_dtype = "{adt}"}} : (tensor<{M}x{N}x{madt}>, tensor<{N}x{madt}>) '
-        f'-> tensor<{M}x{N}x{madt}>',
-        "}"]
     return cap, "\n".join(L) + "\n"
 
 
@@ -1114,7 +960,7 @@ def build_rope_qkv(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 def _batched_mx_inputs(lhs: str, weight: str, B: int, M: int, H: int, N: int, idt: str,
                        binding: CorpusBinding) -> list[dict]:
-    """Declared leaf operands of a BATCHED matmul; one scale stream per batch where the format has them.
+    """Declared leaf operands of a BATCHED block-scaled matmul: one scale stream per batch.
 
     Same reasoning as :func:`_matmul_inputs` -- the elements alone are half the operand -- with the batch
     dimension leading, because each batch is an independent GEMM with its own block scales."""
@@ -1132,18 +978,10 @@ def _batched_mx_inputs(lhs: str, weight: str, B: int, M: int, H: int, N: int, id
     return inputs
 
 
-def build_gemv_batched(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """A batched contraction (op == gemv_batched): B independent GEMMs ``A_b[M,H] @ W_b[H,N]``, output
-    stacked row-major to ``[B*M, N]``. Interface presents the batched tensors + a batched matmul op; the
-    device iterates the B tiles.
-
-    DATATYPE-AGNOSTIC, and it was not. It was written for the block-scaled datapath and declared
-    ``block_scale = "e8m0"`` unconditionally, so the only rank-3 capsule this corpus could produce was
-    an MX one. That is what made ``contraction.batched`` an unfillable requirement on every integer and
-    fp8 target: not a missing rewrite, a missing golden and an operand declaration that assumed one
-    datapath. The block-scale attribute and the scale streams now appear only where the operand format
-    actually carries them (``is_block_scaled``), exactly as ``_batched_mx_inputs`` already decided the
-    scale operands."""
+def build_gemv_batched_mx(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Batched MX matmul (op == gemv_batched): B independent MX GEMMs A_b[M,H] @ W_b[H,N] on the mx_pe,
+    output stacked row-major to [B*M, N] bf16. mxfp8; golden from mx_ref. Interface presents the batched
+    tensors + a batched matmul op (the device iterates the B tiles)."""
     D = binding.tile_dim
     B = int(entry.get("B", 2))
     M = entry.get("M", entry.get("M_tiles", 1) * D)
@@ -1152,6 +990,10 @@ def build_gemv_batched(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     lhs, weight, out = entry.get("lhs", "A0"), entry.get("weight", "W"), entry.get("out", "Y0")
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(binding.accum_dtype)
+    # BLOCK SCALING IS A PROPERTY OF THE DATATYPE, NOT OF BATCHING. The operand list and the interface
+    # already emit the per-batch scale streams only when the datatype is block-scaled; the attribute
+    # naming their encoding was declared unconditionally, so on a plain-integer target this op claimed
+    # an e8m0 scale encoding whose streams do not exist. Declared where the streams are.
     scaled = is_block_scaled(binding.operand_dtype)
     attrs = {"lhs": lhs, "weight": weight, "out": out, "batch": B,
              "semantic": "gemv_batched", "output_dtype": odt}
@@ -1184,10 +1026,10 @@ def build_gemv_batched(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
             f'  %{weight}_scale = merlin_iface.tensor {{name = "{weight}_scale", role = "scale", '
             f'scale_of = "{weight}", block = {_blk} : i64}} : tensor<{B}x{_g}x{N}xi8>',
         ]
-    _bs = 'block_scale = "e8m0", ' if scaled else ""
+    scale_attr = 'block_scale = "e8m0", ' if scaled else ""
     L += [
         f'  %{out} = merlin_iface.matmul_batched %{lhs}, %{weight} {{name = "{out}", batch = {B} : i64, '
-        f'{_bs}output_dtype = "{odt}"}} '
+        f'{scale_attr}output_dtype = "{odt}"}} '
         f': (tensor<{B}x{M}x{H}x{midt}>, tensor<{B}x{H}x{N}x{midt}>) -> tensor<{B * M}x{N}x{modt}>', "}"]
     return cap, "\n".join(L) + "\n"
 
@@ -1208,7 +1050,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     Ho, Wo = conv_out_dims(H, W, kh, kw, stride, padding, dilation)
     Kdim = kh * kw * ci
     epilogue = list(entry.get("epilogue", []))
-    output_dtype = _resolve_output_dtype(binding, epilogue)
+    output_dtype = _resolve_output_dtype(binding, epilogue, entry.get("output_dtype"))
     idt, odt = binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(output_dtype)
     midt, modt = binding.mlir_dtype(binding.operand_dtype), binding.mlir_dtype(output_dtype)
     attrs = {"ifm": ifm, "weight": weight, "out": out, "ci": ci, "kh": kh, "kw": kw,
@@ -1253,12 +1095,11 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 # op -> builder, for the driver to dispatch on the entry's declared op.
 BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
-    "matmul": build_matmul, "linear": build_matmul, "fused_matmul_bias": build_matmul,
-    "bias_add": build_bias_add,
+    "matmul": build_matmul, "linear": build_matmul,
     "resident_reuse": build_resident_reuse, "movement": build_movement,
     "attention_qk": build_attention_qk, "rmsnorm": build_rmsnorm, "conv2d": build_conv2d,
     "attention_mx": build_attention_mx, "rmsnorm_qkv": build_rmsnorm_qkv, "rope_qkv": build_rope_qkv,
-    "gemv_batched": build_gemv_batched,
+    "gemv_batched": build_gemv_batched_mx,
 }
 
 
@@ -1309,40 +1150,8 @@ def _semantic_block(entry: dict, binding: CorpusBinding) -> dict:
     # A whole-model capsule spans families by construction, is never held out (see
     # generalization_splits), and is expected to contain regions the target cannot run -- so it must
     # never carry must_accelerate, whatever the corpus default says.
-    #
-    # ⚠️ NEITHER MAY A CAPSULE THAT FORBIDS THE MESH. `lanes.forbid: [on_mesh]` is the negative lane:
-    # the capsule exists to prove the compiler does NOT put this work on the accelerator, and
-    # `must_accelerate: true` demands the opposite. Emitting both produces a capsule that cannot pass
-    # under any behaviour, and it is produced by exactly the combination that looks safest -- a
-    # corpus-wide `semantic_defaults: {must_accelerate: true}` meeting a host-only capsule. Measured:
-    # declaring that default on one profile gave `SY_host_only_elementwise_map` and
-    # `SY_host_only_reduction` `forbid: [on_mesh]` alongside `must_accelerate: true`. The lane
-    # declaration is the more specific statement and wins, structurally rather than by an exception
-    # list -- the same treatment `kind == "model"` already gets above.
-    lanes = entry.get("lanes") or {}
-    forbids_mesh = "on_mesh" in {str(x) for x in (lanes.get("forbid") or ())}
-    must_default = (False if (kind == "model" or forbids_mesh)
-                    else bool(defaults.get("must_accelerate", False)))
-    # An AUTHORED `true` cannot override the negative lane either: the contradiction is the same
-    # whichever half asserted it, and a capsule declaring both is an authoring error to report rather
-    # than a preference to honour.
-    authored_must = authored.get("must_accelerate", must_default)
-    if forbids_mesh and bool(authored_must):
-        raise ValueError(
-            f"{entry.get('name', '<unnamed>')}: lanes.forbid names 'on_mesh' while must_accelerate is "
-            f"true. The negative lane exists to prove this work does NOT reach the accelerator, so the "
-            f"two demands cannot both hold and the capsule could not pass under any behaviour")
-    block["must_accelerate"] = bool(authored_must)
-    # WHY the strongest assertion was withheld. The schema has a field for it, and for the interop and
-    # host-island capsules it is the whole contract: they withhold ``must_accelerate`` on purpose,
-    # because host-lane work is the behaviour under test rather than a fallback failure, and the demand
-    # they DO make is `lanes.require`. That reason was hand-written into the capsule after generation
-    # and therefore deleted by the next regeneration -- measured on three gemmini capsules at once --
-    # which left a withheld assertion looking like an author who simply never made one. Same argument
-    # as the block around it: emit it from the profile so a regen preserves it.
-    reason = authored.get("not_asserted_reason", defaults.get("not_asserted_reason"))
-    if reason:
-        block["not_asserted_reason"] = reason
+    must_default = False if kind == "model" else bool(defaults.get("must_accelerate", False))
+    block["must_accelerate"] = bool(authored.get("must_accelerate", must_default))
     block["eligible"] = authored.get("eligible", defaults.get("eligible", "auto"))
     # FAMILIES THIS CAPSULE FUSES, so that a fused-only family can be covered at all.
     #

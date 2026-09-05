@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Mapping, Sequence
@@ -686,47 +687,92 @@ def _inside(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
 
+#: The policy the CALLING THREAD is currently boxed under, and the bookkeeping that lets several
+#: threads be boxed at once. The patch below replaces two module globals in `oot_runner`, and
+#: save/restore of a global is not composable: with two threads, the second saves the FIRST's
+#: replacement as its "original", and when the first exits it restores the true originals -- leaving
+#: the second thread's remaining package invocations running with NO sandbox at all, credentials
+#: unmasked and the answer masks bypassed. Nothing would say so; the measurement would simply be
+#: taken outside the box. So the policy is per-thread and the patch is installed once, under a lock,
+#: for as long as any thread is inside it.
+_ACTIVE = threading.local()
+_PATCH_LOCK = threading.Lock()
+_PATCH_DEPTH = 0
+_ORIGINALS: dict = {}
+
+
+def active_sandbox_policy() -> "PackageSandboxPolicy | None":
+    """The policy boxing the calling thread, or None when it is not inside one."""
+    return getattr(_ACTIVE, "policy", None)
+
+
 @contextlib.contextmanager
 def boxed_entrypoints(policy: PackageSandboxPolicy) -> Iterator[None]:
-    """Route oot_runner's untrusted package execution through ``policy`` for this serial campaign."""
-    original_entrypoint = oot_runner.run_entrypoint
-    original_build = oot_runner.build_package
+    """Route oot_runner's untrusted package execution through ``policy`` for the CALLING THREAD.
 
-    def refuse_build(pkg, *, timeout: int = 1800) -> None:
-        build = pkg.manifest.get("build") or {}
-        if any(build.get(key) for key in ("configure", "command")):
-            raise CampaignGateError(
-                "Arm-4 performance package declares an untrusted build step; no host build is allowed")
+    Safe to enter from several threads at once: each one sees its own policy, and the module-level
+    patch is installed once and removed only when the last of them leaves.
+    """
+    global _PATCH_DEPTH
 
-    def run_boxed(pkg, name: str, input_mlir: Path, output_json: Path | None = None,
-                  *, timeout: int = 600) -> subprocess.CompletedProcess:
-        if pkg.directory.resolve() != policy.package:
-            raise CampaignGateError("capsule runner attempted to execute a package outside the snapshot")
-        input_mlir = Path(input_mlir).resolve()
-        output_json = Path(output_json).resolve() if output_json is not None else None
-        if not _inside(input_mlir, policy.workspace):
-            raise CampaignGateError("untrusted package input is outside the performance workspace")
-        if output_json is not None and not _inside(output_json, policy.workspace):
-            raise CampaignGateError("untrusted package output is outside the performance workspace")
-        argv = oot_runner._resolve_argv(pkg, name, input_mlir, output_json)
-        if oot_runner._needs_interpreter(pkg, argv):
-            argv = [sys.executable, *argv]
-        shell = TC.sandbox_env(policy.target_experiment, policy.workspace) + 'exec "$@"'
-        return subprocess.run(
-            [*policy.argv, "--chdir", str(policy.package), "bash", "-c", shell,
-             "perf-package", *argv],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-
-    oot_runner.build_package = refuse_build
-    oot_runner.run_entrypoint = run_boxed
+    previous = getattr(_ACTIVE, "policy", None)
+    _ACTIVE.policy = policy
+    with _PATCH_LOCK:
+        if _PATCH_DEPTH == 0:
+            _ORIGINALS["run_entrypoint"] = oot_runner.run_entrypoint
+            _ORIGINALS["build_package"] = oot_runner.build_package
+            oot_runner.build_package = _refuse_build
+            oot_runner.run_entrypoint = _run_boxed
+        _PATCH_DEPTH += 1
     try:
         yield
     finally:
-        oot_runner.run_entrypoint = original_entrypoint
-        oot_runner.build_package = original_build
+        _ACTIVE.policy = previous
+        with _PATCH_LOCK:
+            _PATCH_DEPTH -= 1
+            if _PATCH_DEPTH == 0:
+                oot_runner.run_entrypoint = _ORIGINALS["run_entrypoint"]
+                oot_runner.build_package = _ORIGINALS["build_package"]
+
+
+def _refuse_build(pkg, *, timeout: int = 1800) -> None:
+    build = pkg.manifest.get("build") or {}
+    if any(build.get(key) for key in ("configure", "command")):
+        raise CampaignGateError(
+            "Arm-4 performance package declares an untrusted build step; no host build is allowed")
+
+
+def _run_boxed(pkg, name: str, input_mlir: Path, output_json: Path | None = None,
+               *, timeout: int = 600) -> subprocess.CompletedProcess:
+    """Run one untrusted package entrypoint inside the CALLING THREAD's sandbox policy.
+
+    Refusing when no policy is set is the whole point of reading it from the thread rather than from
+    a closure: an invocation that arrives on a thread nobody boxed must not fall through to an
+    unsandboxed execution, which is exactly what the previous save/restore could produce.
+    """
+    policy = active_sandbox_policy()
+    if policy is None:
+        raise CampaignGateError(
+            "untrusted package execution reached a thread that is not inside a sandbox policy")
+    if pkg.directory.resolve() != policy.package:
+        raise CampaignGateError("capsule runner attempted to execute a package outside the snapshot")
+    input_mlir = Path(input_mlir).resolve()
+    output_json = Path(output_json).resolve() if output_json is not None else None
+    if not _inside(input_mlir, policy.workspace):
+        raise CampaignGateError("untrusted package input is outside the performance workspace")
+    if output_json is not None and not _inside(output_json, policy.workspace):
+        raise CampaignGateError("untrusted package output is outside the performance workspace")
+    argv = oot_runner._resolve_argv(pkg, name, input_mlir, output_json)
+    if oot_runner._needs_interpreter(pkg, argv):
+        argv = [sys.executable, *argv]
+    shell = TC.sandbox_env(policy.target_experiment, policy.workspace) + 'exec "$@"'
+    return subprocess.run(
+        [*policy.argv, "--chdir", str(policy.package), "bash", "-c", shell,
+         "perf-package", *argv],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
 
 
 def completion_report(results: Sequence[Mapping], expected: Sequence[PerfCell]) -> dict:

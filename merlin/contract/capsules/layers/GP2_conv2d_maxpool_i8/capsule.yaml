@@ -45,7 +45,7 @@ operation:
     layout: nhwc
     epilogue:
     - maxpool
-    output_dtype: i32
+    output_dtype: i8
     semantic: conv2d_im2col
     pool_in_dims:
     - 6
@@ -63,7 +63,7 @@ operation:
     - 0
 numeric_policy:
   compare: exact_int
-  dtype: i32
+  dtype: i8
 expected:
   instruction_classes:
   - FLUSH
@@ -77,6 +77,7 @@ expected:
   modes:
     conv2d: true
     k_accumulate: true
+    i8: true
 required_oracle_tiers:
 - L0
 - L1

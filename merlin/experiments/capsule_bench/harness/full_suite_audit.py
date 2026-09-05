@@ -4,7 +4,7 @@
 The pilot iterate-to-pass loop only grades the 4 pilot capsules. This audit answers the broader
 question — "how do the baselines do on *every* test, and how many cycles does each capsule take" —
 by re-grading each frozen submission against the **entire 25-capsule corpus** (public + hidden) on
-the real RTL oracle (L3 verilator; opportunistically L4 VCS), in PARALLEL. No agent re-run, $0 API.
+the target's centrally selected RTL oracle, in PARALLEL. No agent re-run, $0 API.
 
 It is honest about partial pass: backends built only against the pilot are expected to fail capsule
 classes they never implemented (conv/im2col, attention) — those show as failures with their first
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -32,7 +33,6 @@ import _common as C
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_grade as CG          # noqa: E402
 from merlin.targetgen import capsule_runner as CR          # noqa: E402
-from merlin.targetgen import heavy_oracles as HO           # noqa: E402
 
 CORPUS = C.REPO / "merlin/contract" / "capsules"
 CONTRACT = C.REPO / "merlin/contract"
@@ -77,19 +77,13 @@ def _sim_via() -> str | None:
 
 
 def _adapters_for(tiers: list[str]) -> dict:
-    """Resolve the requested audit tiers target-awarely. A chipyard target (gemmini) maps tiers onto its
-    spike/verilator/vcs ladder; any other target uses its contract-derived tiers (atlas external_backend
-    -> the program oracle) filtered to those requested — routing atlas through the hardcoded
-    spike/verilator adapters ran the gemmini/RVV lowering path and crashed (AW4)."""
-    if _sim_via() == "chipyard":
-        ad = {}
-        if "L2" in tiers:
-            ad["L2"] = CR._spike_verilator_adapter("spike", C.TARGET)
-        if "L3" in tiers:
-            ad["L3"] = CR._spike_verilator_adapter("verilator", C.TARGET)
-        if "L4" in tiers and HO.vcs_available():
-            ad["L4"] = HO.vcs_adapter(C.TARGET)
-        return ad
+    """Resolve requested tiers only through the shared target/engine policy.
+
+    In particular, never reconstruct the historical chipyard ladder here.  ``oracle_adapters`` binds
+    its elaborated-RTL tier to ``MERLIN_REQUIRED_RTL_ENGINE`` when the enclosing experiment pins one;
+    directly constructing a Verilator closure here used to evade that pin and made an audit labelled
+    GSIM-certified run Verilator instead.
+    """
     full = CR.oracle_adapters(C.TARGET, _sim_via())
     sel = {t: a for t, a in full.items() if t in tiers}
     return sel or full          # fall back to the target's real tier(s) if none of `tiers` apply
@@ -143,7 +137,10 @@ def main(argv: list[str] | None = None) -> int:
     pc = {rid: {p["capsule"]: p for p in s.get("per_capsule", [])} for rid, s in scores.items()}
     cyc = {rid: s.get("cycles_diagnostic", {}) for rid, s in scores.items()}
 
+    required_engine = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
     out = {"corpus": str(CORPUS), "n_capsules": len(cap_names), "tiers": tiers,
+           "required_rtl_engine": required_engine,
+           "oracle_adapter_source": "merlin.targetgen.capsule_runner.oracle_adapters",
            "workers": a.workers, "backends": {}, "matrix": [], "class_coverage": {}}
     for rid, s in scores.items():
         out["backends"][rid] = {
@@ -183,9 +180,13 @@ def main(argv: list[str] | None = None) -> int:
 
 def _write_md(out: dict, scores: dict) -> None:
     rids = list(scores)
+    engine = out.get("required_rtl_engine")
+    engine_note = (f"experiment-required engine `{engine}`" if engine else
+                   "engine selected by the central RTL-engine policy")
     md = ["# Full-suite audit (capsule_bench_v0) — all 25 capsules, RTL oracle", "",
           f"Corpus: `{out['corpus']}` · {out['n_capsules']} capsules · tiers {out['tiers']} · "
-          f"{out['workers']} parallel workers. Cycle counts are **L3 verilator (cycle-accurate RTL)**. "
+          f"{out['workers']} parallel workers. Cycle counts are labelled by tier and come from the "
+          f"{engine_note}; a tier name is not a simulator name. "
           "Backends were built against the 4-capsule pilot only — failures on unimplemented classes "
           "(conv, attention) are expected and reported honestly, not hidden.", ""]
     # `rtl-backed` sits beside the counts on purpose: a table with `public` and `tier` in separate
@@ -220,7 +221,7 @@ def _write_md(out: dict, scores: dict) -> None:
         md.append(f"| {row['capsule']} | {row['label']} | {row['class']} | " + " | ".join(cells) + " |")
     md += ["", "_Legend: cycles are labelled with the TIER that reported them; a capsule can carry a "
            "count at one tier and not another, so the tier travels with the number. oracle_wait(s) is time "
-           "blocked on a queue/FPGA slot (≈0 for local verilator; nonzero only for queued VCS/FireSim). "
+           "blocked on an oracle queue/resource slot (normally ≈0 for a local engine). "
            "speedup = sum(active_sim)/wall under parallel workers._"]
     (C.REPORTS / "full_suite_audit.md").write_text("\n".join(md) + "\n")
 

@@ -36,6 +36,7 @@ from pathlib import Path
 # This retires one of the three triplicated copies (the decoder's). GARBAGE/MASK32 are universal.
 GARBAGE = 0xFFFFFFFF
 MASK32 = 0xFFFFFFFF
+_MVIN_CLASSES = {"MVIN", "MVIN2", "MVIN3"}
 
 
 def _load_isa(target: str) -> dict:
@@ -58,11 +59,16 @@ def _load_isa(target: str) -> dict:
     # register-usage field — it VARIES per instruction (e.g. a result-returning op sets xd=1), so it is
     # NOT an identity constraint; instruction identity is func7 (-> FUNCT_CLASS).
     fdt = next((i for i in facts.get("interfaces", []) if i.get("name") == "funct_decode_table"), {})
+    layouts = next((i.get("bundles", {}) for i in facts.get("interfaces", [])
+                    if i.get("name") == "register_bundle_layouts"), {})
     custom_opcode = fdt.get("custom_opcode")
     return {"DIM": dim, "F1": rb["f1"], "C_ACC": rb["c_acc"], "ACC_I8": rb["acc_i8"],
             "ACC_ACCUM": rb["acc_accum"], "FULL_C_BIT": rb["full_c_bit"],
             "CUSTOM_OPCODE": custom_opcode, "FUNCT3": fdt.get("funct3"),
-            "FUNCT_CLASS": dict(enc["semantic_class"]), "CONFIG_SUBTYPE": dict(enc["config_subtype"])}
+            "FUNCT_CLASS": dict(enc["semantic_class"]), "CONFIG_SUBTYPE": dict(enc["config_subtype"]),
+            # Extracted from the target's Scala Bundle by circt_introspect.  Keeping the layout beside
+            # the other decoded ISA facts lets every consumer read CONFIG_ST without copying bit offsets.
+            "CONFIG_ST_LAYOUT": layouts.get("ConfigMvoutRs1")}
 
 
 # Per-target ISA constants are resolved LAZILY and cached — nothing target-specific loads at import.
@@ -82,6 +88,24 @@ def isa_constants(target: str) -> dict:
 def funct_class_for(target: str) -> dict:
     """``func7 -> instruction-class`` map for ``target`` (best-effort cross-check consumers)."""
     return isa_constants(target)["FUNCT_CLASS"]
+
+
+def _bundle_fields(raw: int | None, layout: dict | None) -> dict[str, int]:
+    """Unpack fields from a CIRCT/Scala-derived register-bundle layout.
+
+    An absent or incomplete layout yields no fields.  Callers then leave those facts UNKNOWN rather
+    than substituting the pinned target's offsets.
+    """
+    if raw is None or not isinstance(layout, dict):
+        return {}
+    out: dict[str, int] = {}
+    for name, spec in (layout.get("fields") or {}).items():
+        if not isinstance(spec, dict):
+            continue
+        offset, width = spec.get("offset"), spec.get("width")
+        if isinstance(offset, int) and isinstance(width, int) and width > 0:
+            out[str(name)] = (raw >> offset) & ((1 << width) - 1)
+    return out
 
 # --- structural IR decode (parse the IR, do not string-match text) ----------------------------
 # This decoder is a fair MEASUREMENT of whatever the backend emitted, so it must SEE every legal
@@ -257,7 +281,12 @@ def _decode_one(funct: int, rs1: _Val | None, rs2: _Val | None, isa: dict) -> tu
                    "scale": _f32_from_bits(ld_scale_bits) if ld_scale_bits is not None else None,
                    "scale_bits": ld_scale_bits}
         elif sub == "CONFIG_ST":
-            acc_act = ((r1 >> 2) & 0x3) if r1 is not None else None
+            config_fields = _bundle_fields(r1, isa.get("CONFIG_ST_LAYOUT"))
+            # activation's old spelling remains a compatibility path for facts records predating the
+            # extracted bundle. Pool geometry has no fallback: without the RTL layout it is UNKNOWN.
+            acc_act = config_fields.get("activation")
+            if acc_act is None:
+                acc_act = ((r1 >> 2) & 0x3) if r1 is not None else None
             scale_bits = ((r2 >> 32) & MASK32) if r2 is not None else None
             dec = {
                 "subtype": "ST",
@@ -267,11 +296,15 @@ def _decode_one(funct: int, rs1: _Val | None, rs2: _Val | None, isa: dict) -> tu
                 "acc_scale_bits": scale_bits,
                 "out_stride_bytes": (r2 & MASK32) if r2 is not None else None,
             }
+            for field in ("pool_stride", "pool_size", "pool_out_dim", "porows", "pocols",
+                          "orows", "ocols", "upad", "lpad"):
+                if field in config_fields:
+                    dec[field] = config_fields[field]
         else:
             dec = {"subtype": "EX"}
         return (sub if sub != "CONFIG_UNKNOWN" else "UNKNOWN"), dec
 
-    if base in ("MVIN",):
+    if base in _MVIN_CLASSES:
         dec = {"dram": _operand(rs1)}
         if r2 is not None:
             dec.update(_pack_fields(r2))

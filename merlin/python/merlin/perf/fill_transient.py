@@ -33,9 +33,10 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 __all__ = [
-    "IN_FILL_TRANSIENT", "NEVER_SETTLES_IN_RANGE", "Point", "SATURATED", "SETTLED_AT",
-    "UNDETERMINABLE", "eta_resolution", "marginal_costs", "marginal_settling_depth",
-    "overlap_trend", "point_from_counter_values", "settling_depth", "transient_verdict",
+    "IN_FILL_TRANSIENT", "NEVER_SETTLES_IN_RANGE", "PARTITION_FIELDS", "PartitionEvidenceError",
+    "Point", "SATURATED", "SETTLED_AT", "UNDETERMINABLE", "eta_resolution", "marginal_costs",
+    "marginal_settling_depth", "overlap_trend", "partition_kwargs", "point_from_counter_values",
+    "settling_depth", "transient_verdict",
 ]
 
 #: The cohort's points are all inside the transient: marginal cost still falling, overlap still rising.
@@ -51,6 +52,81 @@ SETTLED_AT = "settled_at"
 #: Every step in the ladder rises by more than the declared band. This is an ANSWER, not a failure:
 #: it says the machine had not finished filling anywhere in the range that was affordable to measure.
 NEVER_SETTLES_IN_RANGE = "never_settles_in_range"
+
+
+#: What :func:`merlin.perf.hw_counters.eta_from_counters` needs in order to PROVE, from the target's
+#: own elaborated CIRCT, that its combination counters partition busy time -- without which an overlap
+#: reading is a header's naming convention rather than a measurement.
+#:
+#: ⚠️ **This module cannot derive any of them.** They are facts about one target's RTL: the elaborated
+#: HW text, the counter header's event codes, and the two module identities that select the counted
+#: structures inside it. A caller reads them off the target boundary the same way
+#: :mod:`merlin.targetgen.contract.compile` does -- the backend's ``counter_partition_inputs()`` for
+#: ``hw_text`` / ``module`` / ``counter_module`` / ``source``, and
+#: :func:`merlin.perf.hw_counters.event_codes` over the shipped header for ``codes`` -- and passes them
+#: in. Nothing here substitutes a default for one that is absent.
+PARTITION_FIELDS = ("hw_text", "codes", "module", "counter_module")
+
+
+class PartitionEvidenceError(ValueError):
+    """The CIRCT counter-partition evidence is absent or malformed, and the message says WHICH input.
+
+    ⚠️ This type exists so that a missing target artifact cannot arrive at a caller looking like an
+    analyzer verdict. The call it guards used to be made with the wrong arity, and the resulting
+    ``TypeError`` was caught by a broad ``except (KeyError, TypeError, ValueError)`` and reported as a
+    considered REFUSED carrying the type error's text. A named absence is a result; a programming
+    error dressed as one is not, so this is raised deliberately and caught by name.
+    """
+
+
+def partition_kwargs(partition) -> dict:
+    """Validate caller-supplied partition evidence into :func:`eta_from_counters` keywords.
+
+    Structural validation only -- membership and type checks over a mapping the caller owns. Every
+    rejection names the field that is missing or wrong, because the whole point of this gate is that
+    the reason reaches the report instead of a stack frame.
+    """
+    if partition is None:
+        raise PartitionEvidenceError(
+            "no CIRCT counter-partition evidence was supplied, so realised overlap cannot be called "
+            f"measured; the target boundary must supply {list(PARTITION_FIELDS)} -- its elaborated "
+            "CIRCT HW text, the shipped counter header's event codes, and the two module identities "
+            "that select the counted structures")
+    if not isinstance(partition, Mapping):
+        raise PartitionEvidenceError(
+            f"the CIRCT counter-partition evidence must be a mapping of {list(PARTITION_FIELDS)}, "
+            f"not a {type(partition).__name__}")
+    # The target boundary reports its own three states. Only "available" carries usable evidence, and
+    # an unavailable one is passed through with the target's OWN reason rather than reworded here.
+    status = partition.get("status")
+    if status is not None and status != "available":
+        raise PartitionEvidenceError(
+            f"the target reports its CIRCT counter-partition evidence as {str(status)!r}: "
+            + str(partition.get("why") or "no reason was given"))
+    for field in ("hw_text", "module", "counter_module"):
+        value = partition.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise PartitionEvidenceError(
+                f"the CIRCT counter-partition evidence carries no non-empty {field!r}; without it "
+                "the counter exclusivity proof cannot be attempted, and an unproved partition is "
+                "UNKNOWN overlap rather than zero overlap")
+    codes = partition.get("codes")
+    if not isinstance(codes, Mapping) or not codes:
+        raise PartitionEvidenceError(
+            "the CIRCT counter-partition evidence carries no 'codes' mapping of counter name to the "
+            "event code its own header declares; the proof follows those numeric ports into the HW")
+    for name, code in codes.items():
+        if not isinstance(name, str) or not name:
+            raise PartitionEvidenceError("an event code is keyed by something other than a name")
+        if isinstance(code, bool) or not isinstance(code, int) or code < 0:
+            raise PartitionEvidenceError(
+                f"event code for {name!r} is not a non-negative integer, so no port selects it")
+    source = partition.get("source")
+    if source is not None and not isinstance(source, str):
+        raise PartitionEvidenceError("the partition evidence 'source' must be a string when present")
+    return {"hw_text": str(partition["hw_text"]), "codes": dict(codes),
+            "module": str(partition["module"]), "counter_module": str(partition["counter_module"]),
+            "source": source}
 
 
 @dataclass(frozen=True)
@@ -89,16 +165,30 @@ class Point:
 
 
 def point_from_counter_values(label: str, axis: int, cycles: int, values: Mapping[str, int],
-                              counters) -> Point:
+                              counters, *, partition) -> Point:
     """A :class:`Point` whose overlap comes from one bracketed run's combination counters.
 
     Delegates to :func:`merlin.perf.hw_counters.eta_from_counters` rather than re-deriving the ratio,
     so realised/available here are the SAME quantities the falsifier and the perf ledger hold, and a
     later change to how available overlap is bounded moves all three together.
+
+    ``partition`` is the target's CIRCT counter-partition evidence (see :data:`PARTITION_FIELDS`) and
+    is REQUIRED, because that delegate refuses to call overlap measured until the counters are proved
+    exclusive and exhaustive from the elaborated RTL. It cannot be derived here and is never defaulted:
+    evidence that is absent produces a Point carrying the reason and NO overlap reading, exactly as a
+    counter that did not read does.
+
+    ``cycles`` doubles as the counter window: the readings and the cycle count come from one bracketed
+    run, so a partition totalling more than the window it was read in is mixed, corrupt or wrapped, and
+    the delegate says so rather than dividing anyway.
     """
     from merlin.perf.hw_counters import eta_from_counters
 
-    reading = eta_from_counters(dict(values), counters)
+    try:
+        proof = partition_kwargs(partition)
+    except PartitionEvidenceError as exc:
+        return Point(label=label, axis=int(axis), cycles=int(cycles), overlap_detail=str(exc))
+    reading = eta_from_counters(dict(values), counters, measurement_cycles=int(cycles), **proof)
     if reading.get("state") != "measured":
         return Point(label=label, axis=int(axis), cycles=int(cycles),
                      overlap_detail=str(reading.get("why") or "the counter reading is not measured"))

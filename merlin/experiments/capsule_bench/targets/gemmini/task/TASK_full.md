@@ -54,12 +54,13 @@ mlir_oot_backend_contract.yaml` and `schemas/manifest.schema.json`).
 
 For each capsule the runner does: parse → gemmini dialect → `command_buffer.json` (schema-valid) →
 LLVM/RoCC MLIR, then **decodes your RoCC into an instruction trace** and certifies three-way
-**exact-integer** `golden == reference(cb) == simulate(cb) == oracle` on spike + **verilator RTL
-(cycle-accurate)**, and checks the **required instruction classes** per capsule. Every capsule requires
-passing through **L3 verilator (real RTL)** — spike alone is not sufficient. Integer numerics are EXACT
-(no tolerance).
+**exact-integer** `golden == reference(cb) == simulate(cb) == oracle` on spike plus the
+**experiment-required elaborated-RTL engine** (cycle-accurate), and checks the **required instruction
+classes** per capsule. The harness derives that engine centrally and pins it in
+`MERLIN_REQUIRED_RTL_ENGINE`; a tier name does not select a simulator. Every capsule requires passing
+through the real-RTL tier — spike alone is not sufficient. Integer numerics are EXACT (no tolerance).
 
-**You cannot run the oracle yourself** (no spike/verilator/reference here). After each round a **QA
+**You cannot run the oracle yourself** (no simulator/reference here). After each round a **QA
 gate** grades your current `submission/` and writes a **redacted verdict** to `qa/verdict.json` in your
 working directory, per capsule: `status`, `failure_plane`, `trace_violations`, `numeric_status`,
 `mismatch_count`, `tiers` (L0–L3), and `all_pass`. **It contains NO expected/golden values.** **Read

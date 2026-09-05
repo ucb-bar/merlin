@@ -6,6 +6,12 @@ the hidden holdout before authoring, seals three identically configured agent tr
 candidate on the complete public+hidden functional L3 suite, reveals the holdout, predeclares all
 paired measurements, and evaluates every GSIM cell without best-of selection or failed-cell dropping.
 Paid agents and simulators are launched only through an injected command runner.
+
+The authoring trials and the paired measurement matrix are independent children, so a launch may
+declare how many of them may run at once with ``MERLIN_PERF_CAMPAIGN_FANOUT`` (default 1, the fully
+serial campaign; 6 gives both phases their full width).  Concurrency changes only the wall clock:
+the checkpoint chain, the trial evidence and the measurement matrix are recorded on the main thread
+in fixed order, so the record does not depend on which child finishes first.
 """
 from __future__ import annotations
 
@@ -18,7 +24,9 @@ import stat
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +48,7 @@ from merlin.targetgen.target_experiment import load_target_experiment
 
 HERE = Path(__file__).resolve().parent
 TRIALS = ("trial_00", "trial_01", "trial_02")
-REPLICATES = ("r000", "r001", "r002")
+REPLICATES = ("r000", "r001")
 SCHEMA = "merlin.agentic-performance-experiment.v1"
 
 
@@ -82,6 +90,12 @@ class Config:
     # gate must pass on its own terms. Recorded in the manifest so a result never loses the condition
     # it was produced under.
     waive_functional_gate: tuple[str, ...] = ()
+    # Exact performance members to measure, or "all". Named when a member cannot be CERTIFIED --
+    # the reference simulator cannot execute it, so no equivalence evidence exists for it -- which
+    # would otherwise let one unrunnable capsule block the entire corpus. Recorded in the manifest,
+    # so what a result was measured over is never in doubt.
+    perf_capsules: str = "all"
+    perf_families: str = "all"
 
 
 @dataclass(frozen=True)
@@ -561,9 +575,20 @@ def _functional_regrade_inputs(target: object,
 
 
 def _verify_tuning_certificate(certificate: GATE.CertificateRecord,
-                               target: object) -> dict[str, Any]:
-    """Require the initial certificate to be exactly the descriptor-derived tuning corpus."""
-    corpus = PAS.discover_performance_corpus(target)
+                               target: object,
+                               capsules: str = "all",
+                               families: str = "all") -> dict[str, Any]:
+    """Require the initial certificate to be exactly the descriptor-derived tuning corpus.
+
+    The corpus is narrowed by the SAME selection the trials will measure. Several families measure the
+    same workload under a different lever, so the full phase contains repeated workload identities
+    by design; the campaign measures one member per identity, and validating the unselected corpus
+    here would refuse a launch over members it was never going to run.
+    """
+    corpus = PAS.discover_performance_corpus(
+        target,
+        capsules=None if capsules in (None, "", "all") else capsules,
+        families=None if families in (None, "", "all") else families)
     identities: dict[str, str] = {}
     for member in corpus.capsules:
         identity = GATE.workload_sha256(
@@ -746,8 +771,8 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
     _safe(config.experiment_id, label="experiment id")
     if len(TRIALS) != 3 or len(set(TRIALS)) != 3:
         raise ExperimentError("experiment requires exactly three independent trial identities")
-    if tuple(REPLICATES) != ("r000", "r001", "r002"):
-        raise ExperimentError("measurement identities must be exactly r000-r002")
+    if tuple(REPLICATES) != tuple(f"r{index:03d}" for index in range(len(REPLICATES))):
+        raise ExperimentError("measurement identities must be a dense r000.. sequence")
     integers = (config.wall_budget_seconds, config.rounds, config.round_timeout_seconds,
                 config.max_tool_calls, config.tool_timeout_seconds, config.smoke_replicates,
                 config.holdout_count, config.measurement_timeout)
@@ -771,7 +796,8 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
         config.gsim_certificate, expected_sha256=config.gsim_certificate_sha256)
     if certificate.target != target.target:
         raise ExperimentError("GSIM certificate target differs from the experiment target")
-    tuning_coverage = _verify_tuning_certificate(certificate, target)
+    tuning_coverage = _verify_tuning_certificate(
+        certificate, target, config.perf_capsules, config.perf_families)
     pinned_gsim = Path(certificate.pins["gsim_binary"]["path"])
     if not pinned_gsim.is_file() or _sha_file(pinned_gsim) != certificate.pins[
             "gsim_binary"]["sha256"]:
@@ -899,6 +925,76 @@ def _run_checked(runner: CommandRunner, argv: Sequence[str], *, environment: Map
     if result.returncode:
         raise ExperimentError(
             f"command failed ({result.returncode}): {' '.join(argv)}\n{result.stderr[-1000:]}")
+
+
+FANOUT_ENVIRONMENT_VARIABLE = "MERLIN_PERF_CAMPAIGN_FANOUT"
+
+
+def declared_fanout(environment: Mapping[str, str] | None = None) -> int:
+    """How many independent children one phase may have in flight at once.
+
+    The width is DECLARED by the launch, never inferred: unset (or blank) means one, which is the
+    fully serial campaign, so a launch that says nothing behaves exactly as before.  A value that
+    cannot be read as a positive integer is refused rather than rounded to a default -- a 40-hour
+    campaign silently run at the wrong width is not recoverable after the fact.
+    """
+    source = os.environ if environment is None else environment
+    raw = source.get(FANOUT_ENVIRONMENT_VARIABLE)
+    if raw is None or not raw.strip():
+        return 1
+    text = raw.strip()
+    if any(character not in "0123456789" for character in text) or int(text) < 1:
+        raise ExperimentError(
+            f"{FANOUT_ENVIRONMENT_VARIABLE} must be a positive integer, got {raw!r}")
+    return int(text)
+
+
+@dataclass(frozen=True)
+class ChildStage:
+    """One independent child: a blocking launch, then the commit that writes the record."""
+
+    name: str
+    # None when the child's final artifact already exists and is merely adopted.
+    launch: Callable[[], None] | None
+    commit: Callable[[], Any]
+
+
+def run_child_stages(stages: Sequence[ChildStage], *, workers: int) -> list[Any]:
+    """Launch independent children with bounded concurrency, then commit in DECLARED order.
+
+    Only `launch` may leave this thread.  Every `commit` runs on the calling thread, in `stages`
+    order, because the checkpoint chain is a strict linear hash chain (it asserts its own index and
+    links the previous digest): concurrent appends would corrupt it, and a completion-ordered record
+    would not reproduce.  So the record is identical whatever order the children finish in.
+
+    With `workers` at 1 the launches stay on this thread and the first failure aborts the phase,
+    exactly as the serial campaign does.  Above 1 every launch is joined before anything is raised,
+    and the failure names every child that failed rather than only the first.  Nothing is committed
+    when any launch failed, so a resumed campaign re-derives the same chain in the same order --
+    children that did finish are adopted from their completed artifacts instead of being rerun.
+    """
+    if workers < 1:
+        raise ExperimentError("child stage concurrency must be at least one")
+    pending = [stage for stage in stages if stage.launch is not None]
+    if workers == 1 or len(pending) <= 1:
+        for stage in pending:
+            assert stage.launch is not None
+            stage.launch()
+    else:
+        failures: list[str] = []
+        with ThreadPoolExecutor(max_workers=min(workers, len(pending)),
+                                thread_name_prefix="perf-campaign") as pool:
+            launched = [(stage.name, pool.submit(stage.launch)) for stage in pending]
+            for name, future in launched:
+                try:
+                    future.result()
+                except Exception as error:  # noqa: BLE001 - report every failure, not just the first
+                    failures.append(f"{name}: {error}")
+        if failures:
+            raise ExperimentError(
+                f"{len(failures)} of {len(pending)} concurrent child stages failed; "
+                + "; ".join(failures))
+    return [stage.commit() for stage in stages]
 
 
 def _uncheckpointed_state(root: Path, final_artifact: Path, *, label: str) -> str:
@@ -1104,6 +1200,193 @@ def _qualify_heldout_with_config(
         target_experiment=target)
 
 
+def _author_candidates(
+        config: Config, state: Checkpoints, target: object, declaration: Mapping[str, Any], *,
+        environment: Mapping[str, str], expected_treatment: Mapping[str, Any],
+        command_runner: CommandRunner, workers: int
+) -> tuple[dict[str, PAS.VerifiedCandidateHandoff], list[dict[str, Any]]]:
+    """Seal one candidate per trial, optionally with several agent stages in flight at once.
+
+    The trials share nothing mutable: the hidden holdout is committed before this phase, each stage
+    writes its own run directory, the frozen tuning corpus is proven byte-identical across trials
+    afterwards, and independence is enforced by distinct evidence hashes.  The one order-sensitive
+    act is the checkpoint append, which `run_child_stages` keeps on this thread in TRIALS order.
+    """
+    stage_root_base = runs_root(target.target, "perf-bench") / "agent_stages"
+    stage_names = {trial: f"{config.experiment_id}__{trial}" for trial in TRIALS}
+    records = {trial: stage_root_base / name / "performance_candidate.json"
+               for trial, name in stage_names.items()}
+
+    stages: list[ChildStage] = []
+    for trial in TRIALS:
+        if state.evidence(f"candidate:{trial}") is not None:
+            continue
+        stage_dir = stage_root_base / stage_names[trial]
+        record = records[trial]
+        launch: Callable[[], None] | None = None
+        if _uncheckpointed_state(stage_dir, record, label=f"agent stage {trial}") == "absent":
+            _verify_live_agent_treatment(config, expected_treatment)
+            command = [sys.executable, str(HERE / "perf_agent_stage.py"),
+                       "--functional-run-id", config.functional_run_id,
+                       "--functional-submission-sha256", config.functional_submission_sha256,
+                       "--run-id", stage_names[trial], "--model", config.model,
+                       "--effort", config.effort,
+                       "--wall-budget-seconds", str(config.wall_budget_seconds),
+                       "--rounds", str(config.rounds),
+                       "--round-timeout-seconds", str(config.round_timeout_seconds),
+                       "--max-tool-calls", str(config.max_tool_calls),
+                       "--tool-timeout-seconds", str(config.tool_timeout_seconds),
+                       "--smoke-replicates", str(config.smoke_replicates),
+                       "--replicates", str(len(REPLICATES)), "--codex-binary", config.codex_binary,
+                       "--gsim-certificate", str(config.gsim_certificate),
+                       "--gsim-certificate-sha256", config.gsim_certificate_sha256,
+                       "--rtl-facts", str(config.rtl_facts),
+                       "--telemetry-price-table", str(config.telemetry_price_table),
+                       "--descriptor", str(config.descriptor)]
+            # A MEMBER THE ORACLE CANNOT EXECUTE MUST NOT HOLD THE WHOLE CORPUS HOSTAGE.
+            # The stage refuses any member outside the certificate, and a member the reference
+            # simulator cannot run cannot be certified -- so without a way to name it, one
+            # unrunnable capsule blocks every other one. The selection is recorded in the run
+            # manifest, so what was measured is never in doubt.
+            if config.perf_capsules and config.perf_capsules != "all":
+                command += ["--capsules", config.perf_capsules]
+            if config.perf_families and config.perf_families != "all":
+                command += ["--families", config.perf_families]
+            launch = partial(_run_checked, command_runner, command, environment=environment)
+
+        def commit(trial: str = trial, record: Path = record) -> dict[str, Any]:
+            handoff = _handoff(record, target)
+            _verify_trial_contract(trial, handoff, declaration["trial_contracts"][trial])
+            saved = {"record": str(record.resolve()), "record_sha256": handoff.record_sha256,
+                     "candidate_sha256": handoff.candidate_sha256}
+            state.append(f"candidate:{trial}", saved)
+            return saved
+
+        stages.append(ChildStage(f"candidate:{trial}", launch, commit))
+    run_child_stages(stages, workers=workers)
+
+    handoffs: dict[str, PAS.VerifiedCandidateHandoff] = {}
+    trial_evidence: list[dict[str, Any]] = []
+    for trial in TRIALS:
+        saved = state.evidence(f"candidate:{trial}")
+        if saved is None:
+            raise ExperimentError(f"agent stage evidence is missing after it ran: {trial}")
+        handoff = _handoff(Path(saved["record"]), target)
+        if handoff.record_sha256 != saved["record_sha256"]:
+            raise ExperimentError(f"candidate record changed across resume: {trial}")
+        _verify_trial_contract(trial, handoff, declaration["trial_contracts"][trial])
+        if handoff.telemetry_evidence.get("preflight_sha256") != _sha_bytes(
+                _canonical(declaration["agent_telemetry"])):
+            raise ExperimentError(f"candidate telemetry stack differs from predeclaration: {trial}")
+        handoffs[trial] = handoff
+        trial_evidence.append({"trial": trial, "agent_run_id": stage_names[trial],
+                               "agent_evidence_sha256": handoff.record_sha256})
+    return handoffs, trial_evidence
+
+
+@dataclass(frozen=True)
+class _MeasurementCell:
+    """One (trial, phase) paired-bench cell, addressed by its own fresh run directory."""
+
+    trial: str
+    phase: str
+    handoff: PAS.VerifiedCandidateHandoff
+    corpus_root: Path
+    corpus_manifest: Path
+    corpus_manifest_sha256: str
+    corpus_capsules_sha256: str
+    certificate: GATE.CertificateRecord
+    stage: str
+    run_id: str
+    output: Path
+
+
+def _measurement_cells(config: Config,
+                       handoffs: Mapping[str, PAS.VerifiedCandidateHandoff],
+                       revealed: Mapping[str, Any], *,
+                       tuning_certificate: GATE.CertificateRecord,
+                       heldout_certificate: GATE.CertificateRecord) -> list[_MeasurementCell]:
+    """The complete paired matrix in fixed order: every trial x every phase, no cell dropped."""
+    cells: list[_MeasurementCell] = []
+    for trial in TRIALS:
+        handoff = handoffs[trial]
+        for phase, corpus_root, corpus_manifest, manifest_sha, capsules_sha, certificate in (
+                ("tuning", handoff.corpus_root,
+                 handoff.corpus_root / "performance_corpus_manifest.json",
+                 handoff.corpus_manifest_sha256, handoff.corpus_sha256, tuning_certificate),
+                ("held_out", Path(revealed["root"]), Path(revealed["manifest"]),
+                 revealed["manifest_sha256"], revealed["capsules_sha256"], heldout_certificate)):
+            run_id = f"{config.experiment_id}__{trial}__{phase}"
+            cells.append(_MeasurementCell(
+                trial=trial, phase=phase, handoff=handoff, corpus_root=corpus_root,
+                corpus_manifest=corpus_manifest, corpus_manifest_sha256=manifest_sha,
+                corpus_capsules_sha256=capsules_sha, certificate=certificate,
+                stage=f"measurement:{trial}:{phase}", run_id=run_id,
+                output=PB.RUNS / run_id / "campaign_manifest.json"))
+    return cells
+
+
+def _measure_cells(cells: Sequence[_MeasurementCell], config: Config, state: Checkpoints, *,
+                   command_runner: CommandRunner, workers: int) -> list[tuple[str, Path]]:
+    """Measure every cell, optionally several at once; each writes a disjoint fresh run directory.
+
+    Adoption, verification and checkpointing all happen on this thread in `cells` order, so the
+    recorded matrix is the same whichever cell finishes first.
+    """
+    def verify(cell: _MeasurementCell, path: Path) -> dict[str, Any]:
+        return _verify_measurement_manifest(
+            path, phase=cell.phase, functional_run_id=config.functional_run_id,
+            functional_submission_sha256=config.functional_submission_sha256,
+            handoff=cell.handoff, corpus_manifest_sha256=cell.corpus_manifest_sha256,
+            corpus_capsules_sha256=cell.corpus_capsules_sha256,
+            certificate_sha256=cell.certificate.sha256)
+
+    stages: list[ChildStage] = []
+    for cell in cells:
+        if state.evidence(cell.stage) is not None:
+            continue
+        launch: Callable[[], None] | None = None
+        if _uncheckpointed_state(
+                cell.output.parent, cell.output,
+                label=f"paired measurement {cell.trial}/{cell.phase}") == "absent":
+            command = [sys.executable, str(HERE / "run_paired_perf_bench.py"),
+                       "--functional-run-id", config.functional_run_id,
+                       "--functional-submission-sha256", config.functional_submission_sha256,
+                       "--candidate-record", str(cell.handoff.record_path),
+                       "--corpus-root", str(cell.corpus_root),
+                       "--corpus-manifest", str(cell.corpus_manifest),
+                       "--corpus-manifest-sha256", cell.corpus_manifest_sha256,
+                       "--corpus-capsules-sha256", cell.corpus_capsules_sha256,
+                       "--phase", cell.phase,
+                       "--gsim-certificate", str(cell.certificate.path),
+                       "--gsim-certificate-sha256", cell.certificate.sha256,
+                       "--rtl-facts", str(config.rtl_facts), "--run-id", cell.run_id,
+                       "--timeout", str(config.measurement_timeout),
+                       "--hardware-counters" if config.hardware_counters
+                       else "--no-hardware-counters"]
+            launch = partial(_run_checked, command_runner, command,
+                             environment=child_environment(config, cell.certificate))
+
+        def commit(cell: _MeasurementCell = cell) -> dict[str, Any]:
+            saved = verify(cell, cell.output)
+            state.append(cell.stage, saved)
+            return saved
+
+        stages.append(ChildStage(cell.stage, launch, commit))
+    run_child_stages(stages, workers=workers)
+
+    manifests: list[tuple[str, Path]] = []
+    for cell in cells:
+        saved = state.evidence(cell.stage)
+        if saved is None:
+            raise ExperimentError(
+                f"paired measurement evidence is missing after it ran: {cell.stage}")
+        saved_path = _verify_saved_file(saved, cell.output, label=f"measurement {cell.stage}")
+        verify(cell, saved_path)
+        manifests.append((cell.trial, Path(saved["path"])))
+    return manifests
+
+
 def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
         dry_run: bool = False,
         commit_holdout: Callable[..., HOLDOUT.HoldoutPaths] = HOLDOUT.commit_holdout,
@@ -1111,6 +1394,9 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
         heldout_certificate_provider: Callable[[Path, Path, GATE.CertificateRecord],
                                                tuple[Path, str]] | None = None
         ) -> Path | dict[str, Any]:
+    # Read the declared width before anything is launched, so an unreadable declaration fails now
+    # rather than 20 hours in, at the phase that would have used it.
+    fanout = declared_fanout()
     input_snapshots = None
     chia_launch = None if dry_run else _verify_chia_launch_receipt()
     if not dry_run:
@@ -1180,50 +1466,9 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
     elif _sha_file(Path(holdout["public"])) != holdout["public_sha256"]:
         raise ExperimentError("holdout commitment changed across resume")
 
-    handoffs: dict[str, PAS.VerifiedCandidateHandoff] = {}
-    trial_evidence = []
-    stage_root_base = runs_root(target.target, "perf-bench") / "agent_stages"
-    for trial in TRIALS:
-        stage_name = f"{config.experiment_id}__{trial}"
-        stage_dir = stage_root_base / stage_name
-        record = stage_dir / "performance_candidate.json"
-        saved = state.evidence(f"candidate:{trial}")
-        if saved is None:
-            if _uncheckpointed_state(stage_dir, record, label=f"agent stage {trial}") == "absent":
-                _verify_live_agent_treatment(config, expected_treatment)
-                command = [sys.executable, str(HERE / "perf_agent_stage.py"),
-                           "--functional-run-id", config.functional_run_id,
-                           "--functional-submission-sha256", config.functional_submission_sha256,
-                           "--run-id", stage_name, "--model", config.model,
-                           "--effort", config.effort,
-                           "--wall-budget-seconds", str(config.wall_budget_seconds),
-                           "--rounds", str(config.rounds),
-                           "--round-timeout-seconds", str(config.round_timeout_seconds),
-                           "--max-tool-calls", str(config.max_tool_calls),
-                           "--tool-timeout-seconds", str(config.tool_timeout_seconds),
-                           "--smoke-replicates", str(config.smoke_replicates),
-                           "--replicates", "3", "--codex-binary", config.codex_binary,
-                           "--gsim-certificate", str(config.gsim_certificate),
-                           "--gsim-certificate-sha256", config.gsim_certificate_sha256,
-                           "--rtl-facts", str(config.rtl_facts),
-                           "--telemetry-price-table", str(config.telemetry_price_table),
-                           "--descriptor", str(config.descriptor)]
-                _run_checked(command_runner, command, environment=environment)
-            handoff = _handoff(record, target)
-            _verify_trial_contract(trial, handoff, declaration["trial_contracts"][trial])
-            saved = {"record": str(record.resolve()), "record_sha256": handoff.record_sha256,
-                     "candidate_sha256": handoff.candidate_sha256}
-            state.append(f"candidate:{trial}", saved)
-        handoff = _handoff(Path(saved["record"]), target)
-        if handoff.record_sha256 != saved["record_sha256"]:
-            raise ExperimentError(f"candidate record changed across resume: {trial}")
-        _verify_trial_contract(trial, handoff, declaration["trial_contracts"][trial])
-        if handoff.telemetry_evidence.get("preflight_sha256") != _sha_bytes(
-                _canonical(declaration["agent_telemetry"])):
-            raise ExperimentError(f"candidate telemetry stack differs from predeclaration: {trial}")
-        handoffs[trial] = handoff
-        trial_evidence.append({"trial": trial, "agent_run_id": stage_name,
-                               "agent_evidence_sha256": handoff.record_sha256})
+    handoffs, trial_evidence = _author_candidates(
+        config, state, target, declaration, environment=environment,
+        expected_treatment=expected_treatment, command_runner=command_runner, workers=fanout)
     _verify_trial_treatments(handoffs, expected_treatment)
     if len({row["agent_evidence_sha256"] for row in trial_evidence}) != 3:
         raise ExperimentError("three independent agent trials need distinct evidence hashes")
@@ -1368,54 +1613,11 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
         label="statistics predeclaration")
     declaration_stats = json.loads(stats_path.read_text(encoding="utf-8"))
 
-    measurement_manifests = []
-    for trial, handoff in handoffs.items():
-        for phase, corpus_root, corpus_manifest, manifest_sha, capsules_sha, certificate in (
-                ("tuning", handoff.corpus_root,
-                 handoff.corpus_root / "performance_corpus_manifest.json",
-                 handoff.corpus_manifest_sha256, handoff.corpus_sha256, tuning_certificate),
-                ("held_out", Path(revealed["root"]), Path(revealed["manifest"]),
-                 revealed["manifest_sha256"], revealed["capsules_sha256"],
-                 heldout_certificate)):
-            stage = f"measurement:{trial}:{phase}"
-            saved = state.evidence(stage)
-            run_id = f"{config.experiment_id}__{trial}__{phase}"
-            output = PB.RUNS / run_id / "campaign_manifest.json"
-            if saved is None:
-                if _uncheckpointed_state(
-                        output.parent, output,
-                        label=f"paired measurement {trial}/{phase}") == "absent":
-                    command = [sys.executable, str(HERE / "run_paired_perf_bench.py"),
-                               "--functional-run-id", config.functional_run_id,
-                               "--functional-submission-sha256", config.functional_submission_sha256,
-                               "--candidate-record", str(handoff.record_path),
-                               "--corpus-root", str(corpus_root),
-                               "--corpus-manifest", str(corpus_manifest),
-                               "--corpus-manifest-sha256", manifest_sha,
-                               "--corpus-capsules-sha256", capsules_sha, "--phase", phase,
-                               "--gsim-certificate", str(certificate.path),
-                               "--gsim-certificate-sha256", certificate.sha256,
-                               "--rtl-facts", str(config.rtl_facts), "--run-id", run_id,
-                               "--timeout", str(config.measurement_timeout),
-                               "--hardware-counters" if config.hardware_counters
-                               else "--no-hardware-counters"]
-                    phase_environment = child_environment(config, certificate)
-                    _run_checked(command_runner, command, environment=phase_environment)
-                saved = _verify_measurement_manifest(
-                    output, phase=phase, functional_run_id=config.functional_run_id,
-                    functional_submission_sha256=config.functional_submission_sha256,
-                    handoff=handoff, corpus_manifest_sha256=manifest_sha,
-                    corpus_capsules_sha256=capsules_sha,
-                    certificate_sha256=certificate.sha256)
-                state.append(stage, saved)
-            saved_path = _verify_saved_file(saved, output, label=f"measurement {stage}")
-            _verify_measurement_manifest(
-                saved_path, phase=phase, functional_run_id=config.functional_run_id,
-                functional_submission_sha256=config.functional_submission_sha256,
-                handoff=handoff, corpus_manifest_sha256=manifest_sha,
-                corpus_capsules_sha256=capsules_sha,
-                certificate_sha256=certificate.sha256)
-            measurement_manifests.append((trial, Path(saved["path"])))
+    measurement_manifests = _measure_cells(
+        _measurement_cells(config, handoffs, revealed,
+                           tuning_certificate=tuning_certificate,
+                           heldout_certificate=heldout_certificate),
+        config, state, command_runner=command_runner, workers=fanout)
 
     all_rows = [row for trial, path in measurement_manifests for row in _paired_rows(path, trial)]
     result = STATS.evaluate(declaration_stats, all_rows, trial_evidence=trial_evidence)
@@ -1452,6 +1654,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--experiment-id", required=True)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--functional-run-id", required=True)
+    parser.add_argument("--perf-capsules", default="all",
+                        help="comma-separated performance capsules to measure, or 'all'")
+    parser.add_argument("--perf-families", default="all",
+                        help="comma-separated performance families to measure, or 'all'")
     parser.add_argument("--functional-submission-sha256", required=True)
     parser.add_argument("--waive-functional-gate", action="append", default=[],
                         metavar="PREDICATE",

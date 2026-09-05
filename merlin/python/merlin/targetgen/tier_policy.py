@@ -237,3 +237,375 @@ def may_certify(target: str, capsule: Mapping) -> tuple[bool, str | None]:
     return False, (f"certify-tier budget exhausted ({used:.0f}s of {budget:.0f}s) and this capsule is "
                    f"not in the derived covering set, so the axes it exercises are already certified "
                    f"by a capsule that is. NOT a verdict on this capsule -- it did not run.")
+
+
+# --- per-capsule oracle-tier ceiling -------------------------------------------------------------
+# The budget above is a SUITE-level saving: it stops buying certify tiers once a RUN has spent its
+# allowance, and which capsules lose out depends on the order they happen to reach. That is the right
+# shape for "the run is out of time" and the wrong shape for "THIS capsule cannot be certified at all",
+# which is a property of the capsule and is knowable before the run starts.
+#
+# Measured, which is why this exists. Fitted from the runs already on disk
+# (:mod:`merlin.targetgen.cert_cost`, 644 samples), the two elaborated-RTL engines on this target's cert
+# rung cost ~14.0s + 0.0047s/cycle and ~134.2s + 0.0694s/cycle. At the second rate the corpus's deepest
+# capsule -- 28,118 measured cycles -- is ~35 minutes, and a residency sweep reaching 16,384 in the
+# reduction depth is ~1.4 hours for ONE capsule. At the first it is ~8 minutes. So the ceiling is
+# corpus-scaling insurance: it is what keeps a corpus that grows deep capsules from having one grade
+# quietly become unaffordable, and an unaffordable grade does not announce itself -- it presents as a
+# grade that is still running.
+#
+# TWO AXES, AND CONFUSING THEM IS THE EASY MISTAKE. A tier is bought for one of two different reasons
+# and a ceiling on one must never silence the other:
+#
+# * CORRECTNESS -- "is the emitted kernel right". A capsule derived from a functional sibling that was
+#   already certified deeper does not have to re-earn that: it is SCREENED at the cheap tier and its
+#   correctness claim rests on the sibling's certification. This is what `max_oracle_tier` caps, and the
+#   perf family already declares the same thing in its own words as
+#   `performance.acceptance.evidence.correctness_tier`.
+# * TIMING -- "how many cycles did it take". A performance claim NEEDS the cycle-accurate count; that is
+#   the entire point of the family, and the perf family declares which rung owes it
+#   (`...evidence.timing_tier`). A correctness ceiling must therefore NOT decline the timing tier, or a
+#   cell that was measured reads back as though it never was. Excluding a member from the measurement
+#   matrix is a separate declaration (`max_timing_tier`) and is recorded as a separate fact.
+#
+# A CEILING IS NOT A SILENCE. The capped tier is recorded as `skipped` with a reason naming the ceiling
+# and the budget that set it, because this codebase's rule is that a tier with no record is not evidence
+# (`not_run_is_not_pass`, and MERLIN_FULL_LADDER exists so a failing capsule still reports every declared
+# tier). Omitting the key is the exact bug that made two model capsules look ungraded.
+#
+# AND `extends` IS VERIFIED, NOT TRUSTED. A capsule claiming to rest on a sibling's certification is
+# entitled to that claim only if the named sibling actually earned the deeper tier in the run being
+# cited. An unverifiable `extends` is WEAKER than no `extends`, because it reads as certified -- so it
+# gets its own claim strength and can never be recorded as the certified one.
+
+#: A capsule field capping the deepest oracle tier its CORRECTNESS will be graded at. Declared by the
+#: capsule, so a reader knows what it is asking to be graded at without consulting a run.
+CEILING_FIELD = "max_oracle_tier"
+
+#: A capsule field capping the deepest tier bought for its TIMING measurement -- an exclusion from the
+#: measurement matrix, deliberately NOT the same field as the correctness ceiling. See the two-axis note.
+TIMING_CEILING_FIELD = "max_timing_tier"
+
+#: A capsule field naming the SIBLING capsule whose deeper certification this capsule rests on. The
+#: honesty mechanism for a ceiling: a capped capsule is not "uncertified", it is "screened at <cap> and
+#: resting on <sibling>'s certification". Stated on the capsule rather than inferred from a naming
+#: convention, so what the claim rests on is readable from the capsule and auditable afterwards.
+EXTENDS_FIELD = "extends"
+
+#: Where the perf family declares the same two axes in its own vocabulary. Read rather than duplicated:
+#: the acceptance block is frozen before any observation, so it is the authority on which rung owes
+#: which kind of evidence, and a second copy of that fact here would drift from it.
+_ACCEPTANCE_PATH = ("performance", "acceptance", "evidence")
+_CORRECTNESS_TIER_KEY = "correctness_tier"
+_TIMING_TIER_KEY = "timing_tier"
+
+#: The two axes a tier can be bought for. Recorded on every ceiling decision so a reader can tell
+#: "correctness rests on a sibling" from "this cell has no measurement".
+AXIS_CORRECTNESS = "correctness"
+AXIS_TIMING = "timing"
+
+#: Claim strengths a capped tier can carry, recorded verbatim in the tier record. Three, not two: a
+#: named-but-unverifiable sibling is its own state and must never collapse into the certified one.
+CLAIM_EXTENDS = "screened_at_cap_resting_on_verified_sibling"
+CLAIM_EXTENDS_UNVERIFIED = "screened_at_cap_resting_on_UNVERIFIED_sibling"
+CLAIM_SCREENED_ONLY = "screened_at_cap_resting_on_nothing"
+
+#: Where a ceiling came from. Distinguishable in the record on purpose: a declaration is an author's
+#: choice and a derived cap is a measurement, and the two are fixed differently.
+SOURCE_DECLARED = "declared"
+SOURCE_DECLARED_ACCEPTANCE = "declared_in_acceptance_block"
+SOURCE_DERIVED_BUDGET = "derived_from_measured_cost"
+SOURCE_UNPRICED = "unpriced"
+
+
+def tier_depth_order(tiers: Iterable[str]) -> list[str]:
+    """``tiers`` in LADDER order (shallowest first), derived from the tier NAMES alone.
+
+    Deliberately not read off any tier->simulator map. Which simulator serves a rung is an availability
+    and cost decision that changes -- one target's cert rung is served by three different elaborated-RTL
+    engines, and a rung was retired outright once the engines on it were recognised as equal fidelity --
+    while the DEPTH a rung denotes is what the corpus declares in ``required_oracle_tiers`` and is
+    stable. Sorting the names is that order for an ``L<n>`` ladder, so a ceiling expressed this way
+    survives a re-mapping of which engine answers where.
+    """
+    return sorted({str(t) for t in tiers if t is not None})
+
+
+def _rank(tier: str, universe: Sequence[str]) -> int:
+    """Depth rank of ``tier`` within ``universe``, or -1 when it is not part of the ladder."""
+    order = tier_depth_order(list(universe) + [tier])
+    return order.index(str(tier)) if str(tier) in order else -1
+
+
+def _acceptance_evidence(capsule: Mapping) -> Mapping:
+    """The perf family's frozen ``acceptance.evidence`` block, or an empty mapping."""
+    node: object = capsule
+    for key in _ACCEPTANCE_PATH:
+        if not isinstance(node, Mapping):
+            return {}
+        node = node.get(key)
+    return node if isinstance(node, Mapping) else {}
+
+
+def declared_axes(capsule: Mapping) -> tuple[str | None, str | None]:
+    """``(correctness_tier, timing_tier)`` as the capsule itself declares them, or ``(None, None)``.
+
+    DERIVED from the capsule's own acceptance block rather than assumed: a family that owes its timing
+    evidence on a different rung, or owes none at all, is covered by the same code.
+    """
+    ev = _acceptance_evidence(capsule)
+    c, t = ev.get(_CORRECTNESS_TIER_KEY), ev.get(_TIMING_TIER_KEY)
+    return (str(c) if c else None, str(t) if t else None)
+
+
+def axis_of(capsule: Mapping, tier: str) -> str:
+    """Which axis ``tier`` is bought for on this capsule: :data:`AXIS_TIMING` or :data:`AXIS_CORRECTNESS`.
+
+    The timing rung is whatever the capsule declares owes its timing evidence. Everything else -- and
+    every capsule that declares no timing rung at all -- is a correctness purchase.
+    """
+    _correctness, timing = declared_axes(capsule)
+    return AXIS_TIMING if timing and str(tier) == timing else AXIS_CORRECTNESS
+
+
+def declared_ceiling(capsule: Mapping, axis: str = AXIS_CORRECTNESS) -> tuple[str | None, str | None]:
+    """``(cap_tier, source)`` for ``axis`` on this capsule, read and never inferred.
+
+    On the correctness axis the explicit ``max_oracle_tier`` wins; absent that, the perf family's own
+    ``correctness_tier`` IS a declared correctness ceiling and is honoured as one -- which is the whole
+    point of reading the acceptance block instead of duplicating it. On the timing axis only the explicit
+    ``max_timing_tier`` counts: a member is dropped from the measurement matrix deliberately or not at
+    all. A cap guessed from a naming convention is a cap nobody can audit.
+    """
+    if axis == AXIS_TIMING:
+        cap = capsule.get(TIMING_CEILING_FIELD)
+        return (str(cap), SOURCE_DECLARED) if cap else (None, None)
+    cap = capsule.get(CEILING_FIELD)
+    if cap:
+        return str(cap), SOURCE_DECLARED
+    correctness, _timing = declared_axes(capsule)
+    return (correctness, SOURCE_DECLARED_ACCEPTANCE) if correctness else (None, None)
+
+
+def ceiling_budget_seconds() -> float | None:
+    """The per-capsule certification budget in seconds, or None (the default: no derived ceiling).
+
+    OPT-IN, and there is no default number, for the same reason :func:`budget_seconds` has none: a
+    budget nobody declared, silently deciding which capsules get certified, is exactly the quiet
+    coverage loss this file exists to make visible. The value is a DECLARED parameter -- it is not
+    derived from the target, and no literal in this repo stands in for it. The per-cycle rate it is
+    compared against IS derived, from measurement (:mod:`merlin.targetgen.cert_cost`).
+    """
+    import os
+    raw = os.environ.get("MERLIN_ORACLE_CEILING_BUDGET_S", "").strip()
+    if not raw:
+        return None
+    try:
+        v = float(raw)
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
+class ExtendsVerdict:
+    """Whether a capsule's ``extends`` claim is actually backed by the sibling it names.
+
+    ``verified`` is only ever True when a sibling result was READ and shows the named capsule passing a
+    tier DEEPER than the cap. Absent, unreadable, present-but-failed and present-but-not-deeper all come
+    back False with the reason, because each of them is a claim that would otherwise read as certified.
+    """
+
+    __slots__ = ("sibling", "verified", "tier", "reason", "source")
+
+    def __init__(self, sibling: str | None, verified: bool, *, tier: str | None = None,
+                 reason: str = "", source: str | None = None):
+        self.sibling = sibling
+        self.verified = verified
+        self.tier = tier
+        self.reason = reason
+        self.source = source
+
+    @property
+    def claim(self) -> str:
+        if self.verified:
+            return CLAIM_EXTENDS
+        if self.sibling:
+            return CLAIM_EXTENDS_UNVERIFIED
+        return CLAIM_SCREENED_ONLY
+
+    def to_dict(self) -> dict:
+        return {"extends": self.sibling, "verified": self.verified,
+                "certified_at_tier": self.tier, "reason": self.reason, "source": self.source}
+
+
+def verify_extends(target: str, capsule: Mapping, cap_tier: str | None, *,
+                   declared_tiers: Iterable[str] = (), roots=None) -> ExtendsVerdict:
+    """Did the sibling named by ``extends`` actually earn a tier deeper than ``cap_tier``?
+
+    FAIL CLOSED. A perf capsule claiming to rest on a functional sibling is entitled to that claim only
+    if the sibling passed the deeper tier in the run being cited; anything else is recorded as
+    UNVERIFIED, which is a weaker claim than naming nobody. The sibling's verdict is read from the same
+    per-capsule results the cost model reads, so no new record has to be written for this to work.
+    """
+    sibling = capsule.get(EXTENDS_FIELD)
+    if not sibling:
+        return ExtendsVerdict(None, False, reason=f"capsule declares no `{EXTENDS_FIELD}` sibling")
+    sibling = str(sibling)
+    from . import cert_cost as CC
+
+    universe = list(declared_tiers) or list(capsule.get("required_oracle_tiers") or ())
+    cap_rank = _rank(str(cap_tier), universe + [str(cap_tier)]) if cap_tier else -1
+    found_any = False
+    for base in CC._result_roots(str(target), roots):
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("capsule_result.json")):
+            try:
+                doc = _json_loads(path)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(doc, Mapping) or str(doc.get("capsule") or "") != sibling:
+                continue
+            found_any = True
+            for name, rec in (doc.get("tiers") or {}).items():
+                if not isinstance(rec, Mapping) or rec.get("status") != "pass":
+                    continue
+                if cap_tier and _rank(str(name), universe + [str(name), str(cap_tier)]) <= cap_rank:
+                    continue                       # not DEEPER than the cap: it corroborates nothing
+                return ExtendsVerdict(sibling, True, tier=str(name),
+                                      reason=(f"sibling {sibling!r} passed {name}, deeper than the "
+                                              f"{cap_tier} ceiling this capsule is screened at"),
+                                      source=str(path))
+    if found_any:
+        return ExtendsVerdict(sibling, False,
+                              reason=(f"sibling {sibling!r} has a result on disk but no PASSING tier "
+                                      f"deeper than {cap_tier}, so it carries no certification for "
+                                      f"this capsule to rest on"))
+    return ExtendsVerdict(sibling, False,
+                          reason=(f"sibling {sibling!r} has no result under this target's run roots, so "
+                                  f"the claim that its certification covers this capsule cannot be "
+                                  f"verified -- recorded as UNVERIFIED, which is weaker than naming "
+                                  f"nobody, because an unchecked `{EXTENDS_FIELD}` reads as certified"))
+
+
+def _json_loads(path):
+    import json
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+class Ceiling:
+    """Whether one capsule may spend one oracle tier, and the record that says why not.
+
+    ``allowed`` is the only thing the ladder acts on. ``record`` is what the tier result carries, so the
+    capsule's own result states the axis, the ceiling, the budget behind it, and what the claim rests on.
+    """
+
+    __slots__ = ("allowed", "source", "axis", "reason", "record")
+
+    def __init__(self, allowed: bool, *, source: str | None = None, axis: str = AXIS_CORRECTNESS,
+                 reason: str | None = None, record: dict | None = None):
+        self.allowed = allowed
+        self.source = source
+        self.axis = axis
+        self.reason = reason
+        self.record = record
+
+    def __repr__(self) -> str:                              # pragma: no cover - diagnostics
+        return f"Ceiling(allowed={self.allowed!r}, axis={self.axis!r}, source={self.source!r})"
+
+
+def _rests_on_clause(verdict: ExtendsVerdict, cap: str) -> str:
+    if verdict.verified:
+        return (f"This capsule is SCREENED at {cap} and rests on sibling capsule {verdict.sibling!r}, "
+                f"VERIFIED to have passed {verdict.tier}. It is not a verdict on this capsule.")
+    if verdict.sibling:
+        return (f"This capsule is SCREENED at {cap} and names sibling {verdict.sibling!r}, but that "
+                f"claim is UNVERIFIED: {verdict.reason}. Treat it as resting on nothing until the "
+                f"sibling's deeper pass is on disk. It is not a verdict on this capsule.")
+    return (f"This capsule is SCREENED at {cap} and declares no `{EXTENDS_FIELD}` sibling, so nothing "
+            f"carries a deeper certification for it -- a strictly WEAKER claim than a capped capsule "
+            f"that names one. It is not a verdict on this capsule.")
+
+
+def oracle_ceiling(target: str, capsule: Mapping, tier: str, *,
+                   declared_tiers: Iterable[str] = (), engine: str | None = None,
+                   cycles: int | None = None, functional_cycles: int | None = None,
+                   budget_s: float | None = None, cost_roots=None) -> Ceiling:
+    """May ``capsule`` spend ``tier`` on ``target``? Three outcomes, all recorded.
+
+    First the AXIS is derived -- is this tier bought for correctness or for a timing measurement -- and
+    only that axis's ceiling can decline it. A correctness ceiling declining the timing rung would make
+    a measured cell read as unmeasured; a timing exclusion declining the correctness rung would drop a
+    numeric gate. Then, in order:
+
+    1. **A declared ceiling for that axis wins outright.** It is the author's statement about what the
+       capsule is asking for, and nothing measured overrides it.
+    2. **Otherwise, if a budget is declared, the measured cost decides** -- and only then, because
+       without a declared budget "affordable" is not a question with an answer.
+    3. **An unpriced capsule is UNKNOWN**, and UNKNOWN fails closed: the tier is not bought and the
+       record says the cost could not be established. It is NOT recorded as a budget cap (nobody
+       measured it exceeding anything) and NOT as affordable (nobody measured it fitting).
+
+    The screen tier is the caller's to exclude -- a ceiling must never suppress the cheap tier, since
+    "screened at the cheap tier" is the whole claim a capped capsule makes.
+    """
+    from . import cert_cost as CC
+
+    universe = list(declared_tiers) or list(capsule.get("required_oracle_tiers") or ())
+    axis = axis_of(capsule, tier)
+    cap, cap_source = declared_ceiling(capsule, axis)
+    ladder = tier_depth_order(list(universe) + ([cap] if cap else []))
+    base = {"axis": axis, "capped_tier": str(tier), "ladder": ladder,
+            "measurement_excluded": axis == AXIS_TIMING}
+
+    if cap:
+        cap_rank = _rank(cap, universe + [cap])
+        tier_rank = _rank(tier, universe + [cap])
+        if tier_rank > cap_rank >= 0:
+            ev = verify_extends(target, capsule, cap, declared_tiers=universe, roots=cost_roots)
+            field = TIMING_CEILING_FIELD if axis == AXIS_TIMING else CEILING_FIELD
+            if axis == AXIS_TIMING:
+                why = (f"capsule declares `{field}: {cap}`, so {tier} is outside its MEASUREMENT "
+                       f"matrix. This is an exclusion from the timing measurement, NOT a correctness "
+                       f"ceiling: no cycle count is claimed for this member at {tier}.")
+            else:
+                why = (f"capsule declares its correctness ceiling as `{field}: {cap}` and {tier} is "
+                       f"deeper than that. " + _rests_on_clause(ev, cap))
+            return Ceiling(False, source=cap_source, axis=axis, reason=why,
+                           record={**base, "max_oracle_tier": cap, "source": cap_source,
+                                   "claim": ev.claim, "extends": ev.to_dict(), "budget_s": None})
+        return Ceiling(True, source=cap_source, axis=axis)
+
+    budget = budget_s if budget_s is not None else ceiling_budget_seconds()
+    if budget is None:
+        return Ceiling(True, axis=axis)
+
+    aff = CC.affordability(str(target), str(tier), budget_s=budget,
+                           capsule=str(capsule.get("name") or "") or None,
+                           cycles=cycles, functional_cycles=functional_cycles,
+                           engine=engine, roots=cost_roots)
+    if aff.verdict == CC.AFFORDABLE:
+        return Ceiling(True, source=SOURCE_DERIVED_BUDGET, axis=axis)
+
+    ev = verify_extends(target, capsule, str(tier), declared_tiers=universe, roots=cost_roots)
+    shared = {**base, "budget_s": budget, "affordability": aff.to_dict(),
+              "max_oracle_tier": None, "extends": ev.to_dict()}
+    # A DERIVED cap on the timing rung is still a measurement exclusion, and says so: a reader must not
+    # read "too expensive to time" as "correctness was never certified", nor as a measured cell.
+    axis_note = ("No cycle count is claimed for this member at this tier -- it is an exclusion from the "
+                 "MEASUREMENT matrix, not a correctness verdict." if axis == AXIS_TIMING
+                 else _rests_on_clause(ev, "the cheapest tier that ran"))
+    if aff.verdict == CC.TOO_EXPENSIVE:
+        return Ceiling(False, source=SOURCE_DERIVED_BUDGET, axis=axis,
+                       reason=(f"{tier} is above this capsule's DERIVED {axis} ceiling: {aff.reason}. "
+                               + axis_note),
+                       record={**shared, "source": SOURCE_DERIVED_BUDGET, "claim": ev.claim})
+    # UNKNOWN. Fail closed and say which of the two things it is NOT.
+    return Ceiling(
+        False, source=SOURCE_UNPRICED, axis=axis,
+        reason=(f"{tier} was NOT bought and NOT priced: {aff.reason}. A declared {budget:.0f}s "
+                f"per-capsule budget is in force and this capsule has no measured cost basis at {tier}, "
+                f"so its cost is UNKNOWN -- neither shown to fit the budget nor shown to exceed it. "
+                f"Recorded as UNKNOWN rather than defaulted either way; grade this capsule once at "
+                f"{tier} with no budget in force to give it a basis. " + axis_note),
+        record={**shared, "source": SOURCE_UNPRICED, "claim": ev.claim, "cost_unknown": True})

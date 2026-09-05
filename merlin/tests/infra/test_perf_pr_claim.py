@@ -36,16 +36,59 @@ COUNTERS = OccupancyCounters(
     by_combination={frozenset({"A"}): "A_CYC", frozenset({"B"}): "B_CYC",
                     frozenset({"A", "B"}): "AB_CYC"})
 
+#: The event code each counter carries in the target's own header, and the elaborated CIRCT in which
+#: those coded ports really are the exhaustive one-hot partition of the two engines' busy bits.
+#:
+#: ⚠️ **The proof is not optional and cannot be faked.** ``eta_from_counters`` will not call an overlap
+#: reading measured until the partition is proved from the RTL, because a counter block's NAMES only
+#: suggest that it partitions busy time -- a target whose counters double-count would silently
+#: over-report both the per-engine totals and the realised overlap. A pure decision procedure holds no
+#: RTL artifact, so the run supplies this; the tests below supply the same thing, CONSTRUCTED from the
+#: counter set rather than typed, so what is exercised is the wiring and not a spelling.
+CODES = {"A_CYC": 1, "B_CYC": 2, "AB_CYC": 3}
+
+
+def _partition(counters: OccupancyCounters = None, codes: dict = None) -> dict:
+    counters = COUNTERS if counters is None else counters
+    codes = CODES if codes is None else codes
+    busy = {engine: f"%busy_{index}" for index, engine in enumerate(counters.engines)}
+    idle: dict = {}
+    lines = ["hw.module @Device() {"]
+    for index, engine in enumerate(counters.engines):
+        idle[engine] = f"%not_{index}"
+        lines.append(f"  %not_{index} = comb.xor bin {busy[engine]}, %true : i1")
+    event = {}
+    for index, (combo, _name) in enumerate(
+            sorted(counters.by_combination.items(), key=lambda item: sorted(item[0]))):
+        event[combo] = f"%event_{index}"
+        operands = [busy[engine] if engine in combo else idle[engine]
+                    for engine in counters.engines]
+        lines.append(f"  %event_{index} = comb.and bin {', '.join(operands)} : i1")
+    ports = [f"io_event_io_event_signal_{codes[name]}: {event[combo]}: i1"
+             for combo, name in counters.by_combination.items()]
+    lines.append(f'  %unused = hw.instance "meter" @Meter({", ".join(ports)}) -> (x: i1)')
+    lines.append("}")
+    return {"status": "available", "hw_text": "\n".join(lines), "codes": dict(codes),
+            "module": "Device", "counter_module": "Meter", "source": "synthetic.mlir"}
+
+
+PARTITION = _partition()
+
 #: Overlap readings whose eta is CONSTANT across a band: realised = c, available = 2c, so eta = 1/2 at
 #: every depth. Constant is what SATURATED means -- the trend never falls and its last step is zero.
-def _settled(step: int) -> dict:
-    c = 100 * step
-    return {"A_CYC": c, "B_CYC": c, "AB_CYC": c}
+#:
+#: ⚠️ The counters must FIT INSIDE the cycle window they were read in. They are an exclusive partition
+#: of busy time, so their total cannot exceed the run's own cycle count -- readings that do are mixed,
+#: corrupt or wrapped, and ``eta_from_counters`` refuses them rather than dividing anyway. The
+#: shallowest depth in this cohort costs 132 cycles, so the readings are sized to sit inside it. Eta is
+#: a RATIO and is unchanged by that scaling: every verdict below is decided on the same numbers.
+def _settled(_step: int) -> dict:
+    return {"A_CYC": 10, "B_CYC": 10, "AB_CYC": 10}
 
 
 #: Overlap readings whose eta RISES at every depth, which is the fill transient by definition.
 def _filling(step: int) -> dict:
-    return {"A_CYC": 100, "B_CYC": 100, "AB_CYC": 10 * step}
+    return {"A_CYC": 10, "B_CYC": 10, "AB_CYC": step}
 
 
 def _descriptor(index: int, band: str, k: int, by_regime: dict) -> dict:
@@ -230,7 +273,8 @@ def test_a_band_label_its_own_derivation_contradicts_is_refused(descriptors):
 def test_established_when_every_boundary_changes_the_rate(descriptors):
     """THE POSITIVE PATH. Real overlap readings, real fits, a real ESTABLISHED verdict."""
     rows = _rows(descriptors, cycles_of=_affine(RATES), overlap_of=_settled_everywhere)
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert decision["status"] == RC.ESTABLISHED, decision
 
     verdict = decision["verdict"]
@@ -254,7 +298,8 @@ def test_established_when_every_boundary_changes_the_rate(descriptors):
 def test_refuted_when_one_boundary_leaves_the_rate_unchanged(descriptors):
     agreeing = {"fits_double": 2, "fits_single": 2, "spills": 5}
     rows = _rows(descriptors, cycles_of=_affine(agreeing), overlap_of=_settled_everywhere)
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert decision["status"] == RC.REFUTED
     assert decision["refutation_reasons"] == ["fits_double|fits_single"]
     fired = [row for row in decision["verdict"]["boundaries"] if row["falsifier_fired"]]
@@ -269,7 +314,8 @@ def test_a_band_inside_the_fill_transient_is_refused_and_quotes_no_rate(descript
         return _filling(step) if band == "fits_double" else _settled(step)
 
     rows = _rows(descriptors, cycles_of=_affine(RATES), overlap_of=overlap_of)
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     verdict = decision["verdict"]
     assert verdict["bands_refused_for_transient_reasons"] == ["fits_double"]
     transient = next(band for band in verdict["bands"] if band["band"] == "fits_double")
@@ -284,7 +330,8 @@ def test_a_band_inside_the_fill_transient_is_refused_and_quotes_no_rate(descript
 def test_every_band_in_the_transient_leaves_no_boundary_to_compare(descriptors):
     rows = _rows(descriptors, cycles_of=_affine(RATES),
                  overlap_of=lambda band, step: _filling(step))
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert decision["status"] == RC.REFUSED
     assert decision["verdict"]["bands_refused_for_transient_reasons"] == [
         "fits_double", "fits_single", "spills"]
@@ -293,7 +340,8 @@ def test_every_band_in_the_transient_leaves_no_boundary_to_compare(descriptors):
 
 def test_absent_counters_refuse_rather_than_skip_the_transient_guard(descriptors):
     rows = _rows(descriptors, cycles_of=_affine(RATES), overlap_of=_settled_everywhere)
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=None)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=None,
+                                   partition=PARTITION)
     assert decision["status"] == RC.REFUSED
     assert "fill-transient guard cannot run" in decision["refusal_reasons"][0]
 
@@ -303,7 +351,8 @@ def test_a_member_with_no_counter_reading_is_unknown_not_zero_overlap(descriptor
     for row in rows:
         if row["identity"]["capsule"].startswith("PR00") and row["tier"] == "L3":
             row["counter_values"] = None
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     band = next(row for row in decision["verdict"]["bands"] if row["band"] == "fits_double")
     assert band["status"] == RC.BAND_OVERLAP_UNDETERMINABLE
     assert band["rate"] is None
@@ -316,7 +365,8 @@ def test_replicates_that_disagree_refuse_the_band_rather_than_averaging(descript
         return base + (1 if (band == "spills" and replicate == "r001") else 0)
 
     rows = _rows(descriptors, cycles_of=cycles_of, overlap_of=_settled_everywhere)
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     band = next(row for row in decision["verdict"]["bands"] if row["band"] == "spills")
     assert band["status"] == RC.BAND_REPLICATES_DISAGREE
     assert "would invent a point" in band["reason"]
@@ -332,7 +382,8 @@ def test_inert_when_no_band_can_show_its_own_two_ranges_agreeing(descriptors):
         return RATES[band] * k + 100 + (0, 0, 5000)[step]
 
     rows = _rows(descriptors, cycles_of=cycles_of, overlap_of=_settled_everywhere)
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert decision["status"] == RC.INERT, decision["verdict"]["refused_bands"]
     assert all(band["status"] == RC.BAND_CONTROL_DID_NOT_FIRE
                for band in decision["verdict"]["bands"])
@@ -342,16 +393,18 @@ def test_inert_when_no_band_can_show_its_own_two_ranges_agreeing(descriptors):
 def test_evidence_that_is_not_a_correct_measurement_is_refused(descriptors):
     rows = _rows(descriptors, cycles_of=_affine(RATES), overlap_of=_settled_everywhere)
     next(row for row in rows if row["tier"] == "L3")["citable"] = False
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert decision["status"] == RC.REFUSED
     assert "L2/L3 evidence semantics" in decision["refusal_reasons"][0]
 
 
 def test_the_decision_does_not_depend_on_the_order_rows_or_descriptors_arrive_in(descriptors):
     rows = _rows(descriptors, cycles_of=_affine(RATES), overlap_of=_settled_everywhere)
-    forward = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    forward = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     reverse = PR.analyze_pr_claim(list(reversed(descriptors)), list(reversed(rows)),
-                                  replicates=REPLICATES, counters=COUNTERS)
+                                  replicates=REPLICATES, counters=COUNTERS, partition=PARTITION)
     assert forward == reverse
 
 
@@ -359,7 +412,8 @@ def test_the_negative_control_evidence_reaches_the_campaign_judge(descriptors):
     from merlin.perf.campaign import FalsifierEvidence, ReplicaIdentity
 
     rows = _rows(descriptors, cycles_of=_affine(RATES), overlap_of=_settled_everywhere)
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     evidence = PR.falsifier_evidence(decision, member_of=lambda band: ReplicaIdentity(
         family="PR", member=band, tier="L3", replica="r000"))
     assert len(evidence) == 3
@@ -372,14 +426,16 @@ def test_the_negative_control_evidence_reaches_the_campaign_judge(descriptors):
 def test_the_derived_counter_mapping_is_accepted_and_a_useless_one_is_refused(descriptors):
     """The dict form ``counters_for_target`` actually hands a caller must reach the same verdict."""
     rows = _rows(descriptors, cycles_of=_affine(RATES), overlap_of=_settled_everywhere)
-    live = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    live = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     from_dict = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES,
-                                    counters=COUNTERS.to_dict())
+                                    counters=COUNTERS.to_dict(), partition=PARTITION)
     assert from_dict == live
     assert from_dict["status"] == RC.ESTABLISHED
 
     one_engine = {"prefix": "X", "engines": ["A"], "by_combination": {"A": "A_CYC"}}
-    refused = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=one_engine)
+    refused = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=one_engine,
+                                  partition=PARTITION)
     assert refused["status"] == RC.REFUSED
     assert "one engine cannot overlap with itself" in refused["refusal_reasons"][0]
 
@@ -398,8 +454,8 @@ def test_a_band_whose_SHALLOW_end_is_still_filling_is_caught_by_its_own_control(
         if band != "fits_double":
             return _settled(step)
         # eta 3/10 at the shallowest depth, 1/2 at both deep ones: rising, then flat at the bottom.
-        return ({"A_CYC": 700, "B_CYC": 700, "AB_CYC": 300} if step == 1
-                else {"A_CYC": 500, "B_CYC": 500, "AB_CYC": 500})
+        # Sized to fit inside that depth's own 301-cycle window; eta is a ratio and does not move.
+        return {"A_CYC": 70, "B_CYC": 70, "AB_CYC": 30} if step == 1 else _settled(step)
 
     def cycles_of(band: str, k: int, _replicate: str) -> int:
         if band != "fits_double":
@@ -409,7 +465,8 @@ def test_a_band_whose_SHALLOW_end_is_still_filling_is_caught_by_its_own_control(
         return 301 if k == 16 else 2 * k + 100
 
     rows = _rows(descriptors, cycles_of=cycles_of, overlap_of=overlap_of)
-    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    decision = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     band = next(row for row in decision["verdict"]["bands"] if row["band"] == "fits_double")
     assert band["transient"]["state"] == "saturated"          # the guard alone would have passed it
     assert band["status"] == RC.BAND_CONTROL_DID_NOT_FIRE     # the control does not
@@ -428,13 +485,15 @@ def test_removing_the_transient_guard_would_flip_the_transient_refusal(descripto
         return _filling(step) if band == "fits_double" else _settled(step)
 
     rows = _rows(descriptors, cycles_of=_affine(RATES), overlap_of=overlap_of)
-    guarded = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    guarded = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert guarded["verdict"]["bands_refused_for_transient_reasons"] == ["fits_double"]
 
     real = RC._ft.transient_verdict
     monkeypatch.setattr(RC._ft, "transient_verdict",
                         lambda points: {**real(points), "state": RC._ft.SATURATED})
-    relaxed = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    relaxed = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert relaxed["verdict"]["bands_refused_for_transient_reasons"] == []
     assert relaxed["verdict"]["usable_bands"] == ["fits_double", "fits_single", "spills"]
 
@@ -459,7 +518,8 @@ def test_introducing_a_tolerance_would_flip_established_into_refuted(descriptors
         return 2 * k + 100 + (k - BANDS["fits_single"][0]) // 16
 
     rows = _rows(descriptors, cycles_of=cycles_of, overlap_of=_settled_everywhere)
-    exact = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    exact = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert exact["status"] == RC.ESTABLISHED
     boundary = next(row for row in exact["verdict"]["boundaries"]
                     if (row["lower_band"], row["upper_band"]) == ("fits_double", "fits_single"))
@@ -467,6 +527,7 @@ def test_introducing_a_tolerance_would_flip_established_into_refuted(descriptors
     assert boundary["rate_difference"]["value"] == pytest.approx(0.0625)
 
     monkeypatch.setattr(RC, "_agree", lambda left, right: abs(left - right) <= Fraction(1, 10))
-    relaxed = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS)
+    relaxed = PR.analyze_pr_claim(descriptors, rows, replicates=REPLICATES, counters=COUNTERS,
+                                 partition=PARTITION)
     assert relaxed["status"] == RC.REFUTED
     assert "fits_double|fits_single" in relaxed["refutation_reasons"]

@@ -125,7 +125,17 @@ def screen_run(run_capsule_dir: Path, rtl_facts: dict, index: dict[str, Path],
         return None
     trace = json.loads(trace_path.read_text(encoding="utf-8"))
     capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
-    rep = rtl_checks.screen(trace, capsule, rtl_facts, target=target)
+    # the package's own emitted command buffer (argument binding for the encoded-field-intent check);
+    # absent or malformed -> that check reports skipped with that reason, never a pass
+    cb_path = run_capsule_dir / "generated" / "command_buffer.json"
+    command_buffer = None
+    if cb_path.is_file():
+        try:
+            loaded = json.loads(cb_path.read_text(encoding="utf-8"))
+            command_buffer = loaded if isinstance(loaded, dict) else None
+        except (ValueError, OSError):
+            command_buffer = None
+    rep = rtl_checks.screen(trace, capsule, rtl_facts, target=target, command_buffer=command_buffer)
     if write:
         (run_capsule_dir / "rtl_checks.json").write_text(
             json.dumps(rep.to_dict(), indent=2), encoding="utf-8")

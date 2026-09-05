@@ -35,6 +35,15 @@ def test_drives_accelerator_false_when_no_custom_opcode_instruction():
     assert not TCK.drives_accelerator(_trace())  # empty
 
 
+def test_mvin2_participates_in_load_config_ordering():
+    trace = _trace(
+        {"index": 0, "class": "MVIN2", "funct": 1, "decoded": {}},
+        {"index": 1, "class": "CONFIG_LD", "funct": 0, "decoded": {}},
+    )
+    result = TCK.check(trace, {"instruction_classes": ["MVIN2"]})
+    assert any("CONFIG_LD appears after first MVIN" in v for v in result["violations"])
+
+
 def test_dram_provenance_is_address_model_parameterized():
     # A memory-move op whose DRAM operand is a baked const vs one derived from a function arg.
     baked = _trace({"class": "MVIN", "funct": 2, "decoded": {"dram": {"kind": "const", "raw": 0}}})

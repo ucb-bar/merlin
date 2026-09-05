@@ -21,6 +21,10 @@ _CANON_MVIN = (
     ' : (i64, i64) -> ()\n'
 )
 
+# Same canonical operand encoding, selecting Gemmini load state 1 through
+# funct 1 (the public MVIN2 / RTL LOAD2_CMD spelling).
+_CANON_MVIN2 = _CANON_MVIN.replace(", 2, x0", ", 1, x0")
+
 # The generic-op spelling a conformant-but-different backend may emit (the form GLM-5 emitted in the
 # gemmini arm-4 run). Different op name, ``%N`` operand refs, collapsed 5-field .insn: not the canonical
 # encoding, so it must land as UNKNOWN — but it must NOT vanish.
@@ -35,6 +39,15 @@ def test_canonical_inline_asm_decodes_to_class():
     trace = RD.decode_text(_CANON_MVIN, target="gemmini")
     classes = [i["class"] for i in trace["instructions"]]
     assert classes == ["MVIN"], classes
+
+
+def test_canonical_mvin2_decodes_with_the_same_move_fields():
+    assert RD.funct_class_for("gemmini")[1] == "MVIN2"
+    first = RD.decode_text(_CANON_MVIN, target="gemmini")["instructions"][0]
+    second = RD.decode_text(_CANON_MVIN2, target="gemmini")["instructions"][0]
+    assert second["class"] == "MVIN2"
+    assert second["funct"] == 1
+    assert second["decoded"] == first["decoded"]
 
 
 def test_generic_op_spelling_is_not_silently_dropped():
