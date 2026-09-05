@@ -284,6 +284,13 @@ def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
     return ranked[0] if ranked else None
 
 
+#: MODES ARE NOT DECLARED HERE, DELIBERATELY. ``corpus_spec`` treats the PRESENCE of a ``modes`` key as
+#: "the author declared these verbatim" and skips its own derivation, so emitting ``modes: {}`` -- which
+#: reads like "no modes yet" -- silently suppressed it. Every derived capsule shipped ``modes: {}``,
+#: including ones declaring an epilogue: a member with ``epilogue: [relu]`` asserted no relu mode, so
+#: mode coverage over the derived corpus measured nothing and every mode-asserting hand-authored capsule
+#: was structurally unmatchable by anything the synthesizer could produce. Omitting the key is what lets
+#: ``_default_modes`` run.
 #: Epilogue stages a contraction builder can actually carry. Mirrors
 #: ``conformance._BUILDER_EPILOGUE_STAGES``; the family each one belongs to is DERIVED from the
 #: semantic taxonomy rather than listed here, so a new stage needs no second table.
@@ -714,7 +721,6 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                    f"as a fused epilogue on {op} -- a standalone capsule for it would be refused by the "
                    f"eligibility oracle as a false fallback" if fused else "")),
             "label": "public",
-            "modes": {},
             **extents_for(alignment, probes, quantum=_quanta.get(dtype)),
         }
         if epilogue:
@@ -771,7 +777,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"({ext.get('fraction_of_capacity')} of capacity), which is what puts this capsule in "
                 f"that regime. Extents resolved by memory_regime.extents_for_regime with the same "
                 f"sizing the coverage gate measures with"),
-            "label": "public", "modes": {},
+            "label": "public",
             "M": ext["M"], "K": ext["K"], "N": ext["N"],
         }
         # A REGIME THAT FILLS THE STORE CANNOT BE CERTIFIED, and saying so is what keeps the corpus
@@ -843,7 +849,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"{family!r} region(s) at {dtype}, and this target's manifest admits {family!r} at no "
                 f"such dtype -- so every one of them must be placed on the host. A corpus with no "
                 f"capsule here cannot tell a compiler that routes them correctly from one that does not"),
-            "label": "public", "modes": {},
+            "label": "public",
             "lanes": {"forbid": ["on_mesh"]},
             "semantic": {"must_accelerate": False, "eligible": False,
                          "generalization_axis": "host_lane",
@@ -897,7 +903,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"synthesized for host-only family {family!r}: real captures contain it and this "
                 f"target's capability manifest admits no capability for it, so the compiler must leave "
                 f"it on the host lane. dtype {dtype} is the one the captures carry for this family"),
-            "label": "public", "modes": {},
+            "label": "public",
             "lanes": {"forbid": ["on_mesh"]},
             "semantic": {"must_accelerate": False, "eligible": False,
                          "not_asserted_reason": (
@@ -929,7 +935,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 "real capture contains that the manifest does not admit, sized to the target's own tile "
                 "edge, with host layers interleaved into the interior. Inventory and extents come from "
                 f"micro_model.spec; the shapes the requirement names are {sorted(composition)}"),
-            "label": "public", "modes": {},
+            "label": "public",
             "lanes": {"require": ["on_mesh"]},
             "semantic": {"generalization_axis": "composition"},
         }
@@ -986,7 +992,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"synthesized for the {axis} axis: this target's capability manifest declares "
                 f"{family!r} handles a {probe.split('.')[-1]} region, and a (family, dtype, alignment) "
                 f"cell cannot demand one. Shape and layout come from capability_probes"),
-            "label": "public", "modes": {},
+            "label": "public",
             "semantic": {"generalization_axis": axis},
         }
         # EXTENTS COME FROM THE BUILDER, NOT THE PROBE. This axis asks whether the unit can be asked for
@@ -1036,7 +1042,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"contraction (evidenced by {_st.get('evidenced_by')}), and a (family, dtype, "
                 f"alignment) cell cannot demand a particular stage -- so without this the capability is "
                 f"reported covered by whichever single stage the cell axis happened to pick"),
-            "label": "public", "modes": {},
+            "label": "public",
             "semantic": {"generalization_axis": "epilogue"},
             **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
         }
@@ -1106,7 +1112,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"{_req.get('mac_fraction')} of all contraction MAC work, and the heaviest of them is "
                 f"M={m} K={k} N={n}. Every other synthesized capsule is square, so without this the "
                 f"corpus cannot tell a compiler that tiles this ratio well from one that does not"),
-            "label": "public", "modes": {},
+            "label": "public",
             "semantic": {"generalization_axis": "shape_geometry"},
             "M": m, "K": k, "N": n,
         }
@@ -1157,7 +1163,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "lhs": "A0", "weight": "W", "out": "Y0",
             "M": "tile", "K": f"{int(point['K_tiles'])}*tile", "N": "tile",
             "source_role": SOURCE_ROLE, "source_reference": why,
-            "label": "public", "modes": {},
+            "label": "public",
             "semantic": {"generalization_axis": "accumulation_depth"},
         }
         if tier != "L3":
@@ -1270,7 +1276,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                    if _cap["basis"].get("sized_by") == "measured_cost_model" else "")
                 + (f"; extends {_cap['extends']}, which carries the cycle-accurate guarantee this "
                    f"larger shape rests on" if _cap.get("extends") else "")),
-            "label": "public", "modes": {},
+            "label": "public",
             "semantic": {"generalization_axis": "application"},
         }
         if _tier != "L3":

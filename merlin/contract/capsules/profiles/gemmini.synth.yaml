@@ -80,7 +80,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/aligned (basis=observed, admitted_by=['systolic_mesh']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -99,7 +98,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/partial (basis=observed, admitted_by=['systolic_mesh']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -118,7 +116,6 @@ capsules:
   source_reference: synthesized for conformance cell contraction/i8/sub_tile (basis=observed, admitted_by=['systolic_mesh']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -138,7 +135,6 @@ capsules:
     so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be refused by
     the eligibility oracle as a false fallback
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -161,7 +157,6 @@ capsules:
     so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be refused by
     the eligibility oracle as a false fallback
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -184,7 +179,6 @@ capsules:
     so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be refused by
     the eligibility oracle as a false fallback
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -204,7 +198,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/i8/aligned (basis=observed, admitted_by=['systolic_mesh']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -223,7 +216,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/i8/partial (basis=observed, admitted_by=['systolic_mesh']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -242,7 +234,6 @@ capsules:
   source_reference: synthesized for conformance cell movement/i8/sub_tile (basis=observed, admitted_by=['systolic_mesh']);
     extents from boundaries.extent_probes
   label: public
-  modes: {}
   M: tile/8
   K: tile/4
   N: tile/4
@@ -262,7 +253,6 @@ capsules:
     'movement'], so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be
     refused by the eligibility oracle as a false fallback
   label: public
-  modes: {}
   M: tile
   K: 2*tile
   N: tile
@@ -291,7 +281,6 @@ capsules:
     'movement'], so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be
     refused by the eligibility oracle as a false fallback
   label: public
-  modes: {}
   M: tile
   K: 2*tile-1
   N: tile-1
@@ -320,7 +309,6 @@ capsules:
     'movement'], so it is carried as a fused epilogue on matmul -- a standalone capsule for it would be
     refused by the eligibility oracle as a false fallback
   label: public
-  modes: {}
   M: tile
   K: tile/4
   N: tile/4
@@ -347,7 +335,6 @@ capsules:
     operand-store rows (0.001953 of capacity), which is what puts this capsule in that regime. Extents
     resolved by memory_regime.extents_for_regime with the same sizing the coverage gate measures with'
   label: public
-  modes: {}
   M: tile
   K: tile
   N: tile
@@ -368,7 +355,6 @@ capsules:
     131072 written output elements exceeds the 875 a 300.0s certification budget affords on this target,
     so it is graded at L2 and rests on ''SY_contraction_i8_aligned'''
   label: public
-  modes: {}
   M: 512*tile
   K: tile
   N: tile
@@ -391,7 +377,6 @@ capsules:
     262144 written output elements exceeds the 875 a 300.0s certification budget affords on this target,
     so it is graded at L2 and rests on ''SY_contraction_i8_aligned'''
   label: public
-  modes: {}
   M: 512*tile
   K: 2*tile
   N: 2*tile
@@ -414,7 +399,6 @@ capsules:
     them must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes
     them correctly from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -446,7 +430,6 @@ capsules:
     must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
     correctly from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -478,7 +461,6 @@ capsules:
     must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
     correctly from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -510,7 +492,6 @@ capsules:
     them must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes
     them correctly from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -542,7 +523,6 @@ capsules:
     must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
     correctly from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -574,7 +554,6 @@ capsules:
     be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them correctly
     from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -606,7 +585,6 @@ capsules:
     be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them correctly
     from one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -638,7 +616,6 @@ capsules:
     on the host. A corpus with no capsule here cannot tell a compiler that routes them correctly from
     one that does not'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -670,7 +647,6 @@ capsules:
     this target''s capability manifest admits no capability for it, so the compiler must leave it on the
     host lane. dtype f32 is the one the captures carry for this family'
   label: public
-  modes: {}
   lanes:
     forbid:
     - on_mesh
@@ -696,7 +672,6 @@ capsules:
     host layers interleaved into the interior. Inventory and extents come from micro_model.spec; the shapes
     the requirement names are [''A'', ''A->A'', ''A->H->A'', ''H'', ''H->A->H'', ''routing'']'
   label: public
-  modes: {}
   lanes:
     require:
     - on_mesh
@@ -718,7 +693,6 @@ capsules:
     handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
     come from capability_probes'
   label: public
-  modes: {}
   semantic:
     generalization_axis: rank
   B: 2
@@ -740,7 +714,6 @@ capsules:
     particular stage -- so without this the capability is reported covered by whichever single stage the
     cell axis happened to pick'
   label: public
-  modes: {}
   semantic:
     generalization_axis: epilogue
   M: tile
@@ -765,7 +738,6 @@ capsules:
     demand a particular stage -- so without this the capability is reported covered by whichever single
     stage the cell axis happened to pick'
   label: public
-  modes: {}
   semantic:
     generalization_axis: epilogue
   M: tile
@@ -790,7 +762,6 @@ capsules:
     demand a particular stage -- so without this the capability is reported covered by whichever single
     stage the cell axis happened to pick'
   label: public
-  modes: {}
   semantic:
     generalization_axis: epilogue
   M: tile
@@ -815,7 +786,6 @@ capsules:
     demand a particular stage -- so without this the capability is reported covered by whichever single
     stage the cell axis happened to pick'
   label: public
-  modes: {}
   semantic:
     generalization_axis: epilogue
   M: tile
@@ -845,7 +815,6 @@ capsules:
     tell a compiler that tiles this ratio well from one that does not. 1000 written output elements exceeds
     the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_i8_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 1
@@ -872,7 +841,6 @@ capsules:
     exceeds the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
     on ''SY_contraction_i8_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 196
@@ -899,7 +867,6 @@ capsules:
     exceeds the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
     on ''SY_contraction_i8_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 196
@@ -926,7 +893,6 @@ capsules:
     exceeds the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
     on ''SY_contraction_i8_aligned'''
   label: public
-  modes: {}
   semantic:
     generalization_axis: shape_geometry
   M: 1024
@@ -953,7 +919,6 @@ capsules:
     residency regime admits (256 accumulation passes, 0.5 of the operand store). The reduction moves the
     operands and not the result, so this certifies at one output tile'
   label: public
-  modes: {}
   semantic:
     generalization_axis: accumulation_depth
   pass_requirements:
@@ -974,7 +939,6 @@ capsules:
     residency regime admits (512 accumulation passes, 1.0 of the operand store). The reduction moves the
     operands and not the result, so this certifies at one output tile'
   label: public
-  modes: {}
   semantic:
     generalization_axis: accumulation_depth
   pass_requirements:
@@ -995,7 +959,6 @@ capsules:
     residency regime admits (1024 accumulation passes, 2.0 of the operand store). The reduction moves
     the operands and not the result, so this certifies at one output tile'
   label: public
-  modes: {}
   semantic:
     generalization_axis: accumulation_depth
   pass_requirements:
