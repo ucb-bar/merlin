@@ -121,13 +121,27 @@ failure mode.
 The two references disagree by much more than the tier's own bar, so which one you cite decides
 the verdict (host int8 datapath, 2026-09-04, after the i-exp softmax fix `3d74bbe0`):
 
-| bundle | vs `golden_w8a8.npy` (self) | vs `golden_w8a8.independent.npy` |
-|---|---|---|
-| `small_llama_int8_consistent` | cos 0.9999655, rel 0.0084 | cos 0.9999655, rel 0.0084 *(the shipped file here IS the independent one)* |
-| `spectformer_int8_full` | cos 0.9999709, rel 0.0153 | **cos 0.9976, rel 0.175** |
+| bundle | vs `golden_w8a8.npy` (self) | vs `golden_w8a8.independent.npy` | `tier_ok` |
+|---|---|---|---|
+| `small_llama_int8_consistent` | cos 0.9999655, rel 0.0084 | cos 0.9999655, rel 0.0084 *(the shipped file here IS the independent one)* | `fp32_cos_only` |
+| `spectformer_int8_full` | cos 0.9999709, rel 0.0153 | **cos 0.9976, rel 0.175** | none |
+| `gemma2_2b_int8_full` | cos 0.9854, rel 0.544 | **cos 0.9828, rel 0.424** | none |
 
 `spectformer` looks all but converged against its own frozen output and is a long way from the
-real W8A8 arithmetic.
+independent reference. `gemma2_2b` fails against both, because its shipped golden was frozen in
+August and the datapath has moved since.
+
+**The two sides do not quantize the same ops, and the residual is part policy.** torchao's
+`int8_dyn_act_int8_weight` quantizes `nn.Linear` only; `merlin.llvmlower.quant_passes.apply_quant`
+rewrites every structurally-recognized contraction plus softmax, GELU, SiLU and rsqrt. Measured
+per bundle (torchao-quantized weights vs our pass counts): `spectformer_int8_full` 41 vs 106
+contractions + 8 softmax + 12 GELU + 25 rsqrt; `gemma2_2b_int8_full` 183 vs 236 + 26 + 26 + 105;
+`small_llama_int8_consistent` 15 vs 19 + 2 softmax + 2 SiLU + 5 rsqrt. The extra contractions are
+the attention `QK^T`/`PV` products (and, in SpectFormer, the spectral DFT contractions) that torch
+eager keeps in fp32. So a gap against this reference is **our arithmetic error plus our more
+aggressive quantization policy**, and only a run that isolates the two can say how much is which.
+`small_llama`'s rel 0.0084 clears T1's aggregate bar in spite of that; `spectformer`'s 0.175 does
+not, on a model whose signature op is one of the contractions torch never quantized.
 
 Note also that T1's per-element term (`max_rel < 0.05`) is not satisfiable by any correct
 implementation. Under the gate's own RMS mask the **reference itself** measures, against the fp32
