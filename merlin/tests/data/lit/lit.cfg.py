@@ -53,7 +53,15 @@ if missing:
 else:
     # merlin-opt runs out of THIS checkout. The shared venv may have merlin installed from a
     # different worktree, so PYTHONPATH is pinned rather than inherited.
-    config.environment["PYTHONPATH"] = os.path.join(ROOT, "merlin", "python")
+    #
+    # MERLIN_LIT_PYTHONPATH overrides that pin, and exists for exactly one caller: the historical
+    # replay (merlin.verify.replay) runs this suite against a SHADOW copy of the package with old
+    # files written over it, to find out whether these tests would have rejected a defect that
+    # actually shipped. Without the override the suite would silently test the current tree and
+    # report a clean pass for every historical defect -- a check that could not run reporting success,
+    # which is the failure this whole layer exists to avoid. Unset, behaviour is unchanged.
+    config.environment["PYTHONPATH"] = (os.environ.get("MERLIN_LIT_PYTHONPATH")
+                                        or os.path.join(ROOT, "merlin", "python"))
     config.environment["HOME"] = os.environ.get("HOME", "/tmp")
     config.substitutions.append(
         ("%merlin-opt", "%s -m merlin.xdsl_dialects.opt" % python))

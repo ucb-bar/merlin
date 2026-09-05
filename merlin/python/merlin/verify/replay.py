@@ -159,20 +159,39 @@ def _shadow(repo: Path, sha: str, files: list[str], dest: Path) -> list[str]:
 
 #: The layers, each a module invocation returning non-zero when it REJECTS. Kept to checks that run in
 #: seconds: a replay over a sample has to be affordable or it will be run once and never repeated.
+#:
+#: THE INSTRUMENT MUST BE THE LAYERS THAT EXIST, not a convenient subset. A first run wired only the
+#: three pytest files and reported 0 detections over 20 historical fixes -- an honest number for that
+#: instrument and a misleading one for the work, because it left out the static layer (lit/FileCheck
+#: over the passes) and the numeric oracle, which are the two checks most likely to see a lowering
+#: defect. Both are here now. Adding a layer can only find MORE, so a rate measured with a smaller
+#: instrument is a lower bound on this one; both runs are kept rather than the first being replaced.
+_PYTEST = ("-m", "pytest", "-x", "-q", "--no-header", "-p", "no:cacheprovider")
+
 LAYERS: dict[str, tuple[str, ...]] = {
-    "engines-agree": ("-m", "pytest", "-x", "-q", "--no-header", "-p", "no:cacheprovider",
-                      "merlin/tests/ir/test_readout_dtype_divergence.py"),
-    "cb-semantics": ("-m", "pytest", "-x", "-q", "--no-header", "-p", "no:cacheprovider",
-                     "merlin/tests/ir/test_cb_semantics.py"),
-    "compilation-validation": ("-m", "pytest", "-x", "-q", "--no-header", "-p", "no:cacheprovider",
-                               "merlin/tests/ir/test_compilation_validation.py"),
+    "engines-agree": _PYTEST + ("merlin/tests/ir/test_readout_dtype_divergence.py",),
+    "cb-semantics": _PYTEST + ("merlin/tests/ir/test_cb_semantics.py",),
+    "compilation-validation": _PYTEST + ("merlin/tests/ir/test_compilation_validation.py",),
+    # The static layer: one pass, one module, assert what it did. This is where a lowering defect
+    # shows, and it was missing from the first run.
+    "lit-pass-tests": ("-m", "merlin.verify.replay_lit"),
+    # The numeric oracle over the real corpus -- the pre-existing dynamic check the formal layers sit
+    # beside. Included so a detection can be attributed: a defect BOTH catch is not evidence for the
+    # new layer, and only this comparison can tell the two apart.
+    "numeric-golden": _PYTEST + ("merlin/tests/ir/test_golden_engines_agree.py",),
 }
 
 
 def _run_layers(repo: Path, pythonpath: str, timeout: int) -> dict[str, str]:
     import os
 
-    env = dict(os.environ, PYTHONPATH=pythonpath)
+    # The shadow replaces the CODE, never the data. `repo_root()` resolves from the package's own
+    # location, so inside a shadow it points at the temp directory -- where there is no capsule corpus,
+    # no lit suite and no llvm-build. Every layer would then find nothing to check and report a clean
+    # pass, which is the "check that could not run reporting success" shape this repo has been bitten
+    # by repeatedly. Pinning MERLIN_REPO_ROOT to the real checkout is what keeps the layers pointed at
+    # their inputs while the code under them is the historical one.
+    env = dict(os.environ, PYTHONPATH=pythonpath, MERLIN_REPO_ROOT=str(repo))
     verdicts: dict[str, str] = {}
     for name, argv in LAYERS.items():
         try:

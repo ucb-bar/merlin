@@ -68,6 +68,43 @@ def test_pytest_exit_codes_separate_a_rejection_from_a_run_that_did_not_happen()
     assert '"error"' in src, "a run that did not happen must have its own verdict, not 'red'"
 
 
+def test_the_shadow_replaces_code_but_never_the_data_paths():
+    """The flaw that invalidated the first run, and the reason a negative control is not optional.
+
+    `repo_root()` resolves from the package's own file location, so inside a shadow it points at the
+    temp directory — where there is no capsule corpus, no lit suite and no llvm-build. Every layer then
+    finds nothing to check and exits clean, and the replay records a MISS for a defect no layer ever
+    looked at. The first 25-commit run reported 0 detections that way.
+
+    Caught by running the shadow at the parent of the COMMIT readout fix (a defect whose effect is
+    known and large) and finding every layer green. With MERLIN_REPO_ROOT pinned to the real checkout,
+    the engines layer goes red, which is the answer the instrument is supposed to give.
+    """
+    import inspect
+
+    from merlin.verify import replay
+
+    src = inspect.getsource(replay._run_layers)
+    assert "MERLIN_REPO_ROOT=str(repo)" in src, (
+        "the shadow must pin the data root to the real checkout; without it every layer reports a "
+        "clean pass because it cannot find its inputs")
+
+
+def test_the_instrument_contains_the_layers_that_exist():
+    """A rate measured with a convenient subset of the layers understates the work it is describing.
+
+    The first run wired three pytest files and left out the static layer (lit/FileCheck over the
+    passes) and the numeric oracle over the real corpus — the two checks most likely to see a lowering
+    defect. Both are in `LAYERS` now.
+    """
+    from merlin.verify.replay import LAYERS
+
+    assert "lit-pass-tests" in LAYERS, "the static layer is missing from the instrument"
+    assert "numeric-golden" in LAYERS, (
+        "the numeric oracle is missing; without it a detection cannot be attributed to the new layer "
+        "rather than to the dynamic check that already existed")
+
+
 def test_an_unreplayable_commit_is_reported_and_never_counted_as_a_miss():
     """The denominator again, from the other side.
 
