@@ -6,8 +6,9 @@ residency, emit one ``interface.resident_pack``; rewrite each matmul against it 
 output_dtype i32); evict after the last use. A bias-add consumer of a contraction is
 absorbed into that contraction's commit as a ``bias_add`` epilogue stage naming the bias
 tensor; every other epilogue shape stays unaccounted and is refused. Contract/schedule
-decoration is consumed (dropped). The cross-op analyses (use-after-evict, place legality,
-discharged checks) run on the result.
+decoration is consumed (dropped). A contraction whose accumulator init is not provably zero is
+REFUSED, not rebuilt: the commit accumulates from zero, so the init would be dropped silently. The
+cross-op analyses (use-after-evict, place legality, discharged checks) run on the result.
 """
 from __future__ import annotations
 
@@ -84,21 +85,134 @@ def _dequant_source(rhs, value_map):
     return None
 
 
-def _is_zero_fill(value) -> bool:
-    """True when ``value`` is a ``linalg.fill`` of a zero constant — i.e. the second operand of a
-    ``linalg.max`` that makes it a relu (max(x, 0)). Derived structurally from the IR, no regex."""
-    owner = getattr(value, "owner", None)
+def _is_zero_scalar(value) -> bool:
+    """True when ``value`` is an ``arith.constant`` whose scalar value is zero.
+
+    Total and fail-closed: a block argument, a computed value, a constant whose attribute this
+    cannot read, or a value whose data is not a number all answer False (NOT provably zero) rather
+    than raising or guessing.
+    """
+    c = getattr(value, "owner", None)
     # A block argument's owner is a Block (no ``name``) — getattr keeps the check total.
-    if getattr(owner, "name", None) != "linalg.fill":
-        return False
-    scalar = owner.inputs[0]
-    c = getattr(scalar, "owner", None)
     if getattr(c, "name", None) != "arith.constant":
         return False
     attr = getattr(c, "value", None)
     inner = getattr(attr, "value", None)
     data = getattr(inner, "data", None)
-    return data is not None and float(data) == 0.0
+    if data is None:
+        return False
+    try:
+        return float(data) == 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_zero_dense_constant(owner) -> bool:
+    """True when ``owner`` is an ``arith.constant`` of an all-zero dense tensor attribute."""
+    if getattr(owner, "name", None) != "arith.constant":
+        return False
+    get_values = getattr(getattr(owner, "value", None), "get_values", None)
+    if get_values is None:
+        return False
+    try:
+        values = list(get_values())
+        return bool(values) and all(float(v) == 0.0 for v in values)
+    except Exception:                        # unreadable attribute -> not provably zero
+        return False
+
+
+def _is_zero_fill(value) -> bool:
+    """True when ``value`` is a ``linalg.fill`` of a zero constant — i.e. the second operand of a
+    ``linalg.max`` that makes it a relu (max(x, 0)). Derived structurally from the IR, no regex.
+
+    The fill's own ``outs`` is irrelevant: a fill writes its scalar into EVERY element, so whatever
+    it was destined for is overwritten.
+    """
+    owner = getattr(value, "owner", None)
+    if getattr(owner, "name", None) != "linalg.fill":
+        return False
+    return _is_zero_scalar(owner.inputs[0])
+
+
+def init_contributes_nothing(value) -> bool:
+    """Can this accumulator init be dropped without changing the program?
+
+    The interface rebuild emits ``interface.matmul`` -> ``interface.commit``, which accumulates from
+    a ZERO accumulator and never reads the source op's ``outs``. So an init that holds a value is
+    part of the computation (``C + A@B``), and dropping it compiles a different program. This is the
+    proof that it holds nothing, and it is a PROOF, not a pattern — every answer below is read out
+    of the IR structurally, and everything undecidable answers False:
+
+    * ``tensor.empty`` — an uninitialized tensor has no defined contents, so there is no value that
+      could be lost (this is the idiom every frontend here emits for "no accumulation");
+    * ``linalg.fill`` of a zero constant — the standard explicit zeroing;
+    * ``tensor.splat`` of a zero constant, and an all-zero dense ``arith.constant``.
+
+    A function argument, a computed value (a ``tensor.pad``, an earlier layer's output), a non-zero
+    constant, and a fill whose scalar cannot be resolved are all NOT provably zero and answer False.
+    """
+    owner = getattr(value, "owner", None)
+    name = _resolved_name(owner)             # None for a block argument
+    if name == "tensor.empty":
+        return True
+    if name == "linalg.fill":
+        return _is_zero_fill(value)
+    if name == "tensor.splat":
+        operands = list(getattr(owner, "operands", ()) or ())
+        return bool(operands) and _is_zero_scalar(operands[0])
+    if name == "arith.constant":
+        return _is_zero_dense_constant(owner)
+    return False
+
+
+def accumulated_inits(op) -> list:
+    """The ``outs`` init values of ``op`` that ``op``'s OWN BODY reads.
+
+    The bug this exists for: ``unaccounted_ops`` enumerates OPS, and an init that arrives as a block
+    argument is not an op, so a ``linalg.matmul`` accumulating onto a non-zero function argument
+    passed every completeness check and lowered to the un-biased program. Whether an init is part of
+    the computation is not a property of the op's NAME (this repo derives, it does not hardcode): it
+    is whether the op's region reads the corresponding ``outs`` block argument. A contraction's body
+    is ``yield add(mul(a, b), out)`` — it reads it; ``linalg.add``/``mul``/``max``/``fill`` bodies do
+    not read theirs, and their init really is just a destination.
+
+    Fails closed: an op with no inspectable body, or a body whose argument count cannot be lined up
+    with its ``outs``, reports EVERY init as accumulated.
+    """
+    outs = list(getattr(op, "outputs", ()) or ())
+    if not outs:
+        return []
+    regions = list(getattr(op, "regions", ()) or ())
+    blocks = list(regions[0].blocks) if regions else []
+    if not blocks:
+        return outs
+    args = list(blocks[0].args)
+    if len(args) < len(outs):
+        return outs
+    out_args = args[len(args) - len(outs):]
+    return [v for v, a in zip(outs, out_args) if len(list(a.uses)) > 0]
+
+
+def nonzero_accumulator_inits(payload) -> list:
+    """``[(op, init value)]`` — payload ops that accumulate onto an init this cannot prove is zero.
+
+    The companion of :func:`unaccounted_ops` for VALUES: that one answers "which ops would the
+    rebuild drop", this one answers "which incoming values would it drop". Both are consulted by
+    :func:`_check_payload_complete`; a router that asks the first should ask this one too, or it
+    will route to the staged path a payload the staged path must refuse.
+    """
+    return [(op, v) for op in payload for v in accumulated_inits(op)
+            if not init_contributes_nothing(v)]
+
+
+def _value_origin(value) -> str:
+    """Where a value came from, for a refusal message: the defining op, or the block argument."""
+    owner = getattr(value, "owner", None)
+    name = _resolved_name(owner)
+    if name is None:
+        idx = getattr(value, "index", None)
+        return "block argument #%d" % idx if idx is not None else "a block argument"
+    return "the result of '%s'" % name
 
 
 def _lower_vector_map(op, value_map, i):
@@ -109,12 +223,30 @@ def _lower_vector_map(op, value_map, i):
     fails closed — the engine's vector path models exactly this vocabulary."""
     from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
+    def materialized(operand):
+        """The rebuilt value for ``operand`` — a named refusal, never a bare KeyError.
+
+        A vector operand can be missing for the same reason an init can be wrong: ``support_ops``
+        absorbed the op that produced it (a non-zero ``linalg.fill``, a dense constant) on the
+        assumption the rebuild re-creates its effect, and for a vector lane it does not. The lookup
+        used to be a raw dict subscript, which surfaced as a ``KeyError`` naming an SSA value — a
+        crash a caller cannot catch by type and a reader cannot act on.
+        """
+        if operand not in value_map:
+            raise LoweringError(
+                f"vector op '{op.name}' reads an operand that materialization does not produce "
+                f"({_value_origin(operand)}, type {operand.type}) — the interface vector lane "
+                "consumes materialized tensors, so an operand folded away as contraction "
+                "scaffolding (a constant, a non-zero fill) has no value to read. Refusing rather "
+                "than emitting a vector_map over a tensor the engine never materializes.")
+        return value_map[operand]
+
     name = op.name
     if name in _ELEMENTWISE_COMBINE:
-        lhs, rhs = value_map[op.inputs[0]], value_map[op.inputs[1]]
+        lhs, rhs = materialized(op.inputs[0]), materialized(op.inputs[1])
         props = {"combine": StringAttr(_ELEMENTWISE_COMBINE[name])}
     elif name == "linalg.max" and _is_zero_fill(op.inputs[1]):
-        a = value_map[op.inputs[0]]
+        a = materialized(op.inputs[0])
         lhs = rhs = a                       # identity copy of lhs; rhs is unused by the engine
         props = {"combine": StringAttr("identity"),
                  "activation": ArrayAttr([StringAttr("relu")])}
@@ -390,6 +522,40 @@ def _check_payload_complete(fn, src_block, payload: list) -> None:
                 "returns the rebuilt results of the payload it found, so the difference would be "
                 "dropped.")
 
+    _check_inits_accounted(fn, payload)
+
+
+def _check_inits_accounted(fn, payload: list) -> None:
+    """Fail closed if the rebuild would drop an accumulator INIT.
+
+    The third way to lose computation, and the one the two checks above cannot see: they enumerate
+    OPS, and ``outs(%c)`` where ``%c`` is a function argument is a VALUE, not an op. Such a matmul
+    has an empty ``unaccounted_ops`` and a terminator that returns exactly the payload result, so it
+    lowered cleanly and computed ``A@B`` where the program said ``C + A@B`` — measured as a 3.55
+    absolute error against a program the compiler reported no problem with.
+
+    The rebuild has no way to carry it: ``interface.commit``'s epilogue vocabulary is a per-column
+    ``bias_add`` (a length-n vector broadcast over rows), not a full-tensor accumulate, so there is
+    no correct lowering of a general init to emit. Re-associating it as a post-commit add is not the
+    same program either — it moves ``C`` out of the reduction, which is not bit-exact in float, and
+    this is the RTL-certified contraction path. So it is refused, naming what would have been lost.
+    """
+    bad = nonzero_accumulator_inits(payload)
+    if not bad:
+        return
+    op, init = bad[0]
+    raise LoweringError(
+        f"@{fn.sym_name.data}: '{op.name}' accumulates onto an init that is not provably zero "
+        f"({_value_origin(init)}, type {init.type}) — and {len(bad)} such init(s) in all. Interface "
+        "materialization rebuilds a contraction as interface.matmul -> interface.commit from a ZERO "
+        "accumulator and never reads the source `outs`, so that init would be DROPPED and the "
+        "emitted program would compute A@B instead of init + A@B. Only an uninitialized "
+        "tensor.empty, a linalg.fill of a zero constant, a zero tensor.splat or an all-zero dense "
+        "constant can be proven to contribute nothing; `interface.commit`'s epilogue is a "
+        "per-column bias_add, which cannot carry a general init. Refusing instead of compiling a "
+        "different program — hoist the init out of the contraction (a bias-add epilogue, or an "
+        "explicit add of the contraction's result) or compile this function through the LLVM path.")
+
 
 def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
     """Materialize an elementwise payload as ``interface.elementwise`` ops.
@@ -412,6 +578,9 @@ def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
             f"interface materialization would silently drop {len(dropped)} op(s) of the elementwise "
             f"payload: {', '.join(sorted(set(dropped)))}. Failing here instead of compiling a "
             "different program.")
+    # Same value-level guard as the matmul path: an op that READS its `outs` is accumulating onto
+    # that init, and this rebuild does not carry one either.
+    _check_inits_accounted(fn, payload)
 
     arg_types = [a.type for a in src_block.args]
     blk = Block(arg_types=arg_types)
