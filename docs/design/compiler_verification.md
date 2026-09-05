@@ -1255,6 +1255,48 @@ direction: a generator that drops a declared fact produces output that is *well-
 only a consumer that happens to be strict about that fact ever notices. Here one was — the gemmini
 backend refuses the store outright. Nothing in the corpus tooling would have.
 
+### 2026-09-05 — the negative controls were weaker than they looked
+
+The three `merlin_iface` negative tests each ran `not %mlir-opt --irdl-file=%iface-irdl %s | %filecheck`
+against `CHECK: error` plus a `CHECK-SAME` fragment. That shape has a specific weakness: it passes when
+an error appears ANYWHERE in the output. A parse failure on an unrelated line, a diagnostic about a
+different op, a typo in the module — each satisfies it. So the test can go on passing after the
+constraint it is named for stops being enforced, which is the one thing a negative control exists to
+prevent.
+
+Converted to the upstream form, `--split-input-file -verify-diagnostics`, which binds each expectation
+to a line and to its message text and fails on unexpected diagnostics as well as unproduced ones.
+Verified it bites by moving one expectation one line off its op: the run then fails twice, once for
+`unexpected error` and once for `expected error ... was not produced`. The `not | FileCheck` form does
+not distinguish those two situations at all.
+
+The three files became one `iface/invalid.mlir` with ten cases — the original three plus a non-string
+`role`, a matmul whose weight operand was never packed, a `resident_pack` with no `layout`, a commit
+reading a tensor instead of an accumulator, a missing `output_dtype`, an `output_dtype` given as an
+integer, and an `epilogue` given as a bare string. Each message was obtained by running the case, not
+written from the constraint: the one message that was guessed (`but got 0`, where mlir-opt says `but
+had 0`) failed against correct output — the third time that specific mistake has been recorded here.
+
+**And a second file that pins what the grammar does NOT check.** `merlin_iface.irdl.mlir`'s generated
+header already lists three ODS constraints IRDL cannot express — a tensor element type that is a token,
+and element-wise constraints on `commit`'s `epilogue` and `conv2d`'s geometry arrays. They are absent
+from the IRDL rather than present-as-`c_pred`, deliberately: mlir-opt drops a `c_pred` from its
+enclosing `all_of` without a diagnostic, so a constraint carried that way can never fail, and one that
+cannot fail reads as enforcement while providing none.
+
+`iface/unchecked_by_irdl.mlir` now asserts that all three malformed modules are ACCEPTED, each with the
+layer that does catch it named beside it. This is the honest counterpart to the ten rejections: without
+it, a green suite is indistinguishable from a suite that rejects only what someone happened to write a
+test for. If a case there starts failing, the gap closed and it belongs in `invalid.mlir`.
+
+`test_negative_tests_are_present` accepts both spellings now, and a new assertion catches the trap the
+conversion introduces: a file carrying `-verify-diagnostics` with no `expected-error` asserts the input
+is CLEAN — a positive test wearing a negative test's clothes, which would pass on the day the verifier
+stops rejecting anything.
+
+Suite: 10 tests, all passing (7 core pass tests, the positive grammar test, `invalid.mlir` with its 10
+split cases, and `unchecked_by_irdl.mlir` with its 3).
+
 ---
 
 ## 7. Reproducing what is claimed here

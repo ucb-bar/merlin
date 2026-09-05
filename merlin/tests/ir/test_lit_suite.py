@@ -55,10 +55,34 @@ def test_negative_tests_are_present():
     A suite made only of positive checks cannot distinguish a working verifier from one that accepts
     everything — which is exactly what the frozen grammar's IRDL was doing before the sigil
     normalization landed.
+
+    Two spellings count, and the second is the better one. `RUN: not <tool> | FileCheck` passes when an
+    error appears anywhere in the output, so it survives the constraint it names being removed as long
+    as SOMETHING still errors. `-verify-diagnostics` binds each expected diagnostic to a line and a
+    message and fails on unexpected ones too. The iface negatives were converted to it on 2026-09-05;
+    this assertion accepts both so a file in either style still counts as a control.
     """
     negatives = [p for p in _suite_dir().rglob("*.mlir")
-                 if "RUN: not " in p.read_text(encoding="utf-8")]
+                 if any(mark in p.read_text(encoding="utf-8")
+                        for mark in ("RUN: not ", "-verify-diagnostics"))]
     assert negatives, "the suite has no negative control"
+
+
+def test_a_verify_diagnostics_file_expects_a_diagnostic_on_a_line():
+    """`-verify-diagnostics` with no `expected-error` is vacuous: it asserts the input is CLEAN.
+
+    The flag makes mlir-opt fail on any diagnostic it was not told to expect, so a file carrying the
+    flag and no expectation is a positive test wearing a negative test's clothes — it would pass on the
+    day the verifier stops rejecting anything. This pairs the flag with at least one expectation.
+    """
+    offenders = []
+    for path in _suite_dir().rglob("*.mlir"):
+        text = path.read_text(encoding="utf-8")
+        if "-verify-diagnostics" in text and "expected-error" not in text:
+            offenders.append(path.name)
+    assert not offenders, (
+        f"{offenders} run with -verify-diagnostics but expect no diagnostic; such a file asserts the "
+        f"input is clean, which is the opposite of a negative control")
 
 
 # --- mutation control: are the CHECK lines load-bearing? ------------------------------------------
