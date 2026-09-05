@@ -203,10 +203,43 @@ class BaselineResult:
         d["status"] = self.status()
         return d
 
+    def provenance_block(self) -> dict:
+        """The hardware-provenance block this result must carry to be attributable.
+
+        A result that claims a verdict has to say WHICH hardware produced it — a number attributed to
+        the wrong device is worse than no number, because it gets cited. This board already records
+        everything needed (its vector length, its ISA string, its toolchain, the framework commit);
+        what was missing was emitting them in the block the provenance gate reads, so 40 passing
+        results were unattributable despite the facts sitting in the same file.
+
+        No hardware PIN is cited: the substrate here is a physical board, not an RTL revision, so
+        there is no commit sha to verify against. That is recorded explicitly rather than left to look
+        like an omission — ``hardware_pins`` comes back empty and ``all_pins_ok`` null, which is the
+        honest state for silicon.
+        """
+        from merlin.common import provenance
+
+        return provenance.record(extra={
+            "substrate": self.substrate,
+            "board_identity": {
+                "march": self.march,
+                "vlenb": self.board_vlenb,
+                "conditions": self.board_conditions,
+            },
+            "toolchain": self.toolchain,
+            "framework": self.framework,
+            "framework_commit": self.framework_commit,
+            "note": "physical board: identified by its measured ISA/vector-length facts and the "
+                    "toolchain that built the binary, not by an RTL revision sha. No hardware pin "
+                    "applies.",
+        })
+
     def write(self, out_dir: str | Path, *, filename: str = "baseline_result.json") -> Path:
         self.validate()
         out = Path(out_dir) / filename
-        out.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+        payload = self.to_dict()
+        payload["provenance"] = self.provenance_block()
+        out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         return out
 
     @staticmethod
@@ -214,6 +247,8 @@ class BaselineResult:
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
         raw.pop("passed", None)
         raw.pop("status", None)
+        # Written by `write`, not a dataclass field — dropped here so a result round-trips.
+        raw.pop("provenance", None)
         regions = [RegionProfile(**r) for r in raw.pop("regions", []) or []]
         fallbacks = [ScalarFallback(**f) for f in raw.pop("scalar_fallbacks", []) or []]
         return BaselineResult(regions=regions, scalar_fallbacks=fallbacks, **raw)
