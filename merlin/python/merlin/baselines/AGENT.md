@@ -222,6 +222,24 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   file with `executorch_spacemit_toolchain.cmake` (SpacemiT clang-19, `-march=rv64gcv -mabi=lp64d`
   on the WHOLE build) + `-DEXECUTORCH_BUILD_XNNPACK=ON` (XNNPACK's 380 RVV ukernels, compiled
   `-march=rv64gcv`). `PYTHON_EXECUTABLE` MUST be the ET venv python (host codegen: gen_oplist).
+- **The runner's kernel registry is a LINK-TIME set, planned per `.pte` (`plan_kernels`).**
+  `executor_runner` links only the PORTABLE kernel library unless told otherwise, so a program
+  calling an operator outside it aborts at `Method::load` with `There are N instructions don't have
+  corresponding operator registered` — nothing about the export or the cross-compile warns first.
+  Measured on `spectformer_int8_full` (2026-09-04): N=12, being `aten::_fft_r2c.out` ×4 and
+  `aten::_fft_c2r.out` ×4 (ExecuTorch ships these ONLY in `kernels/optimized/optimized.yaml`) plus
+  `aten::view_as_complex_copy.out` ×4. `plan_kernels` reads the exported program's operator list
+  (`_et_ops.py`, in the ET venv) and looks each operator up in the pinned tree's kernel yamls, then
+  hands `cross_compile_runner` the `EXECUTORCH_BUILD_KERNELS_*` options that link what is needed.
+  Which library owns an operator is an ExecuTorch-revision fact and is never hardcoded here.
+  Each kernel set gets its OWN build dir (`cmake-out`, `cmake-out-optimized`, …): two kernel sets
+  are two different binaries, and a cached runner with the wrong registry is the whole failure mode.
+- **`aten::view_as_complex_copy.out` has no kernel in ExecuTorch at pin `7fc34bf`** — not in
+  portable, not in optimized, not even in `kernels/aten/functions.yaml` (portable ships only the
+  inverse, `view_as_real_copy.out`). NO build configuration registers it, so `spectformer` records a
+  named `not_run` gap naming the operator rather than spending a board slot. Closing it needs an
+  out-of-tree kernel we would author, i.e. supplying an operator stock ExecuTorch lacks — a scope
+  decision about what "stock ExecuTorch baseline" means, not a build fix.
 - **RVV audit uses `llvm-objdump`, NOT the SpacemiT GNU objdump.** The GNU
   `riscv64-unknown-linux-gnu-objdump` silently mis-decodes rv64gcv in bulk `-d` (emits ~3 vector
   insns for a binary with ~85k) → would fabricate a false 0% RVV. `_preferred_objdump()` pins

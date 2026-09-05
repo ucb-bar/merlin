@@ -8,6 +8,7 @@ gap path) so the gate stays green everywhere.
 from __future__ import annotations
 
 import importlib.util
+import pathlib
 
 import pytest
 
@@ -922,3 +923,124 @@ def test_continuous_session_paper_sections_use_full_trajectory_and_opaque_stage_
     assert sections["timing"]["stage_samples"] == {}  # never fabricate an internal split
     assert sections["provenance"]["stage_attribution"] == "opaque_whole_forward"
     assert sections["execution"]["core_count"] == 2
+
+
+# --- the runner's kernel registry is a LINK-TIME set, derived per .pte -------------------------
+#
+# Measured on the board 2026-09-04: `spectformer_int8_full` aborted at Method::load with "There are
+# 12 instructions don't have corresponding operator registered". Reproduced host-side with an x86
+# executor_runner built from the same kernel configuration: the 12 were aten::view_as_complex_copy
+# .out (x4), aten::_fft_r2c.out (x4) and aten::_fft_c2r.out (x4). The two FFT operators live only in
+# ExecuTorch's `optimized` kernel library, which the build did not link; view_as_complex_copy.out is
+# in no ExecuTorch kernel library at all. These tests hold both halves of that distinction.
+
+def test_kernel_yaml_operators_reads_both_entry_spellings(tmp_path):
+    # ExecuTorch spells an entry either `- op: <name>` (implicitly the aten namespace) or
+    # `- func: <ns>::<name>(<schema>)`, and mixes the two in one file. Both must land on the
+    # registry key the runtime actually looks up, or the plan compares nothing.
+    y = tmp_path / "functions.yaml"
+    y.write_text(
+        "- op: mul.out\n"
+        "  kernels:\n"
+        "    - arg_meta: null\n"
+        "      kernel_name: torch::executor::mul_out\n"
+        "- func: quantized_decomposed::add.out(Tensor a, float s, *, Tensor(a!) out) -> Tensor(a!)\n"
+        "  kernels:\n"
+        "    - arg_meta: null\n"
+        "      kernel_name: torch::executor::quantized_add_out\n")
+    assert et._kernel_yaml_operators(y) == {"aten::mul.out", "quantized_decomposed::add.out"}
+
+
+def test_pinned_kernel_yamls_place_the_fft_ops_outside_portable():
+    # The fact that made the board fail, asserted against the PINNED source rather than restated:
+    # the FFT ops are optimized-only, so a portable-only runner cannot load spectformer.
+    portable = et._ET_SRC / "kernels/portable/functions.yaml"
+    optimized = et._ET_SRC / "kernels/optimized/optimized.yaml"
+    if not portable.is_file() or not optimized.is_file():
+        pytest.skip("ExecuTorch submodule not checked out")
+    p, o = et._kernel_yaml_operators(portable), et._kernel_yaml_operators(optimized)
+    assert "aten::mul.out" in p                     # the always-linked set is being read at all
+    for op in ("aten::_fft_r2c.out", "aten::_fft_c2r.out"):
+        assert op in o and op not in p, f"{op} moved between kernel libraries; re-plan the build"
+
+
+def test_plan_routes_ops_to_the_library_that_owns_them(monkeypatch, tmp_path):
+    # Portable-only operators must NOT turn on an extra library (that would change every existing
+    # cell's kernel set); an optimized-only one must turn on exactly its cmake option.
+    monkeypatch.setattr(et, "pte_operators", lambda pte, **kw: {"aten::mul.out": 3})
+    plan = et.plan_kernels(tmp_path / "model.pte")
+    assert plan.libraries == set() and plan.cmake_options == () and not plan.missing
+
+    monkeypatch.setattr(et, "pte_operators",
+                        lambda pte, **kw: {"aten::mul.out": 3, "aten::_fft_r2c.out": 4})
+    plan = et.plan_kernels(tmp_path / "model.pte")
+    assert plan.libraries == {"optimized"}
+    assert plan.cmake_options == ("EXECUTORCH_BUILD_KERNELS_OPTIMIZED",)
+    assert not plan.missing
+
+
+def test_plan_names_an_operator_executorch_does_not_implement(monkeypatch, tmp_path):
+    # No build configuration registers view_as_complex_copy.out, so the gap must be NAMED (and
+    # counted in the runtime's own unit, instructions) rather than spent as a board slot.
+    monkeypatch.setattr(et, "pte_operators", lambda pte, **kw: {
+        "aten::mul.out": 3, "aten::view_as_complex_copy.out": 4})
+    plan = et.plan_kernels(tmp_path / "model.pte")
+    assert plan.missing == {"aten::view_as_complex_copy.out": 4}
+    assert plan.n_missing_instructions == 4
+    reason = plan.missing_reason()
+    assert "aten::view_as_complex_copy.out" in reason and "4 instructions" in reason
+
+
+def test_run_model_reports_the_missing_operator_instead_of_running_the_board(monkeypatch, tmp_path):
+    # A program the runtime would refuse at load must come back not_run WITH the operator named,
+    # and must never reach the board — the board can only rediscover the same abort.
+    from merlin.baselines import bundle as _bundle
+
+    (tmp_path / "golden.npy").write_bytes(b"\x00" * 8)
+    (tmp_path / "inputs.npz").write_bytes(b"\x00" * 8)
+    bnd = _bundle.CaptureBundle(model="spectformer", variant="int8", root=tmp_path)
+    monkeypatch.setattr(et, "resolve_bundle", lambda m, v="fp32": bnd)
+    monkeypatch.setattr(et, "et_venv_available", lambda: True)
+    monkeypatch.setattr(et, "export_pte", lambda model, b, work, **kw: et.ExportResult(
+        pte=tmp_path / "model.pte", ptd_files=[], input_files=[], golden=bnd.golden))
+    monkeypatch.setattr(et, "pte_operators", lambda pte, **kw: {
+        "aten::mul.out": 3, "aten::view_as_complex_copy.out": 4})
+    monkeypatch.setattr(et, "cross_compile_runner", lambda work, **kw: tmp_path / "executor_runner")
+    monkeypatch.setattr(et, "audit_binary", lambda runner: (0.5, [], {}))
+    board = []
+    monkeypatch.setattr(et, "_do_board", lambda *a, **k: board.append(1))
+
+    r = et.run_model("spectformer", "int8", write=False, work_root=tmp_path)
+    assert board == [], "a program the runtime refuses at load must not consume a board slot"
+    assert r.built is True                       # export + binary are real; only the run is blocked
+    assert r.status() == "not_run" and "aten::view_as_complex_copy.out" in r.gap_reason
+
+
+def test_kernel_options_reach_cmake_and_get_their_own_build_dir(monkeypatch, tmp_path):
+    # Two kernel sets are two different binaries. They must not share a build dir (a cached runner
+    # with the wrong registry is exactly the failure this whole path exists to prevent), and the
+    # options must actually reach the configure line.
+    monkeypatch.setattr(et, "et_identity", lambda: None)
+    monkeypatch.setattr(et.rvv_audit, "enforce_rvv_march", lambda m: m)
+    monkeypatch.setattr(et, "_toolchain_root", lambda: tmp_path / "tc")
+    monkeypatch.setattr(et, "et_venv_python", lambda: tmp_path / "python")
+    seen = []
+
+    def _fake_run(argv, **kw):
+        seen.append([str(a) for a in argv])
+        if argv[0] == "cmake" and argv[1] == "--build":
+            out = pathlib.Path(argv[2]) / "executor_runner"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(b"\x7fELF")
+        class _P:
+            returncode, stdout, stderr = 0, "ELF 64-bit LSB, UCB RISC-V", ""
+        return _P()
+
+    monkeypatch.setattr(et.subprocess, "run", _fake_run)
+    plain = et.cross_compile_runner(tmp_path / "w")
+    opt = et.cross_compile_runner(
+        tmp_path / "w", kernel_options=("EXECUTORCH_BUILD_KERNELS_OPTIMIZED",))
+    assert plain.parent != opt.parent, "kernel set is part of the binary's identity"
+    configures = [a for a in seen if a[0] == "cmake" and a[1] == "-S"]
+    assert not any("-DEXECUTORCH_BUILD_KERNELS_OPTIMIZED=ON" in a for a in configures[:1])
+    assert "-DEXECUTORCH_BUILD_KERNELS_OPTIMIZED=ON" in configures[-1]

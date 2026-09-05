@@ -12,8 +12,10 @@ Pipeline (per model, fp32 first)::
       -> torch.export.export (with OUR captured input, so it matches golden.npy)
       -> to_edge_transform_and_lower(partitioner=[XnnpackPartitioner()])   [XNNPACK RVV delegate]
       -> BundledProgram(.bpte): one test case = (captured input) -> golden.npy      [AOT, ET venv]
+      -> plan_kernels(.pte): which kernel libraries the runner must LINK           [derived, AOT]
       -> cmake --preset riscv64-linux, SpacemiT-clang toolchain, -march=rv64gcv,
-         EXECUTORCH_BUILD_XNNPACK=ON  ->  executor_runner (rv64gcv glibc ELF)        [the RVV binary]
+         EXECUTORCH_BUILD_XNNPACK=ON + the planned EXECUTORCH_BUILD_KERNELS_* options
+         ->  executor_runner (rv64gcv glibc ELF)                                    [the RVV binary]
       -> rvv_audit.audit_binary(executor_runner + libXNNPACK.a objects)   [mechanical RVV honesty]
       -> push + run on the K1 (board_lock): bundled-IO Test_result: PASS/FAIL + error stats + timing
 
@@ -22,6 +24,13 @@ merlin's ``.venv``. This runner shells out to ``build/baselines/executorch/et-ve
 ``third_party/baselines/executorch/install_executorch.sh``) to produce the ``.bpte``, then does all
 the cross-compile / audit / board work itself. If that venv is absent, the model is a clean
 ``not_built`` gap with a specific reason — never a fabricated result.
+
+Why the kernel PLAN is a step and not a constant: ``executor_runner`` registers whichever kernel
+libraries it was LINKED with, and only the portable set is linked by default. A program calling an
+operator outside that set aborts at ``Method::load`` (``There are N instructions don't have
+corresponding operator registered``) — measured on ``spectformer_int8``, whose FFT operators live
+only in ExecuTorch's ``optimized`` library. Which library owns an operator is an ExecuTorch-revision
+fact, so it is read from the pinned tree's kernel yamls per model rather than hardcoded here.
 
 Honesty (``not_run_is_not_pass``): torch.export failure, an unsupported op, a cross-compile break, a
 board-down condition — each yields a ``not_built``/``not_run`` result with a SPECIFIC ``gap_reason``.
@@ -58,6 +67,18 @@ _ET_SRC = repo_root() / "third_party" / "baselines" / "executorch"
 _TOOLCHAIN_CMAKE = Path(__file__).with_name("executorch_spacemit_toolchain.cmake")
 _ET_EXPORT_HELPER = Path(__file__).with_name("_et_export.py")
 _ET_INSPECT_HELPER = Path(__file__).with_name("_et_inspect.py")
+_ET_OPS_HELPER = Path(__file__).with_name("_et_ops.py")
+
+# Which ExecuTorch kernel library each ``functions.yaml`` in the PINNED source tree stands for, and
+# the cmake option that links it into ``executor_runner``. The op->library map is DERIVED by reading
+# these files at run time, never listed here: an operator's home moves between ExecuTorch revisions
+# (``_fft_r2c.out`` is optimized-only at the current pin), and a baked list would silently mis-plan
+# the build the moment the submodule is bumped. ``None`` marks the library that is always linked.
+_KERNEL_YAMLS: tuple[tuple[str, str, str | None], ...] = (
+    ("portable", "kernels/portable/functions.yaml", None),
+    ("optimized", "kernels/optimized/optimized.yaml", "EXECUTORCH_BUILD_KERNELS_OPTIMIZED"),
+    ("quantized", "kernels/quantized/quantized.yaml", "EXECUTORCH_BUILD_KERNELS_QUANTIZED"),
+)
 
 
 def et_regions_from_etdump(etdump: str | Path, *, etrecord: str | Path | None = None,
@@ -339,6 +360,117 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
                         summary=s)
 
 
+# --- which kernel libraries this .pte needs the runner to link ----------------------------------
+
+@dataclass
+class KernelPlan:
+    """Which ExecuTorch kernel libraries a given ``.pte`` needs, and what nothing provides.
+
+    ``Method::load`` refuses a program whose operators are not all registered, so this is the
+    difference between a runner that loads the model and one that aborts at load with
+    ``There are N instructions don't have corresponding operator registered``. Both fields are
+    DERIVED: ``operators`` from the exported program, ``libraries``/``missing`` by looking each
+    operator up in the kernel yamls of the pinned ExecuTorch source.
+    """
+
+    operators: dict[str, int] = field(default_factory=dict)
+    #: extra kernel libraries beyond the always-linked portable set, e.g. ``{"optimized"}``
+    libraries: set[str] = field(default_factory=set)
+    #: cmake options that link them, e.g. ``("EXECUTORCH_BUILD_KERNELS_OPTIMIZED",)``
+    cmake_options: tuple[str, ...] = ()
+    #: ``{operator: n_instructions}`` for operators NO ExecuTorch kernel library implements
+    missing: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def n_missing_instructions(self) -> int:
+        """Instructions the runtime will report as unregistered — its own unit, so the two match."""
+        return sum(self.missing.values())
+
+    def missing_reason(self) -> str:
+        """The gap_reason for a model no build configuration of stock ExecuTorch can load."""
+        named = ", ".join(f"{op} (x{n})" for op, n in sorted(self.missing.items()))
+        return (f"ExecuTorch has no kernel for {len(self.missing)} operator(s) this model calls: "
+                f"{named}. Absent from every kernel library in the pinned source tree "
+                f"({', '.join(y for _, y, _ in _KERNEL_YAMLS)}), so no build configuration "
+                f"registers them and Method::load fails with OperatorMissing "
+                f"({self.n_missing_instructions} instructions). Not a merlin build gap.")
+
+
+def _kernel_yaml_operators(path: Path) -> set[str]:
+    """Registry keys (``aten::mul.out``, ``quantized_decomposed::add.out``) one kernel yaml defines.
+
+    ExecuTorch spells an entry either as ``- op: <name>`` (implicitly the ``aten`` namespace) or as
+    ``- func: <ns>::<name>(<schema>)``; both forms appear in the same file. Parsed as YAML and split
+    structurally on ``(`` / ``::`` — the runtime's registry key is exactly this string, so the
+    comparison downstream is key-to-key, never a substring search.
+    """
+    import yaml
+
+    entries = yaml.safe_load(path.read_text()) or []
+    names: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if "op" in entry:
+            raw, namespaced = str(entry["op"]), False
+        elif "func" in entry:
+            raw, namespaced = str(entry["func"]).partition("(")[0], True
+        else:
+            continue
+        raw = raw.strip()
+        if not raw:
+            continue
+        names.add(raw if (namespaced and "::" in raw) else f"aten::{raw}")
+    return names
+
+
+def pte_operators(pte: Path, *, timeout: int = 900) -> dict[str, int]:
+    """``{registry key: n_instructions}`` for every kernel call in an exported ``.pte``.
+
+    Shelled out to ``_et_ops`` under the ExecuTorch venv for the same reason as ``_et_inspect``:
+    deserializing the program needs ``executorch.exir``, which lives in that venv and not merlin's.
+    """
+    out = Path(pte).with_name(Path(pte).stem + "_operators.json")
+    proc = subprocess.run([str(et_venv_python()), str(_ET_OPS_HELPER),
+                           "--pte", str(pte), "--out", str(out)],
+                          capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0 or not out.is_file():
+        raise ExecuTorchError(
+            f"_et_ops failed (rc={proc.returncode}): {(proc.stderr or proc.stdout)[-700:]}")
+    payload = json.loads(out.read_text())
+    return {str(k): int(v) for k, v in payload.get("operators", {}).items()}
+
+
+def plan_kernels(pte: Path, *, timeout: int = 900) -> KernelPlan:
+    """Read a ``.pte`` and the pinned kernel yamls -> which libraries the runner must link.
+
+    The portable set is linked unconditionally by ``executor_runner``; anything an operator needs
+    beyond it (``optimized`` for the FFT ops, ``quantized`` for the ``quantized_decomposed`` ops) is
+    an OPTION the build has to be told about, and was previously left OFF — which is why a model
+    exporting those operators aborted on the board at load time with no host-side warning. Operators
+    that no library defines are returned in ``missing`` so the caller can name them instead of
+    spending a board slot to rediscover them.
+    """
+    operators = pte_operators(pte, timeout=timeout)
+    provided: dict[str, set[str]] = {}
+    for library, relative, _option in _KERNEL_YAMLS:
+        path = _ET_SRC / relative
+        provided[library] = _kernel_yaml_operators(path) if path.is_file() else set()
+
+    plan = KernelPlan(operators=operators)
+    for operator, count in operators.items():
+        homes = [lib for lib, names in provided.items() if operator in names]
+        if not homes:
+            plan.missing[operator] = count
+        elif "portable" not in homes:
+            # Available, but only from a library the default build does not link.
+            plan.libraries.add(homes[0])
+    plan.cmake_options = tuple(
+        option for library, _relative, option in _KERNEL_YAMLS
+        if option is not None and library in plan.libraries)
+    return plan
+
+
 # --- cross-compile the executor_runner for rv64gcv (SpacemiT clang) -----------------------------
 
 def _toolchain_root() -> Path | None:
@@ -346,7 +478,7 @@ def _toolchain_root() -> Path | None:
 
 
 def cross_compile_runner(work: Path, *, xnnpack: bool = True, etdump: bool = False,
-                         timeout: int = 5400) -> Path:
+                         kernel_options: tuple[str, ...] = (), timeout: int = 5400) -> Path:
     """Cross-compile ExecuTorch's ``executor_runner`` for rv64gcv with the SpacemiT clang.
 
     Uses the pinned source tree's ``riscv64-linux`` cmake preset but overrides its toolchain file
@@ -360,6 +492,14 @@ def cross_compile_runner(work: Path, *, xnnpack: bool = True, etdump: bool = Fal
     preset), so the runner accepts ``--etdump_path`` and emits per-op timing events the devtools
     Inspector correlates back to layer fqns (the per-region ExecuTorch timing). It is a DISTINCT
     build (cached under a separate dir) from the plain runner so the two do not clobber each other.
+
+    ``kernel_options`` are the ``EXECUTORCH_BUILD_KERNELS_*`` cmake options that link the kernel
+    libraries a particular model needs beyond the always-linked portable set — supply
+    :attr:`KernelPlan.cmake_options` from :func:`plan_kernels`, which derives them from the ``.pte``.
+    Leaving them off does not fail the build; it produces a runner that aborts at ``Method::load``
+    on the board with ``instructions don't have corresponding operator registered``, which is how
+    this was originally missed. Each distinct kernel set gets its OWN build dir so a runner is never
+    silently reused with the wrong kernel registry (the binaries differ; the paths must too).
     """
     try:
         et_identity()
@@ -370,7 +510,12 @@ def cross_compile_runner(work: Path, *, xnnpack: bool = True, etdump: bool = Fal
     if root is None:
         raise ExecuTorchError("SpacemiT toolchain not found (set MERLIN_K1_TOOLCHAIN)")
 
-    build_dir = work / ("cmake-out-etdump" if etdump else "cmake-out")
+    kernel_options = tuple(sorted(set(kernel_options)))
+    # The kernel set is part of the binary's identity, so it is part of the cache key. Suffixed
+    # rather than substituted so the existing portable-only caches stay valid and keep their meaning.
+    suffix = "".join(
+        "-" + option.rsplit("_", 1)[-1].lower() for option in kernel_options)
+    build_dir = work / (("cmake-out-etdump" if etdump else "cmake-out") + suffix)
     env = dict(os.environ)
     env["MERLIN_K1_TOOLCHAIN_ROOT"] = str(root)
 
@@ -388,6 +533,7 @@ def cross_compile_runner(work: Path, *, xnnpack: bool = True, etdump: bool = Fal
         cfg.append("-DEXECUTORCH_BUILD_XNNPACK=ON")
     if etdump:
         cfg.append("-DEXECUTORCH_BUILD_RISCV_ETDUMP=ON")
+    cfg += [f"-D{option}=ON" for option in kernel_options]
 
     def _configure_and_build() -> None:
         subprocess.run([str(c) for c in cfg], capture_output=True, text=True,
@@ -890,15 +1036,37 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
         res.gap_reason = f"torch.export/.pte lowering failed: {str(e)[:400]}"
         return _finish(res, model, variant, write)
 
+    # 1b. WHICH kernel libraries this .pte needs the runner to register. The runner is model-agnostic
+    #     only in its CODE; its kernel REGISTRY is a link-time set, and a program calling an operator
+    #     outside it aborts at Method::load. Derived from the exported program + the pinned kernel
+    #     yamls so the build is configured correctly BEFORE the board, and so an operator ExecuTorch
+    #     does not implement at all is named here rather than rediscovered as an opaque board abort.
+    plan: KernelPlan | None = None
+    try:
+        plan = plan_kernels(exp.pte)
+        if plan.libraries:
+            res.notes += " kernel_libs=portable+" + "+".join(sorted(plan.libraries))
+    except (ExecuTorchError, OSError, ValueError) as e:  # noqa: BLE001
+        # Fail OPEN on the analysis, closed on the result: without a plan we build the historical
+        # kernel set and say so, rather than blocking a model whose operators are all portable.
+        res.notes += f" kernel-plan unavailable: {str(e)[:150]}"
+
     # 2. cross-compile executor_runner (rv64gcv, XNNPACK RVV). The runner is model-agnostic, so an
     #    already-built one may be reused across models via runner_override.
     if runner_override is not None and Path(runner_override).is_file():
         runner = Path(runner_override)
         res.built = True
         res.notes += f" runner={runner} (reused)"
+        if plan is not None and plan.cmake_options:
+            # An overridden runner's kernel registry is whatever it was built with; we cannot make
+            # it register more. Say what this model needs so a load failure is not read as ours.
+            res.notes += (" WARNING: reused runner may lack " + "+".join(sorted(plan.libraries))
+                          + " kernels this model needs")
     else:
         try:
-            runner = cross_compile_runner(work, xnnpack=xnnpack)
+            runner = cross_compile_runner(
+                work, xnnpack=xnnpack,
+                kernel_options=plan.cmake_options if plan is not None else ())
             res.built = True
             res.notes += f" runner={runner}"
         except ExecuTorchError as e:
@@ -912,6 +1080,15 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
         res.scalar_fallbacks = fallbacks
     except Exception as e:  # noqa: BLE001
         res.notes += f" rvv-audit failed: {str(e)[:150]}"
+
+    # 3b. Operators NO ExecuTorch kernel library implements. Method::load would refuse the program,
+    #     so the board run can only produce the same OperatorMissing abort — spend the reason here,
+    #     naming the operators, instead of a board slot. Still `built`: the export and the binary are
+    #     real, and the RVV audit above is measured on them.
+    if plan is not None and plan.missing:
+        res.gap_reason = plan.missing_reason()
+        res.board_vlenb = k1_exec.board_vlenb()
+        return _finish(res, model, variant, write)
 
     # 4. K1 on-board run — the ONLY board-gated step. Fail-closed when the board is down / too full.
     #    RAM-infeasible models (7B-class VLAs: openvla/molmoact/pi05) are BUILT (export succeeds) but
