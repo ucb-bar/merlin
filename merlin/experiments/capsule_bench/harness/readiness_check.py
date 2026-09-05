@@ -380,6 +380,55 @@ def test_graded_path_is_the_declared_one():
             and set(admitted_models) == required_models
             and bool(required_models)))
 
+        # THE PHASE PARTITION, RE-DERIVED HERE rather than taken from the descriptor's word. A
+        # capsule-bench run serves ONE phase, and `phase_policy.phase_of` decides which phase a member
+        # can serve from what can be checked about it: whether its answer can be certified on this
+        # target inside the DECLARED certification budget, and whether its work can be priced. The
+        # descriptor RECORDS the members that cannot serve the declared phase and this recomputes the
+        # whole set and demands exact equality, the same way the capability list is treated.
+        #
+        # RECORDED, NOT SUBTRACTED, and that distinction is the content. A phase-2-only member is not
+        # a row nobody may grade -- it is a row whose L3 answer this budget never buys, so its pass is
+        # a screen. Dropping it from the denominator would be `check_phase_split`'s own stated trap
+        # ("satisfiable by DELETING the members that serve one phase, which improves the ratio and
+        # destroys coverage"), and it would duplicate a mechanism that already exists: the runner
+        # certifies a derived covering set and marks the rest `budget_deferred`. So the seal states the
+        # partition, a reader can tell an L2 screen from a certification, and N stays honest.
+        # `phase_bound.exclude_capsules` remains available for a row genuinely held out, and must be a
+        # subset of the recorded set.
+        #
+        # UNDETERMINED IS NEVER A VERDICT AGAINST A ROW. A target with no certification history cannot
+        # have its phase-1 membership decided at all; recording that as "phase-2-only" would file a
+        # missing measurement as a property of the corpus, so it is reported apart and fails here.
+        declared_phase2 = set(getattr(_TE, "graded_phase2_only", ()) or ())
+        declared_phase_exclude = set(getattr(_TE, "graded_phase_exclude", ()) or ())
+        phase_budget = getattr(_TE, "graded_phase_budget_s", None)
+        phase_number = getattr(_TE, "graded_phase", None)
+        phase_policy_name = getattr(_TE, "graded_phase_policy", None)
+        phase_undetermined: list[str] = []
+        derived_phase2: set[str] = set()
+        if phase_number is not None:
+            from merlin.targetgen import cert_cost as _CCST
+            from merlin.targetgen import phase_policy as _PP
+            _fit = _CCST.fit_for(TARGET)
+            _cycle_accurate = _PP.cycle_accurate_seen(TARGET)
+            _serves = {_PP.BOTH, _PP.PHASE1} if phase_number == 1 else {_PP.BOTH, _PP.PHASE2}
+            for cap in source_caps:
+                name = str(cap.get("name"))
+                if name in proven_excluded or name in set(resource_excluded):
+                    continue          # already out of the denominator, for a different, stated reason
+                v = _PP.phase_of(cap, target=TARGET, fit=_fit, budget_s=phase_budget,
+                                 cycle_accurate_available=_cycle_accurate)
+                if v.phase == _PP.UNDETERMINED:
+                    phase_undetermined.append(name)
+                elif v.phase not in _serves:
+                    derived_phase2.add(name)
+        missing_phase2 = sorted(derived_phase2 - declared_phase2)
+        extra_phase2 = sorted(declared_phase2 - derived_phase2)
+        phase_declared_ok = (phase_number is None
+                             or (phase_budget is not None and bool(phase_policy_name)
+                                 and declared_phase_exclude <= declared_phase2))
+
         caps = [c for c in source_caps if str(c.get("name")) not in excluded]
         n_pub = len(caps)
         hidden_source = (CR.discover_capsules(
@@ -414,6 +463,18 @@ def test_graded_path_is_the_declared_one():
              f"invalid_resource={invalid_resource_exclusions}" if
            unknown_exclusions or missing_capability_exclusions or extra_capability_exclusions
            or invalid_resource_exclusions or not resource_policy_ok else ""))
+    _ok("the recorded phase partition is exactly what the phase verdict derives at the declared budget",
+        (phase_declared_ok and not missing_phase2 and not extra_phase2 and not phase_undetermined),
+        (f"phase={phase_number}, budget={phase_budget}s, policy={phase_policy_name}, "
+         f"serves_phase_{phase_number}={n_pub - len(declared_phase2)} of {n_pub} admitted, "
+         f"phase-2-only recorded={len(declared_phase2)} derived={len(derived_phase2)}, "
+         f"held out on phase grounds={len(declared_phase_exclude)}"
+         + (f", MISSING from the record={missing_phase2[:6]}" if missing_phase2 else "")
+         + (f", recorded but not derived={extra_phase2[:6]}" if extra_phase2 else "")
+         + (f", UNDETERMINED={phase_undetermined[:6]} (no certification history to decide on; "
+            f"certify this target's corpus rather than filing the gap against the corpus)"
+            if phase_undetermined else "")
+         ) if phase_number is not None else "no phase partition declared")
     _ok("the public grade resolves to a non-empty suite", n_pub > 0,
         f"{n_pub} admitted capsule(s) from {len(source_caps)} source-pool capsule(s) over "
         f"{len(pub_roots)} root(s): " + ", ".join(r.name for r in pub_roots))

@@ -220,6 +220,15 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
             "tiers": {t: (tiers.get(t) or {}).get("status") for t in tiers},
             "tier_cycles": {t: (tiers.get(t) or {}).get("cycles") for t in tiers
                             if (tiers.get(t) or {}).get("cycles") is not None},
+            # WHICH SIMULATOR ANSWERED EACH TIER. Redaction-safe: an engine name is a harness constant
+            # ("gsim", "verilator"), never capsule or golden data. It rides here because a cycle count is
+            # only interpretable next to the instrument that produced it -- two engines at the same
+            # fidelity differ by more than an order of magnitude in cost -- and because a cert that fell
+            # back to the slow engine should be visible to whoever is reading the verdict, not only to
+            # whoever ran readiness. Filtered to a short identifier so nothing else can ride the field.
+            "tier_engines": {t: (tiers.get(t) or {}).get("engine") for t in tiers
+                             if isinstance((tiers.get(t) or {}).get("engine"), str)
+                             and len((tiers.get(t) or {}).get("engine")) <= 32},
             "failure_plane": fail.get("plane"),
             "failure_category": fail.get("category"),
             # The tier LABEL survives redaction. It is a harness constant ("L2"), never capsule data, and

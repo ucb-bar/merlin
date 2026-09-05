@@ -5,6 +5,7 @@ allowed_tree_sha256:
   experiments/capsule_bench/targets/atlas/scripts/agent_selfcheck.py: 63f4625aae818468a5b7b7f02118e1c4d88d00beaf69835c3b5fa80736a196b0
   experiments/capsule_bench/targets/atlas/task: a9b89c01036281d90000301fad89585c1a539c4d04c50a6e537d45c10ef2e570
   merlin/contract: 27e4a681f25469a19db43d69617626a79bed09e4d82f95024a2ba2974d968e02
+  merlin/contract/capsules/atlas/_perf: fc2f04815ec6b1f17b91a34414dbe156af0e04f6c57d84370cbea2260f80953d
   merlin/contract/capsules/atlas/isa: b23a2b3269ac89e514a583c01875be66474a1f299abb223807899e208e8a4480
   merlin/contract/capsules/atlas/layers: cb71f90184c862a2437d3e6898dd58fb749946bffddd39fc6051523aeb643568
   merlin/contract/capsules/atlas/model: 69e4c0f258aae4f67dea24b3bcae4677173f5dff436bd48fbc4c6a9eb2257c62
@@ -14,5 +15,3 @@ allowed_tree_sha256:
   merlin/python/merlin/targetgen/generate/target_repo.py: 8ceb4429bcb8aa88e288f89459875843dabc073cc410fee391790d44c3a9da12
   out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct: cc8a6bd4aad01c878d5dfdf4c9ce4c69398f4618f5a3f8cf78f55df93a60fea9
   third_party/llvm-install: 95bfc5318ac13a12f6fb80a9060c1484e2bc8dfb237dc59dfcd2e425c146d7eb
-unresolvable_grants:
-- merlin/contract/capsules/atlas/perf

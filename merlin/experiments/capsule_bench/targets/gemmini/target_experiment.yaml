@@ -123,7 +123,7 @@ grading:
   # than merely tolerated. The formal model cohort is therefore three (full-model representative,
   # host/accelerator seam, composition), which is MORE model coverage than the policy declared before,
   # for +361 s.
-  # The arithmetic the descriptor parser enforces holds: 87 == 72 + 15.
+  # The arithmetic the descriptor parser enforces holds: 111 == 96 + 15.
   #
   # RE-SEALED 2026-09-03 from 75/61 to 87/73. The exclusion list is UNCHANGED at 14 rows -- every added
   # capsule is eligible on the frozen contract -- so the whole delta is +12 on both sides, and it is
@@ -149,14 +149,52 @@ grading:
   # disagreed about which model capsules are graded (the corpus admitted four, the descriptor named
   # two), and readiness proves that equality independently rather than taking either side's word.
   #
+  # RE-SEALED 2026-09-05 from 87/72 to 111/96, after the corpus was re-derived from this target's own
+  # conformance requirement (merlin/contract/capsules/conformance/gemmini.yaml). THE EXCLUSION LISTS DID
+  # NOT MOVE -- still eleven capability rows and four resource rows -- so the whole delta is +24 on both
+  # sides, and it is enumerated against the previous pool rather than inferred from the count:
+  #
+  #   +3  the batched / padded / strided sources (GB0_batched_matmul_i8, GC7_conv2d_pad_i8,
+  #       GC8_conv2d_stride2_i8). These landed in the shared pool on 2026-09-04 and were simply never
+  #       re-sealed; all three are i8 on the declared datapath, so nothing about the boundary changes.
+  #   +12 the application axis (SY_app_contraction_i8_*), one per class in the requirement's
+  #       `application_shapes.required` -- six shapes a real capture presents, each as an L3 capsule
+  #       plus the L2 extension that rests on it via `extends`.
+  #   +10 the convolution-window axis (SY_conv_*), one per window in `conv_geometry.required`. Every
+  #       window is recovered structurally from the captures; a window whose padding the capture does
+  #       not carry is minted at zero padding and says so in its name and provenance rather than
+  #       guessing an identity.
+  #   +1/-2 the shape-geometry axis: SY_geometry_projection_like is minted, and
+  #       SY_geometry_gemv_like / SY_geometry_tall_skinny are not, because the re-derived class
+  #       representatives for those two exceed `shape_geometry.materialization_ceiling_elements`
+  #       (262144). Their classes are still REQUIRED by the requirement and are reported as refused at
+  #       mint time; the corpus does not pretend to cover them.
+  #
+  # THE COST WAS RE-MEASURED for the new admitted set on the same law and the same tool
+  # (build_tools/scripts/check_cert_affordability.py): 2.38 h of predicted L3 wall-clock across its 85
+  # shape-resolvable L3-demanding rows, up from 1.74 h across 66, and the most expensive single capsule
+  # is unchanged at 361 s. The gate names none of the added rows in any over-budget, beyond-evidence or
+  # unpriceable list.
+  #
+  # WHAT DID NOT ENTER THE POOL, and why that is the point. The same regeneration also left 34
+  # `SY_app_contraction_f32_*` / `_bf16_*` directories on disk, which would have taken discovery to 145.
+  # They are NOT admitted and NOT excluded -- they were removed, because the requirement itself refuses
+  # their classes by name: `application_shapes.refused` records, for each one, "this target's manifest
+  # does not admit contraction/f32, so the work in this class belongs on the HOST lane and not on the
+  # accelerator ... an accelerator capsule here would demand an offload the datapath cannot perform and
+  # could not pass under any correct behaviour". They are stale output of a generator run that predated
+  # that refusal. Admitting them would have grown the capability-exclusion list from 11 rows to 45; the
+  # recomputed hardware-ineligible set after removing them is again EXACTLY the eleven bf16 rows named
+  # below, which is the independent check that the pool is the pool the requirement asks for.
+  #
   # KNOWN BLIND SPOT, recorded rather than papered over: this seal is CARDINALITIES ONLY, deliberately,
   # so that the hidden names stay unpublished -- and a cardinality cannot see a swap. The episode above
   # is exactly that shape: one row in, one row out, same count, different cohort. What does catch it is
   # `.cohort_admission.json`'s `admitted_name_set_sha256`, recomputed at materialization; read that, not
   # these integers, when the question is whether the cohort is the SAME cohort.
   expected_cohort:
-    source_capsules: 87
-    admitted_capsules: 72
+    source_capsules: 111
+    admitted_capsules: 96
   hidden_capability_admission:
     source_capsules: 15
     admitted_capsules: 14
