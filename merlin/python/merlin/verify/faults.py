@@ -145,3 +145,58 @@ CORPUS: tuple[Fault, ...] = (
           "the accumulator is read by a later matmul before its commit (commit-after-reuse)",
           _commit_after_reuse, expected=("static",)),
 )
+
+
+# --- command-buffer faults ------------------------------------------------------------------------
+# These mutate the ARTIFACT A BACKEND EMITS, not our own IR, so they are the negative controls for the
+# layer that checks a compiler we did not write. They are kept separate from CORPUS because they take
+# a command-buffer dict rather than an xDSL module, and because the layers they exercise differ.
+
+
+def _cb_swap_matmul_operands(cb) -> None:
+    """A @ W emitted as W @ A, at the command-buffer level."""
+    ops = next(c for c in cb["commands"] if str(c["opcode"]).startswith("MATMUL"))["operands"]
+    ops["lhs"], ops["rhs"] = ops["rhs"], ops["lhs"]
+
+
+def _cb_crosswire_commit(cb) -> None:
+    """The second commit reads the first accumulator: one result is silently duplicated."""
+    commits = [c for c in cb["commands"] if c["opcode"] == "COMMIT"]
+    commits[1]["operands"]["src"] = commits[0]["operands"]["src"]
+
+
+def _cb_narrow_output(cb) -> None:
+    """Narrow the readout the program did not ask to narrow.
+
+    Worth its own fault because the reference's default is `i8` when `output_dtype` is ABSENT, so an
+    emitter that simply forgets the attribute silently saturates every result. A structural check
+    cannot see this at all; it is a pure value defect.
+    """
+    next(c for c in cb["commands"] if c["opcode"] == "COMMIT")["attributes"]["output_dtype"] = "i8"
+
+
+def _cb_drop_requant(cb) -> None:
+    """Drop a requant stage from the epilogue, leaving the result unscaled."""
+    for c in cb["commands"]:
+        if c["opcode"] == "COMMIT":
+            stages = list(c.get("attributes", {}).get("epilogue") or [])
+            if "requant" in stages:
+                stages.remove("requant")
+                c["attributes"]["epilogue"] = stages
+                return
+    # nothing to drop at this shape; the fault is inapplicable rather than undetectable
+    raise ValueError("no requant stage present to drop")
+
+
+#: Seeded faults over an emitted command buffer. Each takes the buffer dict and mutates it in place.
+CB_CORPUS: tuple[Fault, ...] = (
+    Fault("cb_swapped_matmul_operands",
+          "the backend emitted W @ A where the program specified A @ W",
+          _cb_swap_matmul_operands, expected=("compilation",)),
+    Fault("cb_crosswire_commit",
+          "the second commit reads the first accumulator (a duplicated result)",
+          _cb_crosswire_commit, expected=("compilation",)),
+    Fault("cb_narrow_output",
+          "the readout saturates to i8 where the program declared a wider output",
+          _cb_narrow_output, expected=("compilation",)),
+)

@@ -1,17 +1,29 @@
 """Turn a solver counterexample into a witness the capsule bench can grade.
 
-This is the point of the formal layer that a pass-rate cannot reach. When translation validation
-refutes an obligation, z3 hands back a CONCRETE input at a concrete shape on which the compiled
-program disagrees with its specification. Written out as a witness, that input rejoins the corpus and
-is graded by the same ladder as every hand-derived one.
+When the checker refutes an obligation, z3 hands back a CONCRETE input at a concrete SHAPE on which
+the compiled program disagrees with its specification. Written out as a witness, that case rejoins the
+corpus and is graded by the same ladder as every hand-derived one, marked
+``source_role: smt_counterexample`` so nobody can mistake a solver-generated case for one an author
+chose.
 
-Why it matters beyond convenience: the corpus's default stimulus is degenerate (measured: an 8x8
-activation has 64 elements and only 4 distinct values), so a defect that only shows on values outside
-that set is invisible to a golden built from it. A counterexample witness carries the values that
-actually break the program, so it cannot be degenerate by construction.
+**What a witness does and does not carry — corrected 2026-09-05.** An earlier version of this module
+claimed the witness "carries the values that actually break the program, so it cannot be degenerate by
+construction". That is FALSE of the graded corpus, and the correction matters because the claim was
+load-bearing:
 
-The witness is marked ``source_role: smt_counterexample`` — a first-class provenance, so nobody can
-mistake a solver-generated shape for one an author chose.
+* ``capsule.schema.json``'s ``inputs[]`` has no values field and sets ``additionalProperties: false``,
+  so a capsule has nowhere to put a stimulus;
+* ``capsule_golden.materialize_capsule_leaves`` fills every leaf unconditionally with
+  ``Tensor.deterministic(name, shape, dtype)``;
+* nothing outside this package's own tests reads ``counterexample_inputs.json``.
+
+So a counterexample witness contributes the **shape and configuration** the corpus was missing, and is
+then graded on the corpus's own deterministic fill — which IS the degenerate stimulus (measured: an
+8x8 activation has 64 elements and only 4 distinct values). Carrying the solver's values into grading
+would need a stimulus channel in ``capsule_runner``, which is a separate piece of work.
+
+The values are still recorded beside the witness, because a refutation without its counterexample is
+an assertion — they are evidence for a human reading the artifact, not an input to the grader.
 """
 from __future__ import annotations
 
