@@ -1,0 +1,840 @@
+---
+title: "Verifying the compiler: a working log"
+kind: design
+status: draft
+owner: core
+last_verified: 2026-09-05
+related: [dialect_test_bar, derived_capsule_axes, rtl_derived_compiler_tooling, compiler_plane]
+code_refs: [merlin/python/merlin/xdsl_dialects/lowering/passes.py, merlin/python/merlin/xdsl_dialects/contract.py, merlin/python/merlin/targetgen/rtl_check_compiler.py, merlin/python/merlin/targetgen/conformance.py, merlin/python/merlin/targetgen/capability_manifests.py, build_tools/scripts/check_pass_obligations.py]
+---
+
+# Verifying the compiler: a working log
+
+**This document is a living log, not a finished design.** It is written as the work happens, so that
+what ends up in a paper is the thing that was actually built and measured rather than a
+reconstruction. Entries are dated and append-only; when a claim here turns out to be wrong, the entry
+is corrected in place *and* the correction is recorded in the log, because the wrong turns are part
+of the result.
+
+It answers one question: **how do we know a compiler pass is correct?**
+
+---
+
+## 1. The question, and why the existing answer is incomplete
+
+The capsule bench grades *outcomes*. A capsule is compiled by the backend under test, and the result
+is checked against an independent golden, against a decoded instruction stream, and finally against
+cycle-accurate RTL. That machinery is careful — a tier that could not run leaves a capsule
+`incomplete` rather than `pass`, certificates are bound to the digest of the bytes that earned them,
+and every RTL-derived literal is fail-closed. See [the cross-target dialect test bar](dialect_test_bar.md).
+
+But grading outcomes is not the same as verifying passes, and the gap is easy to state:
+
+> If a capsule passes, we know *this program* compiled correctly *this time* on *this target*.
+> We do not know that the pass which tiled it is correct — only that its output happened to agree
+> with a golden on the shapes we happened to run.
+
+That is exactly the objection a programming-languages reader will raise, and it is fair. Two findings
+from the September 2026 audit make it concrete, and both are about things the repo already declares
+but never checks.
+
+### Finding 1 — `contract.prove` is not a proof
+
+The `contract` dialect (`merlin/python/merlin/xdsl_dialects/contract.py`) is, by design, a dialect of
+obligations: `contract.assume`, `contract.require`, `contract.prove`, producing a
+`!contract.proof<"requirement">` token. It reads like a proof system.
+
+Its verifier checks that the proof token's requirement *string* equals the op's requirement *string*.
+That is the entire check. A "discharged obligation" in our IR today is one string matching another
+string. Nothing establishes that the property holds.
+
+### Finding 2 — `compiler_obligations` has no consumer
+
+Every capability manifest carries a per-target list of what that target's compiler must do. These are
+derived, reviewed, and *required* by the manifest validator (`capability_manifests.py`), and they are
+exactly the right granularity:
+
+| target | `compiler_obligations` |
+|---|---|
+| `gemmini` | `must_tile_to_mesh_shape`, `must_commit_accumulator_before_reuse`, `must_prove_rhs_immutable_for_residency`, `must_respect_scratchpad_capacity` |
+| `atlas`, `mx_gemmini` | `must_tile_to_mesh_shape`, `must_supply_e8m0_block_scales` |
+| `radiance` | `must_map_to_warps` |
+
+Grep for consumers and you find one docstring mention in `target_lowering.py`. Nothing tests them.
+The obligations are stated and then dropped.
+
+### What *is* already checked
+
+To be fair to the existing system, two things are genuinely measured and should not be re-invented:
+
+- **Pass invocation.** `build_tools/scripts/check_pass_obligations.py` reads a JSONL log written by
+  `passes.install_pass_recorder()` and reports passes that are catalogued but never reached, or
+  reached but transform nothing. With no log it exits 2 — "cannot decide" — never 0. That
+  UNMEASURED-is-not-clean discipline is the model everything below follows.
+- **The emitted instruction stream.** `rtl_check_compiler.py` / `rtl_check_runner.py` compile
+  RTL-derived facts into FileCheck assertions over the *decoded* instruction stream. Tile counts,
+  opcode legality, instruction-class coverage and ordering are all checked against literals derived
+  from the target's own elaborated RTL.
+
+So the missing layer is specifically **the pass in isolation**: nothing runs a single pass on a
+single input and asserts what it should have done, and nothing states what any pass preserves.
+
+---
+
+## 2. Vocabulary (this is the part that must be precise)
+
+"Capsule" is not a term of art in MLIR or in PL, and using it without definition invites exactly the
+ambiguity it has caused. The repo's own code already implements the right distinction; it simply was
+never named. The vocabulary below is the naming, not a change.
+
+**Obligation.** A parameterized statement of what the compiler must do, quantified over shapes.
+Implemented as `conformance.Cell` — the tuple `(semantic_family, dtype, tile_alignment)`, plus the
+derived axes in [derived capsule axes](derived_capsule_axes.md) (shape geometry, rank, memory regime,
+epilogue, lane). `semantic_family` ranges over five primitives (`contraction`, `reduction`,
+`elementwise_map`, `movement`, `synchronization`) and three composites (`attention`, `normalization`,
+`softmax`). An obligation is *derived*, never written down: `conformance.spec(target)` computes
+`required = admitted ∩ observed`, where `admitted` comes from the target's capability manifest and
+`observed` from a family census over real captured models, with tile and block-scale boundaries read
+from the target's RTL facts.
+
+**Witness.** One concrete instance of an obligation at one concrete shape: a compilable program, a
+stimulus, an independent golden, and the evidence required of it.
+
+**Capsule.** *The on-disk encoding of a witness* — a directory holding `capsule.yaml`,
+`capsule.interface.mlir` (the program the backend under test compiles), and a withheld golden. That
+is all the word means. Where this document or a paper needs precision, it says obligation or witness.
+
+**Evidence vector.** A witness is not checked once. It carries several independent checks at
+different fidelities, and the fidelity ladder is `L0`–`L5`:
+
+| tier | what it establishes |
+|---|---|
+| `L0` | the emitted command buffer reproduces an independent golden |
+| `L1` | the command buffer is internally consistent (reference == simulate) |
+| *trace* | the decoded instruction stream issues the required instruction classes (not an L-tier) |
+| `L2` | a functional or RTL-derived model agrees |
+| `L3`–`L5` | elaborated RTL, cycle-accurate (Verilator / GSIM / VCS / FireSim) |
+
+A tier index is a *fidelity*, not a simulator: one target's `L3` is Verilator, another's is an
+RTL-derived model, and each result records which. A mandatory tier that could not run leaves the
+witness `incomplete`, never `pass`.
+
+**Obligation family vs. witness.** The generalization claim is at the obligation level: a single
+witness checks one instance at several fidelities; the *set* of witnesses covering an obligation is
+what shows the pass generalizes across shapes and edge cases. Held-out witnesses are drawn from
+obligations the public set already covers, at shapes it does not.
+
+### Terminology hazards
+
+These are recorded so they do not leak into external writing. Four different things in this repo are
+called a **family**: `semantic_family` (the computation class), the compute-unit kind profile, the
+performance-claim family, and a sweep id. **Pass** is triply overloaded: a witness *passes*, a
+compiler *pass* runs, and `pass_requirements` names obligation classes. **L0–L5** is two unrelated
+ladders — oracle fidelity tiers, and performance optimization levels. And **cell** is the obligation
+while **capsule** is the witness; they are not synonyms.
+
+---
+
+## 3. The verification model: three layers
+
+| layer | question | cost | established practice it follows |
+|---|---|---|---|
+| **static** | did this pass do the structural thing it exists to do, on this input? | milliseconds | `lit` + `FileCheck`, the standard MLIR pass-test flow |
+| **formal** | is this pass semantics-preserving, for all inputs at this shape? | seconds to verify; refutation costs far more and is shape-bounded | translation validation against an SMT encoding |
+| **dynamic** | does the compiled program match an independent golden on real hardware? | minutes–hours | the capsule oracle ladder, as today |
+
+The layers are complementary and none subsumes another. The static layer is cheap enough to run on
+every commit and catches structural regressions immediately; it says nothing about arithmetic. The
+formal layer proves the arithmetic at a bounded shape; it says nothing about the hardware. The
+dynamic layer is the only one that touches RTL; it is far too expensive to cover a shape space.
+
+The formal layer follows **"First-Class Verification Dialects for MLIR"** (Fehr, Fan, Pompougnac,
+Regehr, Grosser; PLDI 2025), which gives MLIR dialects a formal semantics by *lowering them to
+semantic dialects* that bottom out in SMT-LIB, and then builds semantics-agnostic tools on top —
+translation validation, `pdl` rewrite verification, and dataflow transfer-function soundness. The fit
+is close because that work is built on xDSL, which is already our IR framework, and because its `smt`
+dialect is now upstream in both MLIR and xDSL. Section 5 records exactly which of its three tools we
+adopt and which we do not, with reasons.
+
+### What may be FileCheck'd, and what may not
+
+This constraint is load-bearing and is easy to get wrong twice, so it is written down.
+
+An earlier version of the RTL check compiler matched op mnemonics over the *generated target
+dialect's* MLIR text. It was corroborated against 383 real backend-generation runs and **removed**:
+a generated out-of-tree dialect invents its own op names per run, so those patterns have no
+derivation source, and they false-failed on legal MLIR surface forms while the decoded instruction
+stream never did.
+
+The descent makes the reason structural. Exactly one layer is unstable:
+
+```
+linalg → contract → schedule → interface → ⟨ target dialect: UNSTABLE ⟩ → runtime → command buffer
+         └──────── stable, in-tree, bare namespaces ────────┘             └── stable, in-tree ──┘
+```
+
+The generated dialect is *sandwiched* between two stable surfaces. Every structural property worth
+checking is visible on one or both, so nothing needs to name a generated mnemonic.
+
+| surface | stable? | checked by |
+|---|---|---|
+| `contract.*`, `schedule.*`, `interface.*`, `runtime.*`, `dse.*` — hand-authored xDSL dialects, fixed namespaces | yes | the new static layer |
+| `merlin_iface.*` — frozen grammar with an IRDL definition (`merlin/contract/merlin_iface.irdl.mlir`) | yes | the new static layer, via `mlir-opt --irdl-file` |
+| the generated target dialect | **no** — per-run invention | deliberately nothing |
+| decoded instruction stream / kernel words | yes, RTL-derived | the existing check compiler, unchanged |
+
+For the target-lowering obligation specifically, the MLIR-surface row is **deliberately empty**. That
+is the honest consequence of the decision above, and it is stated here so nobody re-introduces
+mnemonic matching in six months.
+
+---
+
+## 4. How pass tests are derived rather than written
+
+The same principle that governs the capsule corpus governs the pass tests: a fact about a target is
+extracted from that target's own sources, never written down. A pass test is generated from a triple,
+every element of which already exists and is derived:
+
+```
+capability manifest              conformance cell                 pass catalog
+compiler_obligations       ×     (family, dtype, alignment)   ×   PassInfo.obligation
+"what this compiler         "the shape class it must         "which pass owes
+ must do"                    do it for"                       this obligation"
+```
+
+The pass catalog closes the third axis with four obligations and nothing else:
+`partition/eligibility`, `target transformation`, `target lowering`, `boundary materialization`.
+`corpus_synth.pass_requirements_for()` already derives which of these a given shape demands.
+
+Mapping the manifest obligations onto checkable properties, on the stable surfaces only:
+
+| manifest obligation | surface | what is checked | derived from |
+|---|---|---|---|
+| `must_tile_to_mesh_shape` | `runtime`, `interface` | tile count `⌈M/edge⌉·⌈N/edge⌉` | the mesh edge in RTL facts — dropped if the edge is a software default rather than a hardware fact |
+| `must_commit_accumulator_before_reuse` | `interface` | exactly one commit per named output; no commit between accumulations | the frozen interface grammar |
+| `must_prove_rhs_immutable_for_residency` | `contract`, `interface` | an immutability assumption reaches the pack; no second pack; evict after last use | the interface grammar and the contract dialect's registered predicates |
+| `must_supply_e8m0_block_scales` | `interface` | a scale operand per reduction group | the target's declared block-scale quantum |
+| `must_map_to_warps` | `schedule` | placement present, lane count matching the declared geometry | the manifest's warp geometry |
+| `must_respect_scratchpad_capacity` | — | **not FileCheck-able** — a numeric bound, already covered by the existing numeric screen | — |
+
+The last row matters as much as the others. A check that cannot be grounded is **omitted and
+recorded**, never defaulted. The generator reports `emitted / omitted / reason`, so coverage is a
+measured number rather than a claim — the same discipline the RTL check compiler already applies when
+it flags its one ungrounded axis instead of presenting it as rigorous.
+
+### Coverage is bounded by derivability, and that is uneven today
+
+Stated plainly, because the alternative is an empty suite that looks green:
+
+| target | RTL facts cache | capability manifest |
+|---|---|---|
+| `gemmini` | rich (~55 KB) | yes, 4 obligations |
+| `atlas` | rich (~40 KB) | yes, 2 |
+| `radiance` | thin — ISA classes only | yes, 1 |
+| `mx_gemmini` | **empty facts block** | yes, 2 |
+| `saturn_opu` | **empty facts block** | **no** — fails closed, no capability residual |
+| `saturn_opu_rvv` | **empty facts block** | **no** — same |
+
+An empty facts block is a silent extractor failure, not a derivation limit; it is fixed by re-running
+elaboration, not by weakening the generator. This is why the design layers two tiers: the
+**obligation-derived** tier needs only the capability manifest and the conformance cells and so covers
+four targets today, while the **facts-grounded** tier layers on where facts exist. Both record what
+they dropped and why.
+
+---
+
+## 5. The formal layer, and which of the paper's three tools apply
+
+**Translation validation — adopted.** Take the module before and after a pass, give both a semantics
+by lowering to the `smt` dialect, assert the negation of a refinement relation, and solve. `unsat`
+means the pass preserved semantics on that input; `sat` yields a counterexample. The chosen pass pair
+is `interface → runtime`, which straddles the unstable generated dialect: it validates a generated
+lowering without ever naming its ops.
+
+The obligation is **quantifier-free**, which is the whole tractability story. Because the conformance
+cells supply *concrete* extents, dimensions are never symbolic — only element values are. The query
+is `unsat(∃ inputs. out_src ≠ out_tgt)`, in QF_BV.
+
+It is also the right tool for our situation in a way `pdl` is not, for a reason that only became clear
+on inspection: **the tile/accumulate rewrite is not an in-tree pass.** `interface.accumulate` is
+declared in the interface dialect and has no producer anywhere in the lowering package; the K-tiling
+is emitted by the generated out-of-tree backend, which differs on every run. Translation validation
+validates a compilation *instance* regardless of who wrote the compiler, so it covers code we did not
+write. That is a weaker theorem (per compilation, not per rewrite) but a wider one.
+
+**`pdl` once-and-for-all rewrite verification — deferred, with a prerequisite.** Verifying a rewrite
+for all inputs up to a bitwidth proves something about a rewrite *we own*. We do not own this one. The
+correct sequence is to first move tiling in-tree as a real catalogued pass expressed as a `pdl`
+pattern — independently worthwhile, since it converts a per-run agent artifact into a merlin-owned
+pass with an obligation — and only then verify it. xDSL ships `pdl` and can apply patterns; the
+`pdl`-to-SMT lowering is the piece that lives only in the paper's own tooling.
+
+**Dataflow transfer-function soundness — does not apply, and we say so.** The paper's third tool
+proves transfer functions sound against a Galois connection. We checked: the cross-op checks in the
+lowering package are syntactic def-use and ordering walks, the one fixpoint is a reachability closure,
+and the only genuine abstract interpretation in the tree is a frontend index analysis, not a
+compiler-pass obligation. There is no abstract domain here, so there is nothing to prove sound.
+Claiming this pillar would be imitating the paper's shape rather than its method.
+
+**Floating point is verified structurally, not bit-exactly — on purpose.** For a float datapath,
+reassociation is a *legal* backend choice; the dialect test bar already establishes this, and it is
+why a float capsule's golden is a tolerance rather than an equality. A bit-exact float refinement
+check would therefore reject *correct* backends: it is not merely expensive, it is the wrong
+specification. Float contractions are encoded as an uninterpreted function over tiles, and what is
+verified is structure — which contributions reach which accumulator, exactly once. That covers the
+entire class of tiling bugs (a double-counted tile, a dropped K tail, a wrong accumulator) without
+any float arithmetic. Integer datapaths get the real bitvector encoding.
+
+---
+
+## 6. Working log
+
+### 2026-09-04 — baseline audit, and the toolchain turns out to be already present
+
+The audit findings are in §1. The pleasant surprise is that essentially none of this needs new
+infrastructure; the following were each verified by execution, not assumed.
+
+**The SMT chain works today, with no external verification package.** xDSL 0.68 ships the `smt`
+dialect, and its printed syntax is accepted by upstream MLIR's own SMT-LIB exporter, which is present
+in the in-tree LLVM build. Constructing a module in Python, printing it, exporting it, and solving it
+with the installed z3 works end to end:
+
+```
+xDSL smt module  →  mlir-translate --export-smtlib  →  z3
+```
+
+```mlir
+builtin.module {
+  smt.solver() : () -> () {
+    %0 = smt.declare_fun "x" : !smt.bv<8>
+    %1 = smt.bv.constant #smt.bv<3> : !smt.bv<8>
+    %2 = smt.eq %0, %1 : !smt.bv<8>
+    smt.assert %2
+    smt.yield
+  }
+}
+```
+exports to
+```smtlib
+; solver scope 0
+(declare-const x (_ BitVec 8))
+(assert (let ((tmp (= x #x03))) tmp))
+(reset)
+```
+and solves to `sat`, model `x = 3`.
+
+This matters for how the work can be described: our SMT-LIB emission is *upstream MLIR's own
+`ExportSMTLIB` translation*, not a bespoke encoder. Two practical notes, both learned the hard way in
+the ten minutes it took to run the above:
+
+- xDSL 0.68 has **no `smt.solver` / `smt.check` op** — the dialect is there, the solver scope is not.
+  The exporter needs the scope, so a local wrapper op (a region terminated by the existing
+  `smt.yield`) is required. It is about twenty lines. `smt.check` is not needed; the solver API
+  supplies the check.
+- The exporter emits a trailing `(reset)` per solver scope. Handed to z3 verbatim, the query is `sat`
+  but the model comes back **empty** — the reset has already discarded it. Strip the trailing reset
+  before solving, or the counterexample silently disappears. This is precisely the failure shape the
+  repo has a standing rule about: a check that ran, reported success, and told you nothing.
+
+**A frozen dialect can be verified with no new code.** The in-tree `mlir-opt` accepts
+`--irdl-file=`, so `merlin/contract/merlin_iface.irdl.mlir` — the IRDL definition of the frozen
+interface grammar — can be registered into a real `mlir-opt` with one flag. That gives an
+IRDL-grounded structural verifier for the one dialect that is contractually frozen, and makes
+negative tests (a malformed interface module must be *rejected*) trivial to express.
+
+**`FileCheck` and `llvm-lit` are already in the tree**, in the LLVM build under `third_party/`. The
+existing RTL check runner already resolves `FileCheck` through a candidate list; the lit harness
+reuses that resolver rather than adding a second one. No PyPI `lit` or `filecheck` package is needed.
+
+**What is missing is smaller than expected.** There is no `merlin-opt`: no tool registers merlin's
+dialects with an opt-style driver, which is why every `// RUN:` line currently in the tree names a
+tool that does not exist. There is no `lit.cfg` anywhere. And the one lit-shaped asset — eight `.mlir`
+files under the target-generation eval datasets — names passes that were never written and is "run"
+by a harness that admits in its own docstring that it only counts files. That last one is the failure
+class this repo keeps re-encountering: a check that could not run, reporting success.
+
+**Corrections to earlier drafts of this plan, recorded rather than quietly fixed:**
+- An earlier draft proposed depending on the paper's external verification package for SMT-LIB
+  emission and solving. Unnecessary — upstream `mlir-translate` and z3 cover it. That package is
+  needed only for the `pdl`-to-SMT lowering, which is deferred anyway.
+- An earlier draft proposed checking the tile/accumulate rewrite as an in-tree pass. It is not one;
+  `interface.accumulate` has no producer. Corrected in §5.
+- An earlier draft listed pysmt as a candidate solver interface. Dropped — z3 consumes the exporter's
+  output directly, and a second solver abstraction is a second thing to keep in sync.
+
+*Next entry will cover `merlin-opt` and the first executable lit suite.*
+
+
+### 2026-09-04 (later) — the three layers exist and are measured
+
+All three layers now run. What follows is measured, not projected; commands to reproduce are in §7.
+
+**Built.** `merlin-opt` (`merlin/python/merlin/xdsl_dialects/opt.py`), an xDSL opt-style driver that
+reflects over the pass catalog — 10 of the 12 catalogued transforms are registered as `-p` passes, and
+the other 2 are reported as unregistrable *with the reason*: they consume a serialized dispatch
+program rather than a module, which their declared dialects (`func -> <dispatch-program>`) already
+said. A tool that silently exposed 10 of 12 would be indistinguishable from one that had 10.
+
+A `lit` suite (`merlin/tests/data/lit`, driven by `merlin/tests/ir/test_lit_suite.py`) with six seed
+tests: core-dialect lowering through `merlin-opt`, and frozen-grammar conformance through upstream
+`mlir-opt --irdl-file`. Runs in **0.27 s**.
+
+The SMT chain, and translation validation on top of it (`merlin/python/merlin/verify/`). The real
+output of `merlin-materialize-interface` is verified — `unsat`, i.e. it computes the declared
+contraction for **every input** at that shape.
+
+The derived per-target generator (`merlin/python/merlin/targetgen/lit_check_compiler.py`,
+`lit_suite.py`), which compiles each target's declared `compiler_obligations` into checks or into
+recorded omissions.
+
+**The detection matrix** (`merlin.verify.evaluate`, 4x4x4, eight seeded faults, solver bound 60 s;
+every number below is read from `out/artifacts/verification/v1/latest/detection_matrix.json`):
+
+| fault | static | formal | dynamic |
+|---|---|---|---|
+| miswired commit | miss (3.1 ms) | **DETECTED** (3.93 s) | **DETECTED** (10.7 ms) |
+| swapped matmul operands | miss (5.1 ms) | **DETECTED** (3.57 s) | **DETECTED** (7.1 ms) |
+| dropped activation | miss (2.9 ms) | **DETECTED** (4.73 s) | **DETECTED** (7.4 ms) |
+| dropped evict | **DETECTED** (4.4 ms) | miss | miss |
+| evict before last use | **DETECTED** (6.0 ms) | miss | miss |
+| duplicate pack | **DETECTED** (4.7 ms) | miss | **DETECTED** (10.7 ms) |
+| duplicate commit | **DETECTED** (5.0 ms) | *abstained* | **DETECTED** (9.6 ms) |
+| commit after reuse | **DETECTED** (5.9 ms) | miss | miss |
+
+No layer flags the unmutated program. Every fault is caught by something. Three faults —
+`dropped_evict`, `evict_before_last_use` and `commit_after_reuse` — are caught by the **static layer
+alone**: they are lifetime and ordering defects that change no computed value, so neither a
+refinement check nor a numeric golden can see them. That is the non-redundancy result, and it is what
+justifies the cheapest layer existing. The RTL tiers are recorded as `not_measured` rather than
+estimated.
+
+*abstained* is a third state, not a miss: on `duplicate_commit` the SMT **encoder** refused the
+program ("3 commits but only 2 activation arguments") and the solver never ran. Recording that as a
+miss would have credited the formal layer with looking and finding nothing, which it did not do.
+
+**An honest negative, and it is worse than first written.** At 4x4x4 the formal layer catches nothing
+the dynamic golden misses, and costs 338x the static layer. Its distinct value is the *quantifier* —
+all inputs versus one stimulus — and that value is real but **not yet demonstrated as a detection
+difference**. It is easy to see where it would bite: the default stimulus is degenerate (measured: an
+8x8 activation has 64 elements and only **4 distinct values**, the known period-4 issue), so a fault
+that only manifests on values outside that set would evade the dynamic layer entirely while the
+formal layer refutes it. Building such a fault is open work; until it exists, the claim for the
+formal layer is scope, not extra detections.
+
+The stronger caveat is **shape**, and it was missing from earlier revisions of this section. Re-running
+the identical matrix at 16x16x16 — one gemmini mesh tile, i.e. a *real* hardware shape rather than a
+toy one — the formal column goes to **zero detections**: all three numeric faults return `unknown`
+after 73–88 s against a 60 s bound, independently reproduced at 72.5 / 78.8 / 77.3 s. So "the formal
+layer catches numeric fault X" is established at 4x4x4 and **not established at a mesh tile**.
+
+**Verification cost is not refutation cost.** This is the distinction the scaling table below does
+*not* measure, and the reason it must not be cited as evidence that the formal layer is usable at a
+mesh tile:
+
+| direction | question | at 16x16x16 |
+|---|---|---|
+| verification (`unsat`) | is this correct program correct for all inputs? | ~1.8–3.8 s |
+| refutation (`sat`) | here is a broken program — produce a counterexample | `unknown` at 60 s |
+
+Every point in the scaling table is a **correct** program, so the curve prices verification only.
+Nothing in the harness has yet measured how refutation scales.
+
+**Formal-layer VERIFICATION cost.** All `unsat`, all correct programs; time is the full
+lower-encode-export-solve loop. Absolute seconds move between runs; cite the curve, not a cell.
+
+| shape | time | note |
+|---|---|---|
+| 8x8x8 | 0.32 s | |
+| 16x16x16 | 3.76 s | one gemmini mesh tile |
+| 16x32x16 | 4.47 s | two K tiles |
+| 32x32x32 | 18.27 s | one atlas mesh tile |
+| 64x16x64 | 34.11 s | |
+
+**Obligation coverage: 2 of 11 declared obligations across six targets are now checked; the baseline
+was 0 of 11**, because nothing consumed `compiler_obligations` at all. The other nine each carry a
+recorded reason, per target, in `out/artifacts/verify/lit/<target>/coverage.json`:
+
+| target | declared | checked | why the rest are not |
+|---|---|---|---|
+| gemmini | 4 | 2 | tiling is not in-tree (below); scratchpad capacity is a numeric bound, not a structural one |
+| atlas | 2 | 0 | same tiling reason; block scales are not representable on the interface plane |
+| mx_gemmini | 2 | 0 | empty RTL facts block — mesh edge not derivable |
+| radiance | 1 | 0 | no warp/lane geometry declared in the capability manifest |
+| saturn_opu, saturn_opu_rvv | 1 each | 0 | no capability residual: fails closed |
+
+### Three findings the layer produced before it was finished
+
+**1. The frozen grammar cannot currently verify a real capsule, for two independent reasons.**
+
+`merlin_iface.irdl.mlir` is generated by `tblgen-to-irdl`, which writes a custom type's symbol name
+with its sigil included — `irdl.type @"!resident"`. That name is unspellable in MLIR text. Measured on
+both the in-tree LLVM build and install trees (identical, 23.0.0git), in generic assembly syntax:
+
+| IRDL | valid module | `evict` handed a tensor | undeclared `!merlin_iface.NOT_A_REAL_TYPE` |
+|---|---|---|---|
+| tracked (sigil) | **rejected** | rejected | rejected |
+| sigil stripped | accepted | **rejected** | **rejected** |
+
+So the tracked IRDL rejects everything, valid modules included; stripping the sigil from the
+declarations and the `::@` references makes the constraints genuinely bite — an `evict` given a tensor
+fails with *"expected base type 'merlin_iface.resident' but got 'builtin.tensor'"*. That is a real,
+two-substitution fix, in a generator this work does not own.
+
+The second reason is worse, and was found by a concurrent session challenging the first result.
+Capsule interface files are written in **custom (pretty) assembly** — `%W = merlin_iface.tensor {…} :
+tensor<…>` — and an IRDL-registered dialect has **no custom parser**; only the generic form parses.
+Run against a real capsule, `mlir-opt --irdl-file` exits 1 with **completely empty stderr**: no
+diagnostic, on either IRDL. A silent non-zero exit is the worst of the three outcomes, because a
+harness that only checks "did it pass" would read it as a working check.
+
+Consequently the generator's own claim — that a C++ out-of-tree tool can parse the frozen
+`*.interface.mlir` grammar with zero hand-written dialect code — does not hold today. The seed and
+generated pass tests are written in generic form, which is why they do enforce; the tracked capsule
+corpus is not checkable this way as it stands. Closing that needs capsules emitted in generic form, a
+real dialect with a parser, or an accepted and documented limitation.
+
+A small confirmation that the layer does real work, found by running it: the positive test in this suite was
+written with a bare `!merlin_iface.acc`, and the IRDL rejected it — that type carries the accumulator's
+element width, and the bare spelling drops it. The layer caught a genuine mistake in its own test on the
+first run, and that case is now a negative control.
+
+*Method note, recorded because it nearly produced a wrong result in both sessions:* the first
+measurement of this on both sides reported "rc=0 everywhere, nothing is enforced". The cause was
+reading `$?` after a `$(...)` substitution in the same line, so the reported status was `basename`'s.
+Capture the exit status on the line immediately after the command.
+
+**2. Tiling is not an in-tree pass, so `must_tile_to_mesh_shape` cannot be checked on the MLIR
+plane.** `interface.accumulate` is declared in the interface dialect and has **no producer anywhere**
+in the lowering package; no staged pass splits K. The tiling is emitted by the generated out-of-tree
+backend, which differs per run. The obligation is therefore recorded as omitted with that reason —
+even for gemmini, where the mesh edge *is* derived (`mesh_dim=16`). An earlier draft of this work
+asserted a tile count here; it was wrong, and a wrong check is worse than a recorded gap. The
+obligation is already checked today on the decoded instruction stream, and becomes checkable here the
+moment tiling moves in-tree.
+
+**3. A concrete case for pass-level checking, from a concurrent audit.** The atlas ISA model and its
+RTL disagree on eight instructions: the model declares `DMA_CONFIG_CH0..7` with `funct7=1` while the
+RTL decode pattern says `DMA_CONFIG` is `funct7=0` and `DMA_WAIT` is `funct7=1`. A backend deriving
+from the model emits a `DMA_CONFIG` word the hardware executes as `DMA_WAIT`, so the base register is
+never written. End-to-end capsule execution surfaces that as a mysterious wrong answer, many minutes
+downstream; a pass-level check of emitted encodings against RTL-derived facts catches it directly.
+This is the shape of defect the layers above exist for.
+
+*Next: joining these verdicts to the obligation gate, and an input-dependent fault that separates the
+formal layer from the dynamic one.*
+
+
+### 2026-09-04 (evening) — the loop closes: a refuted obligation becomes a witness
+
+**Counterexamples now rejoin the corpus.** When translation validation refutes an obligation, z3
+returns a concrete input at a concrete shape. `merlin.verify.witness` writes that out as a witness —
+`capsule.yaml` + `capsule.interface.mlir` in the frozen `merlin_iface` grammar + the counterexample
+values — carrying a new first-class provenance, `source_role: smt_counterexample`, so a
+solver-generated shape can never be mistaken for one an author chose. The emitted witness **validates
+against the real capsule schema**, which is the bar: a counterexample capsule the corpus cannot load
+would be a demo, not a result.
+
+This is the direct answer to *"the capsules are very case-specific"*. The corpus stops being bounded
+by what an author thought to write down. It also sidesteps the degenerate-stimulus problem by
+construction: the witness carries the values that actually break the program, and a partial model is
+refused rather than silently written out as a smaller tensor.
+
+**`contract.prove` is now audited rather than believed.** The verifier still compares two strings —
+that is all a verifier can do, and tightening it would reject every module that legitimately carries a
+token. Instead `merlin.verify.proofs.audit_proofs` classifies each token as `verified` (a layer
+discharged this requirement for the producing pass), `asserted` (it exists, nothing discharged it), or
+`unattributed` (it names no producer, so nothing could). Evidence is scoped to the producing pass, so
+a requirement discharged for a different pass cannot credit this one. Measured baseline on the
+reference workload: **2 asserted, 0 verified** — which is the honest starting number, and the one that
+should move as coverage grows. The op's own docstring now says the verifier checks a name match, so
+nobody reads a `contract.prove` in the IR as evidence.
+
+**A verify arm was added, not grafted onto arm 4.** The new tooling is granted through a separate
+`merlin_verify` arm (assisted base + `rtl_generators`, `rtl_facts`, `verify_seam`); the existing
+rtlchecks arm is unchanged. An arm that gains two capabilities at once produces a delta attributable
+to neither, and would retroactively decouple every arm-3-vs-arm-4 number already reported. Wiring it
+surfaced a real leak: the existing `xdsl_kit` grant covers `xdsl_dialects/` as a whole directory, so
+`opt.py` was *already* reachable by arms 3/4/5 — the seam therefore had to be explicitly **denied**
+there, not merely omitted, or half the new arm's declared treatment would have been nonexistent.
+
+Two follow-ups are recorded rather than fixed, both in files this work does not own: the harness's
+bundle-id-to-arm resolver matches by longest stem over the default ladder only, so a
+`merlin_assisted_verify_*` bundle would silently resolve to arm 3 and run with arm-3's tools under the
+verify arm's name; and the tracked assisted-arm deny manifests are stale by exactly the two new seam
+entries until bundles are regenerated.
+
+
+### 2026-09-04 (late) — verdicts become evidence, and the gate immediately says what is missing
+
+Both layers now write to a shared verification log (`MERLIN_VERIFY_LOG`), beside the existing
+invocation log, and `check_pass_obligations.py` joins them. A run over all six targets records **2
+`verified` by FileCheck, 9 `abstracted` with their recorded reasons, and 1 `verified` by SMT**.
+
+Three properties of the join are deliberate. A solver `unknown` maps to `unmeasured`, never to a
+pass. A **refutation fails the gate unconditionally and carries no ratchet key at all** — a ratchet is
+for absent evidence, never for a disproof. And with either log missing the gate exits 2, because
+"reached" and "verified" come from different logs and an axis that cannot be decided must not report
+clean.
+
+**The first thing the joined gate did was tell us what we had not verified.** Its report:
+
+```
+verdict logs read: ['…/verify.jsonl']
+verified by a static or formal layer: 0 / 4
+verdicts against names the catalog does not carry (evidence that stopped counting):
+  ['merlin-materialize-interface']
+```
+
+`merlin-materialize-interface` is in the **prototype** catalog — the staged research pipeline — not in
+the production catalog of four whole-model boundary passes. The catalog's own rule is that a
+prototype pass is "independently tested and never credited to production", and the gate enforced it:
+our verdict was quarantined rather than counted.
+
+That is the correct behaviour and an uncomfortable result, so it is stated plainly: **the formal layer
+today verifies a staged pipeline pass. The four production passes have no static or formal verdict.**
+Extending it there is real work — those passes operate on a dispatch program rather than on
+value-typed tensors, and two of them are not MLIR passes at all — and it is now a named gap with a
+gate that will keep reporting it, rather than an impression left by a green test run.
+
+
+### 2026-09-04 (figures) — the evaluation, plotted from records
+
+> **Superseded in part by the 2026-09-05 entry below.** The numbers here were correct for the run
+> they describe, but three statements in this entry did not survive audit: the fault corpus was six,
+> not eight; the `506x` ratio carried no shape; and the F4 "annotates two mesh-tile points" claim
+> described an intended behaviour the code did not have. Read the correction entry before citing any
+> figure number from this section.
+
+Four figures, in `out/artifacts/verification/v1/latest/`, each generated from a JSON record so no
+measured number is ever typed into plotting code. The tests prove that property directly: each plotter
+is fed a synthetic record full of values that appear nowhere in the repo, and the rendered canvas text
+is asserted to contain *those* values.
+
+- **F1 detection matrix** — the headline. Six faults x three measured layers, each cell annotated with
+  its wall cost, and an explicit hatched **RTL — NOT MEASURED** column so the gap is visible rather
+  than absent. The callout carries the result: two faults are caught by the static layer alone.
+- **F2 cost-to-detect** — log-scale seconds per layer. This run: static mean 4.1 ms, dynamic 9.0 ms,
+  formal 2.08 s — **the formal layer costs 506x the static one**. The RTL row is hatched full width
+  with its reason.
+- **F3 obligation coverage** — checked vs omitted per target, all nine omission reasons in the caption.
+- **F4 formal scaling** — log-log solve time against M·N·K, with an empirical slope computed from the
+  points. It annotates **two** mesh-tile points, not one: the derived edges are `{gemmini: 16,
+  atlas: 32}`, so 16³ and 32³ are both real tile sizes.
+
+Scaling this run, all `unsat`: 2³ 0.05 s · 4³ 0.07 · 8³ 0.25 · **16³ 3.11 (gemmini mesh tile)** ·
+16x32x16 4.49 · **32³ 15.85 (atlas mesh tile)** · 64x16x64 32.54. Absolute times move between runs —
+the 2³ point absorbs one-time import cost and varies by an order of magnitude — so cite the shape of
+the curve and the layer ratio, not a single second count.
+
+### 2026-09-05 — an audit of our own claims, and five defects it found
+
+The question that started this was blunt: *even when a layer detects something, what do we do with
+it?* Answering it end to end meant re-running the evaluation at a **real** shape rather than a toy
+one, and that surfaced defects in the verification layer itself. All five were in code written for
+this work; all five are fixed; the corrected numbers are above.
+
+**1. An abstention was recorded as a clean miss.** The detection record had no field for solver
+status and never stored the timeout, so a 73 s timeout and "the layer ran and found nothing" were the
+same row: `detected: false`, distinguished only by free text. That directly violates this package's
+own first invariant — *a layer that cannot run must never look like one that ran clean* — and it is
+the third time this repo has been bitten by a check that could not run reporting as one that passed.
+The record is now `verify_detection_matrix/v2`: every attempt carries an explicit
+`outcome ∈ {detected, clean, abstained, error}`, the solver bound is stored alongside it, and the
+dataclass refuses a row whose `outcome` and `detected` disagree.
+
+**2. The formal layer credited an encoder refusal as a detection.** `duplicate_commit` reported
+DETECTED in 2 ms. That was `UnsupportedSemantics: 3 commits but only 2 activation arguments` — the
+encoder declining the program, caught by a blanket `except` and scored as a refutation. The solver
+never ran. It now abstains.
+
+**3. The figures would have turned three timeouts into a coverage claim.** F1 drew an abstention in
+the same pale cell as a miss, and its "caught by the static layer ALONE" callout counted faults that
+were exclusive only because another layer timed out — at 16³ that reads "5 faults caught by static
+ALONE", which is an artifact of the budget, not a coverage result. Abstentions are now hatched and
+excluded from the callout, and F1/F2 both carry the shape and the solver bound on the canvas.
+
+**4. The derived check was strictly weaker than the hand-written one it was modelled on.** The
+generated `must_prove_rhs_immutable_for_residency` ended at `CHECK: interface.resident_evict` with no
+trailing `CHECK-NOT: interface.matmul`, so it **passed** a genuine use-after-evict that the
+hand-written check in `merlin/tests/data/lit/core/` caught. A residency obligation without the
+trailing negative is a presence check, not a lifetime check.
+
+**5. Nothing in the fault corpus was commit-shaped.** All three structural faults attacked residency,
+so the commit half of the obligation — the half `must_commit_accumulator_before_reuse` compiles to —
+had never been falsified by anything. A check that no fault can make fail is not evidence, however
+green it looks. Two operators were added (`duplicate_commit`, `commit_after_reuse`), and closing this
+also revealed that the *hand-written* check needed a `CHECK-NOT` between its two commits to assert
+commit-once at all. `commit_after_reuse` is now a third static-only detection, so the cheap layer's
+non-redundancy result spans both halves of its obligation rather than only residency.
+
+**The shape finding.** Verification and refutation are not the same cost, and the scaling figure only
+ever measured the first. Proving a correct program correct at one gemmini mesh tile takes seconds;
+producing a counterexample for a broken one at that shape exceeds a 60 s bound. Every claim about the
+formal layer's *detections* is therefore scoped to the small shapes where refutation terminates, and
+the write-up now says so wherever it makes one.
+
+**What a detection actually does** — the part the question was really about. Three consequences, in
+descending order of how wired they are:
+
+- **It fails a gate.** A `refuted` verdict reaches `check_pass_obligations.py` and is a hard failure
+  with no flag and no ratchet, carrying its counterexample. Every other axis can be ratcheted, because
+  a ratchet forgives *absent* evidence; a refutation is evidence we have.
+- **It becomes a graded test case.** A `sat` model is emitted as a schema-valid capsule with
+  `source_role: smt_counterexample`, and the existing independent oracle grades it with no
+  special-casing. This is the concrete answer to "the capsules are very case-specific": the solver
+  picks the case, not us.
+- **It reaches an agent mid-loop** — designed, not working. `_arm_from_bundle_id` resolves the verify
+  arm's bundle id against the default ladder only, so it silently falls through to the assisted arm.
+  One line, in a file another session holds (VER-26). A campaign launched before it lands produces an
+  unattributable result.
+
+The honest ceiling on all three is unchanged: the pass we formally validate is in the *prototype*
+catalog, so the gate correctly refuses to credit it to production and the four production passes still
+read `0 / 4 verified` (VER-28).
+
+### 2026-09-05 (encoding) — the refutation wall was ours, not the solver's
+
+Following the shape finding above: refutation at a mesh tile was **a solver wall, not a timeout**.
+Raising the budget 30x (60 s -> 1800 s) still returned `unknown` after 1829 s. So the fix was never
+going to be patience.
+
+A controlled experiment isolated the cause. Holding the multiply **term count fixed** at 16 384 and
+varying only the multiplier **bit-width**:
+
+| multiplier width | 16x16x16 refutation |
+|---|---|
+| 8-bit | **sat in 37 s** |
+| 16-bit | unknown at 616 s |
+| 32-bit | unknown at 1829 s |
+
+The dominant cost variable is width, not term count — bit-blasted partial-product area scales as
+`terms x width^2`. And the width was 32 because of a decision in our own encoder: `symbolic_tensor`
+declared every element at the **accumulator** width and constrained it back to the element range with
+a shift identity, because xDSL 0.68 ships no extract/concat/extend op. Every i8 x i8 product was a
+full 32x32 multiplier carrying eight meaningful bits.
+
+The same experiment also explained why the *clean* direction is cheap, and it is not what the earlier
+entries assumed: for a correct program the target-side and spec-side terms are **syntactically
+identical**, so every disjunct is `(not (= t t))` and z3's rewriter collapses the query in
+preprocessing without bit-blasting a single multiplier. Fast `unsat` was never evidence that the
+solver could handle these shapes.
+
+**The fix.** Upstream's exporter does accept `smt.bv.concat` (verified by running it — it emits
+`(concat a b)`), so a ~20-line local op supplies the missing widening, the same workaround already
+used for `smt.solver`. Sign extension needs no further op: `concat(ashr(x, w-1), x)` *is*
+sign-extension, since the high half of an arithmetic right shift is all sign bits. Elements are now
+declared at their native width, multiplied at `2w` (exact — an i8 x i8 product always fits in 16
+bits), and widened to the accumulator only for the sum. A product too wide for its accumulator raises
+rather than truncating.
+
+A second inefficiency turned up in the same code while measuring the first: `matmul` widened each
+element once **per use** rather than once, emitting `M*N*K` widenings where `M*K + K*N` suffice — an
+8x term blowup at 16³ for no semantic gain. Hoisting it out of the `k` loop is folded into the numbers
+below.
+
+**Measured effect** (same fault `swapped_matmul_operands`, `reuse=2`, `acc_width=32`):
+
+| shape | before (32-bit multiply) | after (16-bit multiply, widening hoisted) |
+|---|---|---|
+| 4x4x4 | sat 5.56 s | **sat 1.89 s** |
+| 8x8x8 | sat 439.14 s | **sat 16.19 s** (27x) |
+| 12x12x12 | not reached (10³ already `unknown`) | **sat 652 s** |
+| 16x16x16 | unknown @ 1829 s | **unknown @ 916 s** |
+
+The refuting boundary moved from **8 to 12**. That is a real gain, and it does **not** reach a gemmini
+mesh tile: 16x16x16 still does not refute at any budget measured, across three encodings and budgets
+up to 30 minutes. The mesh-tile limitation stands.
+
+**The trade, stated rather than buried.** Narrowing the multiplier makes the query textually larger
+(a concat and a shift per element), so the *verification* direction gets more expensive even as
+refutation gets cheaper: 32x32x32 verifies in 55 s under the new encoding against 18 s under the old.
+Refutation is the direction detection depends on, so this is the right trade — but it is a trade, and
+the scaling figure shows the regression rather than hiding it.
+
+**On citing these seconds.** The host is shared and was under load throughout; 12³ measured 489 s in
+one run and 652 s in another with only the hoist between them, which is contention, not signal. The
+boundary shapes are robust — the gaps are one to two orders of magnitude — but individual second
+counts want a quiet host before they go in a paper.
+
+**So the standing claim is unchanged in kind, only in degree.** The formal layer refutes at small
+shapes, now somewhat larger ones, and not at a real tile. Anyone citing a detection from it must cite
+the shape. Two invariants are recorded in `merlin/python/merlin/verify/AGENT.md` so this cannot
+silently regress: multiply at the data's width, never the accumulator's; and never cite a scaling
+curve measured on correct programs as evidence that fault detection is tractable at that shape. Both
+are pinned by tests.
+
+### 2026-09-05 (production) — the gate reads 1 / 4 instead of 0 / 4
+
+Until now every check in this work exercised `merlin-materialize-interface`, which lives in the
+**prototype** catalog. The obligation gate correctly refused to credit that to production, so the four
+production passes read **`0 / 4 verified`** — the difference between "we verify a pass" and "we verify
+the compiler", and the gap a PL reviewer would press on first.
+
+The core lit suite (`merlin/tests/data/lit/core/`) already drove production passes and **nothing was
+reading it**. `lit_suite.record_core_verdicts()` closes that. The pass under test is parsed from each
+file's own `RUN:` line — structurally, no regex and no hardcoded pass list — and its requirement class
+comes from the catalog, so neither is asserted by the recorder: a test that stops exercising a pass
+stops crediting it, and a `RUN:` line naming a pass the catalog does not define is surfaced as a
+broken test rather than skipped.
+
+With a new check for `merlin-add-c-interface` (boundary materialization — the host seam, without which
+the symbol the runtime `dlsym`s does not exist) the gate now reports:
+
+```
+verified by a static or formal layer: 1 / 4
+  merlin-add-c-interface   ... unmeasured/verified
+verdicts against names the catalog does not carry (evidence that stopped counting):
+  ['merlin-apply-schedule', 'merlin-infer-contract-facts', 'merlin-materialize-interface']
+```
+
+That last line is the gate staying honest about its own denominator: three real verdicts exist and are
+deliberately **not** counted toward production, because those passes are not in the production catalog.
+
+**And writing the check found a defect in the pass.** `merlin-add-c-interface`'s docstring says "Mark
+public funcs" and its catalog summary says "each public func gets a ciface wrapper"; the implementation
+walks every `func.func` and marks it regardless of `sym_visibility`, so a private helper gets a C
+wrapper it has no caller for. The lit file pins what the pass **actually** does — so the suite is a
+true regression test rather than red against a pass nobody agreed to change — and records the
+intent/behaviour mismatch as **VER-29** for the owner of `merlin/python/merlin/llvmlower/`. It is a
+small defect. It is also the first production pass anyone checked, and it did not survive the check.
+
+---
+
+## 7. Reproducing what is claimed here
+
+NOTE: the shared `.venv` may resolve `merlin` from a different worktree, so pin `PYTHONPATH`:
+
+```bash
+export PYTHONPATH=$PWD/merlin/python
+
+# the toolchain facts asserted in the log
+third_party/llvm-build/bin/mlir-translate --help | grep export-smtlib
+third_party/llvm-build/bin/mlir-opt        --help | grep irdl-file
+.venv/bin/python -c "from xdsl.dialects import smt; print(hasattr(smt, 'SolverOp'))"   # False
+
+# the two audit findings
+sed -n '167,183p' merlin/python/merlin/xdsl_dialects/contract.py       # prove compares strings
+grep -rn compiler_obligations --include=*.py merlin/python build_tools  # one docstring consumer
+
+# the layers themselves
+.venv/bin/python -m merlin.xdsl_dialects.opt --list-merlin-passes      # 10 registered, 2 explained
+third_party/llvm-build/bin/llvm-lit -sv merlin/tests/data/lit          # the static layer
+.venv/bin/python -m merlin.verify.evaluate --m 4 --k 4 --n 4           # the detection matrix
+.venv/bin/python -m merlin.targetgen.lit_suite --all --write           # the obligation ledger
+third_party/llvm-build/bin/llvm-lit -s out/artifacts/verify/lit        # the derived suite
+
+# the tests, including the mutation and refutation controls
+.venv/bin/python -m pytest merlin/tests/ir -q -m "not slow"
+```
+
+## 8. Open questions
+
+- How much of the formal layer is worth claiming externally before the `pdl` prerequisite lands?
+  Translation validation alone is a real result — it is what the PLDI'25 authors used to find five
+  miscompilations upstream — but it is a per-compilation theorem, and the difference should be stated
+  rather than blurred.
+- Should tiling move in-tree? It would make the strongest obligation verifiable once and for all, but
+  it also moves work out of the generated backend, which is the thing under evaluation. This is a
+  measurement-design question, not just an engineering one.
+- The three targets with empty RTL facts blocks need re-elaboration before their derived suites mean
+  anything. Until then their coverage numbers are honest zeros, and should be reported as such.
