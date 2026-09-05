@@ -27,7 +27,7 @@ from merlin.targetgen import oot_runner
 from merlin.targetgen.oracle_schedule import CapsuleState, Verdict
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
+from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_hit_is_violation
 from merlin.targetgen.target_experiment import TargetExperiment
 from perf_prompt import PerfCell, PerfPromptContractError
 
@@ -216,6 +216,31 @@ def _validate_score(score: dict, *, label: str, expected: int) -> list[Deviation
     return found
 
 
+def _audit_violations(hits: object) -> list[str]:
+    """The answer-access audit hits that actually mean withheld content reached the agent.
+
+    The QA audit records BOTH violations and advisories, and the difference is the whole point: a
+    ``blocked_probe`` is a read the mask REFUSED -- evidence the protection worked -- and a
+    ``recon_probe`` returned filenames, not content. Demanding an EMPTY hit list therefore disqualified,
+    unwaivably, rounds the audit itself judged clean (measured: round 0 of merlincirct_g4p1_20260905 was
+    ``answer_access_clean: true`` with two advisory hits). The advisory/violation vocabulary is DECLARED
+    once, in :mod:`merlin.targetgen.sandbox.answer_surfaces`, and consumed here -- so this gate cannot
+    drift from the audit that produced the hits.
+
+    FAIL CLOSED in every other direction: a missing or non-list ``audit_hits`` field, a hit that is not a
+    mapping, and any hit kind not explicitly declared advisory all count as violations. A new hit kind is
+    disqualifying until someone deliberately declares it benign.
+    """
+    if not isinstance(hits, list):
+        return ["audit_hits is missing or not a list"]
+    bad = []
+    for hit in hits:
+        if audit_hit_is_violation(hit):
+            kind = hit.get("kind") if isinstance(hit, dict) else None
+            bad.append(str(kind) if kind else f"malformed hit {hit!r}"[:120])
+    return bad
+
+
 def _validate_clean_run(environment: dict, summary: dict) -> list[Deviation]:
     """Findings about how the run was CONDUCTED, separated by kind (see UNWAIVABLE)."""
     found: list[Deviation] = []
@@ -251,10 +276,14 @@ def _validate_clean_run(environment: dict, summary: dict) -> list[Deviation]:
         found.append(Deviation("no_completed_round", "functional QA evidence has no completed round"))
     else:
         for row in rounds:
-            if (not isinstance(row, dict) or row.get("answer_access_clean") is not True
-                    or row.get("audit_hits") != []):
+            if not isinstance(row, dict) or row.get("answer_access_clean") is not True:
                 found.append(Deviation("round_answer_access_unclean",
                                        "functional QA round failed the answer-access audit"))
+                break
+            bad = _audit_violations(row.get("audit_hits"))
+            if bad:
+                found.append(Deviation("round_answer_access_unclean",
+                                       f"functional QA round carries answer-access VIOLATIONS: {bad}"))
                 break
     # THE FINALIZE BLOCK IS TWO DIFFERENT QUESTIONS, and folding them into one predicate made a
     # SKIPPED finalize indistinguishable from an unaudited one. A submission-identity pin skips the
@@ -271,9 +300,11 @@ def _validate_clean_run(environment: dict, summary: dict) -> list[Deviation]:
                                f"({finalize.get('reason') or 'no reason recorded'}); the rounds' own "
                                f"answer-access audits still apply and no un-audited turn was run"))
     else:
-        if finalize.get("answer_access_clean") is not True or finalize.get("audit_hits") != []:
+        bad = _audit_violations(finalize.get("audit_hits"))
+        if finalize.get("answer_access_clean") is not True or bad:
             found.append(Deviation("finalize_answer_access_unclean",
-                                   "functional finalization did not pass its answer-access audit"))
+                                   "functional finalization did not pass its answer-access audit"
+                                   + (f" (violations: {bad})" if bad else "")))
         if finalize.get("regrade_all_pass") is not True:
             found.append(Deviation("finalize_regrade_not_pass",
                                    f"functional finalization did not pass a clean regrade "
