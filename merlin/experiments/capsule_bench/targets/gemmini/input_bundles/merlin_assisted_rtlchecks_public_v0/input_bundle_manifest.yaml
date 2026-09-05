@@ -113,6 +113,10 @@ allowed:
   mode: ro
   note: 'ALLOWED (CIRCT arm): RTL-extracted facts'
 denied:
+- path: merlin/python/merlin/verify/
+  reason: compiler-verification seam (verify arm only)
+- path: merlin/python/merlin/xdsl_dialects/opt.py
+  reason: compiler-verification seam (verify arm only)
 - path: merlin/python/merlin/runtime/reference.py
   reason: oracle-callable route
 - path: merlin/python/merlin/runtime/simulator.py
@@ -137,4 +141,12 @@ denied:
   reason: prior submissions
 - path: merlin/python/merlin/llvmlower/
   reason: 'frozen host lane: the experiment measures the target lane, not a second CPU backend'
+tools:
+- merlin_infra
+- xdsl_kit
+- cca_spine
+- isa_tools
+- cca_tools
+- rtl_generators
+- rtl_facts
 integrity_required: true

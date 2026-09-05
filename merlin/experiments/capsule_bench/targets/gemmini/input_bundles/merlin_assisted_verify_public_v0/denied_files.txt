@@ -1,5 +1,3 @@
-merlin/python/merlin/verify/
-merlin/python/merlin/xdsl_dialects/opt.py
 merlin/python/merlin/runtime/reference.py
 merlin/python/merlin/runtime/simulator.py
 merlin/python/merlin/targetgen/generate/runtime_adapter.py

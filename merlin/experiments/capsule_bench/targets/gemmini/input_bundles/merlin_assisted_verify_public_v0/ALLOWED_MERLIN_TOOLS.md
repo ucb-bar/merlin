@@ -1,6 +1,6 @@
-# Allowed Merlin tooling — generated for `merlin_assisted_rtlchecks_public_v0`
+# Allowed Merlin tooling — generated for `merlin_assisted_verify_public_v0`
 
-This is the human-readable view of the **authoring** grants for arm `merlin_rtlchecks`. It is generated from
+This is the human-readable view of the **authoring** grants for arm `merlin_verify`. It is generated from
 `input_bundle_manifest.yaml`; the manifest remains the machine-readable authority.
 
 ## Runtime isolation (launch-derived)
@@ -41,6 +41,10 @@ The CIRCT RTL-fact generators: derive an ISA encoder module, a distilled RTL dig
 
 The facts already extracted from THIS target's RTL — the generators' output, granted directly.
 
+### `verify_seam`
+
+The compiler-verification seam. `python -m merlin.verify.cli compile --interface <f.mlir> --command-buffer <cb.json>` proves whether YOUR emitted command buffer computes what the interface program specified, for every integer input at that shape: exit 0 verified, 1 refuted with the counterexample inputs printed, 2 abstained. An abstention is a limit of the checker, not a defect in your buffer. Also: the fault/detection matrix that scores what a check would have caught, a sweep of the target's derived extent lattice, and `python -m merlin.xdsl_dialects.opt`, which runs a single pass on a single module. Advisory only -- it does not gate your submission.
+
 ## Allowed authoring inputs
 
 - `merlin/contract/` — frozen ABI v0.1
@@ -79,11 +83,11 @@ The facts already extracted from THIS target's RTL — the generators' output, g
 - `merlin/python/merlin/targetgen/rtl_backend.py` — ALLOWED tool: xDSL kit / CCA spine
 - `merlin/python/merlin/targetgen/rtl/` — ALLOWED (CIRCT arm): RTL-facts generators
 - `merlin/targets/gemmini/contracts/rtl_facts/` — ALLOWED (CIRCT arm): RTL-extracted facts
+- `merlin/python/merlin/verify/` — ALLOWED (verify arm): the compiler-verification seam
+- `merlin/python/merlin/xdsl_dialects/opt.py` — ALLOWED (verify arm): the compiler-verification seam
 
 ## Denied inputs
 
-- `merlin/python/merlin/verify/` — compiler-verification seam (verify arm only)
-- `merlin/python/merlin/xdsl_dialects/opt.py` — compiler-verification seam (verify arm only)
 - `merlin/python/merlin/runtime/reference.py` — oracle-callable route
 - `merlin/python/merlin/runtime/simulator.py` — oracle-callable route
 - `merlin/python/merlin/targetgen/generate/runtime_adapter.py` — oracle-callable route
