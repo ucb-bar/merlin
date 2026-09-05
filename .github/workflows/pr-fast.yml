@@ -38,6 +38,19 @@ jobs:
         run: uv run python build_tools/scripts/check_semantic_coverage.py
       - name: docs anti-drift gate
         run: uv run python build_tools/scripts/check_docs.py
+      # REPORTING ONLY, deliberately. The gate's own verdict for exercise and verification is
+      # UNMEASURED in CI: the invocation and verdict logs are written during a capsule run, which this
+      # job does not perform. Blocking on an UNMEASURED gate would either fail every PR or push someone
+      # to weaken it into reporting success on no evidence — the failure this repo keeps re-encountering.
+      # What it DOES decide here is the catalogue: an undischarged pass, one no capsule requires, or a
+      # refutation. Printing it on every PR is what makes those visible; the run log is the artifact.
+      - name: pass-obligation report (advisory; no capsule logs in CI)
+        continue-on-error: true
+        run: uv run python build_tools/scripts/check_pass_obligations.py
+      # The lit/FileCheck pass suite rides inside the `merlin/tests/ir` bucket below
+      # (merlin/tests/ir/test_lit_suite.py drives merlin/tests/data/lit), and `uv sync --all-extras`
+      # above installs the `verify` extra it and the SMT tests need. Neither needs its own step; a
+      # second invocation would only make it look like more is being checked than is.
       - name: tests (fast subset; hardware buckets self-skip via skipif)
         run: uv run pytest merlin/tests/infra merlin/tests/ir merlin/tests/kernels merlin/tests/targetgen -q -m "not slow and not integration"
 

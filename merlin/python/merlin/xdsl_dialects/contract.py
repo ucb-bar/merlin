@@ -166,7 +166,19 @@ if HAS_XDSL:
 
     @irdl_op_definition
     class ProveOp(IRDLOperation):
-        """contract.prove — produces a proof token for a requirement on a value."""
+        """contract.prove — produces a proof token for a requirement on a value.
+
+        **The verifier below checks a NAME MATCH, not a proof.** It confirms the result token's
+        requirement string equals this op's requirement string; nothing here establishes that the
+        property actually holds. That is a real limit of what a verifier can do, not an oversight —
+        but it means a `contract.prove` in the IR must not be read as evidence.
+
+        Which tokens are backed by evidence is therefore a MEASUREMENT, not a syntactic property:
+        :func:`merlin.verify.proofs.audit_proofs` classifies each token as ``verified`` (a
+        verification layer discharged this requirement for the producing pass), ``asserted`` (it
+        exists but nothing discharged it) or ``unattributed`` (it names no producer, so nothing
+        could). Measured on the reference workload, the baseline is 2 asserted, 0 verified.
+        """
         name = "contract.prove"
         value = opt_operand_def()
         requirement = prop_def(StringAttr)

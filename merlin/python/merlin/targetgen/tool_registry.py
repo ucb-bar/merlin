@@ -170,6 +170,19 @@ TOOLS: dict[str, ToolSpec] = {
         note="ALLOWED (eqsat arm): the equivalence seam",
         deny_reason="equivalence seam (eqsat arm only)"),
 
+    # The treatment is the VERIFICATION SEAM: the agent can run one pass on one module and check what it
+    # did (structurally, and against an SMT encoding of the pass pair) instead of only learning from a
+    # capsule verdict. Like the eqsat seam it is oracle-free — it compares the compiler's own before/after
+    # IR, never a golden — and like the eqsat seam it is granted to exactly one arm, for the same reason.
+    "verify_seam": ToolSpec(
+        "verify_seam",
+        "The compiler-verification seam: SMT translation validation over a pass pair, the fault/detection "
+        "matrix that scores what a check would have caught, and the merlin-opt driver that runs a single "
+        "pass on a single module.",
+        bundle_paths=(f"{_PY}verify/", f"{_PY}xdsl_dialects/opt.py"),
+        note="ALLOWED (verify arm): the compiler-verification seam",
+        deny_reason="compiler-verification seam (verify arm only)"),
+
     "isa_tools": ToolSpec(
         "isa_tools",
         "Derived assembler, disassembler, static linter and lite debugger for the target's own ISA. "
@@ -196,6 +209,13 @@ ARM_TOOLS: dict[str, tuple[str, ...]] = {
     # The eqsat arm shares the xDSL arm's denials on purpose: an arm that also gained the RTL facts
     # would differ in TWO ways and its result would not attribute to the seam.
     "merlin_eqsat":     _ASSISTED + ("eqsat_seam",),
+    # A NEW arm, not a wider arm-4. The verification seam could have been folded into merlin_rtlchecks,
+    # and that would have been the cheaper edit — but arm-4 exists to carry exactly one addition over
+    # arm-3 (the RTL generators + the facts they extract), and every arm-3-vs-arm-4 number already
+    # reported rests on that. An arm-4 that also gained the verification seam would differ from arm-3 in
+    # two ways at once, so its delta would attribute to neither, and the earlier contrast would silently
+    # stop being comparable to the later one. Same reasoning as the eqsat arm above; same resolution.
+    "merlin_verify":    _ASSISTED + ("rtl_generators", "rtl_facts", "verify_seam"),
 }
 
 

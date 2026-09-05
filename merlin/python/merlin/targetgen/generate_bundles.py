@@ -34,6 +34,14 @@ _CPP_DENY_AGN = [f"{_PY}targetgen/rtl/{m}.py" for m in
 # oracle-callable routes denied in the xDSL/CIRCT arms (arm3/arm4).
 _ORACLE_DENY = [f"{_PY}runtime/reference.py", f"{_PY}runtime/simulator.py",
                 f"{_PY}targetgen/generate/runtime_adapter.py", f"{_PY}xdsl_dialects/lowering/"]
+# The verification seam is DENIED, not merely left off the allow list, on every assisted arm that does
+# not carry it. One of its two paths -- the ``merlin-opt`` driver -- lives INSIDE ``xdsl_dialects/``,
+# which ``xdsl_kit`` grants as a whole directory. Omitting it would therefore grant it anyway, the verify
+# arm's treatment would reduce to one directory nobody else imports, and the verify-vs-arm-4 contrast
+# would be reported over a difference that partly does not exist. Deny wins in the sandbox binder, so
+# naming the file masks it inside the granted directory.
+_VERIFY_DENY = [{"path": p, "reason": TR.spec("verify_seam").deny_reason}
+                for p in TR.spec("verify_seam").bundle_paths]
 
 
 def _tool_allow(te: TargetExperiment, tools: tuple[str, ...]) -> list[dict]:
@@ -156,9 +164,13 @@ def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str, *,
         # The eqsat arm shares the xDSL arm's denials on purpose: an arm that also gained the RTL facts
         # would differ in TWO ways and its result would not attribute to the seam.
         deny = ([{"path": f"{_PY}targetgen/rtl/", "reason": "CIRCT RTL generators (CIRCT arm only)"},
-                 {"path": te.rtl_facts_pin, "reason": "RTL facts (CIRCT arm only)"}]
+                 {"path": te.rtl_facts_pin, "reason": "RTL facts (CIRCT arm only)"}] + _VERIFY_DENY
                 + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny)
     elif arm == "merlin_rtlchecks":
+        deny = _VERIFY_DENY + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny
+    elif arm == "merlin_verify":
+        # arm-4's deny block minus the verification seam: this arm IS arm-4 plus that one grant, so its
+        # denials must be arm-4's exactly, or the pair would differ in a second, unnamed way.
         deny = [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny
     else:
         raise ValueError(f"unknown arm {arm!r}")
@@ -191,6 +203,24 @@ _ARMS = {"raw_baseline": "raw_baseline", "cpp_merlininfra": "cpp_merlininfra",
          # substring test, so the arm inherits the assisted seam menu with no prompt edit.
          "merlin_eqsat": "merlin_assisted_eqsat"}
 
+# Arms that EXIST but are not part of the default ladder: emitted only when named through ``arms=`` /
+# ``--arms``. The five stems above are the ids every committed bundle directory, every run path under
+# out/runs and every A/B report resolves against, and campaigns are launched against that set. Putting a
+# sixth arm in the default would materialize a sixth bundle into every target's tracked input_bundles
+# the next time anyone regenerated -- changing the arm set underneath runs already in flight, which is a
+# measurement change disguised as a codegen change. An arm graduates into ``_ARMS`` when a campaign
+# declares it, not when it is written. The stem still CONTAINS "merlin_assisted" for the same reason
+# arm-5's does: generate_prompt._is_assisted_arm is a substring test.
+#
+# GRADUATING AN ARM IS TWO EDITS, NOT ONE. The launcher resolves a bundle id back to its rung by
+# LONGEST MATCHING STEM over ``_ARMS`` (``run_baseline_qa_loop._arm_from_bundle_id``). An opt-in stem
+# nests inside "merlin_assisted", so until that resolver reads ``_ALL_ARMS`` a verify bundle resolves to
+# the xDSL arm and the run silently gets arm-3's tool set under the verify arm's name -- the exact
+# downgrade that resolver's own docstring was written to prevent. Move the entry into ``_ARMS`` and
+# widen the resolver in the same change.
+_OPT_IN_ARMS = {"merlin_verify": "merlin_assisted_verify"}
+_ALL_ARMS = {**_ARMS, **_OPT_IN_ARMS}
+
 
 def generate_bundles(te: TargetExperiment, *, variant: str = "hwbringup_v0",
                      add_tools: tuple[str, ...] = (), drop_tools: tuple[str, ...] = (),
@@ -200,16 +230,17 @@ def generate_bundles(te: TargetExperiment, *, variant: str = "hwbringup_v0",
 
     With ``add_tools``/``drop_tools`` the emitted bundles are ABLATION CELLS and their ids carry a
     suffix naming the variation, so a run directory records which cell produced it. ``arms`` narrows
-    generation to the rungs a cell actually needs (default: the whole ladder).
+    generation to the rungs a cell actually needs, and is also how an OPT-IN arm (one outside the default
+    ladder, see ``_OPT_IN_ARMS``) is emitted at all (default: the whole ladder).
     """
     suffix = TR.cell_suffix(add_tools, drop_tools)
     wanted = arms or tuple(_ARMS)
     for a in wanted:
-        if a not in _ARMS:
-            raise KeyError(f"unknown arm {a!r}; known: {sorted(_ARMS)}")
+        if a not in _ALL_ARMS:
+            raise KeyError(f"unknown arm {a!r}; known: {sorted(_ALL_ARMS)}")
     out = {}
     for arm in wanted:
-        bid = f"{_ARMS[arm]}_{variant}{suffix}"
+        bid = f"{_ALL_ARMS[arm]}_{variant}{suffix}"
         out[bid] = _arm_manifest(te, arm, bid, add_tools=add_tools, drop_tools=drop_tools)
     return out
 
@@ -330,7 +361,7 @@ def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, v
         _w_if_absent("STARTER_PROMPT.md", render_prompt(te, cap, experiment, stem, granted_tools=granted))
     _w_always("allowed_files.txt", _grant_txt(manifest, "allowed"))
     _w_always("denied_files.txt", _grant_txt(manifest, "denied"))
-    if manifest.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat"}:
+    if manifest.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify"}:
         _w_always("ALLOWED_MERLIN_TOOLS.md", _allowed_merlin_tools_doc(manifest))
 
 
@@ -409,7 +440,9 @@ def _main(argv: list[str] | None = None) -> int:
     ap.add_argument("--without-tool", action="append", default=[], metavar="NAME",
                     help="ABLATION: withhold this tool from the arm's rung (repeatable). The bundle id "
                          "gains a suffix naming the cell.")
-    ap.add_argument("--arms", default="", help="comma-separated arms to emit (default: the whole ladder)")
+    ap.add_argument("--arms", default="",
+                    help=f"comma-separated arms to emit (default: the ladder, {', '.join(_ARMS)}). "
+                         f"Opt-in arms, emitted only when named: {', '.join(_OPT_IN_ARMS)}")
     ap.add_argument("--list-tools", action="store_true", help="print the tool catalog and exit")
     a = ap.parse_args(argv)
 

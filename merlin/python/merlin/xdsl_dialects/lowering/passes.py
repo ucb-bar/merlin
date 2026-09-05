@@ -34,6 +34,13 @@ measures the second against a recorded invocation log (see :func:`install_pass_r
 own code", it is reported by the gate, and a pass that is UNKNOWN on obligation AND declares no
 requiring capsule is REJECTED. Do not make an entry green by guessing — a fabricated obligation is
 worse than a reported gap, because a reported gap gets fixed.
+
+A third fact is measured the same way and kept in its own log: **was the pass ever verified?** The
+static (lit/FileCheck) and formal (SMT refinement) layers write verdicts via
+:func:`record_verification` to ``MERLIN_VERIFY_LOG``, and the same gate reports a pass that a capsule
+REACHES but that nothing has checked. It is a measurement, not a `PassInfo` field, for the reason
+`exercised` is not one either: no static table can state whether anyone proved the pass does what it
+declares.
 """
 from __future__ import annotations
 
@@ -266,8 +273,47 @@ PASS_LOG_ENV = "MERLIN_PASS_LOG"          # path of the JSONL invocation log; un
 PASS_LOG_CAPSULE_ENV = "MERLIN_PASS_LOG_CAPSULE"   # capsule name to attribute invocations to
 PASS_LOG_REQUIREMENTS_ENV = "MERLIN_PASS_LOG_REQUIREMENTS"  # JSON list of requirement classes
 
+# The verification layers write to their OWN log, for the same reason and by the same rules: a
+# verdict about a pass is a MEASUREMENT, never a declaration, and a gate that reads no verdict log
+# must say "unmeasured" rather than "clean". It is a second file rather than a second field on
+# `PassInfo` because the catalog states what a pass is FOR, and no static table can state whether
+# anyone proved it does that — exactly the split that already keeps `exercised` out of the catalog.
+VERIFY_LOG_ENV = "MERLIN_VERIFY_LOG"      # path of the JSONL verdict log; unset = no recording
+
 _LOG_INSTALL = "install"
 _LOG_INVOKE = "invoke"
+_LOG_VERDICT = "verdict"
+
+# What a verification layer may conclude. Four values, and the last two are the point:
+#
+#   verified    the layer ran and the property HOLDS (a FileCheck suite matched; an SMT
+#               refinement query came back `unsat`).
+#   refuted     the layer ran and the property is FALSE — a failed check, or a `sat` model that is
+#               a concrete counterexample. This is a disproof, and it is the one verdict no
+#               ratchet may forgive: accepted debt is for evidence we do not have yet, never for
+#               evidence we have and dislike.
+#   abstracted  the property was deliberately NOT checked at this fidelity, with the reason
+#               recorded — a check whose literal could not be grounded in the target's own facts,
+#               or a float contraction encoded as an uninterpreted function because bit-exact
+#               float refinement would reject a legal backend. Recorded, never silently dropped,
+#               and it does NOT count as verification.
+#   unmeasured  the layer could not decide: a solver timeout, a missing tool, a crash. `unknown`
+#               is not a pass; spelling it the same way as `verified` is the failure this repo
+#               keeps re-encountering.
+VERDICT_VERIFIED = "verified"
+VERDICT_REFUTED = "refuted"
+VERDICT_ABSTRACTED = "abstracted"
+VERDICT_UNMEASURED = "unmeasured"
+VERDICTS: tuple[str, ...] = (VERDICT_VERIFIED, VERDICT_REFUTED, VERDICT_ABSTRACTED,
+                             VERDICT_UNMEASURED)
+
+# How the verdict was reached. The two layers answer different questions and neither subsumes the
+# other (the static layer says nothing about arithmetic; the formal layer says nothing about the
+# hardware), so the method is recorded rather than averaged away.
+METHOD_FILECHECK = "filecheck"            # static: the pass did the structural thing, on this input
+METHOD_SMT = "smt"                        # formal: semantics-preserving for all inputs at this shape
+METHODS: tuple[str, ...] = (METHOD_FILECHECK, METHOD_SMT)
+
 _RECORDER_MARK = "_merlin_pass_recorder"
 
 # Set by :func:`pass_run_context`; a ContextVar so concurrent capsule grades in one process cannot
@@ -282,6 +328,24 @@ def pass_log_path() -> Path | None:
     """The invocation log, or None when recording is off. Off is a REPORTABLE state, not an error."""
     raw = (os.environ.get(PASS_LOG_ENV) or "").strip()
     return Path(raw) if raw else None
+
+
+def verify_log_path() -> Path | None:
+    """The verdict log, or None when recording is off. Off is a REPORTABLE state, not an error."""
+    raw = (os.environ.get(VERIFY_LOG_ENV) or "").strip()
+    return Path(raw) if raw else None
+
+
+def solver_verdict(status: str) -> str:
+    """Map a three-valued solver status onto the verdict vocabulary.
+
+    The refinement query asserts the NEGATION of the obligation, so the polarity inverts: ``unsat``
+    means no counterexample exists and the property holds, ``sat`` hands back a counterexample, and
+    ``unknown`` means the solver gave up. That last one becomes `unmeasured`, never `verified` — a
+    timeout that reads as a proof is a check that could not run reporting success.
+    """
+    return {"unsat": VERDICT_VERIFIED, "sat": VERDICT_REFUTED}.get(
+        str(status).strip().lower(), VERDICT_UNMEASURED)
 
 
 def current_capsule() -> str | None:
@@ -426,8 +490,7 @@ def _effect_of(subject, before: tuple[int, int, int] | None, result) -> tuple[st
     return (EFFECT_NO_CHANGE, ev)
 
 
-def _append(record: dict) -> None:
-    p = pass_log_path()
+def _append_to(p: Path | None, record: dict) -> None:
     if p is None:
         return
     try:
@@ -438,6 +501,10 @@ def _append(record: dict) -> None:
         # Never fail a compile because the audit log could not be written. The missing record is
         # itself the signal: a gate that sees no install record reports "not instrumented".
         pass
+
+
+def _append(record: dict) -> None:
+    _append_to(pass_log_path(), record)
 
 
 def record_invocation(name: str, *, capsule: str | None = None,
@@ -457,6 +524,45 @@ def record_invocation(name: str, *, capsule: str | None = None,
              "requirements": list(current_requirements()), "effect": effect,
              "evidence": dict(evidence or {}),
              "pid": os.getpid(), "t": round(time.time(), 3)})
+
+
+def record_verification(name: str, *, requirement_class: str, method: str, verdict: str,
+                        target: str | None = None, capsule: str | None = None,
+                        evidence: dict | None = None, provenance: dict | None = None) -> None:
+    """Record that a verification layer reached a VERDICT about pass ``name``.
+
+    This is the join between the verification layers and the evidence system that already exists.
+    Deliberately the same shape as :func:`record_invocation`, because it is the same kind of fact: a
+    catalog can state that a pass exists to discharge `target lowering`, and a capsule run can prove
+    something reached it, but neither can state that anyone checked it *does* that. So a verdict is
+    written to a log and read back by the gate, and a gate with no log reports UNMEASURED — the same
+    discipline, for the same reason, as the invocation log beside it.
+
+    ``target`` may be None: the static layer's checks are compiled from ONE target's declared
+    obligations and are about that target, while the formal layer validates the target-independent
+    ``interface`` plane and is about no target at all. A missing target is recorded as ``UNKNOWN``
+    rather than defaulted, so a verdict can never be cited against hardware it never saw.
+
+    ``evidence`` and ``provenance`` are free-form and carried verbatim: the counterexample model for a
+    refutation, the omission reason for an abstraction, the check family and the fact that grounded
+    it, the solver and the shape. A refutation without its counterexample is an assertion.
+
+    A verdict or method outside the vocabulary raises, and it raises BEFORE the recording-is-off early
+    return — a typo that only surfaces once someone enables the log is a typo that ships.
+    """
+    if verdict not in VERDICTS:
+        raise ValueError(f"verdict {verdict!r} is not one of {VERDICTS}")
+    if method not in METHODS:
+        raise ValueError(f"method {method!r} is not one of {METHODS}")
+    if verify_log_path() is None:
+        return
+    _append_to(verify_log_path(), {
+        "kind": _LOG_VERDICT, "pass": name, "capsule": capsule or current_capsule(),
+        "requirement_class": (requirement_class or "").strip() or UNKNOWN,
+        "target": (target or "").strip() or UNKNOWN,
+        "method": method, "verdict": verdict,
+        "evidence": dict(evidence or {}), "provenance": dict(provenance or {}),
+        "pid": os.getpid(), "t": round(time.time(), 3)})
 
 
 def install_pass_recorder(cat: Iterable[PassInfo] | None = None) -> dict[str, str]:
@@ -639,6 +745,122 @@ def exercise_report(cat: Iterable[PassInfo] | None = None,
                        "effect_evidence": parsed.get("effect_evidence", {}).get(p.name, [])}
     return {"per_pass": out, "logs_read": parsed["logs_read"],
             "unreadable": parsed["unreadable"]}
+
+
+def read_verify_log(paths: Iterable[Path]) -> dict[str, Any]:
+    """Parse verdict logs into the measured facts the gate reports.
+
+    Mirrors :func:`read_pass_log` line for line, including the parts that look like overkill:
+    unreadable lines are COUNTED rather than skipped (a log half of which failed to parse is not a
+    log), and the evidence of the verdicts a reader will challenge is kept. Which verdicts those are
+    differs from the invocation log: there, a `changed` needs no defence; here, a **refutation** is the
+    one that must always carry its counterexample, because a disproof nobody can reproduce gets argued
+    away rather than fixed.
+    """
+    verdicts: dict[str, dict[str, int]] = {}
+    methods: dict[str, set[str]] = {}
+    targets: dict[str, set[str]] = {}
+    classes: dict[str, set[str]] = {}
+    capsules: dict[str, set[str]] = {}
+    evidence: dict[str, list[dict]] = {}
+    read: list[str] = []
+    unreadable: dict[str, str] = {}
+    for path in paths:
+        p = Path(path)
+        if not p.is_file():
+            unreadable[str(p)] = "no such file"
+            continue
+        read.append(str(p))
+        for ln, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                unreadable[f"{p}:{ln}"] = "not JSON"
+                continue
+            if rec.get("kind") != _LOG_VERDICT or not rec.get("pass"):
+                continue
+            name = rec["pass"]
+            got = str(rec.get("verdict") or VERDICT_UNMEASURED)
+            if got not in VERDICTS:
+                # An unrecognised verdict is NOT quietly folded into `unmeasured`: a future writer
+                # spelling a refutation differently would then read as an absence of evidence.
+                unreadable[f"{p}:{ln}"] = f"verdict {got!r} outside the vocabulary"
+                continue
+            counts = verdicts.setdefault(name, {})
+            counts[got] = counts.get(got, 0) + 1
+            methods.setdefault(name, set()).add(str(rec.get("method") or UNKNOWN))
+            targets.setdefault(name, set()).add(str(rec.get("target") or UNKNOWN))
+            classes.setdefault(name, set()).add(str(rec.get("requirement_class") or UNKNOWN))
+            capsules.setdefault(name, set()).add(str(rec.get("capsule") or "unattributed"))
+            if got != VERDICT_VERIFIED:
+                evidence.setdefault(name, []).append(
+                    {"verdict": got, "method": str(rec.get("method") or UNKNOWN),
+                     "target": str(rec.get("target") or UNKNOWN),
+                     "evidence": dict(rec.get("evidence") or {}),
+                     "provenance": dict(rec.get("provenance") or {})})
+    return {"logs_read": read, "unreadable": unreadable,
+            "verdicts": {k: dict(v) for k, v in verdicts.items()},
+            "methods": {k: sorted(v) for k, v in methods.items()},
+            "targets": {k: sorted(v) for k, v in targets.items()},
+            "requirement_classes": {k: sorted(v) for k, v in classes.items()},
+            "capsules": {k: sorted(v) for k, v in capsules.items()},
+            "verdict_evidence": {k: v[:8] for k, v in evidence.items()}}
+
+
+def verification_report(cat: Iterable[PassInfo] | None = None,
+                        logs: Iterable[Path] | None = None) -> dict[str, Any]:
+    """Per-pass verification status measured from the verdict logs.
+
+    Status is one of ``refuted`` (some layer DISPROVED the pass on some input), ``verified`` (some
+    layer proved it and none disproved it), ``abstracted`` (the only verdicts are recorded
+    non-checks — an ungroundable literal, a float contraction left uninterpreted), ``inconclusive``
+    (a layer ran and gave up: a solver timeout, a missing tool), ``unverified`` (a log was read and
+    holds no verdict about this pass at all), ``unmeasured`` (no log at all).
+
+    ``unverified`` and ``inconclusive`` both mean "not verified", and they are kept apart on purpose:
+    the first says nobody ever asked, the second says the query exists and did not answer. Only the
+    second tells you where to spend the next hour.
+
+    Refutation dominates: one disproof is not outvoted by any number of passing checks, because the
+    passing checks and the counterexample are answers to different questions.
+
+    Verdicts recorded against a name the catalog does not carry are reported under ``unknown_passes``
+    rather than dropped — a verdict aimed at a renamed pass is evidence that silently stops counting,
+    which is indistinguishable from never having run it.
+    """
+    passes = list(cat if cat is not None else CATALOG)
+    paths = list(logs) if logs is not None else ([verify_log_path()] if verify_log_path() else [])
+    empty: dict[str, Any] = {"logs_read": [], "unreadable": {}, "verdicts": {}, "methods": {},
+                             "targets": {}, "requirement_classes": {}, "capsules": {},
+                             "verdict_evidence": {}}
+    parsed = read_verify_log(paths) if paths else empty
+    out: dict[str, Any] = {}
+    for p in passes:
+        counts = dict(parsed["verdicts"].get(p.name, {}))
+        if not parsed["logs_read"]:
+            status = "unmeasured"
+        elif not counts:
+            status = "unverified"
+        elif counts.get(VERDICT_REFUTED):
+            status = VERDICT_REFUTED
+        elif counts.get(VERDICT_VERIFIED):
+            status = VERDICT_VERIFIED
+        elif counts.get(VERDICT_ABSTRACTED):
+            status = VERDICT_ABSTRACTED
+        else:
+            status = "inconclusive"
+        out[p.name] = {"status": status, "verdicts": counts,
+                       "methods": parsed["methods"].get(p.name, []),
+                       "targets": parsed["targets"].get(p.name, []),
+                       "requirement_classes": parsed["requirement_classes"].get(p.name, []),
+                       "capsules": parsed["capsules"].get(p.name, []),
+                       "evidence": parsed["verdict_evidence"].get(p.name, [])}
+    known = {p.name for p in passes}
+    return {"per_pass": out, "logs_read": parsed["logs_read"], "unreadable": parsed["unreadable"],
+            "unknown_passes": sorted(n for n in parsed["verdicts"] if n not in known)}
 
 
 # Auto-install when the operator asked for a log. Importing this module is on the staged compile path
