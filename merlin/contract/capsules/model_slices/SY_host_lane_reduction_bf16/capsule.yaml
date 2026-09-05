@@ -43,9 +43,11 @@ pytorch_ref:
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: reduction
-  generalization_axis: composition
+  generalization_axis: host_lane
   must_accelerate: false
-  eligible: auto
+  not_asserted_reason: the target admits no datapath for this family at this dtype;
+    the capsule exists to prove the compiler does NOT accelerate it
+  eligible: false
 pass_requirements:
 - host-seam
 - target-isa-lowering

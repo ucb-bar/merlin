@@ -1,0 +1,56 @@
+name: PR07_spills_k45056
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared operand-residency ladder: one deep-K contraction per derived
+  residency band of the target''s own operand store, three depths spread across each
+  band, at fixed single-tile parallel extents (tile=32; K=45056, M=32, N=32; K=45056
+  is spills)'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 45056
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 45056
+  dtype: fp8_e4m3
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto

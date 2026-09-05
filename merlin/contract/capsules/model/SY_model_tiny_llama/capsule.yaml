@@ -61,7 +61,7 @@ pytorch_ref:
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: contraction
-  generalization_axis: model
+  generalization_axis: roster
   must_accelerate: false
   not_asserted_reason: 'interop capsule: composition across lanes is the behaviour
     under test, so host-lane work is expected and required. The accelerator demand

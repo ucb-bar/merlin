@@ -49,7 +49,9 @@ expected:
   - MXUMatMul
   - MXUAccumulatorPop
   - TensorComputeBinary
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1

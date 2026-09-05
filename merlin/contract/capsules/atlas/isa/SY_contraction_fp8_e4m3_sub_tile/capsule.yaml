@@ -37,7 +37,9 @@ expected:
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPop
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1

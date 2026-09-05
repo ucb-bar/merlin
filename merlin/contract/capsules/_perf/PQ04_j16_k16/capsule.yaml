@@ -266,9 +266,9 @@ performance:
     layout: identical_operands_and_identical_command_stream_plus_the_removed_barriers
   emitter:
     status: existing
-    entry: merlin.perf.barrier_arms.paired_removal
+    entry: merlin.perf.barrier_arms.pair_from_emitter
     knobs:
-      transformation: count_completion_points_in_the_baseline_and_candidate_emissions_of_one_capsule
+      transformation: two_emissions_of_one_capsule_at_two_settings_of_the_emitters_retire_knob
       removed_barrier_count: varies_across_members_because_the_job_count_does
     resolved:
       source: direct
@@ -308,3 +308,23 @@ performance:
       timing_tier: L3
       correctness_simulator: spike
       correctness_tier: L2
+  shape_geometry:
+    M: 16
+    K: 16
+    N: 16
+    out_elements: 256
+    geometry_class: projection_like
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.002062
+    census_out_elements: 8960
+    census_regions: 148

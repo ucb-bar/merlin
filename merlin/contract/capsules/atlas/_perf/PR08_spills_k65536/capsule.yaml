@@ -1,0 +1,294 @@
+name: PR08_spills_k65536
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared operand-residency ladder: one deep-K contraction per derived
+  residency band of the target''s own operand store, three depths spread across each
+  band, at fixed single-tile parallel extents (tile=32; K=65536, M=32, N=32; K=65536
+  is spills)'
+label: dev
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 65536
+  - 32
+  dtype: fp8_e4m3
+- name: A0
+  role: input
+  shape:
+  - 32
+  - 65536
+  dtype: fp8_e4m3
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: bf16
+numeric_policy:
+  compare: tolerance_float
+  dtype: bf16
+  atol: 0.25
+  rtol: 0.02
+expected:
+  instruction_classes:
+  - TensorBaseOffset
+  - MXUWeightPush
+  - MXUMatMul
+  - MXUAccumulatorPop
+  modes:
+    relu: false
+    acc_scale: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L2_intra_layer
+  family: PR
+  lever: operand_residency
+  member_class: OBJECTIVE
+  claim: DIFFERENTIAL
+  comparand:
+    kind: group_arithmetic
+    against: the_same_affine_fit_in_a_different_residency_regime
+    cancels:
+    - operation
+    - M
+    - N
+    - operand_dtype
+    - accum_dtype
+    - epilogue
+    - drained_output_bytes
+    demand_equal:
+    - operation
+    - M
+    - N
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: per_regime_fitted_rate_and_intercept
+    fires_when: the_rates_fitted_in_different_residency_regimes_agree_within_the_noise_band
+    negative_control: two_disjoint_depth_ranges_inside_one_regime
+  gate:
+    traits:
+    - managed_scratchpad
+    - structural_pipeline_depth
+    instrument: cycle_count
+    capacity: at_least_two_reduction_depths_inside_each_reachable_residency_band
+    on_missing: skip_with_evidence
+  regime:
+    separation: K_is_the_only_varied_shape_axis_and_the_bands_come_from_the_derived_operand_store
+    layout: deep_k_contraction_at_fixed_parallel_extents_so_every_point_drains_one_output_tile
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      operation: matmul
+      varied_axis: K
+      axis_derivation: memory_regime_reduction_depth
+    resolved:
+      source: direct
+      operand_dtype: fp8_e4m3
+      accum_dtype: bf16
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+    derived_axes:
+      K:
+        derive: memory_regime_reduction_depth
+        value: 65536
+        label: spills
+        derivation:
+          capacity_rows: 49152
+          tile_dim: 32
+          m_tiles: 1
+          n_tiles: 1
+          by_regime:
+            fits_double:
+              points:
+              - K: 32
+                K_tiles: 1
+                M: 32
+                N: 32
+                rows: 64
+                capacity_rows: 49152
+                fraction_of_capacity: 0.001302
+              - K: 6144
+                K_tiles: 192
+                M: 32
+                N: 32
+                rows: 12288
+                capacity_rows: 49152
+                fraction_of_capacity: 0.25
+              - K: 12288
+                K_tiles: 384
+                M: 32
+                N: 32
+                rows: 24576
+                capacity_rows: 49152
+                fraction_of_capacity: 0.5
+              unreachable: null
+              band_tile_multiples:
+              - 1
+              - 384
+            fits_single:
+              points:
+              - K: 12320
+                K_tiles: 385
+                M: 32
+                N: 32
+                rows: 24640
+                capacity_rows: 49152
+                fraction_of_capacity: 0.501302
+              - K: 18432
+                K_tiles: 576
+                M: 32
+                N: 32
+                rows: 36864
+                capacity_rows: 49152
+                fraction_of_capacity: 0.75
+              - K: 24576
+                K_tiles: 768
+                M: 32
+                N: 32
+                rows: 49152
+                capacity_rows: 49152
+                fraction_of_capacity: 1.0
+              unreachable: null
+              band_tile_multiples:
+              - 385
+              - 768
+            fits_on_reuse:
+              points: []
+              unreachable: 'unreachable from a capsule''s declared inputs: the harness
+                materialises every declared input before the program runs, so peak-live
+                equals the sum of all tensors and the band that separates them (rows_total
+                > capacity >= rows_live) is empty by construction. Reaching it needs
+                a program with a DEAD tensor -- an allocator obligation, not an operand-size
+                one -- which the capsule input declaration cannot express'
+            spills:
+              points:
+              - K: 24608
+                K_tiles: 769
+                M: 32
+                N: 32
+                rows: 49216
+                capacity_rows: 49152
+                fraction_of_capacity: 1.001302
+              - K: 45056
+                K_tiles: 1408
+                M: 32
+                N: 32
+                rows: 90112
+                capacity_rows: 49152
+                fraction_of_capacity: 1.833333
+              - K: 65536
+                K_tiles: 2048
+                M: 32
+                N: 32
+                rows: 131072
+                capacity_rows: 49152
+                fraction_of_capacity: 2.666667
+              unreachable: null
+              band_tile_multiples:
+              - 769
+              - 2048
+          m_extent: 32
+          n_extent: 32
+  cost:
+    tier: 2
+    runs: three_depths_per_reachable_residency_band
+    projected_cycles: derived_at_preflight
+    basis: the spilling members are the most expensive capsules in this corpus and
+      are paid on every grade, so the top of the search is a declared multiple of
+      the target's OWN capacity rather than an unbounded sweep
+  acceptance:
+    schema_version: 1
+    analyzer: perf_pr_claim.analyze_pr_claim/v1
+    fit:
+      form: affine_per_residency_band
+      method: ordinary_least_squares_over_the_replicate_agreed_cycles_of_one_band
+      independent_variable: K
+      dependent_metric: verilator_L3_cycles
+      comparands: the_fitted_rate_of_one_band_against_the_fitted_rate_of_another
+    cohort:
+      operation: matmul
+      fixed_shape_axes:
+      - M
+      - N
+      fixed_fields:
+      - operation
+      - operand_dtype
+      - accum_dtype
+      - epilogue
+      axis_derivation: memory_regime_reduction_depth
+      minimum_reachable_bands: 2
+      points_per_regime: 3
+    replicates:
+      minimum_count: 2
+      identities_authored_by: run
+      why: two replicates are the smallest set that MEASURES the dispersion this family's
+        noise band is read from; one replicate leaves it UNDETERMINABLE, and assuming
+        it zero on a deterministic simulator is the assumption this contract refuses
+    evidence:
+      correctness_simulator: spike
+      correctness_tier: L2
+      timing_simulator: verilator
+      timing_tier: L3
+      spike_cycles_citable: false
+      overlap_instrument: target_derived_combination_counters
+      overlap_required_per_member: true
+    noise_band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: fitted_rates_agree_iff_exactly_equal_when_the_measured_dispersion_is_zero
+      why: 'a constant written here would be a knob somebody can turn until the answer
+        changes. The band is read off the evidence instead: replicates that are observed
+        IDENTICAL make the dispersion zero by measurement, so agreement means exact
+        rational equality. A member with one replicate has an UNDETERMINABLE dispersion
+        and its band is refused rather than assumed noiseless'
+    transient_guard:
+      module: merlin.perf.fill_transient.transient_verdict
+      applied: per_residency_band
+      on_in_fill_transient: refuse_the_band_and_quote_no_rate
+      why: the sibling reduction-depth family was refuted because every one of its
+        depths lay inside the machine's overlap fill transient. This family's cheapest
+        band starts at the same depth, so a band is put through the guard before any
+        rate is quoted
+  shape_geometry:
+    M: 32
+    K: 65536
+    N: 32
+    out_elements: 1024
+    geometry_class: squareish_gemm
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.094393
+    census_out_elements: 196608
+    census_regions: 289
+numeric_falsifiability:
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 15220.48
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

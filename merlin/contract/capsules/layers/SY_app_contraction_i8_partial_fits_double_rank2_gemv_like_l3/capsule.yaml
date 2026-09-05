@@ -1,0 +1,61 @@
+name: SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l3
+kind: layer
+source_role: model_derived
+source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/gemv_like,
+  representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by measured_cost_model
+  against a 300.0s certification budget'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 32
+  - 48
+  dtype: i8
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+operation:
+  op: matmul
+  attributes:
+    lhs: A0
+    weight: W
+    out: Y0
+    epilogue: []
+    output_dtype: i32
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    relu: false
+    acc_scale: false
+    i8: false
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: application
+  must_accelerate: true
+  eligible: auto
+pass_requirements:
+- target-isa-lowering
+- tile-schedule

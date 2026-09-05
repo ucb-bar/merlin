@@ -44,7 +44,9 @@ expected:
   - MXUWeightPush
   - MXUMatMul
   - MXUAccumulatorPop
-  modes: {}
+  modes:
+    relu: false
+    acc_scale: false
 required_oracle_tiers:
 - L0
 - L1
@@ -59,6 +61,7 @@ semantic:
 pass_requirements:
 - target-isa-lowering
 - tile-schedule
+max_oracle_tier: L2
 extends: SY_contraction_fp8_e4m3_aligned
 numeric_falsifiability:
   status: ok

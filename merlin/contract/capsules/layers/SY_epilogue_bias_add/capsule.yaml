@@ -35,8 +35,6 @@ operation:
     - bias_add
     output_dtype: i32
     bias: B
-    semantic:
-      generalization_axis: epilogue
 numeric_policy:
   compare: exact_int
   dtype: i32
@@ -63,7 +61,7 @@ vcs: optional
 firesim: optional
 semantic:
   semantic_family: contraction
-  generalization_axis: composition
+  generalization_axis: epilogue
   must_accelerate: true
   eligible: auto
   composed_families:

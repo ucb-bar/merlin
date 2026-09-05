@@ -58,6 +58,7 @@ performance:
   level: L2_intra_layer
   family: PL
   lever: cross_regime_amortization
+  member_class: OBJECTIVE
   claim: DIFFERENTIAL
   comparand:
     kind: paired_regime
@@ -99,6 +100,48 @@ performance:
     runs: derived_after_tier_one_promotion
     projected_cycles: derived_at_preflight
     basis: only_passing_tier_one_members_are_promoted
+  noise_band:
+    kind: measured_replicate_dispersion
+    declared_constant: null
+    minimum_replicate_count: 2
+    predicate: a_saving_counts_iff_it_exceeds_the_measured_replicate_dispersion_of_its_own_pair
+  acceptance:
+    schema_version: 1
+    analyzer: perf_paired_claim.analyze_paired_claim/v1
+    roles:
+    - tile_regime
+    - layer_regime
+    expected_faster: layer_regime
+    negative_control_capsule: null
+    band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+    evidence:
+      timing_simulator: gsim
+      timing_tier: L3
+      correctness_simulator: spike
+      correctness_tier: L2
+  shape_geometry:
+    M: 32
+    K: 32
+    N: 32
+    out_elements: 1024
+    geometry_class: squareish_gemm
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.094393
+    census_out_elements: 196608
+    census_regions: 289
 comparison_group:
   name: amort_k32
   role: tile_regime

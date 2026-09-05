@@ -29,7 +29,7 @@ operation:
     out: Y0
     epilogue:
     - maxpool
-    output_dtype: i32
+    output_dtype: i8
     pool_in_dims:
     - 4
     - 4
@@ -46,7 +46,7 @@ operation:
     - 0
 numeric_policy:
   compare: exact_int
-  dtype: i32
+  dtype: i8
 expected:
   instruction_classes:
   - FLUSH
@@ -60,7 +60,7 @@ expected:
   modes:
     relu: false
     acc_scale: false
-    i8: false
+    i8: true
 required_oracle_tiers:
 - L0
 - L1

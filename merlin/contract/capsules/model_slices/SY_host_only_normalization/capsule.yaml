@@ -57,7 +57,9 @@ semantic:
   semantic_family: normalization
   generalization_axis: composition
   must_accelerate: false
-  eligible: auto
+  not_asserted_reason: the target declares no capability for this family; the capsule
+    exists to prove the compiler does NOT accelerate it
+  eligible: false
 pass_requirements:
 - host-seam
 - target-isa-lowering

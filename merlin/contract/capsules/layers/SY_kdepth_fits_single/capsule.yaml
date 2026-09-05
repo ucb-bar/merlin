@@ -28,8 +28,6 @@ operation:
     out: Y0
     epilogue: []
     output_dtype: i32
-    semantic:
-      generalization_axis: accumulation_depth
 numeric_policy:
   compare: exact_int
   dtype: i32
@@ -56,7 +54,7 @@ vcs: optional
 firesim: optional
 semantic:
   semantic_family: contraction
-  generalization_axis: composition
+  generalization_axis: accumulation_depth
   must_accelerate: true
   eligible: auto
 pass_requirements:

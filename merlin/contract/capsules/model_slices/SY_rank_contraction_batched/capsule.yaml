@@ -53,7 +53,7 @@ vcs: optional
 firesim: optional
 semantic:
   semantic_family: contraction
-  generalization_axis: composition
+  generalization_axis: rank
   must_accelerate: true
   eligible: auto
 pass_requirements:

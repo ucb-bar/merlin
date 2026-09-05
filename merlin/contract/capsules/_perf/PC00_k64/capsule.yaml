@@ -133,3 +133,30 @@ performance:
       timing_tier: L3
       correctness_simulator: spike
       correctness_tier: L2
+  shape_geometry:
+    M: 16
+    K: 64
+    N: 64
+    out_elements: 1024
+    geometry_class: wide_skinny
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.821837
+    census_out_elements: 32768000
+    census_regions: 2248
+    census_unreachable: the heaviest shape in this class carries a 589824000-element
+      tensor, more than the 262144 this target's operand store holds, and no common
+      divisor of its extents fits while every extent stays at or above its floor (min(original,
+      tile edge 16)) and the shape stays in its class -- so no capsule of this aspect
+      ratio is both representative and buildable here
+    census_note: this class is in the census but the census itself records it as unbuildable
+      on this target, so membership is by aspect ratio only

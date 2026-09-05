@@ -269,3 +269,23 @@ performance:
         depths lay inside the machine's overlap fill transient. This family's cheapest
         band starts at the same depth, so a band is put through the guard before any
         rate is quoted
+  shape_geometry:
+    M: 16
+    K: 12288
+    N: 16
+    out_elements: 256
+    geometry_class: projection_like
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.002062
+    census_out_elements: 8960
+    census_regions: 148

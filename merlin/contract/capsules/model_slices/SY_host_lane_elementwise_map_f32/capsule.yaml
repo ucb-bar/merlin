@@ -1,7 +1,7 @@
 name: SY_host_lane_elementwise_map_f32
 kind: model_slice
 source_role: pytorch_model_slice
-source_reference: 'synthesized for the host lane: real captures contain 8392 ''elementwise_map''
+source_reference: 'synthesized for the host lane: real captures contain 8721 ''elementwise_map''
   region(s) at f32, and this target''s manifest admits ''elementwise_map'' at no such
   dtype -- so every one of them must be placed on the host. A corpus with no capsule
   here cannot tell a compiler that routes them correctly from one that does not'
@@ -43,9 +43,11 @@ pytorch_ref:
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: elementwise_map
-  generalization_axis: composition
+  generalization_axis: host_lane
   must_accelerate: false
-  eligible: auto
+  not_asserted_reason: the target admits no datapath for this family at this dtype;
+    the capsule exists to prove the compiler does NOT accelerate it
+  eligible: false
 pass_requirements:
 - host-seam
 - target-isa-lowering

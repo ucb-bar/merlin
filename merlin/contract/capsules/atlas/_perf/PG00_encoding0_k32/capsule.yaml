@@ -57,6 +57,7 @@ performance:
   level: L6_global
   family: PG
   lever: operand_encoding
+  member_class: OBJECTIVE
   claim: DIFFERENTIAL
   comparand:
     kind: group_arithmetic
@@ -99,6 +100,43 @@ performance:
     runs: two_per_shape
     projected_cycles: derived_at_preflight
     basis: one_matmul_per_encoding
+  acceptance:
+    schema_version: 1
+    analyzer: perf_paired_claim.analyze_paired_claim/v1
+    roles:
+    - encoding_a
+    - encoding_b
+    expected_faster: either
+    negative_control_capsule: null
+    band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+      predicate: a_difference_counts_iff_it_exceeds_the_pair_s_own_replicate_dispersion
+    evidence:
+      timing_simulator: gsim
+      timing_tier: L3
+      correctness_simulator: spike
+      correctness_tier: L2
+  shape_geometry:
+    M: 32
+    K: 32
+    N: 32
+    out_elements: 1024
+    geometry_class: squareish_gemm
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.094393
+    census_out_elements: 196608
+    census_regions: 289
 comparison_group:
   name: enc_m32k32n32
   role: encoding_a

@@ -57,6 +57,7 @@ performance:
   level: L5_fusion
   family: PF
   lever: epilogue_fusion
+  member_class: OBJECTIVE
   claim: DIFFERENTIAL
   comparand:
     kind: group_arithmetic
@@ -102,6 +103,26 @@ performance:
     runs: three_per_shape
     projected_cycles: derived_at_preflight
     basis: one_fused_member_and_two_parts
+  shape_geometry:
+    M: 32
+    K: 64
+    N: 32
+    out_elements: 1024
+    geometry_class: squareish_gemm
+    classifier: merlin.dse_guidance.shape_taxonomy.classify_geometry
+    basis: the capsule's own declared operand shapes (activation MxK, weight KxN)
+    in_census: true
+    census_classes:
+    - gemv_like
+    - odd_tail_heavy
+    - projection_like
+    - squareish_gemm
+    - tall_skinny
+    - unknown
+    - wide_skinny
+    census_mac_fraction: 0.094393
+    census_out_elements: 196608
+    census_regions: 289
 comparison_group:
   name: fmb_m32k64n32
   role: part

@@ -80,6 +80,27 @@ pytorch_ref:
   op: model
   dtype: i8
   loader: capsule.pytorch.py
+input_provenance:
+  workload: lstmnetvit
+  status: declared
+  synthetic_inputs: unknown
+  paper_ready: false
+  accuracy_claim_supported: false
+  accuracy_claim_withheld_because: the loader's declaration does not state whether
+    its inputs are real dataset samples
+  grades: compiler_correctness
+  note: 'This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces,
+    on these exact inputs, the reference the same loader produced. It is not a statement
+    about the model''s accuracy on real data; only a capture whose inputs are real
+    and attributed can support that.'
+  loader_env: {}
+  declared:
+    checkpoint: random_init
+    full_checkpoint: false
+    session_source: synthetic_seed_20260830
+    session_sha256: 0f6440531c9fabf577c530aab07189b9a79ffd4ff12495a2aab9aaa90a036a17
+    synthetic_session: true
+    paper_ready_requires_strict_checkpoint_and_attributed_session: true
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: contraction

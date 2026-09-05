@@ -65,6 +65,22 @@ pytorch_ref:
   op: model
   dtype: i8
   loader: capsule.pytorch.py
+input_provenance:
+  workload: ''
+  status: undeclared
+  synthetic_inputs: unknown
+  paper_ready: unknown
+  accuracy_claim_supported: false
+  accuracy_claim_withheld_because: the loader declares no input provenance (status
+    'undeclared'), so whether these inputs are real dataset samples is UNKNOWN --
+    an unknown may not be quoted as either
+  grades: compiler_correctness
+  note: 'This capsule grades COMPILER CORRECTNESS: whether the compiled program reproduces,
+    on these exact inputs, the reference the same loader produced. It is not a statement
+    about the model''s accuracy on real data; only a capture whose inputs are real
+    and attributed can support that.'
+  loader_env: {}
+  declared: {}
 linalg_mlir: capsule.interface.mlir
 semantic:
   semantic_family: contraction

@@ -7,7 +7,7 @@ provenance:
   generated_by: merlin.targetgen.corpus_synth.synthesize
   target: gemmini
   n_required_cells: 12
-  n_entries: 41
+  n_entries: 61
   budget: 160
   precision_preference_kept:
   - i8
@@ -42,10 +42,20 @@ provenance:
     by synthesis -- emitting a capsule per shape would mean inventing inventories no capture supports
   host_only_unsynthesizable:
   - movement/f32 (no materializable op at this dtype)
-  - contraction/i64 (no materializable op at this dtype)
   host_only_note: 'a host-only family with no materializable op or no dtype observed in any capture. Reported
     rather than dropped: a negative lane nobody demanded reads downstream exactly like one nothing violates'
   geometry_classes_unsynthesizable:
+  - gemv_like (the heaviest shape in this class carries a 1638400-element tensor, more than the 262144
+    this target's operand store holds, and no common divisor of its extents fits while every extent stays
+    at or above its floor (min(original, tile edge 16)) and the shape stays in its class -- so no capsule
+    of this aspect ratio is both representative and buildable here)
+  - tall_skinny (the heaviest shape in this class carries a 12582912-element tensor, more than the 262144
+    this target's operand store holds, and no common divisor of its extents fits while every extent stays
+    at or above its floor (min(original, tile edge 16)) and the shape stays in its class -- so no capsule
+    of this aspect ratio is both representative and buildable here)
+  - 'unknown (the taxonomy''s residual label, not an aspect ratio: 36 region(s) carrying 0.046123 of all
+    contraction MAC work match no named class, so they share no geometry one capsule could represent --
+    a member named after the fall-through would claim a coverage the classifier never asserted)'
   - wide_skinny (the heaviest shape in this class carries a 589824000-element tensor, more than the 262144
     this target's operand store holds, and no common divisor of its extents fits while every extent stays
     at or above its floor (min(original, tile edge 16)) and the shape stays in its class -- so no capsule
@@ -394,7 +404,7 @@ capsules:
   lhs: A0
   weight: W
   source_role: derived_sweep
-  source_reference: 'synthesized for the host lane: real captures contain 8392 ''elementwise_map'' region(s)
+  source_reference: 'synthesized for the host lane: real captures contain 8721 ''elementwise_map'' region(s)
     at f32, and this target''s manifest admits ''elementwise_map'' at no such dtype -- so every one of
     them must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes
     them correctly from one that does not'
@@ -402,38 +412,7 @@ capsules:
   lanes:
     forbid:
     - on_mesh
-  semantic:
-    must_accelerate: false
-    eligible: false
-    generalization_axis: host_lane
-    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
-      to prove the compiler does NOT accelerate it
-  M: tile
-  K: 2*tile
-  N: tile
-  source: pytorch
-  pass_requirements:
-  - host-seam
-  - target-isa-lowering
-  - tile-schedule
-- cat: model_slices
-  kind: model_slice
-  name: SY_host_lane_reduction_f32
-  op: reduce_sum
-  operand_dtype: f32
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: 'synthesized for the host lane: real captures contain 2262 ''reduction'' region(s)
-    at f32, and this target''s manifest admits ''reduction'' at no such dtype -- so every one of them
-    must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
-    correctly from one that does not'
-  label: public
-  lanes:
-    forbid:
-    - on_mesh
-  semantic:
+  generalization:
     must_accelerate: false
     eligible: false
     generalization_axis: host_lane
@@ -456,7 +435,7 @@ capsules:
   lhs: A0
   weight: W
   source_role: derived_sweep
-  source_reference: 'synthesized for the host lane: real captures contain 2195 ''contraction'' region(s)
+  source_reference: 'synthesized for the host lane: real captures contain 2511 ''contraction'' region(s)
     at f32, and this target''s manifest admits ''contraction'' at no such dtype -- so every one of them
     must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
     correctly from one that does not'
@@ -464,7 +443,69 @@ capsules:
   lanes:
     forbid:
     - on_mesh
-  semantic:
+  generalization:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_reduction_f32
+  op: reduce_sum
+  operand_dtype: f32
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 2378 ''reduction'' region(s)
+    at f32, and this target''s manifest admits ''reduction'' at no such dtype -- so every one of them
+    must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
+    correctly from one that does not'
+  label: public
+  lanes:
+    forbid:
+    - on_mesh
+  generalization:
+    must_accelerate: false
+    eligible: false
+    generalization_axis: host_lane
+    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
+      to prove the compiler does NOT accelerate it
+  M: tile
+  K: 2*tile
+  N: tile
+  source: pytorch
+  pass_requirements:
+  - host-seam
+  - target-isa-lowering
+  - tile-schedule
+- cat: model_slices
+  kind: model_slice
+  name: SY_host_lane_contraction_bf16
+  op: depthwise_conv2d
+  operand_dtype: bf16
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for the host lane: real captures contain 11 ''contraction'' region(s)
+    at bf16, and this target''s manifest admits ''contraction'' at no such dtype -- so every one of them
+    must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
+    correctly from one that does not'
+  label: public
+  lanes:
+    forbid:
+    - on_mesh
+  generalization:
     must_accelerate: false
     eligible: false
     generalization_axis: host_lane
@@ -495,38 +536,7 @@ capsules:
   lanes:
     forbid:
     - on_mesh
-  semantic:
-    must_accelerate: false
-    eligible: false
-    generalization_axis: host_lane
-    not_asserted_reason: the target admits no datapath for this family at this dtype; the capsule exists
-      to prove the compiler does NOT accelerate it
-  M: tile
-  K: 2*tile
-  N: tile
-  source: pytorch
-  pass_requirements:
-  - host-seam
-  - target-isa-lowering
-  - tile-schedule
-- cat: model_slices
-  kind: model_slice
-  name: SY_host_lane_contraction_bf16
-  op: depthwise_conv2d
-  operand_dtype: bf16
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: 'synthesized for the host lane: real captures contain 7 ''contraction'' region(s)
-    at bf16, and this target''s manifest admits ''contraction'' at no such dtype -- so every one of them
-    must be placed on the host. A corpus with no capsule here cannot tell a compiler that routes them
-    correctly from one that does not'
-  label: public
-  lanes:
-    forbid:
-    - on_mesh
-  semantic:
+  generalization:
     must_accelerate: false
     eligible: false
     generalization_axis: host_lane
@@ -557,7 +567,7 @@ capsules:
   lanes:
     forbid:
     - on_mesh
-  semantic:
+  generalization:
     must_accelerate: false
     eligible: false
     generalization_axis: host_lane
@@ -588,7 +598,7 @@ capsules:
   lanes:
     forbid:
     - on_mesh
-  semantic:
+  generalization:
     must_accelerate: false
     eligible: false
     generalization_axis: host_lane
@@ -619,7 +629,7 @@ capsules:
   lanes:
     forbid:
     - on_mesh
-  semantic:
+  generalization:
     must_accelerate: false
     eligible: false
     generalization_axis: host_lane
@@ -650,7 +660,7 @@ capsules:
   lanes:
     forbid:
     - on_mesh
-  semantic:
+  generalization:
     must_accelerate: false
     eligible: false
     not_asserted_reason: the target declares no capability for this family; the capsule exists to prove
@@ -675,7 +685,7 @@ capsules:
   lanes:
     require:
     - on_mesh
-  semantic:
+  generalization:
     generalization_axis: composition
   pass_requirements:
   - region-partition
@@ -693,7 +703,7 @@ capsules:
     handles a batched region, and a (family, dtype, alignment) cell cannot demand one. Shape and layout
     come from capability_probes'
   label: public
-  semantic:
+  generalization:
     generalization_axis: rank
   B: 2
   pass_requirements:
@@ -714,7 +724,7 @@ capsules:
     particular stage -- so without this the capability is reported covered by whichever single stage the
     cell axis happened to pick'
   label: public
-  semantic:
+  generalization:
     generalization_axis: epilogue
   M: tile
   K: 2*tile
@@ -738,7 +748,7 @@ capsules:
     demand a particular stage -- so without this the capability is reported covered by whichever single
     stage the cell axis happened to pick'
   label: public
-  semantic:
+  generalization:
     generalization_axis: epilogue
   M: tile
   K: 2*tile
@@ -762,7 +772,7 @@ capsules:
     demand a particular stage -- so without this the capability is reported covered by whichever single
     stage the cell axis happened to pick'
   label: public
-  semantic:
+  generalization:
     generalization_axis: epilogue
   M: tile
   K: 2*tile
@@ -786,7 +796,7 @@ capsules:
     demand a particular stage -- so without this the capability is reported covered by whichever single
     stage the cell axis happened to pick'
   label: public
-  semantic:
+  generalization:
     generalization_axis: epilogue
   M: tile
   K: 2*tile
@@ -800,28 +810,423 @@ capsules:
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_geometry_gemv_like
+- cat: layers
+  kind: layer
+  name: SY_epilogue_requant
   op: matmul
   operand_dtype: i8
-  out: Y0
   lhs: A0
   weight: W
+  out: Y0
+  epilogue:
+  - requant
   source_role: derived_sweep
-  source_reference: 'synthesized for geometry class ''gemv_like'': real captures present 2 contraction
-    region(s) of this aspect ratio carrying 0.0 of all contraction MAC work, and the heaviest of them
-    is M=1 K=256 N=1000. Every other synthesized capsule is square, so without this the corpus cannot
-    tell a compiler that tiles this ratio well from one that does not. 1000 written output elements exceeds
-    the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_i8_aligned'''
+  source_reference: 'synthesized for the epilogue axis: this target can fuse a ''requant'' stage onto
+    a contraction (evidenced by [''manifest_composed_with'']), and a (family, dtype, alignment) cell cannot
+    demand a particular stage -- so without this the capability is reported covered by whichever single
+    stage the cell axis happened to pick'
   label: public
-  semantic:
-    generalization_axis: shape_geometry
-  M: 1
-  K: 256
-  N: 1000
-  max_oracle_tier: L2
-  extends: SY_contraction_i8_aligned
+  generalization:
+    generalization_axis: epilogue
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k16x16_s16x16_d1x1_padUNKNOWN
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 16
+  kw: 16
+  stride:
+  - 16
+  - 16
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 0
+  - 0
+  - 0
+  - 0
+  Himg: 64
+  Wimg: 64
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k16x16/s16x16/d1x1/padUNKNOWN,
+    recovered structurally from 6 region(s) of [''smolvla'', ''smolvla_denoise_step_fp32_app'', ''smolvla_int8'',
+    ''smolvla_pretransposed'', ''spectformer_int8_full'', ''spectformer_int8_full_pretransposed'']. torch-mlir
+    emits im2col, so a captured convolution carries no padding/stride/dilation attribute at all and the
+    geometry comes from the gather''s affine map and its padding producer. THE PADDING WAS NOT READABLE
+    in the capture -- it is applied by an index gather, i.e. a reflection pad -- so this member tests
+    the WINDOW and its stepping at zero padding and asserts nothing about a padding identity that is not
+    zero'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k16x16/s16x16/d1x1/padUNKNOWN
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k3x3_s1x1_d1x1_pad1x1
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 3
+  kw: 3
+  stride:
+  - 1
+  - 1
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 1
+  - 1
+  - 1
+  - 1
+  Himg: 4
+  Wimg: 4
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k3x3/s1x1/d1x1/pad1x1, recovered
+    structurally from 8 region(s) of [''deepjscc_int8'', ''lstmnetvit_fp8'', ''lstmnetvit_int8'', ''lstmnetvit_int8_pretransposed'',
+    ''lstmnetvit_int8_w8a8'']. torch-mlir emits im2col, so a captured convolution carries no padding/stride/dilation
+    attribute at all and the geometry comes from the gather''s affine map and its padding producer'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k3x3/s1x1/d1x1/pad1x1
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k3x3_s1x1_d1x1_pad1x1_2x2_indilated2x2
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 3
+  kw: 3
+  stride:
+  - 1
+  - 1
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 1
+  - 1
+  - 2
+  - 2
+  Himg: 3
+  Wimg: 3
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k3x3/s1x1/d1x1/pad1x1_2x2/indilated2x2,
+    recovered structurally from 2 region(s) of [''deepjscc_int8'']. torch-mlir emits im2col, so a captured
+    convolution carries no padding/stride/dilation attribute at all and the geometry comes from the gather''s
+    affine map and its padding producer'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k3x3/s1x1/d1x1/pad1x1_2x2/indilated2x2
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k3x3_s1x1_d1x1_padUNKNOWN
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 3
+  kw: 3
+  stride:
+  - 1
+  - 1
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 0
+  - 0
+  - 0
+  - 0
+  Himg: 6
+  Wimg: 6
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k3x3/s1x1/d1x1/padUNKNOWN, recovered
+    structurally from 2 region(s) of [''deepjscc_int8'']. torch-mlir emits im2col, so a captured convolution
+    carries no padding/stride/dilation attribute at all and the geometry comes from the gather''s affine
+    map and its padding producer. THE PADDING WAS NOT READABLE in the capture -- it is applied by an index
+    gather, i.e. a reflection pad -- so this member tests the WINDOW and its stepping at zero padding
+    and asserts nothing about a padding identity that is not zero'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k3x3/s1x1/d1x1/padUNKNOWN
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k3x3_s2x2_d1x1_pad1x1
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 3
+  kw: 3
+  stride:
+  - 2
+  - 2
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 1
+  - 1
+  - 1
+  - 1
+  Himg: 7
+  Wimg: 7
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k3x3/s2x2/d1x1/pad1x1, recovered
+    structurally from 6 region(s) of [''deepjscc_int8'', ''lstmnetvit_fp8'', ''lstmnetvit_int8'', ''lstmnetvit_int8_pretransposed'',
+    ''lstmnetvit_int8_w8a8'']. torch-mlir emits im2col, so a captured convolution carries no padding/stride/dilation
+    attribute at all and the geometry comes from the gather''s affine map and its padding producer'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k3x3/s2x2/d1x1/pad1x1
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k4x4_s4x4_d1x1_padUNKNOWN
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 4
+  kw: 4
+  stride:
+  - 4
+  - 4
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 0
+  - 0
+  - 0
+  - 0
+  Himg: 16
+  Wimg: 16
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k4x4/s4x4/d1x1/padUNKNOWN, recovered
+    structurally from 8 region(s) of [''lstmnetvit_fp8'', ''lstmnetvit_int8'', ''lstmnetvit_int8_pretransposed'',
+    ''lstmnetvit_int8_w8a8'']. torch-mlir emits im2col, so a captured convolution carries no padding/stride/dilation
+    attribute at all and the geometry comes from the gather''s affine map and its padding producer. THE
+    PADDING WAS NOT READABLE in the capture -- it is applied by an index gather, i.e. a reflection pad
+    -- so this member tests the WINDOW and its stepping at zero padding and asserts nothing about a padding
+    identity that is not zero'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k4x4/s4x4/d1x1/padUNKNOWN
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k5x5_s1x1_d1x1_padUNKNOWN
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 5
+  kw: 5
+  stride:
+  - 1
+  - 1
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 0
+  - 0
+  - 0
+  - 0
+  Himg: 8
+  Wimg: 8
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k5x5/s1x1/d1x1/padUNKNOWN, recovered
+    structurally from 1 region(s) of [''deepjscc_int8'']. torch-mlir emits im2col, so a captured convolution
+    carries no padding/stride/dilation attribute at all and the geometry comes from the gather''s affine
+    map and its padding producer. THE PADDING WAS NOT READABLE in the capture -- it is applied by an index
+    gather, i.e. a reflection pad -- so this member tests the WINDOW and its stepping at zero padding
+    and asserts nothing about a padding identity that is not zero'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k5x5/s1x1/d1x1/padUNKNOWN
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k7x7_s1x1_d1x1_padUNKNOWN
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 7
+  kw: 7
+  stride:
+  - 1
+  - 1
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 0
+  - 0
+  - 0
+  - 0
+  Himg: 10
+  Wimg: 10
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k7x7/s1x1/d1x1/padUNKNOWN, recovered
+    structurally from 1 region(s) of [''deepjscc_int8'']. torch-mlir emits im2col, so a captured convolution
+    carries no padding/stride/dilation attribute at all and the geometry comes from the gather''s affine
+    map and its padding producer. THE PADDING WAS NOT READABLE in the capture -- it is applied by an index
+    gather, i.e. a reflection pad -- so this member tests the WINDOW and its stepping at zero padding
+    and asserts nothing about a padding identity that is not zero'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k7x7/s1x1/d1x1/padUNKNOWN
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k7x7_s4x4_d1x1_pad3x3
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 7
+  kw: 7
+  stride:
+  - 4
+  - 4
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 3
+  - 3
+  - 3
+  - 3
+  Himg: 13
+  Wimg: 13
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k7x7/s4x4/d1x1/pad3x3, recovered
+    structurally from 4 region(s) of [''lstmnetvit_fp8'', ''lstmnetvit_int8'', ''lstmnetvit_int8_pretransposed'',
+    ''lstmnetvit_int8_w8a8'']. torch-mlir emits im2col, so a captured convolution carries no padding/stride/dilation
+    attribute at all and the geometry comes from the gather''s affine map and its padding producer'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k7x7/s4x4/d1x1/pad3x3
+  M: tile
+  K: 2*tile
+  N: tile
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_conv_k8x8_s8x8_d1x1_padUNKNOWN
+  op: conv2d
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  kh: 8
+  kw: 8
+  stride:
+  - 8
+  - 8
+  dilation:
+  - 1
+  - 1
+  padding:
+  - 0
+  - 0
+  - 0
+  - 0
+  Himg: 32
+  Wimg: 32
+  source_role: derived_sweep
+  source_reference: 'synthesized for the convolution-window axis: window k8x8/s8x8/d1x1/padUNKNOWN, recovered
+    structurally from 8 region(s) of [''lstmnetvit_fp8'', ''lstmnetvit_int8'', ''lstmnetvit_int8_pretransposed'',
+    ''lstmnetvit_int8_w8a8'']. torch-mlir emits im2col, so a captured convolution carries no padding/stride/dilation
+    attribute at all and the geometry comes from the gather''s affine map and its padding producer. THE
+    PADDING WAS NOT READABLE in the capture -- it is applied by an index gather, i.e. a reflection pad
+    -- so this member tests the WINDOW and its stepping at zero padding and asserts nothing about a padding
+    identity that is not zero'
+  label: public
+  generalization:
+    generalization_axis: conv_window
+    conv_window: k8x8/s8x8/d1x1/padUNKNOWN
+  M: tile
+  K: 2*tile
+  N: tile
   pass_requirements:
   - target-isa-lowering
   - tile-schedule
@@ -835,17 +1240,42 @@ capsules:
   weight: W
   source_role: derived_sweep
   source_reference: 'synthesized for geometry class ''odd_tail_heavy'': real captures present 16 contraction
-    region(s) of this aspect ratio carrying 0.000413 of all contraction MAC work, and the heaviest of
+    region(s) of this aspect ratio carrying 0.000327 of all contraction MAC work, and the heaviest of
     them is M=196 K=256 N=768. Every other synthesized capsule is square, so without this the corpus cannot
     tell a compiler that tiles this ratio well from one that does not. 150528 written output elements
     exceeds the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
     on ''SY_contraction_i8_aligned'''
   label: public
-  semantic:
+  generalization:
     generalization_axis: shape_geometry
   M: 196
   K: 256
   N: 768
+  max_oracle_tier: L2
+  extends: SY_contraction_i8_aligned
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: isa
+  kind: isa
+  name: SY_geometry_projection_like
+  op: matmul
+  operand_dtype: i8
+  out: Y0
+  lhs: A0
+  weight: W
+  source_role: derived_sweep
+  source_reference: 'synthesized for geometry class ''projection_like'': real captures present 148 contraction
+    region(s) of this aspect ratio carrying 0.002062 of all contraction MAC work, and the heaviest of
+    them is M=56 K=480 N=160. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 8960 written output elements exceeds
+    the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_i8_aligned'''
+  label: public
+  generalization:
+    generalization_axis: shape_geometry
+  M: 56
+  K: 480
+  N: 160
   max_oracle_tier: L2
   extends: SY_contraction_i8_aligned
   pass_requirements:
@@ -860,44 +1290,17 @@ capsules:
   lhs: A0
   weight: W
   source_role: derived_sweep
-  source_reference: 'synthesized for geometry class ''squareish_gemm'': real captures present 58 contraction
-    region(s) of this aspect ratio carrying 0.001016 of all contraction MAC work, and the heaviest of
-    them is M=196 K=1024 N=256. Every other synthesized capsule is square, so without this the corpus
-    cannot tell a compiler that tiles this ratio well from one that does not. 50176 written output elements
-    exceeds the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
-    on ''SY_contraction_i8_aligned'''
+  source_reference: 'synthesized for geometry class ''squareish_gemm'': real captures present 289 contraction
+    region(s) of this aspect ratio carrying 0.094393 of all contraction MAC work, and the heaviest of
+    them is M=256 K=768 N=192. Every other synthesized capsule is square, so without this the corpus cannot
+    tell a compiler that tiles this ratio well from one that does not. 49152 written output elements exceeds
+    the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests on ''SY_contraction_i8_aligned'''
   label: public
-  semantic:
+  generalization:
     generalization_axis: shape_geometry
-  M: 196
-  K: 1024
-  N: 256
-  max_oracle_tier: L2
-  extends: SY_contraction_i8_aligned
-  pass_requirements:
-  - target-isa-lowering
-  - tile-schedule
-- cat: isa
-  kind: isa
-  name: SY_geometry_tall_skinny
-  op: matmul
-  operand_dtype: i8
-  out: Y0
-  lhs: A0
-  weight: W
-  source_role: derived_sweep
-  source_reference: 'synthesized for geometry class ''tall_skinny'': real captures present 441 contraction
-    region(s) of this aspect ratio carrying 0.004431 of all contraction MAC work, and the heaviest of
-    them is M=1024 K=256 N=128. Every other synthesized capsule is square, so without this the corpus
-    cannot tell a compiler that tiles this ratio well from one that does not. 131072 written output elements
-    exceeds the 875 a 300.0s certification budget affords on this target, so it is graded at L2 and rests
-    on ''SY_contraction_i8_aligned'''
-  label: public
-  semantic:
-    generalization_axis: shape_geometry
-  M: 1024
-  K: 256
-  N: 128
+  M: 256
+  K: 768
+  N: 192
   max_oracle_tier: L2
   extends: SY_contraction_i8_aligned
   pass_requirements:
@@ -919,7 +1322,7 @@ capsules:
     residency regime admits (256 accumulation passes, 0.5 of the operand store). The reduction moves the
     operands and not the result, so this certifies at one output tile'
   label: public
-  semantic:
+  generalization:
     generalization_axis: accumulation_depth
   pass_requirements:
   - target-isa-lowering
@@ -939,7 +1342,7 @@ capsules:
     residency regime admits (512 accumulation passes, 1.0 of the operand store). The reduction moves the
     operands and not the result, so this certifies at one output tile'
   label: public
-  semantic:
+  generalization:
     generalization_axis: accumulation_depth
   pass_requirements:
   - target-isa-lowering
@@ -959,10 +1362,274 @@ capsules:
     residency regime admits (1024 accumulation passes, 2.0 of the operand store). The reduction moves
     the operands and not the result, so this certifies at one output tile'
   label: public
-  semantic:
+  generalization:
     generalization_axis: accumulation_depth
   pass_requirements:
   - target-isa-lowering
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l3
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 48
+  K: 512
+  N: 16
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/aligned/fits_double/rank2/squareish_gemm,
+    representing 6 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by measured_cost_model against
+    a 300.0s certification budget'
+  label: public
+  generalization:
+    generalization_axis: application
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l2
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 96
+  K: 512
+  N: 64
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/aligned/fits_double/rank2/squareish_gemm,
+    representing 6 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by application_shape; extends contraction/i8/aligned/fits_double/rank2/squareish_gemm,
+    which carries the cycle-accurate guarantee this larger shape rests on'
+  label: public
+  generalization:
+    generalization_axis: application
+  max_oracle_tier: L2
+  extends: SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l3
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l3
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 48
+  K: 64
+  N: 16
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/aligned/fits_double/rank2/wide_skinny,
+    representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by measured_cost_model against
+    a 300.0s certification budget'
+  label: public
+  generalization:
+    generalization_axis: application
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l2
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 96
+  K: 64
+  N: 512
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/aligned/fits_double/rank2/wide_skinny,
+    representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by application_shape; extends contraction/i8/aligned/fits_double/rank2/wide_skinny,
+    which carries the cycle-accurate guarantee this larger shape rests on'
+  label: public
+  generalization:
+    generalization_axis: application
+  max_oracle_tier: L2
+  extends: SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l3
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l3
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 48
+  K: 32
+  N: 16
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/squareish_gemm,
+    representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by measured_cost_model against
+    a 300.0s certification budget'
+  label: public
+  generalization:
+    generalization_axis: application
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l2
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 345
+  K: 32
+  N: 256
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/squareish_gemm,
+    representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by application_shape; extends contraction/i8/partial/fits_double/rank2/squareish_gemm,
+    which carries the cycle-accurate guarantee this larger shape rests on'
+  label: public
+  generalization:
+    generalization_axis: application
+  max_oracle_tier: L2
+  extends: SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l3
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l3
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 16
+  K: 64
+  N: 48
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/wide_skinny,
+    representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by measured_cost_model against
+    a 300.0s certification budget'
+  label: public
+  generalization:
+    generalization_axis: application
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l2
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 6
+  K: 64
+  N: 128
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/wide_skinny,
+    representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by application_shape; extends contraction/i8/partial/fits_double/rank2/wide_skinny,
+    which carries the cycle-accurate guarantee this larger shape rests on'
+  label: public
+  generalization:
+    generalization_axis: application
+  max_oracle_tier: L2
+  extends: SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l3
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l3
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 16
+  K: 32
+  N: 48
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/gemv_like,
+    representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by measured_cost_model against
+    a 300.0s certification budget'
+  label: public
+  generalization:
+    generalization_axis: application
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l2
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 2
+  K: 32
+  N: 64
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/gemv_like,
+    representing 2 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by application_shape; extends contraction/i8/partial/fits_double/rank2/gemv_like,
+    which carries the cycle-accurate guarantee this larger shape rests on'
+  label: public
+  generalization:
+    generalization_axis: application
+  max_oracle_tier: L2
+  extends: SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l3
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l3
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 16
+  K: 128
+  N: 16
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/projection_like,
+    representing 1 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by measured_cost_model against
+    a 300.0s certification budget'
+  label: public
+  generalization:
+    generalization_axis: application
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
+- cat: layers
+  kind: layer
+  name: SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l2
+  op: matmul
+  operand_dtype: i8
+  lhs: A0
+  weight: W
+  out: Y0
+  M: 1
+  K: 128
+  N: 3
+  source_role: model_derived
+  source_reference: 'synthesized for the application axis: behavioural class contraction/i8/partial/fits_double/rank2/projection_like,
+    representing 1 region(s) of lstmnetvit_int8_w8a8_consistent. Sized by application_shape; extends contraction/i8/partial/fits_double/rank2/projection_like,
+    which carries the cycle-accurate guarantee this larger shape rests on'
+  label: public
+  generalization:
+    generalization_axis: application
+  max_oracle_tier: L2
+  extends: SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l3
+  pass_requirements:
+  - target-isa-lowering
+  - tile-schedule
 - cat: model
   kind: model
   op: model
@@ -983,59 +1650,7 @@ capsules:
   lanes:
     require:
     - on_mesh
-  semantic:
-    generalization_axis: roster
-  source: pytorch
-  pass_requirements:
-  - region-partition
-  - target-isa-lowering
-- cat: model
-  kind: model
-  op: model
-  name: SY_model_lstmnetvit
-  model: lstmnetvit
-  out: Y0
-  operand_dtype: i8
-  quant_scheme: int8_dyn_act_int8_weight
-  source_role: derived_sweep
-  source_reference: 'synthesized for the roster axis: whole model ''lstmnetvit'' at int8, the highest-ranked
-    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
-    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with int8_dyn_act_int8_weight so
-    the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
-    Accuracy in that format is not_established'
-  label: public
-  gate:
-    after_op_pass_fraction: 0.8
-  lanes:
-    require:
-    - on_mesh
-  semantic:
-    generalization_axis: roster
-  source: pytorch
-  pass_requirements:
-  - region-partition
-  - target-isa-lowering
-- cat: model
-  kind: model
-  op: model
-  name: SY_model_smolvla
-  model: smolvla
-  out: Y0
-  operand_dtype: i8
-  quant_scheme: int8_dyn_act_int8_weight
-  source_role: derived_sweep
-  source_reference: 'synthesized for the roster axis: whole model ''smolvla'' at int8, the highest-ranked
-    precision this target''s manifest admits for a contraction out of the declared preference [''int8'',
-    ''fp8_e4m3'', ''mxfp8'', ''fp16'', ''bf16'', ''fp32''], captured with int8_dyn_act_int8_weight so
-    the program contains the target''s own arithmetic rather than a float matmul over dequantized weights.
-    Accuracy in that format is not_established'
-  label: public
-  gate:
-    after_op_pass_fraction: 0.8
-  lanes:
-    require:
-    - on_mesh
-  semantic:
+  generalization:
     generalization_axis: roster
   source: pytorch
   pass_requirements:
@@ -1061,7 +1676,7 @@ capsules:
   lanes:
     require:
     - on_mesh
-  semantic:
+  generalization:
     generalization_axis: roster
   source: pytorch
   pass_requirements:

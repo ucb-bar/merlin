@@ -1,0 +1,84 @@
+name: SY_conv_k16x16_s16x16_d1x1_padUNKNOWN
+kind: layer
+source_role: derived_sweep
+source_reference: 'synthesized for the convolution-window axis: window k16x16/s16x16/d1x1/padUNKNOWN,
+  recovered structurally from 6 region(s) of [''smolvla'', ''smolvla_denoise_step_fp32_app'',
+  ''smolvla_int8'', ''smolvla_pretransposed'', ''spectformer_int8_full'', ''spectformer_int8_full_pretransposed''].
+  torch-mlir emits im2col, so a captured convolution carries no padding/stride/dilation
+  attribute at all and the geometry comes from the gather''s affine map and its padding
+  producer. THE PADDING WAS NOT READABLE in the capture -- it is applied by an index
+  gather, i.e. a reflection pad -- so this member tests the WINDOW and its stepping
+  at zero padding and asserts nothing about a padding identity that is not zero'
+label: public
+interface_mlir: capsule.interface.mlir
+inputs:
+- name: W
+  role: weight
+  shape:
+  - 1024
+  - 16
+  dtype: i8
+- name: IFM
+  role: input
+  shape:
+  - 1
+  - 64
+  - 64
+  - 4
+  dtype: i8
+operation:
+  op: conv2d
+  attributes:
+    ifm: IFM
+    weight: W
+    out: Y0
+    ci: 4
+    kh: 16
+    kw: 16
+    stride:
+    - 16
+    - 16
+    padding:
+    - 0
+    - 0
+    - 0
+    - 0
+    dilation:
+    - 1
+    - 1
+    layout: nhwc
+    epilogue: []
+    output_dtype: i32
+    semantic: conv2d_im2col
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    conv2d: true
+    k_accumulate: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  semantic_family: contraction
+  generalization_axis: conv_window
+  must_accelerate: true
+  eligible: auto
+  conv_window: k16x16/s16x16/d1x1/padUNKNOWN
+pass_requirements:
+- target-isa-lowering
+- tile-schedule
