@@ -27,6 +27,15 @@ wall delta and FAIL the perturbation check if it exceeds the board noise floor (
 1.9 %). A breakdown whose own instrumentation moved the wall past the floor is reported as
 ``perturbation_ok=false`` and must not be trusted.
 
+COVERAGE GATE (the profiler must not attribute more time than it measured). The perturbation guard
+and the coverage gate are INDEPENDENT, and the first does not imply the second: this tool once
+reported 6.0 ms of attributed op time against a 4.2 ms wall — 144 % — while the perturbation guard
+was clean at 0.11 %. The instrumentation had not moved the wall; the ticks were divided by the wrong
+number of executions. So every bucket now carries ``share_of_attributed``, and carries
+``share_of_runtime`` ONLY when ``op_profile.coverage_report`` puts the coverage inside
+``op_profile.COVERAGE_BAND``. Outside the band the tool prints the ranking, refuses the percentages,
+and says why.
+
 FAIL-CLOSED. cos is gated (>= --cos, default 0.9999) against golden.npy every run; a run that does
 not gate is ``not_run`` and its wall is never recorded.
 
@@ -45,7 +54,7 @@ from pathlib import Path
 import numpy as np
 
 from merlin.common.paths import artifacts_dir
-from merlin.llvmlower.op_profile import join_key
+from merlin.llvmlower import op_profile as opf
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import zephyr_model as zm
@@ -53,11 +62,10 @@ from merlin.runtime.backends import zephyr_model as zm
 TIMEBASE_HZ = k1.K1_TIMEBASE_HZ  # rdtime tick rate (24 MHz)
 NS_PER_TICK = 1e9 / TIMEBASE_HZ
 
-# The default K1 RVV pipeline (llvmlower.pipeline.build_rvv_pipeline) vectorizes ONLY the
-# contraction ops (linalg.matmul / linalg.batch_matmul); every other family goes through
-# convert-linalg-to-loops -> scalar. So "is this op vectorized?" is answered by its family, and
-# the sum of non-contraction ticks IS the scalar work left on the table.
-_VECTORIZED_FAMILIES = {"contraction"}
+# "is this op vectorized?" is answered by its RESOLVED family (op_profile.resolve_family): the
+# default K1 RVV pipeline (llvmlower.pipeline.build_rvv_pipeline) vectorizes only the contraction
+# family; every other family goes through convert-linalg-to-loops -> scalar. So the sum of the
+# non-contraction ticks IS the scalar work left on the table.
 
 
 def _ticks_to_ms(ticks: float) -> float:
@@ -99,15 +107,17 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
                  rel_th: float = 1e-2, iters: int = 1, warmup: int = 0) -> dict:
     """Build+run the instrumented binary n times; gate cos; accumulate per-op ticks.
 
-    The per-op ticks are SUMMED across the gated runs then averaged, so a single op faster than
-    one rdtime tick (~41.7 ns) still accumulates signal across runs. Returns the per-op table with
-    averaged ticks/ms plus the run-level walls and profiler-coverage metrics.
+    The per-op ticks are SUMMED across the gated runs then divided by the number of executions the
+    shim COUNTED (`hits`), so a single op faster than one rdtime tick (~41.7 ns) still accumulates
+    signal across runs. Returns the per-op table with per-execution ticks/ms plus the run-level
+    walls and profiler-coverage metrics.
     """
     walls: list[int] = []
     time_ticks: list[int] = []
     prof_totals: list[int] = []
     per_op_ticks: dict[int, int] = defaultdict(int)
     per_op_hits: dict[int, int] = defaultdict(int)
+    launch_execs: list[int] = []
     table: list[dict] | None = None
     gated = 0
     blocker = None
@@ -131,14 +141,23 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
             m = res["metrics"]
             walls.append(m["wall_ns"])
             time_ticks.append(m.get("time_ticks", 0))
-            # per-iteration, to match the harness's per-iteration wall (see ticks_avg above)
-            prof_totals.append(m.get("prof_total_ticks", 0) / max(1, iters))
             tbl = res.get("op_profile") or []
             if table is None:
                 table = tbl
+            # HOW MANY TIMES did @forward actually run inside this launch? Ask the shim, do not
+            # assume `--iters`. The accumulators run from process start, so they also cover the
+            # UNTIMED warmup passes -- and a session model runs several steps per timed iteration.
+            # Dividing by `iters` when the shim counted `warmup + iters` is what made this tool
+            # report 6.0 ms of op time against a 4.2 ms wall (coverage 1.4407 = exactly 7/5 x 1.029).
+            execs = max((int(r.get("hits") or 0) for r in tbl), default=0)
+            launch_execs.append(execs)
+            if execs:
+                prof_totals.append(m.get("prof_total_ticks", 0) / execs)
             for rec in tbl:
                 per_op_ticks[rec["id"]] += rec.get("ticks", 0)
-                per_op_hits[rec["id"]] = rec.get("hits", 0)
+                # SUM, not assign: ticks are summed across launches, so hits must be too or the
+                # divisor stays at one launch's count while the numerator grows with n.
+                per_op_hits[rec["id"]] += rec.get("hits", 0)
             gated += 1
             print(f"  [on {i}] wall_ns={m['wall_ns']} cos={cos:.7f} "
                   f"prof_cov={m.get('prof_total_ticks',0)/max(m.get('time_ticks',1),1):.3f} "
@@ -150,21 +169,19 @@ def run_profiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: Pa
     if table is None or gated == 0:
         return {"ok": False, "blocker": blocker or "no gated run", "n_gated": 0}
     for rec in table:
-        # Divide by the TIMED ITERATIONS too, not just the gated launches. The prof shim accumulates
-        # ticks across every timed inference in a launch, while the harness reports a PER-ITERATION
-        # wall -- so with --iters>1 the per-op ms was inflated by exactly `iters` while the wall was
-        # not, and the two stopped being comparable. Measured when the flag was added: profiler_cov
-        # came back 13.28 (a coverage above 1.0 is impossible and is what exposed it) with a
-        # contraction bucket of 18.92 ms against a 4.95 ms wall.
-        rec["ticks_avg"] = per_op_ticks[rec["id"]] / gated / max(1, iters)
-        rec["ms_avg"] = _ticks_to_ms(rec["ticks_avg"])
+        rec["ticks"] = per_op_ticks[rec["id"]]
         rec["hits"] = per_op_hits[rec["id"]]
-        rec["join_key"] = join_key(rec)
-        rec["vectorized"] = (rec.get("family") in _VECTORIZED_FAMILIES)
+    # Per-execution ticks/ms, resolved family, join key. The divisor is the op's own measured hit
+    # count -- see op_profile.per_execution_ticks and the module comment above it.
+    opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
+    execs_per_launch = int(_median(launch_execs)) if launch_execs else None
     return {"ok": True, "n_gated": gated, "table": table,
             "walls": walls, "median_wall_ns": _median(walls),
             "median_time_ticks": _median(time_ticks),
             "median_prof_total_ticks": _median(prof_totals),
+            "executions_per_launch": execs_per_launch,
+            "timed_iterations_per_launch": max(1, iters),
+            "warmup_per_launch": warmup,
             "rvv_coverage": _rvv_coverage(work_root / "on_0" / "v" / "merlin_k1"),
             "blocker": None}
 
@@ -199,33 +216,46 @@ def run_unprofiled(model_dir: Path, pkg, golden: np.ndarray, n: int, work_root: 
             "median_wall_ns": _median(walls), "blocker": blocker}
 
 
-def _rollup(table: list[dict], keyfn, label: str) -> list[dict]:
-    agg: dict[str, dict] = defaultdict(lambda: {"ms": 0.0, "n_ops": 0, "hits": 0, "vectorized": None})
-    for rec in table:
-        k = keyfn(rec)
-        a = agg[k]
-        a["ms"] += rec["ms_avg"]
-        a["n_ops"] += 1
-        a["hits"] += rec["hits"]
-        v = rec.get("vectorized")
-        a["vectorized"] = v if a["vectorized"] is None else (a["vectorized"] and v)
-    rows = [{label: k, **v} for k, v in agg.items()]
-    rows.sort(key=lambda r: r["ms"], reverse=True)
-    return rows
-
-
 def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float) -> dict:
-    table = prof["table"]
-    total_ms = sum(r["ms_avg"] for r in table)
+    """Roll the per-op table up, and REFUSE to express it as runtime percentages when it cannot be.
 
-    by_family = _rollup(table, lambda r: r.get("family") or "(none)", "family")
-    by_op = _rollup(table, lambda r: r.get("mlir_op") or "(none)", "mlir_op")
-    by_key = _rollup(table, lambda r: r["join_key"], "join_key")
-    by_aten = _rollup(table, lambda r: r.get("aten") or "(none)", "aten")
+    Two rules this function exists to enforce, both of which it once broke:
+
+    1. THE DENOMINATOR IS DECLARED. Every bucket carries ``share_of_attributed``; it carries
+       ``share_of_runtime`` only when :func:`op_profile.coverage_report` says the profile's coverage
+       is inside the sane band. A 144 %-coverage profile still gets a ranking (the ranking was
+       right -- the transposes really were the prize) but no percentage-of-runtime, because that
+       number would be inflated by an unstated factor.
+    2. NO FALSE ZERO. Buckets resolve their family through :func:`op_profile.resolve_family`, which
+       falls back to the MLIR op name. Bucketing on ``prov.family`` alone put 776 of 996 ops in
+       ``(none)`` and printed ``contraction = 0.0 ms`` for a model whose matmuls measured 1.36 ms.
+    """
+    table = prof["table"]
+    attributed_ticks = opf.sum_attributed_ticks(table)
+    total_ms = _ticks_to_ms(attributed_ticks)
+    wall_ticks = prof.get("median_time_ticks")
+    coverage = opf.coverage_report(
+        attributed_ticks, wall_ticks,
+        executions=prof.get("executions_per_launch"),
+        timed_iterations=prof.get("timed_iterations_per_launch"))
+    # The runtime denominator is handed to the rollups ONLY when the coverage check passed.
+    wall_ms = (_ticks_to_ms(wall_ticks)
+               if wall_ticks and coverage["runtime_shares_reportable"] else None)
+
+    by_family = opf.rollup(table, lambda r: r["family_resolved"], "family", wall_ms=wall_ms)
+    by_op = opf.rollup(table, lambda r: r.get("mlir_op") or "(none)", "mlir_op", wall_ms=wall_ms)
+    by_key = opf.rollup(table, lambda r: r["join_key"], "join_key", wall_ms=wall_ms)
+    by_aten = opf.rollup(table, lambda r: r.get("aten") or "(none)", "aten", wall_ms=wall_ms)
 
     # scalar (non-contraction) vs vectorized (contraction) split — the headline "left on table".
-    scalar_ms = sum(r["ms_avg"] for r in table if not r["vectorized"])
-    vector_ms = sum(r["ms_avg"] for r in table if r["vectorized"])
+    measured = [r for r in table if r.get("ms_avg") is not None]
+    scalar_ms = sum(r["ms_avg"] for r in measured if not r["vectorized"])
+    vector_ms = sum(r["ms_avg"] for r in measured if r["vectorized"])
+    # The one honest hole: an untagged `linalg.generic` may BE a contraction (the integer datapath
+    # rewrites captured contractions into generics with an i8xi8->i32 body and no prov.family), and
+    # the profiler sees only the printed op line. Surfaced as its own quantity so the contraction
+    # bucket reads as a LOWER BOUND rather than as a complete measurement.
+    unclassified_ms = sum(r["ms_avg"] for r in measured if opf.is_unclassified_generic(r))
 
     # perturbation check: profiled vs unprofiled median wall.
     pon = prof.get("median_wall_ns")
@@ -236,32 +266,55 @@ def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float)
         # ONE-SIDED test: instrumentation can only ADD cost, so a perturbation problem is the
         # profiled wall being SLOWER than the control by MORE than the noise floor. A delta at or
         # below the floor (incl. negative — profiled faster) is noise, not a measurable perturbation.
+        #
+        # A CLEAN perturbation result says nothing about attribution. The 144 % profile passed this
+        # guard at delta=0.11 %: the instrumentation genuinely did not move the wall, and the ticks
+        # were still divided by the wrong number of executions. The two checks are independent and
+        # both must pass — see `coverage`.
         pert = {"profiled_median_wall_ns": pon, "unprofiled_median_wall_ns": poff,
                 "delta_pct": round(delta_pct, 3), "noise_floor_pct": noise_pct,
                 "perturbation_ok": delta_pct <= noise_pct,
                 "note": ("delta = profiled/unprofiled-1. Instrumentation can only add cost, so the "
                          "one-sided guard fails only when profiled is SLOWER than the un-instrumented "
                          "control by more than the board noise floor. |delta|<=floor (or negative) "
-                         "means the profiler did not measurably move the wall.")}
+                         "means the profiler did not measurably move the wall. It does NOT mean the "
+                         "attribution is sound — check `coverage` for that.")}
 
     # top ops by ms (individual dispatches).
-    top_ops = sorted(table, key=lambda r: r["ms_avg"], reverse=True)[:40]
-    top_ops = [{k: r.get(k) for k in ("id", "mlir_op", "family", "op", "aten", "region_id",
-                                      "fqn", "join_key", "result_type", "elems", "hits",
-                                      "ms_avg", "vectorized")} for r in top_ops]
+    top = sorted(measured, key=lambda r: r["ms_avg"], reverse=True)[:40]
+    top_ops = [{k: r.get(k) for k in ("id", "mlir_op", "family", "family_resolved",
+                                      "family_source", "op", "aten", "region_id", "fqn",
+                                      "join_key", "result_type", "elems", "hits", "executions",
+                                      "ms_avg", "vectorized")} for r in top]
+    for r in top_ops:
+        r["share_of_attributed"] = (r["ms_avg"] / total_ms) if total_ms else None
+        r["share_of_runtime"] = (r["ms_avg"] / wall_ms) if wall_ms else None
 
     return {
         "total_attributed_ms": round(total_ms, 3),
-        "profiler_coverage": (round(prof["median_prof_total_ticks"] / prof["median_time_ticks"], 4)
-                              if prof.get("median_time_ticks") else None),
-        "vectorized_flag_meaning": ("`vectorized`/`vectorized_ms` reflect the pipeline's INTENT: the "
-                                    "K1 RVV schedule vectorizes only the contraction family; every "
-                                    "other family lowers to scalar loops. It is NOT proof the "
-                                    "emitted asm is vector — see `rvv_coverage` for the measured "
-                                    "static coverage of `forward`."),
+        "measured_wall_ms": round(_ticks_to_ms(wall_ticks), 3) if wall_ticks else None,
+        "coverage": coverage,
+        # Back-compat scalar for existing readers; `coverage` is the authoritative block.
+        "profiler_coverage": coverage["profiler_coverage"],
+        "runtime_shares_reportable": coverage["runtime_shares_reportable"],
+        "share_denominator": coverage["share_denominator"],
+        "vectorized_flag_meaning": ("`vectorized`/`contraction_intended_ms` reflect the pipeline's "
+                                    "INTENT: the K1 RVV schedule vectorizes only the contraction "
+                                    "family; every other family lowers to scalar loops. It is NOT "
+                                    "proof the emitted asm is vector — see `rvv_coverage` for the "
+                                    "measured static coverage of `forward`. The family is resolved "
+                                    "from prov.family when tagged and from the MLIR op name when "
+                                    "not (`family_source` says which)."),
         "rvv_coverage": prof.get("rvv_coverage"),
         "contraction_intended_ms": round(vector_ms, 3), "scalar_ms": round(scalar_ms, 3),
-        "scalar_frac": round(scalar_ms / total_ms, 4) if total_ms else None,
+        "contraction_is_a_lower_bound": unclassified_ms > 0,
+        "unclassified_generic_ms": round(unclassified_ms, 3),
+        "unclassified_generic_note": ("untagged `linalg.generic` — family genuinely UNKNOWN. Some "
+                                      "of these are contractions the integer datapath rewrote "
+                                      "without re-stamping provenance, so `contraction_intended_ms` "
+                                      "is a lower bound, not a measurement of all contraction time."),
+        "scalar_share_of_attributed": round(scalar_ms / total_ms, 4) if total_ms else None,
+        "scalar_share_of_runtime": (round(scalar_ms / wall_ms, 4) if wall_ms else None),
         "perturbation": pert,
         "by_family": by_family, "by_aten": by_aten, "by_mlir_op": by_op,
         "top_ops": top_ops,
@@ -377,20 +430,52 @@ def main() -> None:
 
     b = summary.get("breakdown")
     if b:
-        print("\n=== TOP FAMILIES (measured ms) ===")
+        c = b["coverage"]
+        ok = c["runtime_shares_reportable"]
+        denom = "of RUNTIME" if ok else "of ATTRIBUTED"
+        print(f"\n=== TOP FAMILIES (measured ms, share {denom}) ===")
         for row in b["by_family"][:12]:
-            print(f"  {row['family']:<16} {row['ms']:8.2f} ms  n_ops={row['n_ops']:<5} "
-                  f"vec={row['vectorized']}")
-        p = b["perturbation"]
-        if p:
-            print(f"\nperturbation: profiled={p['profiled_median_wall_ns']/1e6:.2f}ms "
-                  f"unprofiled={p['unprofiled_median_wall_ns']/1e6:.2f}ms "
-                  f"delta={p['delta_pct']}% ok={p['perturbation_ok']}")
+            share = row["share_of_runtime"] if ok else row["share_of_attributed"]
+            src = "+".join(row["family_sources"])
+            print(f"  {row['family']:<20} {row['ms']:8.2f} ms  {100 * (share or 0):5.1f}% "
+                  f"n_ops={row['n_ops']:<5} vec={row['vectorized']} from={src}")
+        pt = b["perturbation"]
+        if pt:
+            print(f"\nperturbation: profiled={pt['profiled_median_wall_ns']/1e6:.2f}ms "
+                  f"unprofiled={pt['unprofiled_median_wall_ns']/1e6:.2f}ms "
+                  f"delta={pt['delta_pct']}% ok={pt['perturbation_ok']}")
         cov = b.get("rvv_coverage")
-        covs = f"{cov['static_vector_coverage']:.3f}" if cov and cov.get("static_vector_coverage") else "n/a"
-        print(f"scalar={b['scalar_ms']:.1f}ms ({b['scalar_frac']*100:.1f}%) "
-              f"contraction(intended-vec)={b['contraction_intended_ms']:.1f}ms  "
-              f"profiler_cov={b['profiler_coverage']}  forward_static_rvv_cov={covs}")
+        covs = (f"{cov['static_vector_coverage']:.3f}"
+                if cov and cov.get("static_vector_coverage") else "n/a")
+        print(f"attributed={b['total_attributed_ms']:.2f}ms over "
+              f"wall={b['measured_wall_ms']}ms  profiler_cov={c['profiler_coverage']} "
+              f"band={c['band']}  executions/launch={c['executions_per_launch']} "
+              f"timed_iters={c['timed_iterations_per_launch']}")
+        # FAIL CLOSED. A percentage of runtime is printed only when the coverage check passed; an
+        # out-of-band profile prints the ranking and says, in the same breath, why the percentages
+        # it is NOT printing would have been wrong.
+        if ok:
+            print(f"scalar={b['scalar_ms']:.1f}ms ({b['scalar_share_of_runtime']*100:.1f}% of "
+                  f"runtime)  contraction(intended-vec)={b['contraction_intended_ms']:.1f}ms  "
+                  f"forward_static_rvv_cov={covs}")
+        else:
+            print(f"!! REFUSING to report shares as a percentage of runtime: {c['refusal']}")
+            print(f"   shares above are of ATTRIBUTED op time ({b['total_attributed_ms']:.2f} ms), "
+                  f"NOT of the {b['measured_wall_ms']} ms wall — do not quote them as runtime %.")
+            print(f"scalar={b['scalar_ms']:.1f}ms "
+                  f"({b['scalar_share_of_attributed']*100:.1f}% of attributed)  "
+                  f"contraction(intended-vec)={b['contraction_intended_ms']:.1f}ms  "
+                  f"forward_static_rvv_cov={covs}")
+        if c["executions_exceed_timed_iterations"]:
+            # In band, but the two windows still differ: say so, because this is the mechanism that
+            # produced the 144 % profile and it is invisible in the headline numbers.
+            print(f"   note: the shim counted {c['executions_per_launch']} @forward executions per "
+                  f"launch against {c['timed_iterations_per_launch']} TIMED iterations — the "
+                  f"per-op mean therefore includes untimed warmup passes, which are colder. This is "
+                  f"the residual above 1.0 in profiler_cov.")
+        if b["contraction_is_a_lower_bound"]:
+            print(f"   contraction is a LOWER BOUND: {b['unclassified_generic_ms']:.2f} ms sits in "
+                  f"untagged linalg.generic, whose family is UNKNOWN (some are contractions).")
 
 
 if __name__ == "__main__":

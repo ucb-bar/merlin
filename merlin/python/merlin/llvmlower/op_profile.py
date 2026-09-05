@@ -306,3 +306,221 @@ def parse_prof_lines(console: str) -> dict[int, tuple[int, int]]:
             except ValueError:
                 continue
     return out
+
+
+# ==================================================================================================
+# NORMALIZATION, COVERAGE AND ROLLUP — the arithmetic that turns raw `PROF` counters into shares.
+#
+# These live here (not in the driver script) because they are pure and board-free, so the rules
+# below are unit-testable without a board.
+#
+# WHY THEY EXIST — a measured 144 % attribution.
+# `k1_op_profile.py` on `small_llama_int8_consistent` reported 6.0 ms of attributed op time against
+# a 4.2 ms wall (`profiler_cov=1.4407`) while the perturbation guard was CLEAN (profiled 4.21 ms vs
+# un-instrumented 4.20 ms, delta 0.11 %). Every share it printed was therefore inflated by an
+# unstated factor, and one of them ("transposes are 45.9 % of runtime") was quoted.
+#
+# The cause is a WINDOW MISMATCH, not a mis-measurement. The shim's accumulators run from process
+# start, so they cover every execution of `@forward` in the image — the UNTIMED warmup passes
+# included — while the harness reports a PER-ITERATION wall. That run used `--warmup 2 --iters 5`:
+# all 996 ops reported `hits=7`, and the driver divided by `iters=5`. 7/5 = 1.400, and
+# 1.4407 / 1.400 = 1.0291. The inflation was exactly the ratio of the two windows.
+#
+# Note what this rules OUT, because the alternatives are the ones people reach for first. Within ONE
+# execution the attributed intervals TELESCOPE: op i is credited `rdtime(entry of mark i+1) -
+# rdtime(exit of mark i)`, and those intervals are disjoint and lie inside the function, so their sum
+# is bounded ABOVE by the function's own elapsed time. Neither the marks' own cost nor `rdtime`'s
+# ~41.7 ns quantization can push a single execution past 100 % — a coverage above 1.0 can ONLY come
+# from counting a different number of executions in the numerator than in the denominator.
+#
+# THE FIX: derive the divisor, never assume it. `hits` is the execution count the shim actually
+# COUNTED for that op; `--iters` is what the CLI asked for. They differ under `--warmup`, under
+# `MERLIN_SESSION_REPEATS`, and under any model whose session runs more than one step per iteration.
+# So per-execution cost is `ticks / hits`, and the residual over 1.0 that remains is named rather
+# than hidden (see `coverage_report`).
+# ==================================================================================================
+
+#: Sane band for `profiler_coverage` (attributed ticks per execution / measured wall ticks per timed
+#: iteration). OUTSIDE this band the tool refuses to express any bucket as a percentage of runtime.
+#:
+#: The upper bound is not 1.0. Telescoping caps a single execution at 1.0, but the accumulation
+#: window may still contain UNTIMED warmup executions, which are colder than the timed ones and so
+#: pull the per-execution mean above the timed wall. Measured on the artifact above: 1.022 (op table)
+#: / 1.029 (the `prof_total_ticks` metric, which also carries the sentinel's inter-execution gap)
+#: with 2 warmup + 5 timed passes — consistent with the warmup passes being ~8 % slower. More than
+#: 5 % over is a window/denominator defect rather than warmup, and is refused.
+COVERAGE_BAND = (0.70, 1.05)
+
+#: Families the RVV schedule vectorizes. Everything else lowers to scalar loops, so the sum of the
+#: non-contraction ticks is the scalar work left on the table. This is the pipeline's INTENT, not
+#: proof about the emitted asm.
+VECTORIZED_FAMILIES = frozenset({"contraction"})
+
+#: Named linalg ops that ARE a contraction, by op name alone. Used ONLY as the fallback when an op
+#: carries no ``prov.family`` — which is the common case, not the rare one: the quantization and
+#: blocking rewrites rebuild ops without re-stamping provenance, so on the int8 whole model 776 of
+#: 996 profiled ops (including every ``linalg.matmul``) reach the table with ``family = None``. A
+#: summary that buckets on the tag alone therefore put all of them in ``(none)`` and printed
+#: ``contraction = 0.0 ms`` for a model whose matmuls measured 1.36 ms. A headline that says a
+#: contraction costs zero is worse than no headline.
+#:
+#: Kept a SUPERSET of ``xdsl_dialects.lowering.contraction_coverage.MATMUL_OPS`` (asserted by a test
+#: rather than by importing it, so this module stays pure-text and xDSL-free).
+CONTRACTION_OPS = frozenset({
+    "linalg.matmul", "linalg.batch_matmul", "linalg.quantized_matmul",
+    "linalg.matmul_transpose_a", "linalg.matmul_transpose_b",
+    "linalg.batch_matmul_transpose_a", "linalg.batch_matmul_transpose_b",
+    "linalg.matvec", "linalg.vecmat", "linalg.batch_matvec", "linalg.dot",
+    "linalg.quantized_batch_matmul", "linalg.contract",
+})
+
+
+def resolve_family(rec: dict) -> tuple[str, str]:
+    """``(family, source)`` for one op record, falling back to the MLIR op name.
+
+    ``prov.family`` wins when present. When it is absent the op NAME answers the question for every
+    named op — a ``linalg.matmul`` is a contraction whether or not anything stamped it — and for an
+    unnamed one (``linalg.generic``, ``tensor.concat``) the op name itself is the honest bucket
+    label: it is what we actually know. The ``source`` is returned so a reader can tell a tagged
+    family from a derived one instead of having to trust the label.
+    """
+    fam = rec.get("family")
+    if fam:
+        return str(fam), "prov.family"
+    name = rec.get("mlir_op") or ""
+    if name in CONTRACTION_OPS:
+        return "contraction", "mlir_op"
+    return name or "(unknown)", "mlir_op"
+
+
+def is_unclassified_generic(rec: dict) -> bool:
+    """True for an untagged ``linalg.generic`` — an op whose family we genuinely do not know.
+
+    This is the one honest hole left by :func:`resolve_family`. The integer datapath rewrites a
+    captured contraction into a ``linalg.generic`` with an ``i8 x i8 -> i32`` body and no
+    ``prov.family``, so some of these ARE contractions; the profiler records only the printed op
+    line and cannot see the body to tell. Their mass is reported as its own quantity so it reads as
+    UNKNOWN rather than as "measured, and not a contraction".
+    """
+    return not rec.get("family") and (rec.get("mlir_op") or "") == "linalg.generic"
+
+
+def per_execution_ticks(total_ticks: float, executions: int) -> float | None:
+    """Ticks for ONE execution of an op, from the execution count the shim COUNTED.
+
+    ``None`` when the op never executed (0 hits) — a fail-closed UNKNOWN, never a silent 0.0 that
+    would enter a sum as if it had been measured and found free.
+    """
+    if not executions:
+        return None
+    return total_ticks / executions
+
+
+def annotate_table(table: list[dict], *, timebase_hz: float) -> list[dict]:
+    """Fill in the derived per-op fields, IN PLACE, and return the table.
+
+    Sets ``executions`` (the measured hit count), ``ticks_avg``/``ms_avg`` (per execution),
+    ``family_resolved``/``family_source``, ``vectorized`` and ``join_key``. An op with 0 hits gets
+    ``ticks_avg = None`` and is excluded from every sum by :func:`sum_attributed_ticks`.
+    """
+    ns_per_tick = 1e9 / timebase_hz
+    for rec in table:
+        hits = int(rec.get("hits") or 0)
+        avg = per_execution_ticks(float(rec.get("ticks") or 0), hits)
+        fam, src = resolve_family(rec)
+        rec["executions"] = hits
+        rec["ticks_avg"] = avg
+        rec["ms_avg"] = None if avg is None else avg * ns_per_tick / 1e6
+        rec["family_resolved"] = fam
+        rec["family_source"] = src
+        rec["vectorized"] = fam in VECTORIZED_FAMILIES
+        rec["join_key"] = join_key(rec)
+    return table
+
+
+def sum_attributed_ticks(table: list[dict]) -> float:
+    """Total per-execution ticks over the ops that actually executed."""
+    return sum(r["ticks_avg"] for r in table if r.get("ticks_avg") is not None)
+
+
+def coverage_report(attributed_ticks: float, wall_ticks: float | None, *,
+                    band: tuple[float, float] = COVERAGE_BAND,
+                    executions: int | None = None,
+                    timed_iterations: int | None = None) -> dict:
+    """Decide whether this profile may be quoted as a percentage of RUNTIME.
+
+    Fail-closed: an unknown or out-of-band coverage sets ``runtime_shares_reportable`` False, and
+    every consumer must then express buckets as a share of ATTRIBUTED time with the coverage stated
+    beside them. It is never left to the reader to notice that the denominator moved.
+    """
+    lo, hi = band
+    cov = (attributed_ticks / wall_ticks) if wall_ticks else None
+    over_window = (executions is not None and timed_iterations is not None
+                   and executions > timed_iterations)
+    if cov is None:
+        refusal = ("no measured wall ticks to divide by — a share of runtime has no denominator")
+    elif cov < lo:
+        refusal = (f"profiler coverage {cov:.4f} is below {lo:.2f}: more than "
+                   f"{100 * (1 - cov):.1f}% of the wall was never attributed to any op, so a "
+                   f"bucket's share of RUNTIME is unknowable from this profile")
+    elif cov > hi:
+        refusal = (f"profiler coverage {cov:.4f} is above {hi:.2f}: the ops were credited MORE "
+                   f"time than the wall being measured, so every share of RUNTIME would be "
+                   f"inflated by an unknown factor. Usual cause: the attribution window and the "
+                   f"timed window count a different number of @forward executions")
+    else:
+        refusal = None
+    return {
+        "attributed_ticks": attributed_ticks,
+        "wall_ticks": wall_ticks,
+        "profiler_coverage": None if cov is None else round(cov, 4),
+        "band": [lo, hi],
+        "in_band": refusal is None,
+        "runtime_shares_reportable": refusal is None,
+        "share_denominator": "wall" if refusal is None else "attributed",
+        "executions_per_launch": executions,
+        "timed_iterations_per_launch": timed_iterations,
+        #: The shim COUNTED more executions of @forward than the harness TIMED. Untimed warmup
+        #: passes do this, and so does a session that runs several steps per timed iteration. Either
+        #: way the per-execution mean is over a wider window than the wall it is compared against,
+        #: which is the direction that inflates coverage.
+        "executions_exceed_timed_iterations": over_window,
+        "refusal": refusal,
+        "note": ("Shares are a fraction of ATTRIBUTED op time unless runtime_shares_reportable is "
+                 "true. Coverage = attributed ticks per execution / measured wall ticks per timed "
+                 "iteration; it can exceed 1.0 only when the two windows count different numbers "
+                 "of @forward executions (e.g. untimed warmup passes accumulate into the shim)."),
+    }
+
+
+def rollup(table: list[dict], keyfn, label: str, *, wall_ms: float | None = None) -> list[dict]:
+    """Aggregate per-execution ms by ``keyfn``, sorted by cost.
+
+    ``share_of_attributed`` is always present. ``share_of_runtime`` is present only when the caller
+    passes ``wall_ms`` — which it must do ONLY when :func:`coverage_report` said the profile may be
+    quoted that way; otherwise the field stays ``None`` so a consumer cannot read an inflated share
+    as a runtime percentage.
+    """
+    agg: dict[str, dict] = {}
+    for rec in table:
+        ms = rec.get("ms_avg")
+        if ms is None:
+            continue
+        a = agg.setdefault(keyfn(rec), {"ms": 0.0, "n_ops": 0, "hits": 0, "vectorized": None,
+                                        "family_sources": set()})
+        a["ms"] += ms
+        a["n_ops"] += 1
+        a["hits"] += int(rec.get("hits") or 0)
+        v = bool(rec.get("vectorized"))
+        a["vectorized"] = v if a["vectorized"] is None else (a["vectorized"] and v)
+        a["family_sources"].add(rec.get("family_source") or "unknown")
+    total = sum(a["ms"] for a in agg.values())
+    rows = []
+    for k, a in agg.items():
+        rows.append({label: k, "ms": a["ms"], "n_ops": a["n_ops"], "hits": a["hits"],
+                     "vectorized": a["vectorized"],
+                     "family_sources": sorted(a["family_sources"]),
+                     "share_of_attributed": (a["ms"] / total) if total else None,
+                     "share_of_runtime": (a["ms"] / wall_ms) if wall_ms else None})
+    rows.sort(key=lambda r: r["ms"], reverse=True)
+    return rows
