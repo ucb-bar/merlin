@@ -11,6 +11,8 @@ code_refs:
   - merlin/python/merlin/targetgen/program_oracle.py
   - merlin/python/merlin/targetgen/capsule_runner.py
   - merlin/contract/external/gsim/model_build/recipes.yaml
+  - merlin/python/merlin/perf/cycle_trace.py
+  - merlin/python/merlin/perf/observations.py
 ---
 
 # GSIM as the elaborated-RTL cert engine
@@ -112,13 +114,48 @@ A probe that reports a `register_observation` model as an available cert tier is
 degradation the engine policy exists to prevent, and would be worse than the Verilator fallback it
 replaced.
 
-## Known capability gap
+## Timing observations: folded from the trace, not re-simulated
 
 The program-oracle GSIM harness returns `{halted, cycles, outputs, reads, writes}` and no
-`timing_observations` — the per-unit busy / DMA-beat / overlap decomposition the Verilator harness reads
-off the design's own activity ports. It is reported as absent rather than fabricated, which is correct,
-but it means adopting GSIM changes more than cost for anything reading occupancy telemetry. That is a
-harness gap in the GSIM-side harness, not a fidelity gap, and it is the next thing to close.
+`timing_observations`, so every consumer reading occupancy telemetry saw it as an instrument with no
+timing capability — and adopting the faster engine silently cost a perf campaign its per-capsule
+decomposition. That was never a fidelity gap. The GSIM harness *does* sample the design's own activity
+ports on every cycle; it just **dumps** them (`argv[2]`, one CSV row per cycle) instead of accumulating
+the buckets in-sim the way the Verilator harness does.
+
+So the block is produced by **reduction**, in `merlin.perf.cycle_trace`: the trace the engine already
+wrote is folded into the same quantities, with the same spellings, that an in-sim harness emits
+(`busy_cycles.<unit>.in_program`, `idle_cycles.no_unit_busy`, `overlap_cycles.observed` /
+`.across_kinds`, `sampled_cycles.dbg_tap`). Every number is a count of rows in a file the engine
+produced — nothing is modelled, estimated or scaled. `program_oracle` asks for the trace whenever the
+engine declares its columns, folds it, and deletes the temporary.
+
+**Which column is a unit's busy signal is DECLARED, never guessed.** A trace is a table of integers,
+and every way of inferring occupancy from it is wrong in the flattering direction: picking columns
+whose names end in "busy" reads a role out of an identifier and drops any port spelled otherwise
+(making that unit read as permanently idle); "nonzero means busy" is simply false on a state register,
+where state 0 is a state. So each engine home carries `timing_columns.json`
+(`merlin.cycle-trace-columns.v1`) written by whoever chose the columns, binding each to a unit and a
+kind and naming what it could not read. **An engine with no declaration reports no timing capability**,
+exactly as before — an absent instrument stays absent rather than becoming a block of zeros.
+
+Two rules the declaration must get right, both of which produced wrong numbers on the first pass here:
+
+- **Columns that nest fold into one unit.** `vloadBusy` and `vstoreBusy` sit inside `lsuBusy` (measured:
+  68 + 68 = 136 on `spec_AT4_bf16_scale`). Binding them as separate units charged the LSU three cycles
+  for one and reported 136 cycles of overlap in a kernel with none — the unit overlapping with itself.
+- **Idle is relative to what was read.** A unit whose port the trace omits contributes no busy cycles,
+  so every cycle it alone was busy in lands in idle. When anything is unmeasured the entry says so and
+  calls itself an upper bound, rather than being quietly compared against an instrument reading more.
+
+**Cross-validated against the in-sim instrument (2026-09-04).** The same two programs were run on the
+GSIM engine (folded from its trace) and on the Verilator engine over the same design (accumulated
+in-sim). Every unit both instruments carry agreed **exactly** — on `spec_AF3_attn_full_bf16_pt`, `lsu`
+1088, `mxu0Comp` 376, `mxu0Data` 224, `mxu1Comp` 0, `mxu1Data` 0, `xlu` 130 — as did
+`sampled_cycles.dbg_tap` (7818) and both overlap readings. The two differ only where Verilator reports
+eight per-channel DMA units and the DMA-beat counters that this trace does not carry: those are named
+in `unmeasured_units`, and the idle figures differ by precisely their cycles, which is why idle from a
+trace is a bound and not a figure to compare across engines.
 
 ## Verified end to end (2026-09-04)
 
