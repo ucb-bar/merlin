@@ -55,7 +55,13 @@ from merlin.compare import et_campaign as ec            # noqa: E402
 #: The diverse set the headline table is claimed over, cheapest-first so a session that dies late
 #: still holds the cells that were affordable. A CLI default, overridable with ``--models``; the
 #: campaign itself is model-agnostic and reads whatever it is given.
-DEFAULT_MODELS = ("small_llama", "spectformer", "lstmnetvit", "gemma2_2b")
+#:
+#: Chosen for ARCHITECTURAL diversity rather than convenience -- a vision-language-action policy, a
+#: recurrent/attention hybrid, a pure CNN, and a decoder-only LM -- so a win is not a win on one
+#: shape of graph. All four resolve to a bundle and plan as runnable; the previous set was retired
+#: because two of its members (``spectformer``, ``gemma2_2b``) have upstream reference blockers and
+#: ``small_llama`` is small enough that its result generalises poorly.
+DEFAULT_MODELS = ("lstmnetvit", "resnet50_v1_5", "smolvla", "tiny_llama")
 
 #: Our int8 codegen package. A path under the codegen-package home, overridable with ``--package``.
 DEFAULT_PACKAGE = "out/artifacts/targets/rvv/hand_v0_int8"
