@@ -873,8 +873,14 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         # run that reported 40/40 where 9 passes were the fixture. Attribution rides ALONGSIDE rather
         # than inside, so `cycles_diagnostic` keeps the integer shape its pinned test and the audit
         # renderer expect.
-        _prov = _comparand.cycles_provenance(r.get("tiers"), submission=score.get("package"),
-                                             ladder=tiers)
+        # COMPARE LIKE WITH LIKE. The tier record states the submission it ran, RESOLVED
+        # (`capsule_runner.submission_identity`), while `score["package"]` is whatever string the
+        # caller passed. Comparing the two directly makes an attributed count read as OTHER_PROGRAM --
+        # a false claim about a different program, strictly worse than UNATTRIBUTED. Prefer the tier
+        # record's own resolved package and fall back to the score's only when it states none.
+        _sub = ((r.get("submission") or {}).get("package")
+                if isinstance(r.get("submission"), dict) else None) or score.get("package")
+        _prov = _comparand.cycles_provenance(r.get("tiers"), submission=_sub, ladder=tiers)
         if _prov:
             score.setdefault("cycles_provenance", {})[r["capsule"]] = _prov
         # active-vs-waiting timing: sum across every tier that actually ran an oracle for this capsule

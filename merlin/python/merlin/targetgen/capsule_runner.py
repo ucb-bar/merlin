@@ -280,6 +280,26 @@ def concurrency_stamp(workers: int | None = None) -> dict:
             "sampled": "at the adapter's return, so the load average covers the measurement itself"}
 
 
+def _graded_program(res: Any, package_dir: "str | Path") -> "str | None":
+    """WHICH PROGRAM produced this tier's cycle count, or ``None`` when it cannot be established.
+
+    Only an adapter that BUILT AND RAN AN ELF from the package under grade may claim the submission,
+    and ``res["elf"]`` is that evidence. A tier graded on a harness fixture -- a block-scaled capsule
+    runs the harness's own reference kernel, not the submission -- returns ``None`` and stays
+    UNATTRIBUTED. Defaulting the other way is what let a fixture's pass travel as a submission's, in
+    the recorded run that scored 40/40 with nine of the forty measuring the fixture.
+
+    The path is RESOLVED to match :func:`submission_identity`, which records the resolved package on
+    every tier record. Comparing an unresolved string against a resolved one makes
+    ``comparand.attribute`` return OTHER_PROGRAM -- a FALSE claim about a different program, strictly
+    worse than the UNATTRIBUTED it replaces.
+    """
+    if not isinstance(res, dict) or not res.get("elf"):
+        return None
+    pkg = Path(package_dir)
+    return str(pkg.resolve()) if pkg.exists() else str(pkg)
+
+
 def submission_identity(package_dir: "str | Path", *, run_id: str | None = None) -> dict:
     """WHICH SUBMISSION a measurement belongs to, stated explicitly.
 
@@ -3973,6 +3993,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                         reason="RTL cert ran to completion but cannot surface outputs for a mandatory "
                                "correctness check (use the functional tier as the required gate)",
                         cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm,
+                        toolchain=_graded_program(res, package_dir),
                         concurrency=_conc)
                     continue
                 _cg = _cp = None
@@ -3990,6 +4011,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     reason="RTL completion + cycle-accurate perf cert (correctness gated by the "
                            "required functional tier)",
                     cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
+                    toolchain=_graded_program(res, package_dir),
                     cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
                     timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu,
                     timing_observations=res.get("timing_observations"),
@@ -4081,6 +4103,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 tier, "pass" if okt else "fail", mand,
                 reason=None if okt else _mismatch_reason,
                 cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
+                toolchain=_graded_program(res, package_dir),
                 cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{_ev_name}_console.log",
                 timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, utilization=_util,
                 timing_observations=res.get("timing_observations"),
