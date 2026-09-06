@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import json
 import sys
 from pathlib import Path
@@ -446,6 +447,9 @@ def main(argv: list[str] | None = None) -> int:
     verdict = run(a.submission, a.capsules_root, runs_root, labels, a.no_oracle, a.timeout)
 
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    # Stamp when this verdict was produced. Without it the only clock a reader has is the
+    # file mtime, which does not survive a copy between trees.
+    verdict.setdefault("graded_at", _dt.datetime.now(_dt.timezone.utc).isoformat())
     Path(a.out).write_text(json.dumps(verdict, indent=2))
     print(f"[qa_check] all_pass={verdict['all_pass']} "
           f"{verdict['n_passed']}/{verdict['n_capsules']} integrity={verdict['integrity_status']}")

@@ -112,6 +112,17 @@ class SpanSet:
     def trusted(self) -> list[Span]:
         return [s for s in self.spans if s.duration_s > FLUSH_FLOOR_S]
 
+    @property
+    def durations_measurable(self) -> bool:
+        """Whether ANY span in this set has a duration worth reading.
+
+        One driver reports a tool only once it has COMPLETED, so the call and its result arrive on a
+        single stream line and share one stamp. Every span then has zero length. The ordering and the
+        identity of those calls are real and worth keeping; their durations do not exist. A caller
+        that draws occupancy or tool-time from such a set would render a busy run as an idle one,
+        which is why this is asked rather than assumed."""
+        return any(sp.duration_s > FLUSH_FLOOR_S for sp in self.spans)
+
 
 def _stamp(value) -> float | None:
     if not isinstance(value, str) or not value:
@@ -359,6 +370,14 @@ def concurrency(spanset: SpanSet) -> Concurrency:
         out.availability.set("concurrency", unavailable(
             spanset.availability.get("spans").reason or "no spans to sweep"))
         return out
+    if not spanset.durations_measurable:
+        out.availability.set("concurrency", unavailable(
+            f"all {len(spanset.spans)} span(s) have zero length: this driver reports a tool only "
+            f"once it has completed, so the call and its result share one stamp and no duration "
+            f"exists. Whether these calls overlapped is not answerable from this stream — reporting "
+            f"'no overlap' would state a result the data does not contain.",
+            source=spanset.source))
+        return out
 
     overlap, peak, wall = _sweep(spanset.spans)
     t_overlap, t_peak, _ = _sweep(spanset.trusted())
@@ -438,7 +457,10 @@ def occupancy_bins(spanset: SpanSet, bins: int = 90) -> tuple[list[float], list[
     What is NOT covered is the agent thinking, plus any call whose duration the stream could not
     preserve. Those two are not separable here and the caller must not label the remainder as either
     one alone."""
-    if not spanset.spans or spanset.wall_s <= 0 or bins <= 0:
+    # A span set whose every member has zero length carries ordering, not duration. Binning it
+    # yields a flat zero band that reads as "this agent ran no tools", which is the opposite of what
+    # such a run did.
+    if not spanset.spans or spanset.wall_s <= 0 or bins <= 0 or not spanset.durations_measurable:
         return [], []
     width = spanset.wall_s / bins
     acc = [0.0] * bins

@@ -592,3 +592,54 @@ def test_joinable_but_unstamped_events_say_the_clock_is_missing_not_the_key(tmp_
     reason = ss.availability.get("spans").reason
     assert "no time field" in reason and "stamping events on arrival" in reason
     assert "no id" not in reason
+
+
+def test_a_stamped_verdict_beats_the_file_mtime(tmp_path):
+    """`graded_at` is a property of the RUN; an mtime is a property of the file and does not survive
+    a copy between trees — which these run trees have had."""
+    run = tmp_path / "run"
+    (run / "qa_history").mkdir(parents=True)
+    (run / "qa_history" / "verdict_round_00.json").write_text(json.dumps(
+        {"n_passed": 3, "n_capsules": 10, "graded_at": "2026-01-01T00:00:00+00:00"}))
+    (run / "qa_history" / "verdict_round_01.json").write_text(json.dumps(
+        {"n_passed": 8, "n_capsules": 10, "graded_at": "2026-01-01T02:00:00+00:00"}))
+    s = read_passes(run)
+    assert [p.n_passed for p in s.points] == [3, 8]
+    # Two hours apart by the STAMP, whatever the files' mtimes happen to be.
+    assert s.points[-1].t_s == pytest.approx(7200.0)
+    assert s.availability.get("passes").kind == MEASURED
+
+
+def test_a_partly_stamped_history_says_which_half_is_metadata(tmp_path):
+    run = tmp_path / "run"
+    (run / "qa_history").mkdir(parents=True)
+    (run / "qa_history" / "verdict_round_00.json").write_text(json.dumps(
+        {"n_passed": 1, "n_capsules": 10, "graded_at": "2026-01-01T00:00:00+00:00"}))
+    (run / "qa_history" / "verdict_round_01.json").write_text(json.dumps(
+        {"n_passed": 4, "n_capsules": 10}))
+    status = read_passes(run).availability.get("passes")
+    assert status.kind == DERIVED and "mtime" in status.reason and "1 carry" in status.reason
+
+
+def test_zero_length_spans_do_not_become_an_idle_run():
+    """One driver reports a tool only once completed, so the call and its result share one stamp and
+    every span has zero length. Those spans carry real ordering and identity — but binning them
+    yields a flat zero band that reads as 'this agent ran no tools', and sweeping them reports 'no
+    overlap' as though that had been measured. Both must refuse instead."""
+    from merlin.agentreport.spans import occupancy_bins
+    flat = SpanSet(spans=[Span(1.0, 1.0), Span(2.0, 2.0), Span(3.0, 3.0)],
+                   source=SOURCE_TRANSCRIPT, wall_s=3.0,
+                   availability=Availability({"spans": measured(SOURCE_TRANSCRIPT)}))
+    assert flat.durations_measurable is False
+    assert occupancy_bins(flat) == ([], [])
+    status = concurrency(flat).availability.get("concurrency")
+    assert status.kind == UNAVAILABLE and "zero length" in status.reason
+
+
+def test_a_set_with_real_durations_is_still_binned():
+    """The other direction, so the guard cannot pass by refusing everything."""
+    from merlin.agentreport.spans import occupancy_bins
+    live = _spanset([(0.0, 30.0), (40.0, 90.0)])
+    centres, shares = occupancy_bins(live, bins=9)
+    assert len(centres) == 9 and max(shares) > 0
+    assert concurrency(live).availability.get("concurrency").kind == MEASURED

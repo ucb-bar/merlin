@@ -204,6 +204,7 @@ def _from_verdicts(run_dir: Path) -> PassSeries:
         return series
 
     rows: list[tuple[float, int, int]] = []
+    n_stamped = 0
     for f in sorted(history.glob("verdict*.json")):
         try:
             v = json.loads(f.read_text(encoding="utf-8", errors="ignore"))
@@ -215,7 +216,12 @@ def _from_verdicts(run_dir: Path) -> PassSeries:
         if not isinstance(total, int) or total <= 0 or not isinstance(passed, int):
             series.n_no_denominator += 1
             continue
-        rows.append((f.stat().st_mtime, passed, total))
+        # Prefer the stamp the grader wrote. An mtime is a property of the FILE, not the run: it
+        # does not survive a copy, and these trees get copied between worktrees.
+        stamped = _iso_seconds(v.get("graded_at"))
+        if stamped is not None:
+            n_stamped += 1
+        rows.append((stamped if stamped is not None else f.stat().st_mtime, passed, total))
     series.n_rows = len(rows) + series.n_no_denominator
     if not rows:
         series.availability.set("passes", unavailable(
@@ -231,8 +237,29 @@ def _from_verdicts(run_dir: Path) -> PassSeries:
         prev = passed
         series.points.append(PassPoint(mtime - t0, passed, total))
     series.wall_s = series.points[-1].t_s
-    series.availability.set("passes", derived(
-        f"reconstructed from {len(rows)} qa_history verdict file(s); this run wrote no "
-        f"selfcheck_log.jsonl, so the time axis is the verdict files' mtime, not a stamp the run "
-        f"recorded. An mtime does not survive a tree copy.", source="qa_history_mtime"))
+    if n_stamped == len(rows):
+        series.availability.set("passes", measured("qa_history_graded_at"))
+    elif n_stamped:
+        series.availability.set("passes", derived(
+            f"reconstructed from {len(rows)} qa_history verdict file(s), of which {n_stamped} carry "
+            f"the grader's own `graded_at` stamp and {len(rows) - n_stamped} fall back to the file's "
+            f"mtime. An mtime does not survive a tree copy, so the unstamped part of this axis is "
+            f"filesystem metadata.", source="qa_history_mixed"))
+    else:
+        series.availability.set("passes", derived(
+            f"reconstructed from {len(rows)} qa_history verdict file(s); this run wrote no "
+            f"selfcheck_log.jsonl and its verdicts predate the `graded_at` stamp, so the time axis is "
+            f"the files' mtime rather than anything the run recorded. An mtime does not survive a "
+            f"tree copy.", source="qa_history_mtime"))
     return series
+
+
+def _iso_seconds(value) -> float | None:
+    """Epoch seconds for an ISO-8601 stamp, or ``None`` when there is not one."""
+    if not isinstance(value, str) or not value:
+        return None
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None

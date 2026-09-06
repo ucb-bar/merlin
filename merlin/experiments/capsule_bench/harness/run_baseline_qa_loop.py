@@ -24,12 +24,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import datetime as _dt
 import json
 import os
 import re
 import shutil
 import shlex
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -61,6 +63,21 @@ def _strip_build_state(root: Path) -> None:
                 shutil.rmtree(p) if p.is_dir() else p.unlink()
             except Exception:
                 pass
+
+
+def _make_agent_owned_tree_writable(root: Path) -> None:
+    """Make a copied seed authorable without changing its preserved source modes.
+
+    Frozen submissions intentionally have no write bits. ``copytree`` preserves those modes, but the
+    destination is a fresh agent workspace rather than another frozen artifact. Restore only owner
+    read/write (and directory traversal), preserving executable and group/other permission bits.
+    """
+    for path in (root, *root.rglob("*")):
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if path.is_dir():
+            path.chmod(mode | stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        elif path.is_file():
+            path.chmod(mode | stat.S_IRUSR | stat.S_IWUSR)
 
 
 def _validate_seed_submission_source(source: str | Path, seeded: Path) -> Path:
@@ -95,6 +112,22 @@ def _validate_seed_submission_source(source: str | Path, seeded: Path) -> Path:
     return source_dir
 
 
+def _validate_seal_current_request(*, seal_current: bool, resume: bool,
+                                   legacy_continuous: bool) -> None:
+    """Keep an operator-requested incomplete seal on the certified resume path.
+
+    This is not a success override.  It only lets a resumed run stop authoring at its last completed
+    checkpoint and continue through the ordinary official grade/freeze path.  Downstream admission still
+    sees a non-converged run and must name every completeness waiver explicitly.
+    """
+    if not seal_current:
+        return
+    if not resume:
+        raise RuntimeError("--seal-current requires --resume of an existing checkpointed run")
+    if legacy_continuous:
+        raise RuntimeError("--seal-current requires the certified --schedule path, not --continuous")
+
+
 def _seed_submission(ws: Path, source: str | Path, run_dir: Path) -> dict:
     """Seed a *fresh* workspace from a preserved candidate and record its exact bytes.
 
@@ -116,6 +149,7 @@ def _seed_submission(ws: Path, source: str | Path, run_dir: Path) -> dict:
         return {name for name in names if name in ignored_dirs}
 
     shutil.copytree(source_dir, seeded, ignore=_ignore)
+    _make_agent_owned_tree_writable(seeded)
     _strip_build_state(seeded)
 
     content = hashlib.sha256()
@@ -1484,12 +1518,35 @@ def _read_was_blocked(result_text) -> bool:
 _PATHLIST_RE = re.compile(r"\b(find|locate|which|whereis|ls)\b|\bgrep\b[^|;&]*\s-\w*l\b")
 
 
+def _is_owned_submission_target(word: str, workspace: Path | None) -> bool:
+    """Whether a read operand resolves to an agent-owned file below ``submission/``.
+
+    Resolve the path, rather than trusting its lexical ``submission/`` prefix: otherwise a symlink in
+    the authored tree could turn the ownership exemption into a route to a withheld host path.
+    """
+    if workspace is None or not word:
+        return False
+    raw = word.strip().strip("'\";,()[]{}")
+    if not raw:
+        return False
+    ws = Path(workspace).resolve(strict=False)
+    owned = (ws / "submission").resolve(strict=False)
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = ws / candidate
+    try:
+        return candidate.resolve(strict=False).is_relative_to(owned)
+    except (OSError, RuntimeError):
+        return False
+
+
 def _classify_bash_read(cmd: str, result_text, answer_tokens, word: str = "", tok: str = "",
-                       granted: frozenset = frozenset()) -> str:
+                       granted: frozenset = frozenset(), workspace: Path | None = None) -> str:
     """Classify a flagged Bash read, cheapest-and-most-benign explanation first:
 
       'blocked_probe'   the mask returned nothing -> no withheld bytes reached the agent;
       'recon_probe'     a path-LISTING search that surfaced no answer path (filenames, not content);
+      'owned_read'      a read that resolves inside this run's agent-authored submission tree;
       'granted_read'    the read target is a file this arm's own bundle GRANTS;
       'pattern_mention' the token appeared as a search PATTERN, not as a path being read;
       'path_read'       a content read of a withheld path that returned data.
@@ -1500,6 +1557,8 @@ def _classify_bash_read(cmd: str, result_text, answer_tokens, word: str = "", to
         return "blocked_probe"
     if _PATHLIST_RE.search(cmd) and not any(t in (result_text or "") for t in answer_tokens):
         return "recon_probe"
+    if _is_owned_submission_target(word, workspace):
+        return "owned_read"
     if word and _is_granted_target(word, granted):
         return "granted_read"
     if word and tok and not _token_is_path_like(word, tok):
@@ -1513,7 +1572,8 @@ def _classify_bash_read(cmd: str, result_text, answer_tokens, word: str = "", to
 _ADVISORY_KINDS = _AS.AUDIT_ADVISORY_KINDS
 
 
-def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None = None) -> dict:
+def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None = None,
+                     workspace: Path | None = None) -> dict:
     """Flag genuine READS of withheld answer/grader/oracle paths AND oracle USE in agent-authored
     code (defence-in-depth beyond the masked workspace). Self-scans of the submission and bare path
     mentions are NOT flagged. Arm-aware: the merlin arm's allowed tools are not treated as cheats.
@@ -1522,6 +1582,10 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None 
     ``blocked_probe`` — it does NOT break ``clean`` — since no answer content reached the agent. Only a read
     that actually returned content (a mask breach) or oracle USE breaks ``clean``. This stops a thorough
     model that merely *probes* a masked golden (and gets nothing) from being falsely marked answer-unclean.
+
+    Ownership-aware: a content read that resolves below this run's own ``submission/`` is advisory, not
+    answer access. Resolution follows symlinks, so a submission path that escapes the owned tree remains
+    a violation. Agent-authored Python is still scanned independently for oracle imports and calls.
 
     Grant-aware: what counts as an oracle import, and which read targets are legitimate, are DERIVED from
     this arm's own input bundle (``bundle`` overrides the arm's default, which is what lets a stored run
@@ -1551,6 +1615,8 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None 
                 if tok:
                     if _read_was_blocked(results.get(b.get("id"))):
                         kind = "blocked_probe"
+                    elif _is_owned_submission_target(fp, workspace):
+                        kind = "owned_read"
                     elif _is_granted_target(fp, granted):
                         kind = "granted_read"
                     else:
@@ -1562,7 +1628,8 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None 
                 if match:
                     tok, word = match
                     kind = _classify_bash_read(cmd, results.get(b.get("id")), _ANSWER_TOKENS,
-                                               word=word, tok=tok, granted=granted)
+                                               word=word, tok=tok, granted=granted,
+                                               workspace=workspace)
                     hits.append({"tool": name, "kind": kind, "token": tok, "input": cmd[:200]})
                 # inline python that imports/calls the oracle (e.g. `python -c "from merlin.runtime..."`)
                 if _PYC_RE.search(cmd):
@@ -1586,6 +1653,7 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None 
     return {"clean": len(violations) == 0, "hits": hits,
             "blocked_probes": sum(1 for h in hits if h.get("kind") == "blocked_probe"),
             "recon_probes": sum(1 for h in hits if h.get("kind") == "recon_probe"),
+            "owned_reads": sum(1 for h in hits if h.get("kind") == "owned_read"),
             "granted_reads": sum(1 for h in hits if h.get("kind") == "granted_read"),
             "pattern_mentions": sum(1 for h in hits if h.get("kind") == "pattern_mention")}
 
@@ -2226,6 +2294,58 @@ def _stop_selfcheck_broker(ws: Path, brokers) -> None:
             b.kill()
 
 
+def _feedback_health(ws: Path, *, now: float | None = None) -> dict:
+    """Durable end-of-run accounting for the synchronous self-check channel.
+
+    Expired requests are abandoned clients, not model failures, but they still prove the promised
+    synchronous feedback was not delivered. Any request without an atomic response+done pair makes the
+    channel unhealthy; ``expired`` versus ``stranded`` distinguishes a past timeout from live work.
+    """
+    ch = Path(ws) / ".qa_channel"
+    now = time.time() if now is None else now
+    if not ch.is_dir():
+        return {"protocol": 3, "requests": 0, "completed": 0, "expired": 0,
+                "stranded": 0, "orphan_responses": 0, "done_without_response": 0,
+                "replayed": 0, "max_queue_depth": 0, "healthy": True}
+    requests = {p.stem[len("req_"):]: p for p in ch.glob("req_*.json")}
+    responses = {p.stem[len("resp_"):]: p for p in ch.glob("resp_*.json")}
+    done = {p.name[len("done_"):] for p in ch.glob("done_*")}
+    completed = {rid for rid in requests if rid in responses and rid in done}
+    expired: set[str] = set()
+    from selfcheck_broker import _request_deadline
+    for rid, req in requests.items():
+        if rid not in completed:
+            try:
+                if now > _request_deadline(req):
+                    expired.add(rid)
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+    stranded = set(requests) - completed - expired
+    broker_stats = {}
+    health_file = ch / "broker_health.json"
+    if health_file.is_file():
+        try:
+            broker_stats = json.loads(health_file.read_text(encoding="utf-8"))
+        except Exception:
+            broker_stats = {"health_record_error": "unreadable"}
+    orphan_responses = set(responses) - set(requests)
+    done_without_response = done - set(responses)
+    healthy = not expired and not stranded and not orphan_responses and not done_without_response
+    return {
+        "protocol": 3,
+        "requests": len(requests),
+        "completed": len(completed),
+        "expired": len(expired),
+        "stranded": len(stranded),
+        "orphan_responses": len(orphan_responses),
+        "done_without_response": len(done_without_response),
+        "replayed": int(broker_stats.get("replayed", 0)),
+        "max_queue_depth": int(broker_stats.get("max_queue_depth", 0)),
+        "broker_starts": int(broker_stats.get("broker_starts", 0)),
+        "healthy": healthy,
+    }
+
+
 def _language_ok(submission_dir: Path) -> tuple[bool, str]:
     """Enforce the current arm's language mandate on the emitted submission (merlin arms => xDSL/Python,
     not a hand C++ backend). Delegates to tooling_readiness.submission_language_ok; degrades to OK if the
@@ -2238,7 +2358,8 @@ def _language_ok(submission_dir: Path) -> tuple[bool, str]:
 
 
 def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
-             label: str = "round") -> dict:
+             label: str = "round", *, scratch_key: str | None = None,
+             previous_scratch_key: str | None = None) -> dict:
     """Copy the agent's submission to an operator-only scratch, grade it, return + persist the
     redacted verdict (into ws/qa/verdict.json for the next round, and archived per round).
 
@@ -2246,7 +2367,11 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
     round grade, so the per-round trajectory readers (`gen_trajectory_v2`, `abc_status`, which glob
     ``verdict_round_*.json``) keep seeing exactly the rounds. A grade taken WHILE a turn is still running
     is not a round and is filed under its own label, so it cannot be mistaken for one."""
-    _key = f"{rnd:02d}" if label == "round" else str(rnd)
+    # In-turn tick numbers restart for every agent round. Keying scratch only by ``rnd`` therefore
+    # reuses the previous round's sealed, read-only ``cand_901/submission`` and fails before grading
+    # with PermissionError. Keep the numeric id for logs, but let the caller supply a run-wide scratch
+    # identity that includes both the agent round and its tick.
+    _key = scratch_key or (f"{rnd:02d}" if label == "round" else str(rnd))
     cand = run_dir / "_qa_work" / f"cand_{_key}" / "submission"
     if cand.exists():
         shutil.rmtree(cand.parent)
@@ -2282,9 +2407,12 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
         verdict = qa_check.run(str(cand), str(_pilot_subset()),
                                run_dir / "_qa_work" / f"runs_{_key}",
                                {"public", "dev"}, no_oracle, timeout)
-        out.write_text(json.dumps(verdict, indent=2))
-        _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{_key}", verdict)
-        _attach_shape_generalization(verdict, cand, run_dir, rnd, timeout=timeout)
+        verdict = _write_verdict(out, verdict)
+        _write_stage_ledger(run_dir, rnd, cand, run_dir / "_qa_work" / f"runs_{_key}", verdict,
+                            artifact_key=scratch_key,
+                            previous_artifact_key=previous_scratch_key)
+        _attach_shape_generalization(verdict, cand, run_dir, rnd, timeout=timeout,
+                                     artifact_key=scratch_key)
     # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
     # verdict the agent ASKED for -- and a converged agent stops asking. Measured on the run that
     # motivated this: 24 self-checks in round 0, then ZERO in rounds 1 and 2 once it reached the corpus
@@ -2298,7 +2426,8 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
         from tier_promote import promote as _promote, resolve_tiers as _resolve
         _loop, _cert, _cover = _resolve(ws)
         if _loop and _cert and isinstance(verdict, dict) and verdict.get("per_capsule"):
-            _p = _promote(ws, ws / ".qa_channel", verdict, _loop, _cert, _cover, _sys.stderr)
+            _p = _promote(ws, ws / ".qa_channel", verdict, _loop, _cert, _cover, _sys.stderr,
+                          source_ws=cand.parent)
             if _p:
                 print(f"  [promote] round grade -> {_cert}: {_p}", flush=True)
     except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
@@ -2307,7 +2436,7 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)
-    (qa_dir / "verdict.json").write_text(json.dumps(verdict, indent=2))
+    _write_verdict(qa_dir / "verdict.json", verdict)
     return verdict
 
 
@@ -2326,6 +2455,18 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
 # reading as SUCCESS is a recurring bug in this repo; this is not another instance of it.
 _BG_TICK_BASE = 900       # background-grade ids, disjoint from round ids (0..99): no work tree collides
 _FIRST_GRADE_POLL_S = 30  # how often to look for a submission worth grading
+
+
+def _in_turn_grade_key(round_index: int, tick: int) -> str:
+    """A run-wide scratch identity for one in-turn grade.
+
+    The human-facing numeric tick deliberately remains in its historical band; only filesystem and
+    archive identities need the agent-round coordinate that prevents a later round from reopening a
+    frozen snapshot.
+    """
+    if round_index < 0 or tick < 1:
+        raise ValueError("in-turn grade coordinates must be a non-negative round and positive tick")
+    return f"r{round_index:04d}_t{tick:06d}"
 
 
 def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
@@ -2407,13 +2548,14 @@ def _fast_loop_verdict(ws: Path, run_dir: Path, tick: int, timeout: int) -> dict
                                      sorted(adapters), sorted(_withheld))
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(verdict, indent=2))
+    verdict = _write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    (ws / "qa" / "verdict.json").write_text(json.dumps(verdict, indent=2))
+    _write_verdict(ws / "qa" / "verdict.json", verdict)
     return verdict
 
 
-def _start_in_turn_grader(ws: Path, run_dir: Path, a, *, interval_grades: bool):
+def _start_in_turn_grader(ws: Path, run_dir: Path, a, *, interval_grades: bool,
+                          round_index: int = 0):
     """Start the in-turn grader for ONE agent turn; returns a handle for `_stop_in_turn_grader`.
 
     Phase 1 (always): if the agent has no verdict at all, land one — the fast loop-tier grade above —
@@ -2454,14 +2596,18 @@ def _start_in_turn_grader(ws: Path, run_dir: Path, a, *, interval_grades: bool):
         if not interval_grades or int(a.grade_interval) <= 0:
             return
         t = 0
+        previous_key = None
         while not stop.wait(max(30, int(a.grade_interval))):
             t += 1
+            scratch_key = _in_turn_grade_key(round_index, t)
             try:
                 v = qa_grade(ws, run_dir, _BG_TICK_BASE + t, a.no_oracle, a.qa_timeout,
-                             label="inturn")
+                             label="inturn", scratch_key=scratch_key,
+                             previous_scratch_key=previous_key)
             except Exception as e:  # noqa: BLE001 — a mid-write submission must never kill the run
                 print(f"[in-turn grade {t}] skipped: {type(e).__name__}: {e}", flush=True)
                 continue
+            previous_key = scratch_key
             print(f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} "
                   f"all_pass={v.get('all_pass')}", flush=True)
 
@@ -2489,7 +2635,8 @@ def _stop_in_turn_grader(handle) -> None:
 # loop tier. Restricted to the multi-tile corners: the question is "does this backend generalize past ONE
 # tile, and along WHICH axis" -- per-axis, because a backend that loops over K and N but not M passes two
 # of the three, and only naming the axis makes the result actionable.
-def _attach_shape_generalization(verdict: dict, cand, run_dir, rnd: int, *, timeout: int) -> None:
+def _attach_shape_generalization(verdict: dict, cand, run_dir, rnd: int, *, timeout: int,
+                                 artifact_key: str | None = None) -> None:
     """Probe whether this round's candidate LOWERS shapes past a single tile, and fold it into the gate.
 
     Structural, not numerical: it runs only the emit half of the contract and compares the size of the
@@ -2500,7 +2647,8 @@ def _attach_shape_generalization(verdict: dict, cand, run_dir, rnd: int, *, time
     Failure to run is RECORDED, never treated as clean -- a probe that did not run reading as a pass is
     the same class of bug as an unavailable oracle scoring as one.
     """
-    out = run_dir / "qa_history" / f"shape_coverage_round_{rnd:02d}.json"
+    key = artifact_key or f"{rnd:02d}"
+    out = run_dir / "qa_history" / f"shape_coverage_round_{key}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
         from merlin.targetgen import lowering_coverage as LC
@@ -2542,7 +2690,29 @@ def _attach_shape_generalization(verdict: dict, cand, run_dir, rnd: int, *, time
                else "the baseline tile itself (nothing about shape can be concluded yet)"))
 
 
-def _write_stage_ledger(run_dir, rnd: int, cand, runs_root, verdict) -> None:
+def _write_verdict(path: Path, verdict: dict) -> dict:
+    """Write a verdict WITH the time it was produced, and return it.
+
+    Verdicts carried no timestamp of any kind. Under the continuous schedule the grader refreshes
+    them while the agent works, so the sequence of verdicts IS the run's progress record -- and with
+    no stamp inside, the only clock a reader has is the file's mtime. An mtime does not survive a
+    copy, and several of these run trees have been copied between worktrees, so every progress curve
+    drawn from them rests on filesystem metadata rather than on anything the run recorded.
+
+    Stamping costs one field. `graded_at` is UTC and ISO-8601, matching the spelling every other
+    record in the run tree uses. Existing verdicts are unaffected: readers fall back to the mtime and
+    say so.
+    """
+    verdict = dict(verdict)
+    verdict.setdefault("graded_at", _dt.datetime.now(_dt.timezone.utc).isoformat())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(verdict, indent=2))
+    return verdict
+
+
+def _write_stage_ledger(run_dir, rnd: int, cand, runs_root, verdict, *,
+                        artifact_key: str | None = None,
+                        previous_artifact_key: str | None = None) -> None:
     """Record per-round artifact fingerprints beside the verdict — OUT OF BAND.
 
     Answers "did the agent's edit reach what was graded?" from bytes, so a plateau is one line instead of
@@ -2556,8 +2726,14 @@ def _write_stage_ledger(run_dir, rnd: int, cand, runs_root, verdict) -> None:
 
         led_dir = run_dir / "rounds"
         led_dir.mkdir(parents=True, exist_ok=True)
-        prev_p = led_dir / f"round_{rnd - 1:02d}.stage_ledger.json"
-        prev = json.loads(prev_p.read_text()) if rnd and prev_p.is_file() else None
+        key = artifact_key or f"{rnd:02d}"
+        if artifact_key is None:
+            previous_key = f"{rnd - 1:02d}" if rnd else None
+        else:
+            previous_key = previous_artifact_key
+        prev_p = (led_dir / f"round_{previous_key}.stage_ledger.json"
+                  if previous_key is not None else None)
+        prev = json.loads(prev_p.read_text()) if prev_p is not None and prev_p.is_file() else None
 
         # Per-capsule emit dirs, found by SHAPE at any depth: a dir named for the emit output whose
         # PARENT is a graded capsule dir (it holds the capsule's own result/manifest). Depth and the
@@ -2570,7 +2746,7 @@ def _write_stage_ledger(run_dir, rnd: int, cand, runs_root, verdict) -> None:
         led = SL.build(submission_dir=cand, emitted_roots=roots, previous=prev)
         led["round"] = rnd
         led["failing_and_frozen"] = SL.failing_and_frozen(led, verdict)
-        (led_dir / f"round_{rnd:02d}.stage_ledger.json").write_text(json.dumps(led, indent=2))
+        (led_dir / f"round_{key}.stage_ledger.json").write_text(json.dumps(led, indent=2))
         print(f"  {SL.summarize(led)}", flush=True)
         if led["failing_and_frozen"]:
             print(f"  stage_ledger: FAILING AND FROZEN ({len(led['failing_and_frozen'])}): "
@@ -2622,7 +2798,7 @@ def finalize_report(ws: Path, run_dir: Path, model: str, effort: str, sandbox: s
     shutil.copytree(ws / "submission", snap,
                     ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
 
-    (ws / "qa" / "verdict.json").write_text(json.dumps(verdict, indent=2))
+    _write_verdict(ws / "qa" / "verdict.json", verdict)
     (ws / "FINALIZE.md").write_text(
         "All required public/dev pilot capsules now PASS (see qa/verdict.json: all_pass=true).\n\n"
         "Do ONLY this, then stop:\n"
@@ -2662,7 +2838,7 @@ def finalize_report(ws: Path, run_dir: Path, model: str, effort: str, sandbox: s
         restored = True
     # guarantee the frozen report's status line matches the verified verdict
     stamped = _stamp_report_status(ws / "submission" / "REPORT.md", _PASS_LINE)
-    audit = audit_transcript(tpath, arm)
+    audit = audit_transcript(tpath, arm, workspace=ws)
     return {"agent_rc": rc, "regrade_all_pass": regrade.get("all_pass"),
             "restored_after_regression": restored, "status_line_stamped_by_driver": stamped,
             "answer_access_clean": audit["clean"], "audit_hits": audit["hits"],
@@ -2698,13 +2874,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="AWS region for --provider bedrock")
     ap.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""),
                     help="AWS profile (~/.aws) for --provider bedrock; else the env-var cred chain")
-    ap.add_argument("--schedule", choices=("rounds", "continuous"), default="rounds",
-                    help="ROUNDS (default, byte-identical to before): the loop is bounded by "
+    ap.add_argument("--schedule", choices=("rounds", "continuous"), default="continuous",
+                    help="CONTINUOUS (default): the round COUNT stops being a terminator and the run "
+                         "ends on convergence, plateau, or a declared wall/spend budget. ROUNDS is the "
+                         "explicit legacy-reproduction mode: the loop is bounded by "
                          "--max-rounds, and the run ends when that budget is spent whether or not the "
-                         "submission was still improving. CONTINUOUS: the round COUNT stops being a "
-                         "terminator — the run ends on convergence, on a plateau, or on a wall/spend "
-                         "budget, i.e. on evidence about the submission rather than on an arithmetic "
-                         "cap. Per-capsule promotion is unaffected by this flag: a capsule's cert tier "
+                         "submission was still improving. Per-capsule promotion is unaffected by this "
+                         "flag: a capsule's cert tier "
                          "is enqueued the moment its loop tier passes (tier_promote fires on EVERY "
                          "verdict — both brokers and the round grade), never at a round boundary. What "
                          "continuous removes is the ARTIFICIAL end, not the grading cadence.\n"
@@ -2807,6 +2983,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="TEST ONLY: override the reset epoch to wait toward (verification, not 5h)")
     ap.add_argument("--resume", action="store_true",
                     help="continue an existing run_dir (cross-window robustness) instead of refusing")
+    ap.add_argument("--seal-current", action="store_true",
+                    help="resume-only: stop authoring at the last completed checkpoint, then run the "
+                         "ordinary official public/hidden grade and immutable freeze. This records an "
+                         "incomplete operator seal; it never reports convergence or bypasses integrity")
     ap.add_argument("--seed-submission", default="", metavar="DIR",
                     help="fresh run only: initialize submission/ from a preserved candidate while the "
                          "new run seals its current bundle and records the candidate's exact identity")
@@ -2827,10 +3007,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--account-config-dir", default=os.environ.get("CLAUDE_CONFIG_DIR", ""),
                     help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)")
     a = ap.parse_args(argv)
+    _launch_argv = list(argv) if argv is not None else list(sys.argv[1:])
+    _run_config = {
+        "schedule": a.schedule,
+        "session_mode": ("legacy_progress_only" if a.continuous else
+                         "certified_continuous" if a.schedule == "continuous" else
+                         "legacy_round_relaunch"),
+        "max_wall_s": a.max_wall_s,
+        "max_rounds": a.max_rounds,
+        "round_timeout_s": a.round_timeout,
+        "qa_timeout_s": a.qa_timeout,
+        "grade_interval_s": a.grade_interval,
+        "selfcheck_protocol": 3,
+        "launcher_argv": _launch_argv,
+    }
     if a.resume and a.seed_submission:
         raise RuntimeError("--seed-submission cannot be combined with --resume")
     if a.resume and a.operator_errata:
         raise RuntimeError("--operator-errata cannot be combined with --resume")
+    _validate_seal_current_request(seal_current=a.seal_current, resume=a.resume,
+                                   legacy_continuous=a.continuous)
     # A real (spending) run MUST be sandboxed: without bwrap the agent can read any absolute path (incl.
     # denied /scratch* answer dirs), so the copy-workspace + post-hoc transcript audit alone do NOT isolate
     # it. Fail closed (parity with run_agent_experiment.py) — an unsandboxed run needs an explicit opt-in.
@@ -3111,6 +3307,7 @@ def main(argv: list[str] | None = None) -> int:
             "driver": _DRIVER, "provider": a.provider,
             "subagent_model": _SUBAGENT_MODEL or None, "background_model": _BACKGROUND_MODEL or None,
             "sandbox": a.sandbox, "qa_loop": True,
+            "run_config": _run_config,
             "task_scope": _task_scope_record,
             "workspace_path": str(ws), "workspace_copy_report": copy_report,
             "seed_submission": _seed_submission_record,
@@ -3250,6 +3447,36 @@ def main(argv: list[str] | None = None) -> int:
               f"active={active_wall_s:.0f}s rate_limit_wait={rate_limit_wait_s:.0f}s "
               f"waits_used={rl_waits_used}")
 
+    operator_seal = None
+    if a.seal_current:
+        if not rounds_summary:
+            raise RuntimeError("--seal-current requires at least one completed, audited round")
+        if not (ws / "submission" / "manifest.yaml").is_file():
+            raise RuntimeError("--seal-current requires a checkpointed submission with manifest.yaml")
+        # An interrupted in-flight round may have a partial transcript on disk.  Conformance must be
+        # derived from the last round the checkpoint actually records, never from unaudited tail bytes.
+        completed_rounds = sorted({int(row["round"]) for row in rounds_summary
+                                   if isinstance(row, Mapping)
+                                   and isinstance(row.get("round"), int)})
+        if not completed_rounds:
+            raise RuntimeError("--seal-current checkpoint names no completed round")
+        completed_path = run_dir / "rounds" / f"round_{completed_rounds[-1]:02d}.transcript.jsonl"
+        if not completed_path.is_file():
+            raise RuntimeError(
+                f"--seal-current completed-round transcript is absent: {completed_path}")
+        _latest_authoring_tpath = completed_path
+        operator_seal = {
+            "version": 1,
+            "requested": True,
+            "reason": "operator accepted an incomplete functional baseline for named-waiver admission",
+            "requested_at": datetime.now(timezone.utc).isoformat(),
+            "last_completed_round": completed_rounds[-1],
+            "completed_rounds": len(rounds_summary),
+            "checkpoint_submission_sha256": C.hash_tree(ws / "submission")["sha256"],
+        }
+        print(f"[operator-seal] authoring stopped at completed round {completed_rounds[-1]}; "
+              "continuing through official grade + immutable freeze (NOT convergence)", flush=True)
+
     def _authoring_complete() -> bool:
         """Pre-freeze gate: enough evidence to stop editing and begin the official grade."""
         return _authoring_completion(bool(verdict.get("all_pass")), workflow_conformant)
@@ -3361,6 +3588,8 @@ def main(argv: list[str] | None = None) -> int:
         A safety cap remains via --max-rounds only if the caller explicitly lowers it; the default 12 is
         ignored in continuous mode so it cannot silently reimpose the very bound this removes.
         """
+        if a.seal_current:
+            return False
         if _authoring_complete():
             return False
         if a.schedule == "rounds":
@@ -3378,7 +3607,8 @@ def main(argv: list[str] | None = None) -> int:
         # feedback from, and under `--schedule continuous` one turn can be the whole run — measured, an
         # agent spent 6184s with no qa/ directory at all. The fast loop-tier grade lands one in minutes;
         # in continuous mode the full mandatory-ladder grade then repeats on --grade-interval.
-        _bg = _start_in_turn_grader(ws, run_dir, a, interval_grades=(a.schedule == "continuous"))
+        _bg = _start_in_turn_grader(ws, run_dir, a, interval_grades=(a.schedule == "continuous"),
+                                    round_index=rnd)
         try:
             if _operator_errata_record is not None:
                 _verify_operator_errata(_operator_errata_record, run_dir)
@@ -3484,7 +3714,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[round {rnd}] resume-note skipped: {type(_e).__name__}: {_e}")
         rsum = ET.parse_transcript(tpath, billing_mode=_billing_mode(a.model),
                                    trust_cli_cost=_trust_cli_cost(a.model))
-        audit = audit_transcript(tpath, arm)
+        audit = audit_transcript(tpath, arm, workspace=ws)
         # Dev-conformance GATE: numeric progress is still reported, but a nonconformant workflow cannot
         # advance to the official claim-bearing grade.
         conf, workflow_conformant = _workflow_conformance(
@@ -3698,7 +3928,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[verilator] cycle-accurate cert SKIPPED — no capsule passed the loop tier "
               f"({_loop_tier or 'status'}), so there is nothing to certify; "
               f"{len(_l3_held)} capsule(s) recorded not_promoted (UNKNOWN at the cert tier, not passed)")
-    if _l3_checkpoint_should_run(_run_l3, workflow_conformant, _l3_eligible):
+    if a.seal_current:
+        print("[operator-seal] intermediate repair barrier skipped; the official grader still runs "
+              "the declared public/hidden tiers", flush=True)
+    elif _l3_checkpoint_should_run(_run_l3, workflow_conformant, _l3_eligible):
         # Per-capsule: every capsule that cleared the loop tier is certified now, independently of the
         # others. In realistic mode this checkpoint is still the definition of done; the agent already
         # self-checked on the tool, so this confirms on the operator side. Up to VERILATOR_ATTEMPTS with
@@ -3890,7 +4123,12 @@ def main(argv: list[str] | None = None) -> int:
         "cost_capped": cost_capped,   # stopped by the batch dollar ceiling, not convergence/max_rounds
         "n_rounds": len(rounds_summary), "wall_seconds": wall, "finalize": finalize,
         "timing": timing,
+        "run_config": _environment_record.get("run_config", _run_config),
+        "operator_seal": operator_seal,
     }
+
+    feedback_health = _feedback_health(ws)
+    qa_summary["feedback_health"] = feedback_health
 
     # Additionally sink this run's agentic telemetry into the shared aet store (opt-in,
     # MERLIN_AET_SINK=1) so it shows up in `aet spend` / `aet plot` across experiments. This is
@@ -3912,7 +4150,9 @@ def main(argv: list[str] | None = None) -> int:
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(wsub, dst, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-    if wsub.exists() and workflow_conformant:
+    incomplete_operator_seal = bool(operator_seal)
+    if wsub.exists() and ((workflow_conformant and feedback_health["healthy"])
+                          or incomplete_operator_seal):
         # Last gate before the official process performs its public grade + freeze + hidden grade.  The
         # authoring loop can last across worktree edits and quota-window resumes, so setup-time hashing is
         # not enough: recompute every treatment byte and the private snapshot content now, fail closed on
@@ -3951,11 +4191,20 @@ def main(argv: list[str] | None = None) -> int:
         if a.skip_hidden:
             grade_cmd.append("--skip-hidden")
         grade_proc = subprocess.run(grade_cmd, cwd=str(C.REPO))
+        _manifest_path = run_dir / "run_manifest.yaml"
+        if _manifest_path.is_file():
+            _manifest_doc = yaml.safe_load(_manifest_path.read_text(encoding="utf-8")) or {}
+            _manifest_doc["run_config"] = _environment_record.get("run_config", _run_config)
+            _manifest_doc["feedback_health"] = feedback_health
+            _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
         official_grade = _official_grade_result(grade_proc.returncode, run_dir)
+    elif wsub.exists() and not feedback_health["healthy"]:
+        official_grade["failures"] = ["feedback_channel_unhealthy"]
     elif wsub.exists():
         official_grade["failures"] = ["workflow_nonconformant"]
-    formal_complete = _formal_completion(bool(verdict.get("all_pass")), workflow_conformant,
-                                         official_grade["complete"])
+    formal_complete = (not incomplete_operator_seal) and _formal_completion(
+        bool(verdict.get("all_pass")), workflow_conformant,
+        official_grade["complete"] and feedback_health["healthy"])
     qa_summary.update({"converged": formal_complete, "formal_complete": formal_complete,
                        "official_grade": official_grade})
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(qa_summary, sort_keys=False))
