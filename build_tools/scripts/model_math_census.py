@@ -72,18 +72,28 @@ def _forward_block(module):
     return None
 
 
-def activation_dependence(module, n_activation_args: int):
+def activation_dependence(module, activation_args):
     """A predicate: does this value's def-chain reach one of `@forward`'s ACTIVATION arguments?
 
-    The weight tensors are lifted to TRAILING `@forward` arguments (`llvmlower.qinner.lift`), so the
-    first `n_activation_args` arguments are the real inputs and the rest are weights. Work that
-    reaches none of the first group is identical on every inference.
+    ``activation_args`` is the SET of argument POSITIONS that carry a real input, read from the
+    bundle manifest's own ``kind`` field by :func:`activation_arg_indices`.
+
+    THIS USED TO BE ``range(len(input_order.json))`` -- "the first n arguments are the inputs, the
+    rest are weights" -- AND THAT INVERTED THE ANSWER ON EVERY MODEL MEASURED HERE. `input_order.json`
+    maps an input NAME to its position in the inputs npz; it says nothing about argument positions.
+    Measured: resnet50_v1_5's single activation is argument **320** (0-160 are params, 161-319 are
+    buffers) and lstmnetvit's five are **98-102** -- neither overlaps the positional guess at all, so
+    the old rule labelled `model.conv1.weight` "the activation" and the image "weight-invariant".
+    The aggregate shares barely moved (the two operands of a contraction are similar in size), which
+    is exactly why the error survived review; but the ACTIVATION and WEIGHT_INVARIANT populations
+    were swapped, so every op the census NAMED as weight-invariant was an activation-side chain --
+    the one kind of work that cannot be hoisted.
     """
     block = _forward_block(module)
     if block is None:
         return None
     args = list(block.args)
-    activation = {id(a) for a in args[:n_activation_args]}
+    activation = {id(args[i]) for i in activation_args if 0 <= i < len(args)}
     memo: dict[int, bool] = {}
 
     def reaches(value) -> bool:
@@ -104,8 +114,22 @@ def activation_dependence(module, n_activation_args: int):
     return reaches
 
 
-def census(module, n_activation_args: int) -> dict:
-    reaches = activation_dependence(module, n_activation_args)
+def activation_arg_indices(manifest: dict) -> frozenset[int]:
+    """The `@forward` argument positions carrying a real INPUT, from the manifest's ``kind`` field.
+
+    Fails closed: a manifest that declares no input is an error rather than an empty set, because an
+    empty activation set silently classifies the WHOLE module as weight-invariant.
+    """
+    idx = frozenset(int(k) for k, v in manifest.items() if v.get("kind") == "input")
+    if not idx:
+        raise SystemExit("no @forward argument is declared kind='input' in the bundle manifest; "
+                         "refusing to guess which arguments are activations (a wrong guess "
+                         "inverts the ACTIVATION / WEIGHT_INVARIANT split)")
+    return idx
+
+
+def census(module, activation_args) -> dict:
+    reaches = activation_dependence(module, activation_args)
     rows: list[dict] = []
     for op in module.walk():
         if getattr(op, "name", None) != "linalg.generic":
@@ -167,17 +191,18 @@ def main(argv=None) -> int:
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.runtime.backends import zephyr_model as zm
 
-    order = a.bundle / "input_order.json"
-    n_act = len(json.loads(order.read_text())) if order.is_file() else 0
+    manifest = json.loads((a.bundle / "weights.safetensors.manifest.json").read_text())
+    act = activation_arg_indices(manifest)
     work = Path(tempfile.mkdtemp(prefix="math_census_"))
     prepared = zm._prepare_model_mlir(a.bundle / "model.mlir", work, int8_compute=a.int8)
-    result = census(parse_mlir_file(prepared), n_act)
+    result = census(parse_mlir_file(prepared), act)
     result["bundle"] = str(a.bundle)
-    result["n_activation_args"] = n_act
+    result["activation_args"] = sorted(act)
     result["prepared"] = str(prepared)
 
     print(f"\n{a.bundle.name}  ({result['n_carrying_generics']} generics carry a math.* op; "
-          f"{result['total_elements_per_inference']:,} elements/inference)\n")
+          f"{result['total_elements_per_inference']:,} elements/inference; "
+          f"activation args {sorted(act)})\n")
     print(f"{'math op':<18} {'kind':<12} {'data dependence':<18} {'#gen':>6} "
           f"{'elements/inf':>16} {'share':>8}")
     for r in result["ranked"]:
