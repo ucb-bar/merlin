@@ -67,9 +67,9 @@ def _trampoline_source(name: str, n_args: int) -> str:
     pointers. C has no such limit, so we unroll the call once (generated)."""
     decl_args = ", ".join(["void*"] * n_args)
     call_args = ", ".join(f"d[{i}]" for i in range(n_args))
-    return (f"extern void _mlir_ciface_{name}({decl_args});\n"
-            f"void merlin_call_{name}(void **d) {{ "
-            f"_mlir_ciface_{name}({call_args}); }}\n")
+    return (f"typedef void (*Entry)({decl_args});\n"
+            f"void merlin_call_{name}(Entry entry, void **d) {{ "
+            f"entry({call_args}); }}\n")
 
 
 @dataclass
@@ -83,17 +83,17 @@ class HostModel:
     @classmethod
     def load(cls, so_path: str, name: str = "forward",
              n_args: int | None = None, rtld_global: bool | None = None) -> "HostModel":
-        # RTLD_GLOBAL so a trampoline .so can resolve the ciface symbol; only needed for
-        # the trampoline path. Default to LOCAL otherwise, so several model libraries can
-        # coexist in one process without their shared `forward`/`memrefCopy` symbols
-        # clashing (different models export the same names with different signatures).
+        # Give the trampoline this library's exact entry address instead of asking the
+        # dynamic loader to resolve a process-global symbol.  Several A/B variants export
+        # the same forward/memrefCopy names, so even many-argument models must stay LOCAL.
         if rtld_global is None:
-            rtld_global = n_args is not None
+            rtld_global = False
         mode = ctypes.RTLD_GLOBAL if rtld_global else ctypes.RTLD_LOCAL
         lib = ctypes.CDLL(so_path, mode=mode)
         fn = getattr(lib, f"_mlir_ciface_{name}", None)
-        if fn is not None:
-            fn.restype = None
+        if fn is None:
+            raise ValueError(f"{so_path}: missing _mlir_ciface_{name}")
+        fn.restype = None
         model = cls(lib, fn)
         if n_args is not None:
             model._build_trampoline(so_path, name, n_args)
@@ -113,7 +113,7 @@ class HostModel:
         self.trampoline = ctypes.CDLL(str(out))
         self._call = getattr(self.trampoline, f"merlin_call_{name}")
         self._call.restype = None
-        self._call.argtypes = [ctypes.c_void_p]
+        self._call.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
     def __call__(self, arg_buffers: list) -> None:
         """arg_buffers: ordered args including outputs (appended last). Each entry is a
@@ -134,6 +134,6 @@ class HostModel:
             if len(keep) != len(arg_buffers):
                 raise ValueError("the trampoline path does not support scalar args")
             arr = (ctypes.c_void_p * len(keep))(*[ctypes.addressof(d) for d in keep])
-            self._call(ctypes.cast(arr, ctypes.c_void_p))
+            self._call(ctypes.cast(self.fn, ctypes.c_void_p), ctypes.cast(arr, ctypes.c_void_p))
         else:
             self.fn(*cargs)
