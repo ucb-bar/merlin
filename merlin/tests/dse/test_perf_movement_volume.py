@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.perf.movement_volume import (movement_evidence, movement_from_command_buffer,
+from merlin.perf.movement_volume import (ProgramMovement, movement_evidence,
+                                         movement_from_command_buffer,
                                          NO_COMMAND_BUFFER_REFUSAL)
 from merlin.perf.work_volume import work_from_command_buffer
 
@@ -85,3 +86,21 @@ def test_both_axes_agree_on_the_program_they_counted():
     mv, wk = movement_from_command_buffer(cb), work_from_command_buffer(cb)
     assert mv.artifact_sha256 == wk.artifact_sha256 != ""
     assert wk.exact_macs / mv.exact_bytes == pytest.approx(524288 / 66560)
+
+
+def test_the_block_declares_what_it_cannot_measure() -> None:
+    """A resident operand is charged once at its pack, so this module counts the traffic the command
+    buffer DECLARES, not what the emitted program issues. A lowering that re-loads a resident tile
+    per output tile yields an identical number here -- measured on gemmini, whose command buffer
+    emits a correct RES_PACK / MATMUL_RESIDENT / EVICT sequence while the emitted stream reloads.
+
+    The limitation therefore has to travel with the number: a reader holding only this block must be
+    able to tell that residency is NOT evidenced by it. Without these fields the module reports
+    intent and reads as measurement, which is the failure this repository keeps paying for.
+    """
+    block = ProgramMovement(commands=(), known_bytes_in=0, known_bytes_out=0,
+                            is_lower_bound=False, refusals=()).to_dict()
+    assert block["counts"] == "declared_by_command_buffer"
+    assert block["resident_operand_charged"] == "once_at_pack"
+    assert "re-loads a resident operand" in block["cannot_detect"]
+    assert "RES_PACK" in block["cannot_detect"], "name the check that WOULD detect it"

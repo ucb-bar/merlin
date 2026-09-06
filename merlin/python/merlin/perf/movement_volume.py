@@ -89,6 +89,18 @@ class ProgramMovement:
                 "known_bytes": self.known_bytes, "exact_bytes": self.exact_bytes,
                 "is_lower_bound": self.is_lower_bound, "artifact_sha256": self.artifact_sha256,
                 "refusals": list(self.refusals),
+                # THE LIMITATION TRAVELS WITH THE NUMBER. A resident operand is charged once at its
+                # pack, so this counts the traffic the command buffer DECLARES, not the traffic the
+                # emitted program issues. A backend whose lowering re-loads a resident tile per
+                # output tile produces exactly the same number here -- measured 2026-09-06 on
+                # gemmini, where the command buffer's RES_PACK / MATMUL_RESIDENT / EVICT sequence is
+                # correct while the emitted stream reportedly reloads. Residency is therefore NOT
+                # verifiable from this block, and a reader who treats it as issued traffic will
+                # conclude residency was achieved whenever it was merely intended.
+                "counts": "declared_by_command_buffer",
+                "resident_operand_charged": "once_at_pack",
+                "cannot_detect": ("a lowering that re-loads a resident operand; compare mvin count "
+                                  "against RES_PACK count in the decoded instruction stream"),
                 "commands": [command.to_dict() for command in self.commands]}
 
 
