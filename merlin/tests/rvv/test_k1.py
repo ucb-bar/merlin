@@ -80,6 +80,27 @@ class _DummyPkg:
     is_int8 = False
     schedule_text = ""
     compiler_features = ()
+    cflags = ()
+
+
+def test_model_compile_flags_honor_package_optimizations_but_keep_target_identity():
+    pkg = type("Package", (), {
+        "cflags": ["-march=rv64gcv", "-mabi=lp64d", "-O3",
+                   "-fno-vectorize", "-fno-slp-vectorize"],
+    })()
+    flags = k1._model_compile_flags(pkg, frozenset(), ["-O2"])
+
+    assert flags[0] == f"-march={k1.codegen_march()}"
+    assert flags[1] == f"-mabi={k1.K1_MABI}"
+    assert "-march=rv64gcv" not in flags
+    assert flags[-3:] == ["-O3", "-fno-vectorize", "-fno-slp-vectorize"]
+
+
+def test_model_compile_flags_leave_a_flagless_package_byte_compatible():
+    assert k1._model_compile_flags(_DummyPkg(), frozenset(), ["-O2"]) == [
+        f"-march={k1.codegen_march()}", f"-mabi={k1.K1_MABI}", "-O2",
+        "-Wno-override-module",
+    ]
 
 
 def test_main_linux_is_glibc_hosted():

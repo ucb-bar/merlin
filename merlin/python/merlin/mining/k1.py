@@ -757,6 +757,24 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return proc
 
 
+def _model_compile_flags(pkg, features, model_opt: list[str]) -> list[str]:
+    """Compose package tuning flags under the board adapter's non-negotiable target identity.
+
+    Packages commonly carry a generic ``-march=rv64gcv`` for portable runners.  The K1 model
+    object needs the adapter's verified VLEN and half-precision extensions, so package march/ABI
+    declarations are superseded while every actual optimization flag is preserved.  This makes
+    flags such as ``-fno-vectorize`` reach the compiler without allowing a package to erase the
+    target contract.
+    """
+    target_owned = ("-march", "-mabi")
+    package_flags = [flag for flag in list(getattr(pkg, "cflags", ()) or ())
+                     if not str(flag).startswith(target_owned)]
+    base = [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt,
+            "-Wno-override-module", *package_flags]
+    from ..llvmlower.impr_features import apply_cflags
+    return apply_cflags(base, features or frozenset())
+
+
 class K1Error(RuntimeError):
     pass
 
@@ -1057,10 +1075,7 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # and is never handed to the compiler emits byte-identical code while reporting as applied --
     # the inert-lever failure this file's own comments warn about. Only the model object gets these;
     # the harness and runtime stay on fixed flags so a measurement changes one thing.
-    from ..llvmlower.impr_features import apply_cflags as _apply_cflags
-    _model_flags = _apply_cflags(
-        [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt, "-Wno-override-module"],
-        feats or frozenset())
+    _model_flags = _model_compile_flags(pkg, feats, model_opt)
     _run([clang23, "--target=riscv64-unknown-linux-gnu", *_model_flags,
           "-c", res.ll_path, "-o", model_o])
     # 2b. POST-CODEGEN CENSUS: is the model still IN the object? A backend that deletes reachable
