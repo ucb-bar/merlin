@@ -96,6 +96,11 @@ class Config:
     # so what a result was measured over is never in doubt.
     perf_capsules: str = "all"
     perf_families: str = "all"
+    # How many executions ONE measurement cell may run at once. Cycle counts are invariant under
+    # fan-out (measured identical serial and at 16 workers); only wall time moves, and the width
+    # actually used is stamped on every measured tier so no timing block is compared across widths.
+    # One by default, because a formal campaign's width is DECLARED rather than inferred.
+    sim_workers: int = 1
 
 
 @dataclass(frozen=True)
@@ -1326,6 +1331,41 @@ def _measurement_cells(config: Config,
     return cells
 
 
+def baseline_lead_prefix(stages: Sequence[ChildStage], phases: Sequence[str]) -> int:
+    """How many leading cells must finish before the rest may fan out. Zero when nothing launches.
+
+    THE BASELINE ARM IS THE SAME BYTES IN EVERY CELL OF A CAMPAIGN. It is the frozen functional
+    submission; the trials fork CANDIDATES from it and never touch it. So for one corpus member the
+    baseline emits one program, and its cycle count on the pinned engine is a constant of the whole
+    campaign -- measured once, it is known for every trial that will ask for it. The measurement
+    store already returns it rather than re-deriving it, and the serial campaign therefore pays for
+    the baseline arm once and reads it twice.
+
+    That saving is FORFEITED the moment the cells fan out: three trials launched together all miss
+    the store at the same instant and all three pay, because none of them has finished yet. Letting
+    one cell per corpus land first restores it without changing a single measured number -- every
+    later cell still asks the engine for its own row, and gets back the number the engine returned
+    for those very bytes.
+
+    A PREFIX, deliberately, and not a filtered subset: `run_child_stages` commits on the calling
+    thread in the order it is handed, and the checkpoint chain is a strict linear hash chain. A
+    prefix split preserves that order exactly, so the recorded matrix is identical to the serial
+    one. The declared cell order interleaves the phases, so this prefix is short (one cell per
+    corpus, two in the full matrix).
+    """
+    wanted = {phase for stage, phase in zip(stages, phases) if stage.launch is not None}
+    if not wanted:
+        return 0
+    seen: set[str] = set()
+    for index, (stage, phase) in enumerate(zip(stages, phases)):
+        if stage.launch is None:
+            continue
+        seen.add(phase)
+        if seen == wanted:
+            return index + 1
+    return len(stages)
+
+
 def _measure_cells(cells: Sequence[_MeasurementCell], config: Config, state: Checkpoints, *,
                    command_runner: CommandRunner, workers: int) -> list[tuple[str, Path]]:
     """Measure every cell, optionally several at once; each writes a disjoint fresh run directory.
@@ -1342,6 +1382,7 @@ def _measure_cells(cells: Sequence[_MeasurementCell], config: Config, state: Che
             certificate_sha256=cell.certificate.sha256)
 
     stages: list[ChildStage] = []
+    stage_phases: list[str] = []
     for cell in cells:
         if state.evidence(cell.stage) is not None:
             continue
@@ -1362,6 +1403,7 @@ def _measure_cells(cells: Sequence[_MeasurementCell], config: Config, state: Che
                        "--gsim-certificate-sha256", cell.certificate.sha256,
                        "--rtl-facts", str(config.rtl_facts), "--run-id", cell.run_id,
                        "--timeout", str(config.measurement_timeout),
+                       "--sim-workers", str(config.sim_workers),
                        "--hardware-counters" if config.hardware_counters
                        else "--no-hardware-counters"]
             launch = partial(_run_checked, command_runner, command,
@@ -1373,7 +1415,13 @@ def _measure_cells(cells: Sequence[_MeasurementCell], config: Config, state: Che
             return saved
 
         stages.append(ChildStage(cell.stage, launch, commit))
-    run_child_stages(stages, workers=workers)
+        stage_phases.append(cell.phase)
+    lead = baseline_lead_prefix(stages, stage_phases) if workers > 1 else len(stages)
+    if 0 < lead < len(stages):
+        run_child_stages(stages[:lead], workers=workers)
+        run_child_stages(stages[lead:], workers=workers)
+    else:
+        run_child_stages(stages, workers=workers)
 
     manifests: list[tuple[str, Path]] = []
     for cell in cells:
@@ -1681,6 +1729,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tool-timeout-seconds", type=int, required=True)
     parser.add_argument("--smoke-replicates", type=int, default=1)
     parser.add_argument("--holdout-count", type=int, default=4)
+    parser.add_argument("--sim-workers", type=int, default=1, metavar="N",
+                        help="executions in flight per measurement cell (default 1 = serial)")
     parser.add_argument("--generalization-count", type=int, default=4)
     parser.add_argument("--measurement-timeout", type=int, default=3600)
     parser.add_argument("--gsim-max-cycles", type=int)

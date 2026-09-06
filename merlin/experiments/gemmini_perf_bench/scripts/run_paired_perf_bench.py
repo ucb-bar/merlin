@@ -18,6 +18,7 @@ import stat
 import threading
 import traceback
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -696,7 +697,13 @@ def _gsim_l3_adapter(target: str, evidence: dict[str, Any],
             "cycle_accurate": True,
             "binary_sha256": certificate.pins["gsim_binary"]["sha256"],
             "firrtl_sha256": certificate.pins["gsim_firrtl"]["sha256"],
-            "model_sha256": certificate.pins["gsim_model"]["sha256"]}
+            "model_sha256": certificate.pins["gsim_model"]["sha256"],
+            # SAID EXPLICITLY, so that SILENCE is not one of the answers. A hit writes a
+            # ``reused_measurement`` block here and a fresh measurement wrote nothing, which left an
+            # absent key meaning BOTH "this run measured it" and "nobody recorded which" -- and a
+            # reader cannot audit either one. False is a claim this run makes; None is now only ever
+            # a defect, and :func:`reuse_report` refuses a campaign that produces one.
+            "reused_measurement": False}
         _L3_MEMO[key] = {"evidence": copy.deepcopy(evidence["gsim"]),
                          "result": copy.deepcopy(primary)}
         store.put(key, engine, _L3_MEMO[key])
@@ -940,6 +947,63 @@ def completion_report(results: Sequence[Mapping[str, Any]],
             "complete": missing == failed == 0 and passed == len(wanted)}
 
 
+def _cell_label(row: Mapping[str, Any]) -> str:
+    return "/".join(str(row.get(key) or "") for key in
+                    ("phase", "arm", "family", "capsule", "replicate"))
+
+
+def carried_stamp(row: Mapping[str, Any]) -> bool | None:
+    """Did this cited row's cycles come from an earlier measurement? None means it does not say."""
+    provenance = row.get("provenance")
+    stamp = provenance.get("reused_measurement") if isinstance(provenance, Mapping) else None
+    if stamp is False:
+        return False
+    if isinstance(stamp, Mapping) and _is_sha256(stamp.get("measured_program_sha256")):
+        return True
+    return None
+
+
+def reuse_report(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """How many cited cycle counts this campaign MEASURED, and how many it CARRIED.
+
+    A carried number is exact -- it is the number the pinned engine returned for these very bytes,
+    not an estimate of it -- but a campaign that presents it as freshly measured is lying about its
+    evidence, which is worse than the hours the carry saved. The per-row provenance already says so
+    one row at a time; nothing said it at the level a reader of the campaign actually reads, so the
+    saving was invisible and therefore unauditable.
+
+    FAIL CLOSED on silence. A cited row whose provenance does not state which of the two it is
+    counts as ``unstated`` and makes the campaign not auditable -- an absent stamp is a defect in
+    the recording, never a licence to assume the row was measured here.
+    """
+    fresh: list[str] = []
+    carried: list[dict[str, str]] = []
+    unstated: list[str] = []
+    for row in results:
+        if row.get("simulator") != PRIMARY_SIMULATOR or row.get("citable") is not True:
+            continue
+        stamp = carried_stamp(row)
+        if stamp is False:
+            fresh.append(_cell_label(row))
+        elif stamp is True:
+            carried.append({"cell": _cell_label(row),
+                            "measured_program_sha256":
+                                row["provenance"]["reused_measurement"]["measured_program_sha256"]})
+        else:
+            unstated.append(_cell_label(row))
+    return {
+        "schema": "paired_measurement_reuse_v1", "timing_authority": PRIMARY_SIMULATOR,
+        "cited_cells": len(fresh) + len(carried) + len(unstated),
+        "measured_here": len(fresh), "carried": len(carried), "unstated": len(unstated),
+        "carried_cells": sorted(carried, key=lambda item: item["cell"]),
+        "unstated_cells": sorted(unstated),
+        "auditable": not unstated,
+        "basis": ("a carried cell ran the byte-identical emitted program on the byte-identical "
+                  "pinned engine in an earlier measurement; its cycles are that measurement's "
+                  "return value, not an estimate of it"),
+    }
+
+
 def paired_cycle_rows(results: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     indexed = {(str(row.get("arm")), str(row.get("family")), str(row.get("capsule")),
                 str(row.get("simulator")), str(row.get("replicate"))): row for row in results}
@@ -955,7 +1019,15 @@ def paired_cycle_rows(results: Sequence[Mapping[str, Any]]) -> list[dict[str, An
                  and baseline.get("correct") is True and candidate.get("correct") is True)
         out.append({"family": family, "capsule": capsule, "replicate": replicate,
                     "simulator": "gsim", "baseline_cycles": b, "candidate_cycles": c,
-                    "baseline_over_candidate": b / c if valid else None, "comparable": valid})
+                    "baseline_over_candidate": b / c if valid else None, "comparable": valid,
+                    # THE HEADLINE FILE SAYS WHICH HALF OF THE RATIO WAS CARRIED. The frozen
+                    # baseline is the same program in every trial of a campaign, so most of these
+                    # are numbers an earlier trial paid for; a reader comparing wall costs across
+                    # trials needs to see that here rather than reconstruct it from raw provenance.
+                    "baseline_carried": (carried_stamp(baseline)
+                                         if isinstance(baseline, Mapping) else None),
+                    "candidate_carried": (carried_stamp(candidate)
+                                          if isinstance(candidate, Mapping) else None)})
     return out
 
 
@@ -973,23 +1045,78 @@ def _write_json(path: Path, value: object) -> None:
     path.write_bytes(json.dumps(value, indent=2, sort_keys=True).encode() + b"\n")
 
 
+def schedule_fanout(requested: int, plan: MeasurementPlan, *,
+                    hardware_counters: bool) -> dict[str, Any]:
+    """How many executions may be in flight at once, and the reason whenever that is one.
+
+    Fanning this schedule out buys WALL time and nothing else: a cycle count does not move with the
+    fan-out (measured identical serial and at 16 workers; only wall times move, by up to 6.3x), so
+    the campaign that comes out of a wide run is the same campaign, cell for cell. That is why this
+    is an exact saving and not a cheaper answer -- every execution still runs, on the same pinned
+    engine, and returns its own measured number.
+
+    Two conditions drop the width back to one, and both are refusals rather than adjustments:
+
+    * **Hardware counters.** ``_counter_environment`` selects a counter pass by setting PROCESS
+      environment variables, and two concurrent executions cannot hold different values of one. A
+      counter campaign is therefore serial; nothing about it is silently reinterpreted.
+    * **A relative input path.** Some capsule paths chdir the process (an external compiler resolves
+      its artifacts relative to its own root) and restore it afterwards. That is safe serially and
+      is why every path this schedule carries into a worker thread must already be absolute -- a
+      relative one resolved inside another thread's chdir window names a different file. Measured on
+      the functional grader: of 26 capsules run 8-wide, 18 wrote their entire run tree into a
+      sibling checkout. So an un-absolute input makes this run serial rather than making it wrong.
+    """
+    requested = int(requested)
+    if requested < 1:
+        raise PC.CampaignGateError("execution concurrency must be at least one")
+    executions = len(plan.schedule)
+    if hardware_counters:
+        return {"requested": requested, "effective": 1, "executions": executions,
+                "reason": "hardware-counter passes are selected by process environment variables, "
+                          "which concurrent executions cannot hold different values of"}
+    relative = sorted({str(path) for spec in plan.schedule
+                       for path in (spec.package, spec.member.source_dir)
+                       if not Path(path).is_absolute()})
+    if relative:
+        return {"requested": requested, "effective": 1, "executions": executions,
+                "reason": "an input path is relative and a worker thread cannot resolve it safely: "
+                          + ", ".join(relative[:4])}
+    effective = max(1, min(requested, executions))
+    return {"requested": requested, "effective": effective, "executions": executions,
+            "reason": ("cycle counts are invariant under fan-out; only wall time moves"
+                       if effective > 1 else "the launch declared a serial campaign")}
+
+
 def execute_schedule(plan: MeasurementPlan, out_dir: Path, *, timeout: int,
                      target_experiment: object, rtl_identity: Mapping[str, Any],
                      hardware_counters: bool, counter_binding: object = None,
                      executor: Callable[..., dict[str, Any]] = run_execution,
-                     progress: Callable[[str], None] = print
+                     progress: Callable[[str], None] = print,
+                     fanout: Mapping[str, Any] | None = None
                      ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Measure every execution and record them in SCHEDULE order, however wide the run was.
+
+    ``fanout`` is :func:`schedule_fanout`'s decision. Only the measurement leaves this thread: the
+    content-addressed put, the index append and the row projection all happen here, in
+    ``plan.schedule`` order, so the recorded campaign is byte-identical to the serial one whichever
+    execution finishes first.
+    """
+    out_dir = Path(out_dir).resolve(strict=True)
     workspaces = _fresh_directory(out_dir / "_execution_workspaces")
     store = ContentAddressedRawStore(out_dir / "raw_results")
+    width = 1 if fanout is None else int(fanout["effective"])
     rows, roofline, index = [], [], []
     _write_json(out_dir / "raw_results.index.json", index)
     _write_json(out_dir / "paired_completion_cells.json", rows)
-    for spec in plan.schedule:
+
+    def measure(spec: ExecutionSpec) -> dict[str, Any]:
         name = f"e{spec.execution_index:04d}__{spec.pair_id}__{spec.arm}"
-        progress(f"[{spec.execution_index + 1}/{len(plan.schedule)}] {spec.pair_id} {spec.arm}")
-        raw = executor(spec, workspaces / name, timeout, target_experiment, rtl_identity,
-                       hardware_counters=hardware_counters, counter_binding=counter_binding,
-                       physical_unit=PHYSICAL_BYTE_UNIT)
+        return executor(spec, workspaces / name, timeout, target_experiment, rtl_identity,
+                        hardware_counters=hardware_counters, counter_binding=counter_binding,
+                        physical_unit=PHYSICAL_BYTE_UNIT, workers=width)
+
+    def record_one(spec: ExecutionSpec, raw: dict[str, Any]) -> None:
         record = store.put(raw)
         index.append({**spec.as_dict(), **record})
         rows.extend(result_rows(raw, record))
@@ -997,6 +1124,26 @@ def execute_schedule(plan: MeasurementPlan, out_dir: Path, *, timeout: int,
             roofline.append(_roofline_cell(spec, raw["measurement"]))
         _write_json(out_dir / "raw_results.index.json", index)
         _write_json(out_dir / "paired_completion_cells.json", rows)
+
+    if width <= 1:
+        for spec in plan.schedule:
+            progress(f"[{spec.execution_index + 1}/{len(plan.schedule)}] {spec.pair_id} {spec.arm}")
+            record_one(spec, measure(spec))
+        return rows, roofline
+    with ThreadPoolExecutor(max_workers=width, thread_name_prefix="perf-execution") as pool:
+        launched = [(spec, pool.submit(measure, spec)) for spec in plan.schedule]
+        try:
+            for spec, future in launched:
+                progress(f"[{spec.execution_index + 1}/{len(plan.schedule)}] "
+                         f"{spec.pair_id} {spec.arm}")
+                record_one(spec, future.result())
+        except BaseException:
+            # STOP BUYING ORACLE TIME FOR A CAMPAIGN THAT HAS ALREADY REFUSED. Cancelling only
+            # reaches executions that have not started; the ones in flight are joined by the pool's
+            # exit, exactly as the serial path finishes the execution it is inside.
+            for _, pending in launched:
+                pending.cancel()
+            raise
     return rows, roofline
 
 
@@ -1028,6 +1175,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--hardware-counters", action=argparse.BooleanOptionalAction, default=False)
+    # DECLARED, NEVER INFERRED -- the same discipline the experiment's phase width uses. Unset means
+    # one, the fully serial campaign, so a launch that says nothing behaves exactly as before. The
+    # width buys wall time only: cycles do not move with it, and the fan-out actually used is
+    # stamped on every measured tier so no row's timing block is comparable to one it should not be.
+    parser.add_argument("--sim-workers", type=int, default=1, metavar="N",
+                        help="how many executions may run at once (default 1 = serial)")
     args = parser.parse_args(argv)
     _simple_component(args.run_id, label="run id")
     if args.timeout <= 0:
@@ -1048,6 +1201,7 @@ def main(argv: list[str] | None = None) -> int:
         gsim_certificate=args.gsim_certificate,
         gsim_certificate_sha256=args.gsim_certificate_sha256)
     plan = build_measurement_plan(inputs)
+    fanout = schedule_fanout(args.sim_workers, plan, hardware_counters=args.hardware_counters)
     rtl = FIXED._load_rtl_identity(args.rtl_facts, PB.TARGET)
     counter_binding = FIXED._probe_counter_byte_bindings(rtl) if args.hardware_counters else None
     out_dir.mkdir(parents=True)
@@ -1074,6 +1228,7 @@ def main(argv: list[str] | None = None) -> int:
         "engine_policy": {"rtl_execution_backends": ["gsim"],
                           "timing_authority": "gsim",
                           "verilator": "prelaunch_certificate_qualification_only"},
+        "execution_fanout": dict(fanout),
         "rtl_identity": rtl, "identity_before": before, "identity_after": None,
         "fork_before": fork_before, "fork_after": None,
         "completion": completion_report([], plan.expected),
@@ -1084,7 +1239,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         rows, roofline_cells = execute_schedule(
             plan, out_dir, timeout=args.timeout, target_experiment=target, rtl_identity=rtl,
-            hardware_counters=args.hardware_counters, counter_binding=counter_binding)
+            hardware_counters=args.hardware_counters, counter_binding=counter_binding,
+            fanout=fanout)
         manifest["completion"] = completion_report(rows, plan.expected)
         if not manifest["completion"]["complete"]:
             raise PC.CampaignGateError(f"paired completion failed: {manifest['completion']}")
@@ -1109,6 +1265,16 @@ def main(argv: list[str] | None = None) -> int:
         manifest["raw_results"] = {"index": str(out_dir / "raw_results.index.json"),
                                    "paired_cells": str(result_path),
                                    "paired_cells_sha256": digest, "n_cells": len(rows)}
+        # WHAT THIS RUN BOUGHT AND WHAT IT CARRIED, on the manifest a reader of the campaign reads.
+        # A carried cell is the same number the engine returned for the same bytes, so the campaign
+        # is no weaker for it -- but only if it SAYS so. A cell that states neither is a hole in the
+        # record and refuses the campaign here rather than being counted as freshly measured.
+        manifest["measurement_reuse"] = reuse_report(rows)
+        _write_json(out_dir / "measurement_reuse.json", manifest["measurement_reuse"])
+        if refusal is None and not manifest["measurement_reuse"]["auditable"]:
+            refusal = (f"CampaignGateError: {manifest['measurement_reuse']['unstated']} cited "
+                       "cell(s) do not state whether their cycles were measured here or carried "
+                       "from an earlier measurement of the same bytes on the same pinned engine")
         try:
             after = _identity_guard(inputs)
             manifest["identity_after"] = after
