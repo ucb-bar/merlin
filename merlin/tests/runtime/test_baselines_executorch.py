@@ -954,8 +954,8 @@ def test_kernel_yaml_operators_reads_both_entry_spellings(tmp_path):
 def test_pinned_kernel_yamls_place_the_fft_ops_outside_portable():
     # The fact that made the board fail, asserted against the PINNED source rather than restated:
     # the FFT ops are optimized-only, so a portable-only runner cannot load spectformer.
-    portable = et._ET_SRC / "kernels/portable/functions.yaml"
-    optimized = et._ET_SRC / "kernels/optimized/optimized.yaml"
+    portable = et.et_source_dir() / "kernels/portable/functions.yaml"
+    optimized = et.et_source_dir() / "kernels/optimized/optimized.yaml"
     if not portable.is_file() or not optimized.is_file():
         pytest.skip("ExecuTorch submodule not checked out")
     p, o = et._kernel_yaml_operators(portable), et._kernel_yaml_operators(optimized)

@@ -1566,7 +1566,8 @@ def _pull_full_output(remote_out: str, bwork: Path, result: dict[str, Any]) -> N
 
 def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str | Path, *,
                      env: dict[str, str] | None = None, timeout: int = 600,
-                     capture_full_output: bool = False) -> dict[str, Any]:
+                     capture_full_output: bool = False,
+                     parallel_harts: int | None = None) -> dict[str, Any]:
     """Deploy and run an ALREADY-BUILT K1 binary, with an explicit environment.
 
     Split out of :func:`run_on_k1`'s build+run ladder so a measurement can run the SAME binary
@@ -1581,6 +1582,8 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
 
     if not K1_HOST:
         raise K1Error("MERLIN_K1_HOST unset — board unreachable")
+    if parallel_harts is not None and int(parallel_harts) < 1:
+        raise ValueError("parallel_harts must be positive when provided")
     bwork = Path(bwork)
     remote = _remote_binary_path(binary, f"{Path(model_dir).name}_{pkg.run_id}_envrun_merlin_k1")
     remote_out = f"{K1_REMOTE_DIR}/{Path(remote).name}.output.bin" if capture_full_output else None
@@ -1590,8 +1593,24 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
         _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
               "-o", "StrictHostKeyChecking=no", str(binary), f"{K1_HOST}:{remote}"])
         marker = bwork / "USE_MMAP_WEIGHTS"
+        multi_marker = bwork / "USE_MMAP_WEIGHTS.json"
         wenv, remote_w = "", None
-        if marker.is_file():
+        remote_weights: list[str] = []
+        if multi_marker.is_file():
+            _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
+            by_digest: dict[str, str] = {}
+            for item in json.loads(multi_marker.read_text(encoding="utf-8")):
+                digest, program = str(item["sha256"]), int(item["program"])
+                remote_stage = by_digest.get(digest)
+                if remote_stage is None:
+                    remote_stage = f"{K1_REMOTE_DIR}/{Path(remote).name}.weights.{digest[:16]}.bin"
+                    _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+                          "-o", "StrictHostKeyChecking=no", str(item["path"]),
+                          f"{K1_HOST}:{remote_stage}"])
+                    by_digest[digest] = remote_stage
+                    remote_weights.append(remote_stage)
+                wenv += f"MERLIN_WEIGHTS_{program}={remote_stage} "
+        elif marker.is_file():
             _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
             remote_w = f"{K1_REMOTE_DIR}/{Path(remote).name}.weights.bin"
             _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
@@ -1599,19 +1618,35 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
                   f"{K1_HOST}:{remote_w}"])
             wenv = f"MERLIN_WEIGHTS={remote_w} "
         output_env = f"MERLIN_OUTPUT_FILE={remote_out} " if remote_out else ""
-        envs = "".join(f"{k}={v} " for k, v in (env or {}).items())
+        run_env = dict(env or {})
+        if parallel_harts is not None:
+            run_env["OMP_NUM_THREADS"] = str(int(parallel_harts))
+            run_env["OMP_PROC_BIND"] = "spread"
+        envs = "".join(f"{k}={v} " for k, v in run_env.items())
+        affinity_list = (f"0-{int(parallel_harts) - 1}"
+                         if parallel_harts is not None and int(parallel_harts) > 1 else None)
+        taskset = f"taskset -c {affinity_list} " if affinity_list else ""
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
-            proc = _ssh(f"{wenv}{output_env}{envs}{remote}", timeout=timeout)
+            conditions_before = board_conditions()
+            proc = _ssh(f"{wenv}{output_env}{envs}{taskset}{remote}", timeout=timeout)
             result = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
             if remote_out:
                 _pull_full_output(remote_out, bwork, result)
+            result["board_conditions"] = {
+                "before": conditions_before, "after": board_conditions()}
+            result["affinity_mask"] = affinity_list
+            result["requested_core_count"] = int(parallel_harts or 1)
+            result["core_count"] = int(parallel_harts or 1)
+            result["affinity_available_cpus"] = int(
+                result.get("metrics", {}).get("affinity_cpus") or 0)
             return result
         finally:
             try:
                 cleanup = [remote]
                 if remote_w:
                     cleanup.append(remote_w)
+                cleanup.extend(remote_weights)
                 if remote_out:
                     cleanup.append(remote_out)
                 _ssh("rm -f " + " ".join(cleanup), timeout=30)

@@ -92,9 +92,34 @@ def _host_conditions() -> dict:
 _MERLIN_PY = repo_root() / "merlin" / "python"
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def prepare_ours_binary(model_dir: Path, pkg, work_root: Path, *,
+                        parallel_harts: int | None, dump_cap: int | None) -> dict:
+    """Build the exact Merlin executable once for every session in a certification campaign."""
+    multi_program = k1._is_multi_program(model_dir)
+    bwork = work_root / "prepared_binary"
+    if multi_program:
+        binary = k1.build_k1_session_binary(
+            model_dir, bwork, pkg, parallel_harts=parallel_harts,
+            fallback_policy="forbid", dump_cap=dump_cap)
+    else:
+        binary = k1.build_k1_binary(
+            model_dir, bwork, pkg, parallel_harts=parallel_harts,
+            fallback_policy="forbid", dump_cap=dump_cap, max_session_steps=1)
+    return {"binary": str(binary), "work": str(bwork), "multi_program": multi_program}
+
+
 def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
              n: int, warmup: int, iters: int, parallel_harts: int | None = None,
-             dump_cap: int | None = 4096, shared_bar: dict | None = None) -> dict:
+             dump_cap: int | None = 4096, shared_bar: dict | None = None,
+             prepared: dict | None = None) -> dict:
     """Our side: n gated launches, each min-of-`iters` after `warmup` untimed.
 
     The verdict is ``zephyr_model._gate``'s OWN ``ok``, not a threshold re-implemented here. That
@@ -127,10 +152,22 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
             # first input, session_goldens[0] == golden_w8a8.npy), and the cap truncates the
             # correctness/quality references alongside the streams so step k still meets
             # reference k. A bundle declaring no session is unaffected.
-            res = k1.run_on_k1(model_dir, work_root / f"ours_{i}", pkg, timeout=1800,
-                               op_profile=False, iters=iters, warmup=warmup,
-                               parallel_harts=parallel_harts, max_session_steps=1,
-                               dump_cap=dump_cap, fallback_policy="forbid")
+            if prepared is None:
+                res = k1.run_on_k1(model_dir, work_root / f"ours_{i}", pkg, timeout=1800,
+                                   op_profile=False, iters=iters, warmup=warmup,
+                                   parallel_harts=parallel_harts, max_session_steps=1,
+                                   dump_cap=dump_cap, fallback_policy="forbid")
+                object_work = work_root / f"ours_{i}" / "rvv"
+            else:
+                run_env = ({"MERLIN_SESSION_REPEATS": str(iters),
+                            "MERLIN_SESSION_WARMUPS": str(warmup)}
+                           if prepared.get("multi_program") else
+                           {"MERLIN_ITERS": str(iters), "MERLIN_WARMUP": str(warmup)})
+                object_work = Path(prepared["work"])
+                res = k1.run_binary_on_k1(
+                    model_dir, object_work, pkg, Path(prepared["binary"]), timeout=1800,
+                    env=run_env, capture_full_output=dump_cap is None,
+                    parallel_harts=parallel_harts)
             g = zm._gate(res["prefix"], golden_refs,
                          min_coverage=1.0 if shared_bar is not None else 0.0)
             # WHAT FRACTION OF THE OUTPUT THIS SCORE COVERS. The board harness prints at most
@@ -174,7 +211,7 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
             # Without this the two are indistinguishable from the outside, and the regression gets
             # attributed to the lever's tiling choice instead of to the lever not surviving lowering.
             if rvv_cov is None:
-                obj = work_root / f"ours_{i}" / "rvv" / "model.o"
+                obj = object_work / "model.o"
                 if obj.is_file():
                     try:
                         rep = _rvv_audit.audit_binary(obj)
@@ -246,7 +283,8 @@ def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int,
         try:
             r = et.run_model(model, "int8", qd8=qd8, int8_whole_model=(not qd8) or None,
                              cpu_threads=cpu_threads,
-                             num_executions=n, run_board=True, write=True)
+                             num_executions=n, run_board=True, write=True,
+                             reuse_export=True)
             per_inf = getattr(r, "e2e_wall_ns", None)
             rec = {"n": n, "status": r.status(), "per_inference_ns": per_inf,
                    "total_ns": (per_inf * n) if per_inf else None,
@@ -612,6 +650,13 @@ def main() -> None:
                                               "8 on this board; not pinned by this run)")}}
 
     if a.certify:
+        print("[certify] building Merlin once; every pair will execute this exact ELF", flush=True)
+        prepared_ours = prepare_ours_binary(
+            md, pkg, work, parallel_harts=a.parallel_harts, dump_cap=a.dump_cap)
+        prepared_path = Path(prepared_ours["binary"])
+        prepared_ours["sha256"] = _sha256_file(prepared_path)
+        prepared_ours["size_bytes"] = prepared_path.stat().st_size
+        rec["prepared_ours"] = prepared_ours
         pairs = []
         confidence = None
         for pair_index in range(a.max_pairs):
@@ -621,7 +666,7 @@ def main() -> None:
                 return ours_arm(
                     md, pkg, refs, pair_work, n=1, warmup=a.warmup, iters=a.iters,
                     parallel_harts=a.parallel_harts, dump_cap=a.dump_cap,
-                    shared_bar=shared_bar)
+                    shared_bar=shared_bar, prepared=prepared_ours)
 
             def run_reference():
                 return et_arm(a.model, cpu_threads=a.ref_cpu_threads, qd8=True,

@@ -70,3 +70,70 @@ def test_shared_bar_not_the_stricter_internal_tier_controls_certification(monkey
     assert result["ok"] is True
     assert result["median_wall_ns"] == 100
     assert result["shared_accuracy"]["passes"] is True
+
+
+def test_prepared_certification_executes_the_same_binary_without_rebuilding(monkeypatch, tmp_path):
+    module = _module()
+    gate = {
+        "fp32_cos": 0.995, "fp32_rel": 0.04, "comparison_complete": True,
+        "cos": 0.995, "rel": 0.04, "tiers": ["fp32"], "tier_ok": "fp32",
+    }
+    calls = []
+    monkeypatch.setattr(module, "_conditions", lambda: {})
+    monkeypatch.setattr(module.zm, "_gate", lambda *_args, **_kwargs: gate)
+    monkeypatch.setattr(
+        module.k1, "run_on_k1",
+        lambda *_args, **_kwargs: pytest.fail("a prepared campaign must not rebuild"),
+    )
+
+    def run_binary(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"prefix": object(), "metrics": {"wall_ns": 100}}
+
+    monkeypatch.setattr(module.k1, "run_binary_on_k1", run_binary)
+    pkg = type("Package", (), {"run_id": "fixture"})()
+    prepared = {"binary": str(tmp_path / "same.elf"), "work": str(tmp_path / "build"),
+                "multi_program": False}
+    result = module.ours_arm(
+        tmp_path, pkg, {}, tmp_path / "pairs", n=2, warmup=1, iters=3,
+        dump_cap=None, prepared=prepared,
+        shared_bar={"cos_threshold": 0.99, "rel_threshold": 0.05, "basis": "fixture"},
+    )
+
+    assert result["ok"] is True
+    assert len(calls) == 2
+    assert all(call[0][3] == Path(prepared["binary"]) for call in calls)
+    assert all(call[1]["capture_full_output"] is True for call in calls)
+    assert all(call[1]["env"] == {"MERLIN_ITERS": "3", "MERLIN_WARMUP": "1"}
+               for call in calls)
+
+
+def test_reference_warm_slope_reuses_the_export(monkeypatch):
+    module = _module()
+    calls = []
+
+    class Result:
+        e2e_wall_ns = 100
+        cos = 1.0
+        rel = 0.0
+        load_ns = 10
+        accuracy_reference = "capture_golden_fp32"
+        quant_recipe = "pt2e_qd8"
+        bundle_id = "fixture"
+        gap_reason = ""
+
+        @staticmethod
+        def status():
+            return "pass"
+
+    def run_model(*args, **kwargs):
+        calls.append(kwargs)
+        return Result()
+
+    monkeypatch.setattr(module, "_conditions", lambda: {})
+    monkeypatch.setattr(module.et, "run_model", run_model)
+    result = module.et_arm("fixture", qd8=True, n_lo=1, n_hi=3, cpu_threads=1)
+
+    assert result["ok"] is True
+    assert len(calls) == 2
+    assert all(call["reuse_export"] is True for call in calls)

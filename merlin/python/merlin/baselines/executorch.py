@@ -233,6 +233,35 @@ class ExportResult:
     summary: dict | None = None
 
 
+def _file_identity(path: Path) -> dict[str, str | int]:
+    """Cheap cache identity for an immutable campaign input or generated artifact."""
+    resolved = Path(path).resolve()
+    stat = resolved.stat()
+    return {"path": str(resolved), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+
+
+def _read_export_cache(cache_path: Path, key: dict) -> ExportResult | None:
+    """Return a complete matching export, never a merely present ``model.pte``."""
+    try:
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        if cached.get("key") != key:
+            return None
+        pte = Path(cached["pte"]["path"])
+        if _file_identity(pte) != cached["pte"]:
+            return None
+        ptd_files = [Path(path) for path in cached.get("ptd_files", [])]
+        input_files = [Path(path) for path in cached.get("input_files", [])]
+        golden = Path(cached["golden"])
+        if not golden.is_file() or any(not path.is_file() for path in ptd_files + input_files):
+            return None
+        return ExportResult(
+            pte=pte, ptd_files=ptd_files, input_files=input_files, golden=golden,
+            delegated_nodes=cached.get("delegated_nodes"),
+            total_call_nodes=cached.get("total_call_nodes"), summary=cached.get("summary"))
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def _failure_summary(text: str, *, max_chars: int = 900) -> str:
     """Condense an export subprocess's output down to WHAT WENT WRONG, final exception first.
 
@@ -263,7 +292,8 @@ def _failure_summary(text: str, *, max_chars: int = 900) -> str:
 def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
                xnnpack: bool = True, quantize: bool = False, compute_golden: bool = False,
                int8_subgraph: bool = False, int8_whole_model: bool = False, qd8: bool = False,
-               extra_env: dict[str, str] | None = None, timeout: int = 3600) -> ExportResult:
+               extra_env: dict[str, str] | None = None, timeout: int = 3600,
+               reuse_existing: bool = False) -> ExportResult:
     """Run the AOT export helper under the ET venv to produce ``model.pte`` (+ ``.ptd`` weights).
 
     Uses OUR captured ``inputs.npz`` (so the export trace matches the golden) and writes the raw
@@ -313,6 +343,25 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
     env = dict(os.environ)
     if extra_env:
         env.update(extra_env)
+    cache_path = work / "export_result.json"
+    cache_key = {
+        "model": model,
+        "executorch_identity": identity.as_dict(),
+        "loader": _file_identity(loader),
+        "inputs": _file_identity(b.inputs),
+        "capture_golden": _file_identity(b.golden),
+        "xnnpack": bool(xnnpack),
+        "quantize": bool(quantize),
+        "compute_golden": bool(compute_golden),
+        "int8_subgraph": bool(int8_subgraph),
+        "int8_whole_model": bool(int8_whole_model),
+        "qd8": bool(qd8),
+        "extra_env": dict(sorted((extra_env or {}).items())),
+    }
+    if reuse_existing:
+        cached = _read_export_cache(cache_path, cache_key)
+        if cached is not None:
+            return cached
     # Run from the work dir (NOT this package dir): the sibling ``executorch.py`` would otherwise
     # sit on sys.path[0] and shadow the installed ``executorch`` package in the ET venv.
     proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
@@ -328,13 +377,24 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
         raise ExecuTorchError(f"export produced no .pte at {out}: {proc.stdout[-400:]}")
     s = dict(summary or {})
     s["executorch_identity"] = identity.as_dict()
-    return ExportResult(pte=out,
-                        ptd_files=[Path(p) for p in s.get("ptd_files", [])],
-                        input_files=[Path(f["path"]) for f in s.get("input_files", [])],
-                        golden=golden,
-                        delegated_nodes=s.get("delegated_nodes"),
-                        total_call_nodes=s.get("total_call_nodes"),
-                        summary=s)
+    result = ExportResult(pte=out,
+                          ptd_files=[Path(p) for p in s.get("ptd_files", [])],
+                          input_files=[Path(f["path"]) for f in s.get("input_files", [])],
+                          golden=golden,
+                          delegated_nodes=s.get("delegated_nodes"),
+                          total_call_nodes=s.get("total_call_nodes"),
+                          summary=s)
+    cache_path.write_text(json.dumps({
+        "key": cache_key,
+        "pte": _file_identity(result.pte),
+        "ptd_files": [str(p) for p in result.ptd_files],
+        "input_files": [str(p) for p in result.input_files],
+        "golden": str(result.golden),
+        "delegated_nodes": result.delegated_nodes,
+        "total_call_nodes": result.total_call_nodes,
+        "summary": result.summary,
+    }, indent=2), encoding="utf-8")
+    return result
 
 
 # --- which kernel libraries this .pte needs the runner to link ----------------------------------
@@ -904,7 +964,8 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
               export_env: dict[str, str] | None = None,
               num_executions: int = 1, etdump: bool = False,
               cpu_threads: int | None = None,
-              runner_override: Path | None = None) -> BaselineResult:
+              runner_override: Path | None = None,
+              reuse_export: bool = False) -> BaselineResult:
     """Run one (model, variant) through the ExecuTorch+XNNPACK arm end-to-end -> BaselineResult.
 
     Re-runnable: with the board down it still produces a ``not_run`` result carrying the built
@@ -1020,9 +1081,13 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # 1. AOT export -> .pte (+ .ptd) via the XNNPACK partitioner. torch.export / unsupported-op
     #    failures -> not_built with a specific reason.
     try:
-        exp = export_pte(model, b, work, xnnpack=xnnpack, quantize=quantize,
-                         compute_golden=compute_golden, int8_subgraph=int8_subgraph,
-                         int8_whole_model=int8_whole_model, qd8=qd8, extra_env=export_env)
+        export_kwargs = dict(
+            xnnpack=xnnpack, quantize=quantize, compute_golden=compute_golden,
+            int8_subgraph=int8_subgraph, int8_whole_model=int8_whole_model,
+            qd8=qd8, extra_env=export_env)
+        if reuse_export:
+            export_kwargs["reuse_existing"] = True
+        exp = export_pte(model, b, work, **export_kwargs)
         if exp.summary and exp.summary.get("subgraph_note"):
             res.notes += " " + exp.summary["subgraph_note"]
         if exp.delegated_nodes is not None:
