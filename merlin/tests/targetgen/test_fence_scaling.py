@@ -1,4 +1,4 @@
-"""Synchronisation must not scale with output tiles.
+"""Per-kernel commands must not scale with output tiles: synchronisation, and dataflow config.
 
 A schedule that fences after every output tile is numerically correct and catastrophically slow, so
 no numeric oracle can notice it. Measured on a 1024x1024 QK slice: 4,096 fences for 4,096 tiles, and
@@ -8,8 +8,13 @@ scratchpad and accumulator hazards, one load-bearing fence at the end so output 
 the CPU reads -- took the same kernel to two fences with identical arithmetic, tiling, addresses and
 commands.
 
+The same shape applies to configuration. An expert-generated reference kernel for this accelerator
+issues its five `config_*` commands ONCE, before any loop, then runs a tight mvin/preload/compute body
+with the accumulator resident across all 513 reduction steps and a single store. Re-selecting the
+dataflow per output tile pays that command every tile and buys nothing.
+
 The invariant under test is SCALING, not a fixed budget. A schedule may legitimately carry a small
-constant number of fences; what can never be right is one per tile.
+constant number of fences or configs; what can never be right is one per tile.
 """
 from __future__ import annotations
 
@@ -99,3 +104,55 @@ def test_the_check_measures_scaling_not_a_fixed_budget() -> None:
     assert _fence_findings(ok["violations"]) == [], ok["violations"]
     bad = TCK.check(_program(tiles=9, flushes=9), _EXPECTED, cb)
     assert _fence_findings(bad["violations"]), bad["violations"]
+
+
+# --- the other half of the same invariant: configure once, not per tile -------------------------
+# An expert-generated reference kernel for this accelerator issues its five `config_*` commands once,
+# before any loop, then runs a tight mvin/preload/compute body with the accumulator resident across
+# all 513 reduction steps and a single store. Reconfiguring the dataflow per output tile pays that
+# command on every tile and buys nothing: CONFIG_EX selects the dataflow, which does not vary between
+# tiles of one matmul.
+
+
+def _config_findings(violations: list[str]) -> list[str]:
+    return [v for v in violations if "CONFIG_EX count" in v and "scales with" in v]
+
+
+def _program_configs(*, tiles: int, config_ex: int) -> dict:
+    """A kernel issuing ``tiles`` stores and ``config_ex`` dataflow configurations."""
+    ins = [_ins("FLUSH"), _ins("CONFIG_LD"), _ins("MVIN"), _ins("CONFIG_ST")]
+    for index in range(tiles):
+        if index < config_ex:
+            ins.append(_ins("CONFIG_EX"))
+        ins += [_ins("PRELOAD"), _ins("COMPUTE_PRELOADED"), _ins("MVOUT")]
+    return {"instructions": ins}
+
+
+def test_configuring_the_dataflow_once_is_accepted() -> None:
+    """CONTROL: one CONFIG_EX for a four-tile kernel, which is the reference shape."""
+    cb = _command_buffer(32, 32)
+    out = TCK.check(_program_configs(tiles=4, config_ex=1), _EXPECTED, cb)
+    assert _config_findings(out["violations"]) == [], out["violations"]
+
+
+def test_reconfiguring_per_tile_is_refused() -> None:
+    """The defect: the dataflow re-selected on every output tile."""
+    cb = _command_buffer(32, 32)
+    out = TCK.check(_program_configs(tiles=4, config_ex=4), _EXPECTED, cb)
+    found = _config_findings(out["violations"])
+    assert found, out["violations"]
+    assert "4 output tile(s)" in found[0]
+
+
+def test_config_check_is_scoped_to_the_dataflow_command() -> None:
+    """CONFIG_LD and CONFIG_ST carry strides a schedule may legitimately vary per tile, and these
+    findings become refusals through the emission guard -- so a per-tile load/store config must NOT
+    be accused. Only CONFIG_EX has unambiguous issue-once semantics."""
+    cb = _command_buffer(32, 32)
+    ins = [_ins("FLUSH"), _ins("CONFIG_EX")]
+    for _ in range(4):                                  # a CONFIG_LD/CONFIG_ST on every tile
+        ins += [_ins("CONFIG_LD"), _ins("MVIN"), _ins("CONFIG_ST"),
+                _ins("PRELOAD"), _ins("COMPUTE_PRELOADED"), _ins("MVOUT")]
+    out = TCK.check({"instructions": ins}, _EXPECTED, cb)
+    assert _config_findings(out["violations"]) == [], out["violations"]
+    assert _fence_findings(out["violations"]) == [], out["violations"]

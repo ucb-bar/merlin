@@ -327,3 +327,20 @@ def _check_tiles(classes: list[str], cb: dict, violations: list[str]) -> None:
         violations.append(
             f"FLUSH count {flushes} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
             "synchronisation is issued per tile rather than batched around the kernel")
+
+    # THE DATAFLOW IS CONFIGURED ONCE, NOT PER TILE. An expert-generated reference kernel for this
+    # accelerator issues its five `config_*` commands once, before any loop, and then runs a tight
+    # mvin/preload/compute body with the accumulator resident across every reduction step. A schedule
+    # that reconfigures the execution mode per output tile pays that command on every tile and buys
+    # nothing: CONFIG_EX selects the dataflow, which does not vary between tiles of one matmul.
+    #
+    # Scoped to CONFIG_EX deliberately. CONFIG_LD and CONFIG_ST carry strides that a schedule may
+    # legitimately vary per tile, and these findings become REFUSALS through the emission guard -- so
+    # a false positive costs a candidate. CONFIG_EX is the one whose "issue once" semantics are
+    # unambiguous, and `_check_resident_reuse` already treats a second CONFIG_EX as a defect for the
+    # resident case; this generalises only that part.
+    configs = classes.count("CONFIG_EX")
+    if tiles >= 2 and configs >= tiles:
+        violations.append(
+            f"CONFIG_EX count {configs} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
+            "the dataflow is reconfigured per tile rather than once for the kernel")
