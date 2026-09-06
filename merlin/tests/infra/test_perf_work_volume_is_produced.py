@@ -231,3 +231,123 @@ def test_the_helper_refuses_a_buffer_that_is_not_serialisable_evidence():
         {"tensors": {}, "commands": [], "opaque": object()}, compiler_provenance="test")
     assert work["exact_macs"] is None and artifact["command_buffer"] is None
     assert artifact["refusal"] and "priced" in artifact["refusal"]
+
+
+# ---------------------------------------------------------------------------------------------
+# REPORTED, NEVER GATED: the campaign proceeds, and its own summary makes the absence unmissable
+# ---------------------------------------------------------------------------------------------
+# A member whose work `work_volume` cannot count is not necessarily defective -- a movement member
+# has no MACs -- so a hard refusal would abandon a 12h run over a member behaving as designed. The
+# danger is the other direction: an absence nobody is told about reads as zero, and a zero
+# denominator on a perf bench reads as infinitely fast. These hold the middle: the run continues,
+# the count sits next to the headline, and every unattributed member is named with its reason.
+
+def _cells(tmp_path, monkeypatch, *buffers) -> list[dict]:
+    """One roofline cell per buffer, built the way both benches build theirs."""
+    out = []
+    for index, cb in enumerate(buffers):
+        grade = _grade(tmp_path, monkeypatch, cb, run_id=f"cov{index}")
+        measurement = _measurement(grade)
+        out.append({"kernel": f"k{index}", "work_volume": grade.get("work_volume"),
+                    "command_buffer_artifact": grade.get("command_buffer_artifact"),
+                    "resource_bindings": FIXED._resource_bindings(measurement)})
+    return out
+
+
+def test_coverage_counts_every_member_and_says_which_carry_no_axis(tmp_path, monkeypatch):
+    cells = _cells(tmp_path, monkeypatch, _countable_buffer(), _uncountable_buffer(),
+                   _countable_buffer())
+    coverage = FIXED.compute_axis_coverage(cells)
+    assert coverage["members"] == 3
+    assert coverage["with_compute_axis"] == 2
+    assert coverage["without_compute_axis"] == 1
+    assert [row["kernel"] for row in coverage["unattributed"]] == ["k1"]
+    assert "1 of 3" in coverage["headline"], coverage["headline"]
+    assert coverage["gates_the_campaign"] is False
+
+
+def test_an_unattributed_member_is_named_with_the_counter_s_own_reason(tmp_path, monkeypatch):
+    """A bare null is what lets a reader assume zero; the refusal has to travel with it."""
+    coverage = FIXED.compute_axis_coverage(_cells(tmp_path, monkeypatch, _uncountable_buffer()))
+    row = coverage["unattributed"][0]
+    assert row["exact_macs"] is None
+    assert any("SOME_UNMODELLED_COMPUTE" in reason for reason in row["reasons"]), row["reasons"]
+
+
+def test_a_receiptless_member_is_named_as_such_and_not_confused_with_a_refusal(tmp_path, monkeypatch):
+    """The pre-fix shape. 'the grader emitted nothing' and 'the counter refused' differ."""
+    coverage = FIXED.compute_axis_coverage([{"kernel": "legacy", "work_volume": {},
+                                             "resource_bindings": {}}])
+    reasons = coverage["unattributed"][0]["reasons"]
+    assert len(reasons) == 1 and "no work-volume receipt" in reasons[0], reasons
+
+
+def test_a_fully_attributed_campaign_says_so_positively(tmp_path, monkeypatch):
+    """Non-vacuity for the headline: it must be able to report zero as well as some."""
+    coverage = FIXED.compute_axis_coverage(_cells(tmp_path, monkeypatch, _countable_buffer()))
+    assert coverage["without_compute_axis"] == 0
+    assert coverage["unattributed"] == []
+    assert "all 1 member(s) carry a compute axis" in coverage["headline"]
+
+
+def test_an_empty_campaign_does_not_claim_coverage_it_does_not_have():
+    coverage = FIXED.compute_axis_coverage([])
+    assert coverage["members"] == coverage["with_compute_axis"] == 0
+
+
+def _gating_lines(source: str) -> list[str]:
+    """Lines that both touch the coverage and refuse over it. Extracted so it can be MUTATED."""
+    out = []
+    lines = source.splitlines()
+    for index, line in enumerate(lines):
+        if "coverage" not in line or line.lstrip().startswith("#"):
+            continue
+        # A GATE IS RARELY ONE LINE. `if coverage[...]:` newline `raise ...` is the ordinary
+        # spelling, and a scan that only looked at the mentioning line let it straight through --
+        # found by the non-vacuity test below, which is the only reason this window exists.
+        for follower in lines[index:index + 3]:
+            stripped = follower.lstrip()
+            if stripped.startswith("#"):
+                continue
+            # A generic `except`/`finally` that happens to sit after the coverage line catches the
+            # WHOLE block, not the coverage; treating it as a coverage gate is a false positive, and
+            # a check that cries wolf gets deleted. Stop the window at the clause boundary.
+            if stripped.startswith(("except", "finally", "else")):
+                break
+            if "raise " in follower or "refusal =" in follower:
+                out.append(follower.strip())
+                break
+    return out
+
+
+def test_the_no_gate_scan_can_actually_find_a_gate():
+    """Non-vacuity for the check below: on a source that DOES gate, it must say so."""
+    gating = "    if coverage['without_compute_axis']:\n        raise PC.CampaignGateError('no axis')\n"
+    assert _gating_lines(gating), "the scan cannot detect a gate, so its silence proves nothing"
+    assert _gating_lines("coverage = compute_axis_coverage(results)\n") == []
+    # a comment that merely mentions refusing must not be read as a gate
+    assert _gating_lines("    # coverage never sets refusal = anything\n") == []
+
+
+def test_both_benches_record_the_coverage_and_neither_gates_on_it():
+    """Wiring, and the policy: the count reaches the manifest, and nothing refuses over it."""
+    fixed = Path(_SCRIPTS / "run_perf_bench.py").read_text(encoding="utf-8")
+    paired = Path(_SCRIPTS / "run_paired_perf_bench.py").read_text(encoding="utf-8")
+    assert 'campaign["compute_axis_coverage"] = coverage' in fixed
+    assert 'manifest["compute_axis_coverage"] = FIXED.compute_axis_coverage(' in paired
+    for source, label in ((fixed, "fixed"), (paired, "paired")):
+        assert "compute axis: " in source, f"the {label} bench never prints the count"
+        # REPORTED, NOT GATED. A member `work_volume` cannot price must not abort a 12h campaign.
+        assert _gating_lines(source) == [], \
+            f"the {label} bench turns the compute-axis count into a refusal: {_gating_lines(source)}"
+
+
+def test_the_coverage_report_cannot_itself_abort_a_campaign():
+    """It runs inside the campaign's try/finally: a raise here would BE the gate it must not be."""
+    coverage = FIXED.compute_axis_coverage(
+        ["not a mapping", {"kernel": "ok", "work_volume": {"refusals": ["r"]},
+                           "resource_bindings": {}}, None])
+    assert coverage["members"] == 3, "a malformed cell was dropped, shrinking the denominator"
+    assert coverage["without_compute_axis"] == 3
+    assert any("not a mapping" in reason
+               for row in coverage["unattributed"] for reason in row["reasons"])

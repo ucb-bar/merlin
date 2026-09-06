@@ -536,6 +536,66 @@ def _roofline_auxiliary_requirements(results: list[dict], rtl_identity: Mapping)
     }
 
 
+def compute_axis_coverage(cells: list[Mapping]) -> dict:
+    """Count the members whose cycles have no counted work behind them, and say why for each.
+
+    NOT A GATE, deliberately. A member whose work `work_volume` cannot count is not necessarily
+    defective -- a movement member has no MACs and that is correct behaviour -- so refusing the
+    campaign over it would abandon a whole run for a member doing exactly what it was written to do.
+    What must not happen is the other thing: an absent compute axis reading as though none applied,
+    or as though the work were zero. On a performance bench a zero denominator is not "unknown", it
+    is "infinitely fast", and anybody quoting utilization or share-of-achievable needs to know the
+    denominator was absent for these members BEFORE they quote it.
+
+    So the run proceeds and the RESULT is loud: a count next to the headline, every unattributed
+    member named, and the counter's own per-command refusals carried through verbatim. A bare null
+    with no reason attached is exactly what lets a reader assume it was zero.
+    """
+    attributed: list[str] = []
+    unattributed: list[dict] = []
+    for index, cell in enumerate(cells):
+        # TOTAL BY CONSTRUCTION. This runs inside the campaign's own try/finally, so a raise here
+        # would set a refusal and NO-GO the run -- turning the report into the gate it is explicitly
+        # not meant to be. A malformed cell is therefore RECORDED as unattributable, never skipped
+        # (a skip would shrink the denominator and make the coverage look better than it is).
+        if not isinstance(cell, Mapping):
+            unattributed.append({"kernel": f"<malformed cell {index}>", "exact_macs": None,
+                                 "known_macs_lower_bound": None,
+                                 "reasons": [f"result cell {index} is not a mapping, so this "
+                                             f"member's work cannot be read at all"]})
+            continue
+        kernel = str(cell.get("kernel") or "")
+        bindings = cell.get("resource_bindings")
+        compute = bindings.get("compute") if isinstance(bindings, Mapping) else None
+        if isinstance(compute, Mapping) and compute.get("resource"):
+            attributed.append(kernel)
+            continue
+        work = cell.get("work_volume") if isinstance(cell.get("work_volume"), Mapping) else {}
+        reasons = [str(reason) for reason in (work.get("refusals") or [])]
+        if not reasons:
+            # The pre-fix shape: no receipt AND no stated reason. Named as its own condition, because
+            # "the grader emitted nothing" and "the counter refused this opcode" are different facts
+            # and a reader who cannot tell them apart cannot act on either.
+            reasons = ["the graded result carried no work-volume receipt, so nothing states why "
+                       "this member's work could not be counted"]
+        unattributed.append({
+            "kernel": kernel,
+            "exact_macs": work.get("exact_macs"),
+            "known_macs_lower_bound": work.get("known_macs"),
+            "reasons": reasons,
+        })
+    total = len(attributed) + len(unattributed)
+    headline = (f"{len(unattributed)} of {total} member(s) carry NO compute axis: their cycles "
+                f"cannot be attributed to counted work, so utilization and share-of-achievable "
+                f"have no denominator for them"
+                if unattributed else
+                f"all {total} member(s) carry a compute axis derived from their own command buffer")
+    return {"schema": "compute_axis_coverage_v1", "members": total,
+            "with_compute_axis": len(attributed), "without_compute_axis": len(unattributed),
+            "attributed": sorted(attributed), "unattributed": unattributed,
+            "gates_the_campaign": False, "headline": headline}
+
+
 def _probe_counter_byte_bindings(rtl_identity: Mapping) -> dict:
     """Run the target-owned structural probe and retain UNKNOWN rather than completing semantics."""
     try:
@@ -925,6 +985,9 @@ def main(argv: list[str] | None = None) -> int:
         auxiliary = _roofline_auxiliary_requirements(results, rtl_identity)
         _write_json(out_dir / "roofline_auxiliary_evidence.json", auxiliary)
         campaign["roofline_evidence"] = auxiliary
+        coverage = compute_axis_coverage(results)
+        _write_json(out_dir / "compute_axis_coverage.json", coverage)
+        campaign["compute_axis_coverage"] = coverage
         _write_json(out_dir / "completion_cells.json", completion_rows)
         after = PC.check_fork(fork, snapshot)
         campaign["fork_after"] = after.to_dict()
@@ -944,6 +1007,14 @@ def main(argv: list[str] | None = None) -> int:
         campaign["status"] = "GO" if refusal is None else "NO_GO"
         _write_json(out_dir / "campaign_manifest.json", campaign)
 
+    # NEXT TO THE HEADLINE, not only per row: a reader who skips the cells still sees how many
+    # members' cycles have no counted work behind them, because that is the denominator any
+    # utilization number quoted off this campaign is missing.
+    _coverage = campaign.get("compute_axis_coverage")
+    if isinstance(_coverage, Mapping):
+        print(f"\ncompute axis: {_coverage['headline']}", flush=True)
+        for _row in _coverage.get("unattributed", []):
+            print(f"  [no compute axis] {_row['kernel']}: {'; '.join(_row['reasons'])}", flush=True)
     if refusal is not None:
         print(f"\nNO-GO: {refusal}\nmanifest: {out_dir / 'campaign_manifest.json'}", flush=True)
         return 2

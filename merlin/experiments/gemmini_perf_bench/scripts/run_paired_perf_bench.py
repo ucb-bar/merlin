@@ -1092,6 +1092,12 @@ def main(argv: list[str] | None = None) -> int:
         roofline = FIXED._roofline_auxiliary_requirements(roofline_cells, rtl)
         _write_json(out_dir / "roofline_auxiliary_evidence.json", roofline)
         manifest["roofline_evidence"] = roofline
+        # HOW MANY MEMBERS' CYCLES HAVE NO COUNTED WORK BEHIND THEM, said on the manifest a reader
+        # of the campaign reads. Reported, never gated: a member `work_volume` cannot price is not
+        # necessarily defective, but an absence nobody is told about reads as zero, and a zero
+        # denominator on a perf bench reads as infinitely fast.
+        manifest["compute_axis_coverage"] = FIXED.compute_axis_coverage(roofline_cells)
+        _write_json(out_dir / "compute_axis_coverage.json", manifest["compute_axis_coverage"])
     except Exception as exc:
         refusal = f"{type(exc).__name__}: {exc}"
     finally:
@@ -1117,6 +1123,11 @@ def main(argv: list[str] | None = None) -> int:
             refusal = f"{type(exc).__name__}: {exc}"
         manifest["refusal"], manifest["status"] = refusal, "GO" if refusal is None else "NO_GO"
         _write_json(out_dir / "campaign_manifest.json", manifest)
+    _coverage = manifest.get("compute_axis_coverage")
+    if isinstance(_coverage, Mapping):
+        print(f"compute axis: {_coverage['headline']}")
+        for _row in _coverage.get("unattributed", []):
+            print(f"  [no compute axis] {_row['kernel']}: {'; '.join(_row['reasons'])}")
     if refusal:
         print(f"NO-GO: {refusal}")
         return 2
