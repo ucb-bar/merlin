@@ -657,7 +657,20 @@ def full_argv(te: TargetExperiment, ws: Path, bundle: dict | None = None,
 #: A single execve argument may not exceed MAX_ARG_STRLEN (32 pages = 128 KiB on Linux); exceeding it
 #: is E2BIG, and the caller sees "Argument list too long" naming `bash` rather than naming the string.
 #: The margin is deliberate: the caller appends its own text to what `wrap` returns.
-_MAX_ARG_BYTES = 96 * 1024
+#:
+#: LOWERED FROM 96 KiB after a measured failure this threshold did not catch. On 2026-09-06 all three
+#: perf-campaign trials died with `OSError: [Errno 7] Argument list too long: 'bash'` at codex spawn
+#: while NO args file had been written -- so the composed string was already under 96 KiB and execve
+#: refused it anyway. MAX_ARG_STRLEN is not the only ceiling: the total of argv plus the environment
+#: is bounded by ARG_MAX, which the kernel derives from the STACK rlimit (a quarter of it), and these
+#: stages run as children of a CHIA/Ray worker whose rlimits this process does not control and cannot
+#: read back after the fact. The exact worker limit was never pinned, which is the point: a threshold
+#: tuned to one assumed ceiling has now been wrong twice in this file's history.
+#:
+#: 32 KiB is not a tuned number either -- it is small enough that the file-descriptor path, which has
+#: no argument-size ceiling at all, is what runs for every realistic bundle. The inline form is kept
+#: only for genuinely small argvs, where it stays readable in a trace.
+_MAX_ARG_BYTES = 32 * 1024
 
 
 def wrap(te: TargetExperiment, ws: Path, inner: str, bundle: dict | None = None,

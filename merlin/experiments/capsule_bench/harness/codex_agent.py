@@ -542,6 +542,25 @@ def build_resume_cmd(ws: Path, *, model: str, effort: str, final_path: Path, san
     return cmd
 
 
+def _sandbox_script(rounds: Path, rnd: int, turn: int, command: str) -> list[str]:
+    """Run a bwrap command from a FILE rather than as a ``bash -c`` argument.
+
+    execve refuses any single argument over MAX_ARG_STRLEN (128 KiB) with E2BIG, and the error names
+    only the interpreter -- `Argument list too long: 'bash'` -- so a size refusal is indistinguishable
+    from a missing shell. Measured 2026-09-06 on the perf campaign: the composed sandbox command was
+    178,303 bytes and every trial died before its first round. The bind list has a size escape already
+    (``bwrap --args`` from a file descriptor), but the shell string that carries it does not, and the
+    mask set grows with the corpus, so the ceiling is reachable by adding capsules.
+
+    A file has no such limit. It lives beside the round's other artifacts and NOT in the workspace:
+    the agent must not be able to read or edit the command that sandboxes it.
+    """
+    script = rounds / f"round_{rnd:02d}.sandbox.turn{turn:02d}.sh"
+    script.write_text(command, encoding="utf-8")
+    script.chmod(0o500)
+    return ["bash", str(script)]
+
+
 def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
               timeout: int, *, subagent_model: str = "", background_model: str = "",
               effort: str = "", prompt: str | None = None, continue_session: bool = False,
@@ -620,8 +639,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         codex_home = cache_dir("codex_home") / f"{run_dir.name}_r{rnd:02d}"
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort)
         inner = " ".join(shlex.quote(c) for c in run_cmd)
-        cmd = ["bash", "-c", _R.bwrap_cmd(inner, ws, bundle,
-                                         extra_binds=codex_runtime_binds(codex_home))]
+        cmd = _sandbox_script(rounds, rnd, 0, _R.bwrap_cmd(
+            inner, ws, bundle, extra_binds=codex_runtime_binds(codex_home)))
     else:
         cmd = run_cmd
 
@@ -657,8 +676,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                 # sandbox with the same binds. Rewriting the wrapped string instead would have to
                 # edit shell syntax; rebuilding it cannot drift from the first turn's wrapping.
                 _inner = " ".join(shlex.quote(c) for c in resume_argv)
-                cmd = ["bash", "-c", _R.bwrap_cmd(_inner, ws, bundle,
-                                                  extra_binds=codex_runtime_binds(codex_home))]
+                cmd = _sandbox_script(rounds, rnd, turn_index, _R.bwrap_cmd(
+                    _inner, ws, bundle, extra_binds=codex_runtime_binds(codex_home)))
             else:
                 cmd = resume_argv
         with open(stderr_path, "ab") as err_f, open(cur_prompt, "rb") as in_f:
@@ -666,8 +685,26 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                 proc = subprocess.Popen(cmd, stdin=in_f, stdout=subprocess.PIPE, stderr=err_f,
                                         cwd=str(ws), env=dict(os.environ), start_new_session=True)
             except (OSError, ValueError) as exc:
+                # E2BIG NAMES `bash` AND NOTHING ELSE, so a spawn refused for size looks identical to
+                # a missing interpreter. execve bounds argv AND envp together, and the environment
+                # here is inherited from whatever launched the stage -- so record both sides, and the
+                # largest single contributor of each, or the next reader guesses like this one did.
+                _env = dict(os.environ)
+                _argv_bytes = sum(len(part.encode("utf-8", "replace")) + 1 for part in cmd)
+                _env_bytes = sum(len(k.encode("utf-8", "replace"))
+                                 + len(v.encode("utf-8", "replace")) + 2 for k, v in _env.items())
+                _biggest_env = sorted(
+                    ((len(v.encode("utf-8", "replace")), k) for k, v in _env.items()),
+                    reverse=True)[:5]
                 tr.emit({"type": "result", "subtype": "error", "is_error": True,
-                         "result": f"codex spawn failed: {type(exc).__name__}: {exc}"})
+                         "result": f"codex spawn failed: {type(exc).__name__}: {exc}",
+                         "spawn_sizes": {
+                             "argv_bytes": _argv_bytes,
+                             "argv_parts": [len(part) for part in cmd],
+                             "env_bytes": _env_bytes,
+                             "env_count": len(_env),
+                             "largest_env": [{"name": k, "bytes": n} for n, k in _biggest_env],
+                             "total_bytes": _argv_bytes + _env_bytes}})
                 tr.close()
                 return 127, tpath
 
