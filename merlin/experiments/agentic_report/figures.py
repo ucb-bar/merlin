@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import textwrap
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -26,9 +27,18 @@ import numpy as np                                                           # n
 from matplotlib.lines import Line2D                                          # noqa: E402
 from matplotlib.patches import Patch                                         # noqa: E402
 
-from merlin.plotting.merlin_plotstyle import (BG, BLUE, GOLD, INK, MAUVE, NAVY,  # noqa: E402
-                                              SAGE, SERIF, SLATE, style_ax,
-                                              suptitle, title, use_merlin_style, vbars)
+from merlin.plotting.merlin_plotstyle import (BLUE, GOLD, INK, MAUVE, NAVY,       # noqa: E402
+                                              SAGE, SERIF, SLATE, suptitle, title,
+                                              use_merlin_style, vbars)
+from merlin.plotting.merlin_plotstyle import style_ax as _house_style_ax             # noqa: E402
+
+#: The house palette carries the series identity; the page does not. These figures are read on a
+#: white page and in a white slide deck, so the canvas is white while every ink, bar and accent stays
+#: the house colour. `use_merlin_style()` sets the cream canvas repo-wide, so it is overridden here
+#: rather than changed there -- other figures in this repo still want the cream.
+PAGE_BG = "#FFFFFF"
+#: Where a fill needs to read as "absent" against white rather than against cream.
+EMPTY_FILL = "#EDE7E0"
 
 ARM_ORDER = ["arm1", "arm2", "arm3", "arm4", "eqsat", "UNKNOWN"]
 ARM_COLOR = {"arm1": MAUVE, "arm2": NAVY, "arm3": SLATE, "arm4": SAGE,
@@ -38,6 +48,20 @@ ARM_LABEL = {"arm1": "arm 1 · raw C++", "arm2": "arm 2 · C++ & infra",
              "eqsat": "e-graph seam", "UNKNOWN": "unclassified"}
 #: One hatch, one meaning: this cell is not a measurement.
 GAP_HATCH = "//"
+
+def style_ax(ax, *, grid="y"):
+    """The house axes treatment, on a white canvas.
+
+    Identical to the house helper -- ink spines, dotted value grid, no top/right -- except the
+    facecolor, which the house sets to cream for every figure in the repo. Only the page changes;
+    every series colour stays the house one."""
+    _house_style_ax(ax, grid=grid)
+    ax.set_facecolor(PAGE_BG)
+
+
+#: The substrate every arm gets regardless of bundle. Excluded when asking whether an ARM's
+#: OWN tools were reached for, since the substrate would mask the answer.
+SUBSTRATE_NAMES = frozenset({"agent_selfcheck.py", "simjob.py"})
 
 _REGISTRY: dict[str, callable] = {}
 
@@ -52,7 +76,7 @@ def figure(name):
 def _save(fig, out: Path, name: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for ext in ("png", "svg"):
-        fig.savefig(out / f"{name}.{ext}", dpi=200, bbox_inches="tight", facecolor=BG)
+        fig.savefig(out / f"{name}.{ext}", dpi=200, bbox_inches="tight", facecolor=PAGE_BG)
     plt.close(fig)
     print(f"  wrote {name}.png / .svg")
 
@@ -141,10 +165,13 @@ def arm_ladder(facts, out):
         if quality != "full":
             # Dim a ladder that is not a from-scratch contrast, so it cannot be read as one at a
             # glance. The note beneath says which kind it is and why.
-            ax.set_facecolor("#f0e8de")
+            ax.set_facecolor("#F2EDE7")
             note = ladders[key][0].get("ladder_note") or ""
-            ax.text(0.5, -0.30, note[:150], transform=ax.transAxes, ha="center", va="top",
-                    fontsize=7.0, color=MAUVE, wrap=True)
+            # Wrapped to the panel, not clipped at a character count: an unwrapped note runs into
+            # the neighbouring panel's note and the two become one unreadable line.
+            wrapped = "\n".join(textwrap.wrap(note, width=44)[:4])
+            ax.text(0.0, -0.34, wrapped, transform=ax.transAxes, ha="left", va="top",
+                    fontsize=7.0, color=MAUVE)
     _figcaption(fig, "Only tag-matched ladders are shown: every rung in a panel was graded against "
                      "the same corpus with the same model, so the bars are comparable. Cost (~ = "
                      "notional) and active wall are under each rung. Fractions from DIFFERENT panels "
@@ -388,13 +415,17 @@ def concurrency_fig(facts, out):
     ax2.set_ylabel("share of runs with any tool overlap")
     style_ax(ax2)
     title(ax2, "How often it happens at all", fs=13)
+    # The outlier sentence is DERIVED. It was hardcoded once and went stale the moment the flush
+    # guard tightened, which is the exact drift this kit exists to prevent.
+    peakiest = max(usable, key=lambda f: (f["max_concurrent"], -f["overlap_share"]))
     _figcaption(fig, f"{len(usable)} run(s) whose overlap survived the flush check (left bar = "
                      f"median). A run whose overlap moved when flush-suspect spans were dropped is "
                      f"excluded: an overlap that depends on those was measuring the reader, not the "
                      f"agent. The right panel counts RUNS rather than reporting a peak, because peak "
-                     f"concurrency is carried by single outliers — one performance trial reaches 10 "
-                     f"while occupying 0.6% of its wall, and every other trial in that lane is "
-                     f"strictly serial.")
+                     f"concurrency is carried by single outliers — the deepest here reaches "
+                     f"{peakiest['max_concurrent']} while occupying "
+                     f"{peakiest['overlap_share']:.1%} of its wall "
+                     f"({peakiest['target']} {peakiest['arm']}, {peakiest['run_id'][:30]}).")
     suptitle(fig, "Does the agent do things in parallel?", y=1.0)
     fig.subplots_adjust(bottom=0.30, top=0.86)
     _save(fig, out, "fig06_concurrency")
@@ -511,18 +542,18 @@ def coverage_matrix(facts, out):
             grid[i, j] = kind_val.get(f.get("availability", {}).get(name, {}).get("kind"), 0)
     from matplotlib.colors import ListedColormap
     fig, ax = plt.subplots(figsize=(8.4, 0.36 * len(sel) + 2.4))
-    ax.imshow(grid, cmap=ListedColormap(["#e6d7cc", GOLD, SAGE]), aspect="auto", vmin=0, vmax=2)
+    ax.imshow(grid, cmap=ListedColormap([EMPTY_FILL, GOLD, SAGE]), aspect="auto", vmin=0, vmax=2)
     ax.set_xticks(range(len(fields)))
     ax.set_xticklabels(fields, fontsize=9, rotation=25, ha="right")
     ax.set_yticks(range(len(sel)))
     ax.set_yticklabels([f"{f['target'][:8]} {f['arm']} {f['run_id'][:26]}" for f in sel], fontsize=7.4)
     ax.set_xticks(np.arange(-0.5, len(fields), 1), minor=True)
     ax.set_yticks(np.arange(-0.5, len(sel), 1), minor=True)
-    ax.grid(which="minor", color=BG, lw=1.6)
+    ax.grid(which="minor", color=PAGE_BG, lw=1.6)
     ax.tick_params(which="minor", length=0)
     ax.legend(handles=[Patch(facecolor=SAGE, label="measured"),
                        Patch(facecolor=GOLD, label="derived"),
-                       Patch(facecolor="#e6d7cc", label="unavailable")],
+                       Patch(facecolor=EMPTY_FILL, label="unavailable")],
               loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=9)
     # Grouped by FIELD, not by reason text: every reason names the run it came from, so the strings
     # are all distinct and a "commonest causes" tally over them is a list of one-offs.
@@ -669,7 +700,7 @@ def granted_vs_used(facts, out):
             n = t["invocations"]
             if n == 0:
                 ax.add_patch(plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76,
-                                           facecolor="#e6d7cc", edgecolor=INK, lw=0.7))
+                                           facecolor=EMPTY_FILL, edgecolor=INK, lw=0.7))
                 ax.text(x, y, "0", ha="center", va="center", fontsize=8, color=MAUVE)
             else:
                 ax.add_patch(plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76,
@@ -685,16 +716,25 @@ def granted_vs_used(facts, out):
     ax.invert_yaxis()
     style_ax(ax, grid="")
     ax.legend(handles=[Patch(facecolor=SAGE, edgecolor=INK, label="invoked (count shown)"),
-                       Patch(facecolor="#e6d7cc", edgecolor=INK, label="granted, never invoked"),
+                       Patch(facecolor=EMPTY_FILL, edgecolor=INK, label="granted, never invoked"),
                        Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH,
                              label="path grant — use is invisible"),
-                       Patch(facecolor=BG, edgecolor=BG, label="blank = not granted to this arm")],
+                       Patch(facecolor=PAGE_BG, edgecolor=INK, lw=0.5, label="blank = not granted to this arm")],
               loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=8.4)
+    # Which rungs left every brokered tool untouched is DERIVED, not asserted: it is the sentence a
+    # reader will quote, so it has to move when the data does.
+    unused = []
+    for f in rows:
+        brokered = [t for t in f["granted_tools"]
+                    if t["invocable"] and t["name"] not in SUBSTRATE_NAMES]
+        if brokered and all(t["invocations"] == 0 for t in brokered):
+            unused.append(f"{f['target']} {f['arm']}")
+    tail = (" Rungs that invoked none of the brokered tools their own arm provides: "
+            + "; ".join(unused) + ".") if unused else ""
     _figcaption(fig, "Counts come from matching staged tool filenames in each run's own command "
                      "text, so they are a LOWER BOUND: a tool imported inside a script the agent "
                      "wrote never appears on a command line. A zero on a brokered tool still means "
-                     "its shim was not invoked — on the gemmini arm-4 ladder rung that is true of "
-                     "both tools the arm exists to provide.", y=0.02)
+                     "its shim was not invoked." + tail, y=0.02)
     suptitle(fig, "Granted is not used", y=1.0)
     fig.subplots_adjust(bottom=0.30, top=0.90, right=0.78)
     _save(fig, out, "fig11_granted_vs_used")
@@ -710,6 +750,9 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     facts = json.loads(a.facts.read_text())
     use_merlin_style()
+    # The house style paints a cream canvas repo-wide. Repaint to white for this kit only.
+    plt.rcParams.update({"axes.facecolor": PAGE_BG, "figure.facecolor": PAGE_BG,
+                         "savefig.facecolor": PAGE_BG})
     names = a.only or list(_REGISTRY)
     for name in names:
         fn = _REGISTRY.get(name)
