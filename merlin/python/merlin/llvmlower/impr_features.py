@@ -78,6 +78,48 @@ def register(feature: ImprFeature) -> ImprFeature:
     return feature
 
 
+#: Cache for :func:`_single_name_lever_modules` (built once per process).
+_LEVER_MODULES: "dict[str, str] | None" = None
+
+
+def _single_name_lever_modules() -> "dict[str, str]":
+    """``FEATURE`` name -> module basename, for every sibling module declaring ONE lever name.
+
+    Discovered by PARSING the sibling sources rather than importing them: at this point in the
+    package every lever module imports THIS one to call :func:`register`, so importing them all
+    eagerly is circular. Parsing is also structural, not a line-match -- the module-level
+    ``FEATURE = "..."`` assignment is read out of the AST, and a module only qualifies if it also
+    defines ``ensure_registered`` at module level, which is the thing that will be called.
+
+    A module that declares no ``FEATURE`` (a family module carrying a ``FEATURE_PREFIX``, or a plain
+    helper) simply does not appear, so families keep resolving through their own prefix/arity rules.
+    """
+    global _LEVER_MODULES
+    if _LEVER_MODULES is None:
+        import ast as _ast
+        found: dict[str, str] = {}
+        for src in sorted(Path(__file__).parent.glob("*.py")):
+            if src.name == Path(__file__).name:
+                continue
+            try:
+                tree = _ast.parse(src.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError):
+                continue  # unreadable/unparseable sibling is not a lever; never guess one
+            feature = None
+            has_ensure = False
+            for node in tree.body:  # MODULE level only -- a nested FEATURE is not the lever's name
+                if isinstance(node, _ast.Assign) and isinstance(node.value, _ast.Constant) \
+                        and isinstance(node.value.value, str) \
+                        and any(isinstance(t, _ast.Name) and t.id == "FEATURE" for t in node.targets):
+                    feature = node.value.value
+                elif isinstance(node, _ast.FunctionDef) and node.name == "ensure_registered":
+                    has_ensure = True
+            if feature and has_ensure:
+                found[feature] = src.stem
+        _LEVER_MODULES = found
+    return _LEVER_MODULES
+
+
 def _try_lazy_register(name: str) -> bool:
     """Auto-register a v3 micro-kernel tuning point from its NAME (accum_resident_v3_<MR>_<NR>_<KC>).
 
@@ -93,17 +135,28 @@ def _try_lazy_register(name: str) -> bool:
     ``compiler_features`` -- rather than reaching it through a ``microkernel`` knob block, which
     registers it as a side effect of resolving -- failed with an "unknown impr feature" KeyError.
     Each family is registered from its own arity, so a name is either derivable or an honest error."""
-    # The quantize round/convert fusion is a SINGLE name in its own module, so it resolves by import
-    # like the family below rather than through the arity table. It has to resolve HERE and not only
-    # where it is ranked: `wholemodel_proposer` registers it for the PROPOSAL path, but a package that
-    # names it in `compiler_features` reaches `normalize` through `k1.build_k1_binary`, which imports
-    # no proposer -- and through the lowering SUBPROCESS, which re-imports this module and sees no
-    # registration the parent made at run time. Both raised "unknown impr feature" until this hook
-    # existed. Registering from the name is what makes the lever resolvable in ANY process.
-    from .quant_round import FEATURE as _QR_NAME
-    if name == _QR_NAME:
-        from .quant_round import ensure_registered as _qr_ensure
-        _qr_ensure()
+    # A SINGLE-NAME lever lives in its own module and resolves by importing that module, rather than
+    # through the arity table below. It has to resolve HERE and not only where it is ranked:
+    # `wholemodel_proposer` registers it for the PROPOSAL path, but a package that names it in
+    # `compiler_features` reaches `normalize` through `k1.build_k1_binary`, which imports no proposer
+    # -- and through the lowering SUBPROCESS, which re-imports this module and sees no registration
+    # the parent made at run time. Both raise "unknown impr feature" without this.
+    #
+    # This was a HAND-MAINTAINED list of per-module hooks, and it drifted exactly as such lists do:
+    # it named two modules while THIRTEEN declared a lever. The other eleven resolved only by
+    # ACCIDENT -- an unrelated module happening to import theirs (`pipeline` pulls in `prov_cse` and
+    # `im2col_pack`), or a call-time `ensure_registered()` buried in `k1.build_k1_binary` (that is
+    # what `prepack_weight_layout` relies on). Accidental resolution is not resolution: a fresh
+    # process that imports only THIS module could not resolve seven of the thirteen, and the lowering
+    # subprocess is exactly such a process. Removing an unrelated import, or reaching a lever by a
+    # path that skips `build_k1_binary`, silently turns a named lever into "unknown impr feature" --
+    # or, where a caller swallows that, into a lever reported as applied and never applied.
+    # The mapping is DERIVED from the modules themselves so that resolution does not depend on who
+    # else happened to be imported first.
+    _module = _single_name_lever_modules().get(name)
+    if _module is not None:
+        import importlib
+        importlib.import_module(f".{_module}", __package__).ensure_registered()
         return name in _REGISTRY
     # The parallel-GRAIN family carries its threshold in the name and lives in its own module, so
     # it is resolved first and by import rather than through the arity table below.
@@ -2731,7 +2784,7 @@ def perop_mr_sentinel(mr_cap: int) -> str:
 PEROP_MR_LADDER: tuple[str, ...] = tuple(perop_mr_sentinel(_n) for _n in (1, 2, 8, 16))
 
 
-def ensure_perop_block(table, kc: int) -> str:
+def ensure_perop_block(table, kc: int, pairs: "list | tuple" = ()) -> str:
     """Register (on demand) the per-op-blocked schedule for THIS model's block table.
 
     The schedule text is a function of the table (one tile+vectorize arm per distinct block), so the
@@ -2743,11 +2796,20 @@ def ensure_perop_block(table, kc: int) -> str:
     from . import perop_blocks as _pb
 
     blocks = _pb.distinct_blocks(table)
-    key = hashlib.sha1(repr(sorted(table.items())).encode()).hexdigest()[:12]
+    # The PAIR TABLE is part of the key, not just of the text. Two builds of the same model that
+    # differ only in whether the requant epilogue was fused are two different schedules; keying on
+    # the table alone would hand the second one the first one's already-registered feature and it
+    # would build the arm it did not ask for -- silently, and with the lever reported as applied.
+    pairs = [list(x) for x in (pairs or ())]
+    # With NO pairs the key is the table alone, byte-for-byte as before this argument existed: an
+    # existing package names its concrete feature by that hash in `compiler_features`, and changing
+    # the unfused spelling would make every one of them unresolvable.
+    key = hashlib.sha1((repr(sorted(table.items())) if not pairs
+                        else repr((sorted(table.items()), pairs))).encode()).hexdigest()[:12]
     name = f"{PEROP_BLOCK_NAME}_{len(blocks)}b_{kc}_{key}"
     if name in known():
         return name
-    text = _pb.schedule_text(table, kc)
+    text = _pb.schedule_text(table, kc, pairs)
     register(ImprFeature(
         name=name,
         action_class="PASS",
@@ -2756,7 +2818,12 @@ def ensure_perop_block(table, kc: int) -> str:
                      f"widest block legal for its own extents, matched by the merlin.blk_<MR>x<NR> tag "
                      f"the prepare step applies after specialization. Replaces the per-op-CLASS block, "
                      f"whose smallest member otherwise clamps the whole class (measured: whisper_tiny "
-                     f"claims 65.9% of its MACs per class vs 100% per op)."),
+                     f"claims 65.9% of its MACs per class vs 100% per op)."
+                     + (f" {len(pairs)} of them additionally carry a FUSED requantize epilogue "
+                        f"(fuse_requant_into_contraction): the epilogue is tiled and the contraction "
+                        f"and its accumulator fill are fused into that loop, so the i32 accumulator "
+                        f"is converted and scaled in the tile that produced it and the model-sized "
+                        f"i32 tensor is never built." if pairs else "")),
         edit_pipeline=_accumulator_resident_v3_pipeline,
         edit_schedule=lambda _t, _text=text: _text,
         schedule_replace=True,
