@@ -1563,7 +1563,7 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = ""):
     capsules unannotated -- exactly the silent-gap failure mode this block exists to close -- so it is
     applied here, at the one point every path must pass through.
     """
-    written = _write_capsule_inner(entry, binding, out_root)
+    written = _write_capsule_inner(entry, binding, out_root, facts_sha)
     if not written:
         return written
     d = Path(written) if not isinstance(written, Path) else written
@@ -1913,7 +1913,7 @@ def _emit_micro_model_loader(entry: dict, target: str, out_root) -> bool:
     return True
 
 
-def _write_capsule_inner(entry, binding, out_root):
+def _write_capsule_inner(entry, binding, out_root, facts_sha: str = ""):
     regime, eb = _entry_regime(entry, binding)
     # Whole-model capsule: a small representative network lowered end-to-end via model2MLIR, graded vs its
     # host torch-eager output, GATED so it runs only after the op suite proves itself. Additive: skipped
