@@ -63,6 +63,9 @@ def style_ax(ax, *, grid="y"):
 #: OWN tools were reached for, since the substrate would mask the answer.
 SUBSTRATE_NAMES = frozenset({"agent_selfcheck.py", "simjob.py"})
 
+#: A tier needs at least this many runs before its spread means anything.
+_MIN_TIER_SAMPLES = 3
+
 _REGISTRY: dict[str, callable] = {}
 
 
@@ -218,84 +221,155 @@ def best_per_cell(facts, out):
 
 @figure("fig02_capsules_over_time")
 def capsules_over_time(facts, out):
-    """Capsules passing over wall time, one lane per selected run. The reference figure."""
-    rows = [f for f in facts if f.get("selected") and f.get("pass_milestones")]
-    rows.sort(key=lambda f: (f["target"], f["arm"]))
-    if not rows:
-        return
-    fig, axes = plt.subplots(len(rows), 1, figsize=(11, 0.92 * len(rows) + 1.0),
-                             squeeze=False, sharex=True)
-    for ax, f in zip(axes[:, 0], rows):
-        ms = f["pass_milestones"]
-        xs = [m["t_s"] / 60.0 for m in ms]
-        ys = [m["n_passed"] for m in ms]
-        total = ms[-1]["n_capsules"] or 1
-        end = (f.get("pass_wall_s") or xs[-1] * 60) / 60.0
-        xs, ys = xs + [end], ys + [ys[-1]]
-        colour = ARM_COLOR[f["arm"]]
-        ax.step(xs, ys, where="post", color=colour, lw=2.0)
-        ax.fill_between(xs, 0, ys, step="post", color=colour, alpha=0.18)
-        ax.set_ylim(0, total * 1.28)
-        ax.set_yticks([0, total])
-        ax.text(xs[-1], ys[-1], f"  {ys[-1]}/{total}", va="center", fontsize=9,
-                color=colour, fontweight="bold")
-        ax.text(0.004, 0.98, f"{f['target']} · {ARM_LABEL[f['arm']]} · {f['run_id'][:34]}",
-                transform=ax.transAxes, va="top", fontsize=8.4, color=INK, alpha=0.85)
-        style_ax(ax)
-        if f.get("availability", {}).get("passes", {}).get("kind") == "derived":
-            ax.text(0.997, 0.96, "mtime clock", transform=ax.transAxes, ha="right", va="top",
-                    fontsize=7.0, color=MAUVE, alpha=0.85)
-    axes[-1, 0].set_xlabel("Time (min)")
-    skipped = Counter()
+    """Progress over wall time, one panel per target, arms overlaid.
+
+    Three edits to the small-multiple version this replaces, each removing something that was
+    occupying space without carrying information:
+
+    * lanes that never passed a capsule are cut. A flat line at zero is a real result about that run
+      and it belongs in the ladder figure, which labels it a null cell; here it is twenty percent of
+      the ink saying nothing about progress.
+    * patch runs are cut. They inherited a compiler and jump to their score in one step, which is a
+      fact about how they were launched rather than a trajectory.
+    * the y axis is the share of each run's OWN corpus, so lanes whose suites differ can share a
+      panel at all.
+
+    That last one is a licence to compare shapes, not scores. Within a tag-matched ladder the corpus
+    really is identical and the arms are directly comparable, so those lanes are drawn solid. A lane
+    standing alone was graded against its own suite and is drawn dashed: its height is not
+    commensurate with its neighbours', and the legend carries every denominator."""
+    lanes = []
     for f in facts:
-        if f.get("selected") and not f.get("pass_milestones"):
-            skipped[f.get("availability", {}).get("passes", {}).get("reason", "no reason recorded")[:70]] += 1
-    n_mtime = sum(1 for f in rows
+        ms = f.get("pass_milestones") or []
+        if not f.get("selected") or not ms:
+            continue
+        if max(m["n_passed"] for m in ms) == 0:
+            continue                                   # never passed anything
+        if f.get("ladder_quality") == "patch":
+            continue                                   # inherited its result
+        lanes.append(f)
+    # One lane per (target, arm): the best score, then the longer record. Two runs of the same arm in
+    # one panel would draw the same colour twice and read as a single erratic line.
+    best: dict[tuple, dict] = {}
+    for f in lanes:
+        key = (f["target"], f["arm"])
+        cur = best.get(key)
+        rank = ((f["passed"] or 0) / max(f["capsules"] or 1, 1), len(f["pass_milestones"]))
+        if cur is None or rank > ((cur["passed"] or 0) / max(cur["capsules"] or 1, 1),
+                                  len(cur["pass_milestones"])):
+            best[key] = f
+    lanes = sorted(best.values(), key=lambda f: (f["target"], f["arm"]))
+    if not lanes:
+        return
+
+    targets = sorted({f["target"] for f in lanes})
+    fig, axes = plt.subplots(1, len(targets), figsize=(4.6 * len(targets), 4.6), squeeze=False)
+    for ax, target in zip(axes[0], targets):
+        here = [f for f in lanes if f["target"] == target]
+        # Endpoint labels collide when two arms finish at similar heights. Nudge each away from the
+        # ones already placed rather than letting them overprint.
+        placed: list[tuple[float, float]] = []
+        for f in here:
+            ms = f["pass_milestones"]
+            total = max(m["n_capsules"] for m in ms) or 1
+            xs = [m["t_s"] / 60.0 for m in ms]
+            ys = [m["n_passed"] / total for m in ms]
+            end_min = max((f.get("pass_wall_s") or 0) / 60.0, xs[-1])
+            xs, ys = [0.0] + xs + [end_min], [ys[0]] + ys + [ys[-1]]
+            in_ladder = bool(f.get("ladder"))
+            ax.step(xs, ys, where="post", color=ARM_COLOR[f["arm"]], lw=2.1 if in_ladder else 1.6,
+                    ls="-" if in_ladder else (0, (4, 2.5)), zorder=3)
+            ax.plot([xs[-1]], [ys[-1]], "o", color=ARM_COLOR[f["arm"]], ms=5.5,
+                    markeredgecolor=INK, markeredgewidth=0.7, zorder=4)
+            ly = ys[-1]
+            while any(abs(ly - py) < 0.055 and abs(xs[-1] - px) < 0.28 * max(end_min, 1)
+                      for px, py in placed):
+                ly += 0.055
+            placed.append((xs[-1], ly))
+            ax.text(xs[-1], ly, f"  {f['passed']}/{total}", va="center", fontsize=8.6,
+                    color=ARM_COLOR[f["arm"]], fontweight="bold")
+        ax.set_ylim(0, 1.12)
+        ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+        ax.set_yticklabels(["0", "", "50%", "", "100%"] if target == targets[0] else [])
+        ax.set_xlabel("Time (min)")
+        if target == targets[0]:
+            ax.set_ylabel("share of this run's own corpus passed")
+        style_ax(ax, grid="both")
+        n_ladder = sum(1 for f in here if f.get("ladder"))
+        title(ax, f"{target}   ({n_ladder} of {len(here)} share one corpus)", fs=12)
+        ax.legend(handles=[Line2D([0], [0], color=ARM_COLOR[f["arm"]],
+                                  lw=2.1 if f.get("ladder") else 1.6,
+                                  ls="-" if f.get("ladder") else (0, (4, 2.5)),
+                                  label=f"{ARM_LABEL[f['arm']].split('·')[0].strip()} · "
+                                        f"{max(m['n_capsules'] for m in f['pass_milestones'])} caps")
+                           for f in here],
+                  loc="lower right", fontsize=8, framealpha=0.95)
+
+    dropped_null = sum(1 for f in facts if f.get("selected") and f.get("pass_milestones")
+                       and max(m["n_passed"] for m in f["pass_milestones"]) == 0)
+    dropped_patch = sum(1 for f in facts if f.get("selected") and f.get("pass_milestones")
+                        and f.get("ladder_quality") == "patch")
+    n_mtime = sum(1 for f in lanes
                   if f.get("availability", {}).get("passes", {}).get("kind") == "derived")
-    _figcaption(fig, f"{len(rows)} selected run(s) drawn. {len(rows) - n_mtime} carry a self-check "
-                     f"log and so a clock the run itself wrote; the {n_mtime} marked 'mtime clock' "
-                     f"were graded continuously and kept no such log, so their x-axis is the verdict "
-                     f"files' modification time — real enough to order events, not a stamp the run "
-                     f"recorded."
-                     + (f" {sum(skipped.values())} selected run(s) kept no progress record at all: "
-                        f"{_gap_note(skipped)}." if skipped else ""))
-    suptitle(fig, "Capsules passing over time", y=0.995)
-    fig.subplots_adjust(top=0.955, bottom=0.075, hspace=0.55)
+    _figcaption(fig, f"{len(lanes)} run(s) drawn, best per target and arm. {dropped_null} that never "
+                     f"passed a capsule and {dropped_patch} that inherited a compiler are omitted — "
+                     f"both are real results, and both are reported in the ladder figure instead. "
+                     f"SOLID lanes belong to a tag-matched ladder and were graded against the SAME "
+                     f"corpus, so their heights are comparable; DASHED lanes were graded against "
+                     f"their own suite, whose size is in the legend, and their heights are not. "
+                     f"{n_mtime} of {len(lanes)} lanes take their clock from verdict-file mtimes "
+                     f"rather than a stamp the run wrote.", y=0.015)
+    suptitle(fig, "Capsules passing over time", y=1.0)
+    fig.subplots_adjust(bottom=0.30, top=0.86, wspace=0.10)
     _save(fig, out, "fig02_capsules_over_time")
 
 
 @figure("fig03_spend_over_time")
 def spend_over_time(facts, out):
-    """Cost against active wall, metered and notional in SEPARATE panels.
+    """Cumulative spend, priced per token bucket, one line per run.
 
-    They are different quantities -- money spent versus what a seat run would have cost metered --
-    and one axis carrying both invites a total that means nothing."""
-    sel = [f for f in facts if f.get("selected")]
-    panels = [("metered", "cost (USD, billed)"), ("notional", "cost (USD, notional — a seat is\nnot billed per token)")]
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.6))
-    for ax, (kind, ylab) in zip(axes, panels):
-        drawn = 0
-        for f in sel:
-            value, k = _cost(f)
-            hours = (f.get("active_wall_s") or 0) / 3600.0
-            if k != kind or value is None or hours <= 0:
-                continue
-            drawn += 1
-            colour = ARM_COLOR[f["arm"]]
-            ax.plot([0, hours], [0, value], color=colour, lw=1.6, alpha=0.9,
-                    marker="o", markevery=[1], ms=6)
-            ax.text(hours, value, f"  {f['target'][:3]}·{f['arm'][-1]}", fontsize=7.6,
-                    color=colour, va="center")
+    The previous version joined the origin to (total hours, total cost). That is two measurements and
+    a straight line asserting a constant burn rate, which runs do not have: the four token buckets
+    are billed at very different prices, so a run that builds cache early and reads it later spends
+    fast and then slow. Pricing each bucket over the run recovers the real shape.
+
+    Only curves whose endpoint agrees with the total the harness recorded independently are drawn.
+    A rate keyed on the wrong spelling of a model id produces a curve that looks perfectly reasonable
+    and is off by a constant factor, so the cross-check is what makes this publishable."""
+    metered = [f for f in facts if f.get("selected") and f.get("cost_curve")
+               and f.get("cost_kind") == "metered"]
+    notional = [f for f in facts if f.get("selected") and f.get("cost_curve")
+                and f.get("cost_kind") == "subscription_notional"]
+    if not metered and not notional:
+        return
+    panels = [(rows, name, ylab) for rows, name, ylab in (
+        (metered, "metered spend", "cost (USD, billed)"),
+        (notional, "notional spend", "cost (USD, notional —\na seat is not billed per token)"))
+        if rows]
+    fig, axes = plt.subplots(1, len(panels), figsize=(6.2 * len(panels), 4.8), squeeze=False)
+    for ax, (rows, name, ylab) in zip(axes[0], panels):
+        for f in rows:
+            pts = f["cost_curve"]
+            xs = [p["t_s"] / 3600.0 for p in pts]
+            ys = [p["usd"] for p in pts]
+            ax.plot(xs, ys, color=ARM_COLOR[f["arm"]], lw=1.8, alpha=0.95)
+            ax.plot([xs[-1]], [ys[-1]], "o", color=ARM_COLOR[f["arm"]], ms=5,
+                    markeredgecolor=INK, markeredgewidth=0.6)
+            ax.text(xs[-1], ys[-1], f"  {f['target'][:3]}·{f['arm'][-1]}", fontsize=7.8,
+                    color=ARM_COLOR[f["arm"]], va="center")
         ax.set_xlabel("active wall time (h)")
         ax.set_ylabel(ylab)
         style_ax(ax, grid="both")
-        title(ax, f"{kind} spend", fs=13)
-        _caption(ax, f"{drawn} selected run(s) priced this way", y=-0.22)
-    unp = sum(1 for f in sel if _cost(f)[1] == "unpriced")
-    fig.text(0.5, -0.04, f"{unp} selected run(s) carry no dollar figure at all and appear in neither "
-                         f"panel — an unpriced model is not a free one.",
-             ha="center", fontsize=8.2, color=INK, alpha=0.8)
-    suptitle(fig, "What the runs cost")
+        title(ax, f"{name} — {len(rows)} run(s)", fs=12.5)
+    n_refused = sum(1 for f in facts if f.get("selected") and not f.get("cost_curve"))
+    _figcaption(fig, f"Each line is priced from that run's own token buckets over time — fresh input, "
+                     f"output, cache read and cache write each at their own rate — so the slope is "
+                     f"the real burn rate rather than an average. {n_refused} selected run(s) are "
+                     f"absent: either the model has no per-bucket rate, or the priced endpoint "
+                     f"disagreed with the total the harness recorded, in which case the curve is not "
+                     f"drawn rather than drawn wrong.", y=0.02)
+    suptitle(fig, "What the runs cost, as they spent it", y=1.0)
+    fig.subplots_adjust(bottom=0.30, top=0.86, wspace=0.28)
     _save(fig, out, "fig03_spend_over_time")
 
 
@@ -443,8 +517,14 @@ def tier_cost(facts, out):
             rows.append((f["phase"], tier, s["median_active_s"], s["n"]))
     if not rows:
         return
-    fig, ax = plt.subplots(figsize=(9.5, 4.6))
-    groups = sorted({(p, t) for p, t, _, _ in rows})
+    # A tier represented by a single run is a point, not a distribution: it invites a comparison
+    # against the neighbouring clouds that one observation cannot support.
+    counts = Counter((p, t) for p, t, _, _ in rows)
+    groups = sorted(g for g, n in counts.items() if n >= _MIN_TIER_SAMPLES)
+    dropped = sorted(g for g, n in counts.items() if n < _MIN_TIER_SAMPLES)
+    if not groups:
+        return
+    fig, ax = plt.subplots(figsize=(9.0, 4.6))
     xs = np.arange(len(groups))
     for i, (phase, tier) in enumerate(groups):
         vals = [v for p, t, v, _ in rows if (p, t) == (phase, tier)]
@@ -464,66 +544,79 @@ def tier_cost(facts, out):
     ax.legend(handles=[Patch(facecolor=NAVY, edgecolor=INK, label="functional lane"),
                        Patch(facecolor=SAGE, edgecolor=INK, label="performance lane")],
               loc="upper left", fontsize=9)
-    _caption(ax, "Passing capsules only: a failing capsule aborts in hundredths of a second, so "
-                 "pooling the two yields a median about the pass rate rather than the cost. "
-                 "Build + simulation; queueing excluded. Carried certificates record no duration "
-                 "and are not counted.", y=-0.16)
-    suptitle(fig, "The certifying tier is the whole cost of a grade")
+    tail = ("" if not dropped else
+            " Omitted for having a single observation: "
+            + ", ".join(f"{t} ({p})" for p, t in dropped) + ".")
+    _figcaption(fig, "Passing capsules only: a failing capsule aborts in hundredths of a second, so "
+                     "pooling the two yields a median about the pass rate rather than the cost. "
+                     "Build + simulation; queueing excluded. Carried certificates record no duration "
+                     "and are not counted." + tail, y=0.02)
+    suptitle(fig, "The certifying tier is the whole cost of a grade", y=1.0)
+    fig.subplots_adjust(bottom=0.26, top=0.88)
     _save(fig, out, "fig07_tier_cost")
 
 
 @figure("fig08_phase_tools")
 def phase_tools(facts, out):
-    """The tool surface each phase exposes. Read from the runs, never assumed."""
+    """The performance lane's whole action set, and what each one costs.
+
+    Two panels were doing the work of one. A bar chart of how many actions fall in each family said
+    10 / 4 / 1 / 1, which is the same information as the axis labels here; and the time panel put a
+    1,070-minute bar beside a 0.004-minute one on a linear axis, which rendered every action except
+    the measurement as a bare line — including the free one the whole point is about.
+
+    One panel, log axis, every action shown. The spread is five orders of magnitude and that spread
+    IS the finding: the closed set the agent is given contains exactly one expensive thing."""
     p2 = [f for f in facts if f["phase"] == "phase2" and f.get("broker_actions")]
     if not p2:
         return
     actions = sorted({a for f in p2 for a in f["broker_actions"]})
-    families = defaultdict(list)
-    for a in actions:
-        families[a.split("-", 1)[0]].append(a)
-    totals = Counter()
-    seconds = Counter()
+    seconds, calls = Counter(), Counter()
     for f in p2:
         for action, d in (f.get("broker_totals") or {}).items():
-            totals[action] += d["calls"]
             seconds[action] += d["seconds"]
-    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(13, 4.8), gridspec_kw={"width_ratios": [1, 1.2]})
-    fams = sorted(families, key=lambda k: -len(families[k]))
-    vbars(ax, np.arange(len(fams)), [len(families[k]) for k in fams],
-          [SAGE if k != "tuning" else GOLD for k in fams], width=0.55)
-    ax.set_xticks(np.arange(len(fams)))
-    ax.set_xticklabels(fams, fontsize=9, rotation=20, ha="right")
-    ax.set_ylabel("actions in the family")
-    style_ax(ax)
-    title(ax, f"The performance lane's {len(actions)} brokered actions", fs=13)
+            calls[action] += d["calls"]
 
-
-    # The free analysis action is the whole point of the caption, and it is invisible in a
-    # most-common-by-seconds list precisely BECAUSE it costs nothing. Pin it in.
-    top = [a for a, _ in seconds.most_common(7)]
-    free = [a for a in actions if a.startswith("analyze")]
-    for a in free:
-        if a not in top and a in seconds:
-            top = top[:6] + [a]
-    top = top[::-1]
-    ax2.barh(np.arange(len(top)), [seconds[a] / 60 for a in top], color=NAVY,
-             edgecolor=INK, lw=0.9, height=0.6)
-    for i, a in enumerate(top):
-        ax2.text(seconds[a] / 60 * 1.02, i, f" {totals[a]} calls", va="center", fontsize=8.4, color=INK)
-    ax2.set_yticks(np.arange(len(top)))
-    ax2.set_yticklabels(top, fontsize=8.6)
-    ax2.set_xlabel("minutes across all trials")
-    style_ax(ax2, grid="x")
-    title(ax2, "Where the brokered time goes", fs=13)
-    _figcaption(fig, "The action set is derived per run from the candidate's own manifest plus "
-                     "descriptor-declared probes, so it is read from STAGE_CONTEXT rather than "
-                     "hardcoded. The measurement dominates the brokered time; `analyze-command-"
-                     "buffers` reads only the candidate's own emitted buffers and so costs no oracle "
-                     "time at all, which is the point of adding it.")
-    suptitle(fig, "Phase 1 hands the agent a simulator; phase 2 hands it a closed action set",
-             y=1.01)
-    fig.subplots_adjust(bottom=0.26, top=0.84, wspace=0.35)
+    family_colour = {"tuning": GOLD, "analyze": NAVY, "candidate": SAGE, "probe": SLATE}
+    shown = sorted(actions, key=lambda a: seconds.get(a, 0.0))
+    fig, ax = plt.subplots(figsize=(11.0, 0.34 * len(shown) + 2.6))
+    ys = np.arange(len(shown))
+    #: An action that was never invoked has no bar on a log axis; it gets a marker at the floor so
+    #: it is visibly present-but-unused rather than absent.
+    floor = 1e-3
+    for y, a in zip(ys, shown):
+        sec = seconds.get(a, 0.0)
+        colour = family_colour.get(a.split("-", 1)[0], SLATE)
+        if sec <= 0:
+            ax.plot([floor], [y], "o", color="none", markeredgecolor=INK, ms=6, markeredgewidth=0.9)
+            ax.text(floor * 1.6, y, "  never invoked", va="center", fontsize=7.8, color=MAUVE)
+            continue
+        ax.barh(y, max(sec, floor), left=floor, color=colour, edgecolor=INK, lw=0.8, height=0.62)
+        label = f"  {calls[a]} calls · " + (f"{sec / 60:.0f} min" if sec >= 60 else f"{sec:.2f} s")
+        ax.text(max(sec, floor), y, label, va="center", fontsize=8.0, color=INK)
+    ax.set_xscale("log")
+    ax.set_xlim(floor, max(seconds.values()) * 40 if seconds else 1.0)
+    ax.set_yticks(ys)
+    ax.set_yticklabels(shown, fontsize=8.6)
+    ax.set_ylim(-0.7, len(shown) - 0.3)
+    ax.set_xlabel("total seconds across all trials (log)")
+    style_ax(ax, grid="x")
+    ax.legend(handles=[Patch(facecolor=c, edgecolor=INK, label=k)
+                       for k, c in family_colour.items() if any(a.startswith(k) for a in shown)],
+              loc="lower right", fontsize=8.6, title="family", title_fontsize=8.6)
+    free = [a for a in shown if seconds.get(a, 0.0) > 0 and seconds[a] < 1.0]
+    dear = max(seconds, key=seconds.get) if seconds else ""
+    _figcaption(fig, f"{len(actions)} actions, derived per run from the frozen candidate's own "
+                     f"manifest plus descriptor-declared probes and read from STAGE_CONTEXT rather "
+                     f"than hardcoded. Phase 1 hands the agent a shell and a simulator it drives "
+                     f"itself; phase 2 hands it only this list."
+                     + (f" `{dear}` accounts for {seconds[dear] / max(sum(seconds.values()), 1):.0%} "
+                        f"of all brokered time" if dear else "")
+                     + (f", while {', '.join('`' + a + '`' for a in free)} cost under a second in "
+                        f"total — reading only the candidate's own emitted buffers, which is the "
+                        f"point of adding it." if free else "."), y=0.02)
+    suptitle(fig, "Phase 2's closed action set, and where its time goes", y=1.0)
+    fig.subplots_adjust(bottom=0.24, top=0.90, left=0.30)
     _save(fig, out, "fig08_phase_tools")
 
 
@@ -585,7 +678,7 @@ def rate_panels(facts, out):
     tokens moved. Only runs whose reconstructed token curve AGREES with the total the harness
     recorded independently are drawn, because a rate curve is the easiest thing here to draw
     plausibly and wrongly."""
-    rows = [f for f in facts if f.get("selected") and f.get("token_curve")
+    rows = [f for f in facts if f.get("selected") and f.get("token_curve_can_rate")
             and (f.get("span_wall_s") or 0) > 60]
     rows.sort(key=lambda f: (f["target"], f["arm"]))
     if not rows:
@@ -652,7 +745,7 @@ def rate_panels(facts, out):
                         Line2D([0], [0], color=SLATE, lw=1.7, label="cached input tok/min"),
                         Line2D([0], [0], color=GOLD, lw=1.4, ls=(0, (4, 3)), label="capsule-pass milestone")],
                loc="lower center", ncol=5, fontsize=8.5, frameon=True)
-    skipped = sum(1 for f in facts if f.get("selected") and not f.get("token_curve"))
+    skipped = sum(1 for f in facts if f.get("selected") and not f.get("token_curve_can_rate"))
     _figcaption(fig, f"{len(rows)} of the selected runs carry a token curve that agrees with the "
                      f"total the harness recorded independently; {skipped} do not and are omitted "
                      f"rather than drawn from an unverified reconstruction. The green band is the "

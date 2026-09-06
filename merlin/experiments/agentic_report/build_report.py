@@ -25,7 +25,9 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
+from merlin.agentreport.anatomy import build_anatomy                          # noqa: E402
 from merlin.agentreport.availability import Availability                      # noqa: E402
+from merlin.agentreport.cost_curve import build_cost_curve                    # noqa: E402
 from merlin.agentreport.capsule_time import read_capsule_timings, summarize   # noqa: E402
 from merlin.agentreport.index import ArmSpec, RunRef, build_index             # noqa: E402
 from merlin.agentreport.passes import read_passes                             # noqa: E402
@@ -43,6 +45,27 @@ CONCERN = "agentic-report"
 #: arm id -> the tool registry's own name for that arm. Filled from the config at load time so the
 #: vocabulary lives in one place.
 ARM_NAME: dict[str, str] = {}
+
+
+def _rate_for(model: str):
+    """Per-bucket USD/Mtok for a model, from the repo's own price table. ``None`` when unpriced."""
+    table = _price_table()
+    return table._rate(model) if table is not None else None
+
+
+_PRICE_TABLE = []
+
+
+def _price_table():
+    if _PRICE_TABLE:
+        return _PRICE_TABLE[0]
+    try:
+        from aet.trajectory.pricing import PriceTable
+        from merlin.common.paths import env as _env
+        _PRICE_TABLE.append(PriceTable.load(_env("AET_PRICE_TABLE"), merge_defaults=True))
+    except Exception:  # noqa: BLE001 - an absent table means unpriced, not a crash
+        _PRICE_TABLE.append(None)
+    return _PRICE_TABLE[0]
 
 
 # --------------------------------------------------------------------------- config
@@ -161,13 +184,24 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
     out["n_usage_reports"] = tseries.n_reports
     out["n_usage_duplicates"] = tseries.n_duplicates
     out["token_series_source"] = tseries.source
-    if tseries.can_rate and avail.get("token_series_crosscheck").ok:
-        out["token_curve"] = [
-            {"t_s": round(s.t_s, 1), "input": s.input_tokens, "output": s.output_tokens,
-             "cache_read": s.cache_read_tokens, "cache_creation": s.cache_creation_tokens}
-            for s in tseries.samples]
-    else:
-        out["token_curve"] = []
+    # Two different bars. A cumulative curve needs two points; a RATE is a derivative and needs
+    # several, or it is an average drawn as a trend. Gating the curve on the rate's bar emptied the
+    # cost panel for every run whose driver reports usage once per turn.
+    curve_ok = len(tseries.samples) >= 2 and avail.get("token_series_crosscheck").ok
+    out["token_curve"] = ([
+        {"t_s": round(s.t_s, 1), "input": s.input_tokens, "output": s.output_tokens,
+         "cache_read": s.cache_read_tokens, "cache_creation": s.cache_creation_tokens}
+        for s in tseries.samples] if curve_ok else [])
+    out["token_curve_can_rate"] = bool(tseries.can_rate and curve_ok)
+
+    # Spend over time, priced per bucket. A blended rate would draw a straight line, which is
+    # exactly the shape that hides how a run actually spends.
+    recorded = tok.cost_usd if tok.cost_usd is not None else tok.notional_usd
+    curve = build_cost_curve(out["token_curve"], out["model"], _rate_for, recorded)
+    avail.fields.update(curve.availability.fields)
+    out["cost_curve"] = ([{"t_s": p.t_s, "usd": round(p.usd, 4)} for p in curve.points]
+                         if curve.availability.get("cost_curve").ok else [])
+    out["cost_curve_final_usd"] = curve.final_usd
 
     if want_capsule_time:
         rows = read_capsule_timings(ref.path)
@@ -370,6 +404,25 @@ def cmd_facts(a) -> int:
     return 0
 
 
+def cmd_anatomy(a) -> int:
+    """Write one run's full record: every tool call with its category, every verdict, the curves."""
+    facts = json.loads((a.facts or (artifacts_dir() / CONCERN / "run_facts.json")).read_text())
+    match = [f for f in facts if a.run in f["run_id"]]
+    if not match:
+        print(f"no run matching {a.run!r} in the facts file", file=sys.stderr)
+        return 2
+    f = max(match, key=lambda x: x.get("passed") or 0)
+    spanset = read_spans(Path(f["path"]))
+    anatomy = build_anatomy(Path(f["path"]), spanset, run_id=f["run_id"], target=f["target"],
+                            arm=f["arm"], model=f.get("model") or "",
+                            token_curve=f.get("token_curve"), cost_curve=f.get("cost_curve"))
+    out = a.out or (artifacts_dir() / CONCERN / f"anatomy_{f['run_id']}.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(anatomy.to_dict(), indent=2) + "\n")
+    print(f"{f['run_id']}: {len(anatomy.calls)} call(s), {len(anatomy.verdicts)} verdict(s) -> {out}")
+    return 0
+
+
 def cmd_rescue(a) -> int:
     """Copy the light telemetry out of any root that holds the only copy of its runs."""
     cfg = Config.load(a.config)
@@ -420,6 +473,12 @@ def main(argv=None) -> int:
                    help="skip the per-capsule tier scan (much faster; drops the cost figures)")
     p.add_argument("--out", type=Path)
     p.set_defaults(fn=cmd_facts)
+
+    p = sub.add_parser("anatomy", help="write one run's full per-call record for the study figure")
+    p.add_argument("--run", required=True, help="substring of the run id")
+    p.add_argument("--facts", type=Path)
+    p.add_argument("--out", type=Path)
+    p.set_defaults(fn=cmd_anatomy)
 
     p = sub.add_parser("rescue", help="copy light telemetry out of the fragile roots")
     p.add_argument("--dry-run", action="store_true")
