@@ -630,9 +630,17 @@ class DevelopmentGsimFeedback:
                 improvements.append(max(0.0, (running - total) / running))
             running = total if running is None else min(running, total)
 
+        # THE WORK AND THE CYCLES MUST BE OVER THE SAME MEMBERS. `attainable` is compared against
+        # `best_total`, which is summed over `judged` -- the objective members. Summing the MACs over
+        # every comparable cell instead put the LAW members' work in the numerator while their cycles
+        # stayed out of the denominator, inflating the attainable target and letting the attainment
+        # stop condition fire before the objective had actually been reached.
         attainable = SELECT.UNKNOWN
-        macs = [c.get("declared_macs") for c in comparable]
-        if self.achievable_macs_per_cycle and all(isinstance(m, int) and m > 0 for m in macs):
+        macs = [c.get("declared_macs") for c in judged]
+        unpriced = sorted(str(c.get("capsule")) for c in judged
+                          if not (isinstance(c.get("declared_macs"), int)
+                                  and c.get("declared_macs") > 0))
+        if self.achievable_macs_per_cycle and not unpriced and macs:
             attainable = float(sum(macs)) / float(self.achievable_macs_per_cycle)
 
         if self._spend is None:
@@ -668,6 +676,11 @@ class DevelopmentGsimFeedback:
             "best_total_cycles": best_total,
             "previous_best_total_cycles": previous_best,
             "attainable_total_cycles": (None if attainable is SELECT.UNKNOWN else attainable),
+            # WHY attainment could not be evaluated, by NAME. One objective member whose declared work
+            # carries no price disables the condition for the whole corpus, and it did so silently:
+            # a reader saw `attainable_total_cycles: null` with nothing to act on, and every round of
+            # every campaign reported the judge as not-fired rather than as never-able-to-speak.
+            "attainment_blocked_by": unpriced,
             "share_of_attainable": (None if attainable is SELECT.UNKNOWN or not best_total
                                     else attainable / best_total),
             "budget": budget.to_dict(),
