@@ -99,6 +99,32 @@ module {
 
 
 @pytest.mark.skipif(not toolchain.available(), reason="m2m venv missing")
+def test_identity_memref_and_status_carriers_are_removed_after_bufferization(tmp_path):
+    identity_carriers = """
+module {
+  func.func private @__merlin_parallel_panel_marker() -> ()
+  func.func @forward(%dst: memref<32xi32>, %ok: i1) -> (memref<32xi32>, i1) {
+    %c0 = arith.constant 0 : index
+    %c32 = arith.constant 32 : index
+    %c1 = arith.constant 1 : index
+    %v = arith.constant 7 : i32
+    %r:2 = scf.for %i = %c0 to %c32 step %c1
+        iter_args(%d = %dst, %s = %ok) -> (memref<32xi32>, i1) {
+      func.call @__merlin_parallel_panel_marker() : () -> ()
+      memref.store %v, %d[%i] : memref<32xi32>
+      scf.yield %d, %s : memref<32xi32>, i1
+    }
+    return %r#0, %r#1 : memref<32xi32>, i1
+  }
+}
+"""
+    module, report = _rewrite(identity_carriers, tmp_path)
+    assert "scf.parallel" in module and "scf.for " not in module
+    assert "return %arg0, %arg1" in module
+    assert "rewritten 1 refused 0" in report
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv missing")
 def test_nested_parallel_region_is_refused_instead_of_emitting_nested_forks(tmp_path):
     nested = MARKED.replace(
         "memref.store %v, %dst[%i] : memref<32xi32>",

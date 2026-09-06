@@ -52,7 +52,7 @@ from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
 from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
-from .panel_parallel import LATE_STAGE_SRC as _PANEL_PARALLEL_LATE_SRC
+from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
 from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
@@ -405,8 +405,8 @@ def run_source() -> str:
         + _PANEL_PARALLEL_PRELUDE
         + _REWRITER_SRC
         + _MID_STAGE_SRC
-        + _PARALLEL_GRAIN_LATE_SRC
-        + _PANEL_PARALLEL_LATE_SRC +
+        + _PANEL_PARALLEL_MID_SRC
+        + _PARALLEL_GRAIN_LATE_SRC +
         f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         "passes = pipeline.split(',')\n"

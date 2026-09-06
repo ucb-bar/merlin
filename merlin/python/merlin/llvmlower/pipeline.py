@@ -759,7 +759,7 @@ from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
 from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
-from .panel_parallel import LATE_STAGE_SRC as _PANEL_PARALLEL_LATE_SRC
+from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
 from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
@@ -991,7 +991,7 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PARALLEL_GRAIN_LATE_SRC + _PANEL_PARALLEL_LATE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PANEL_PARALLEL_MID_SRC + _PARALLEL_GRAIN_LATE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -1046,8 +1046,8 @@ from torch_mlir.dialects import llvm
 _RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE
                          + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE
                          + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE
-                         + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC
-                         + _PARALLEL_GRAIN_LATE_SRC + _PANEL_PARALLEL_LATE_SRC
+                         + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PANEL_PARALLEL_MID_SRC
+                         + _PARALLEL_GRAIN_LATE_SRC
                          + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
