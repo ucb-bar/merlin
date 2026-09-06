@@ -139,7 +139,8 @@ def test_every_lowering_runner_carries_the_rewrite_and_the_same_argv_gate():
         assert "_PARALLEL_GRAIN = int(sys.argv[9])" in src, "a runner variant has its own gate"
         assert "_MID_STAGES, _LATE_STAGES)" in src, "a runner variant never runs the late stage"
     lowering = open(pipeline.__file__, encoding="utf-8").read()
-    assert "_concat_dps_gate, _grain_gate]" in lowering, "the argv slot is never passed"
+    assert "_concat_dps_gate, _grain_gate, _panel_parallel_gate]" in lowering, (
+        "the argv slots are never passed")
 
 
 def _run_stages_split(pipeline_text: str, late_labels: tuple[str, ...]) -> list:

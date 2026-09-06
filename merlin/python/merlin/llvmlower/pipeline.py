@@ -759,6 +759,8 @@ from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
 from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
+from .panel_parallel import LATE_STAGE_SRC as _PANEL_PARALLEL_LATE_SRC
+from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
@@ -989,7 +991,7 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _MID_STAGE_SRC + _PARALLEL_GRAIN_LATE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PARALLEL_GRAIN_LATE_SRC + _PANEL_PARALLEL_LATE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -1043,8 +1045,9 @@ from torch_mlir.dialects import llvm
 
 _RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE
                          + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE
-                         + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _MID_STAGE_SRC
-                         + _PARALLEL_GRAIN_LATE_SRC
+                         + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE
+                         + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC
+                         + _PARALLEL_GRAIN_LATE_SRC + _PANEL_PARALLEL_LATE_SRC
                          + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
@@ -1280,16 +1283,29 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
               "(no parallel_harts/parallel), so there is no scf.parallel to price; the feature "
               "will serialize nothing.", file=_sys.stderr, flush=True)
     _grain_gate = str(int(_grain)) if _grain is not None else "0"
+    # Packed panels carry their own outer worksharing boundary.  It is enabled only on a multicore
+    # lowering that actually requested either packer; the runner then proves bufferization removed
+    # the tensor carrier before changing the marked loop to ``scf.parallel``.
+    from .im2col_pack import FEATURE as _IM2COL_PANEL_FEATURE
+    from .weight_panel import FEATURE as _WEIGHT_PANEL_FEATURE
+    _panel_parallel_gate = "1" if (omp and ({_IM2COL_PANEL_FEATURE, _WEIGHT_PANEL_FEATURE} & feats)) \
+        else "0"
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
     stage_out = (work / "model.llvmdialect.mlir") if omp else out
     proc = subprocess.run(
         [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb,
-         _expand_copy, _fold_wt, _concat_dps_gate, _grain_gate],
+         _expand_copy, _fold_wt, _concat_dps_gate, _grain_gate, _panel_parallel_gate],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")
+    if _panel_parallel_gate == "1":
+        from .panel_parallel import require_complete_report as _require_panel_report
+        try:
+            _require_panel_report(proc.stdout, work)
+        except ValueError as exc:
+            raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
     if SINK_DEALLOC_PASS in pipeline and DEALLOC_CHECK_TOKEN not in proc.stdout:
         # The sinking stage ran and the use-after-free check did NOT. That is only reachable from a
         # runner variant that drives the PassManager itself instead of going through `_run_stages`

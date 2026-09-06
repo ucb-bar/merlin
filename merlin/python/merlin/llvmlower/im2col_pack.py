@@ -374,10 +374,10 @@ def _dyn_slice_props(rank: int, dyn_dim: int, sizes: "list[int]"):
             "static_strides": DenseArrayBase.from_list(i64, [1] * rank)}
 
 
-def _rewrite_one(mt: _Match, nr: int) -> None:
+def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
     """Replace the matched chain in place with the panel-packed one."""
     from xdsl.dialects.arith import ConstantOp
-    from xdsl.dialects.builtin import (AffineMapAttr, IndexType, IntegerAttr, TensorType, i64)
+    from xdsl.dialects.builtin import AffineMapAttr, IndexType, IntegerAttr, TensorType, i64
     from xdsl.dialects.linalg.ops import (GenericOp, IteratorType, IteratorTypeAttr, YieldOp)
     from xdsl.dialects.scf import ForOp, YieldOp as ScfYieldOp
     from xdsl.dialects.tensor import (CollapseShapeOp, EmptyOp, ExpandShapeOp, ExtractSliceOp,
@@ -455,7 +455,11 @@ def _rewrite_one(mt: _Match, nr: int) -> None:
     put = InsertSliceOp.build(
         operands=[inner.results[0], carried, [ivar], [], []], result_types=[acc_t],
         properties=_dyn_slice_props(3, 1, [mt.f, 1, nr]))
-    body.add_ops([panel, tile, inner, put, ScfYieldOp(put.results[0])])
+    markers = []
+    if parallel_panels:
+        from .panel_parallel import marker_call
+        markers.append(marker_call())
+    body.add_ops([*markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
     loop = ForOp(lb.results[0], ub.results[0], step.results[0], [acc.results[0]], Region(body))
 
     out = CollapseShapeOp(
@@ -469,7 +473,8 @@ def _rewrite_one(mt: _Match, nr: int) -> None:
         Rewriter.erase_op(dead)
 
 
-def rewrite_module(module, table: "dict[str, tuple[int, int]]") -> PackReport:
+def rewrite_module(module, table: "dict[str, tuple[int, int]]", *,
+                   parallel_panels: bool = False) -> PackReport:
     """Pack every eligible im2col contraction in ``module`` (mutated in place).
 
     ``table`` is the per-op block table already derived for THIS model
@@ -498,7 +503,7 @@ def rewrite_module(module, table: "dict[str, tuple[int, int]]") -> PackReport:
         if not _accumulator_is_filled(mt.contraction):
             report.refuse("refused_accumulator_not_filled")
             continue
-        _rewrite_one(mt, nr)
+        _rewrite_one(mt, nr, parallel_panels=parallel_panels)
         report.packed += 1
         # The geometry the panel loop leaves behind: an ORDINARY [F, NR] x K contraction, which the
         # caller's SECOND block_table pass observes, prices and tags with no packed-specific
@@ -506,6 +511,9 @@ def rewrite_module(module, table: "dict[str, tuple[int, int]]") -> PackReport:
         # for -- a panel packed at NR whose contraction is then tiled at a narrower N would be a
         # silent half-application.
         report.entries.append((shape_key("linalg.matmul", (mt.f, nr), (mt.k,)), mr, nr))
+    if parallel_panels and report.packed:
+        from .panel_parallel import ensure_marker_declaration
+        ensure_marker_declaration(module)
     return report
 
 
@@ -522,7 +530,8 @@ def _accumulator_is_filled(op) -> bool:
 
 
 def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, int]]",
-                          work: "str | Path | None" = None) -> "tuple[Path, PackReport]":
+                          work: "str | Path | None" = None, *,
+                          parallel_panels: bool = False) -> "tuple[Path, PackReport]":
     """Pack ``prepared`` and write ``model.bpacked.mlir``; returns ``(path, report)``.
 
     Runs in merlin's own interpreter over xDSL -- the same library that BUILT these ops in
@@ -535,7 +544,7 @@ def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, i
 
     prepared = Path(prepared)
     module = mq.parse(prepared.read_text(encoding="utf-8"))
-    report = rewrite_module(module, table)
+    report = rewrite_module(module, table, parallel_panels=parallel_panels)
     if not report.packed:
         return prepared, report
     out = Path(work) / "model.bpacked.mlir" if work is not None else \

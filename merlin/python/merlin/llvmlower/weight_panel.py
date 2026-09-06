@@ -416,7 +416,8 @@ def _reassoc(groups):
     return ArrayAttr([ArrayAttr([IntegerAttr(j, i64) for j in g]) for g in groups])
 
 
-def _rewrite_one(contraction, argval, steps, m: int, n: int, k: int, nr: int, live) -> int:
+def _rewrite_one(contraction, argval, steps, m: int, n: int, k: int, nr: int, live,
+                 *, parallel_panels: bool = False) -> int:
     """Replace `contraction` with the panel loop over the (now packed) argument, in place.
 
     The shape is ``im2col_pack._rewrite_one``'s, deliberately: the body is a PLAIN ``[M, NR] x K``
@@ -480,7 +481,11 @@ def _rewrite_one(contraction, argval, steps, m: int, n: int, k: int, nr: int, li
     put = InsertSliceOp.build(
         operands=[inner.results[0], carried, [ivar], [], []], result_types=[acc_t],
         properties=_dyn_slice_props(3, 1, [m, 1, nr]))
-    body.add_ops([panel, tile, inner, put, ScfYieldOp(put.results[0])])
+    markers = []
+    if parallel_panels:
+        from .panel_parallel import marker_call
+        markers.append(marker_call())
+    body.add_ops([*markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
     loop = ForOp(lb.results[0], ub.results[0], step.results[0], [acc.results[0]], Region(body))
 
     out = CollapseShapeOp(
@@ -648,7 +653,8 @@ def storage_gate(bundle: "str | Path | None"):
 
 
 def rewrite_module(module, table: "dict[str, tuple[int, int]]",
-                   func_name: str = "forward", bundle: "str | Path | None" = None) -> PanelReport:
+                   func_name: str = "forward", bundle: "str | Path | None" = None,
+                   *, parallel_panels: bool = False) -> PanelReport:
     """Panel-pack every eligible weight in `module` (mutated in place).
 
     `table` is the per-op block table already derived for THIS model
@@ -736,11 +742,15 @@ def rewrite_module(module, table: "dict[str, tuple[int, int]]",
         kept.append(c)
 
     rewriter = Rewriter()
+    if parallel_panels and kept:
+        from .panel_parallel import ensure_marker_declaration
+        ensure_marker_declaration(module)
     for op, arg, steps, m, n, k, mr, nr in kept:
         argval = block_args[arg]
         orig_shape = _static_shape(argval)
         elem = _elem_token(argval)
-        report.dead_ops_erased += _rewrite_one(op, argval, steps, m, n, k, nr, live)
+        report.dead_ops_erased += _rewrite_one(
+            op, argval, steps, m, n, k, nr, live, parallel_panels=parallel_panels)
         packed = PackedArg(arg=arg, orig_shape=orig_shape, elem=elem, steps=steps,
                            m=m, k=k, n=n, mr=mr, nr=nr)
         fn.replace_argument_type(arg, _packed_type(elem, packed.packed_shape), rewriter)
@@ -763,7 +773,8 @@ def _packed_type(elem: str, shape):
 
 def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, int]]",
                           work: "str | Path | None" = None,
-                          bundle: "str | Path | None" = None) -> "tuple[Path, PanelReport]":
+                          bundle: "str | Path | None" = None, *,
+                          parallel_panels: bool = False) -> "tuple[Path, PanelReport]":
     """Pack `prepared` and write ``model.wpacked.mlir``; returns ``(path, report)``.
 
     Nothing is written when nothing was packed, so a run where every candidate was refused keeps the
@@ -773,7 +784,7 @@ def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, i
 
     prepared = Path(prepared)
     module = mq.parse(prepared.read_text(encoding="utf-8"))
-    report = rewrite_module(module, table, bundle=bundle)
+    report = rewrite_module(module, table, bundle=bundle, parallel_panels=parallel_panels)
     if not report.packed:
         return prepared, report
     out = Path(work) / "model.wpacked.mlir" if work is not None else \

@@ -961,7 +961,8 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         packed_entries: dict[str, tuple[str, int, int]] = {}
         if _ip.FEATURE in features:
             prepared, _pack = _ip.rewrite_prepared_file(
-                prepared, _pb.block_table(_cshapes(prepared), **_blk), work)
+                prepared, _pb.block_table(_cshapes(prepared), **_blk), work,
+                parallel_panels=int(harts) > 1)
             packed_entries = {k: (_ip.FEATURE, mr, nr) for k, mr, nr in _pack.entries}
             print(f"[im2col_pack] packed={_pack.packed} "
                   + " ".join(f"{k}={v}" for k, v in sorted(_pack.refusals.items())))
@@ -975,7 +976,7 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         if _wpan.FEATURE in features:
             prepared, _wpk = _wpan.rewrite_prepared_file(
                 prepared, _pb.block_table(_cshapes(prepared), **_blk), work,
-                bundle=Path(mlir_path).resolve().parent)
+                bundle=Path(mlir_path).resolve().parent, parallel_panels=int(harts) > 1)
             print(f"[weight_panel] packed={_wpk.packed} dead_ops_erased={_wpk.dead_ops_erased} "
                   + " ".join(f"{k}={v}" for k, v in sorted(_wpk.refusals.items())))
             if not _wpk.packed:
@@ -1016,7 +1017,17 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
             # the block still lowers on; everything else stays serial with its 1-hart kernel intact.
             # `harts <= 1` -> empty -> the tagged module and every schedule are byte-identical to the
             # single-core build, which is what makes the two arms comparable.
-            par_table = _pb.parallel_chunk_table(_cshapes(prepared), table, harts)
+            # A packed contraction is already enclosed by its own marked panel carrier.  Wrapping
+            # the INNER [M, NR] contraction in another forall changes the register kernel and emits
+            # one nested fork per panel.  Exclude those geometries: panel_parallel converts the
+            # outer loop after bufferization, preserving the exact one-hart inner kernel.
+            _par_shapes = [
+                s for s in _cshapes(prepared)
+                if _pb.shape_key(s.op, tuple(int(d) for d in s.parallel),
+                                 tuple(int(d) for d in (s.reduction or ())))
+                not in packed_entries
+            ]
+            par_table = _pb.parallel_chunk_table(_par_shapes, table, harts)
             # THE FUSED REQUANT EPILOGUE (`fuse_requant_into_contraction`, default-off). The
             # pairing is done by the SAME tagger pass as the block tags -- it has to be, because a
             # pair's three ops are matched by 1:1 attributes and the numbering must come from the
