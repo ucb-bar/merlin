@@ -454,10 +454,16 @@ def phase_tools(facts, out):
     ax.set_ylabel("actions in the family")
     style_ax(ax)
     title(ax, f"The performance lane's {len(actions)} brokered actions", fs=13)
-    _caption(ax, "Derived per run from the candidate's own manifest plus descriptor probes, so it is "
-                 "read from STAGE_CONTEXT rather than hardcoded.", y=-0.30)
 
-    top = [a for a, _ in seconds.most_common(7)][::-1]
+
+    # The free analysis action is the whole point of the caption, and it is invisible in a
+    # most-common-by-seconds list precisely BECAUSE it costs nothing. Pin it in.
+    top = [a for a, _ in seconds.most_common(7)]
+    free = [a for a in actions if a.startswith("analyze")]
+    for a in free:
+        if a not in top and a in seconds:
+            top = top[:6] + [a]
+    top = top[::-1]
     ax2.barh(np.arange(len(top)), [seconds[a] / 60 for a in top], color=NAVY,
              edgecolor=INK, lw=0.9, height=0.6)
     for i, a in enumerate(top):
@@ -467,9 +473,14 @@ def phase_tools(facts, out):
     ax2.set_xlabel("minutes across all trials")
     style_ax(ax2, grid="x")
     title(ax2, "Where the brokered time goes", fs=13)
-    _caption(ax2, "The measurement dominates; the free analysis action costs no oracle time by "
-                  "construction, which is the point of adding it.", y=-0.22)
-    suptitle(fig, "Phase 1 hands the agent a simulator; phase 2 hands it a closed action set")
+    _figcaption(fig, "The action set is derived per run from the candidate's own manifest plus "
+                     "descriptor-declared probes, so it is read from STAGE_CONTEXT rather than "
+                     "hardcoded. The measurement dominates the brokered time; `analyze-command-"
+                     "buffers` reads only the candidate's own emitted buffers and so costs no oracle "
+                     "time at all, which is the point of adding it.")
+    suptitle(fig, "Phase 1 hands the agent a simulator; phase 2 hands it a closed action set",
+             y=1.01)
+    fig.subplots_adjust(bottom=0.26, top=0.84, wspace=0.35)
     _save(fig, out, "fig08_phase_tools")
 
 
@@ -501,14 +512,25 @@ def coverage_matrix(facts, out):
                        Patch(facecolor=GOLD, label="derived"),
                        Patch(facecolor="#e6d7cc", label="unavailable")],
               loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=9)
-    reasons = Counter()
+    # Grouped by FIELD, not by reason text: every reason names the run it came from, so the strings
+    # are all distinct and a "commonest causes" tally over them is a list of one-offs.
+    missing = Counter()
+    derived_n = Counter()
     for f in sel:
         for name in fields:
-            st = f.get("availability", {}).get(name, {})
-            if st.get("kind") == "unavailable":
-                reasons[st.get("reason", "")[:60]] += 1
-    _caption(ax, "Gaps are drawn, not dropped. Commonest causes: " + _gap_note(reasons), y=-0.09)
-    suptitle(fig, "What each selected run can actually tell us")
+            kind = f.get("availability", {}).get(name, {}).get("kind")
+            if kind == "unavailable":
+                missing[name] += 1
+            elif kind == "derived":
+                derived_n[name] += 1
+    parts = [f"{n} run(s) cannot supply `{k}`" for k, n in missing.most_common()]
+    dparts = [f"`{k}` is reconstructed for {n}" for k, n in derived_n.most_common(3)]
+    _figcaption(fig, "Gaps are drawn, not dropped — an absent row would read as 'no such run', which "
+                     "is a different claim. " + ("; ".join(parts) + ". " if parts else "")
+                     + ("Where a value is derived rather than read: " + "; ".join(dparts) + "."
+                        if dparts else ""))
+    suptitle(fig, "What each selected run can actually tell us", y=1.0)
+    fig.subplots_adjust(bottom=0.16, top=0.93)
     _save(fig, out, "fig09_coverage_matrix")
 
 
