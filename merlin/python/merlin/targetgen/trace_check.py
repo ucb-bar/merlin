@@ -309,3 +309,21 @@ def _check_tiles(classes: list[str], cb: dict, violations: list[str]) -> None:
     if got != exp_mvout:
         basis = "Nt for retained-plane maxpool" if pooled else "Mt*Nt"
         violations.append(f"MVOUT count {got} != expected {basis}={exp_mvout} (M={M},N={N})")
+
+    # SYNCHRONISATION MUST NOT SCALE WITH TILES. A capacity-safe schedule that fences after every
+    # output tile is numerically correct and catastrophically slow: measured on a 1024x1024 QK slice,
+    # 4,096 fences for 4,096 tiles, and with twelve batch slices across repeated attention layers the
+    # FPGA appeared stalled. Batching the synchronisation -- one fence before the kernel, the
+    # reservation station ordering the intervening scratchpad and accumulator hazards, one
+    # load-bearing fence at the end so output DMA completes before the CPU reads -- took the same
+    # kernel to two, with identical arithmetic, tiling, addresses and commands.
+    #
+    # The invariant is SCALING, not a fixed budget: a schedule may legitimately carry a small constant
+    # number of fences, and hard-coding "at most two" would refuse shapes nobody has looked at. What
+    # can never be right is one fence per tile, so that is what this names.
+    tiles = Mt * Nt
+    flushes = classes.count("FLUSH")
+    if tiles >= 2 and flushes >= tiles:
+        violations.append(
+            f"FLUSH count {flushes} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
+            "synchronisation is issued per tile rather than batched around the kernel")
