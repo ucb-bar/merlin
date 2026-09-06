@@ -577,6 +577,25 @@ def validate_execution(certificate: CertificateRecord, decision: EvaluationDecis
         raise GsimGateError(f"execution does not name the pinned {firrtl_pin}")
     if engine == GSIM_ENGINE and execution.get("model_sha256") != certificate.pins["gsim_model"]["sha256"]:
         raise GsimGateError("execution does not name the pinned GSIM model")
+    # THE PIN CHECKS ABOVE COMPARE THE CERTIFICATE TO FIELDS COPIED FROM IT by the caller, so they
+    # cannot fail. This one compares the pin to the engine build that ACTUALLY produced the number:
+    # `program_oracle._engine_provenance` digests every executable in the engine home the runner
+    # loaded from, and the pinned binary must be among them. Checked for MEMBERSHIP because merlin
+    # does not know an engine's binary name and must not learn one.
+    #
+    # Deliberately inert when provenance was not established: an engine home that could not be
+    # resolved records UNKNOWN, and refusing on UNKNOWN would reject every run on a target whose
+    # engine build is registered by other means. UNKNOWN is surfaced in the audit record instead --
+    # it must never read as agreement.
+    observed = execution.get("observed_engine_binaries")
+    if isinstance(observed, Mapping) and observed.get("status") == "observed":
+        digests = observed.get("digests")
+        if not isinstance(digests, (list, tuple)) or \
+                certificate.pins[expected_pin]["sha256"] not in digests:
+            raise GsimGateError(
+                f"the engine build that produced this measurement does not contain the pinned "
+                f"{expected_pin}")
+
     elf = execution.get("elf_sha256")
     if not _is_sha256(elf):
         raise GsimGateError("execution lacks an exact ELF SHA-256")

@@ -621,6 +621,22 @@ def _l3_store(target: str) -> L3MeasurementStore:
                   ensure=False))
 
 
+def _observed_engine_binaries(oracle: Any) -> dict[str, Any]:
+    """The digests of the engine build that actually produced a measurement, or an explicit UNKNOWN.
+
+    `_engine_provenance` digests every executable beside the engine wrapper -- merlin does not know an
+    engine's binary name and must not learn one, so the pinned digest is checked for MEMBERSHIP rather
+    than against a named file. Returning UNKNOWN when no provenance was established keeps an
+    unestablished fact distinguishable from a verified one; it is never reported as agreement.
+    """
+    provenance = oracle.get("provenance") if isinstance(oracle, Mapping) else None
+    binaries = provenance.get("binaries") if isinstance(provenance, Mapping) else None
+    if not isinstance(binaries, Mapping) or not binaries:
+        return {"status": "UNKNOWN",
+                "reason": "the engine build that produced this measurement was not established"}
+    return {"status": "observed", "digests": sorted(str(v) for v in binaries.values())}
+
+
 def _gsim_l3_adapter(target: str, evidence: dict[str, Any],
                      certificate: GATE.CertificateRecord, *, reuse_scope: str,
                      store: L3MeasurementStore | None = None) -> Callable[..., dict[str, Any]]:
@@ -695,9 +711,18 @@ def _gsim_l3_adapter(target: str, evidence: dict[str, Any],
             "derived_from_rtl": (primary_oracle.get("derived_from_rtl") is True
                                  if isinstance(primary_oracle, Mapping) else False),
             "cycle_accurate": True,
+            # THESE THREE ARE COPIED FROM THE CERTIFICATE, and `GATE.validate_execution` then
+            # compares them back to that same certificate -- three checks that read as verification
+            # and cannot fail. The engine build that actually produced the number is recorded
+            # separately below, so the comparison has something to be about.
             "binary_sha256": certificate.pins["gsim_binary"]["sha256"],
             "firrtl_sha256": certificate.pins["gsim_firrtl"]["sha256"],
             "model_sha256": certificate.pins["gsim_model"]["sha256"],
+            # WHAT THE RUN ACTUALLY LOADED. `program_oracle._engine_provenance` digests every
+            # executable in the engine home it was loaded from, so the pinned binary must appear
+            # among them. Absent provenance is recorded as UNKNOWN rather than asserted away: an
+            # engine whose home could not be established is a fact about this run, not a match.
+            "observed_engine_binaries": _observed_engine_binaries(primary_oracle),
             # SAID EXPLICITLY, so that SILENCE is not one of the answers. A hit writes a
             # ``reused_measurement`` block here and a fresh measurement wrote nothing, which left an
             # absent key meaning BOTH "this run measured it" and "nobody recorded which" -- and a
