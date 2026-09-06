@@ -1722,7 +1722,21 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         env = (f"OMP_NUM_THREADS={thread_count} OMP_PROC_BIND=spread "
                if mode in ("omp", "rvv_openmp") else "")
         affinity_count = thread_count if mode in ("omp", "rvv_openmp") else 1
-        affinity_list = "0" if affinity_count == 1 else f"0-{affinity_count - 1}"
+        # PIN ONLY WHEN PINNING IS THE POINT. `taskset` here exists to bound a MULTICORE run to a
+        # known core count. A single-threaded run does not need it, and pinning one to cpu0
+        # specifically is actively wrong for a comparison: cpu0 carries this board's interrupt
+        # load, and pinning there measured lstmnetvit at 452 ms against 89.5 ms unpinned -- a 5.07x
+        # penalty from the mask alone, on a BYTE-IDENTICAL binary (model.ll, model.o and the linked
+        # ELF all unchanged; only the launch command differed).
+        #
+        # It is also an ASYMMETRY, which is the part that makes a ratio wrong rather than merely
+        # slow: the ExecuTorch arm takes `--cpu_threads=1` and is never tasksetted, so its one
+        # thread migrates freely over all 8 cores. Pinning ours and not theirs compares a pinned
+        # arm against a floating one. Single-threaded therefore gets the same treatment they get --
+        # one thread, unpinned -- and the mask is recorded either way so the choice is auditable
+        # from the artifact instead of having to be re-derived from a 5x anomaly.
+        affinity_list = None if affinity_count == 1 else f"0-{affinity_count - 1}"
+        taskset = "" if affinity_list is None else f"taskset -c {affinity_list} "
         # Sustained mode: warmup + N timed passes against the same buffers. Only emitted when
         # asked for, so the default console stays byte-identical to the single-shot path.
         if session_repeats is not None:
@@ -1735,15 +1749,19 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
             conditions_before = board_conditions()
-            proc = _ssh(f"{wenv}{env}taskset -c {affinity_list} {remote}", timeout=timeout)
+            proc = _ssh(f"{wenv}{env}{taskset}{remote}", timeout=timeout)
             r = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
             conditions_after = board_conditions()
             r["board_conditions"] = {"before": conditions_before, "after": conditions_after}
+            # The mask this wall was produced under. Recorded even when absent (None = unpinned),
+            # because "no taskset" and "pinned to cpu0" differ by 5x here and a bare number cannot
+            # tell them apart after the fact.
+            r["affinity_mask"] = affinity_list
             if (bwork / "HAS_SESSION_QUALITY").is_file():
                 quality_env = ("MERLIN_VALIDATE_SESSION=1 MERLIN_SESSION_REPEATS=1 "
                                "MERLIN_SESSION_WARMUPS=0 ")
                 qproc = _ssh(
-                    f"{wenv}{env}{quality_env}taskset -c {affinity_list} {remote}",
+                    f"{wenv}{env}{quality_env}{taskset}{remote}",
                     timeout=timeout)
                 qres = zm._parse_console(qproc.stdout + qproc.stderr, qproc.returncode)
                 qm = qres.get("metrics", {})
