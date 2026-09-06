@@ -119,8 +119,14 @@ def test_the_stage_helper_refuses_rather_than_omitting_the_field():
     row = PAS._capsule_verdict_fields(
         capsule="x", declared_macs=None, achievable_rate=None,
         baseline_cycles=None, candidate_cycles=None, dispersion=None)
-    assert set(row) == {"verdict", "verdict_reason"}
+    assert set(row) == {"verdict", "verdict_reason", "factor_to_achievable",
+                        "ideal_cycles_at_achievable", "cycles_saved", "gap_closed"}
     assert row["verdict"] == V.REFUSED
+    # The point is that the helper never OMITS a key -- a missing one breaks the closed cell schema.
+    # An undecidable member carries the headroom keys as None: "not derived" is a different statement
+    # from zero, and the schema needs the key either way.
+    assert all(row[k] is None for k in ("factor_to_achievable", "ideal_cycles_at_achievable",
+                                        "cycles_saved", "gap_closed"))
 
 
 def test_the_feedback_cell_schema_admits_exactly_these_two_keys():

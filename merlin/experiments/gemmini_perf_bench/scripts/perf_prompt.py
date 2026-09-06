@@ -524,6 +524,25 @@ corpus-wide `stopping` block, and it is what tells you where the remaining work 
 - `refused` -- an input needed to decide was not derivable. It is NOT a pass, and it is not a fail;
   it means this member was not decided and you should say so rather than reading it either way.
 
+### How much is left, not just whether any is
+
+`headroom_open` on a member 1.02x off the ceiling and on one 30x off is the same word for two very
+different instructions, so the cell also carries the size of the gap:
+
+- `factor_to_achievable` -- how many TIMES the baseline's cycles exceed what the achievable rate
+  would spend on this member's declared work. **This is the ranking key**: spend your effort on the
+  largest factors, because that is where the machine has demonstrably gone faster on some other
+  shape and this one has not.
+- `ideal_cycles_at_achievable` -- the cycle count that rate implies for this member, so the factor
+  can be checked rather than taken.
+- `cycles_saved` -- candidate minus baseline, once a candidate has been measured.
+- `gap_closed` -- the fraction of the distance to `ideal_cycles_at_achievable` your candidate
+  actually took. A large `cycles_saved` with a small `gap_closed` means the member was far from the
+  ceiling and still is.
+
+Any of these may be `null`: the verdict short-circuited before deriving it (a member with no
+candidate measurement has no `cycles_saved`). A null is "not derived", never zero.
+
 The tolerance for `no_headroom` is measured, not declared: it is the spread of the achievable rate
 across the points that established it, so a member is never called finished because of a constant
 someone picked.

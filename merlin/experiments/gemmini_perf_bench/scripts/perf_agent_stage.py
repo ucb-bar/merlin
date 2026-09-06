@@ -2293,10 +2293,22 @@ def _capsule_verdict_fields(**kwargs: Any) -> dict[str, Any]:
     try:
         import perf_capsule_verdict as CV                                   # noqa: PLC0415
         row = CV.capsule_verdict(**kwargs)
-        return {"verdict": row.get("verdict"), "verdict_reason": row.get("reason")}
+        # CARRY THE HEADROOM, do not recompute it and do not throw it away. `capsule_verdict`
+        # already derives how far this member is from the rate something on this machine actually
+        # reached; keeping only the categorical verdict left the agent with "headroom_open" on a
+        # member 1.02x off the ceiling and on one 30x off, which are not the same instruction. The
+        # numbers ride as None when the verdict short-circuited before deriving them -- absent is a
+        # different statement from zero, and a closed schema needs the key either way.
+        return {"verdict": row.get("verdict"), "verdict_reason": row.get("reason"),
+                "factor_to_achievable": row.get("factor_to_achievable"),
+                "ideal_cycles_at_achievable": row.get("ideal_cycles_at_achievable"),
+                "cycles_saved": row.get("cycles_saved"),
+                "gap_closed": row.get("gap_closed")}
     except Exception as exc:  # noqa: BLE001 - an undecidable member is refused, never assumed
         return {"verdict": "refused",
-                "verdict_reason": f"the verdict could not be computed: {type(exc).__name__}"}
+                "verdict_reason": f"the verdict could not be computed: {type(exc).__name__}",
+                "factor_to_achievable": None, "ideal_cycles_at_achievable": None,
+                "cycles_saved": None, "gap_closed": None}
 
 
 #: How many members the ranked recoverable list names. Enough to show where the objective actually
@@ -2392,6 +2404,11 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
                    # a measurement and states no position on it, which is how a member at 3% of
                    # the achievable rate and one at 100% came to read identically.
                    "verdict", "verdict_reason",
+                   # HOW MUCH is left, beside whether any is. `factor_to_achievable` is the multiple
+                   # this member is off the rate something on this machine demonstrably reached, so a
+                   # reader can rank where to spend effort instead of treating every open member alike.
+                   "factor_to_achievable", "ideal_cycles_at_achievable",
+                   "cycles_saved", "gap_closed",
                    # A cell the sweep did not pay for says so, rather than being omitted. Omitting
                    # it would let a short sweep read as a complete one.
                    "measured", "skip_reason"}
@@ -2804,6 +2821,8 @@ def _unmeasured_cell(member: Any, *, reason: str) -> dict[str, Any]:
         "baseline_utilization": None, "candidate_utilization": None,
         "baseline_share_of_achievable": None, "candidate_share_of_achievable": None,
         "verdict": "refused", "verdict_reason": reason,
+        "factor_to_achievable": None, "ideal_cycles_at_achievable": None,
+        "cycles_saved": None, "gap_closed": None,
         "measured": False, "skip_reason": reason,
     }
 

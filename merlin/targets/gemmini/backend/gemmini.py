@@ -88,6 +88,13 @@ def counter_engine_kinds() -> dict[str, Any]:
     move operands between DRAM and the scratchpad/accumulator -- so calling LD/ST movement is a
     statement about this hardware, not an inference from two-letter tokens.
 
+    A STRONGER binding exists and should be preferred where it has been run:
+    ``gemmini_roofline_auxiliary`` derives the same roles by PROBING -- DMA read/write/copy plus a
+    compute probe, proved against the elaborated CIRCT artifact -- and records them under
+    ``resource_role_binding``. This declaration is the cheap always-available form, and it is what the
+    graded path asks for (``capsule_grade._activity_source`` requires the PRODUCER to state a kind and
+    refuses to infer one); a run that has the probed binding should use that instead.
+
     Unlocks ``overlap_cycles.across_kinds``, which counts only cycles spanning two DIFFERENT kinds.
     That is the quantity a compute/movement roofline needs: LD and ST busy together is not
     movement/compute overlap, and reporting ``overlap_cycles.observed`` in its place overstates what
