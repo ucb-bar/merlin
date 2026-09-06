@@ -79,6 +79,23 @@ def counter_partition_inputs() -> dict[str, Any]:
         "counter_module": "CounterController", "source": str(path)}
 
 
+def counter_engine_kinds() -> dict[str, Any]:
+    """Which RESOURCE KIND each counted engine is -- declared here, never read off a counter name.
+
+    ``merlin.perf.decompose.activity_from_busy`` refuses a unit whose kind is not declared, and it is
+    right to: a kind inferred from a spelling is exactly how a local register load once got mapped
+    onto "DMA".  These three are this target's own controllers -- EX executes on the mesh, LD and ST
+    move operands between DRAM and the scratchpad/accumulator -- so calling LD/ST movement is a
+    statement about this hardware, not an inference from two-letter tokens.
+
+    Unlocks ``overlap_cycles.across_kinds``, which counts only cycles spanning two DIFFERENT kinds.
+    That is the quantity a compute/movement roofline needs: LD and ST busy together is not
+    movement/compute overlap, and reporting ``overlap_cycles.observed`` in its place overstates what
+    a compute/movement pairing achieved.
+    """
+    return {"EX": "compute", "LD": "movement", "ST": "movement"}
+
+
 def chipyard_root() -> Path:
     """Chipyard root, honoring ``.env`` (not just the process env). ``os.environ.get`` alone missed
     ``MERLIN_CHIPYARD`` when it lives in the repo ``.env`` (the repo-wide contract), leaving the

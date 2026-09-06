@@ -801,8 +801,16 @@ def observations_from_counters(values: Mapping[str, int], counters: "OccupancyCo
         if engine in unmeasured:
             continue
         busy = sum(int(values[name]) for combo, name in by_combo.items() if engine in combo)
-        entries.append({"quantity": f"{BUSY_PREFIX}{engine}{IN_PROGRAM_SUFFIX}", "value": busy,
-                        "unit": "cycles", "source": prov})
+        entry = {"quantity": f"{BUSY_PREFIX}{engine}{IN_PROGRAM_SUFFIX}", "value": busy,
+                 "unit": "cycles", "source": prov}
+        # Carry the declared kind ON the entry. `ObservationBlock.kinds()` reads it from here, and a
+        # consumer that cannot see it refuses the whole source ("the producer stated no kind for
+        # unit(s) ..."): computing `overlap_cycles.across_kinds` from `kind_of` while dropping the
+        # per-unit kind left the block internally inconsistent -- it classified the overlap by kind
+        # and then could not say which unit had which kind.  Absent when undeclared, never defaulted.
+        if kind_of and engine in kind_of:
+            entry["kind"] = str(kind_of[engine])
+        entries.append(entry)
 
     # Overlap: the cycles two or more engines were busy at once, read off the combination counters
     # themselves. Refused outright if any combination is missing -- a partial sum is a lower bound.
