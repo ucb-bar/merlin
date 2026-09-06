@@ -505,8 +505,18 @@ class DevelopmentGsimFeedback:
                 or qualification["decision"].get("selected_engine") != "gsim"
                 or qualification["decision"].get("certificate_sha256")
                 != decision.certificate_sha256):
+            # SAY WHY. `run_paired_perf_bench` already captures the reason `GATE.validate_execution`
+            # refused into `measurement["failure"]["detail"]`, and this raise used to discard it. The
+            # agent still learns nothing (it sees only the exception type through rc=125), but the
+            # HOST had to reconstruct the cause by decoding receipts and reading host_refusals --
+            # measured 2026-09-06, when eleven of twelve measurement calls were refused and the run
+            # was then discarded for "not measuring its final candidate bytes".
+            failure = raw.get("failure") if isinstance(raw.get("failure"), Mapping) else {}
+            reason = qualification.get("reason") if isinstance(qualification, Mapping) else None
+            detail = failure.get("detail") or reason
             raise StageGateError(
-                f"development GSIM {arm}/{family}/{capsule} failed strict certificate admission")
+                f"development GSIM {arm}/{family}/{capsule} failed strict certificate admission"
+                + (f": {str(detail)[:300]}" if detail else ""))
         cycles = gsim.get("cycles")
         ceiling_skip = self._tier_skipped_beyond_declared_ceiling(measurement, required_tiers)
         correct = (measurement.get("numeric") == "pass"
@@ -5418,7 +5428,8 @@ def _codex_round(
             functional_base, control_dir, frozen_corpus_manifest)
         captured["policy"] = policy
         # ``inner`` is already shell-quoted by codex_agent.  Quote only the outer payload boundary.
-        return (" ".join(policy.argv) + " bash -c '" + inner.replace("'", "'\\''") + "'")
+        return BW.compose_command(
+            list(policy.argv), " bash -c '" + inner.replace("'", "'\\''") + "'", ws)
 
     loop.bwrap_cmd = exact_bwrap
     artifact_paths.cache_dir = stage_local_cache
