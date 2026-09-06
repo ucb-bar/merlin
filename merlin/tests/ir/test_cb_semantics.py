@@ -332,3 +332,95 @@ def test_the_encoders_default_matches_the_engines_default():
             f"the encoder defaults an absent output_dtype to {_COMMIT_DEFAULT_DTYPE!r} but "
             f"{module.__name__} does not; an encoder that disagrees with the engine it mirrors "
             f"refutes correct backends")
+
+
+# -- spellings the buffer is allowed to use, and spellings nobody defined ----------------------
+
+def test_an_op_spelled_combine_abstains_instead_of_silently_meaning_add():
+    """`op: "identity"` must not be read as an ADDITION, which is what the default used to do.
+
+    The crash this was found through (`KeyError: 'rhs'`) was the lucky outcome. `attrs.get("combine",
+    "add")` answers "add" for a buffer that spells the combine as `op`, so a buffer carrying BOTH
+    `op: "identity"` and an `rhs` would have encoded an addition, been agreed with by a reference that
+    defaults the same way, and returned VERIFIED while the hardware moved data. Nothing in the schema
+    defines `op` for VECTOR_MAP, so the only safe reading of an unexplained `op` is to refuse.
+    """
+    from merlin.verify.cb_semantics import CommandBufferEncoder
+    from merlin.verify.smt_semantics import UnsupportedSemantics
+
+    _, cb, _ = _pair()
+    cb = copy.deepcopy(cb)
+    src = next(t for t, s in cb["tensors"].items() if (s or {}).get("role") == "input")
+    cb["commands"] = [{"opcode": "VECTOR_MAP",
+                       # both operands present: the silent-add reading is REACHABLE here, so this
+                       # test fails loudly if the default is ever restored
+                       "operands": {"lhs": src, "rhs": src, "dst": "vm_out"},
+                       "attributes": {"op": "identity"}}]
+    e = CommandBufferEncoder(_null_encoder(), cb)
+    e.declare_leaves()
+    with pytest.raises(UnsupportedSemantics, match="op='identity'"):
+        e.run()
+
+
+def test_the_contract_sanctioned_src_spelling_is_accepted_for_movement():
+    """`mlir_oot_backend_contract.yaml` defines the movement source as `src` OR `lhs`.
+
+    Neither engine implemented the alternative, so a buffer written to the published contract crashed
+    the encoder with a bare KeyError and was counted as OUR defect. Both spellings must reach the same
+    encoding; the contract text is read here rather than restated, so this test fails if the contract
+    stops sanctioning the alias.
+    """
+    from merlin.common.paths import merlin_dir
+    from merlin.verify.cb_semantics import CommandBufferEncoder
+
+    contract = (merlin_dir() / "contract" / "mlir_oot_backend_contract.yaml").read_text()
+    assert "`src` (or `lhs`)" in contract, (
+        "the contract no longer sanctions the src/lhs alias; this test is now asserting invention")
+
+    _, cb, _ = _pair()
+    base = copy.deepcopy(cb)
+    src = next(t for t, s in base["tensors"].items() if (s or {}).get("role") == "input")
+
+    outs = []
+    for key in ("src", "lhs"):
+        b = copy.deepcopy(base)
+        b["commands"] = [{"opcode": "MOVEMENT",
+                          "operands": {key: src, "dst": "mv_out"},
+                          "attributes": {}}]
+        e = CommandBufferEncoder(_null_encoder(), b)
+        e.declare_leaves()
+        outs.append(e.run())
+
+    assert outs[0].keys() == outs[1].keys(), (
+        "the two contract-sanctioned spellings of the movement source produced different outputs")
+
+
+def test_comparing_a_narrow_output_against_a_wide_one_does_not_kill_the_query():
+    """A `bv<8>` leaf vs a `bv<32>` clamped accumulator must be reconciled, not exported ill-formed.
+
+    `saturate` clamps at the accumulator width and KEEPS it, so an identity path and a contraction
+    path reach the same declared output at different bitvector widths. Upstream `smt.eq` carries
+    `SameTypeOperands`, so emitting that comparison produced a module `mlir-translate` rejects — and
+    the failure took the WHOLE query with it, returning no verdict at all rather than an abstention.
+    Sign-extending the narrower side is sound because the wider one was already clamped into range.
+    """
+    from xdsl.builder import ImplicitBuilder
+    from xdsl.dialects import builtin, smt
+    from xdsl.ir import Block, Region
+
+    from merlin.verify.smt_export import to_smtlib
+    from merlin.verify.smt_ops import SolverOp
+    from merlin.verify.smt_semantics import Encoder
+
+    blk = Block()
+    with ImplicitBuilder(blk):
+        enc = Encoder()
+        narrow = enc.symbolic_tensor("narrow", 2, 2, 8)
+        wide = enc.saturate(enc.symbolic_tensor("wide", 2, 2, 32), -128, 127, 32)
+        assert (narrow.width, wide.width) == (8, 32), "the widths under test must actually differ"
+        smt.AssertOp(enc.any_differs(narrow, wide))
+        smt.YieldOp()
+
+    # exporting is the assertion: a width mismatch used to fail here, taking the verdict with it
+    text = to_smtlib(builtin.ModuleOp([SolverOp.from_region(Region([blk]))]))
+    assert text.strip(), "export produced nothing"

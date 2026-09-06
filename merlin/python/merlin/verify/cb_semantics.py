@@ -210,7 +210,9 @@ class CommandBufferEncoder:
 
     def _matmul(self, operands: dict) -> None:
         """simulator.py:132 — ``env[dst] = env[lhs].matmul(env[rhs])``."""
-        lhs, rhs, dst = self._get(operands["lhs"]), self._get(operands["rhs"]), operands["dst"]
+        lhs = self._get(self._operand(operands, "lhs", opcode="MATMUL"))
+        rhs = self._get(self._operand(operands, "rhs", opcode="MATMUL"))
+        dst = self._operand(operands, "dst", opcode="MATMUL")
         bound = safe_k_bound(max(lhs.width, rhs.width), self.acc_width)
         if lhs.cols > bound:
             raise UnsupportedSemantics(
@@ -247,12 +249,13 @@ class CommandBufferEncoder:
 
     def _vector_map(self, operands: dict, attrs: dict) -> None:
         """simulator.py:194 — elementwise combine, then an optional activation."""
-        combine = str(attrs.get("combine", "add"))
-        dst = operands["dst"]
+        combine = self._combine_of(attrs, "VECTOR_MAP")
+        dst = self._operand(operands, "dst", opcode="VECTOR_MAP")
         if combine == "identity":
-            t = self._get(operands["lhs"])
+            t = self._get(self._operand(operands, "src", "lhs", opcode="VECTOR_MAP(identity)"))
         else:
-            a, b = self._get(operands["lhs"]), self._get(operands["rhs"])
+            a = self._get(self._operand(operands, "lhs", opcode="VECTOR_MAP"))
+            b = self._get(self._operand(operands, "rhs", opcode="VECTOR_MAP"))
             if (a.rows, a.cols) != (b.rows, b.cols):
                 raise UnsupportedSemantics(
                     f"VECTOR_MAP operands differ in shape: {(a.rows, a.cols)} vs {(b.rows, b.cols)}")
@@ -348,12 +351,51 @@ class CommandBufferEncoder:
         capsule's whole point is that the data survives the trip bit-for-bit, so narrowing here would
         refute exactly the programs it exists to check.
         """
-        if "src" not in operands:
-            raise UnsupportedSemantics("MOVEMENT needs operands src/dst")
-        src, dst = operands["src"], operands["dst"]
+        src = self._operand(operands, "src", "lhs", opcode="MOVEMENT")
+        dst = self._operand(operands, "dst", opcode="MOVEMENT")
         t = self._get(src)
         self.env[dst] = t
         return dst, t
+
+    def _operand(self, operands: dict, *keys: str, opcode: str):
+        """Read the first spelling of a REQUIRED operand that this buffer supplies, or abstain.
+
+        Two defects met here. A bare ``operands["lhs"]`` raised ``KeyError``, which the ablation
+        counted as a checker ERROR — our defect, and indistinguishable from a crash in the solver.
+        A missing or differently-spelled operand is a property of the SUBMITTED buffer, so it is an
+        abstention that names both what was wanted and what the buffer actually carries.
+
+        The alias list is not invention: ``mlir_oot_backend_contract.yaml:118`` defines the movement
+        source as "the MOVEMENT/identity-VECTOR_MAP command's ``src`` (or ``lhs``) operand", and
+        neither engine implemented the documented alternative, so a buffer written to the contract
+        crashed the checker rather than being checked.
+        """
+        for k in keys:
+            if k in operands:
+                return operands[k]
+        wanted = " or ".join(repr(k) for k in keys)
+        raise UnsupportedSemantics(
+            f"{opcode} needs operand {wanted}; this buffer supplies {sorted(operands)}")
+
+    def _combine_of(self, attrs: dict, opcode: str) -> str:
+        """The VECTOR_MAP combine, refusing to GUESS when the buffer spells it somewhere else.
+
+        Some submissions carry ``op: "identity"`` / ``op: "copy"`` where the engines read ``combine``.
+        ``attrs.get("combine", "add")`` then silently answered "add" — and that is the dangerous
+        reading, not the crash it happened to cause here: a buffer carrying ``op: "identity"`` plus an
+        ``rhs`` would have been encoded as an ADDITION, agreed with by a reference that defaults the
+        same way, and reported VERIFIED while the hardware moved data. The schema types ``op`` as a
+        free string (``command_buffer.schema.json:203``) and nothing defines it for VECTOR_MAP, so the
+        only safe reading of an unexplained ``op`` is no reading at all.
+        """
+        if "combine" in attrs:
+            return str(attrs["combine"])
+        if "op" in attrs:
+            raise UnsupportedSemantics(
+                f"{opcode} carries attribute op={attrs['op']!r} and no 'combine'; the engines read "
+                f"'combine' and nothing defines 'op' for this opcode, so defaulting to 'add' could "
+                f"silently encode an addition where the buffer meant {attrs['op']!r}")
+        return "add"
 
     def _elementwise(self, a: Tensor, b: Tensor, op_cls) -> Tensor:
         out = {k: op_cls(v, b.elems[k]).results[0] for k, v in a.elems.items()}

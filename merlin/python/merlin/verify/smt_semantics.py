@@ -271,7 +271,12 @@ class Encoder:
 
         The clamp happens at the ACCUMULATOR width (so the comparisons are meaningful) and the result
         keeps that width: narrowing the bitvector would need an extract op, and the clamped value is
-        already exactly representable, so the extra width is harmless and the terms stay comparable.
+        already exactly representable, so the extra width loses no information.
+
+        It does NOT follow that the terms stay comparable — this docstring used to claim that, and the
+        claim was false. A ``bv<32>`` clamped into i8 range and a ``bv<8>`` leaf denote the same
+        integer but are different SMT types, and ``smt.eq`` rejects the pair. :meth:`any_differs` is
+        where that is reconciled; do not assume it anywhere else.
         """
         lo_c, hi_c = self.const(lo, t.width), self.const(hi, t.width)
         out = {}
@@ -286,13 +291,28 @@ class Encoder:
 
         Asserting this is the refinement obligation's negation — ``unsat`` therefore means the two
         programs agree on ALL inputs at this shape, which is the verification result.
+
+        WIDTHS ARE EQUALISED HERE, NOT ASSUMED EQUAL. :meth:`saturate` clamps at the accumulator width
+        and keeps it, so a program reaching an output through a contraction carries ``bv<32>`` while
+        one that moves a leaf through unchanged carries ``bv<8>``. Upstream ``smt.eq`` carries
+        ``SameTypeOperands``, so comparing those two exported an ill-formed module and the whole query
+        died with no verdict at all — three archived movement submissions were lost that way, counted
+        as checker errors rather than as the abstentions or refutations they should have been.
+        Sign-extending the narrower side is sound precisely BECAUSE ``saturate`` already clamped the
+        wider one into the narrow range; the two terms denote the same integer when they agree.
         """
         if (a.rows, a.cols) != (b.rows, b.cols):
             raise UnsupportedSemantics(f"shape mismatch {a.rows}x{a.cols} vs {b.rows}x{b.cols}")
+        width = max(a.width, b.width)
         diffs = []
         for r in range(a.rows):
             for c in range(a.cols):
-                eq = self.smt.EqOp(a.at(r, c), b.at(r, c)).results[0]
+                x, y = a.at(r, c), b.at(r, c)
+                if a.width != width:
+                    x = self.sign_extend(x, a.width, width)
+                if b.width != width:
+                    y = self.sign_extend(y, b.width, width)
+                eq = self.smt.EqOp(x, y).results[0]
                 diffs.append(self.smt.NotOp(eq).results[0])
         term = diffs[0]
         for d in diffs[1:]:
