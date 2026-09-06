@@ -52,6 +52,8 @@ class PassSeries:
     points: list[PassPoint] = field(default_factory=list)
     n_rows: int = 0
     n_no_denominator: int = 0
+    n_other_suite: int = 0
+    suite_size: int = 0
     n_build_failed: int = 0
     n_scoped_out: int = 0
     n_regressions: int = 0
@@ -91,6 +93,25 @@ class PassSeries:
             else:
                 out.append(PassPoint(p.t_s, best, p.n_capsules, p.tier, p.sim))
         return out
+
+
+def _suite_size(rows: list[dict], scope: str) -> int:
+    """This run's own full-suite denominator: the commonest ``n_capsules`` among in-scope rows.
+
+    Derived per run, never assumed, so a suite of 11 or 96 reads as correctly as one of 20. The mode
+    rather than the max, because a single row at a larger size is more often a one-off probe than a
+    change of suite -- and taking the max would then discard the run's entire real series. Ties go to
+    the larger suite, which is the more complete grading."""
+    counts: dict[int, int] = {}
+    for row in rows:
+        if str(row.get("capsules") or SCOPE_ALL) != scope:
+            continue
+        n = row.get("n_capsules")
+        if isinstance(n, int) and n > 0:
+            counts[n] = counts.get(n, 0) + 1
+    if not counts:
+        return 0
+    return max(counts, key=lambda n: (counts[n], n))
 
 
 def _rows(path: Path) -> list[dict]:
@@ -133,6 +154,7 @@ def read_passes(run_dir: Path, *, scope: str = SCOPE_ALL) -> PassSeries:
 
     rows = _rows(log)
     series.n_rows = len(rows)
+    series.suite_size = _suite_size(rows, scope)
     kept: list[tuple[float, dict]] = []
     for row in rows:
         if str(row.get("capsules") or SCOPE_ALL) != scope:
@@ -144,6 +166,12 @@ def read_passes(run_dir: Path, *, scope: str = SCOPE_ALL) -> PassSeries:
             if row.get("build_failed"):
                 series.n_build_failed += 1
             continue
+        # A row graded against a different, usually smaller, subset is a fraction of a different
+        # whole. Measured: 8 of 82 runs carry more than one denominator, one of them four (37, 35,
+        # 25, 24). Plotting those together compares suites, not progress.
+        if total != series.suite_size:
+            series.n_other_suite += 1
+            continue
         offset = row.get("wall_offset_s")
         if not isinstance(offset, (int, float)):
             continue
@@ -151,10 +179,11 @@ def read_passes(run_dir: Path, *, scope: str = SCOPE_ALL) -> PassSeries:
 
     if not kept:
         series.availability.set("passes", unavailable(
-            f"{series.n_rows} self-check row(s) read, but none carried both the {scope!r} scope and a "
-            f"capsule count: {series.n_no_denominator} had no denominator "
-            f"({series.n_build_failed} of them a failed build) and {series.n_scoped_out} were scoped "
-            f"to a subset of the corpus"))
+            f"{series.n_rows} self-check row(s) read, but none carried both the {scope!r} scope and "
+            f"this run's own suite size of {series.suite_size}: {series.n_no_denominator} had no "
+            f"denominator ({series.n_build_failed} of them a failed build), {series.n_scoped_out} "
+            f"were scoped to a subset of the corpus, and {series.n_other_suite} were graded against "
+            f"a different suite size"))
         return series
 
     clock = _rebase([off for off, _ in kept])
@@ -173,10 +202,14 @@ def read_passes(run_dir: Path, *, scope: str = SCOPE_ALL) -> PassSeries:
         series.points.append(PassPoint(t_s, passed, total,
                                        str(row.get("barrier_tier") or ""), str(row.get("sim") or "")))
     series.wall_s = series.points[-1].t_s if series.points else 0.0
-    note = f"{len(series.points)} of {series.n_rows} self-check row(s) usable"
+    note = (f"{len(series.points)} of {series.n_rows} self-check row(s) usable at this run's own "
+            f"suite size of {series.suite_size}")
     if series.n_no_denominator:
         note += (f"; {series.n_no_denominator} had no capsule count and were excluded "
                  f"({series.n_build_failed} a failed build)")
+    if series.n_other_suite:
+        note += (f"; {series.n_other_suite} row(s) were graded against a different suite size and "
+                 f"are a fraction of a different whole")
     if series.n_inconsistent:
         note += f"; {series.n_inconsistent} row(s) disagreed with their own failing list"
     series.availability.set("passes", Status(MEASURED, reason=note, source="selfcheck_log"))

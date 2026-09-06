@@ -643,3 +643,35 @@ def test_a_set_with_real_durations_is_still_binned():
     centres, shares = occupancy_bins(live, bins=9)
     assert len(centres) == 9 and max(shares) > 0
     assert concurrency(live).availability.get("concurrency").kind == MEASURED
+
+
+def test_rows_graded_against_a_different_suite_are_not_mixed_in(tmp_path):
+    """A pilot-slice row and a full-suite row are fractions of different wholes.
+
+    Measured on the corpus: 8 of 82 runs carry more than one denominator, one of them four. Plotting
+    them on a single 'capsules passed' axis compares suites rather than progress."""
+    run = tmp_path / "run"
+    run.mkdir()
+    _selfcheck(run / "selfcheck_log.jsonl", [
+        {"wall_offset_s": 10, "capsules": "all", "n_passed": 5, "n_capsules": 10, "failing": ["x"] * 5},
+        {"wall_offset_s": 20, "capsules": "all", "n_passed": 13, "n_capsules": 36, "failing": ["x"] * 23},
+        {"wall_offset_s": 30, "capsules": "all", "n_passed": 20, "n_capsules": 36, "failing": ["x"] * 16},
+        {"wall_offset_s": 40, "capsules": "all", "n_passed": 31, "n_capsules": 36, "failing": ["x"] * 5},
+    ])
+    s = read_passes(run)
+    assert s.suite_size == 36
+    assert [p.n_passed for p in s.points] == [13, 20, 31]
+    assert s.n_other_suite == 1
+    assert "different suite size" in s.availability.get("passes").reason
+
+
+def test_the_suite_size_is_the_mode_not_a_literal(tmp_path):
+    """An eleven-capsule suite must read exactly as well as a twenty-capsule one."""
+    run = tmp_path / "run"
+    run.mkdir()
+    _selfcheck(run / "selfcheck_log.jsonl", [
+        {"wall_offset_s": 10, "capsules": "all", "n_passed": 2, "n_capsules": 11, "failing": ["x"] * 9},
+        {"wall_offset_s": 20, "capsules": "all", "n_passed": 9, "n_capsules": 11, "failing": ["x"] * 2},
+    ])
+    s = read_passes(run)
+    assert s.suite_size == 11 and [p.n_passed for p in s.points] == [2, 9]
