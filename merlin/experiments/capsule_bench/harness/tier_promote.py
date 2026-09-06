@@ -69,7 +69,7 @@ from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL as _ELABORATED_RTL
 # The two verdict words this module records. Imported from the scheduler rather than restated here, so
 # the recorder and the policy cannot come to disagree about how a passing tier is spelled -- that
 # disagreement is the class of defect `row_status` below exists to close.
-from merlin.targetgen.oracle_schedule import FAIL as _FAIL, PASS as _PASS
+from merlin.targetgen.oracle_schedule import CERT_LEDGER as _LEDGER, FAIL as _FAIL, PASS as _PASS
 
 _NEUTRAL_SIM = "contract"   # "grade on whatever tier this target's contract resolves to"
 
@@ -207,40 +207,28 @@ def execution_digest(capsule_result: str | Path) -> str | None:
     every row reported ``execution_digest: null`` -- a digest that could not be computed presenting
     exactly like a submission with no artifact identity.
     """
-    import hashlib
     import json
     import yaml
+
+    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    from merlin.targetgen.tier_cache import execution_identity
 
     cr = Path(capsule_result)
     try:
         result = json.loads(cr.read_text(encoding="utf-8"))
         manifest = yaml.safe_load((cr.parent / "run_manifest.yaml").read_text(encoding="utf-8"))
-        elf = cr.parent / "generated" / "package_kernel.elf"
-        target = manifest.get("target") if isinstance(manifest, dict) else None
-        shas = result.get("toolchain_shas") if isinstance(result, dict) else None
-        if not isinstance(target, str) or not target.strip() or not isinstance(shas, dict):
-            return None
-        hardware = {}
-        for key, value in shas.items():
-            if str(key).lower() == "merlin":
-                continue
-            # Hardware pins are full git/content hashes. UNKNOWN, abbreviated, or otherwise malformed
-            # provenance cannot safely identify the design that executed the program.
-            if (not isinstance(key, str) or not key or not isinstance(value, str)
-                    or len(value) not in (40, 64)
-                    or not all(c in "0123456789abcdef" for c in value)):
-                return None
-            hardware[key] = value
-        if not hardware or not elf.is_file():
-            return None
-        payload = {
-            "version": 1,
-            "target": target,
-            "hardware": hardware,
-            "executable_sha256": hashlib.sha256(elf.read_bytes()).hexdigest(),
-        }
-        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        return hashlib.sha256(canonical).hexdigest()
+        # THE HASH ITSELF LIVES IN THE LIBRARY, not here. This function gathers the three inputs off
+        # disk; `tier_cache.execution_identity` turns them into the identity. It was a second copy for
+        # exactly as long as nothing else needed it -- and the moment the RUNNER had to ask "do these
+        # bytes already hold a certificate?", a second copy would have been two answers to one question,
+        # differing only in whichever detail drifted first (a pin the recorder skipped and the reader
+        # did not, a payload key spelled differently). The consequence of such a drift is not a crash:
+        # it is a cache that never hits, or -- far worse -- one that hits for bytes the recorder meant
+        # something else by. One implementation, two callers.
+        return execution_identity(
+            target=manifest.get("target") if isinstance(manifest, dict) else None,
+            executable=cr.parent / "generated" / PACKAGE_ELF_NAME,
+            toolchain_shas=result.get("toolchain_shas") if isinstance(result, dict) else None)
     except Exception:  # noqa: BLE001 -- missing/unreadable provenance is the conservative fallback
         return None
 
@@ -847,7 +835,11 @@ def _save_tier_state(ws, st) -> None:
 # consulted unless its identity matches the current bytes EXACTLY, which is why retaining cannot turn a
 # stale certificate into a valid one.
 # ------------------------------------------------------------------------------------------------
-_LEDGER = "<certs>"   # reserved key inside a capsule's tier map; delimiters no tier label can produce
+# `_LEDGER` -- the reserved key inside a capsule's tier map (delimiters no tier label can produce) -- is
+# IMPORTED at the top of this file, not restated here. `merlin.targetgen.tier_cache` reads this same file
+# to decide whether a tier may be carried instead of re-executed, and two spellings of the key would not
+# fail loudly: the reader would find nothing and re-buy every certificate, which looks exactly like a run
+# with nothing to reuse.
 
 # How many records one (capsule, tier) retains. The state file is re-read and re-written on EVERY verdict,
 # and a continuous round produces dozens per hour, so an unbounded ledger would grow the hot file without
@@ -1103,6 +1095,30 @@ def record_cert(ws, verdict, cert_tier, log=None, identity=None) -> list[str]:
     return resolved
 
 
+def cert_instrument(cert_tier: str) -> str | None:
+    """Identity of the JUDGE this promotion's certificate will be earned under, or ``None``.
+
+    A certificate describes a verdict produced by a particular grading path on a particular engine, and
+    a run whose grading path has moved is not the run that earned it. Recorded ON the ledger entry so a
+    later grade can decide whether the certificate still describes ITS instrument -- without it, the
+    entry states which bytes were certified and says nothing about who certified them, and a reader that
+    trusted it would carry a verdict produced by a different judge.
+
+    ``None`` when the instrument cannot be established, and then nothing is recorded -- an entry with no
+    instrument can never be carried (``tier_cache._from_ledger``), which is the fail-closed direction.
+    """
+    try:
+        import _common as _C
+        from merlin.targetgen.capsule_runner import rtl_tiers_of
+        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.targetgen.tier_cache import instrument_digest
+        te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+        return instrument_digest(te.target, cert_tier,
+                                 rtl_tier=cert_tier in rtl_tiers_of(te.target))
+    except Exception:  # noqa: BLE001 -- unresolvable instrument: record none, so nothing is carried
+        return None
+
+
 def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     """Record what the loop tier just learned, and enqueue cert jobs for what it unlocked.
 
@@ -1227,6 +1243,7 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
 
     promoted = []
     _sim = cert_sim(cert_tier)
+    _instrument = cert_instrument(cert_tier)
     if want and _sim is None:
         # Say it once, loudly. Marking a capsule pending for a job that cannot be enqueued is how a
         # capsule strands at `pending` and never resolves.
@@ -1264,6 +1281,11 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
         pending = {"status": "pending", "digest": digest, "components": dict(comps)}
         if execution_digest is not None:
             pending["execution_digest"] = execution_digest
+        # WHICH JUDGE this certificate will have been earned under. `record_cert` copies this record
+        # forward when it resolves, so the resolved certificate carries it too, and a later grade can
+        # decide whether the verdict still describes its own instrument instead of assuming it does.
+        if _instrument is not None:
+            pending["instrument"] = _instrument
         _why_broad = _no_narrower_cause(execution_digest, comps)
         if _why_broad:
             pending["fallback_reason"] = _why_broad

@@ -59,6 +59,17 @@ WHOLE_SUBMISSION = "<whole-submission>"   # "this capsule rides on every byte" -
 UNATTRIBUTED = "<unattributed>"           # submission bytes no declared component claims
 EXECUTION_ARTIFACT = "<execution-artifact>"  # the exact per-capsule executable + hardware identity
 
+# The reserved key under which a capsule's per-identity certificate LEDGER sits inside a run's
+# ``qa/tier_state.json`` (``{capsule: {CERT_LEDGER: {tier: {identity: entry}}}}``). Spelled with the same
+# delimiters no tier label can produce, so it can never be mistaken for a tier.
+#
+# It lives HERE, beside the vocabulary the scheduler already owns, because the file has two independent
+# parties: the harness's ``tier_promote`` writes it, and ``merlin.targetgen.tier_cache`` reads it to
+# decide whether a tier may be carried instead of re-executed. Two spellings of this key would not fail
+# loudly -- the reader would simply find nothing and re-buy every certificate, which is indistinguishable
+# from a run with nothing to reuse.
+CERT_LEDGER = "<certs>"
+
 # Why a verdict is not a verdict about the current bytes. Kept as three distinct reasons because they are
 # three distinct states: NO_VERDICT is not-yet-known (nobody has run it), CHANGED is known-to-be-stale,
 # and UNDETERMINABLE is "the decomposition could not be computed, so staleness cannot be decided". The

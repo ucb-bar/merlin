@@ -49,6 +49,43 @@ problem. Its own round reports named the cause each time.
 
 **Rule: if you touch this path, add a test.** A comment cannot detect silence.
 
+## A certificate is not re-bought for bytes that have not changed
+
+The cert tier is the whole cost of a grade. Measured on `merlincirct_g4p1_20260905` round 5: the screen
+tier cost **2.53 min** of adapter wall over 82 capsules and the cert tier **44.4 min** over 76 — 94.7% of
+the total. A converged submission re-paid all of it on every post-turn grade, for capsules whose emitted
+program had not changed a byte since a certificate was earned for it, sometimes minutes earlier in the
+same turn by the promotion path above.
+
+`merlin.targetgen.tier_cache` is the reader. The ladder asks it before paying for a tier and tells it
+after executing one:
+
+- **Key** = the *execution identity* (`tier_promote.execution_digest`'s own — ELF bytes x target x every
+  declared hardware pin, deliberately excluding merlin's commit) **x** the *instrument digest* (a
+  `source_digest` over the files that decide a verdict, plus the elaborated-RTL engine that would answer
+  the tier today). Same program, same device, same judge — or it runs again.
+- **Fail closed** on every ambiguity: no ELF, an `UNKNOWN` pin, a missing grading-path file, an
+  undecidable engine, an unreadable store, a record whose own copy of the key disagrees. A cache that
+  cannot miss is the same defect as a check that cannot fail.
+- **Only a `pass` is carried.** A failure is what an agent acts on, so it is re-run for its detail.
+- **The first tier the ladder executes is always paid for** — its adapter is what builds the program the
+  key is taken from, so nothing can be carried until a real measurement has happened. A stale ELF left in
+  a reused run directory is REMOVED before the ladder starts; without that, a lookup would key on a
+  program the current compiler no longer emits (the one direction this must never fail in).
+- **A carry says so.** The tier record carries `measured_now: false` plus a `carried` block (identity,
+  instrument, when, which run, and where the earning run's console lives); the capsule result grows
+  `tier_reuse: {executed, carried}`; the grade score and the round verdict carry the same accounting. A
+  falling wall clock has two possible causes — a faster grade and a grade that measured less — and only
+  the reuse block tells them apart.
+- Wall-clock `timing`/`concurrency` are dropped from a carried record (no time was spent now); `cycles`
+  are kept (a property of the program and the device, which the key pins).
+
+Knobs: `MERLIN_TIER_CERT_CACHE=0` switches it off, or set it to a directory to relocate the store
+(default `out/artifacts/cache/tier-certs/`); `MERLIN_TIER_CERT_LEDGER` names `qa/tier_state.json`
+promotion ledgers to consult as a second, strictly weaker source. Tests:
+`merlin/tests/targetgen/test_tier_certificate_cache.py` — every direction is a mutation of a state that
+hits.
+
 ## Invariants to preserve
 
 - `--continuous` stays default-on; `--no-continuous` stays reachable.

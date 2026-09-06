@@ -962,6 +962,23 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         "parallel_speedup": round(_active / _suite_wall, 2) if _suite_wall > 0 else None,
     }
 
+    # WHAT THIS GRADE ACTUALLY PAID FOR. `timing_rollup` above is the cost of the tiers this run
+    # EXECUTED, and once a tier can be carried from an earlier certification of the same executable on
+    # the same instrument (merlin.targetgen.tier_cache) a falling wall clock has two possible causes --
+    # a faster grade, or a grade that measured less. Stated here so the two are never confused: a saving
+    # that is not reported as reuse is indistinguishable from a claim that this run measured everything.
+    # Emitted even when nothing was carried, so "no reuse" and "no accounting" cannot look the same.
+    _reuse = {"executed": {}, "carried": {}, "capsules_with_a_carried_tier": 0}
+    for r in results:
+        blk = r.get("tier_reuse") if isinstance(r.get("tier_reuse"), dict) else {}
+        for _t in blk.get("executed") or []:
+            _reuse["executed"][_t] = _reuse["executed"].get(_t, 0) + 1
+        for _t in blk.get("carried") or []:
+            _reuse["carried"][_t] = _reuse["carried"].get(_t, 0) + 1
+        if blk.get("carried"):
+            _reuse["capsules_with_a_carried_tier"] += 1
+    score["tier_reuse"] = _reuse
+
     # coverage aggregate (written alongside)
     cov = CV.aggregate(results, capsules=caps, traces=traces, target=target)
     score["coverage"] = {"by_tier_reached": cov["by_tier_reached"],

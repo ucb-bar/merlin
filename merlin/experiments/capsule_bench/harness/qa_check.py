@@ -229,6 +229,16 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
             "tier_engines": {t: (tiers.get(t) or {}).get("engine") for t in tiers
                              if isinstance((tiers.get(t) or {}).get("engine"), str)
                              and len((tiers.get(t) or {}).get("engine")) <= 32},
+            # WHICH TIERS THIS GRADE ACTUALLY EXECUTED, and which carried a verdict earned earlier by
+            # the same executable on the same instrument. Rides the verdict because the alternative is a
+            # cached grade that is indistinguishable from a fresh one: a reader comparing two rounds'
+            # wall clocks, or asking "was L3 measured against these bytes today", has no other way to
+            # tell. Redaction-safe -- tier labels and a boolean, never capsule or golden data.
+            "tier_reuse": (lambda v: {"executed": [t for t in (v.get("executed") or [])
+                                                   if isinstance(t, str)],
+                                      "carried": [t for t in (v.get("carried") or [])
+                                                  if isinstance(t, str)]}
+                           if isinstance(v, dict) else None)(r.get("tier_reuse")),
             "failure_plane": fail.get("plane"),
             "failure_category": fail.get("category"),
             # The tier LABEL survives redaction. It is a harness constant ("L2"), never capsule data, and
@@ -326,6 +336,7 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
             "trace_violations": rich.get("trace_violations", []),
             "tiers": pc.get("tiers", {}),
             "tier_cycles": rich.get("tier_cycles", {}),
+            "tier_reuse": rich.get("tier_reuse"),
             "failure_plane": rich.get("failure_plane"),
             "failure_category": rich.get("failure_category"),
             "failure_detail": rich.get("failure_detail"),

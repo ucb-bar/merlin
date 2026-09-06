@@ -180,6 +180,16 @@ class TierResult:
                                       # a perf-tuning pass reading these records should not have to
                                       # reconstruct the filename to find the log it needs.
 
+    carried: dict | None = None       # THIS TIER WAS NOT EXECUTED IN THIS RUN. Present only on a record
+                                      # whose verdict was CARRIED from an earlier execution of the same
+                                      # program on the same instrument (merlin.targetgen.tier_cache):
+                                      # it names the execution identity and instrument digest the
+                                      # verdict was earned under, when, and by which run. A reused
+                                      # certificate reported as a fresh measurement is not a saving, it
+                                      # is a false claim about what this run did -- so the record says
+                                      # so, and `to_dict` additionally stamps `measured_now: false` on
+                                      # a carried record and `true` on every executed one, so the
+                                      # distinction survives into anything that reads only the JSON.
     toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
                                       # scaled MX capsule is graded on the harness's own reference MX
                                       # kernel rather than the submission, so a pass there measures the
@@ -237,6 +247,12 @@ class TierResult:
             d["console_log"] = self.console_log
         if self.console_bytes is not None:
             d["console_bytes"] = self.console_bytes
+        # WAS THIS MEASURED NOW? Stamped on EVERY record, not only on a carried one: a reader that has
+        # to infer "measured" from the ABSENCE of a key cannot tell a fresh record from one written by
+        # a version that did not know about carrying. Both states are asserted.
+        d["measured_now"] = self.carried is None
+        if self.carried:
+            d["carried"] = dict(self.carried)
         return d
 
 
@@ -394,6 +410,130 @@ def _cb_with_leaf_values(cb: dict) -> dict:
             tensors[dst] = {**tensors[src], "resident_of": src}
     return out
 
+
+
+# ---------------------------------------------------------------------------------------------------
+# CARRYING A CERTIFICATE INSTEAD OF RE-BUYING IT
+# ---------------------------------------------------------------------------------------------------
+# The cert tier is 94.7% of a grade's oracle wall (measured: 44.4 min over 76 capsules against 2.53 min
+# of screen over 82, on merlincirct_g4p1_20260905 round 5), and a converged submission re-pays it every
+# post-turn grade for capsules whose emitted program has not changed a byte since the last one certified
+# it. The policy, the key and every fail-closed rule live in `merlin.targetgen.tier_cache`; what lives
+# here is only the two moments the ladder touches it -- ask before running a tier, tell after running one.
+#
+# Two properties are load-bearing and are enforced HERE rather than trusted:
+#
+#  * THE EXECUTABLE MUST BE THIS RUN'S. The identity is the ELF's bytes, and the ELF is built into the
+#    run's `generated/` directory by the first oracle adapter that needs one. A run directory REUSED from
+#    an earlier grade already holds that earlier grade's ELF -- so consulting the cache before anything
+#    in this run has built one would key the lookup on a stale artifact and could carry a verdict for a
+#    program the current compiler no longer emits. That is the one direction a cache must never fail in,
+#    so a stale executable is REMOVED before the ladder starts (`_clear_stale_executable`) and no tier is
+#    consulted until one has actually executed in this run.
+#  * THE FIRST TIER THE LADDER EXECUTES IS ALWAYS PAID FOR. It follows from the above with no rule of its
+#    own: that tier's adapter is what builds the executable, so nothing can be carried until it has run.
+#    `tier_policy.tier_order` decides which tier that is -- on a calibrated target it is the screen, which
+#    is where the saving wants it (the cheap tier re-runs, the expensive one is carried). Tier semantics
+#    are unchanged either way: a carry copies a tier's verdict onto the SAME tier, so a screen still may
+#    eliminate and still may never certify.
+
+
+def _clear_stale_executable(generated) -> None:
+    """Remove an executable left in this run directory by an EARLIER grade.
+
+    Run directories are reused (a shape-keyed model dir, a re-graded runs root). Every consumer that
+    content-addresses "the program this capsule ran" -- the tier cache here, `tier_promote`'s execution
+    digest, `oot_runner`'s artifact identity -- reads that file, and a leftover from a previous grade
+    answers all of them with the wrong program. Removing it costs nothing: the adapter that needs one
+    rebuilds it, deterministically, from this run's own lowering.
+    """
+    from . import elf_lanes as _EL
+    try:
+        (Path(generated) / _EL.PACKAGE_ELF_NAME).unlink()
+    except OSError:                      # absent (the normal case) or not removable: nothing to reuse
+        pass
+
+
+def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool):
+    """``(execution identity, instrument digest)`` for one (capsule, tier), or ``(None, None)``.
+
+    ``None`` is the answer whenever either half cannot be established -- no executable yet, a hardware
+    pin nobody could resolve, a grading-path file missing, an RTL tier whose engine is undecidable.
+    Every one of those makes the tier re-run.
+    """
+    from . import elf_lanes as _EL
+    from . import tier_cache as _TC
+    identity = _TC.execution_identity(target=target,
+                                      executable=Path(generated) / _EL.PACKAGE_ELF_NAME,
+                                      toolchain_shas=shas)
+    if identity is None:
+        return None, None
+    instrument = _TC.instrument_digest(target, tier, rtl_tier=from_rtl)
+    if instrument is None:
+        return None, None
+    return identity, instrument
+
+
+def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas,
+                        from_rtl: bool):
+    """A verdict this run may CARRY for ``tier``, as a TierResult, or ``None`` to execute the tier.
+
+    The returned record is the stored one with the act of measurement stripped out: no wall-clock
+    ``timing``, no ``concurrency`` (nothing was measured now, and copying a duration forward would be a
+    fabricated measurement), and no ``evidence``/console pointers (those name files in the run that
+    earned it, not in this one -- they move into the ``carried`` block, where a reader can see where
+    they live instead of dereferencing a path that is not here). ``cycles`` are kept: a cycle count is a
+    property of the program and the device, which is exactly what the key pins, and it is
+    concurrency-invariant where a wall time is not.
+
+    ``mandatory`` is TODAY's, never the stored one. Whether a tier is required is a property of the
+    capsule being graded now.
+    """
+    from . import tier_cache as _TC
+    identity, instrument = _tier_certificate_key(capsule_name, tier, target=target,
+                                                 generated=generated, shas=shas, from_rtl=from_rtl)
+    if identity is None:
+        return None
+    hit = _TC.lookup(capsule_name, tier, identity, instrument)
+    if hit is None:
+        return None
+    stored = dict(hit.get("tier_result") or {})
+    carried = _TC.carried_block(hit)
+    carried["earned_evidence"] = {k: stored.pop(k) for k in _TC.ARTIFACTS_OF_THE_EARNING_RUN
+                                  if k in stored} or None
+    names = {f.name for f in dataclasses.fields(TierResult)}
+    # `submission` is deliberately NOT carried: `_finalize_capsule_result` stamps THIS run's submission
+    # on any record that lacks one, and a cycle count earned by a byte-identical executable is a true
+    # statement about both submissions. Which package physically earned it stays in the carried block.
+    fixed = {"tier", "status", "mandatory", "carried", "timing", "concurrency", "submission"}
+    kwargs = {k: v for k, v in stored.items() if k in names and k not in fixed}
+    kwargs["derived_from_rtl"] = bool(stored.get("derived_from_rtl", from_rtl))
+    stored_reason = kwargs.pop("reason", None)
+    return TierResult(tier, str(hit.get("status")), mandatory,
+                      reason=("verdict carried: this tier was NOT executed in this run; the same "
+                              "executable was already certified at this tier on this instrument"
+                              + (f" ({stored_reason})" if stored_reason else "")),
+                      carried=carried, **kwargs)
+
+
+def record_tier_certificate(capsule_name: str, tier: str, result: "TierResult", *, target, generated,
+                            shas, from_rtl: bool, run_id: str | None = None) -> None:
+    """Store an EXECUTED tier verdict so a later grade need not re-buy it. Never raises.
+
+    Recording is best-effort by construction: a cache that can fail a grade is worse than no cache. It
+    is also silent about a miss on purpose -- there is nothing to say when the identity cannot be
+    established, because the only consequence is that the tier runs again.
+    """
+    try:
+        from . import tier_cache as _TC
+        identity, instrument = _tier_certificate_key(capsule_name, tier, target=target,
+                                                     generated=generated, shas=shas, from_rtl=from_rtl)
+        if identity is None:
+            return
+        _TC.record(capsule_name, tier, identity, instrument, status=result.status,
+                   tier_result=result.to_dict(), run_id=run_id)
+    except Exception:  # noqa: BLE001 -- a cache write may never gate a grade
+        return
 
 
 def suppressed_tier_result(tier: str, mandatory: bool, failed_tier: str, *, from_rtl: bool = False):
@@ -3234,6 +3374,12 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
         "trace_check": trace_check_res, "numeric": numeric,
         "failure": failure, "toolchain_shas": toolchain_shas(eff_target),
     }
+    # WHICH TIERS THIS RUN ACTUALLY EXECUTED, and which it carried from an earlier certification of the
+    # same executable on the same instrument. Emitted on EVERY result, including one where nothing was
+    # carried: a saving and a lie differ only in whether the reuse is stated, and a reader must never
+    # have to infer "freshly measured" from the absence of a block. See merlin.targetgen.tier_cache.
+    from . import tier_cache as _TC
+    result["tier_reuse"] = _TC.reuse_block(result["tiers"])
     # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
     # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
     if executability:
@@ -3670,6 +3816,20 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # failing capsule, which is the price of being able to say what every tier thought.
         _complete_ladder = _full_ladder_enabled()
         _first_cert_failure: "CertFailure | None" = None
+        # THE EXECUTABLE THIS LADDER MEASURES MUST BE THIS RUN'S. See the note above
+        # `_clear_stale_executable`: a reused run directory holds the previous grade's ELF, and every
+        # consumer that content-addresses "the program this capsule ran" would answer with it.
+        _clear_stale_executable(paths.generated)
+        # Resolved once per capsule and only if a tier ever asks: `toolchain_shas` walks every hardware
+        # pin the target declares, and the ladder would otherwise repeat that per tier.
+        _shas_memo: dict = {}
+
+        def _pin_shas():
+            if "v" not in _shas_memo:
+                _shas_memo["v"] = toolchain_shas(eff_target)
+            return _shas_memo["v"]
+
+        _executed_here = False           # has ANY tier actually run in this process, for this capsule?
         for tier in _tier_seq:
             mand = tier in required
             # THE SCREEN IS ALWAYS PAID FOR; the tiers above it are what a budget can decline. A capsule
@@ -3700,6 +3860,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                 f"{sorted(adapters or {}) or 'none'}"),
                         derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
+            # DO NOT RE-BUY A CERTIFICATE FOR BYTES THAT HAVE NOT CHANGED. Asked only once a tier has
+            # actually executed in this run, because that is what guarantees the executable on disk is
+            # this run's and not a previous grade's (see `_clear_stale_executable`). The lookup fails
+            # closed on every ambiguity, and a hit is reported AS a carry -- never as a measurement.
+            if _executed_here:
+                _carried = carried_tier_result(name, tier, mand, target=eff_target,
+                                               generated=paths.generated, shas=_pin_shas(),
+                                               from_rtl=tier in cfg.rtl_tiers)
+                if _carried is not None:
+                    tiers[tier] = _carried
+                    continue
             import time as _time
             _adapter_t0 = _time.perf_counter()
             try:
@@ -3916,6 +4087,13 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 counters=res.get("counters"),
                 timing_capability=res.get("timing_capability"), fidelity=_fidelity,
                 concurrency=_conc, console_log=_clog, console_bytes=_cbytes, **_tel)
+            # THIS TIER WAS PAID FOR; write down what it bought, against the bytes and the instrument
+            # that produced it, so the next grade need not buy it again. Only a pass is stored (a
+            # failure is what an agent acts on and is re-run for its detail); never raises.
+            _executed_here = True
+            record_tier_certificate(name, tier, tiers[tier], target=eff_target,
+                                    generated=paths.generated, shas=_pin_shas(),
+                                    from_rtl=tier in cfg.rtl_tiers, run_id=run_id)
             # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
             # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation
             # gaps) records its fail in the tiers dict but must NOT abort: aborting here would pre-empt the
