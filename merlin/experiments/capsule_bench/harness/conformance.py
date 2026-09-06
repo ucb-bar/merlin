@@ -304,6 +304,38 @@ def _python_fragments(call: ToolCall) -> tuple[str, ...]:
     i = 0
     while i < len(lines):
         tokens = _shell_tokens(lines[i])
+        # A `-c` SOURCE IS ONE ARGUMENT, and a shell quotes a multi-line source as a single token that
+        # SPANS lines. Reading line by line cuts that token in half: the first line is `python3 -c "`,
+        # whose unbalanced quote tokenizes to NOTHING, so the fragment -- and every call name in it --
+        # disappears silently. Rejoining from here re-forms the argument.
+        #
+        # MEASURED 2026-09-05 on gemmini arm-4 `merlincirct_g4p1_20260905`: the agent selected
+        # `rtl_checks` out of `qa/verdict.json` and called `derived_levers` from multi-line
+        # `python3 -c` probes, and four RTL conformance checks (rtl_facts_used,
+        # rtl_derived_levers_used, scaffold_generators_used, rtl_checks_read) reported False for all
+        # six rounds of the run. The SINGLE-line spelling parsed correctly the whole time, which is
+        # why the earlier fix for this same check family tested green and left this open.
+        if not tokens and lines[i].strip():
+            # Rejoin only as far as it takes to BALANCE the quote, never to the end of the command. A
+            # newline is a command separator, and shlex drops it, so swallowing the whole tail merges
+            # the next command into this one's argv: measured, a second `python3 -c` holding the
+            # `load_facts` call was lost that way because the pipe that followed the first one made
+            # its segment resolve to `tail`.
+            span = next((j for j in range(i + 1, len(lines) + 1)
+                         if _shell_tokens("\n".join(lines[i:j]))), None)
+            if span is None:
+                i += 1
+                continue
+            tokens = _shell_tokens("\n".join(lines[i:span]))
+            for segment in _simple_commands(tokens):
+                resolved = _executable(segment)
+                if resolved is None or resolved[0] not in {"python", "python3"}:
+                    continue
+                argv = resolved[1]
+                if "-c" in argv and argv.index("-c") + 1 < len(argv):
+                    frags.append(argv[argv.index("-c") + 1])
+            i = span
+            continue
         if "<<" in tokens:
             hi = tokens.index("<<")
             delimiter = tokens[hi + 1] if hi + 1 < len(tokens) else None
@@ -354,10 +386,23 @@ def _call_index(calls: list[ToolCall], predicate) -> int | None:
 def _literal_string_list(text: str) -> list[str] | None:
     """Find a printed non-empty Python list/tuple/set of strings in a tool result."""
     candidates = [text.strip(), *(line.strip() for line in reversed(text.splitlines()))]
-    # Tool wrappers may prefix metadata around stdout; the bracketed payload is still deterministic.
-    start, end = text.find("["), text.rfind("]")
-    if 0 <= start < end:
-        candidates.append(text[start:end + 1])
+    # EVERY BALANCED BRACKETED REGION, not the span from the first "[" to the last "]". That span is a
+    # single candidate that silently swallows everything between two commands' outputs: measured
+    # 2026-09-05 on gemmini arm-4 g4p1, `derived_levers` printed a clean 7-string list and the agent
+    # went on, in the SAME composed command, to print a facts blob ending in another "]" -- so the
+    # span ran from the levers list through the facts JSON, parsed as nothing, and the corroboration
+    # returned None for work that had plainly happened. Scanning each balanced region instead means an
+    # extra bracket later in the output cannot hide an earlier valid list.
+    depth, opened = 0, -1
+    for pos, ch in enumerate(text):
+        if ch == "[":
+            if depth == 0:
+                opened = pos
+            depth += 1
+        elif ch == "]" and depth:
+            depth -= 1
+            if depth == 0 and opened >= 0:
+                candidates.append(text[opened:pos + 1])
     for candidate in candidates:
         if not candidate:
             continue
