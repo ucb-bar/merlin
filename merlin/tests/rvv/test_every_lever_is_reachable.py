@@ -13,6 +13,7 @@ one automatically, by enumerating the registrars rather than listing the feature
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 
@@ -89,13 +90,36 @@ def test_every_name_derived_lever_family_resolves_from_its_name_alone():
     assert r.stdout.strip().splitlines()[-1] == "[]", r.stdout
 
 
-def test_every_lever_registrar_is_imported_by_the_proposer():
-    """A registrar the proposer never imports is a lever the beam can never propose."""
-    src = (merlin_dir() / "python" / "merlin" / "mining" / "wholemodel_proposer.py").read_text()
-    missing = sorted(m for m in _registrar_modules() if f"llvmlower.{m} import ensure_registered" not in src)
-    assert not missing, (
-        f"these lever modules define ensure_registered but the proposer does not import it: {missing}. "
-        "_composes swallows the KeyError and returns False, so each is silently unproposable.")
+def test_every_single_name_lever_is_proposable():
+    """Every lever that declares one FEATURE must survive ``_composes`` -- the proposer's own gate.
+
+    This asserted a PROXY: that ``wholemodel_proposer.py``'s source contains an
+    ``import ensure_registered`` line per lever module. That proxy stopped tracking the property
+    once ``impr_features._try_lazy_register`` learned to derive a lever's module from its name --
+    the levers it named as unreachable (``reduce_vec``, ``quant_hoist``) compose fine without any
+    such import, so the test failed on levers that work. Worse, the proxy could pass on a lever that
+    does NOT work: an import line present but shadowed, renamed, or reaching a registrar that raises
+    would satisfy the string search and still leave ``_composes`` returning False.
+
+    So assert the behaviour instead. A subprocess, matching the case above and for the same reason:
+    the property is about what a FRESH process can resolve, and an in-process check would pass on a
+    lever that only registers as a side effect of something the test session already imported.
+    """
+    code = ("import json\n"
+            "from merlin.mining.wholemodel_proposer import _composes\n"
+            "from merlin.llvmlower import impr_features as F\n"
+            "names = sorted(F._single_name_lever_modules())\n"
+            "print(json.dumps({'names': names, 'bad': [n for n in names if not _composes([n])]}))\n")
+    env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin"}
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       cwd=repo_root(), env=env)
+    assert r.returncode == 0, r.stderr[-2000:]
+    got = json.loads(r.stdout.strip().splitlines()[-1])
+    assert got["names"], "no single-name levers discovered at all -- the derivation itself is broken"
+    assert got["bad"] == [], (
+        f"these levers declare a FEATURE but the proposer cannot compose them: {got['bad']}. "
+        "`_composes` swallows the KeyError from an unresolvable name and returns False, so each is "
+        "silently unproposable and the beam can never reach it.")
 
 
 def test_every_ranked_lever_resolves_in_a_proposer_only_process():
