@@ -149,6 +149,19 @@ class BaselineResult:
     #: historical int8 ratio in this repo was taken against an unlabelled recipe.
     quant_recipe: str = ""
 
+    #: WHICH REFERENCE this cell's ``cos``/``rel`` were scored against. Not derivable from the
+    #: variant: on the int8 paths ``export_pte`` may RECOMPUTE an fp32 reference from the loaded
+    #: model (``compute_golden``) instead of using the capture bundle's ``golden.npy``, and the two
+    #: are different numbers with different meanings -- one is a semantic match against the captured
+    #: reference, the other only says the lowering was faithful to THIS instantiation. The comparison
+    #: harness previously hardcoded ``"recomputed_fp32"`` for every int8 row on the strength of a
+    #: comment about the ``int8_subgraph``/``int8_whole_model`` paths; that literal is FALSE on the
+    #: ``qd8`` path, which does not force a recompute, so rows scored against the captured golden
+    #: were labelled as recomputed and compared with ours under a rule that did not apply.
+    #: Derived from the golden path actually handed to the scorer. Empty means the producer did not
+    #: record it -- UNKNOWN, and a consumer must refuse to compare rather than assume.
+    accuracy_reference: str = ""
+
     #: The measurement PROTOCOL: how many timed inferences, after how many untimed. ExecuTorch's
     #: runner has no warmup and averages its cold first execution into ``--num_executions``, while
     #: merlin's certify path is min-of-5 after 2 warmup; on small_llama int8 ET's cold inference is

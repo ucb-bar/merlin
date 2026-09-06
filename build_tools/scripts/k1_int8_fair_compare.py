@@ -202,8 +202,10 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
                          tiers=last_tiers, tier_ok=last_tier_ok, cos=last_cos, rel=last_rel),
             # WHICH reference each of our tiers was scored against, so a consumer can tell whether
             # it may be compared with the other side's number at all.
-            "accuracy_reference_by_tier": {"fp32": "capture_golden_fp32",
-                                           "w8a8": "capture_golden_w8a8"},
+            # Derived from the tiers ACTUALLY in play, not a fixed pair. A refused tier (e.g. an
+            # fp32 golden that turned out to be a copy of the W8A8 one) must not appear here
+            # claiming a reference it never had.
+            "accuracy_reference_by_tier": {t: f"capture_golden_{t}" for t in sorted(golden_refs)},
             "protocol": {"warmup": warmup, "iters": iters, "launches": n, "pick": "min-of-n"},
             "board_conditions": conds, "blocker": blocker,
             # Vector coverage of the code that produced these walls. A wall without it cannot
@@ -237,10 +239,14 @@ def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int,
                    # is the honest mirror of that, or an advantage we granted ourselves, is decided
                    # by this number -- which is why it is no longer dropped.
                    "load_ns": getattr(r, "load_ns", None),
-                   # int8 forces compute_golden (executorch.py:221-224), so the score is against an
-                   # fp32 reference RECOMPUTED from the loaded model -- not our captured golden and
-                   # not a host int8 reference.
-                   "accuracy_reference": "recomputed_fp32",
+                   # WHICH reference this row's cos/rel are against -- REPORTED by the arm that
+                   # chose the golden, never assumed here. This was a hardcoded "recomputed_fp32",
+                   # justified by a comment about the int8-subgraph/whole-model paths; the qd8 path
+                   # does NOT force a recompute, so on the very recipe this harness exists to
+                   # compare, the label was false and the mismatch check below could not fire.
+                   # Empty = the producer did not record it = UNKNOWN, which the mismatch check
+                   # must treat as a refusal rather than as agreement.
+                   "accuracy_reference": getattr(r, "accuracy_reference", ""),
                    "quant_recipe": getattr(r, "quant_recipe", ""),
                    "bundle_id": getattr(r, "bundle_id", ""),
                    "gap_reason": r.gap_reason,
@@ -269,9 +275,20 @@ def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int,
 #: What OUR arm computes, always. Not a function of the reference.
 OURS_QUANT_RECIPE = "merlin_int8_w8a8"
 
-#: The tier of ours that is comparable IN KIND with a reference scored against fp32. Our W8A8 tier
-#: answers a different (tighter) question and must not be ranked against an fp32-scored number.
-OURS_ACCURACY_REFERENCE = "capture_golden_fp32"
+def ours_accuracy_reference(ours: dict) -> str:
+    """Which reference OUR fp32-comparable score was actually taken against, or "" for none.
+
+    The fp32 tier is the only one comparable IN KIND with a reference scored against fp32; our W8A8
+    tier answers a different (tighter) question and must not be ranked against an fp32-scored number.
+
+    A CONSTANT here would lie on exactly the bundles that need the truth most. When a bundle's
+    ``golden.npy`` turns out to be a byte-identical copy of its ``golden_w8a8.npy``, the fp32 tier is
+    refused (it is not an independent reference), so there IS no fp32-scored number on our side --
+    and reporting the constant anyway would pair the reference's genuine fp32 score with a `None` of
+    ours under a label claiming both were fp32. "" routes into the same UNKNOWN refusal the reference
+    side already gets when it fails to record its own basis, which is the honest answer.
+    """
+    return (ours.get("accuracy_reference_by_tier") or {}).get("fp32", "")
 
 
 def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
@@ -301,10 +318,11 @@ def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
     # pair, or refuse it, on the same fail-closed terms as the ratio itself.
     ref_acc = next((r.get("accuracy_reference", "") for r in arm["runs"]
                     if r.get("accuracy_reference")), "")
-    why_acc = accuracy_reference_mismatch_reason(OURS_ACCURACY_REFERENCE, ref_acc)
+    ours_acc = ours_accuracy_reference(ours)
+    why_acc = accuracy_reference_mismatch_reason(ours_acc, ref_acc)
     if why_acc:
         accuracy = {"status": "not_comparable", "reason": why_acc,
-                    "ours": {"reference": OURS_ACCURACY_REFERENCE,
+                    "ours": {"reference": ours_acc,
                              "cos": ours.get("gate", {}).get("fp32_cos"),
                              "rel": ours.get("gate", {}).get("fp32_rel")},
                     "executorch": {"reference": ref_acc,
@@ -391,8 +409,6 @@ def main() -> None:
     # "board bug" that did not exist. Pass both when both exist so T1 (w8a8) and T2 (fp32+argmax)
     # are live and the derived quantization-excess veto is measurable.
     refs: dict = {}
-    if (md / "golden.npy").is_file():
-        refs["fp32"] = np.load(md / "golden.npy")
     if pkg.is_int8:
         w = md / "golden_w8a8.npy"
         if not w.is_file():
@@ -400,9 +416,24 @@ def main() -> None:
                              "recapture it rather than grading W8A8 output against the weight-only "
                              "golden (a missing w8a8 tier reads as a codegen defect)")
         refs["w8a8"] = np.load(w)
+    # A SELF-REFERENTIAL fp32 tier is worse than no fp32 tier. Some bundles ship a golden.npy that
+    # is BYTE-IDENTICAL to golden_w8a8.npy (resnet50_v1_5 is one): the "fp32" reference is then the
+    # W8A8 reference wearing a different filename. Registering it anyway invents a second tier that
+    # can only ever agree with the first, so `_gate` reports a two-tier verdict built from one
+    # measurement, and the derived quantization-excess veto -- whose whole basis is the DISTANCE
+    # between the two goldens -- is computed against a distance of exactly zero. Refuse the tier and
+    # say why, rather than let a duplicated file read as independent corroboration.
+    fp32_note = ""
+    if (md / "golden.npy").is_file():
+        f = np.load(md / "golden.npy")
+        if "w8a8" in refs and np.array_equal(f, refs["w8a8"]):
+            fp32_note = (" [fp32 tier REFUSED: golden.npy is byte-identical to golden_w8a8.npy, so "
+                         "it is not an independent fp32 reference — recapture one to restore T2]")
+        else:
+            refs["fp32"] = f
     if not refs:
         raise SystemExit(f"{md} ships no golden to gate against")
-    print(f"[golden] tiers={sorted(refs)}  [bundle] {md.name}", flush=True)
+    print(f"[golden] tiers={sorted(refs)}  [bundle] {md.name}{fp32_note}", flush=True)
 
     # Key the build tree by the FEATURE SET as well as the bundle. One directory per bundle means
     # the next run overwrites the emitted object of the last one, and the emitted object is the only

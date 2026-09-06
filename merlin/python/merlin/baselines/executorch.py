@@ -1026,6 +1026,14 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
             res.notes += " pt2e_w8a8=True"
         if compute_golden:
             res.notes += " golden=eager-torch(this-config)"
+        # WHICH reference the cos/rel below are against, derived from the golden path the scorer is
+        # actually handed rather than from the flags that were requested. `export_pte` forces a
+        # recompute on its own for the int8-subgraph / whole-model-int8 paths (executorch.py:282-285)
+        # WITHOUT telling its caller, and does NOT force one for qd8 -- so neither `compute_golden`
+        # as passed in nor the variant string can answer this. The path can.
+        res.accuracy_reference = ("recomputed_fp32"
+                                  if exp.golden.resolve() != b.golden.resolve()
+                                  else "capture_golden_fp32")
         if export_env:
             res.notes += " export_env=" + ",".join(f"{k}={v}" for k, v in export_env.items())
     except ExecuTorchError as e:
