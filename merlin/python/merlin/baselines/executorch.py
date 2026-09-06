@@ -62,11 +62,17 @@ FRAMEWORK = "executorch"
 
 # --- layout (build/ is gitignored; the ET source tree is the pinned submodule) ------------------
 _BUILD_ROOT = build_dir() / "baselines" / "executorch"
-_ET_SRC = repo_root() / "third_party" / "baselines" / "executorch"
 _TOOLCHAIN_CMAKE = Path(__file__).with_name("executorch_spacemit_toolchain.cmake")
 _ET_EXPORT_HELPER = Path(__file__).with_name("_et_export.py")
 _ET_INSPECT_HELPER = Path(__file__).with_name("_et_inspect.py")
 _ET_OPS_HELPER = Path(__file__).with_name("_et_ops.py")
+
+
+def et_source_dir() -> Path:
+    """Pinned ExecuTorch source tree, optionally shared by an isolated git worktree."""
+    configured = os.environ.get("MERLIN_ET_SOURCE", "").strip()
+    return (Path(configured) if configured else
+            repo_root() / "third_party" / "baselines" / "executorch")
 
 # Which ExecuTorch kernel library each ``functions.yaml`` in the PINNED source tree stands for, and
 # the cmake option that links it into ``executor_runner``. The op->library map is DERIVED by reading
@@ -148,7 +154,7 @@ def et_venv_available() -> bool:
 
 def et_identity() -> ExecuTorchIdentity:
     """Return the exact shared exporter/runtime-source identity or fail closed."""
-    return require_matching_executorch(et_venv_python(), _ET_SRC)
+    return require_matching_executorch(et_venv_python(), et_source_dir())
 
 
 def et_identity_error() -> str:
@@ -162,7 +168,7 @@ def et_identity_error() -> str:
 
 def et_commit() -> str:
     try:
-        r = subprocess.run(["git", "-C", str(_ET_SRC), "rev-parse", "--short", "HEAD"],
+        r = subprocess.run(["git", "-C", str(et_source_dir()), "rev-parse", "--short", "HEAD"],
                            capture_output=True, text=True, timeout=15)
         return r.stdout.strip() if r.returncode == 0 else ""
     except Exception:  # noqa: BLE001
@@ -425,7 +431,7 @@ def plan_kernels(pte: Path, *, timeout: int = 900) -> KernelPlan:
     operators = pte_operators(pte, timeout=timeout)
     provided: dict[str, set[str]] = {}
     for library, relative, _option in _KERNEL_YAMLS:
-        path = _ET_SRC / relative
+        path = et_source_dir() / relative
         provided[library] = _kernel_yaml_operators(path) if path.is_file() else set()
 
     plan = KernelPlan(operators=operators)
@@ -494,7 +500,7 @@ def cross_compile_runner(work: Path, *, xnnpack: bool = True, etdump: bool = Fal
     # it must be the ET venv python (has executorch + the codegen module), NOT merlin's .venv.
     py = et_venv_python()
     cfg = [
-        "cmake", "-S", str(_ET_SRC), "-B", str(build_dir),
+        "cmake", "-S", str(et_source_dir()), "-B", str(build_dir),
         "--preset", "riscv64-linux",
         f"-DCMAKE_TOOLCHAIN_FILE={_TOOLCHAIN_CMAKE}",
         f"-DPYTHON_EXECUTABLE={py}",
