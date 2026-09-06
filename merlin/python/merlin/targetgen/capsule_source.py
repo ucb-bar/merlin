@@ -751,6 +751,42 @@ def _tensor_types(s: str) -> list[tuple[list[int], str]]:
     return out
 
 
+def _carrying_ops(linalg_mlir: str) -> list[str]:
+    """The MLIR operation that carries each ``prov.op`` tag, in tag order. ``""`` when unreadable.
+
+    WHY THIS IS NEEDED. ``prov.op`` is provenance: m2m stamps the SOURCE operation a region came from
+    onto every op the lowering produced for it. One captured convolution therefore tags its contraction
+    AND the ``tensor.expand_shape`` / ``collapse_shape`` / ``splat`` / ``arith.constant`` ops around it,
+    all with ``prov.op = "convolution_im2col_matmul"``. Counting the tag instead of the operation minted
+    one routing demand per tag: measured on the ResNet-50 int8 capture, 1199 tags over 497 real compute
+    operations, so 702 shape and metadata ops were asked whether the accelerator supports a contraction,
+    refused, and counted onto the scalar lane. The headline "1,193 of 1,247 demands are scalar" was
+    mostly that.
+
+    Structural, no regex: the op name is the first dialect-qualified token on the tag's own line that is
+    not an attribute key (an attribute key is followed by ``=``; an op name is not). Both spellings are
+    read -- the pretty form ``%x = linalg.generic {...}`` and the quoted generic form
+    ``%x = "tensor.insert_slice"(...)``, which is how 18 of this capture's ops are printed.
+    """
+    out: list[str] = []
+    for segment in linalg_mlir.split('prov.op = "')[:-1]:
+        line = segment.rsplit("\n", 1)[-1]
+        tokens = (line.replace("(", " ").replace(")", " ").replace(",", " ")
+                      .replace("{", " { ").split())
+        name = ""
+        for index, token in enumerate(tokens):
+            bare = token.strip('"')
+            if "." not in bare or not bare.replace(".", "").replace("_", "").isalnum():
+                continue
+            following = tokens[index + 1] if index + 1 < len(tokens) else ""
+            if following == "=":                     # an attribute key, not the operation
+                continue
+            name = bare
+            break
+        out.append(name)
+    return out
+
+
 def linalg_summary(linalg_mlir: str) -> dict:
     """Read a linalg-on-tensors module STRUCTURALLY (str tokenizer, NO regex): the ``@forward`` signature's
     operand + result tensor types and the set of ``prov.op`` / ``prov.family`` tags m2m stamps on each region.
@@ -766,7 +802,10 @@ def linalg_summary(linalg_mlir: str) -> dict:
         inputs = _tensor_types(argpart)
         outs = _tensor_types(rest)
         output = outs[0] if outs else None
-    return {"prov_ops": prov_ops, "prov_families": prov_families, "inputs": inputs, "output": output}
+    return {"prov_ops": prov_ops, "prov_families": prov_families, "inputs": inputs, "output": output,
+            # WHICH OPERATION carries each tag, so a caller can tell a contraction from the shape ops
+            # the same captured region also stamped.
+            "carrying_ops": _carrying_ops(linalg_mlir)}
 
 
 def _matmul_extents(linalg_mlir: str) -> list[tuple[int, int, int]]:
@@ -800,13 +839,26 @@ def model_op_demands(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = Non
     from merlin.targetgen.routing import OpDemand
     summ = linalg_summary(linalg_mlir)
     ops, fams = summ["prov_ops"], summ["prov_families"]
+    carriers = summ["carrying_ops"]
     extents = _matmul_extents(linalg_mlir)
     wf = weight_fmt or in_fmt
     demands: list = []
     mm = 0
     for i, op in enumerate(ops):
         fam = fams[i] if i < len(fams) else ""
+        carrier = carriers[i] if i < len(carriers) else ""
         if op == "fill":                                     # linalg.fill init — not a routable compute op
+            continue
+        # ONE DEMAND PER OPERATION, NOT PER TAG. `prov.op` names the captured region an op came from, and
+        # one region stamps its shape and metadata ops with the same tag. A `tensor.expand_shape` carrying
+        # a convolution's tag is not a convolution: asking a compute unit to support one, and counting the
+        # refusal onto the scalar lane, is how 702 of this capture's 1199 tags became "scalar demands".
+        # The op still appears -- it costs real cycles -- but under ITS OWN name and with no weight format,
+        # so it is judged as the movement it is.
+        computes = carrier.startswith("linalg.")
+        if not computes:
+            demands.append(OpDemand(op=carrier or op, in_fmt=in_fmt, weight_fmt=None,
+                                    site=carrier or op, m=None, k=None, n=None))
             continue
         m = k = n = None
         if op == "matmul" and mm < len(extents) and all(extents[mm]):
@@ -815,7 +867,10 @@ def model_op_demands(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = Non
             mm += 1
         demands.append(OpDemand(op=op, in_fmt=in_fmt,
                                 weight_fmt=(wf if fam == "contraction" else None), site=op,
-                                m=m, k=k, n=n))
+                                m=m, k=k, n=n,
+                                # The capture states the family; routing asks the unit whether it does
+                                # this KIND of work, instead of whether it recognises this SPELLING.
+                                family=fam or None))
     return demands
 
 

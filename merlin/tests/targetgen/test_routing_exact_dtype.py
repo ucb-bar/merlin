@@ -30,12 +30,20 @@ def _mesh(target: str, bundle: str, tok: str) -> int:
 
 def test_the_compile_token_routes_nothing_but_the_exact_name_routes_everything():
     assert _mesh("atlas", "small_llama_fp8_consistent", "fp8") == 0          # the bug
-    assert _mesh("atlas", "small_llama_fp8_consistent", "fp8_e4m3") == 15    # the fix
+    assert _mesh("atlas", "small_llama_fp8_consistent", "fp8_e4m3") == 19    # the fix
 
 
 def test_gemmini_is_unaffected():
-    """Its compile token and its declared format are the same string, so it never had the bug."""
-    assert _mesh("gemmini", "small_llama_int8_consistent", "int8") == 15
+    """Its compile token and its declared format are the same string, so it never had the bug.
+
+    The count is 19, not 15, since routing began asking the declared FAMILY rather than the op's
+    spelling: this capture holds 15 ``matmul`` and 4 ``batch_matmul``, all of family ``contraction``,
+    on a mesh whose contract declares ``{family: contraction, dtypes: [int8], ranks: [2, 3, 4]}``. The
+    four batched ones were refused because the unit spells its ops ``[matmul]``, not because any
+    hardware fact excluded them. 19 is corroborated independently: ``requant_fuse`` and
+    ``epilogue_fusion`` both measured this same bundle as 19 contractions.
+    """
+    assert _mesh("gemmini", "small_llama_int8_consistent", "int8") == 19
 
 
 def test_e5m2_never_routes_onto_an_e4m3_unit():

@@ -53,6 +53,14 @@ class OpDemand:
     #: half. ``None`` means UNKNOWN, and unknown never narrows: a producer that does not supply a rank
     #: must not thereby make a unit refuse work it can do.
     rank: int | None = None
+    #: The SEMANTIC FAMILY this op belongs to (a :mod:`merlin.targetgen.semantic_families` name), when
+    #: the producer knows it. A capture states it directly as ``prov.family``. It exists because a unit
+    #: declares what it can compute in FAMILY terms (``SemanticCapability.family``) while legality was
+    #: asked only in op-NAME terms -- so a target whose contract says "this mesh does contractions in
+    #: int8 at ranks 2-4" still refused every convolution, because torch-MLIR spells one
+    #: ``convolution_im2col_matmul`` and the contract spells the unit's ops ``[matmul]``.
+    #: ``None`` means UNKNOWN and never widens: an op with no derivable family is matched by name only.
+    family: str | None = None
 
     @property
     def has_shape(self) -> bool:
@@ -120,7 +128,7 @@ def _shape_envelope_ok(unit: _cu.ComputeUnit, demand: OpDemand) -> bool:
 
 def _legal_on(unit: _cu.ComputeUnit, demand: OpDemand) -> tuple[bool, str | None]:
     """Is ``demand`` legal on ``unit``? Returns (legal, accumulator token)."""
-    if not unit.supports_op(demand.op):
+    if not unit.supports_op(demand.op, family=demand.family):
         return False, None
     if not _shape_envelope_ok(unit, demand):
         return False, None

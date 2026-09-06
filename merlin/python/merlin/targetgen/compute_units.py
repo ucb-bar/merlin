@@ -110,8 +110,33 @@ class ComputeUnit:
     def supports_dtype(self, fmt_name: str) -> bool:
         return fmt_name in self.dtypes
 
-    def supports_op(self, op: str) -> bool:
-        return not self.ops or op in self.ops
+    def supports_op(self, op: str, *, family: str | None = None) -> bool:
+        """Can this unit compute ``op``? By NAME, or by the FAMILY the op belongs to.
+
+        The name test alone made a spelling decide hardware legality. A target declares its unit's ops
+        as ``[matmul]`` while torch-MLIR spells a convolution's contraction
+        ``convolution_im2col_matmul``, so every ResNet convolution was refused to the host by a string
+        comparison -- 53 of them, on a mesh whose own contract declares
+        ``{family: contraction, dtypes: [int8], ranks: [2,3,4]}``.
+
+        ``family`` is the producer's statement, not an inference from the name, and ``None`` never
+        widens: an op whose family is unknown is matched by name exactly as before. The declared
+        capability still has to admit it -- dtype and rank are checked separately by
+        :func:`~merlin.targetgen.routing._legal_on` and this only answers "is this KIND of work mine".
+        """
+        if not self.ops:
+            return True
+        if op in self.ops:
+            return True
+        if family is None:
+            return False
+        # A COMPOSED capability is not a standalone one. This mesh declares `elementwise_map` and
+        # `reduction` with `composed_with: [contraction]` -- it can apply them to a contraction's
+        # accumulator on the way out (the COMMIT epilogue), and it cannot run one on its own. Claiming
+        # the composed form here would route a free-standing batch norm onto hardware that has no way
+        # to execute it.
+        return any(cap.family == family and not cap.composed_with
+                   for cap in self.semantic_capabilities)
 
 
 def _accum(raw: Any) -> AccumRule:
