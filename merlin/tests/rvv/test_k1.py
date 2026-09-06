@@ -103,6 +103,15 @@ def test_model_compile_flags_leave_a_flagless_package_byte_compatible():
     ]
 
 
+def test_session_models_share_the_primary_model_flag_composer():
+    """Every stage is a model object too; omitting package flags there silently changes compiler."""
+    from merlin.common.paths import merlin_dir
+
+    src = (merlin_dir() / "python" / "merlin" / "mining" / "k1.py").read_text(encoding="utf-8")
+    session = src[src.index("def build_k1_session_binary"):]
+    assert "_model_compile_flags(pkg, features, model_opt)" in session
+
+
 def test_main_linux_is_glibc_hosted():
     # The K1 harness is glibc Linux userspace: it uses stdio, NOT the bare-metal HTIF path.
     src = k1.main_linux_c()

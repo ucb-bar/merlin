@@ -1085,8 +1085,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # it. The bound is derived from the prepared IR (one instruction per structured op that reaches
     # an output) and carries no constant; it raises, so an erased model cannot be timed.
     from ..llvmlower.codegen_census import require_commensurate as _census_require
-    _census = _census_require(prepared, model_o, "forward")
-    print(f"[census] {_census.as_dict()}", flush=True)
+    _object_census = _census_require(prepared, model_o, "forward")
+    print(f"[census gate object] {_object_census.as_dict()}", flush=True)
 
     # 3. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).
     cgen = work / "cgen"
@@ -1192,6 +1192,18 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         _run(base)
     if not binary.is_file():
         raise K1Error(f"K1 cross-compile produced no binary at {binary}")
+    # The object census above is the strong erasure gate because its whole-object count cannot be
+    # inflated by libc/runtime code.  It is NOT the delivered-code measurement: unresolved local
+    # calls are only attributed to ``forward`` after relocation (122x difference on tiny_llama).
+    # Record both roles explicitly and make the linked ELF the only headline census we print.
+    _linked_census = _census_require(prepared, binary, "forward")
+    _census_report = {
+        "gate_object": _object_census.as_dict(),
+        "linked_elf": _linked_census.as_dict(),
+    }
+    (work / "codegen_census.json").write_text(
+        json.dumps(_census_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"[census linked ELF] {_linked_census.as_dict()}", flush=True)
     if kernel_backend == "xnnpack":
         (work / "N_XNN_ROUTED").write_text(str(n_xnn_routed))
         (work / "N_XNN_ELIGIBLE").write_text(str(n_xnn_eligible))
@@ -1248,6 +1260,7 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
     eligible_total = 0
     candidate_total = 0
     signature_total = 0
+    stage_censuses: list[tuple[Path, str, dict[str, Any]]] = []
     backend_module = None
     backend_symbol = ""
     if kernel_backend == "xnnpack":
@@ -1305,10 +1318,7 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
         model_object = stage_work / "model.o"
         # Same cflags-class features as the primary site; a staged sibling that skipped them would
         # measure a different compiler than the one the feature set names.
-        from ..llvmlower.impr_features import apply_cflags as _apply_cflags_stage
-        _stage_flags = _apply_cflags_stage(
-            [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt, "-Wno-override-module"],
-            features or frozenset())
+        _stage_flags = _model_compile_flags(pkg, features, model_opt)
         _run([clang23, "--target=riscv64-unknown-linux-gnu", *_stage_flags,
               "-c", lowered.ll_path, "-o", model_object])
         # Same post-codegen census as the primary site (see there): a staged sibling that skipped it
@@ -1316,7 +1326,8 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
         from ..llvmlower.codegen_census import require_commensurate as _census_require_stage
         _stage_census = _census_require_stage(prepared, model_object,
                                               str(record["entrypoint"]))
-        print(f"[census] stage {name!r} {_stage_census.as_dict()}", flush=True)
+        print(f"[census gate object] stage {name!r} {_stage_census.as_dict()}", flush=True)
+        stage_censuses.append((prepared, str(record["entrypoint"]), _stage_census.as_dict()))
         model_object = _namespace_stage_object(
             model_object, stage_work / "model.namespaced.o", index=index,
             entrypoint=str(record["entrypoint"]))
@@ -1380,6 +1391,18 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
         _run(base)
     if not binary.is_file():
         raise K1Error(f"K1 session cross-compile produced no binary at {binary}")
+    # As in the single-program path, retain the object census as the erasure gate and report each
+    # preserved stage entry from the linked artifact that actually runs.
+    from ..llvmlower.codegen_census import require_commensurate as _census_require_linked
+    linked_stages = []
+    for prepared, entrypoint, object_census in stage_censuses:
+        linked = _census_require_linked(prepared, binary, entrypoint)
+        linked_stages.append({"entrypoint": entrypoint, "gate_object": object_census,
+                              "linked_elf": linked.as_dict()})
+        print(f"[census linked ELF] stage {entrypoint!r} {linked.as_dict()}", flush=True)
+    (work / "codegen_census.json").write_text(
+        json.dumps({"stages": linked_stages}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
     (work / "HAS_SESSION_QUALITY").write_text("1", encoding="utf-8")
     return binary
 

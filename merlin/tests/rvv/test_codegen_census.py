@@ -210,6 +210,20 @@ def test_build_paths_call_the_census():
     assert census_at > compile_at
 
 
+def test_build_paths_report_the_linked_elf_census():
+    """The object remains the fail-closed gate, but published instruction counts must describe the
+    binary that actually runs.  Relocations make the linked ``forward`` radically larger for models
+    whose object entry reaches local helpers through unresolved calls (122x on tiny_llama)."""
+    from merlin.common.paths import merlin_dir
+
+    src = (merlin_dir() / "python" / "merlin" / "mining" / "k1.py").read_text(encoding="utf-8")
+    link_at = src.index('if not binary.is_file():')
+    linked_at = src.index("_census_require(prepared, binary, \"forward\")", link_at)
+    assert linked_at > link_at
+    assert '"linked_elf": _linked_census.as_dict()' in src
+    assert '"gate_object": _object_census.as_dict()' in src
+
+
 # --- the module the census actually receives is not always in the form xDSL can read -----------
 #
 # REGRESSION. The census reads the PREPARED module — the one lowering receives — and two prepared-
