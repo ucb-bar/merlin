@@ -3564,3 +3564,16 @@ register(ImprFeature(
         "Default-off; baseline byte-identical."),
     edit_pipeline=_fuse_elementwise_pipeline,
 ))
+
+
+# ---- vectorize the amax reduction dynamic quantization emits ------------------------------------
+# Registered EAGERLY, at import of this module, rather than through `_try_lazy_register`. That is
+# deliberate and it is the cheaper half of the trap that hook exists for: the lowering runs in a
+# SUBPROCESS that re-imports this module, and `mining.k1.build_k1_binary` imports no proposer, so a
+# name registered on demand in the parent resolves in neither. A registration performed at import is
+# present in every process by construction, so this feature needs no hook here, no eager import in
+# `wholemodel_proposer`, and no defensive `ensure_registered()` in `pipeline.lower_to_llvm_ir`.
+# The pass, the exactness argument and the refusal set live in llvmlower/reduce_vec.py.
+from .reduce_vec import ensure_registered as _ensure_amax_reduction  # noqa: E402
+
+VECTORIZE_AMAX_REDUCTION_NAME = _ensure_amax_reduction()

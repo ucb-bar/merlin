@@ -413,6 +413,7 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
                         named_contraction: bool = False,
                         prequant_gather: bool = False,
                         fuse_quant_round: bool = False,
+                        vectorize_amax_reduction: bool = False,
                         op_counts_out: "dict[str, int] | None" = None,
                         vec_lanes: int = _VEC_RANK_LANES,
                         vec_max_rank: int = _VEC_RANK_MAX_RANK) -> Path:
@@ -492,6 +493,24 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
         fuse_round_clamp_convert(module, report_out=_rrep)
         print("[quant_round] fuse_quantize_round_convert: "
               + " ".join(f"{k}={v}" for k, v in sorted(_rrep.items())))
+    # VECTORIZE THE AMAX REDUCTION (default OFF -> baseline byte-identical). Placed HERE, in the same
+    # slot and for the same reason as `fuse_quant_round` above: it rewrites `math.absf` to a bit-exact
+    # sign-mask form BEFORE the tagging below reads the body. The two passes are the two halves of one
+    # construct -- dynamic activation quantization emits an amax REDUCE (`math.absf` + `arith.maximumf`)
+    # to compute the scale and a `roundeven -> clamp -> fptosi` QUANTIZE to apply it, and MEASURED on
+    # the prepared int8 modules those two carry ~50/50 of all `math.*` element traffic (resnet50_v1_5:
+    # 45.3M elements each per inference; lstmnetvit: 4.4M each), against 0 and 0.02% for exp/erf/tanh.
+    # Removing the `math.absf` here also un-refuses any ALL-PARALLEL generic that carried one, so the
+    # per-rank arms below can claim those too -- the same composition `fuse_quantize_round_convert` and
+    # `vectorized_transcendental_activation` use. Reported, not silent: a pass that rewrote nothing and
+    # a pass that could not reach anything both return 0, and only the counters separate them.
+    if vectorize_amax_reduction:
+        from ...llvmlower import reduce_vec as _reduce_vec
+        _vrep: dict = {}
+        _reduce_vec.apply(module, lanes=vec_lanes, min_rank=_VEC_RANK_MIN_RANK,
+                          max_rank=vec_max_rank, report_out=_vrep)
+        print("[reduce_vec] vectorize_amax_reduction: "
+              + " ".join(f"{k}={v}" for k, v in sorted(_vrep.items())))
     # PER-RANK VECTORIZE TAGGING (default OFF -> baseline byte-identical): tag each all-parallel
     # (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
     # BOUNDED-vectorize the scalar non-matmul ops by rank (the win lever for openvla — ~900ms of scalar
@@ -663,12 +682,14 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     from ...llvmlower.impr_features import (NAMED_INT8_CONTRACTION_NAME,
                                             QUANTIZE_BEFORE_GATHER_NAME)
     from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
+    from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
     _op_counts: dict[str, int] = {}
     prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    named_contraction=NAMED_INT8_CONTRACTION_NAME in features,
                                    prequant_gather=QUANTIZE_BEFORE_GATHER_NAME in features,
                                    fuse_quant_round=_FUSE_QUANT_ROUND in features,
+                                   vectorize_amax_reduction=_VEC_AMAX_REDUCTION in features,
                                    op_counts_out=_op_counts,
                                    vec_lanes=_lanes or _VEC_RANK_LANES,
                                    vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK)
