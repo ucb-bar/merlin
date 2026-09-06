@@ -120,6 +120,30 @@ class Blocked:
 
 
 @dataclass
+class SimEvent:
+    """One oracle evaluation of one capsule, placed on the run's clock.
+
+    The grader records how long each evaluation took but not when it began; the per-capsule
+    ``run_manifest.yaml`` records ``created_at``, written when the capsule FINISHES. The start is
+    therefore inferred as ``created_at - adapter_wall_s`` and is exact only to the extent that the
+    adapter's own wall covers the evaluation -- which it does in the functional lane, where the
+    adapter really did wait. Marked ``inferred_start`` so a reader knows the ends are measured and
+    the starts are reconstructed."""
+
+    capsule: str
+    tier: str
+    engine: str
+    start_s: float
+    end_s: float
+    sim_active_s: float
+    build_s: float = 0.0
+    oracle_wait_s: float = 0.0
+    workers: int | None = None
+    grade: str = ""
+    inferred_start: bool = True
+
+
+@dataclass
 class Anatomy:
     run_id: str = ""
     target: str = ""
@@ -131,6 +155,7 @@ class Anatomy:
     token_curve: list[dict] = field(default_factory=list)
     cost_curve: list[dict] = field(default_factory=list)
     blocked: list[Blocked] = field(default_factory=list)
+    sim_events: list[SimEvent] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -138,7 +163,8 @@ class Anatomy:
                 "wall_s": self.wall_s, "calls": [asdict(c) for c in self.calls],
                 "verdicts": [asdict(v) for v in self.verdicts],
                 "token_curve": self.token_curve, "cost_curve": self.cost_curve,
-                "blocked": [asdict(b) for b in self.blocked], "notes": self.notes}
+                "blocked": [asdict(b) for b in self.blocked],
+                "sim_events": [asdict(e) for e in self.sim_events], "notes": self.notes}
 
 
 _TIERS = ("L0", "L1", "L2", "L3", "L4")
@@ -151,7 +177,44 @@ def _deepest_tier(tiers) -> str:
     return got[-1] if got else ""
 
 
-def read_verdicts(run_dir: Path) -> list[Verdict]:
+def run_started_at(run_dir: Path) -> float | None:
+    """Absolute epoch of the run's start, the one origin every series here shares.
+
+    Without it each series anchors on its own first event, and series that begin at different times
+    silently slide against each other -- measured on one run, the simulator strip sat 5.4 minutes to
+    the left of the verdicts it belongs to, which is enough to put a grade's simulations before the
+    grade that requested them."""
+    import yaml
+    for name, path in (("timing", run_dir / "qa_loop_summary.yaml"),
+                       ("timing", run_dir / "qa_loop_state.yaml")):
+        if not path.is_file():
+            continue
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8", errors="ignore")) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        stamp = ((doc.get(name) or {}).get("started_at")
+                 if isinstance(doc.get(name), dict) else None)
+        if isinstance(stamp, str) and stamp:
+            from datetime import datetime
+            try:
+                return datetime.fromisoformat(stamp).timestamp()
+            except ValueError:
+                continue
+    env = run_dir / "environment.yaml"
+    if env.is_file():
+        try:
+            doc = yaml.safe_load(env.read_text(encoding="utf-8", errors="ignore")) or {}
+            stamp = doc.get("started_at")
+            if isinstance(stamp, str) and stamp:
+                from datetime import datetime
+                return datetime.fromisoformat(stamp).timestamp()
+        except Exception:  # noqa: BLE001
+            pass
+    return None
+
+
+def read_verdicts(run_dir: Path, t0: float | None = None) -> list[Verdict]:
     """Every verdict this run produced, on the run's own clock.
 
     Ordered and timed by the grader's own ``graded_at`` where present, else the file mtime. The two
@@ -179,7 +242,8 @@ def read_verdicts(run_dir: Path) -> list[Verdict]:
     if not rows:
         return []
     rows.sort(key=lambda r: r[0])
-    t0 = rows[0][0]
+    if t0 is None:
+        t0 = rows[0][0]
     out = []
     for when, path, doc in rows:
         per = {}
@@ -221,14 +285,81 @@ def read_blocked(run_dir: Path) -> list[Blocked]:
     return out
 
 
+def read_sim_events(run_dir: Path, t0: float | None = None) -> list[SimEvent]:
+    """Every oracle evaluation across every grade this run produced, on one clock.
+
+    ``t0`` anchors the clock; when absent the earliest evaluation becomes zero. Evaluations from
+    different grades share the axis deliberately -- the question this answers is how much simulator
+    work overlapped, and that is a property of the whole run rather than of one grade."""
+    import yaml
+    work = run_dir / "_qa_work"
+    if not work.is_dir():
+        return []
+    out: list[SimEvent] = []
+    for grade in sorted(work.glob("runs_*")):
+        for path in grade.rglob("capsule_result.json"):
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+            except (ValueError, OSError):
+                continue
+            if not isinstance(doc, dict):
+                continue
+            manifest = path.parent / "run_manifest.yaml"
+            created = None
+            if manifest.is_file():
+                try:
+                    created = (yaml.safe_load(manifest.read_text(encoding="utf-8",
+                                                                 errors="ignore")) or {}).get("created_at")
+                except Exception:  # noqa: BLE001
+                    created = None
+            if not isinstance(created, str):
+                continue
+            from datetime import datetime
+            try:
+                end = datetime.fromisoformat(created).timestamp()
+            except ValueError:
+                continue
+            for tier, entry in (doc.get("tiers") or {}).items():
+                if not isinstance(entry, dict):
+                    continue
+                timing = entry.get("timing")
+                if not isinstance(timing, dict) or not timing.get("sim_active_s"):
+                    continue
+                wall = float(timing.get("adapter_wall_s") or timing.get("sim_active_s") or 0.0)
+                conc = entry.get("concurrency")
+                out.append(SimEvent(
+                    capsule=str(doc.get("capsule") or path.parent.name), tier=str(tier),
+                    engine=str(entry.get("engine") or ""), start_s=end - wall, end_s=end,
+                    sim_active_s=float(timing.get("sim_active_s") or 0.0),
+                    build_s=float(timing.get("build_s") or 0.0),
+                    oracle_wait_s=float(timing.get("oracle_wait_s") or 0.0),
+                    workers=(int(conc["workers"]) if isinstance(conc, dict)
+                             and isinstance(conc.get("workers"), int) else None),
+                    grade=grade.name))
+    if not out:
+        return []
+    base = t0 if t0 is not None else min(e.start_s for e in out)
+    for e in out:
+        e.start_s -= base
+        e.end_s -= base
+    return sorted(out, key=lambda e: e.start_s)
+
+
 def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, arm: str,
                   model: str, token_curve=None, cost_curve=None) -> Anatomy:
     """Assemble one run's full record. Spans and verdicts keep their own clocks; both start at 0."""
     a = Anatomy(run_id=run_id, target=target, arm=arm, model=model, wall_s=spanset.wall_s)
     for sp in spanset.spans:
         a.calls.append(Call(sp.start_s, sp.duration_s, categorize(sp.kind, sp.detail)))
-    a.verdicts = read_verdicts(run_dir)
+    # One origin for every series. The transcript already starts at zero, so anchoring the grader's
+    # two series on the run's own start puts all three on the same clock.
+    started = run_started_at(run_dir)
+    a.verdicts = read_verdicts(run_dir, started)
     a.blocked = read_blocked(run_dir)
+    a.sim_events = read_sim_events(run_dir, started)
+    if started is None:
+        a.notes.append("this run recorded no start time, so the grader's series are anchored on "
+                       "their own first event and may sit a few minutes off the transcript's clock")
     a.token_curve = list(token_curve or [])
     a.cost_curve = list(cost_curve or [])
     if a.verdicts and a.wall_s > 0:

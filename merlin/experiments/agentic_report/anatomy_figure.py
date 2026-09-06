@@ -56,6 +56,19 @@ def style_ax(ax, *, grid="y"):
     ax.set_facecolor(PAGE_BG)
 
 
+def _smooth(y, win=9):
+    """Hanning-smoothed series. The band is an occupancy SHARE, and at one-minute bins a single long
+    call makes a square wall that reads as structure it does not have; a short window keeps the
+    shape and loses the aliasing."""
+    if win < 3 or len(y) < win:
+        return y
+    w = np.hanning(win)
+    w = w / w.sum()
+    pad = win // 2
+    padded = np.concatenate([np.full(pad, y[0]), y, np.full(pad, y[-1])])
+    return np.convolve(padded, w, mode="same")[pad:pad + len(y)]
+
+
 def _bins(calls, wall_s, n=160):
     """Occupied seconds per category per time bin, from measured span overlap."""
     width = max(wall_s / n, 1e-9)
@@ -93,74 +106,25 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
     plt.rcParams.update({"axes.facecolor": PAGE_BG, "figure.facecolor": PAGE_BG,
                          "savefig.facecolor": PAGE_BG})
 
-    fig = plt.figure(figsize=(15.5, 10.6))
-    gs = fig.add_gridspec(3, 1, height_ratios=[1.9, 2.1, 1.3], hspace=0.46,
-                          left=0.085, right=0.885, top=0.856, bottom=0.125)
-    ax_caps, ax_band, ax_tok = (fig.add_subplot(gs[i]) for i in range(3))
+    fig = plt.figure(figsize=(17.0, 9.6))
+    gs = fig.add_gridspec(2, 1, height_ratios=[3.1, 1.5], hspace=0.32,
+                          left=0.100, right=0.742, top=0.812, bottom=0.170)
+    ax_band = fig.add_subplot(gs[0])
+    ax_sim = fig.add_subplot(gs[1], sharex=ax_band)
+    ax_caps = ax_band          # progress is drawn ON the main panel, not beside it
+    ax_tok = ax_band
 
     # ---------------------------------------------------------------- 1. capsules
     verdicts = a["verdicts"]
     v_max = max((v["t_s"] for v in verdicts), default=0) / 60.0
-    if verdicts:
-        total = max(v["n_capsules"] for v in verdicts)
-        names: list[str] = []
-        for v in verdicts:                       # order capsules by when they first passed
-            for cap, st in sorted(v["per_capsule"].items()):
-                if st == "pass" and cap not in names:
-                    names.append(cap)
-        never = sorted({c for v in verdicts for c in v["per_capsule"]} - set(names))
-        order = names + never
-        grid = np.zeros((len(order), len(verdicts)))
-        for j, v in enumerate(verdicts):
-            for i, cap in enumerate(order):
-                st = v["per_capsule"].get(cap, "")
-                grid[i, j] = {"pass": 3.0, "fail": 2.0, "incomplete": 1.0}.get(st, 0.0)
-        from matplotlib.colors import ListedColormap
-        # The last verdict has no successor, so its column is drawn one median grade-interval wide
-        # rather than stretched to the end of the run: a block that wide would imply the grader kept
-        # confirming that state, which it did not.
-        gaps = [verdicts[i + 1]["t_s"] - verdicts[i]["t_s"] for i in range(len(verdicts) - 1)]
-        tail = (sorted(gaps)[len(gaps) // 2] if gaps else 60.0) / 60.0
-        edges = [v["t_s"] / 60.0 for v in verdicts] + [verdicts[-1]["t_s"] / 60.0 + tail]
-        ax_caps.pcolormesh(edges, np.arange(len(order) + 1), grid, shading="flat",
-                           cmap=ListedColormap(["#EFEAE4", "#D8C7BE", MAUVE, SAGE]),
-                           vmin=0, vmax=3, alpha=0.85)
-        ax_caps.set_ylabel(f"each of the {len(order)} capsules,\nordered by when it first passed")
-        ax_caps.set_ylim(0, len(order))
-        ax_caps.set_yticks([])
-        # The count is read off the block boundary itself, so no second axis is needed and the two
-        # cannot disagree. Annotate only where the count CHANGES.
-        prev = None
-        for v in verdicts:
-            if v["n_passed"] == prev:
-                continue
-            prev = v["n_passed"]
-            ax_caps.plot([v["t_s"] / 60.0], [v["n_passed"]], "o", color=INK, ms=5, zorder=5)
-            near_end = v["t_s"] / 60.0 > 0.82 * (edges[-1] or 1.0)
-            ax_caps.text(v["t_s"] / 60.0 + (-tail * 0.12 if near_end else tail * 0.12),
-                         v["n_passed"] + len(order) * 0.02, f"{v['n_passed']}/{total}",
-                         fontsize=10, color=INK, fontweight="bold", zorder=5,
-                         ha="right" if near_end else "left")
-        step_x = [v["t_s"] / 60.0 for v in verdicts] + [edges[-1]]
-        step_y = [v["n_passed"] for v in verdicts] + [verdicts[-1]["n_passed"]]
-        ax_caps.step(step_x, step_y, where="post", color=INK, lw=1.6, zorder=4)
-        style_ax(ax_caps, grid="")
-        n_fail = sum(1 for st in verdicts[-1]["per_capsule"].values() if st == "fail")
-        n_inc = sum(1 for st in verdicts[-1]["per_capsule"].values() if st == "incomplete")
-        title(ax_caps, f"Tests passing over time — each row is one test, ordered by when it first "
-                       f"passed. Ended at {verdicts[-1]['n_passed']} of {total}", fs=12.5, pad=16)
-        ax_caps.legend(handles=[Patch(facecolor=SAGE, alpha=0.85, label="passing"),
-                                Patch(facecolor=MAUVE, alpha=0.85, label="failing"),
-                                Patch(facecolor="#D8C7BE", label="could not be judged"),
-                                Patch(facecolor="#EFEAE4", label="not graded yet")],
-                       loc="upper left", bbox_to_anchor=(1.005, 1.02), fontsize=8.4)
+    order = sorted({c for v in verdicts for c in v["per_capsule"]}) if verdicts else []
 
     # ---------------------------------------------------------------- 2. activity band
     centres, acc, width = _bins(calls, a["wall_s"])
     xs = centres / 60.0
     dev = [k for k in CATEGORIES if not CATEGORIES[k][1]]
     fb = [k for k in CATEGORIES if CATEGORIES[k][1]]
-    stack = [np.minimum(acc[k] / width, 1.0) for k in dev + fb]
+    stack = [_smooth(np.minimum(acc[k] / width, 1.0)) for k in dev + fb]
     whole = Counter()
     whole_s = Counter()
     for c in calls_all:
@@ -169,21 +133,26 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
     def _lab(k):
         sec = whole_s[k]
         amount = f"{sec / 3600:.1f} h" if sec >= 3600 else (f"{sec:.0f} s" if sec >= 1 else "<1 s")
-        return f"{CATEGORIES[k][0]} — {whole[k]} calls, {amount}"
+        name = CATEGORIES[k][0].split(":")[0].split("(")[0].strip()
+        return f"{name} · {whole[k]}× · {amount}"
     ax_band.stackplot(xs, *stack, colors=[CAT_COLOUR[k] for k in dev + fb],
-                      labels=[_lab(k) for k in dev + fb], alpha=0.92, lw=0)
+                      labels=[_lab(k) for k in dev + fb], alpha=0.95, lw=0, zorder=2)
     occupied = np.clip(sum(stack), 0, 1)
-    ax_band.fill_between(xs, occupied, 1.0, color="none", edgecolor=INK, lw=0.0,
-                         hatch="//", alpha=0.28)
+    # The remainder is the agent thinking. It is most of the panel, so it has to recede: a light
+    # wash with a faint hatch reads as ground, while a dark hatch competes with the data on top.
+    ax_band.fill_between(xs, occupied, 1.0, color="#F4F1EC", lw=0, zorder=1)
+    ax_band.fill_between(xs, occupied, 1.0, color="none", edgecolor="#C9C2B8", lw=0.0,
+                         hatch="///", alpha=0.55, zorder=1)
     ax_band.set_ylabel("share of each minute")
     style_ax(ax_band, grid="")
     dev_s = sum(c["duration_s"] for c in calls_all if not CATEGORIES[c["category"]][1])
     fb_s = sum(c["duration_s"] for c in calls_all if CATEGORIES[c["category"]][1])
-    title(ax_band, f"Where the time went — waiting for feedback {fb_s / 3600:.1f} h against doing "
-                   f"the work {dev_s / 3600:.1f} h. Hatched = the agent thinking. Each dot above is "
-                   f"one tool call, sized by how long it took", fs=12.5, pad=28)
-    ax_band.legend(loc="upper left", bbox_to_anchor=(1.005, 1.02), fontsize=8.0, frameon=True,
-                   title="what the agent did (whole run)", title_fontsize=8.4)
+    title(ax_band, f"What the agent did, and when the score moved   ·   waiting for feedback "
+                   f"{fb_s / 3600:.1f} h vs doing the work {dev_s / 3600:.1f} h   ·   hatched = "
+                   f"thinking   ·   dots = every tool call, sized by duration", fs=12.5, pad=34)
+    ax_band.legend(loc="upper left", bbox_to_anchor=(1.135, 1.04), fontsize=8.0, frameon=True,
+                   title="what the agent did (whole run)", title_fontsize=8.4,
+                   borderaxespad=0.0, labelspacing=0.42)
 
     # Every call, marked in a strip INSIDE the same panel: the band is their aggregate, so stacking
     # them in their own panel spent a whole row restating one curve. Inside, not above, so nothing
@@ -196,13 +165,56 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
         y = strip_lo + i * step
         ax_band.scatter([c["t_s"] / 60.0 for c in pts], np.full(len(pts), y),
                         s=[4 + min(c["duration_s"], 400) * 0.40 for c in pts],
-                        color=CAT_COLOUR[k], edgecolor=INK, lw=0.3, alpha=0.8, zorder=5)
+                        color=CAT_COLOUR[k], edgecolor=INK, lw=0.3, alpha=0.85, zorder=5)
+        ax_band.annotate(CATEGORIES[k][0].split(":")[0].split("(")[0].strip(),
+                         xy=(0, y), xycoords=("axes fraction", "data"),
+                         xytext=(-6, 0), textcoords="offset points", ha="right", va="center",
+                         fontsize=7.2, color=CAT_COLOUR[k], annotation_clip=False)
     ax_band.set_ylim(0, strip_hi + step * 0.6)
     ax_band.set_yticks([0, 0.5, 1.0])
     ax_band.set_yticklabels(["0", "50%", "100%"])
     ax_band.axhline(1.02, color=INK, lw=0.6, alpha=0.30)
 
+    # Progress rides the same panel on its own axis, so the reader does not have to carry a second
+    # picture: the question is what the agent was doing WHEN the score moved.
+    if verdicts:
+        total = max(v["n_capsules"] for v in verdicts)
+        ax_prog = ax_band.twinx()
+        xs = [v["t_s"] / 60.0 for v in verdicts]
+        ys = [v["n_passed"] for v in verdicts]
+        import matplotlib.patheffects as _pe
+        ax_prog.step(xs + [span], ys + [ys[-1]], where="post", color=INK, lw=2.4, zorder=7,
+                     path_effects=[_pe.withStroke(linewidth=4.6, foreground="white")])
+        prev = None
+        for v in verdicts:
+            if v["n_passed"] == prev:
+                continue
+            prev = v["n_passed"]
+            x = v["t_s"] / 60.0
+            ax_prog.plot([x], [v["n_passed"]], "o", color=INK, ms=6, zorder=8,
+                         markeredgecolor="white", markeredgewidth=1.2)
+            usd = next((c["usd"] for c in reversed(a.get("cost_curve") or [])
+                        if c["t_s"] <= v["t_s"]), None)
+            chip = f"{v['n_passed']}/{total}" + (f"  ${usd:,.0f}" if usd else "")
+            near = x > 0.86 * span
+            ax_prog.annotate(chip, (x, v["n_passed"]), textcoords="offset points",
+                             xytext=(-9 if near else 7, 10), ha="right" if near else "left",
+                             va="bottom",
+                             fontsize=9.5, color=INK, fontweight="bold", zorder=8,
+                             bbox=dict(boxstyle="round,pad=0.28", fc="white", ec=INK, lw=0.7,
+                                       alpha=0.92))
+        ax_prog.set_ylim(0, total * 1.62)
+        ax_prog.set_yticks([])
+        ax_prog.set_ylabel("")
+        ax_prog.spines["top"].set_visible(False)
+        for v in verdicts:
+            ax_band.axvline(v["t_s"] / 60.0, color=INK, lw=0.7, ls=(0, (2, 4)), alpha=0.28, zorder=1)
+
     # ---------------------------------------------------------------- 4. token rate
+    import matplotlib.patheffects as _pe
+    ax_rate = ax_band.twinx()
+    ax_rate.spines["right"].set_position(("axes", 1.062))
+    ax_rate.spines["top"].set_visible(False)
     curve = a.get("token_curve") or []
     if len(curve) >= 3:
         for key, colour, label in (("input", SLATE, "new input (fresh prompt)"),
@@ -217,63 +229,113 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
                 ts.append(curve[i]["t_s"] / 60.0)
                 vs.append(max(curve[i][key] - curve[lo][key], 0) / dt)
             if ts:
-                ax_tok.plot(ts, [max(v, 1e-1) for v in vs], color=colour, lw=1.9, label=label,
-                            marker="o", ms=3.2)
-        ax_tok.set_yscale("log")
-    ax_tok.set_ylabel("tokens per minute\n(log scale)")
-    style_ax(ax_tok, grid="both")
-    ax_tok.legend(loc="upper left", bbox_to_anchor=(1.085, 1.02), fontsize=8.4)
-    title(ax_tok, "How fast tokens moved — re-read context, new input and generated output, with "
-                  "money spent on the right", fs=12.5)
+                ax_rate.plot(ts, [max(v, 1e-1) for v in vs], color=colour, lw=1.7, label=label,
+                             marker="o", ms=2.6, alpha=1.0, zorder=6,
+                             path_effects=[_pe.withStroke(linewidth=3.4, foreground="white")])
+        ax_rate.set_yscale("log")
+        ax_rate.legend(loc="upper left", bbox_to_anchor=(1.135, 0.36), fontsize=8.0,
+                       frameon=True, title="token rate", title_fontsize=8.4,
+                       borderaxespad=0.0, labelspacing=0.42)
+    ax_rate.set_ylabel("tokens / min (log)", labelpad=2)
 
-    # Spend rides the same panel on its own axis: it is the integral of these rates against price,
-    # so putting it anywhere else asks the reader to hold two pictures at once.
+
     cost = a.get("cost_curve") or []
-    if len(cost) >= 2:
-        ax_cost = ax_tok.twinx()
-        ax_cost.fill_between([p["t_s"] / 60.0 for p in cost], 0, [p["usd"] for p in cost],
-                             color=SAGE, alpha=0.20, lw=0, zorder=1)
-        ax_cost.plot([p["t_s"] / 60.0 for p in cost], [p["usd"] for p in cost], color=SAGE,
-                     lw=2.0, zorder=2)
-        ax_cost.text(0.015, 0.93, f"${cost[-1]['usd']:,.0f} spent by this point",
-                     transform=ax_cost.transAxes, ha="left", va="top",
-                     fontsize=9.5, color=SAGE, fontweight="bold")
-        ax_cost.set_ylabel("cumulative USD", color=SAGE, labelpad=1)
-        ax_cost.tick_params(labelcolor=SAGE)
-        ax_cost.set_ylim(0, max(p["usd"] for p in cost) * 1.25)
-        ax_cost.spines["top"].set_visible(False)
-    ax_tok.set_xlabel("Time (min)")
 
-    for ax in (ax_caps, ax_band, ax_tok):
-        ax.set_xlim(0, span)
-        for v in verdicts:
-            ax.axvline(v["t_s"] / 60.0, color=INK, lw=0.7, ls=(0, (2, 4)), alpha=0.30, zorder=1)
+    ax_band.set_xlim(0, span)
     # The moment the score stopped moving, marked on every panel — it is the line the other two
     # panels have to be read against.
     if best_at is not None and best_at <= span:
-        for ax in (ax_caps, ax_band, ax_tok):
+        for ax in (ax_band, ax_sim):
             ax.axvline(best_at, color=GOLD, lw=2.0, ls=(0, (5, 3)), zorder=6)
-        ax_caps.text(best_at, len(order) * 1.01 if verdicts else 1.0,
-                     f" best score reached at {best_at:.0f} min", color=GOLD, fontsize=9.5,
-                     fontweight="bold", va="bottom")
 
     tail_calls = [c for c in calls_all if best_at is not None and c["t_s"] > best_at * 60]
     tail_s = sum(c["duration_s"] for c in tail_calls)
     total_s = sum(c["duration_s"] for c in calls_all) or 1.0
+    # ---------------------------------------------------------------- simulator panel
+    # Grading is a BATCH: one grade launches every capsule across the worker pool at once, so the
+    # simulations arrive in bursts by construction. Six hundred individual bars render that as
+    # slivers; the honest and legible form is how many were in flight at each moment.
+    sim = [e for e in (a.get("sim_events") or []) if e["end_s"] / 60.0 <= span]
+    TIER_COLOUR = {"L3": MAUVE, "L2": SLATE, "L4": BLUE}
+    NAME = {"L2": "fast functional (spike)", "L3": "cycle-accurate RTL (GSIM)", "L4": "L4"}
+
+    def _inflight(events, grid):
+        """Simulations in flight at each point on ``grid`` (seconds)."""
+        out = np.zeros(len(grid))
+        for e in events:
+            out += (grid >= e["start_s"]) & (grid < e["end_s"])
+        return out
+
+    if sim:
+        grid = np.linspace(0, span * 60, 1400)
+        tiers = [t for t in ("L2", "L3", "L4") if any(e["tier"] == t for e in sim)]
+        series = [_inflight([e for e in sim if e["tier"] == t], grid) for t in tiers]
+        ax_sim.stackplot(grid / 60.0, *series, colors=[TIER_COLOUR[t] for t in tiers],
+                         labels=[NAME[t] for t in tiers], alpha=0.9, lw=0)
+        peak = int(max(sum(series)) if len(series) else 0)
+        ax_sim.set_ylim(0, max(peak * 1.35, 2))
+        ax_sim.set_ylabel("simulations\nin flight")
+        secs = Counter()
+        for e in sim:
+            secs[e["tier"]] += e["sim_active_s"]
+        n_by = Counter(e["tier"] for e in sim)
+
+        def _amount(sec):
+            return f"{sec / 60:.0f} min" if sec >= 60 else f"{sec:.0f} s"
+        title(ax_sim, "Hardware simulation — " + "  ·  ".join(
+            f"{n_by[t]} × {NAME[t]}, {_amount(secs[t])}" for t in tiers), fs=11.5, pad=8)
+        ax_sim.legend(loc="upper right", fontsize=8.2, labelspacing=0.35, framealpha=0.95,
+                      borderaxespad=0.4)
+
+        # Zoom the busiest grade: at run scale a ten-minute burst is a smudge, and the overlap the
+        # panel exists to show lives inside it.
+        best_grade, best_span = None, 0.0
+        for g in {e["grade"] for e in sim}:
+            sel = [e for e in sim if e["grade"] == g]
+            work = sum(e["end_s"] - e["start_s"] for e in sel)
+            if work > best_span:
+                best_grade, best_span = g, work
+        if best_grade:
+            sel = [e for e in sim if e["grade"] == best_grade]
+            lo = min(e["start_s"] for e in sel)
+            hi = max(e["end_s"] for e in sel)
+            pad = (hi - lo) * 0.06
+            ins = ax_sim.inset_axes([0.36, 0.16, 0.30, 0.62])
+            zgrid = np.linspace(lo - pad, hi + pad, 800)
+            zser = [_inflight([e for e in sel if e["tier"] == t], zgrid) for t in tiers]
+            ins.stackplot(zgrid / 60.0, *zser, colors=[TIER_COLOUR[t] for t in tiers],
+                          alpha=0.9, lw=0)
+            zpeak = int(max(sum(zser)))
+            ins.set_ylim(0, max(zpeak * 1.2, 2))
+            ins.set_xlim((lo - pad) / 60.0, (hi + pad) / 60.0)
+            ins.tick_params(labelsize=7.2, length=0)
+            ins.set_facecolor("white")
+            for sp in ("top", "right"):
+                ins.spines[sp].set_visible(False)
+            work = sum(e["end_s"] - e["start_s"] for e in sel)
+            ins.set_title(f"busiest grade, zoomed: {len(sel)} evaluations in "
+                          f"{(hi - lo) / 60:.0f} min · {work / max(hi - lo, 1):.1f}× overlapped · "
+                          f"peak {zpeak}", fontsize=8.2, color=INK, pad=3)
+            ax_sim.indicate_inset_zoom(ins, edgecolor=INK, alpha=0.45, lw=0.9)
+    else:
+        ax_sim.text(0.5, 0.5, "no per-capsule simulator timing recorded for this run",
+                    transform=ax_sim.transAxes, ha="center", va="center", fontsize=9, color=MAUVE)
+    style_ax(ax_sim, grid="x")
+    ax_sim.set_xlabel("Time (min)")
+
     counts = Counter(c["category"] for c in calls_all)
     head = (f"{a['target']} · {a['arm']} · {a['run_id']}   —   {a['model']}   ·   "
             f"whole run {wall_min / 60:.1f} h, {len(calls_all)} tool calls, "
             f"{counts['selfcheck']} self-checks, {len(verdicts_all)} grades   ·   "
             f"shown: the first {span:.0f} min, to where the score stopped moving")
-    fig.text(0.085, 0.958, head, fontsize=10.2, color=INK)
-    fig.text(0.085, 0.936, "\n".join(textwrap.wrap(
-             "Phase 1: an AI agent is given a chip it has never seen — its RTL and its instruction "
-             "set — and has to write a working compiler for it. A test (\u201ccapsule\u201d) is one "
-             "operation with its shapes and a correct answer the agent never sees. It checks its own "
-             "work with a redacted self-check, and can queue simulations of the real hardware.",
-             width=196)), fontsize=9.2, color=INK, alpha=0.85, va="top", linespacing=1.5)
+    fig.text(0.100, 0.945, head, fontsize=10.2, color=INK)
+    fig.text(0.100, 0.921,
+             "An agent is given a chip it has never seen and must write a compiler for it. Each test "
+             "is one operation whose answer it never sees; it checks itself with a redacted "
+             "self-check and can queue hardware simulations.",
+             fontsize=9.2, color=INK, alpha=0.85, va="top")
     suptitle(fig, "Anatomy of a phase-1 run: an agent writing a compiler for unseen hardware",
-             y=0.992)
+             y=0.985, fs=17)
 
     blocked = a.get("blocked") or []
     if tail_calls:
@@ -283,27 +345,25 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
         if blocked:
             planes = "; ".join(sorted({PLANE_PLAIN.get(b["plane"], b["plane"] or b["category"]
                                                         or "unknown") for b in blocked}))
-            summary = (f"the remaining {len(blocked)} test(s) could not be made to pass — they turn "
-                       f"on {planes}"
-                       + (f", and {len(deep)} of them ALREADY pass on simulated hardware"
-                          if deep else "")
-                       + f". The run spent a further {(wall_min - (best_at or 0)) / 60:.1f} h and "
-                         f"{len(tail_calls)} calls on them")
+            summary = (f"The last {len(blocked)} tests could not move: they turn on {planes}"
+                       + (f" — {len(deep)} already pass on simulated hardware" if deep else "")
+                       + f". The run spent {(wall_min - (best_at or 0)) / 60:.1f} h more on them.")
         else:
             summary = (f"the run continued {(wall_min - (best_at or 0)) / 60:.1f} h and "
                        f"{len(tail_calls)} more calls past this line without moving the score")
-        ax_band.text(0.004, -0.10, "\n".join(textwrap.wrap(summary, width=150)),
-                     transform=ax_band.transAxes, ha="left", va="top",
-                     fontsize=8.8, color=GOLD, fontweight="bold")
+        blocked_line = summary
+    blocked_line = locals().get("blocked_line", "")
     note = (a.get("notes") or [""])[0]
+    if blocked_line:
+        fig.text(0.100, 0.088, "\u25b6  " + "\n     ".join(textwrap.wrap(blocked_line, width=168)),
+                 ha="left", va="top", fontsize=8.8, color=GOLD, fontweight="bold")
     fig.text(0.012, 0.012,
-             "The top panel is timed by the grader, the lower two by the agent's own transcript; "
-             "both start when the run does. \u201cFeedback\u201d is the self-check and the hardware "
-             "simulator — the agent cannot answer those itself and must wait; \u201cdoing the "
-             "work\u201d is everything it does under its own power. " + (note + " " if note else "")
-             + f"Call durations come from paired arrival stamps, so an authoring edit that "
-               f"completes inside one stamp registers as an event rather than a duration — which "
-               f"is why authoring is {whole['author']} calls and under a second in total.",
+             "Progress and simulation come from the grader, everything else from the agent's "
+             "transcript; all anchored on the run's start. Grading is batched across a worker "
+             "pool, so simulations arrive in bursts, and a verdict lands some minutes after the "
+             "grading behind it. " + (note + " " if note else "")
+             + f"Edits finish inside one arrival stamp, so authoring reads as {whole['author']} "
+               f"events rather than a duration.",
              fontsize=8.2, color=INK, alpha=0.8, wrap=True)
 
     out.mkdir(parents=True, exist_ok=True)
