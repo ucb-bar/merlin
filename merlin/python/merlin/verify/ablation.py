@@ -77,6 +77,60 @@ def stimulus_values() -> set[int]:
     return vals
 
 
+#: Largest symbolic product (sum of M*K*N over contractions) this module will hand to the encoder.
+#:
+#: The solver budget bounds SOLVING, not ENCODING: ``to_smtlib`` materialises the whole bit-blasted
+#: term before z3's timeout can apply, so a large contraction consumes unbounded wall time BEFORE the
+#: budget is consulted. Measured 2026-09-05: a first full run left six workers pegged for ten minutes
+#: on its last ~70 units and never finished. A declared cap turns that into a stated, reported
+#: abstention (``too_large``) instead of an accidental hang -- the limit is the same either way, but
+#: this way it appears in the coverage table rather than in the wall clock.
+MAX_ENCODED_MACS = 200_000
+
+
+#: Largest total declared tensor footprint (elements) this module will encode. A MAC cap alone is
+#: not enough: it prices only ``MATMUL``, and the first capped run still left six workers pegged for
+#: twelve minutes on 70 buffers whose cost lived in ATTENTION/VECTOR_MAP chains instead. Every
+#: encodable op emits terms proportional to the tensors it touches, so bounding the footprint bounds
+#: them all -- including the next opcode someone adds.
+MAX_ENCODED_ELEMENTS = 400_000
+
+
+def declared_elements(cb: dict) -> int:
+    """Total elements across the buffer's declared tensors, whatever the opcodes do with them."""
+    total = 0
+    for spec in (cb.get("tensors") or {}).values():
+        shape = (spec or {}).get("shape") or []
+        n = 1
+        for extent in shape:
+            try:
+                n *= max(int(extent), 1)
+            except (TypeError, ValueError):
+                n = 0
+                break
+        total += n
+    return total
+
+
+def encoded_size(cb: dict) -> int:
+    """Sum of M*K*N over the buffer's contractions -- the cost driver for bit-blasting."""
+    tensors = cb.get("tensors") or {}
+    total = 0
+    for cmd in (cb.get("commands") or []):
+        if str(cmd.get("opcode")) not in ("MATMUL", "MATMUL_RESIDENT"):
+            continue
+        operands = cmd.get("operands") or {}
+        lhs = (tensors.get(str(operands.get("lhs"))) or {}).get("shape") or []
+        rhs = (tensors.get(str(operands.get("rhs"))) or {}).get("shape") or []
+        if len(lhs) == 2 and len(rhs) == 2:
+            total += int(lhs[0]) * int(lhs[1]) * int(rhs[1])
+        elif len(lhs) == 2:
+            # rhs is a resident handle, not a declared tensor; price it as a square of the K extent,
+            # which is the best bound available without resolving the pack source.
+            total += int(lhs[0]) * int(lhs[1]) * int(lhs[1])
+    return total
+
+
 def units(root: Path | None = None) -> list[Path]:
     """Every archived submission carrying a spec, a buffer and a grade. Sorted, so runs repeat."""
     from merlin.common.paths import runs_dir
@@ -157,7 +211,47 @@ def _grade_axes(grade: dict) -> dict[str, Any]:
     }
 
 
-def check_unit(unit_str: str, timeout_ms: int) -> dict[str, Any]:
+class _WallTimeout(Exception):
+    """A unit exceeded its hard wall bound."""
+
+
+def _alarm(seconds: int):
+    """Hard per-unit wall bound, as a context manager. Returns a no-op outside the main thread.
+
+    Neither of the two budgets already in place actually bounds a unit. The solver timeout bounds
+    SOLVING; the size caps bound the two cost drivers we thought of. Measured twice on 2026-09-05:
+    both times the run reached 4,100 of 4,170 and then pegged six workers for over ten minutes on the
+    remaining 70 -- first without a cap, then with a MAC cap, then with a tensor-footprint cap. Each
+    cap removed the cause it named and the tail survived. A wall alarm stops asking WHICH cost driver
+    is unbounded and bounds the unit itself, so the tail becomes a reported abstention instead of a
+    hang. That is the same lesson as the polling-loop guard: bound the thing, do not enumerate the
+    reasons it might not terminate.
+    """
+    import contextlib
+    import signal
+    import threading
+
+    @contextlib.contextmanager
+    def _ctx():
+        if threading.current_thread() is not threading.main_thread():
+            yield
+            return
+
+        def _fire(signum, frame):
+            raise _WallTimeout(f"exceeded the {seconds}s hard wall bound")
+
+        old_handler = signal.signal(signal.SIGALRM, _fire)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+    return _ctx()
+
+
+def check_unit(unit_str: str, timeout_ms: int, wall_seconds: int = 90) -> dict[str, Any]:
     """Verdict for one unit. Never raises: a crash here must not take the population down."""
     from merlin.verify.refine import validate_equivalence
     from merlin.verify.smt_semantics import UnsupportedSemantics
@@ -178,8 +272,26 @@ def check_unit(unit_str: str, timeout_ms: int) -> dict[str, Any]:
                                               "command; the query would be X == X",
                    reason_kind="vacuous", seconds=round(time.time() - t0, 2))
         return out
+    size = max(encoded_size(rec["spec_cb"]), encoded_size(rec["agent_cb"]))
+    elems = max(declared_elements(rec["spec_cb"]), declared_elements(rec["agent_cb"]))
+    out["encoded_macs"], out["declared_elements"] = size, elems
+    if elems > MAX_ENCODED_ELEMENTS:
+        out.update(verdict="abstained", reason_kind="too_large",
+                   reason=(f"the buffer declares {elems:,} tensor elements, over the cap of "
+                           f"{MAX_ENCODED_ELEMENTS:,}; encoding is unbounded by the solver budget"),
+                   seconds=round(time.time() - t0, 2))
+        return out
+    if size > MAX_ENCODED_MACS:
+        out.update(verdict="abstained", reason_kind="too_large",
+                   reason=(f"encoding this buffer would bit-blast {size:,} MAC terms, over the "
+                           f"declared cap of {MAX_ENCODED_MACS:,}. The solver budget bounds solving, "
+                           f"not encoding, so this would consume unbounded wall time before the "
+                           f"timeout applied."),
+                   seconds=round(time.time() - t0, 2))
+        return out
     try:
-        v = validate_equivalence(rec["spec_cb"], rec["agent_cb"], timeout_ms=timeout_ms)
+        with _alarm(wall_seconds):
+            v = validate_equivalence(rec["spec_cb"], rec["agent_cb"], timeout_ms=timeout_ms)
         verdict = {"unsat": "verified", "sat": "refuted"}.get(v.status, "abstained")
         out.update(verdict=verdict, reason="" if verdict != "abstained" else "solver returned unknown",
                    reason_kind="" if verdict != "abstained" else "solver_timeout")
@@ -191,6 +303,8 @@ def check_unit(unit_str: str, timeout_ms: int) -> dict[str, Any]:
             # The ablation's second headline: could the existing stimulus have reached this input?
             out["counterexample_outside_stimulus"] = bool(outside)
             out["counterexample_outside_examples"] = dict(sorted(outside.items())[:6])
+    except _WallTimeout as exc:
+        out.update(verdict="abstained", reason=str(exc), reason_kind="wall_timeout")
     except UnsupportedSemantics as exc:
         out.update(verdict="abstained", reason=str(exc)[:220], reason_kind=_reason_kind(str(exc)))
     except Exception as exc:
@@ -239,7 +353,7 @@ def write_pin(path: Path, pool: list[str]) -> None:
 
 def run(*, timeout_ms: int = 15_000, workers: int = 6, limit: int | None = None,
         seed: int = 11, root: Path | None = None, pin: Path | None = None,
-        progress: bool = True) -> dict[str, Any]:
+        wall_seconds: int = 90, progress: bool = True) -> dict[str, Any]:
     """Check every eligible submission. Returns the record the report is rendered from.
 
     ``limit`` draws a seeded shuffle-then-take rather than a prefix, so raising it EXTENDS the sample
@@ -270,7 +384,7 @@ def run(*, timeout_ms: int = 15_000, workers: int = 6, limit: int | None = None,
     records: list[dict[str, Any]] = []
     started = time.time()
     with ProcessPoolExecutor(max_workers=workers) as ex:
-        futures = {ex.submit(check_unit, u, timeout_ms): u for u in pool}
+        futures = {ex.submit(check_unit, u, timeout_ms, wall_seconds): u for u in pool}
         for i, fut in enumerate(as_completed(futures), 1):
             try:
                 records.append(fut.result())
@@ -412,6 +526,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--limit", type=int, default=None,
                     help="seeded shuffle-then-take; omit to check the whole population")
     ap.add_argument("--seed", type=int, default=11)
+    ap.add_argument("--wall-seconds", type=int, default=90,
+                    help="hard per-unit wall bound; the solver budget does not cover encoding")
     ap.add_argument("--root", default=None, help="run root (default: merlin.common.paths.runs_dir())")
     ap.add_argument("--pin", default=None,
                     help="population pin file; read if it exists, written on first use. The archive "
@@ -422,7 +538,8 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     rec = run(timeout_ms=a.timeout_ms, workers=a.workers, limit=a.limit, seed=a.seed,
-              root=Path(a.root) if a.root else None, pin=Path(a.pin) if a.pin else None)
+              root=Path(a.root) if a.root else None, pin=Path(a.pin) if a.pin else None,
+              wall_seconds=a.wall_seconds)
     print(json.dumps(rec, indent=1) if a.json else render(rec))
 
     if a.write:
