@@ -79,10 +79,19 @@ def elf_census(elf: Path) -> dict:
             continue
         if cur is None:
             continue
+        # LLVM objdump lays a disassembly line out as
+        #     "   11992: 020cf407     \tvle64.v\tv8, (s9)"
+        # -- tab-field 0 is address+encoding, field 1 is the MNEMONIC, field 2 the operands. This
+        # read field 2, i.e. the OPERAND list, whose first token is a register name. That still
+        # "works" for a vector/scalar test (`v8,` starts with a v) and so produced a plausible but
+        # WRONG split: every instruction writing a SCALAR register from vector state (`vsetvli a0,
+        # ...`, `vmv.x.s`, `vcpop`) was counted scalar, and no mnemonic family could ever match, so
+        # a family breakdown came back silently empty. An instruction with no operands (a bare
+        # `ret`) has no field 2 and was dropped entirely, which is why the old totals ran one low.
         parts = line.split("\t")
-        if len(parts) < 3:
+        if len(parts) < 2:
             continue
-        mnemonic = parts[2].strip().split(" ")[0]
+        mnemonic = parts[1].strip().split(" ")[0]
         if not mnemonic:
             continue
         d = per[cur]
@@ -97,7 +106,8 @@ def elf_census(elf: Path) -> dict:
             "forward": fwd, "forward_vector_fraction": frac, "libm_call_sites": calls}
 
 
-def build(bundle: Path, pkg, features: list[str], work: Path) -> Path:
+def build(bundle: Path, pkg, features: list[str], work: Path,
+          max_session_steps: "int | None" = None) -> Path:
     """Cross-compile + LINK, host-side. `build_k1_binary` never contacts the board.
 
     `fallback_policy="forbid"` on purpose: the default silently falls back to a SCALAR whole-model
@@ -106,7 +116,8 @@ def build(bundle: Path, pkg, features: list[str], work: Path) -> Path:
     """
     work.mkdir(parents=True, exist_ok=True)
     return k1.build_k1_binary(bundle, work, replace(pkg, compiler_features=sorted(features)),
-                              fallback_policy="forbid")
+                              fallback_policy="forbid",
+                              max_session_steps=max_session_steps)
 
 
 def run_paddings(bundle: Path, bwork: Path, pkg, elf: Path, n_paddings: int,
@@ -177,6 +188,12 @@ def main(argv=None) -> int:
                     help="build both ELFs and print the linked-ELF census; never touch the board")
     ap.add_argument("--timeout", type=int, default=900, help="per-run board timeout (s)")
     ap.add_argument("--work", type=Path, default=None)
+    # Caps how much of a session corpus is EMBEDDED AS C LITERALS. resnet50's 256-step, 154 MB
+    # corpus becomes a 770 MB `model_io.h` costing ~7 GB of RSS to compile. It does not change the
+    # emitted MODEL code, so the `forward` census this script reports is identical with and without
+    # it -- VERIFIED: the capped and uncapped builds agree on `forward` to the instruction. Both
+    # arms always get the SAME cap, so the A/B delta stays attributable either way.
+    ap.add_argument("--max-session-steps", type=int, default=None)
     a = ap.parse_args(argv)
 
     work = a.work or Path(tempfile.mkdtemp(prefix="amax_ab_"))
@@ -192,7 +209,7 @@ def main(argv=None) -> int:
     elves: dict[str, Path] = {}
     for tag, feats in arms.items():
         try:
-            elf = build(a.bundle, pkg, feats, work / tag)
+            elf = build(a.bundle, pkg, feats, work / tag, a.max_session_steps)
         except Exception as e:                                       # noqa: BLE001
             report["arms"][tag] = {"features": feats, "build_error": f"{type(e).__name__}: {e}"}
             continue
@@ -233,7 +250,7 @@ def main(argv=None) -> int:
                                  "reason": "both arms did not build; nothing was run"}
 
     product = new_product("amax-reduction-ab", target="k1_spacemit", version=1)
-    out = Path(product) / "report.json"
+    out = product.add_artifact("report.json")
     out.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     print(f"\nwrote {out}")

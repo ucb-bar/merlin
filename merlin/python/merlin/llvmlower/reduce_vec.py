@@ -46,7 +46,7 @@ difference was only visible in the LINKED ELF. MEASURED, resnet50_v1_5_int8_w8a8
 `mining.k1.build_k1_binary` with the `rvv/hand_v0_int8` package, baseline features:
 
     call sites in the linked ELF   roundevenf 109      fabsf 0
-    instructions in `forward`      fabs.s 108, vfabs 414, vfredmax.vs 54, vfmax.vv 755
+    instructions in `forward`      fabs.s 107, vfabs.v 414, vfredmax.vs 54, vfmax.vv 755
 
 So ``fabsf`` never survives as a call -- LLVM recognises the libcall and lowers it to the ``fabs.s``
 instruction, and its own loop vectorizer then claims the surrounding reduction loop outright: the 54
@@ -57,10 +57,18 @@ of the same construct and which `quant_round.fuse_round_clamp_convert` already a
 
 Enabling this feature on that build makes the emitted code WORSE, not better:
 
-    `forward` instructions   145,890 -> 147,531   (+1,641)
-    vector / scalar           23,023 / 122,867 -> 23,898 / 123,633
-    vector fraction           0.1578 -> 0.1620
-    vfredmax.vs                   54 -> 1        fabs.s 108 -> 1, vand.v 1 -> 115
+    `forward` instructions   145,891 -> 147,532   (+1,641)
+    vector / scalar           26,902 / 118,989 -> 28,520 / 119,012
+    vector fraction           0.1844 -> 0.1933
+    vfredmax.vs 54 -> 1, vfabs.v 414 -> 107, fabs.s 107 -> 0, vand.vx 0 -> 114
+
+(The vector/scalar figures above were RE-MEASURED after a parser defect was found in
+`build_tools/scripts/k1_amax_reduction_ab.py`, which this docstring originally quoted: it read the
+objdump line's OPERAND field as the mnemonic, so every instruction writing a scalar register from
+vector state -- `vsetvli a0, ...`, `vmv.x.s` -- was counted scalar, and instructions with no operands
+were dropped entirely. The published split was 23,023 / 122,867; it is 26,902 / 118,989. The
+instruction DELTA (+1,641) and every conclusion below are unchanged -- the defect moved the
+vector/scalar attribution, not the comparison between the arms.)
 
 i.e. the bounded ``[1, ..., 1, lanes]`` tile+vectorize pre-commits the reduction to a fixed-width
 shape, and LLVM can then no longer recognise the max-reduction idiom it was previously lowering to a
@@ -433,7 +441,7 @@ def ensure_registered() -> str:
             "not -- `fabsf` has 0 call sites (LLVM lowers it to `fabs.s`/`vfabs`) while `roundevenf` "
             "has 109, and clang's own loop vectorizer already claims these reduction loops (54 "
             "`vfredmax.vs`, matching the 54 reduction-innermost amax generics, plus 755 `vfmax.vv`). "
-            "Turning the feature on moves `forward` 145,890 -> 147,531 instructions (+1,641; vector "
+            "Turning the feature on moves `forward` 145,891 -> 147,532 instructions (+1,641; vector "
             "23,023 -> 23,898, scalar 122,867 -> 123,633) and collapses `vfredmax.vs` 54 -> 1, "
             "because the fixed-width tile pre-commits the reduction and LLVM can no longer recognise "
             "the max-reduction idiom. NO board number was taken: there is nothing here worth timing. "
