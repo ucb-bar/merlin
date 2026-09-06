@@ -20,7 +20,7 @@ from typing import Any, Iterator
 
 from merlin.frontends.linalg_mlir import _dtype as _type_dtype
 from merlin.frontends.linalg_mlir import _shape as _type_shape
-from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.frontends.linalg_mlir import parse_mlir_file, parse_mlir_text
 
 # Parsing a big capture (tens of thousands of ops) costs seconds; the DSE analysis path reads the
 # same model.mlir through several functions (numerical_contract, attribution, models, quant_rows,
@@ -48,7 +48,15 @@ def parse(src: "Any"):
             if hit is not None:
                 _PARSE_CACHE.move_to_end(key)
                 return hit
-            module = parse_mlir_text(p.read_text(encoding="utf-8", errors="ignore"))
+            # Through the FILE door, which falls back to a generic re-print when MLIR printed the
+            # module in custom form. Reading the bytes here and handing them to the TEXT parser
+            # skipped that fallback, and this is the consumer where skipping it is silent: the
+            # caller (`perop_blocks._observe_conv_contractions`) turns any parse failure into "no
+            # contractions observed" and drops the register block, so `perop_register_block` was
+            # reported as applied and did nothing on every model whose prepared module had been
+            # round-tripped by `prov_cse` / `perop_blocks` -- measured: all three of lstmnetvit,
+            # resnet50_v1_5 and tiny_llama.
+            module = parse_mlir_file(p)
             _PARSE_CACHE[key] = module
             _PARSE_CACHE.move_to_end(key)
             while len(_PARSE_CACHE) > _PARSE_CACHE_MAX:
