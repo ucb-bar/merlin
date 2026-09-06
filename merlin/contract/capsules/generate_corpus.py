@@ -584,7 +584,19 @@ def _source_digest_of(obj) -> str:
         return "unresolvable"
 
 
-def _golden_cache_key(fn, entry, binding) -> str:
+def _golden_cache_key(fn, entry, binding, facts_sha: str = "") -> str:
+    """Digest of everything that determines the answer.
+
+    ``facts_sha`` is the target's RTL-facts digest -- the same one the corpus manifest records. The
+    goldens are deliberately INDEPENDENT of the RTL (an oracle derived from the device would be the
+    device grading itself), but the RTL still reaches them INDIRECTLY: the binding's tile edge, dtypes
+    and subnormal handling are derived from the capability manifest, and an entry's extents come from
+    facts like memory capacity and array geometry. Keying on the facts digest invalidates
+    conservatively -- more often than strictly required, never less -- so a changed device can never be
+    answered from a cache built against the previous one. An empty digest means the caller could not
+    establish which device this is, and is carried as its own distinct key rather than treated as
+    "no change".
+    """
     from merlin.targetgen import corpus_operands as CO
     h = hashlib.sha256()
     h.update(_document_digest(entry).encode("utf-8"))
@@ -592,15 +604,16 @@ def _golden_cache_key(fn, entry, binding) -> str:
     h.update(fn.__name__.encode("utf-8"))
     h.update(_source_digest_of(fn).encode("utf-8"))  # the engine that will answer
     h.update(_source_digest_of(CO).encode("utf-8"))  # how its operands are synthesized
+    h.update(str(facts_sha).encode("utf-8"))         # WHICH DEVICE this corpus is about
     return h.hexdigest()
 
 
-def _golden_cached(fn, entry, binding):
+def _golden_cached(fn, entry, binding, facts_sha: str = ""):
     """``fn(entry, binding)``, answered from the cache when every input digest matches."""
     if _GOLDEN_CACHE_DISABLED or _source_digest_of(fn) == "unresolvable":
         return fn(entry, binding)
     from merlin.common.artifacts import cache_dir
-    key = _golden_cache_key(fn, entry, binding)
+    key = _golden_cache_key(fn, entry, binding, facts_sha)
     path = Path(cache_dir("capsule_goldens")) / key[:2] / f"{key}.json"
     if path.is_file():
         try:
@@ -676,13 +689,34 @@ def _float_golden(entry, binding):
     def rnd(x):
         return D.round_to_format(x, BF16, "rne")
 
+    #: MEMOIZED PRODUCT. ``rnd(dec(a) * dec(b))`` is a pure function of the OPERAND CODE PAIR, so
+    #: caching it on that pair is bit-identical by construction -- same inputs, same function, same
+    #: answer -- rather than an approximation traded for speed. It is worth doing because the operand
+    #: fill draws from a small deterministic alphabet, so a deep-K contraction re-derives the same few
+    #: products millions of times: measured, this engine ran ~33.7 ms per unit of K, which is ~37
+    #: minutes for the single k65536 residency member and ~86 minutes across the four deep-K ones.
+    #:
+    #: THE REDUCTION IS DELIBERATELY NOT TOUCHED. ``fp_reduce`` accumulates in the device's own order,
+    #: one step at a time, and that sequencing is the whole reason this engine is not a numpy dot
+    #: product. Only the per-element product -- which carries no order -- is cached.
+    _prod_cache: dict = {}
+
+    def _prod(a_code, b_code):
+        key = (a_code, b_code)
+        hit = _prod_cache.get(key)
+        if hit is None:                       # `is None` not truthiness: a rounded product may be 0
+            hit = rnd(dec(a_code) * dec(b_code))
+            _prod_cache[key] = hit
+        return hit
+
     def mm(a_raw, ashape, w_raw, wshape):
         m, k = ashape
         _, n = wshape
         out = [[0] * n for _ in range(m)]
         for i in range(m):
+            a_row = a_raw[i * k:(i + 1) * k]
             for j in range(n):
-                prods = [rnd(dec(a_raw[i * k + p]) * dec(w_raw[p * n + j])) for p in range(k)]
+                prods = [_prod(a_row[p], w_raw[p * n + j]) for p in range(k)]
                 out[i][j] = fp_reduce(prods, BF16, order="index_sequential", cadence="per_step", rm="rne")
         return out
 
@@ -1520,7 +1554,7 @@ def _entry_regime(entry, binding):
 
 
 # ------------------------------------------------------------------------------------------------
-def _write_capsule(entry, binding, out_root):
+def _write_capsule(entry, binding, out_root, facts_sha: str = ""):
     """Write one capsule, then GUARANTEE it carries its generalization-intent block.
 
     The stamp is a post-step rather than something each writer does, because there are four writers
@@ -1948,7 +1982,7 @@ def _write_capsule_inner(entry, binding, out_root):
             {"golden_source": "merlin_tensor_int", "outputs": CG.golden({**cap, "__dir__": ""})},
             sort_keys=False), encoding="utf-8")
     elif regime == "specir":
-        outputs, prov = _golden_cached(_float_golden, entry, eb)
+        outputs, prov = _golden_cached(_float_golden, entry, eb, facts_sha)
         (d / "golden.yaml").write_text(yaml.safe_dump({
             "golden_source": "specir_refmodel_fp8_bf16",
             "oracle_provenance": {
@@ -1969,17 +2003,17 @@ def _write_capsule_inner(entry, binding, out_root):
         # matmul/linear -> the single MX GEMM golden; attention_mx -> the fused flash-attention composition
         # (two MX GEMMs + a bf16 softmax), both over the SAME validated mx_ref engine.
         if entry.get("op") == "attention_mx":
-            outputs, prov = _golden_cached(_mx_attention_golden, entry, eb)
+            outputs, prov = _golden_cached(_mx_attention_golden, entry, eb, facts_sha)
             engine = ("mlc.validate.mx_ref.mx_matmul x2 (QK & PV, transcribed from radiance-kernels "  # target-ok: provenance string (source repo radiance-kernels), not control flow
                       "lib/golden/mx_golden.cpp) + numpy bf16 row-softmax; P requantized to mxfp8 per-row")
             datapath = ("O = mx_matmul(softmax(mx_matmul(Q,K^T)/sqrt(H) [+softcap]), V); E8M0 per 32-elt "
                         "K group; bf16 accumulate + bf16 softmax")
         elif entry.get("op") == "gemv_batched":
-            outputs, prov = _golden_cached(_mx_gemv_batched_golden, entry, eb)
+            outputs, prov = _golden_cached(_mx_gemv_batched_golden, entry, eb, facts_sha)
             engine = ("mlc.validate.mx_ref.mx_matmul x B (independent batched MX GEMMs stacked row-major)")
             datapath = ("B x [M,H]@[H,N] on the mx_pe; one E8M0 scale per 32-elt K group; bf16 accumulate")
         else:
-            outputs, prov = _golden_cached(_mx_golden, entry, eb)
+            outputs, prov = _golden_cached(_mx_golden, entry, eb, facts_sha)
             engine = ("mlc.validate.mx_ref.mx_matmul (transcribed from radiance-kernels "  # target-ok: provenance string (source repo radiance-kernels), not control flow
                       "lib/golden/{mx_fp_math.h,mx_golden.cpp}; mirrors the RTL, bit-exact vs spike)")
             datapath = ("16-deep systolic per-column acc schedule (ACC_E/ACC_M); one E8M0 scale per "
@@ -1995,7 +2029,7 @@ def _write_capsule_inner(entry, binding, out_root):
                 "inputs": prov},
             "outputs": outputs}, sort_keys=False), encoding="utf-8")
     else:                                                     # simt (IEEE fp16/bf16/f32)
-        outputs, prov = _golden_cached(_simt_golden, entry, eb)
+        outputs, prov = _golden_cached(_simt_golden, entry, eb, facts_sha)
         (d / "golden.yaml").write_text(yaml.safe_dump({
             "golden_source": "ieee_simt_f32_accumulate",
             "oracle_provenance": {
@@ -2823,7 +2857,7 @@ def generate_target(target: str) -> list[Path]:
     for e in entries:
         family = (e.get("performance") or {}).get("family")
         try:
-            w = _write_capsule(e, binding, out_root)
+            w = _write_capsule(e, binding, out_root, facts.get("sha256", ""))
         except Exception as exc:                              # noqa: BLE001 — reported, never swallowed
             detail = f"{type(exc).__name__}: {str(exc)[:300]}"
             if isinstance(exc, UnprovableForbid) and str(e.get("source_role") or "") == SYNTH_ROLE:

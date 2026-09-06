@@ -121,3 +121,51 @@ class TestItIsTargetAgnostic:
         src = inspect.getsource(gen._golden_cache_key) + inspect.getsource(gen._golden_cached)
         for name in ("gemmini", "atlas", "radiance", "saturn", "muon", "mx_gemmini"):
             assert name not in src.lower(), f"the cache mentions {name!r}"
+
+
+class TestTheDeviceIsPartOfTheKey:
+    """A changed RTL must not be answered from a cache built against the previous one.
+
+    The goldens are deliberately independent of the RTL -- an oracle derived from the device would be
+    the device grading itself -- but the RTL reaches them INDIRECTLY: the binding's tile edge, dtypes
+    and subnormal handling come from the capability manifest, and an entry's extents come from facts
+    like memory capacity and array geometry. So the key carries the target's RTL-facts digest and
+    invalidates conservatively.
+    """
+
+    def test_a_different_facts_digest_misses(self, gen):
+        a = gen._golden_cache_key(gen._simt_golden, _entry(), _Binding(), "facts-rev-A")
+        b = gen._golden_cache_key(gen._simt_golden, _entry(), _Binding(), "facts-rev-B")
+        assert a != b, "a changed RTL revision did not invalidate the cache"
+
+    def test_an_unknown_digest_is_its_own_key_not_a_wildcard(self, gen):
+        """An empty digest means the caller could not establish which device this is. It must not
+        collide with a known revision, or an unprovenanced run would be served a provenanced answer."""
+        unknown = gen._golden_cache_key(gen._simt_golden, _entry(), _Binding(), "")
+        known = gen._golden_cache_key(gen._simt_golden, _entry(), _Binding(), "facts-rev-A")
+        assert unknown != known
+
+
+class TestTheMemoizedProductIsBitIdentical:
+    def test_the_product_cache_changes_no_value(self, gen):
+        """``rnd(dec(a)*dec(b))`` is a pure function of the operand code pair, so memoizing it on that
+        pair is identical by construction. Pinned because it sits inside a golden engine, where a
+        'small' numeric difference is a wrong answer that grades a backend."""
+        import yaml
+        from merlin.targetgen.corpus_spec import derive_binding
+        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.common.paths import repo_root as _rr
+        desc = _rr() / "merlin/experiments/capsule_bench/targets/atlas/target_experiment.yaml"
+        prof = _rr() / "merlin/contract/capsules/profiles/atlas.yaml"
+        if not desc.is_file() or not prof.is_file():
+            pytest.skip("this checkout has no float-regime target to exercise")
+        eb = derive_binding(load_target_experiment(desc),
+                            (yaml.safe_load(prof.read_text()) or {}).get("datapath", {}))
+        entry = {"name": "PRODCACHE_PROBE", "op": "matmul", "M": eb.tile_dim, "K": 64,
+                 "N": eb.tile_dim, "lhs": "A0", "weight": "W", "out": "Y0"}
+        outputs, _prov = gen._float_golden(entry, eb)
+        assert outputs, "the engine produced no output tensor"
+        # `outputs` is keyed by tensor name; flatten the ROWS, not the keys
+        flat = [v for block in outputs.values() for row in block for v in row]
+        assert flat, "the output tensor is empty"
+        assert len(set(flat)) > 1, "a constant golden grades nothing"
