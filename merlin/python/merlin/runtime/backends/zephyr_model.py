@@ -794,6 +794,16 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                   "compiler's default in place")
 
     if not blocking:
+        # The fused-epilogue request cannot be honoured on a path that does no tagging at all, and
+        # an inert lever that still reports as applied is the failure this file keeps re-finding.
+        from ...llvmlower.requant_fuse import FEATURE as _RF_NAME
+        from ...llvmlower.requant_fuse import VEC_FEATURE as _RF_VEC_NAME
+        if features & {_RF_NAME, _RF_VEC_NAME}:
+            raise ValueError(
+                f"{sorted(features & {_RF_NAME, _RF_VEC_NAME})} was requested but this preparation "
+                f"runs with blocking disabled, so "
+                f"no contraction is tagged and no pair can be formed; the lever would build the "
+                f"baseline and report as applied")
         _judge_levers_on(prepared)
         return _strip_provenance(prepared, work, features), features
     from ...llvmlower import im2col_pack as _ip
@@ -809,6 +819,14 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # instead. It is not expressed as an `implies` because `perop_register_block` is a sentinel THIS
     # function consumes, and re-materializing it at `normalize` time inside the lowering trips the
     # unresolved-sentinel guard.
+    from ...llvmlower import requant_fuse as _rf
+    _rf_named = sorted(features & {_rf.FEATURE, _rf.VEC_FEATURE})
+    if _rf_named and PEROP_BLOCK_NAME not in features:
+        raise ValueError(
+            f"{_rf_named} requires {PEROP_BLOCK_NAME!r} in the same feature set: the "
+            f"(contraction, fill, requant) tags it fuses on are applied by that request's tagger, "
+            f"and only its schedule carries the fused arms. Named alone it would tag nothing, build "
+            f"the baseline, and report as applied. Name both.")
     if _ip.FEATURE in features and PEROP_BLOCK_NAME not in features:
         raise ValueError(
             f"{_ip.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel width "
@@ -822,6 +840,22 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # Passing vlen here is the ONLY thing that turns it on, so the default path is byte-identical.
     nr_fill_vlen = vlen if PEROP_NR_FILL_NAME in features else None
     features = features - {PEROP_NR_FILL_NAME}
+    # The fused-epilogue REQUEST is consumed here for the same reason the fill knobs are: its effect
+    # arrives as part of the concrete `perop_register_block_*` schedule feature below, and a request
+    # that survived into the lowering would be an unregistered name in a subprocess that re-imports
+    # `impr_features` fresh.
+    # Two points, one pairing. The plain one only REMOVES A TRAVERSAL (the epilogue keeps its loop
+    # form and clang vectorizes it); the `_vec` one additionally reshapes that loop into a fixed
+    # MR x NR vector tile. They are separate names because the reshape is the half this repo has
+    # measured going the wrong way -- see llvmlower/requant_fuse.VEC_FEATURE.
+    _rf_requested = bool(features & {_rf.FEATURE, _rf.VEC_FEATURE})
+    _rf_vec = _rf.VEC_FEATURE in features
+    if _rf_vec and _rf.FEATURE in features:
+        raise ValueError(
+            f"{_rf.FEATURE!r} and {_rf.VEC_FEATURE!r} are two spellings of the same fusion that "
+            f"differ only in whether the epilogue tile is pre-vectorized; naming both describes two "
+            f"builds and there is no correct way to pick one. Name exactly one.")
+    features = features - {_rf.FEATURE, _rf.VEC_FEATURE}
     # A `perop_register_block_mr<N>` sentinel is the same REQUEST with the MR cap named, so the beam
     # can search a cap that was otherwise reachable only through MERLIN_PEROP_MR_CAP -- and no fork can
     # vary an environment variable. Resolve it to the plain sentinel plus an explicit cap; the named
@@ -899,8 +933,26 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                     f"agree or the packed layout is only half used; refusing to build a lever that "
                     f"would measure as itself and be something else.")
         if table:
-            prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
-            features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
+            # THE MULTICORE SPLIT, derived from the block rather than the block from the split. One
+            # entry per contraction that has a parallel dim dividing into `k <= harts` EQUAL pieces
+            # the block still lowers on; everything else stays serial with its 1-hart kernel intact.
+            # `harts <= 1` -> empty -> the tagged module and every schedule are byte-identical to the
+            # single-core build, which is what makes the two arms comparable.
+            par_table = _pb.parallel_chunk_table(_cshapes(prepared), table, harts)
+            # THE FUSED REQUANT EPILOGUE (`fuse_requant_into_contraction`, default-off). The
+            # pairing is done by the SAME tagger pass as the block tags -- it has to be, because a
+            # pair's three ops are matched by 1:1 attributes and the numbering must come from the
+            # one step that has actually seen them. Absent from the feature set, `pair_fuse` is
+            # False, nothing is paired, the tagged module and the schedule text are byte-identical,
+            # and so is the emitted .ll.
+            _pairs: list = []
+            _fuse_rq = _rf_requested
+            prepared = _pb.tag_prepared_mlir(prepared, table, work=work, par_table=par_table,
+                                             pair_fuse=_fuse_rq,
+                                             pairs_out=_pairs if _fuse_rq else None)
+            _write_parallel_arms(work, harts, table, par_table)
+            features = (features - {PEROP_BLOCK_NAME}) | {
+                ensure_perop_block(table, _PEROP_KC, _pairs, _rf_vec)}
         else:
             features = features - {PEROP_BLOCK_NAME}
     _judge_levers_on(prepared)

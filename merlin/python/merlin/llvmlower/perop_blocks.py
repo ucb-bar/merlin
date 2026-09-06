@@ -595,7 +595,10 @@ def distinct_blocks(table: dict[str, tuple[int, int]]) -> list[tuple[str, int, i
 
 
 def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
-                      work: "Any" = None) -> "Any":
+                      work: "Any" = None,
+                      par_table: "dict[str, tuple[int, ...]] | None" = None,
+                      pair_fuse: bool = False,
+                      pairs_out: "list | None" = None) -> "Any":
     """Specialize the contractions and tag them, returning a new ``.mlir`` path.
 
     Done as a PREPROCESSING step rather than a runner splice, which is what makes this cheap and safe:
@@ -605,6 +608,14 @@ def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
     v3 feature's existing marker split for no additional correctness.
 
     Runs in the m2m venv (the only interpreter with torch-mlir), same as every other lowering step.
+
+    ``pair_fuse`` (default False -> the emitted script, the tagged module and every schedule derived
+    from it are byte-identical) additionally pairs each tagged contraction with its requantize
+    epilogue and its accumulator fill, tags the three, and removes the contraction's plain block tag
+    so only the fused arm claims it. The pair table is appended to ``pairs_out`` -- the numbering is
+    the TAGGER's, because it is the only step that has seen the pairs. Asking for the pairing without
+    somewhere to put the table would leave a set of tags no arm matches, i.e. every paired contraction
+    silently falling to convert-linalg-to-loops, so that combination is refused.
     """
     import subprocess
     from pathlib import Path
@@ -619,7 +630,7 @@ def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
         "import sys\n"
         "from torch_mlir import ir\n"
         "from torch_mlir.passmanager import PassManager\n"
-        + runner_rewrite_src(table) +
+        + runner_rewrite_src(table, par_table, pair_fuse=pair_fuse) +
         "\nsrc, dst = sys.argv[1], sys.argv[2]\n"
         "ctx = ir.Context()\n"
         "ctx.allow_unregistered_dialects = True\n"
@@ -630,6 +641,10 @@ def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
         "import json\n"
         "with ctx, ir.Location.unknown():\n"
         "    n, hit, untagged = tag_perop_blocks(mod, ctx)\n"
+        + ("    pairs, refused = tag_requant_pairs(mod, ctx)\n"
+           "    print(%r, json.dumps(pairs))\n"
+           "    print(%r, json.dumps(refused))\n" % (_RF_REPORT, _RF_REFUSED)
+           if pair_fuse else "") +
         "open(dst, 'w').write(str(mod.operation))\n"
         "print('OK perop_blocks tagged', n)\n"
         "print('MERLIN_PEROP_AGREEMENT', json.dumps("
@@ -639,7 +654,42 @@ def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
     if proc.returncode != 0 or not out.is_file():
         raise RuntimeError(f"per-op block tagging failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
     _assert_priced_is_tagged(table, proc.stdout)
+    if pair_fuse:
+        if pairs_out is None:
+            raise ValueError("tag_prepared_mlir(pair_fuse=True) needs pairs_out=: the pair tags it "
+                             "applies are matched by arms generated FROM the returned table, so "
+                             "discarding it would leave every paired contraction claimed by no arm")
+        pairs_out.extend(_parse_reported(proc.stdout, _RF_REPORT, default=[]))
+        refused = _parse_reported(proc.stdout, _RF_REFUSED, default={})
+        print(f"[requant_fuse] paired {len(pairs_out)} contraction(s) with their requant epilogue"
+              + (("; unpaired: " + " ".join(f"{k}={v}" for k, v in sorted(refused.items())))
+                 if refused else "; every tagged contraction paired"))
     return out
+
+
+#: The two lines the pairing phase prints back. Named here because the writer (the generated script)
+#: and the reader (below) must agree, and a silent disagreement would read as "nothing to pair".
+_RF_REPORT = "MERLIN_REQUANT_PAIRS"
+_RF_REFUSED = "MERLIN_REQUANT_REFUSED"
+
+
+def _parse_reported(stdout: str, prefix: str, *, default):
+    """The JSON payload of the last ``<prefix> <json>`` line, or ``default``.
+
+    Missing is NOT the same as empty, but both are handled the same way on purpose: the caller
+    prints what it got, and an absent line shows as zero pairs -- which is visible in the build log
+    rather than being a lever that silently reported as applied.
+    """
+    import json
+
+    line = next((l for l in reversed(stdout.splitlines())
+                 if l.startswith(prefix + " ")), None)
+    if line is None:
+        return default
+    try:
+        return json.loads(line[len(prefix) + 1:])
+    except ValueError:
+        return default
 
 
 class BlockAgreementError(RuntimeError):
@@ -679,7 +729,90 @@ def _assert_priced_is_tagged(table: dict[str, tuple[int, int]], stdout: str) -> 
             + f"; the tagger saw these untagged geometries instead: {rep.get('untagged', [])[:8]}")
 
 
-def runner_rewrite_src(table: dict[str, tuple[int, int]]) -> str:
+#: The requant-epilogue pairing phase of the tagger, as SOURCE: it runs in the m2m venv over the MLIR
+#: python bindings, in another process, and cannot import merlin. It is appended to the runner source
+#: only when ``runner_rewrite_src(..., pair_fuse=True)`` asks for it, so the default tagged module is
+#: byte-identical to before this existed. The predicate it calls (``merlin_requant_pair``) is spliced
+#: from :mod:`merlin.llvmlower.requant_fuse` rather than restated, so there is exactly one definition
+#: of "this epilogue is fusable" shared by the tagger and the schedule.
+#:
+#: It also DELETES the plain ``merlin.blk_`` tag from a contraction it paired. That is load-bearing:
+#: the block arm and the fused arm would otherwise both match the same op, and it would be tiled
+#: twice.
+_PAIR_PHASE_SRC = '''
+def tag_requant_pairs(module, ctx):
+    """Tag (contraction, fill, requant) triples that can be fused into one tile loop.
+
+    Returns ``(pairs, refused)`` where ``pairs`` is ``[[index, MR, NR, parallel_rank], ...]`` and
+    ``refused`` counts, per reason, the tagged contractions this could NOT pair -- an epilogue that
+    cannot be reached is COUNTED, never silently left behind.
+
+    The index is assigned HERE, in the one place that has actually seen the pairs, because each pair
+    needs its own 1:1 transform handles (``fuse_into_containing_op`` refuses a multi-op containing
+    handle) and a second enumeration in another tool could number them differently.
+
+    MR/NR are read back off the block tag the previous phase applied, so the fused arm tiles at the
+    block THIS model's own policy derived. Parsed structurally (``split``), never by pattern match.
+    """
+    pairs = []
+    refused = {}
+    def _bump(why):
+        refused[why] = refused.get(why, 0) + 1
+    def walk(op):
+        for region in op.regions:
+            for block in region.blocks:
+                for inner in list(block.operations):
+                    walk(inner)
+                    attrs = inner.operation.attributes
+                    names = [attrs[i].name for i in range(len(attrs))]
+                    tagged = [x for x in names if x.startswith(_MERLIN_BLK_PREFIX)]
+                    if len(tagged) != 1:
+                        continue
+                    rest = tagged[0][len(_MERLIN_BLK_PREFIX):].split("_")
+                    if len(rest) != 2:
+                        _bump("block_tag_unparseable")
+                        continue
+                    dims = rest[1].split("x")
+                    if len(dims) != 2 or not dims[0].isdigit() or not dims[1].isdigit():
+                        _bump("block_tag_unparseable")
+                        continue
+                    mr, nr = int(dims[0]), int(dims[1])
+                    if inner.operation.name not in ("linalg.matmul", "linalg.batch_matmul"):
+                        _bump("not_a_named_contraction")
+                        continue
+                    try:
+                        rank = len(ir.ShapedType(inner.results[0].type).shape)
+                    except Exception:
+                        _bump("result_rank_unreadable")
+                        continue
+                    if rank not in (2, 3):
+                        _bump("parallel_rank_%d" % rank)
+                        continue
+                    fill, requant, why = merlin_requant_pair(inner, ir)
+                    if why is not None:
+                        _bump(why)
+                        continue
+                    idx = len(pairs)
+                    with ctx:
+                        unit = ir.UnitAttr.get()
+                        inner.operation.attributes[
+                            "%s%d_%s" % (_MERLIN_RQ_PREFIX, idx, _MERLIN_RQ_ROLES[0])] = unit
+                        fill.attributes[
+                            "%s%d_%s" % (_MERLIN_RQ_PREFIX, idx, _MERLIN_RQ_ROLES[1])] = unit
+                        requant.attributes[
+                            "%s%d_%s" % (_MERLIN_RQ_PREFIX, idx, _MERLIN_RQ_ROLES[2])] = unit
+                    # The block arm must not also claim this op: two arms tiling one contraction is
+                    # not a slower build, it is a wrong one.
+                    del inner.operation.attributes[tagged[0]]
+                    pairs.append([idx, mr, nr, rank])
+    walk(module.operation)
+    return pairs, refused
+'''
+
+
+def runner_rewrite_src(table: dict[str, tuple[int, int]],
+                       par_table: "dict[str, tuple[int, ...]] | None" = None,
+                       pair_fuse: bool = False) -> str:
     """Python source for the runner stage that applies ``table`` to the specialized IR.
 
     Carries DATA, not policy: the block decisions were made by :func:`block_table` in merlin, where the
@@ -696,10 +829,32 @@ def runner_rewrite_src(table: dict[str, tuple[int, int]]) -> str:
     import inspect
 
     entries = ",\n    ".join(f"{k!r}: {v!r}" for k, v in sorted(table.items()))
+    # The forall tile per op, carried the same way and for the same reason as the block: it is DATA
+    # the policy in `parallel_chunk_table` decided, and the runner only looks it up. Empty (the
+    # single-hart default) leaves the tagged module byte-identical to before this existed.
+    par_entries = ",\n    ".join(f"{k!r}: {tuple(int(t) for t in v)!r}"
+                                 for k, v in sorted((par_table or {}).items()))
     geometry_src = inspect.getsource(conv_geometry)
+    # The requant-epilogue pairing phase, spliced by source for exactly the reason
+    # `conv_geometry` is: the predicate that decides which epilogues are fusable must have ONE
+    # definition, or the schedule can emit an arm for a pair the tagger did not tag (or the
+    # reverse) and an op silently ends up matched by no arm. Empty unless asked for, so the
+    # default runner source -- and the tagged module -- are byte-identical.
+    pair_src = ""
+    if pair_fuse:
+        from . import requant_fuse as _rf
+        pair_src = ("\n\n_MERLIN_BLK_PREFIX = %r\n_MERLIN_RQ_PREFIX = %r\n"
+                    "_MERLIN_RQ_ROLES = (%r, %r, %r)\n\n"
+                    % (TAG_PREFIX, _rf.TAG_PREFIX,
+                       _rf.ROLE_CONTRACTION, _rf.ROLE_FILL, _rf.ROLE_REQUANT)
+                    + inspect.getsource(_rf.merlin_requant_pair) + "\n\n" + _PAIR_PHASE_SRC)
     return f'''
 _MERLIN_BLOCK_TABLE = {{
     {entries}
+}}
+
+_MERLIN_PAR_TABLE = {{
+    {par_entries}
 }}
 
 _MERLIN_CONV_CLASS = {CONV_CLASS!r}
@@ -804,6 +959,7 @@ def tag_perop_blocks(module, ctx):
                     n += 1
     walk(module.operation)
     return n, hit, seen_untagged
+{pair_src}
 '''
 
 #: Attribute the conv arm puts on the enclosing reduction loop so the vectorize step can find the op
@@ -867,7 +1023,21 @@ def _conv_arms(blocks: "list[tuple[str, int, int]]") -> str:
     return "\n".join(tile_arms + [fold] + vec_arms) + "\n"
 
 
-def schedule_text(table: dict[str, tuple[int, int]], kc: int) -> str:
+def _requant_fuse_arms(pairs, vec_epilogue: bool = False) -> str:
+    """The fused-epilogue arms, or ``""`` when nothing was paired (the byte-identical default).
+
+    Delegated to :mod:`merlin.llvmlower.requant_fuse` so the arm text and the tagger predicate that
+    decides which pairs exist live in one module; imported lazily so this file keeps no import-time
+    dependency on a default-off lever.
+    """
+    if not pairs:
+        return ""
+    from .requant_fuse import fused_arms
+    return fused_arms(pairs, vec_epilogue)
+
+
+def schedule_text(table: dict[str, tuple[int, int]], kc: int,
+                  pairs: "list | tuple" = (), vec_epilogue: bool = False) -> str:
     """A v3-style pre-schedule with one tile+vectorize arm PER DISTINCT BLOCK, matched by attribute.
 
     Each arm chains the handle returned by its first ``tile_using_for`` into the K tile rather than
@@ -906,6 +1076,7 @@ module attributes {{transform.with_named_sequence}} {{
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{
 {body}
 {_conv_arms(conv_blocks)}\
+{_requant_fuse_arms(pairs, vec_epilogue)}\
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
       transform.apply_patterns.vector.transfer_permutation_patterns

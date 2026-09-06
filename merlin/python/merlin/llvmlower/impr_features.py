@@ -83,7 +83,7 @@ _LEVER_MODULES: "dict[str, str] | None" = None
 
 
 def _single_name_lever_modules() -> "dict[str, str]":
-    """``FEATURE`` name -> module basename, for every sibling module declaring ONE lever name.
+    """Lever name -> module basename, for every sibling module declaring lever names as constants.
 
     Discovered by PARSING the sibling sources rather than importing them: at this point in the
     package every lever module imports THIS one to call :func:`register`, so importing them all
@@ -93,6 +93,14 @@ def _single_name_lever_modules() -> "dict[str, str]":
 
     A module that declares no ``FEATURE`` (a family module carrying a ``FEATURE_PREFIX``, or a plain
     helper) simply does not appear, so families keep resolving through their own prefix/arity rules.
+
+    ``<X>_FEATURE`` counts too, not only the bare ``FEATURE``. A module may own more than one point --
+    ``requant_fuse`` registers the traversal removal and the variant that also reshapes the epilogue
+    loop, so the board can price the reshape separately -- and ``perop_blocks`` has always owned
+    ``CONV_ARM_FEATURE`` with no way to resolve it here. Reading every module-level string constant
+    whose name ends in ``FEATURE`` keeps the mapping DERIVED, which is the property this function
+    exists for; a name whose ``ensure_registered`` does not actually register it still falls through
+    to the family rules below, because the caller re-checks the registry.
     """
     global _LEVER_MODULES
     if _LEVER_MODULES is None:
@@ -105,17 +113,20 @@ def _single_name_lever_modules() -> "dict[str, str]":
                 tree = _ast.parse(src.read_text(encoding="utf-8"))
             except (OSError, SyntaxError):
                 continue  # unreadable/unparseable sibling is not a lever; never guess one
-            feature = None
+            features: list[str] = []
             has_ensure = False
             for node in tree.body:  # MODULE level only -- a nested FEATURE is not the lever's name
                 if isinstance(node, _ast.Assign) and isinstance(node.value, _ast.Constant) \
                         and isinstance(node.value.value, str) \
-                        and any(isinstance(t, _ast.Name) and t.id == "FEATURE" for t in node.targets):
-                    feature = node.value.value
+                        and any(isinstance(t, _ast.Name)
+                                and (t.id == "FEATURE" or t.id.endswith("_FEATURE"))
+                                for t in node.targets):
+                    features.append(node.value.value)
                 elif isinstance(node, _ast.FunctionDef) and node.name == "ensure_registered":
                     has_ensure = True
-            if feature and has_ensure:
-                found[feature] = src.stem
+            if has_ensure:
+                for feature in features:
+                    found.setdefault(feature, src.stem)
         _LEVER_MODULES = found
     return _LEVER_MODULES
 
@@ -2784,7 +2795,8 @@ def perop_mr_sentinel(mr_cap: int) -> str:
 PEROP_MR_LADDER: tuple[str, ...] = tuple(perop_mr_sentinel(_n) for _n in (1, 2, 8, 16))
 
 
-def ensure_perop_block(table, kc: int, pairs: "list | tuple" = ()) -> str:
+def ensure_perop_block(table, kc: int, pairs: "list | tuple" = (),
+                       vec_epilogue: bool = False) -> str:
     """Register (on demand) the per-op-blocked schedule for THIS model's block table.
 
     The schedule text is a function of the table (one tile+vectorize arm per distinct block), so the
@@ -2805,11 +2817,12 @@ def ensure_perop_block(table, kc: int, pairs: "list | tuple" = ()) -> str:
     # existing package names its concrete feature by that hash in `compiler_features`, and changing
     # the unfused spelling would make every one of them unresolvable.
     key = hashlib.sha1((repr(sorted(table.items())) if not pairs
-                        else repr((sorted(table.items()), pairs))).encode()).hexdigest()[:12]
+                        else repr((sorted(table.items()), pairs, vec_epilogue))
+                        ).encode()).hexdigest()[:12]
     name = f"{PEROP_BLOCK_NAME}_{len(blocks)}b_{kc}_{key}"
     if name in known():
         return name
-    text = _pb.schedule_text(table, kc, pairs)
+    text = _pb.schedule_text(table, kc, pairs, vec_epilogue)
     register(ImprFeature(
         name=name,
         action_class="PASS",
@@ -2823,7 +2836,12 @@ def ensure_perop_block(table, kc: int, pairs: "list | tuple" = ()) -> str:
                         f"(fuse_requant_into_contraction): the epilogue is tiled and the contraction "
                         f"and its accumulator fill are fused into that loop, so the i32 accumulator "
                         f"is converted and scaled in the tile that produced it and the model-sized "
-                        f"i32 tensor is never built." if pairs else "")),
+                        f"i32 tensor is never built."
+                        + (" The epilogue tile is additionally pre-vectorized at that block."
+                           if vec_epilogue
+                           else " The epilogue tile keeps its loop form and is left to clang, so "
+                                "the lever removes a traversal without reshaping a loop.")
+                        if pairs else "")),
         edit_pipeline=_accumulator_resident_v3_pipeline,
         edit_schedule=lambda _t, _text=text: _text,
         schedule_replace=True,
