@@ -174,6 +174,19 @@ class CommandBufferEncoder:
                 dst, value = self._movement(operands, attrs)
                 committed[dst] = value
 
+        # Mirror simulator.py:539-543. The reference adds any tensor DECLARED with role "output"
+        # that exists in the environment, whichever opcode produced it -- vector-family results
+        # (VECTOR_MAP, VREDUCE) never pass through COMMIT and would otherwise be invisible.
+        #
+        # Omitting this step made the checker refute 39 archived submissions that the numeric grade
+        # PASSED: a movement capsule whose spec says `merlin_iface.movement` is legitimately
+        # implemented by the backend as an identity VECTOR_MAP, whose result this encoder then could
+        # not see at all. An encoder that disagrees with the engine it mirrors refutes correct work,
+        # which is the one outcome this module exists to prevent.
+        for name, spec in (self.cb.get("tensors") or {}).items():
+            if (spec or {}).get("role") == "output" and name in self.env and name not in committed:
+                committed[name] = self.env[name]
+
         declared = list(self.cb.get("outputs") or ())
         if not declared:
             return committed

@@ -340,6 +340,24 @@ def _record(verdict, **shape) -> None:
         pass
 
 
+class OutputContractViolation(Exception):
+    """The buffer does not deliver the outputs its specification declared.
+
+    A REFUTATION, not an abstention, and deliberately a separate type from a numeric divergence.
+    ``sat`` carries a counterexample by contract; this defect has no counterexample because no input
+    is needed to see it -- the buffer simply never publishes the declared result.
+
+    Found by reading the ablation's own contradictory cell. Thirteen archived submissions were graded
+    `numeric=fail` with EVERY element mismatched ("your command buffer does not compute the declared
+    operation") while this checker called them VERIFIED. All thirteen computed the right values and
+    committed them under a name the specification never declared -- eleven to ``output_tensor``
+    instead of ``Y0``, and two committing ``Y0`` twice. The checker paired outputs by sorted ORDER,
+    so a single-output buffer matched a single-output spec no matter what either called its result.
+    A checker that cannot see a whole class of real defect, and reports the strongest possible
+    verdict on it, is worse than one that abstains.
+    """
+
+
 def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32,
                          timeout_ms: int = 60_000) -> Verdict:
     """Do two command buffers denote the same function, for every input at this shape?
@@ -397,16 +415,26 @@ def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32,
                 "the interface program commits no outputs; there is nothing to validate against")
         agent_out, _ = encode_command_buffer(enc, agent_cb, shared=leaves, acc_width=acc_width)
 
+        # Bind outputs BY NAME. Order-binding was the defect described on OutputContractViolation:
+        # it made the checker blind to a buffer publishing the right numbers under the wrong name.
         spec_names, agent_names = sorted(spec_out), sorted(agent_out)
-        if len(spec_names) != len(agent_names):
-            raise UnsupportedSemantics(
-                f"the interface program commits {len(spec_names)} output(s) {spec_names} but the "
-                f"submitted buffer commits {len(agent_names)} ({agent_names}); they are not the "
-                f"same program")
+        missing = [n for n in spec_names if n not in agent_out]
+        if missing:
+            raise OutputContractViolation(
+                f"the interface program declares output(s) {missing} which the submitted buffer "
+                f"never commits; it commits {agent_names}. The buffer may compute the right values, "
+                f"but it does not deliver them under the declared name, so no consumer can read "
+                f"them.")
+        extra = [n for n in agent_names if n not in spec_out]
+        if extra:
+            raise OutputContractViolation(
+                f"the submitted buffer commits {extra}, which the interface program never declared "
+                f"(it declares {spec_names})")
 
         diffs = []
-        for s_name, a_name in zip(spec_names, agent_names):
-            a, b = spec_out[s_name], agent_out[a_name]
+        for s_name in spec_names:
+            a, b = spec_out[s_name], agent_out[s_name]
+            a_name = s_name
             if (a.rows, a.cols) != (b.rows, b.cols):
                 raise UnsupportedSemantics(
                     f"output {s_name!r} is {(a.rows, a.cols)} in the interface program but "

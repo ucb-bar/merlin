@@ -253,7 +253,7 @@ def _alarm(seconds: int):
 
 def check_unit(unit_str: str, timeout_ms: int, wall_seconds: int = 90) -> dict[str, Any]:
     """Verdict for one unit. Never raises: a crash here must not take the population down."""
-    from merlin.verify.refine import validate_equivalence
+    from merlin.verify.refine import OutputContractViolation, validate_equivalence
     from merlin.verify.smt_semantics import UnsupportedSemantics
 
     unit = Path(unit_str)
@@ -303,6 +303,12 @@ def check_unit(unit_str: str, timeout_ms: int, wall_seconds: int = 90) -> dict[s
             # The ablation's second headline: could the existing stimulus have reached this input?
             out["counterexample_outside_stimulus"] = bool(outside)
             out["counterexample_outside_examples"] = dict(sorted(outside.items())[:6])
+    except OutputContractViolation as exc:
+        # A definite negative, so it is a refutation -- but one with no counterexample, because no
+        # input is needed to see it. Bucketed separately so it is never confused with a numeric
+        # divergence in the report.
+        out.update(verdict="refuted", reason=str(exc)[:300], reason_kind="output_contract",
+                   counterexample_outside_stimulus=None)
     except _WallTimeout as exc:
         out.update(verdict="abstained", reason=str(exc), reason_kind="wall_timeout")
     except UnsupportedSemantics as exc:

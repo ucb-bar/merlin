@@ -8,22 +8,21 @@ graded -- and ask what the formal layer would have added to results that already
 Three figures, and two of the three report a limit rather than a win. That is the finding, not a
 presentation problem:
 
-``f5_formal_reach``
-    Of every archived submission, how many can the formal layer even look at? Most cannot be reached,
-    and the largest single reason is that the submission IS its own specification -- a buffer that
-    reproduces the interface program command for command, where an equivalence query is ``X == X``.
+``f5_reach_and_verdict``
+    The funnel, ending in an outcome rather than a filter: of every archived submission, how many can
+    the layer look at, and what did it conclude? Most are unreachable, and the largest single reason
+    is that the submission IS its own specification, where an equivalence query is ``X == X``.
 
-``f6_cost_of_finding``
-    Numerically-wrong submissions, split by what found them and what that cost. The dominant group
-    cost tens of hours of RTL simulation because the cheap check was unavailable -- and the formal
-    layer could not have helped, because every one of them is a float datapath it refuses to encode.
-    The recoverable time on this archive is zero, and the figure says so.
+``f6_agreement``
+    Verdict against the grade those submissions already received. Two cells carry the result: the
+    layer never contradicts a passing grade (zero false alarms), and it returns a verdict on
+    submissions the numeric grade never ran at all -- which is the only cell where it adds
+    information rather than confirming it.
 
-``f7_stimulus_gap``
-    What the dynamic check actually samples. Its stimulus draws every operand value from a
-    four-element non-negative set, so sign, saturation and overflow behaviour is untested by
-    construction. This is the gap the formal layer exists to close, drawn against a real
-    counterexample that falls outside it.
+``f7_why_not_more``
+    The abstention breakdown, read as a work plan. The largest bar is float, and float is also where
+    every expensive-to-find defect in the archive lives -- so the coverage gap and the cost are the
+    same gap.
 
 Run::
 
@@ -152,6 +151,47 @@ def collect_cost() -> dict[str, Any]:
             "max_seconds": per_submission[-1] if per_submission else 0.0}
 
 
+def load_ablation(product: Path) -> dict[str, Any]:
+    """Read an ``ablation.json`` written by :mod:`merlin.verify.ablation`."""
+    return json.loads((product / "ablation.json").read_text(encoding="utf-8"))
+
+
+def latest_ablation() -> dict[str, Any]:
+    """The newest ablation product on disk. Figures are driven by measured data, never by literals."""
+    from merlin.common.paths import artifacts_dir
+
+    root = artifacts_dir() / "verification"
+    found = sorted(root.rglob("ablation.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not found:
+        raise FileNotFoundError(
+            f"no ablation.json under {root}; run `python -m merlin.verify.ablation --write` first")
+    return load_ablation(found[0].parent)
+
+
+def _tally(records: list[dict]) -> dict[str, Any]:
+    """Verdict counts, the verdict x grade cross-tab, and the abstention reasons."""
+    eligible = [r for r in records if r.get("verdict") != "excluded"]
+    grid: dict[tuple[str, str], int] = {}
+    for r in eligible:
+        key = (str(r.get("verdict")), str(r.get("numeric_status", "absent")))
+        grid[key] = grid.get(key, 0) + 1
+    refuted = [r for r in eligible if r.get("verdict") == "refuted"]
+    return {
+        "total": len(records),
+        "excluded": sum(1 for r in records if r.get("verdict") == "excluded"),
+        "eligible": len(eligible),
+        "counts": dict(Counter(str(r.get("verdict")) for r in eligible)),
+        "grid": grid,
+        "abstain_reasons": dict(Counter(str(r.get("reason_kind") or "other")
+                                        for r in eligible if r.get("verdict") == "abstained")),
+        "refuted_outside_stimulus": sum(1 for r in refuted
+                                        if r.get("counterexample_outside_stimulus")),
+        "refuted_total": len(refuted),
+        "refuted_kinds": dict(Counter("contract" if r.get("reason_kind") == "output_contract"
+                                      else "numeric" for r in refuted)),
+    }
+
+
 def _caption(fig, text: str, *, y: float = -0.03) -> None:
     import textwrap
     fig.text(0.01, y, "\n".join(textwrap.wrap(text, 132)), ha="left", va="top",
@@ -162,174 +202,174 @@ def _caption(fig, text: str, *, y: float = -0.03) -> None:
 # figures
 # ---------------------------------------------------------------------------------------------
 
-def fig_formal_reach(record: dict[str, Any]):
-    """How much of the archive the formal layer can even look at."""
-    labels = {
-        "vacuous": "the submission IS its own specification\n(equivalence query is X == X)",
-        "float": "float datapath\n(encoder refuses, never approximates)",
-        "rank_gt_2": "rank > 2 (conv / batched)\nencodable in principle, not built",
-        "unencodable_opcode": "opcode with no exact encoding",
-        "too_large": "over the encoding size cap",
-        "unparseable": "spec or buffer unreadable",
-        "in_scope": "IN SCOPE for the formal layer",
-    }
-    buckets = record["buckets"]
-    total = max(record["total"], 1)
-    order = [k for k in ("in_scope", "vacuous", "float", "rank_gt_2", "unencodable_opcode",
-                         "too_large", "unparseable") if buckets.get(k)]
-    fig, ax = plt.subplots(figsize=(10.4, 4.6))
-    paper.card(ax, f"What the formal layer can reach: {buckets.get('in_scope', 0)} of "
-                   f"{record['total']} archived submissions")
-    ys = range(len(order))
-    vals = [buckets[k] for k in order]
-    cols = [REACHABLE if k == "in_scope" else (VACUOUS if k == "vacuous" else OUT_OF_SCOPE)
-            for k in order]
-    ax.barh(list(ys), vals, height=0.62, color=cols, edgecolor=paper.CARD_EC, linewidth=1.4,
-            zorder=3)
-    for y, k, v in zip(ys, order, vals):
-        ax.text(v + total * 0.008, y, f"{v}  ({100 * v / total:.1f}%)", va="center", fontsize=10,
-                fontweight="bold" if k == "in_scope" else "normal", color=paper.INK)
-    ax.set_yticks(list(ys))
-    ax.set_yticklabels([labels[k] for k in order], fontsize=9)
-    ax.invert_yaxis()
-    ax.set_xlabel("archived capsule-bench submissions")
-    ax.set_xlim(0, total * 1.18)
-    _caption(fig, "Every submission this project has produced and graded. The binding constraint is "
-                  "NOT the encoder: the largest bucket is submissions that reproduce the interface "
-                  "program command for command, where proving equivalence proves nothing and a bug "
-                  "in the shared encoder would cancel on both sides. Counting those as verified "
-                  "would have made a headline coverage number ~60% vacuous.")
-    fig.tight_layout()
-    return fig
-
-
-def fig_cost_of_finding(record: dict[str, Any]):
-    """What it cost to find the defects that WERE found, and how much of that was recoverable."""
-    late = record["found_late"]
-    hours = late["sim_seconds"] / 3600.0
-    fig, ax = plt.subplots(figsize=(10.4, 4.4))
-    paper.card(ax, "Cost of finding a numerically-wrong submission, by what found it")
-
-    bars = [
-        ("caught by the cheap numeric check\n(L0, zero simulation)", record["caught_by_cheap_check"],
-         0.0, CHEAP),
-        ("cheap check UNAVAILABLE — found only\nafter spike / Verilator simulation",
-         late["count"], hours, COSTLY),
+def fig_reach_and_verdict(tally: dict[str, Any], reach: dict[str, Any]):
+    """The funnel, ending in a verdict rather than a filter."""
+    counts = tally["counts"]
+    stages = [
+        ("archived submissions", tally["total"], paper.GREY),
+        ("EXCLUDED — the buffer is its own\nspecification (query is X == X)", tally["excluded"],
+         VACUOUS),
+        ("eligible", tally["eligible"], paper.STEEL),
+        ("abstained — outside what the\nencoder models (never a pass)", counts.get("abstained", 0),
+         OUT_OF_SCOPE),
+        ("VERIFIED — agrees with the spec\nfor every input at that shape", counts.get("verified", 0),
+         REACHABLE),
+        ("REFUTED", counts.get("refuted", 0), COSTLY),
     ]
-    ys = range(len(bars))
-    ax.barh(list(ys), [b[1] for b in bars], height=0.55, color=[b[3] for b in bars],
-            edgecolor=paper.CARD_EC, linewidth=1.5, zorder=3)
-    for y, (_, n, h, _c) in zip(ys, bars):
-        note = "0 s of simulation" if h == 0 else f"{h:.1f} hours of simulation"
-        ax.text(n + max(b[1] for b in bars) * 0.015, y, f"{n} submissions — {note}",
-                va="center", fontsize=10, color=paper.INK)
+    fig, ax = plt.subplots(figsize=(10.6, 5.0))
+    paper.card(ax, "What the formal layer reached, and what it concluded")
+    ys = range(len(stages))
+    ax.barh(list(ys), [s[1] for s in stages], height=0.62, color=[s[2] for s in stages],
+            edgecolor=paper.CARD_EC, linewidth=1.4, zorder=3)
+    total = max(tally["total"], 1)
+    for y, (_lab, n, _c) in zip(ys, stages):
+        ax.text(n + total * 0.008, y, f"{n}   ({100 * n / total:.1f}%)", va="center", fontsize=10,
+                color=paper.INK)
     ax.set_yticks(list(ys))
-    ax.set_yticklabels([b[0] for b in bars], fontsize=9)
+    ax.set_yticklabels([s[0] for s in stages], fontsize=9)
     ax.invert_yaxis()
-    ax.set_xlabel("numerically-wrong submissions")
-    widest = max(b[1] for b in bars)
-    ax.set_xlim(0, widest * 2.05)
-    ax.set_ylim(1.62, -0.62)          # inverted, with room for the callout BETWEEN the bars
-
-    recoverable = late["integer"]
-    # Placed in the empty band between the two bars. An earlier version put it below the lower bar,
-    # where it covered the x-axis tick labels and the axis title -- caught by looking at the PNG.
-    paper.callout(ax, (late["count"] * 0.55, 0.72),
-                  f"of these {late['count']}, {late['float']} are FLOAT datapaths\n"
-                  f"the formal layer refuses to encode.\n"
-                  f"Time it could have recovered here: "
-                  f"{'0.0 h' if recoverable == 0 else f'{recoverable} submissions'}",
-                  (widest * 1.30, 0.46))
-    _caption(fig, "The cheap dynamic check costs nothing and catches what it can see. Where it was "
-                  "unavailable, the defect surfaced only after full RTL simulation. That looks like "
-                  "the formal layer's opportunity, and on this archive it is not: the reason the "
-                  "cheap check was unavailable is that the datapath is float, and the encoder "
-                  "refuses float rather than approximating it. Measured recoverable time: zero.")
+    ax.set_xlim(0, total * 1.22)
+    ax.set_xlabel("archived capsule-bench submissions")
+    _caption(fig, "Every submission this project has produced and graded, filtered to what an "
+                  "equivalence proof can say anything about. The binding constraint is not the "
+                  "solver: the largest single loss is submissions that reproduce the interface "
+                  "program they were handed command for command, where proving equivalence proves "
+                  "nothing and a bug in the shared encoder would cancel on both sides.")
     fig.tight_layout()
     return fig
 
 
-def fig_stimulus_gap(counterexample: dict[str, int] | None = None):
-    """What the dynamic check actually samples, against the space the formal layer quantifies over.
+def fig_agreement(tally: dict[str, Any]):
+    """Verdict against the grade the same submission already received."""
+    import numpy as np
 
-    Drawn as a SLIVER against the full range rather than as four scattered points. An earlier version
-    plotted the four stimulus values as dots on a 256-wide axis, where they collapsed into a single
-    blob at the origin and the two annotation arrows crossed each other -- caught by looking at the
-    rendered PNG rather than at the code.
-    """
-    from matplotlib.patches import Rectangle
+    grades = ["pass", "fail", "skipped"]
+    verdicts = ["verified", "refuted", "abstained"]
+    grid = np.array([[tally["grid"].get((v, g), 0) for g in grades] for v in verdicts], dtype=float)
 
-    from merlin.verify.ablation import stimulus_values
+    fig, ax = plt.subplots(figsize=(10.6, 4.6))
+    paper.card(ax, "Formal verdict versus the numeric grade the submission already had")
+    ax.imshow(np.zeros_like(grid), cmap="Greys", vmin=0, vmax=1)
+    for i, v in enumerate(verdicts):
+        for j, g in enumerate(grades):
+            n = int(grid[i, j])
+            # the two cells that carry the result
+            if v == "refuted" and g == "pass":
+                face, note = REACHABLE, "no false alarms"
+            elif v == "refuted" and g == "skipped":
+                face, note = paper.GOLD, "NEW information"
+            elif v == "refuted" and g == "fail":
+                face, note = paper.STEEL, "agreement"
+            elif v == "verified" and g == "fail":
+                face, note = COSTLY, "open"
+            else:
+                face, note = "#efe7d5", ""
+            ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, facecolor=face,
+                                       edgecolor=paper.CARD_EC, linewidth=1.4, zorder=2))
+            ax.text(j, i - 0.10, str(n), ha="center", va="center", fontsize=17,
+                    fontweight="bold", color=paper.INK, zorder=4)
+            if note:
+                ax.text(j, i + 0.27, note, ha="center", va="center", fontsize=8.0,
+                        color=paper.INK, zorder=4)
+    ax.set_xticks(range(len(grades)))
+    ax.set_xticklabels([f"numeric grade\n{g.upper()}" for g in grades], fontsize=9.5)
+    ax.set_yticks(range(len(verdicts)))
+    ax.set_yticklabels([v.upper() for v in verdicts], fontsize=10)
+    ax.set_xlim(-0.5, len(grades) - 0.5)
+    ax.set_ylim(len(verdicts) - 0.5, -0.5)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.tick_params(length=0)
 
-    stim = sorted(stimulus_values())
-    lo, hi = -128, 127
-    fig, ax = plt.subplots(figsize=(10.4, 3.9))
-    paper.card(ax, "What one graded run actually samples, versus what is proved")
-    ax.set_xlim(-165, 165)
-    ax.set_ylim(-1.15, 1.15)
-    ax.get_yaxis().set_visible(False)
-    for spine in ("left", "right", "top"):
-        ax.spines[spine].set_visible(False)
+    outside, tot = tally["refuted_outside_stimulus"], tally["refuted_total"]
+    kinds = tally["refuted_kinds"]
+    _caption(fig, f"Zero refutations of a passing submission: on this archive the layer never "
+                  f"contradicts the grader, which is the soundness result. It agrees independently "
+                  f"on {tally['grid'].get(('refuted', 'fail'), 0)} defects, and returns a verdict on "
+                  f"{tally['grid'].get(('refuted', 'skipped'), 0)} submissions the numeric grade "
+                  f"never ran at all -- the only cell where it adds information rather than "
+                  f"confirming it. Of {tot} refutations, {kinds.get('contract', 0)} are undeclared-"
+                  f"output violations and {kinds.get('numeric', 0)} are value divergences; "
+                  f"{outside} need an operand outside the stimulus's {{0..3}}, so no re-run of the "
+                  f"dynamic check could have found them.")
+    fig.tight_layout()
+    return fig
 
-    # the full space
-    ax.add_patch(Rectangle((lo, -0.17), hi - lo, 0.34, facecolor=OUT_OF_SCOPE,
-                           edgecolor=paper.CARD_EC, linewidth=1.3, zorder=3))
-    ax.text(0, 0.40, f"the i8 operand space an all-inputs proof covers   [{lo}, {hi}]  =  256 values",
-            ha="center", fontsize=9.8, color=paper.INK)
 
-    # the sampled sliver, drawn at true scale so the comparison is not flattered
-    ax.add_patch(Rectangle((stim[0], -0.17), max(stim[-1] - stim[0], 1), 0.34, facecolor=COSTLY,
-                           edgecolor=paper.CARD_EC, linewidth=1.3, zorder=4))
-    ax.annotate(f"the dynamic stimulus samples {{{stim[0]}..{stim[-1]}}}\n"
-                f"{len(stim)} of 256 values, none negative",
-                xy=(stim[-1], -0.17), xytext=(-62, -0.80), fontsize=9.6, color=paper.INK,
-                ha="center", arrowprops=dict(arrowstyle="->", color=paper.INK, lw=1.2))
+def fig_why_not_more(tally: dict[str, Any], cost: dict[str, Any]):
+    """The abstention breakdown, read as a work plan rather than a disclaimer."""
+    labels = {
+        "float_dtype": "float datapath",
+        "output_count": "output count differs",
+        "rank_gt_2": "rank > 2 (conv / batched)",
+        "too_large": "over the encoding size cap",
+        "epilogue": "epilogue stage (acc_scale)",
+        "wall_timeout": "hit the wall bound",
+        "other": "other",
+        "unreadable": "spec or buffer unreadable",
+        "solver_timeout": "solver returned unknown",
+        "shape_mismatch": "shape mismatch",
+    }
+    reasons = sorted(tally["abstain_reasons"].items(), key=lambda kv: -kv[1])
+    fig, ax = plt.subplots(figsize=(10.6, 4.6))
+    paper.card(ax, f"Why the other {sum(tally['abstain_reasons'].values())} abstained — "
+                   f"the same list, read as a work plan")
+    ys = range(len(reasons))
+    cols = [COSTLY if k == "float_dtype" else OUT_OF_SCOPE for k, _ in reasons]
+    ax.barh(list(ys), [v for _, v in reasons], height=0.6, color=cols,
+            edgecolor=paper.CARD_EC, linewidth=1.4, zorder=3)
+    widest = max((v for _, v in reasons), default=1)
+    for y, (_k, v) in zip(ys, reasons):
+        ax.text(v + widest * 0.015, y, str(v), va="center", fontsize=10, color=paper.INK)
+    ax.set_yticks(list(ys))
+    ax.set_yticklabels([labels.get(k, k) for k, _ in reasons], fontsize=9.5)
+    ax.invert_yaxis()
+    ax.set_xlim(0, widest * 1.55)
+    ax.set_xlabel("eligible submissions the layer could not decide")
 
-    if counterexample:
-        xs = sorted(set(counterexample.values()))
-        ax.scatter(xs, [0] * len(xs), s=95, marker="X", color=paper.GOLD,
-                   edgecolor=paper.CARD_EC, zorder=6, linewidth=1.2)
-        ax.annotate("a real counterexample this checker returned\n"
-                    f"({', '.join(str(v) for v in xs)}) — no run could have sampled it",
-                    xy=(xs[-1], 0.17), xytext=(72, 0.86), fontsize=9.6, color=paper.INK,
-                    ha="center", arrowprops=dict(arrowstyle="->", color=paper.INK, lw=1.2))
-    ax.set_xlabel("operand value")
-    _caption(fig, "The stimulus fill was fixed in 13397c36 so rows and columns differ, but its VALUE "
-                  "range was deliberately preserved at {0..3}. A graded run therefore evaluates each "
-                  "buffer at one input point with small non-negative operands: sign handling, i8 "
-                  "saturation and accumulator overflow are untested by construction, not by "
-                  "oversight. Closing that is what an all-inputs proof is for -- on the 11% of "
-                  "submissions it can reach.")
+    late = cost["found_late"]
+    paper.callout(ax, (reasons[0][1] * 0.62, 0.0),
+                  f"every one of the {late['count']} defects that cost\n"
+                  f"{late['sim_seconds'] / 3600:.1f} h of RTL simulation to find\n"
+                  f"is a float datapath — this bar",
+                  (widest * 1.02, 1.35))
+    _caption(fig, "An abstention is never a pass, so this is the honest coverage limit. It is also "
+                  "the priority order: float is both the largest bar and the place where every "
+                  "expensive-to-find defect in the archive lives, so the coverage gap and the cost "
+                  "are the same gap. Nothing here is unfixable -- rank>2 and the epilogue are built "
+                  "in principle and not built in fact.")
     fig.tight_layout()
     return fig
 
 
 def build(*, write: bool = False) -> dict[str, Any]:
     """Collect, draw, and optionally persist as a versioned product."""
+    ablation = latest_ablation()
+    tally = _tally(ablation["records"])
     reach, cost = collect_reach(), collect_cost()
 
-    # A real refutation this checker produced, kept as data so the figure cannot invent one. It is
-    # the narrowed-readout fault from the seeded corpus, whose counterexample needs negative and
-    # large-magnitude operands -- exactly the region the stimulus never visits.
-    counterexample = {"W_0_1": -105, "W_1_0": 78, "W_0_0": -1}
-
     figs = {
-        "f5_formal_reach": fig_formal_reach(reach),
-        "f6_cost_of_finding": fig_cost_of_finding(cost),
-        "f7_stimulus_gap": fig_stimulus_gap(counterexample),
+        "f5_reach_and_verdict": fig_reach_and_verdict(tally, reach),
+        "f6_agreement": fig_agreement(tally),
+        "f7_why_not_more": fig_why_not_more(tally, cost),
     }
     out_dir: Path | None = None
     if write:
         from merlin.common.artifacts import new_product
 
         prod = new_product("verification", version=1, target="all", sources=[
-            f"{reach['total']} archived capsule-bench submissions under out/runs",
-            "formal reach: merlin.verify.ablation.classify + cb_semantics coverage sets",
-            "cost: capsule_result.json tier timings (adapter_wall_s)",
+            f"{tally['total']} archived capsule-bench submissions under out/runs",
+            "verdicts: merlin.verify.ablation (validate_equivalence)",
+            "grades: capsule_result.json numeric tier + tier timings",
         ], notes=("What the formal layer buys over the dynamic grade, measured on submissions that "
-                  "already exist. Two of the three figures report a limit rather than a win."))
+                  "already exist. Structurally identical submissions are excluded: a query over two "
+                  "copies of one program is X == X."))
         for name, fig in figs.items():
             fig.savefig(prod.add_artifact(f"{name}.png"), dpi=200, bbox_inches="tight")
+        prod.add_artifact("tally.json").write_text(
+            json.dumps({k: (v if not isinstance(v, dict) else
+                            {str(kk): vv for kk, vv in v.items()}) for k, v in tally.items()},
+                       indent=1), encoding="utf-8")
         prod.add_artifact("formal_reach.json").write_text(json.dumps(reach, indent=1),
                                                           encoding="utf-8")
         prod.add_artifact("cost_of_finding.json").write_text(json.dumps(cost, indent=1),
@@ -338,7 +378,8 @@ def build(*, write: bool = False) -> dict[str, Any]:
         out_dir = prod.path
     for fig in figs.values():
         plt.close(fig)
-    return {"reach": reach, "cost": cost, "out_dir": str(out_dir) if out_dir else None}
+    return {"tally": tally, "reach": reach, "cost": cost,
+            "out_dir": str(out_dir) if out_dir else None}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -346,15 +387,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write", action="store_true", help="write the figures under out/artifacts/")
     a = ap.parse_args(argv)
     rec = build(write=a.write)
-    reach, cost, late = rec["reach"], rec["cost"], rec["cost"]["found_late"]
-    print(f"archived submissions            {reach['total']}")
-    for k, v in sorted(reach["buckets"].items(), key=lambda kv: -kv[1]):
-        print(f"  {v:6d}  {100 * v / max(reach['total'], 1):5.1f}%  {k}")
-    print(f"\nnumerically wrong, caught cheap {cost['caught_by_cheap_check']}")
-    print(f"numerically wrong, found late   {late['count']}  "
-          f"({late['sim_seconds'] / 3600:.1f} h of simulation)")
-    print(f"  of those, float (unreachable) {late['float']}")
-    print(f"  of those, integer (reachable) {late['integer']}")
+    tally, cost, late = rec["tally"], rec["cost"], rec["cost"]["found_late"]
+    print(f"archived submissions   {tally['total']}")
+    print(f"  excluded (X == X)    {tally['excluded']}")
+    print(f"  eligible             {tally['eligible']}")
+    for k, v in sorted(tally["counts"].items(), key=lambda kv: -kv[1]):
+        print(f"    {v:6d}  {k}")
+    print(f"\nrefuted, numeric PASS  {tally['grid'].get(('refuted', 'pass'), 0)}   (false alarms)")
+    print(f"refuted, numeric FAIL  {tally['grid'].get(('refuted', 'fail'), 0)}   (agreement)")
+    print(f"refuted, grade SKIPPED {tally['grid'].get(('refuted', 'skipped'), 0)}   (new information)")
+    print(f"verified, numeric FAIL {tally['grid'].get(('verified', 'fail'), 0)}   (open contradiction)")
+    print(f"\nrefutations needing an input outside the stimulus: "
+          f"{tally['refuted_outside_stimulus']} of {tally['refuted_total']}")
+    print(f"defects that cost {late['sim_seconds'] / 3600:.1f} h of simulation to find: "
+          f"{late['count']}, of which float (unreachable) {late['float']}")
     if rec["out_dir"]:
         print(f"\nwrote {rec['out_dir']}")
     return 0

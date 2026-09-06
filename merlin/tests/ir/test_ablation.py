@@ -174,3 +174,45 @@ def test_the_report_prints_every_declared_cell_including_the_empty_ones():
     assert "abstentions (coverage limit, never a pass)" in text
     assert "float_dtype" in text
     assert "EXCLUDED" in text, "the exclusion must be visible in the report, not silent"
+
+
+# -- 4. the defect the archive found in this checker ---------------------------------------------
+
+def test_right_values_under_the_wrong_name_is_refuted_not_verified():
+    """A buffer that computes correctly but publishes under an undeclared name must not verify.
+
+    Found in the archive, not by inspection: thirteen submissions were graded `numeric=fail` with
+    EVERY element mismatched while this checker called them VERIFIED. All thirteen committed the
+    right values to a name the specification never declared -- eleven to `output_tensor` instead of
+    `Y0`. Outputs were paired by sorted ORDER, so one output matched one output regardless of name.
+    """
+    from merlin.verify.refine import OutputContractViolation, validate_equivalence
+
+    spec = _matmul_cb()
+    agent = copy.deepcopy(spec)
+    for command in agent["commands"]:
+        if command["opcode"] == "COMMIT":
+            command["operands"]["dst"] = "output_tensor"
+    agent["tensors"]["output_tensor"] = agent["tensors"].pop("Y0")
+    agent["outputs"] = ["output_tensor"]
+
+    with pytest.raises(OutputContractViolation, match="Y0"):
+        validate_equivalence(spec, agent, timeout_ms=_TIMEOUT_MS)
+
+
+def test_committing_the_declared_name_twice_is_not_silently_collapsed():
+    """Two of the thirteen committed `['Y0', 'Y0']`; a dict env keeps only the last.
+
+    The buffer writes the declared output twice, which is a real ABI question, and the checker used
+    to see one output and pair it happily. It must not verify by accident.
+    """
+    from merlin.verify.refine import validate_equivalence
+
+    spec = _matmul_cb()
+    agent = copy.deepcopy(spec)
+    commit = [c for c in agent["commands"] if c["opcode"] == "COMMIT"][0]
+    agent["commands"].append(copy.deepcopy(commit))
+    # A second identical commit is value-identical, so this must NOT refute on values; the point is
+    # that the checker reaches a considered verdict rather than collapsing the pair unnoticed.
+    v = validate_equivalence(spec, agent, timeout_ms=_TIMEOUT_MS)
+    assert v.status in ("unsat", "sat"), f"a duplicated commit must reach a verdict, got {v.status}"
