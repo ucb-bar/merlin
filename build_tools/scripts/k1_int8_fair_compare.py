@@ -106,6 +106,7 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
     conds = []
     last_tiers = last_tier_ok = last_cos = last_rel = None
     last_gate = None
+    ungated_walls: list[int] = []
     for i in range(n):
         conds.append(_conditions())
         try:
@@ -139,7 +140,18 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
             if not ok:
                 blocker = (f"gate failed: cos={cos} rel={rel} tiers={g.get('tiers')} "
                            f"tier_ok={g.get('tier_ok')}")
-                print(f"  [ours {i}] NOT_GATED {blocker}", flush=True)
+                # KEEP THE WALL THE BOARD ALREADY PAID FOR. The ratio still refuses -- an ungated
+                # wall never enters `walls` and so can never reach `min_wall_ns` or a speedup --
+                # but discarding the number entirely means a cell that RAN reports nothing at all.
+                # resnet50_v1_5 does exactly this: it builds, runs, and returns a stable
+                # cos 0.998278 / rel 0.047153 on every launch, and the row came back with no
+                # timing whatsoever while ExecuTorch's 884.774 ms sat measured beside it. This is
+                # the same reasoning as the reference-side fix that kept a paid-for ET wall; our
+                # arm simply never got it. Recorded under a name that cannot be mistaken for a
+                # gated one.
+                ungated_walls.append(res["metrics"]["wall_ns"])
+                print(f"  [ours {i}] NOT_GATED wall_ns={res['metrics']['wall_ns']} {blocker}",
+                      flush=True)
                 continue
             walls.append(res["metrics"]["wall_ns"])
             gated += 1
@@ -177,6 +189,11 @@ def ours_arm(model_dir: Path, pkg, golden_refs: dict, work_root: Path, *,
     conds.append(_conditions())
     return {"ok": gated > 0, "n_gated": gated, "walls": walls,
             "min_wall_ns": min(walls) if walls else None,
+            # Ungated walls are kept SEPARATELY and never merged into `walls`, so no ratio can be
+            # computed from one by accident. They exist so a refused cell still says how fast the
+            # thing that ran was.
+            "ungated_walls": ungated_walls,
+            "min_ungated_wall_ns": min(ungated_walls) if ungated_walls else None,
             # The FULL gate record, not the collapsed pair. `_gate` sets out["rel"] to the W8A8
             # tier's score when that tier is present, so keeping only ("cos","rel") silently drops
             # fp32_rel -- the one number comparable with a reference that scored against fp32. That
