@@ -30,7 +30,8 @@ from merlin.agentreport.capsule_time import read_capsule_timings, summarize   # 
 from merlin.agentreport.index import ArmSpec, RunRef, build_index             # noqa: E402
 from merlin.agentreport.passes import read_passes                             # noqa: E402
 from merlin.agentreport.phase2 import read_phase2                             # noqa: E402
-from merlin.agentreport.spans import concurrency, read_spans                  # noqa: E402
+from merlin.agentreport.series import rate_curve, read_token_series           # noqa: E402
+from merlin.agentreport.spans import concurrency, occupancy_bins, read_spans   # noqa: E402
 from merlin.agentreport.tokens import METERED, NOTIONAL, read_tokens          # noqa: E402
 from merlin.common.artifacts import new_product                               # noqa: E402
 from merlin.common.paths import artifacts_dir, repo_root                      # noqa: E402
@@ -123,6 +124,10 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
         spanset = read_spans(ref.path)
         avail.fields.update(spanset.availability.fields)
 
+    centres, shares = occupancy_bins(spanset)
+    out["activity_bins"] = [{"t_s": round(c, 1), "occupied": round(v, 3)}
+                            for c, v in zip(centres, shares)]
+
     conc = concurrency(spanset)
     avail.fields.update(conc.availability.fields)
     out.update({
@@ -132,6 +137,22 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
         "tool_seconds": round(sum(s.duration_s for s in spanset.spans), 1),
         "overlap_s": round(conc.overlap_s, 1), "overlap_share": round(conc.overlap_share, 4),
         "max_concurrent": conc.max_concurrent})
+
+    # The token curve is cross-checked against the total the harness recorded independently, so a
+    # reconstruction that quietly undercounts cannot reach a figure.
+    tseries = read_token_series(ref.path, recorded_totals={
+        "output": tok.output_tokens or None, "cache_read": tok.cache_read_tokens or None})
+    avail.fields.update(tseries.availability.fields)
+    out["n_usage_reports"] = tseries.n_reports
+    out["n_usage_duplicates"] = tseries.n_duplicates
+    out["token_series_source"] = tseries.source
+    if tseries.can_rate and avail.get("token_series_crosscheck").ok:
+        out["token_curve"] = [
+            {"t_s": round(s.t_s, 1), "input": s.input_tokens, "output": s.output_tokens,
+             "cache_read": s.cache_read_tokens, "cache_creation": s.cache_creation_tokens}
+            for s in tseries.samples]
+    else:
+        out["token_curve"] = []
 
     if want_capsule_time:
         rows = read_capsule_timings(ref.path)
@@ -158,12 +179,80 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
 
 # --------------------------------------------------------------------------- selection
 
+#: A run whose score came from a submission it INHERITED is not evidence about the arm that ran it.
+#: The only UNAMBIGUOUS signal is a seed marker on disk. A tool-call or token threshold is not a
+#: substitute: call counts are not comparable across drivers -- one driver's single call runs a whole
+#: shell pipeline while another's reads one file -- and a threshold tuned on one driver libels
+#: legitimate runs on the other. Measured: a from-scratch claudecode run took 590 calls for 20/20
+#: while a from-scratch codex run took 136 for 40/40.
+_SEED_MARKERS = ("seed_submission.json", "BASELINE.json")
+
+#: How far below its comparable siblings a LADDER's total work must sit before it is called a patch
+#: ladder. Applied only between ladders matched on target, corpus size and model, so the driver and
+#: the task are held fixed and the comparison means something.
+_PATCH_WORK_RATIO = 0.1
+
+
+def classify_provenance(f: dict) -> tuple[str, str]:
+    """``(kind, why)`` -- did this run BUILD its result, or inherit one?
+
+    Marker-based only. Absence of a marker is reported as ``earned``, which is the honest default:
+    guessing from how much work a run did misreads whichever driver the guess was not tuned on."""
+    path = Path(f["path"])
+    markers = [m for m in _SEED_MARKERS if (path / m).is_file()]
+    if markers:
+        return "seeded", f"carries {', '.join(markers)}, so it started from an existing submission"
+    if not (f.get("tool_calls") or 0) and (f.get("passed") or 0) > 0:
+        return "unknown", ("no tool-call count was recorded, so whether this run built its result "
+                           "cannot be told from what it left behind")
+    return "earned", ""
+
+
+def _label_ladders(ladders: dict) -> None:
+    """Mark each ladder `full`, `patch` or `null`, comparing only against comparable ladders.
+
+    A ladder every rung of which scored zero is a `null` cell -- a real result, but not a contrast.
+    A ladder whose total work is an order of magnitude below another ladder on the SAME target,
+    corpus size and model is a `patch` ladder: its rungs adjusted an existing compiler rather than
+    building one. Holding target, corpus and model fixed is what makes that comparison legitimate;
+    comparing across drivers or corpora would not be."""
+    work = {}
+    for key, members in ladders.items():
+        target, phase, _ = key.split("/")
+        corpus = max((f.get("capsules") or 0) for f in members)
+        model = sorted({f.get("model") or "" for f in members})[0]
+        total = sum(f.get("total_tokens") or 0 for f in members)
+        work[key] = (target, phase, corpus, model, total)
+
+    for key, members in ladders.items():
+        target, phase, corpus, model, total = work[key]
+        peers = [t for k, (tg, ph, cp, md, t) in work.items()
+                 if k != key and (tg, ph, cp, md) == (target, phase, corpus, model) and t > 0]
+        if max((f.get("passed") or 0) for f in members) == 0:
+            quality, note = "null", "every rung scored zero — a real result, but not a contrast"
+        elif any(f.get("provenance") == "seeded" for f in members):
+            quality, note = "patch", "at least one rung carries a seed marker"
+        elif peers and total > 0 and total < _PATCH_WORK_RATIO * max(peers):
+            quality = "patch"
+            note = (f"used {total / 1e6:.1f} M tokens against {max(peers) / 1e6:.0f} M for a "
+                    f"comparable ladder on the same target, corpus and model — these rungs adjusted "
+                    f"an existing compiler rather than building one")
+        else:
+            quality, note = "full", ""
+        for f in members:
+            f["ladder_quality"] = quality
+            f["ladder_note"] = note
+
+
 def select(facts: list[dict], *, per_cell: int = 1) -> list[dict]:
     """Mark the runs a report leads with, and say why each was or was not chosen.
 
     Ranked inside every ``(target, arm, phase)`` cell by score, then by how much of the run is
     actually readable, then by recency. Every run keeps a ``selection_reason``, so the exclusions are
     auditable rather than implicit -- the denominator is part of the result."""
+    for f in facts:
+        f["provenance"], f["provenance_note"] = classify_provenance(f)
+
     def score(f: dict) -> float:
         return (f["passed"] / f["capsules"]) if f.get("passed") is not None and f.get("capsules") else -1.0
 
@@ -207,6 +296,8 @@ def select(facts: list[dict], *, per_cell: int = 1) -> list[dict]:
             f["selection_reason"] = (
                 f"member of the {len(members)}-arm ladder {tag!r} on {target} "
                 f"({sorted(members)}), which is a like-for-like comparison")
+    _label_ladders({f"{t}/{ph}/{tag}": list(m.values())
+                    for (t, ph, tag), m in by_tag.items() if len(m) >= 3})
     return facts
 
 

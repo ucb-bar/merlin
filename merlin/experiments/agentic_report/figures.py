@@ -101,7 +101,7 @@ def arm_ladder(facts, out):
     if not ladders:
         return
     keys = sorted(ladders, key=lambda k: -max((f["capsules"] or 0) for f in ladders[k]))
-    fig, axes = plt.subplots(1, len(keys), figsize=(4.3 * len(keys), 5.2), squeeze=False)
+    fig, axes = plt.subplots(1, len(keys), figsize=(4.3 * len(keys), 5.8), squeeze=False)
     for ax, key in zip(axes[0], keys):
         members = {f["arm"]: f for f in ladders[key]}
         corpora = sorted({f["capsules"] for f in ladders[key] if f["capsules"]})
@@ -134,13 +134,25 @@ def arm_ladder(facts, out):
         ax.set_ylabel("capsules passed" if key == keys[0] else "")
         style_ax(ax)
         target, _, tag = key.split("/")
-        title(ax, f"{target} · {tag}\n{total} capsules", fs=10.5, pad=8)
+        quality = ladders[key][0].get("ladder_quality", "full")
+        badge = {"full": "", "patch": "  ·  PATCH LADDER",
+                 "null": "  ·  NULL CELL"}.get(quality, "")
+        title(ax, f"{target} · {tag}{badge}\n{total} capsules", fs=10.5, pad=8)
+        if quality != "full":
+            # Dim a ladder that is not a from-scratch contrast, so it cannot be read as one at a
+            # glance. The note beneath says which kind it is and why.
+            ax.set_facecolor("#f0e8de")
+            note = ladders[key][0].get("ladder_note") or ""
+            ax.text(0.5, -0.30, note[:150], transform=ax.transAxes, ha="center", va="top",
+                    fontsize=7.0, color=MAUVE, wrap=True)
     _figcaption(fig, "Only tag-matched ladders are shown: every rung in a panel was graded against "
                      "the same corpus with the same model, so the bars are comparable. Cost (~ = "
-                     "notional, a seat is not billed per token) and active wall are under each rung. "
-                     "Fractions from DIFFERENT panels are not comparable — the corpora differ.")
+                     "notional) and active wall are under each rung. Fractions from DIFFERENT panels "
+                     "are not comparable — the corpora differ. A shaded panel is not a from-scratch "
+                     "contrast: PATCH means its rungs adjusted an existing compiler, NULL means every "
+                     "rung scored zero.", y=0.02)
     suptitle(fig, "The ladder, where a like-for-like ladder exists", y=1.02)
-    fig.subplots_adjust(bottom=0.24, top=0.83, wspace=0.30)
+    fig.subplots_adjust(bottom=0.32, top=0.83, wspace=0.30)
     _save(fig, out, "fig01_arm_ladder")
 
 
@@ -532,6 +544,93 @@ def coverage_matrix(facts, out):
     suptitle(fig, "What each selected run can actually tell us", y=1.0)
     fig.subplots_adjust(bottom=0.16, top=0.93)
     _save(fig, out, "fig09_coverage_matrix")
+
+
+@figure("fig10_rate_panels")
+def rate_panels(facts, out):
+    """Activity share over wall time with the token-rate overlay — the reference view.
+
+    One panel per run: the stacked band is what the agent was occupied by, the lines are how fast
+    tokens moved. Only runs whose reconstructed token curve AGREES with the total the harness
+    recorded independently are drawn, because a rate curve is the easiest thing here to draw
+    plausibly and wrongly."""
+    rows = [f for f in facts if f.get("selected") and f.get("token_curve")
+            and (f.get("span_wall_s") or 0) > 60]
+    rows.sort(key=lambda f: (f["target"], f["arm"]))
+    if not rows:
+        return
+    fig, axes = plt.subplots(len(rows), 1, figsize=(11.5, 1.55 * len(rows) + 1.2), squeeze=False)
+    for ax, f in zip(axes[:, 0], rows):
+        curve = f["token_curve"]
+        xs = [c["t_s"] / 60.0 for c in curve]
+        span_end = max((f.get("span_wall_s") or 0) / 60.0, xs[-1] if xs else 0)
+
+        # Activity share: the fraction of each bin occupied by a tool call. What is NOT occupied is
+        # the agent thinking (or a duration the stream could not preserve), drawn as the remainder.
+        band = f.get("activity_bins") or []
+        if band:
+            bx = [b["t_s"] / 60.0 for b in band]
+            by = [b["occupied"] for b in band]
+            ax.fill_between(bx, 0, by, color=SAGE, alpha=0.45, lw=0, step="mid")
+            ax.fill_between(bx, by, 1.0, color="none", edgecolor=INK, lw=0.0,
+                            hatch=GAP_HATCH, alpha=0.30, step="mid")
+        else:
+            ax.text(0.5, 0.5, "no tool spans to place on this axis", transform=ax.transAxes,
+                    ha="center", va="center", fontsize=8, color=MAUVE)
+        ax.set_ylim(0, 1)
+        ax.set_yticks([0, 1])
+        ax.set_ylabel("share", fontsize=8)
+
+        rate = ax.twinx()
+        drew = False
+        for key, colour, label in (("output", NAVY, "output"), ("cache_read", SLATE, "cached input")):
+            ts, vs = [], []
+            for i in range(1, len(curve)):
+                lo = max(0, i - 5)
+                dt = (curve[i]["t_s"] - curve[lo]["t_s"]) / 60.0
+                if dt <= 0:
+                    continue
+                ts.append(curve[i]["t_s"] / 60.0)
+                vs.append(max(curve[i][key] - curve[lo][key], 0) / dt)
+            if len(ts) >= 2:
+                rate.plot(ts, [max(v, 1e-1) for v in vs], color=colour, lw=1.7, label=label)
+                drew = True
+        if drew:
+            rate.set_yscale("log")
+        rate.set_ylabel("tok/min", fontsize=8)
+        rate.tick_params(labelsize=7)
+
+        for m in f.get("pass_milestones", []):
+            t = m["t_s"] / 60.0
+            if t <= span_end:
+                ax.axvline(t, color=GOLD, lw=1.4, ls=(0, (4, 3)), alpha=0.9)
+        cost, kind = _cost(f)
+        money = "unpriced" if cost is None else (f"${cost:.0f}" if kind == "metered" else f"~${cost:.0f}")
+        ax.text(0.004, 1.06, f"{f['target']} · {ARM_LABEL[f['arm']]} · {f['run_id'][:30]}  —  "
+                             f"{span_end:.0f} min · {money} · "
+                             f"{(f.get('total_tokens') or 0) / 1e6:.0f}M tok · "
+                             f"final {f.get('passed')}/{f.get('capsules')}",
+                transform=ax.transAxes, va="bottom", fontsize=8.2, color=INK)
+        ax.set_xlim(0, span_end)
+        style_ax(ax, grid="x")
+    axes[-1, 0].set_xlabel("Time (min)")
+    fig.legend(handles=[Patch(facecolor=SAGE, alpha=0.30, label="occupied by a tool call"),
+                        Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH,
+                              label="thinking / duration not preserved"),
+                        Line2D([0], [0], color=NAVY, lw=1.7, label="output tok/min"),
+                        Line2D([0], [0], color=SLATE, lw=1.7, label="cached input tok/min"),
+                        Line2D([0], [0], color=GOLD, lw=1.4, ls=(0, (4, 3)), label="capsule-pass milestone")],
+               loc="lower center", ncol=5, fontsize=8.5, frameon=True)
+    skipped = sum(1 for f in facts if f.get("selected") and not f.get("token_curve"))
+    _figcaption(fig, f"{len(rows)} of the selected runs carry a token curve that agrees with the "
+                     f"total the harness recorded independently; {skipped} do not and are omitted "
+                     f"rather than drawn from an unverified reconstruction. The green band is the "
+                     f"share of each time slice covered by a tool call, from measured span overlap; "
+                     f"the hatched remainder is the agent thinking plus any call whose duration the "
+                     f"stream could not preserve — the two are not separable here.", y=0.045)
+    suptitle(fig, "Activity and token rate over the run", y=0.995)
+    fig.subplots_adjust(top=0.95, bottom=0.10, hspace=0.75)
+    _save(fig, out, "fig10_rate_panels")
 
 
 def main(argv=None) -> int:

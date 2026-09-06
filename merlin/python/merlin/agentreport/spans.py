@@ -146,11 +146,17 @@ def _lines(path: Path) -> Iterable[dict]:
             yield obj
 
 
-def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int]:
-    """Spans by ``tool_use.id`` -> ``tool_result.tool_use_id``. Returns also how many ``tool_use``
-    blocks carried NO id, which is the diagnostic that sends the caller to the raw stream."""
+def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int, int]:
+    """Spans by ``tool_use.id`` -> ``tool_result.tool_use_id``.
+
+    Also returns the two counts that tell a caller WHY it got nothing, because they have different
+    fixes. ``idless`` means the join key is missing and the raw driver stream may still have it.
+    ``unstamped`` means the blocks are joinable but nothing carries a clock -- which is what one
+    driver's transcripts look like: 995 tool_use blocks, every one with an id, and no time field
+    anywhere in the file. No reader can fix that; the driver has to stamp events on arrival."""
     spans: list[Span] = []
     idless = 0
+    unstamped = 0
     unterminated = 0
     offset = 0.0
     for path in paths:
@@ -162,6 +168,11 @@ def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int]:
                 continue
             t = _event_time(evt)
             if t is None:
+                content_blocks = (evt.get("message") or {}).get("content")
+                if isinstance(content_blocks, list) and any(
+                        isinstance(b, dict) and b.get("type") in ("tool_use", "tool_result")
+                        for b in content_blocks):
+                    unstamped += 1
                 continue
             if t0 is None:
                 t0 = t
@@ -184,7 +195,7 @@ def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int]:
                         spans.append(Span(started[0], rel, started[1]))
         unterminated += len(open_calls)
         offset = last
-    return spans, idless, unterminated, len(spans)
+    return spans, idless, unstamped, unterminated, len(spans)
 
 
 def _from_raw_items(paths: Sequence[Path]) -> tuple[list[Span], int]:
@@ -245,7 +256,7 @@ def read_spans(run_dir: Path) -> SpanSet:
     transcripts = round_transcripts(run_dir)
     raws = raw_event_streams(run_dir)
 
-    spans, idless, unterminated, n = _from_transcript(transcripts)
+    spans, idless, unstamped, unterminated, n = _from_transcript(transcripts)
     if spans:
         out.spans, out.source, out.n_pairs, out.n_unterminated = spans, SOURCE_TRANSCRIPT, n, unterminated
         out.wall_s = max(s.end_s for s in spans)
@@ -267,6 +278,10 @@ def read_spans(run_dir: Path) -> SpanSet:
 
     if not transcripts and not raws:
         why = f"no transcript and no driver event stream under {run_dir.name}"
+    elif unstamped and not idless:
+        why = (f"{unstamped} tool event(s) are joinable but carry no time field at all — this "
+               f"driver's transcripts record what happened and not when, so no reader can place "
+               f"them on a clock. Fixing it means stamping events on arrival at capture time")
     elif idless:
         why = (f"the merged transcript's {idless} tool_use block(s) carry no id and no driver event "
                f"stream is present, so no tool call can be placed on a clock")
@@ -404,3 +419,30 @@ def concurrency(spanset: SpanSet) -> Concurrency:
             f"overlap is stable when flush-suspect spans are dropped ({overlap:.1f}s vs "
             f"{t_overlap:.1f}s, {drift:.1%} apart)", source=spanset.source))
     return out
+
+
+def occupancy_bins(spanset: SpanSet, bins: int = 90) -> tuple[list[float], list[float]]:
+    """``(bin_centre_seconds, occupied_share)`` -- how much of each slice a tool call covered.
+
+    The share is computed from MEASURED overlap with each bin, so one long simulation spreads across
+    the bins it really covered instead of being counted once where it started. It is clamped to 1:
+    genuinely concurrent calls can occupy more than a bin's worth of tool-seconds, and a band above
+    one would read as more than all of the time.
+
+    What is NOT covered is the agent thinking, plus any call whose duration the stream could not
+    preserve. Those two are not separable here and the caller must not label the remainder as either
+    one alone."""
+    if not spanset.spans or spanset.wall_s <= 0 or bins <= 0:
+        return [], []
+    width = spanset.wall_s / bins
+    acc = [0.0] * bins
+    for sp in spanset.spans:
+        if sp.duration_s <= 0:
+            continue
+        first = max(int(sp.start_s // width), 0)
+        last = min(int(sp.end_s // width), bins - 1)
+        for b in range(first, last + 1):
+            lo, hi = b * width, (b + 1) * width
+            acc[b] += max(min(sp.end_s, hi) - max(sp.start_s, lo), 0.0)
+    centres = [(b + 0.5) * width for b in range(bins)]
+    return centres, [min(a / width, 1.0) if width > 0 else 0.0 for a in acc]

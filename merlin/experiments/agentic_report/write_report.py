@@ -99,8 +99,12 @@ def write(facts: list[dict], out: Path) -> Path:
         members = sorted(ladders[key], key=lambda f: f["arm"])
         corpora = sorted({f["capsules"] for f in members})
         target, _, tag = key.split("/")
-        A(f"**{target} · `{tag}`** — {corpora[0] if len(corpora) == 1 else corpora} capsules, "
-          f"model `{members[0]['model']}`.\n")
+        quality = members[0].get("ladder_quality", "full")
+        tag_label = {"full": "", "patch": " — **patch ladder**", "null": " — **null cell**"}[quality]
+        A(f"**{target} · `{tag}`**{tag_label} — {corpora[0] if len(corpora) == 1 else corpora} "
+          f"capsules, model `{members[0]['model']}`.\n")
+        if members[0].get("ladder_note"):
+            A(f"> {members[0]['ladder_note']}\n")
         A("| arm | passed | active | tokens | cost | tool calls |")
         A("|---|---|---|---|---|---|")
         for f in members:

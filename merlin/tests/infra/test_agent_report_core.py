@@ -569,3 +569,26 @@ def test_a_minority_of_tied_spans_yields_the_uncontaminated_figure_not_a_refusal
     assert status.kind == DERIVED
     assert "were excluded as a flush" in status.reason
     assert c.overlap_s > 0                            # the real overlap is still reported
+
+
+def test_joinable_but_unstamped_events_say_the_clock_is_missing_not_the_key(tmp_path):
+    """The two refusals have different fixes and must not share a message.
+
+    One driver's transcripts carry 995 tool_use blocks every one of which has an id, and no time
+    field anywhere in the file. That is not recoverable by any reader: the driver has to stamp events
+    on arrival. Reporting it as a missing join key would send someone looking for a raw stream that
+    would not help."""
+    run = tmp_path / "run"
+    (run / "rounds").mkdir(parents=True)
+    rows = [
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "a", "name": "bash", "input": {"command": "x"}}]}},
+        {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "a"}]}},
+    ]
+    (run / "rounds" / "round_00.transcript.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows))
+    ss = read_spans(run)
+    assert ss.spans == []
+    reason = ss.availability.get("spans").reason
+    assert "no time field" in reason and "stamping events on arrival" in reason
+    assert "no id" not in reason
