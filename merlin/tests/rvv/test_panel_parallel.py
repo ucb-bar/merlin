@@ -34,6 +34,14 @@ module {
 """
 
 
+def test_single_panel_has_no_marker_to_leak_after_loop_folding():
+    assert PP.marker_ops(True, 1) == []
+    assert PP.marker_ops(False, 32) == []
+    marked = PP.marker_ops(True, 2)
+    assert len(marked) == 1
+    assert str(marked[0].callee) == "@__merlin_parallel_panel_marker"
+
+
 def _rewrite(text: str, tmp_path) -> tuple[str, str]:
     src = tmp_path / "in.mlir"
     src.write_text(text, encoding="utf-8")

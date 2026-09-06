@@ -33,6 +33,17 @@ def marker_call():
     return CallOp(PANEL_MARKER_SYMBOL, [], [])
 
 
+def marker_ops(enabled: bool, panel_count: int) -> list:
+    """Return a marker only when the outer loop has real parallel work.
+
+    Canonicalization erases a statically single-trip ``scf.for`` before the post-bufferization
+    rewrite.  A marker placed in that loop then survives as an ordinary call with no loop around it,
+    which cannot be converted to worksharing and eventually becomes an undefined symbol.  Omitting
+    the marker is also the honest performance description: one panel has nothing to distribute.
+    """
+    return [marker_call()] if enabled and int(panel_count) > 1 else []
+
+
 def ensure_marker_declaration(module) -> None:
     """Add the private marker declaration once to an xDSL module."""
     from xdsl.dialects.func import FuncOp

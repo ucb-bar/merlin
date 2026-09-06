@@ -481,10 +481,8 @@ def _rewrite_one(contraction, argval, steps, m: int, n: int, k: int, nr: int, li
     put = InsertSliceOp.build(
         operands=[inner.results[0], carried, [ivar], [], []], result_types=[acc_t],
         properties=_dyn_slice_props(3, 1, [m, 1, nr]))
-    markers = []
-    if parallel_panels:
-        from .panel_parallel import marker_call
-        markers.append(marker_call())
+    from .panel_parallel import marker_ops
+    markers = marker_ops(parallel_panels, no)
     body.add_ops([*markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
     loop = ForOp(lb.results[0], ub.results[0], step.results[0], [acc.results[0]], Region(body))
 
