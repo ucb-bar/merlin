@@ -291,6 +291,51 @@ def ours_accuracy_reference(ours: dict) -> str:
     return (ours.get("accuracy_reference_by_tier") or {}).get("fp32", "")
 
 
+def same_rule_both_arms(ours: dict, arm: dict, ours_bundle: str) -> dict:
+    """Both arms' cos/rel under the SAME derived bar. Reporting only -- changes no verdict.
+
+    The two arms are graded by DIFFERENT rules today, and the asymmetry favours the reference.
+    ``baselines.bundle.int8_accuracy_bar`` derives a bar from the model's OWN quantization noise
+    (``rel = max(ABSOLUTE_INT8_REL, QUANT_EXCESS_K * floor_rel)``) and the ExecuTorch arm is held to
+    it; our arm is held to ``zephyr_model._gate``'s ABSOLUTE T1 (cos > 0.999, rel < 1e-2). On
+    tiny_llama that is cos>0.9487 / rel<3.8325 for them against cos>0.999 / rel<0.01 for us -- about
+    380x apart in rel -- so our arm is recorded NOT_GATED at rel 0.177 while their rel 0.106 passes,
+    on a bundle whose own fp32-vs-W8A8 distance dwarfs both numbers.
+
+    That does not make our gate wrong: T1 asks a TIGHTER and different question (did we implement
+    W8A8 the way the reference implementation does) and it should stay tight. But a reader comparing
+    the two cells must be able to see that the verdicts came from different bars, and what our arm
+    scores under the reference's own rule. This is recorded on the REFUSAL path too, because a cell
+    our stricter bar refused is exactly where the difference decides how the row reads.
+    """
+    try:
+        from merlin.baselines.bundle import int8_accuracy_bar as _bar
+        from merlin.common.artifacts import recaptures_dir
+        # `verdict` is handed the bundle NAME, not its path -- resolve it the same way the rest of
+        # the harness does rather than threading a second argument through.
+        b = _bar(recaptures_dir() / ours_bundle)
+        cos_thr, rel_thr = b.get("cos_threshold"), b.get("rel_threshold")
+        g = ours.get("gate") or {}
+        o_cos, o_rel = g.get("cos"), g.get("rel")
+        runs = arm.get("runs") or []
+        e_cos = next((r.get("cos") for r in runs if r.get("cos")), None)
+        e_rel = next((r.get("rel") for r in runs if r.get("rel")), None)
+
+        def _passes(c, r):
+            if c is None or r is None or cos_thr is None or rel_thr is None:
+                return None          # UNKNOWN, never a silent pass
+            return bool(c > cos_thr and r < rel_thr)
+
+        return {"basis": b.get("basis"), "cos_threshold": cos_thr, "rel_threshold": rel_thr,
+                "ours": {"cos": o_cos, "rel": o_rel, "passes": _passes(o_cos, o_rel)},
+                "executorch": {"cos": e_cos, "rel": e_rel, "passes": _passes(e_cos, e_rel)},
+                "note": ("the derived bar the reference arm is already judged by, applied to BOTH "
+                         "arms. Reporting only: the cell's verdict remains the gate's own, and our "
+                         "T1 asks a tighter question than this bar does.")}
+    except Exception as exc:        # noqa: BLE001
+        return {"status": "unavailable", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}
+
+
 def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
     """The ratio, or a concrete refusal. Never a number whose basis cannot be shown."""
     from merlin.compare.executorch_column import (accuracy_reference_mismatch_reason,
@@ -300,7 +345,11 @@ def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
     et_w = arm.get("warm_ns")
     if not ours_w or not et_w:
         return {"status": "not_measured",
-                "reason": arm.get("refusal") or ours.get("blocker") or "one arm produced no wall"}
+                "reason": arm.get("refusal") or ours.get("blocker") or "one arm produced no wall",
+                # A cell our stricter bar refused is exactly where a reader needs to see what the
+                # bar the REFERENCE is judged by would have said about the same numbers.
+                "same_rule_both_arms": same_rule_both_arms(ours, arm, ours_bundle),
+                "ours_ungated_wall_ns": ours.get("min_ungated_wall_ns")}
     ref_bundle = next((r.get("bundle_id", "") for r in arm["runs"] if r.get("bundle_id")), "")
     ref_recipe = next((r.get("quant_recipe", "") for r in arm["runs"] if r.get("quant_recipe")), "")
     # Ours is the merlin int8 datapath by construction (the package is int8) and its recipe name is
@@ -334,6 +383,9 @@ def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
                     "ours_rel": ours.get("gate", {}).get("fp32_rel"),
                     "executorch_cos": next((r.get("cos") for r in arm["runs"] if r.get("cos")), None),
                     "executorch_rel": next((r.get("rel") for r in arm["runs"] if r.get("rel")), None)}
+    accuracy["same_rule_both_arms"] = same_rule_both_arms(ours, arm, ours_bundle)
+
+
     # ExecuTorch's weight prepacking happens at delegate init, OUTSIDE the execute line this ratio
     # divides. Surfaced beside the ratio so the reader can see what each side did not pay for.
     load = next((r.get("load_ns") for r in arm["runs"] if r.get("load_ns")), None)
