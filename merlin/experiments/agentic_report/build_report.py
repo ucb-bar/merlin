@@ -29,6 +29,7 @@ from merlin.agentreport.availability import Availability                      # 
 from merlin.agentreport.capsule_time import read_capsule_timings, summarize   # noqa: E402
 from merlin.agentreport.index import ArmSpec, RunRef, build_index             # noqa: E402
 from merlin.agentreport.passes import read_passes                             # noqa: E402
+from merlin.agentreport.phase1_tools import read_phase1_tools                 # noqa: E402
 from merlin.agentreport.phase2 import read_phase2                             # noqa: E402
 from merlin.agentreport.series import rate_curve, read_token_series           # noqa: E402
 from merlin.agentreport.spans import concurrency, occupancy_bins, read_spans   # noqa: E402
@@ -38,6 +39,10 @@ from merlin.common.paths import artifacts_dir, repo_root                      # 
 
 HERE = Path(__file__).resolve().parent
 CONCERN = "agentic-report"
+
+#: arm id -> the tool registry's own name for that arm. Filled from the config at load time so the
+#: vocabulary lives in one place.
+ARM_NAME: dict[str, str] = {}
 
 
 # --------------------------------------------------------------------------- config
@@ -61,6 +66,7 @@ class Config:
             meta[str(entry["id"])] = {"label": entry.get("label") or entry["id"],
                                       "adds": list(entry.get("adds") or []),
                                       "name": entry["name"]}
+            ARM_NAME[str(entry["id"])] = str(entry["name"])
         return cls(roots=list(doc.get("roots") or []), arms=tuple(arms), arm_meta=meta,
                    phases=dict(doc.get("phases") or {}),
                    rescue_globs=list(doc.get("rescue_globs") or []))
@@ -123,6 +129,15 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
     else:
         spanset = read_spans(ref.path)
         avail.fields.update(spanset.availability.fields)
+
+    if ref.phase != "phase2":
+        from merlin.targetgen import tool_registry as TR
+        arm_name = ARM_NAME.get(ref.arm, "")
+        p1 = read_phase1_tools(spanset, arm_name, TR.TOOLS, TR.ARM_TOOLS)
+        avail.fields.update(p1.availability.fields)
+        out["granted_tools"] = [
+            {"name": u.name, "invocations": u.invocations, "invocable": u.invocable,
+             "blurb": u.blurb[:200]} for u in p1.tools]
 
     centres, shares = occupancy_bins(spanset)
     out["activity_bins"] = [{"t_s": round(c, 1), "occupied": round(v, 3)}

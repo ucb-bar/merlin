@@ -633,6 +633,73 @@ def rate_panels(facts, out):
     _save(fig, out, "fig10_rate_panels")
 
 
+@figure("fig11_granted_vs_used")
+def granted_vs_used(facts, out):
+    """Which granted tools the functional agent actually reached for.
+
+    An arm is DEFINED by what it may read, but granting a tool and the tool mattering are different
+    claims, and only the second explains a score. Brokered tools expose a filename a command line can
+    name, so a zero there means the shim was never invoked. Path grants expose no such name and their
+    use is invisible to this reader — they are shown as granted-but-unmeasurable rather than as zero,
+    because drawing them at zero would assert something the data cannot support."""
+    rows = [f for f in facts if f.get("selected") and f["phase"] != "phase2"
+            and f.get("granted_tools") and f.get("n_spans")]
+    rows.sort(key=lambda f: (f["arm"], f["target"]))
+    if not rows:
+        return
+    names: list[str] = []
+    for f in rows:
+        for t in f["granted_tools"]:
+            if t["name"] not in names:
+                names.append(t["name"])
+    invocable = {t["name"]: t["invocable"] for f in rows for t in f["granted_tools"]}
+    order = [n for n in names if invocable.get(n)] + [n for n in names if not invocable.get(n)]
+
+    fig, ax = plt.subplots(figsize=(1.05 * len(order) + 5.0, 0.34 * len(rows) + 2.2))
+    for y, f in enumerate(rows):
+        have = {t["name"]: t for t in f["granted_tools"]}
+        for x, name in enumerate(order):
+            t = have.get(name)
+            if t is None:
+                continue                       # not granted to this arm: leave the cell empty
+            if not t["invocable"]:
+                ax.add_patch(plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76, facecolor="none",
+                                           edgecolor=INK, lw=0.7, hatch=GAP_HATCH, alpha=0.45))
+                continue
+            n = t["invocations"]
+            if n == 0:
+                ax.add_patch(plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76,
+                                           facecolor="#e6d7cc", edgecolor=INK, lw=0.7))
+                ax.text(x, y, "0", ha="center", va="center", fontsize=8, color=MAUVE)
+            else:
+                ax.add_patch(plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76,
+                                           facecolor=SAGE, edgecolor=INK, lw=0.7,
+                                           alpha=min(0.35 + 0.09 * n, 1.0)))
+                ax.text(x, y, str(n), ha="center", va="center", fontsize=8, color=INK)
+    ax.set_xticks(range(len(order)))
+    ax.set_xticklabels(order, fontsize=8.4, rotation=28, ha="right")
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([f"{f['target'][:8]} {f['arm']} {f['run_id'][:24]}" for f in rows], fontsize=7.6)
+    ax.set_xlim(-0.6, len(order) - 0.4)
+    ax.set_ylim(-0.6, len(rows) - 0.4)
+    ax.invert_yaxis()
+    style_ax(ax, grid="")
+    ax.legend(handles=[Patch(facecolor=SAGE, edgecolor=INK, label="invoked (count shown)"),
+                       Patch(facecolor="#e6d7cc", edgecolor=INK, label="granted, never invoked"),
+                       Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH,
+                             label="path grant — use is invisible"),
+                       Patch(facecolor=BG, edgecolor=BG, label="blank = not granted to this arm")],
+              loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=8.4)
+    _figcaption(fig, "Counts come from matching staged tool filenames in each run's own command "
+                     "text, so they are a LOWER BOUND: a tool imported inside a script the agent "
+                     "wrote never appears on a command line. A zero on a brokered tool still means "
+                     "its shim was not invoked — on the gemmini arm-4 ladder rung that is true of "
+                     "both tools the arm exists to provide.", y=0.02)
+    suptitle(fig, "Granted is not used", y=1.0)
+    fig.subplots_adjust(bottom=0.30, top=0.90, right=0.78)
+    _save(fig, out, "fig11_granted_vs_used")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)

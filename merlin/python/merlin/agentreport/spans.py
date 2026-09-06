@@ -160,7 +160,7 @@ def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int, 
     unterminated = 0
     offset = 0.0
     for path in paths:
-        open_calls: dict[str, tuple[float, str]] = {}
+        open_calls: dict[str, tuple[float, str, str]] = {}
         t0: float | None = None
         last = 0.0
         for evt in _lines(path):
@@ -187,12 +187,18 @@ def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int, 
                     if not cid:
                         idless += 1
                         continue
-                    open_calls[cid] = (rel, str(block.get("name") or ""))
+                    # Keep the command text: it is the only place a transcript records WHICH
+                    # tool a generic shell call actually ran, and dropping it makes every
+                    # `Bash` span indistinguishable from every other.
+                    payload = block.get("input") if isinstance(block.get("input"), dict) else {}
+                    detail = str(payload.get("command") or payload.get("file_path")
+                                 or payload.get("pattern") or "")
+                    open_calls[cid] = (rel, str(block.get("name") or ""), detail)
                 elif block.get("type") == "tool_result":
                     cid = str(block.get("tool_use_id") or "")
                     started = open_calls.pop(cid, None)
                     if started is not None:
-                        spans.append(Span(started[0], rel, started[1]))
+                        spans.append(Span(started[0], rel, started[1], started[2][:200]))
         unterminated += len(open_calls)
         offset = last
     return spans, idless, unstamped, unterminated, len(spans)
