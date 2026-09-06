@@ -1590,8 +1590,21 @@ def _pull_full_output(remote_out: str, bwork: Path, result: dict[str, Any]) -> N
     before any accuracy gate can mistake it for the model's answer.
     """
     local_out = bwork / "board_output.bin"
-    _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
-          "-o", "StrictHostKeyChecking=no", f"{K1_HOST}:{remote_out}", local_out])
+    command = ["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+               "-o", "StrictHostKeyChecking=no", f"{K1_HOST}:{remote_out}", local_out]
+    # The inference and its output file already exist on the board.  A transient WiFi/SSH close
+    # while pulling that file must retry BEFORE run_binary_on_k1's finally block deletes it; otherwise
+    # a multi-minute, correct run is irretrievably discarded for a transport failure unrelated to
+    # the model.  Three immediate attempts are bounded and preserve the original exception if all
+    # fail.  The element-count check below still rejects partial transfers.
+    for attempt in range(3):
+        try:
+            _run(command)
+            break
+        except K1Error:
+            local_out.unlink(missing_ok=True)
+            if attempt == 2:
+                raise
     import numpy as _np
     output = _np.fromfile(local_out, dtype=_np.float32)
     expected = int(result.get("metrics", {}).get("output_file_elems") or 0)

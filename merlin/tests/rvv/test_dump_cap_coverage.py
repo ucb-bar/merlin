@@ -113,6 +113,28 @@ def test_binary_output_transfer_refuses_a_short_file(monkeypatch, tmp_path) -> N
         k1._pull_full_output("/remote/output.bin", tmp_path, result)
 
 
+def test_binary_output_transfer_retries_a_dropped_scp_before_cleanup(monkeypatch, tmp_path) -> None:
+    """A completed multi-minute inference must not be lost to one transient pull connection."""
+    values = np.array([4.0, 5.0], dtype=np.float32)
+    result = {"metrics": {"output_file_elems": len(values)}}
+    attempts = 0
+
+    def flaky_run(command, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise k1.K1Error("scp: Connection closed")
+        values.tofile(command[-1])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(k1, "_run", flaky_run)
+    monkeypatch.setattr(k1, "K1_HOST", "board")
+    k1._pull_full_output("/remote/output.bin", tmp_path, result)
+    assert attempts == 2
+    assert result["output_complete"] is True
+    assert np.array_equal(result["outputs"], values)
+
+
 def test_full_coverage_changes_only_the_ceiling() -> None:
     """Requesting full output must not perturb the rest of the harness.
 
