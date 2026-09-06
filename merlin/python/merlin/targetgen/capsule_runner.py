@@ -4188,13 +4188,22 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
     _work_volume, _cb_artifact = _cb_evidence(
         cb, compiler_provenance="submission command-buffer contract entrypoint")
+    # THE MOVEMENT AXIS, counted over the SAME buffer. An operational intensity is work over traffic,
+    # and the two halves must come from one emitted program or the ratio describes neither -- so this
+    # rides beside the work total under the artifact digest they share. Emitted for every graded
+    # capsule for the same reason the work total is: an absent key reads as "no movement axis applies",
+    # a zero reads as "this program moved no data", and on a roofline that means infinite intensity.
+    from merlin.perf.movement_volume import movement_evidence as _mv_evidence
+    _movement_volume = _mv_evidence(
+        cb, compiler_provenance="submission command-buffer contract entrypoint")
     return _finalize_capsule_result(
         submission=submission_identity(package_dir, run_id=run_id),
         name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
         trace_check_res=trace_check_res, numeric=numeric, required=required,
         no_oracle=no_oracle, eff_target=eff_target, paths=paths, run_id=run_id,
         cfg=cfg, contract=contract, executability=executability, declined=declined,
-        extra={"work_volume": _work_volume, "command_buffer_artifact": _cb_artifact})
+        extra={"work_volume": _work_volume, "command_buffer_artifact": _cb_artifact,
+               "movement_volume": _movement_volume})
 
 
 def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
