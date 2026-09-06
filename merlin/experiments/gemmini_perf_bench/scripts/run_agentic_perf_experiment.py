@@ -82,6 +82,20 @@ class Config:
     hardware_counters: bool = False
     functional_gsim_certificate: Path | None = None
     functional_gsim_certificate_sha256: str | None = None
+    # Launch WITHOUT the public+hidden functional cross-validation certificate, accepting GSIM's
+    # functional verdicts on the same terms phase 1 already accepted them.
+    #
+    # The asymmetry this answers: phase 1 graded this submission 83/96 on GSIM at L3 and required no
+    # certificate at all, while phase 2 could not START without one. The certificate compares OUTPUT
+    # BYTES between GSIM and the reference engine -- it is a claim about the engine pair, not about
+    # timing -- so waiving it does not touch the timing authority, which the TUNING certificate pins
+    # and which is never waivable here.
+    #
+    # It is not free, and the manifest says so: the functional regrade's verdicts become
+    # GSIM-only, uncorroborated by a second engine. Measured 2026-09-06, which is why the option
+    # exists: the reference leg costs ~45 min/capsule against ~10 s on GSIM, so the exact-cohort
+    # certificate for an 80-workload cohort is ~6.7 engine-hours in front of a run that cannot begin.
+    waive_functional_gsim_certificate: bool = False
     heldout_qualification_timeout: int = 3600
     generalization_count: int = 4
     telemetry_price_table: Path | None = None
@@ -625,26 +639,52 @@ def _verify_tuning_certificate(certificate: GATE.CertificateRecord,
     by design; the campaign measures one member per identity, and validating the unselected corpus
     here would refuse a launch over members it was never going to run.
     """
+    capsule_selection = None if capsules in (None, "", "all") else capsules
+    family_selection = None if families in (None, "", "all") else families
+    selected = capsule_selection is not None or family_selection is not None
     corpus = PAS.discover_performance_corpus(
-        target,
-        capsules=None if capsules in (None, "", "all") else capsules,
-        families=None if families in (None, "", "all") else families)
-    identities: dict[str, str] = {}
+        target, capsules=capsule_selection, families=family_selection)
+    # MANY MEMBERS MAY SHARE ONE IDENTITY, exactly as the docstring above describes. This grouped
+    # form replaces a 1:1 map that raised on the first repeat -- which contradicted the documented
+    # design and refused a launch over it. Measured 2026-09-06: PK00_k16, PM00_m16n16 and
+    # PR00_fits_double_k16 are all 16x16x16, the shared anchor of three sweeps, and every one of the
+    # three families REQUIRES its anchor (PK needs exactly four descriptors, PR needs three depths in
+    # its `fits_double` band), so no capsule could be dropped to satisfy the 1:1 assumption.
+    #
+    # What the certificate must cover is the identity SET, and that comparison is unchanged below --
+    # this is the same many-to-one grouping `functional_gsim_qualification.derive_cases` already
+    # applies on the functional side.
+    identities: dict[str, list[str]] = {}
     for member in corpus.capsules:
         identity = GATE.workload_sha256(
             PAIRED.CERTPROD.derive_workload(member.source_dir / "capsule.yaml"))
-        if identity in identities:
-            raise ExperimentError(
-                f"tuning corpus repeats exact workload identity in {identities[identity]} and "
-                f"{member.family}/{member.capsule}")
-        identities[identity] = f"{member.family}/{member.capsule}"
+        identities.setdefault(identity, []).append(f"{member.family}/{member.capsule}")
+    # A NARROWED RUN MAY USE A WIDER CERTIFICATE. `missing` is the load-bearing half: every member
+    # this campaign will measure must be certified. `extras` guards a different thing -- a
+    # certificate carrying a workload this corpus does not contain at all -- so it is checked against
+    # the FULL corpus, not the selection. Checking it against the selection instead refused a
+    # 16-member PM launch against the 36-workload corpus certificate, which is exactly the situation
+    # the selection exists to create (measured 2026-09-06).
+    full_identities = set(identities)
+    if selected:
+        full_identities = {
+            GATE.workload_sha256(
+                PAIRED.CERTPROD.derive_workload(member.source_dir / "capsule.yaml"))
+            for member in PAS.discover_performance_corpus(target).capsules}
     missing = sorted(set(identities) - set(certificate.members))
-    extras = sorted(set(certificate.members) - set(identities))
+    extras = sorted(set(certificate.members) - full_identities)
     if missing or extras:
         raise ExperimentError(
-            f"tuning GSIM certificate is not the exact derived corpus "
+            f"tuning GSIM certificate does not cover the derived corpus "
             f"(missing={missing}, extras={extras})")
-    return {"workload_sha256": sorted(identities), "members": len(identities)}
+    # `members` stays the DISTINCT-workload count it always was, and the capsule count is recorded
+    # beside it so a reader can see where the two differ instead of inferring one from the other.
+    return {"workload_sha256": sorted(identities),
+            "members": len(identities),
+            "corpus_capsules": sum(len(names) for names in identities.values()),
+            "shared_identities": {identity: sorted(names)
+                                  for identity, names in sorted(identities.items())
+                                  if len(names) > 1}}
 
 
 def _require_same_gsim_build(reference: GATE.CertificateRecord,
@@ -888,10 +928,31 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
     functional_certificate = None
     functional_coverage = None
     functional_provenance = None
+    functional_certificate_waiver = None
     if (config.functional_gsim_certificate is None
             or config.functional_gsim_certificate_sha256 is None):
-        blockers.append(
-            "full public+hidden functional-suite GSIM certificate is required before agent launch")
+        if not config.waive_functional_gsim_certificate:
+            blockers.append(
+                "full public+hidden functional-suite GSIM certificate is required before agent "
+                "launch")
+        else:
+            # RECORDED, NOT SILENT. The waiver travels in the predeclaration so a result can never be
+            # read without the condition it was produced under, and the run is not gate-clean. A
+            # waiver that only removed a blocker would be indistinguishable from a certificate that
+            # was checked and passed -- the failure this repo keeps paying for.
+            functional_certificate_waiver = {
+                "waived": True,
+                "requirement": ("full public+hidden functional-suite GSIM equivalence certificate "
+                                "before agent launch"),
+                "claim_withdrawn": ("the functional regrade's pass/fail verdicts are GSIM-only and "
+                                    "uncorroborated by a second elaborated-RTL engine on the same "
+                                    "ELF"),
+                "claim_retained": ("timing authority is unaffected: it is pinned by the TUNING "
+                                   "certificate, which is verified here and is not waivable"),
+                "same_standard_as": ("phase 1, which graded this submission on GSIM at L3 and "
+                                     "required no equivalence certificate"),
+                "gate_clean": False,
+            }
     else:
         functional_certificate = GATE.load_certificate(
             config.functional_gsim_certificate,
@@ -944,6 +1005,7 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
                        functional_certificate.sha256 if functional_certificate else None),
                    "functional_gsim_coverage": functional_coverage,
                    "functional_gsim_provenance": functional_provenance,
+                   "functional_gsim_certificate_waiver": functional_certificate_waiver,
                    "agent_telemetry": telemetry_preflight,
                    "agent_treatment": telemetry_treatment,
                    "orchestration": chia_preflight,
@@ -1296,6 +1358,11 @@ def _author_candidates(
                 command += ["--capsules", config.perf_capsules]
             if config.perf_families and config.perf_families != "all":
                 command += ["--families", config.perf_families]
+            # FORWARD THE WAIVERS. The coordinator admitted this functional baseline under exactly
+            # these named gaps; a trial that re-checks it without them refuses a run its own campaign
+            # already accepted.
+            for predicate in config.waive_functional_gate or ():
+                command += ["--waive-functional-gate", predicate]
             launch = partial(_run_checked, command_runner, command, environment=environment)
 
         def commit(trial: str = trial, record: Path = record) -> dict[str, Any]:
@@ -1521,17 +1588,23 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
         waive=frozenset(config.waive_functional_gate or ()))
     tuning_certificate = GATE.load_certificate(
         config.gsim_certificate, expected_sha256=config.gsim_certificate_sha256)
-    assert config.functional_gsim_certificate is not None
-    assert config.functional_gsim_certificate_sha256 is not None
-    functional_certificate = GATE.load_certificate(
-        config.functional_gsim_certificate,
-        expected_sha256=config.functional_gsim_certificate_sha256)
-    _require_same_gsim_build(
-        tuning_certificate, functional_certificate, label="functional GSIM certificate")
-    _verify_functional_certificate_provenance(
-        functional_certificate, tuning_certificate, functional.digest)
+    functional_certificate = None
     functional_cohort = _functional_grade_cohort(target)
-    _verify_functional_certificate(functional_certificate, functional_cohort)
+    if (config.functional_gsim_certificate is not None
+            and config.functional_gsim_certificate_sha256 is not None):
+        functional_certificate = GATE.load_certificate(
+            config.functional_gsim_certificate,
+            expected_sha256=config.functional_gsim_certificate_sha256)
+        _require_same_gsim_build(
+            tuning_certificate, functional_certificate, label="functional GSIM certificate")
+        _verify_functional_certificate_provenance(
+            functional_certificate, tuning_certificate, functional.digest)
+        _verify_functional_certificate(functional_certificate, functional_cohort)
+    elif not config.waive_functional_gsim_certificate:
+        # Unreachable through preflight, which already refuses. Kept because this function is also
+        # the resume entrypoint: a resumed run must not acquire a waiver the predeclaration lacks.
+        raise ExperimentError(
+            "full public+hidden functional-suite GSIM certificate is required before agent launch")
     environment = child_environment(config, tuning_certificate)
     expected_treatment = declaration.get("agent_treatment")
     if not isinstance(expected_treatment, Mapping):
@@ -1590,7 +1663,12 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
                     "--run-dir", str(grade_dir), "--arm", "merlin_assisted",
                     "--model", config.model, "--capsules", public_roots,
                     "--hidden-capsules", hidden_roots]
-                regrade_environment = child_environment(config, functional_certificate)
+                # The certificate is used here only to pin the GSIM build the regrade must execute on.
+                # When it is waived, the TUNING certificate pins the same build -- that equality is
+                # what `_require_same_gsim_build` asserts whenever both exist -- so the regrade runs
+                # on the identical engine either way.
+                regrade_environment = child_environment(
+                    config, functional_certificate or tuning_certificate)
                 _run_checked(command_runner, command, environment=regrade_environment)
             saved = _verify_regrade(grade_dir, handoff)
             state.append(f"functional_regrade:{trial}", saved)
@@ -1758,6 +1836,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gsim-certificate-sha256", required=True)
     parser.add_argument("--functional-gsim-certificate", type=Path)
     parser.add_argument("--functional-gsim-certificate-sha256")
+    parser.add_argument("--waive-functional-gsim-certificate", action="store_true",
+                        help="launch WITHOUT the public+hidden functional cross-validation "
+                             "certificate, accepting GSIM's functional verdicts on the same terms "
+                             "phase 1 accepted them. Recorded in the manifest and marks the run not "
+                             "gate-clean: the functional regrade becomes GSIM-only, uncorroborated "
+                             "by a second engine. Timing authority is unaffected -- it is pinned by "
+                             "the tuning certificate, which is never waivable.")
     parser.add_argument("--heldout-qualification-timeout", type=int, default=3600)
     parser.add_argument("--model", required=True)
     parser.add_argument("--effort", required=True)

@@ -1,6 +1,7 @@
 """Offline orchestration tests; no agent or simulator subprocess is launched."""
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import os
@@ -752,3 +753,189 @@ def test_extension_certificate_rejects_workloads_outside_exact_envelope(tmp_path
 
     with pytest.raises(ORCH.ExperimentError, match="outside the exact"):
         ORCH._verify_extension_certificate(tuning, extension, reveal)
+
+
+# --- launching without the functional cross-validation certificate --------------------------------
+# That certificate compares OUTPUT BYTES between GSIM and the reference engine on one shared ELF, so
+# what it establishes is a property of the ENGINE PAIR, not of timing. Measured 2026-09-06: the
+# reference leg costs ~45 min/capsule against ~10 s on GSIM -- ~6.7 engine-hours for an 80-workload
+# cohort, spent in front of a run that cannot start. Phase 1 graded the same submission on GSIM at L3
+# and required no certificate at all. The waiver answers that asymmetry; every test below exists to
+# keep it NARROW (it may relax nothing else) and LOUD (a reader can never mistake a waived run for a
+# corroborated one).
+
+def _uncertified(tmp_path: Path, *, waived: bool):
+    return dataclasses.replace(
+        _config(tmp_path), functional_gsim_certificate=None,
+        functional_gsim_certificate_sha256=None,
+        waive_functional_gsim_certificate=waived)
+
+
+def _certificate_blockers(declaration) -> list[str]:
+    return [line for line in declaration["blockers"] if "functional-suite GSIM certificate" in line]
+
+
+def test_absent_functional_certificate_blocks_launch_unless_explicitly_waived(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CONTROL then TREATMENT: the blocker must really fire before the waiver is worth anything."""
+    _mock_preflight_dependencies(tmp_path, monkeypatch)
+
+    refused = ORCH.preflight(_uncertified(tmp_path, waived=False),
+                             heldout_certificate_provider_available=True)
+    assert refused["status"] == "NO_GO"
+    assert _certificate_blockers(refused), "control: an absent certificate must block the launch"
+
+    waived = ORCH.preflight(_uncertified(tmp_path, waived=True),
+                            heldout_certificate_provider_available=True)
+    assert waived["status"] == "GO"
+    assert _certificate_blockers(waived) == []
+
+
+def test_the_waiver_records_the_claim_it_withdraws_and_is_not_gate_clean(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A waiver that only deleted a blocker would be indistinguishable from a certificate that was
+    checked and passed. The predeclaration must carry what was given up."""
+    _mock_preflight_dependencies(tmp_path, monkeypatch)
+    declaration = ORCH.preflight(_uncertified(tmp_path, waived=True),
+                                 heldout_certificate_provider_available=True)
+
+    waiver = declaration["functional_gsim_certificate_waiver"]
+    assert waiver["waived"] is True
+    assert waiver["gate_clean"] is False
+    assert "uncorroborated" in waiver["claim_withdrawn"]
+    # The timing authority is the one thing a perf experiment must never lose.
+    assert "TUNING" in waiver["claim_retained"]
+    assert declaration["functional_gsim_certificate_sha256"] is None
+    assert declaration["functional_gsim_coverage"] is None
+
+
+def test_no_waiver_is_recorded_when_the_certificate_is_actually_supplied(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The waiver field must distinguish the two worlds, so a supplied certificate never reads as a
+    waived one and a waived run never reads as a certified one."""
+    _mock_preflight_dependencies(tmp_path, monkeypatch)
+    certified = ORCH.preflight(_config(tmp_path), heldout_certificate_provider_available=True)
+    assert certified["functional_gsim_certificate_waiver"] is None
+    assert certified["functional_gsim_coverage"] is not None
+
+
+def test_the_waiver_suppresses_no_other_blocker(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION: waive the certificate AND withhold the held-out provider. The unrelated blocker must
+    still refuse the launch, or the waiver is a general-purpose gate opener."""
+    _mock_preflight_dependencies(tmp_path, monkeypatch)
+    declaration = ORCH.preflight(_uncertified(tmp_path, waived=True),
+                                 heldout_certificate_provider_available=False)
+    assert declaration["status"] == "NO_GO"
+    assert any("post-seal" in line for line in declaration["blockers"])
+
+
+def test_the_waiver_never_relaxes_the_tuning_certificate(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION: the tuning certificate pins the TIMING authority. Breaking it must still refuse even
+    with the functional certificate waived."""
+    _mock_preflight_dependencies(tmp_path, monkeypatch)
+
+    def _refuse(*_args, **_kwargs):
+        raise ORCH.ExperimentError("tuning certificate does not cover the corpus")
+
+    monkeypatch.setattr(ORCH, "_verify_tuning_certificate", _refuse)
+    with pytest.raises(ORCH.ExperimentError):
+        ORCH.preflight(_uncertified(tmp_path, waived=True),
+                       heldout_certificate_provider_available=True)
+
+
+def _fake_corpus(rows):
+    return SimpleNamespace(capsules=[
+        SimpleNamespace(family=family, capsule=name, source_dir=Path("/corpus") / name)
+        for family, name in rows])
+
+
+def _identity_by_capsule(mapping, monkeypatch):
+    monkeypatch.setattr(ORCH.PAIRED.CERTPROD, "derive_workload",
+                        lambda path: {"identity": mapping[path.parent.name]})
+    monkeypatch.setattr(ORCH.GATE, "workload_sha256", lambda workload: workload["identity"])
+
+
+def test_tuning_corpus_may_measure_one_workload_under_several_family_levers(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Several families measure the same workload under a different lever and the campaign measures
+    one member per identity -- which is what this function's contract says. A 1:1 assumption here
+    refused a real launch on 2026-09-06: PK00_k16, PM00_m16n16 and PR00_fits_double_k16 are all
+    16x16x16, and each family REQUIRES its own anchor (PK needs exactly four descriptors, PR needs
+    three depths in its `fits_double` band), so no capsule could be dropped to satisfy it."""
+    rows = [("PK", "PK00_k16"), ("PM", "PM00_m16n16"), ("PR", "PR00_fits_double_k16"),
+            ("PK", "PK01_k32")]
+    _identity_by_capsule({"PK00_k16": "i16", "PM00_m16n16": "i16",
+                          "PR00_fits_double_k16": "i16", "PK01_k32": "i32"}, monkeypatch)
+    monkeypatch.setattr(ORCH.PAS, "discover_performance_corpus",
+                        lambda *_args, **_kwargs: _fake_corpus(rows))
+    certificate = SimpleNamespace(members={"i16": {}, "i32": {}})
+
+    coverage = ORCH._verify_tuning_certificate(certificate, SimpleNamespace(target="gemmini"))
+
+    assert coverage["members"] == 2, "the certificate covers distinct WORKLOADS, not capsules"
+    assert coverage["corpus_capsules"] == 4
+    assert coverage["shared_identities"] == {
+        "i16": ["PK/PK00_k16", "PM/PM00_m16n16", "PR/PR00_fits_double_k16"]}
+
+
+def test_shared_identities_do_not_hide_a_workload_the_certificate_never_covered(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION: grouping must not weaken the coverage comparison. A workload absent from the
+    certificate is still a refusal, whether or not other members share an identity."""
+    rows = [("PK", "PK00_k16"), ("PM", "PM00_m16n16"), ("PK", "PK01_k32")]
+    _identity_by_capsule({"PK00_k16": "i16", "PM00_m16n16": "i16", "PK01_k32": "i32"}, monkeypatch)
+    monkeypatch.setattr(ORCH.PAS, "discover_performance_corpus",
+                        lambda *_args, **_kwargs: _fake_corpus(rows))
+
+    with pytest.raises(ORCH.ExperimentError, match="does not cover the derived corpus"):
+        ORCH._verify_tuning_certificate(
+            SimpleNamespace(members={"i16": {}}), SimpleNamespace(target="gemmini"))
+    with pytest.raises(ORCH.ExperimentError, match="does not cover the derived corpus"):
+        ORCH._verify_tuning_certificate(
+            SimpleNamespace(members={"i16": {}, "i32": {}, "i64": {}}),
+            SimpleNamespace(target="gemmini"))
+
+
+def test_a_narrowed_campaign_may_use_the_whole_corpus_certificate(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A campaign that measures one claim's families still verifies against the corpus-wide tuning
+    certificate. Refusing the un-measured identities as `extras` blocked a 16-member PM launch
+    against the 36-workload certificate on 2026-09-06 -- the exact case selection exists to create."""
+    full = [("PM", "PM00"), ("PM", "PM01"), ("PK", "PK00"), ("PR", "PR00")]
+    _identity_by_capsule({"PM00": "i0", "PM01": "i1", "PK00": "i2", "PR00": "i3"}, monkeypatch)
+
+    def _discover(_target, capsules=None, families=None):
+        rows = full if capsules is None else [r for r in full if r[1] in capsules.split(",")]
+        return _fake_corpus(rows)
+
+    monkeypatch.setattr(ORCH.PAS, "discover_performance_corpus", _discover)
+    certificate = SimpleNamespace(members={"i0": {}, "i1": {}, "i2": {}, "i3": {}})
+
+    coverage = ORCH._verify_tuning_certificate(
+        certificate, SimpleNamespace(target="gemmini"), capsules="PM00,PM01")
+    assert coverage["members"] == 2, "only the selected members are the campaign's cohort"
+
+
+def test_a_narrowed_campaign_still_needs_its_own_members_certified(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """MUTATION: widening `extras` must not weaken `missing`. A SELECTED member absent from the
+    certificate is still a refusal, and a certificate workload foreign to the whole corpus still is."""
+    full = [("PM", "PM00"), ("PM", "PM01"), ("PK", "PK00")]
+    _identity_by_capsule({"PM00": "i0", "PM01": "i1", "PK00": "i2"}, monkeypatch)
+
+    def _discover(_target, capsules=None, families=None):
+        rows = full if capsules is None else [r for r in full if r[1] in capsules.split(",")]
+        return _fake_corpus(rows)
+
+    monkeypatch.setattr(ORCH.PAS, "discover_performance_corpus", _discover)
+
+    with pytest.raises(ORCH.ExperimentError, match="missing="):
+        ORCH._verify_tuning_certificate(
+            SimpleNamespace(members={"i1": {}, "i2": {}}),
+            SimpleNamespace(target="gemmini"), capsules="PM00,PM01")
+    with pytest.raises(ORCH.ExperimentError, match="extras="):
+        ORCH._verify_tuning_certificate(
+            SimpleNamespace(members={"i0": {}, "i1": {}, "i2": {}, "foreign": {}}),
+            SimpleNamespace(target="gemmini"), capsules="PM00,PM01")

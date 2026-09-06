@@ -5450,7 +5450,8 @@ def run_stage(
         gsim_certificate: Path | None = None,
         gsim_certificate_sha256: str | None = None,
         rtl_facts: Path | None = None,
-        telemetry_price_table: Path | None = None) -> Path:
+        telemetry_price_table: Path | None = None,
+        waive_functional_gate: "tuple[str, ...]" = ()) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path."""
     if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in
            (wall_budget_seconds, rounds, round_timeout_seconds, max_tool_calls, tool_timeout_seconds,
@@ -5477,8 +5478,15 @@ def run_stage(
         raise StageGateError(f"performance agent stage must use a fresh directory: {raw_stage_root}")
     stage_root = raw_stage_root.resolve()
 
+    # THE SAME WAIVERS THE COORDINATOR APPLIED. Without this the coordinator admits the functional
+    # baseline and each trial then re-checks it un-waived and refuses -- the campaign dies at the
+    # first stage having already passed its own preflight. Measured 2026-09-06: all 3 trials exited
+    # rc=2 on the nine completeness predicates the launch had explicitly waived. `waive` is passed
+    # through to `perf_campaign.inspect_functional_run`, which alone decides what is waivable at
+    # all -- an integrity predicate refuses the waiver itself, here exactly as in the coordinator.
     functional = inspect_stage_functional_run(
-        functional_runs_root, functional_run_id, functional_submission_sha256)
+        functional_runs_root, functional_run_id, functional_submission_sha256,
+        waive=frozenset(waive_functional_gate or ()))
     discovered = discover_performance_corpus(
         target_experiment, families=families, capsules=capsules)
     stage_root.mkdir(parents=True)
@@ -5979,6 +5987,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tool-timeout-seconds", type=int, default=900)
     parser.add_argument("--families", default="all")
     parser.add_argument("--capsules", default="all")
+    parser.add_argument("--waive-functional-gate", action="append", default=[],
+                        metavar="PREDICATE",
+                        help="accept a NAMED completeness gap in the functional baseline "
+                             "(repeatable). Forwarded by the coordinator so a trial applies exactly "
+                             "the waivers the campaign was launched with. Integrity predicates "
+                             "cannot be waived.")
     parser.add_argument("--codex-binary", default="codex")
     parser.add_argument("--gsim-certificate", type=Path, required=True)
     parser.add_argument("--gsim-certificate-sha256", required=True)
@@ -6003,6 +6017,7 @@ def main(argv: list[str] | None = None) -> int:
             smoke_replicates=args.smoke_replicates,
             max_tool_calls=args.max_tool_calls, tool_timeout_seconds=args.tool_timeout_seconds,
             families=args.families, capsules=args.capsules, codex_binary=args.codex_binary,
+            waive_functional_gate=tuple(args.waive_functional_gate or ()),
             gsim_certificate=args.gsim_certificate,
             gsim_certificate_sha256=args.gsim_certificate_sha256,
             rtl_facts=args.rtl_facts,
