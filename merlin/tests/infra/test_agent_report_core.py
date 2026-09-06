@@ -185,15 +185,15 @@ def test_concurrency_finds_real_overlap():
     assert c.overlap_share > 0
 
 
-def test_concurrency_refuses_when_the_overlap_rests_on_flush_collapsed_spans():
-    """A start and a finish read in one flush is a zero-length span; a pile of them can manufacture
-    concurrency no clock ever saw. If dropping them moves the answer, the answer was the flush."""
-    tiny = FLUSH_FLOOR_S / 2
-    spans = [(0.0, 100.0)] + [(10.0 + i, 10.0 + i + tiny) for i in range(5)]
+def test_concurrency_refuses_when_many_long_spans_share_one_end_stamp():
+    """The second, independent failure mode. Five long calls that all END at the same instant look
+    deeply concurrent, but an end stamp records when the harness READ a completion: a pile of them is
+    one flush. Measured once at 8 calls sharing a stamp, putting 169 min of tool time inside 43.6."""
+    spans = [(float(i) * 10, 500.0) for i in range(5)]
     c = concurrency(_spanset(spans))
-    assert c.overlap_s > 0 and c.overlap_s_trusted == 0.0
     status = c.availability.get("concurrency")
-    assert status.kind == UNAVAILABLE and "flush" in status.reason
+    assert status.kind == UNAVAILABLE
+    assert "share an end stamp" in status.reason
 
 
 def test_concurrency_survives_when_the_short_spans_do_not_carry_it():
@@ -538,3 +538,34 @@ def test_a_serial_performance_stage_reports_no_concurrency(tmp_path):
     ])
     c = concurrency(read_phase2(stage).spanset)
     assert c.max_concurrent == 1 and c.overlap_s == 0.0
+
+
+def test_a_negligible_flush_overlap_is_reported_as_zero_not_as_unknown(tmp_path):
+    """A ten-hour run whose only 'overlap' is 0.9 s of flush artifact ran serially. Saying so is a
+    measurement; calling it unknown discards a run that demonstrably did not parallelise."""
+    tiny = FLUSH_FLOOR_S / 2
+    long_run = [(0.0, 36000.0)]
+    flush = [(1000.0 + i, 1000.0 + i + tiny) for i in range(9)]
+    c = concurrency(_spanset(long_run + flush, source=SOURCE_RAW_ITEMS))
+    assert c.overlap_s == 0.0 and c.overlap_share == 0.0
+    status = c.availability.get("concurrency")
+    assert status.kind == DERIVED and "serially" in status.reason
+
+
+def test_two_calls_finishing_together_is_a_coincidence_not_a_flush():
+    """The guard must not fire on a plausible tie, or every genuinely concurrent run is discarded."""
+    c = concurrency(_spanset([(0.0, 100.0), (10.0, 100.0)]))
+    assert c.availability.get("concurrency").kind == MEASURED
+    assert c.max_concurrent == 2 and c.overlap_s == pytest.approx(90.0)
+
+
+def test_a_minority_of_tied_spans_yields_the_uncontaminated_figure_not_a_refusal():
+    """Discarding a ten-hour run because a handful of its spans share an end stamp throws away a real
+    measurement. Report what survives their removal, and say that is what is being reported."""
+    real = [(0.0, 1000.0), (100.0, 1000.5)]           # 900 s of genuine overlap
+    tied = [(1900.0 + i, 1950.0) for i in range(4)]   # four ends within the tie window, ~50 s worth
+    c = concurrency(_spanset(real + tied))
+    status = c.availability.get("concurrency")
+    assert status.kind == DERIVED
+    assert "were excluded as a flush" in status.reason
+    assert c.overlap_s > 0                            # the real overlap is still reported

@@ -55,6 +55,25 @@ FLUSH_FLOOR_S = 0.010
 #: How far the two concurrency computations may differ before the reading is judged flush-contaminated.
 _CONCURRENCY_TOLERANCE = 0.05
 
+#: How many spans may share one end stamp before that stamp is judged a FLUSH rather than a
+#: coincidence. Two long calls can plausibly finish in the same millisecond; a pile cannot. This is
+#: the second, independent failure mode: the short-span floor above catches a start and finish read
+#: together, while this catches many genuinely long spans whose ENDS were all read at one instant --
+#: which manufactures deep concurrency out of calls that actually ran one after another.
+_END_TIE_LIMIT = 3
+#: Window within which two end stamps count as tied.
+_END_TIE_WINDOW_S = 0.05
+#: How much of the overlap must survive removing the tied spans for the remainder to be worth
+#: reporting. Below this the overlap WAS the flush; above it a minority of suspect spans should not
+#: discard an otherwise real measurement.
+_TIED_SURVIVAL_FLOOR = 0.5
+
+#: An overlap smaller than this share of the wall is not a claim about parallelism either way. When
+#: the trusted sweep finds none and the raw sweep finds only this much, the honest answer is "no
+#: measurable overlap" -- a run with hours of wall and 0.9 s of flush-derived overlap did not do
+#: things in parallel, and refusing to say so is its own kind of wrong.
+_NEGLIGIBLE_OVERLAP_SHARE = 0.01
+
 
 @dataclass
 class Span:
@@ -258,6 +277,21 @@ def read_spans(run_dir: Path) -> SpanSet:
     return out
 
 
+def _tied_end_spans(spans: Sequence[Span]) -> list[Span]:
+    """Spans whose end stamp is shared, within a small window, by at least ``_END_TIE_LIMIT`` others."""
+    live = sorted((s for s in spans if s.duration_s > 0), key=lambda s: s.end_s)
+    flagged: list[Span] = []
+    i = 0
+    while i < len(live):
+        j = i
+        while j + 1 < len(live) and live[j + 1].end_s - live[i].end_s <= _END_TIE_WINDOW_S:
+            j += 1
+        if j - i + 1 >= _END_TIE_LIMIT:
+            flagged.extend(live[i:j + 1])
+        i = j + 1
+    return flagged
+
+
 def _sweep(spans: Sequence[Span]) -> tuple[float, int, float]:
     """``(overlap_seconds, max_concurrency, wall_seconds)`` over a span list."""
     live = [s for s in spans if s.duration_s > 0]
@@ -307,6 +341,32 @@ def concurrency(spanset: SpanSet) -> Concurrency:
 
     overlap, peak, wall = _sweep(spanset.spans)
     t_overlap, t_peak, _ = _sweep(spanset.trusted())
+
+    # Independent of the short-span floor: a pile of spans sharing one END stamp means the harness
+    # read those completions in one flush, so the concurrency they imply was never on any clock.
+    tied = _tied_end_spans(spanset.spans)
+    if tied and overlap > 0:
+        keep = [sp for sp in spanset.spans if sp not in tied]
+        untied_overlap, untied_peak, untied_wall = _sweep(keep)
+        share_surviving = untied_overlap / overlap
+        if share_surviving < _TIED_SURVIVAL_FLOOR:
+            # The overlap WAS the flush. Nothing recoverable.
+            out.availability.set("concurrency", unavailable(
+                f"{len(tied)} span(s) share an end stamp within {_END_TIE_WINDOW_S * 1000:.0f} ms and "
+                f"carry essentially all of the overlap: {overlap:.1f}s falls to {untied_overlap:.1f}s "
+                f"without them. An end stamp records when the harness READ a completion, so a pile of "
+                f"them is one flush, not simultaneous work.", source=spanset.source))
+            return out
+        if share_surviving < 1.0 - _CONCURRENCY_TOLERANCE:
+            # Most of the overlap is real. Report the uncontaminated figure rather than discarding a
+            # run over a minority of suspect spans -- and say which figure this is.
+            out.overlap_s, out.max_concurrent = untied_overlap, untied_peak
+            out.overlap_share = untied_overlap / wall if wall > 0 else 0.0
+            out.availability.set("concurrency", derived(
+                f"{len(tied)} span(s) sharing an end stamp were excluded as a flush; the overlap "
+                f"reported is the {share_surviving:.0%} that survives without them "
+                f"({untied_overlap:.1f}s of {overlap:.1f}s)", source=spanset.source))
+            return out
     out.overlap_s, out.max_concurrent, out.wall_s = overlap, peak, wall
     out.overlap_s_trusted, out.max_concurrent_trusted = t_overlap, t_peak
     out.overlap_share = overlap / wall if wall > 0 else 0.0
@@ -314,6 +374,18 @@ def concurrency(spanset: SpanSet) -> Concurrency:
     if overlap <= 0.0 and t_overlap <= 0.0:
         out.availability.set("concurrency", measured(spanset.source))
         return out
+    # The trusted sweep found nothing and the raw sweep found only a rounding error's worth: that is
+    # a measurement of ZERO overlap, not a failure to measure. Reporting it as unknown would drop a
+    # run that demonstrably ran its tools one at a time.
+    if t_overlap <= 0.0 and wall > 0 and overlap / wall < _NEGLIGIBLE_OVERLAP_SHARE:
+        out.overlap_s, out.overlap_share, out.max_concurrent = 0.0, 0.0, out.max_concurrent_trusted
+        out.availability.set("concurrency", derived(
+            f"no overlap survives the flush check: the {overlap:.2f}s the raw sweep found is "
+            f"{overlap / wall:.3%} of a {wall / 3600:.1f}h run and comes entirely from spans shorter "
+            f"than {FLUSH_FLOOR_S * 1000:.0f} ms, so this run ran its tools serially",
+            source=spanset.source))
+        return out
+
     drift = abs(overlap - t_overlap) / max(overlap, t_overlap, 1e-9)
     if drift > _CONCURRENCY_TOLERANCE:
         out.availability.set("concurrency", unavailable(

@@ -1,0 +1,85 @@
+# Where the agentic runs live, and what the ladder's rungs are called.
+#
+# This file is DATA on purpose. The library that reads runs must not know absolute paths or target
+# names, so both are declared here and threaded in. Adding a run root, a target or an arm is an edit
+# to this file, never to merlin/python/merlin/agentreport/.
+#
+# ROOTS ARE NOT ALL EQUAL. Two of them are git worktrees: they hold the only copy of their runs and
+# a `git worktree prune` would take them with it. `build_report.py rescue` copies the light telemetry
+# out of any root marked `fragile: true`, so a report can still be regenerated after that happens.
+
+roots:
+  - path: out/runs
+    label: main
+    fragile: false
+  - path: .claude/worktrees/codex-radiance-smoke/out/runs
+    label: radiance-worktree
+    fragile: true
+    note: >-
+      The only copy of the radiance runs. The main tree holds one partial submission and nothing else.
+  - path: .claude/worktrees/gemmini-eviction/out/runs
+    label: eviction-worktree
+    fragile: true
+  - path: ../oscar-merlin-arm4-v4-functional-final/out/runs
+    label: arm4-functional-final
+    fragile: true
+    note: >-
+      Holds the frozen phase-1 submission that the performance lane optimises.
+
+# The bench directory a run sits under decides which phase of the study it belongs to.
+phases:
+  capsule-bench: phase1
+  perf-bench: phase2
+  gemmini-perf-bench: phase2
+
+# The ladder. Nested: each arm may read everything the arm above it may, plus what it `adds`.
+# `prefix` is the run-id stamp the launcher applies; `bundles` are the grant sets that DEFINE the arm.
+# Arms 3 and 4 land in the same run-dir subtree, so the bundle is what tells them apart.
+arms:
+  - id: arm1
+    name: raw_baseline
+    prefix: rb
+    bundles: [raw_baseline_hwbringup_v0, raw_baseline_public_v0]
+    adds: []
+    label: raw C++ (from scratch)
+  - id: arm2
+    name: cpp_merlininfra
+    prefix: rbinfra
+    bundles: [cpp_merlininfra_hwbringup_v0, cpp_merlininfra_public_v0]
+    adds: [cpp_oot_generators]
+    label: C++ & Merlin infra
+  - id: arm3
+    name: merlin_assisted
+    prefix: merlin
+    bundles: [merlin_assisted_hwbringup_v0, merlin_assisted_public_v0]
+    adds: [merlin_infra, xdsl_kit, cca_spine, isa_tools, cca_tools]
+    label: Merlin & Python tooling
+  - id: arm4
+    name: merlin_rtlchecks
+    prefix: merlincirct
+    bundles: [merlin_assisted_rtlchecks_hwbringup_v0, merlin_assisted_rtlchecks_public_v0]
+    adds: [rtl_generators, rtl_facts]
+    label: Merlin & CIRCT tooling
+  - id: eqsat
+    name: merlin_eqsat
+    prefix: merlineqsat
+    bundles: [merlin_assisted_eqsat_hwbringup_v0, merlin_assisted_eqsat_public_v0]
+    adds: [eqsat_seam]
+    label: Merlin & e-graph seam
+
+# Which telemetry `rescue` copies out of a fragile root. Deliberately small: the goldens, the
+# submissions and the grading trees are large and regenerable-or-private; these are neither.
+rescue_globs:
+  - selfcheck_log.jsonl
+  - cost_time_toolcalls.yaml
+  - environment.yaml
+  - run_manifest.yaml
+  - qa_loop_summary.yaml
+  - qa_loop_state.yaml
+  - timing_detailed.json
+  - freeze.json
+  - qa_history/*.json
+  - rounds/*.codex_events.timestamped.jsonl
+  - rounds/*.codex_summary.json
+  - grading_public/score_capsule.json
+  - grading_hidden/score_capsule.json
