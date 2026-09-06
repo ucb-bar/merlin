@@ -433,6 +433,20 @@ def quantization_floor(root) -> dict:
                        "they do not describe the same output, so the quantization floor is UNKNOWN "
                        "and an int8 arm here can only be judged against the absolute bar")
         return out
+    if np.array_equal(f, q):
+        # The two references are the SAME ARRAY. This is not a bundle whose quantization happens to
+        # be lossless -- it is a bundle whose W8A8 golden is a copy of its fp32 one, so the pair
+        # measures nothing. resnet50_v1_5_int8_w8a8_consistent ships exactly this (both files
+        # sha256 3f640279a604...), and the unguarded path returned floor_rel 0.0 / floor_cos 1.0 /
+        # fp32_tier_reachable True, which then derived the TIGHTEST POSSIBLE bar from the LEAST
+        # informative comparison -- the same trap the all-zeros branch below exists to close. The
+        # real floor for that bundle, taken against the fp32 bundle's own golden, is cos 0.999314 /
+        # rel 0.029439, and the fp32 tier IS reachable; the identical-file path said so for the
+        # wrong reason and would have failed a correct implementation on a fabricated bar.
+        out["note"] = ("the fp32 and W8A8 goldens are byte-identical, so this pair measures no "
+                       "quantization distance at all: the floor is UNKNOWN, not zero, and an int8 "
+                       "arm here can only be judged against the absolute bar")
+        return out
     denom = float(np.linalg.norm(q) * np.linalg.norm(f))
     if not denom:
         # One of the references is all zeros, so there is no direction to take a cosine of and no
