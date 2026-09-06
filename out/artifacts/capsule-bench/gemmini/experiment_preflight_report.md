@@ -7,7 +7,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 - [x] bwrap available + isolates (canaries invisible in both agent bundles)
 - [x] unsandboxed control leaks canaries (proves bwrap is mandatory, now enforced)
 - [x] bwrap mandatory for real runs (launcher refuses --sandbox none without override)
-- [x] negative fixtures that RAN all fail closed (5 ran)
+- [x] negative fixtures that RAN all fail closed (11 ran)
 - [x] every negative-fixture class was exercised (0 unverified: [])
 - [x] freeze tamper detected (hash changes → hidden-phase recheck refuses)
 - [x] input-bundle tree hashes reproduce + bundle_lock.yaml written
@@ -21,7 +21,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 ## A. Canary isolation (adversarial)
 
 - bwrap available: **True**
-- WITHOUT sandbox, canaries reachable by absolute path: **3** → this is exactly why bwrap is mandatory and now enforced for real runs.
+- WITHOUT sandbox, canaries reachable by absolute path: **6** → this is exactly why bwrap is mandatory and now enforced for real runs.
 
 | bundle | canaries reachable | grep hits | isolated |
 |---|---|---|---|
@@ -50,19 +50,25 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 | case | functional_pass | integrity | fails_closed |
 |---|---|---|---|
 | import_merlin_injected | 0 | FAIL[integrity]: integrity violation in CANARY_import.py: contains 'merlin.runtime.reference' (a non-exempt package must not read the reference/oracle) | True |
-| missing_manifest | 0 | FAIL[contract]: no manifest.yaml in package /scratch/agustin/tmp/negfix_zpp5t94g/pkg | True |
+| missing_manifest | 0 | FAIL[contract]: no manifest.yaml in package /scratch/agustin/tmp/negfix_dahzt9d6/pkg | True |
 
 ### trace_check / numeric / cb-schema (the gates the grader composes)
 
 | case | result | fails_closed |
 |---|---|---|
-| n/a_no_command_trace | n/a | True |
+| no_insn_C_compute_proxy | fail | True |
+| required_LOOP_CONV_absent | fail | True |
+| movement_mode_but_compute_present | fail | True |
+| relu_required_but_absent | fail | True |
+| k_accum_required_but_absent | fail | True |
+| forbidden_compute_present | fail | True |
+| unknown_funct | fail | True |
 | wrong_output | fail | True |
 | invalid_cb | raised | True |
 
 ## C. Freeze enforcement
 
-- tamper detected: **True** (605b4114230030a9 → 1fc3e35e44e0bd6a); the hidden phase re-hashes the submission and refuses to grade if it changed after freeze.
+- tamper detected: **True** (c1a041ddad729972 → 2497036c9abdf756); the hidden phase re-hashes the submission and refuses to grade if it changed after freeze.
 
 ## D. Input-bundle hash reproducibility
 
@@ -86,7 +92,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 
 ## E. Real token/cost capture
 
-- tested on a real `claude --output-format stream-json`: available=True, tokens_total=38440897, cost=$None, unique_messages=None (dedup verified).
+- tested on a real `claude --output-format stream-json`: available=True, tokens_total=253726, cost=$None, unique_messages=None (dedup verified).
 
 ## F. bareMetalC corroboration (exact anchors)
 
