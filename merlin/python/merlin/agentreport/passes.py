@@ -30,7 +30,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from merlin.agentreport.availability import Availability, derived, measured, unavailable
+from merlin.agentreport.availability import (Availability, MEASURED, Status, derived,
+                                             measured, unavailable)
 
 #: Rows scoped to a subset of the corpus answer a different question than the full-suite ones and
 #: cannot share an axis with them. The full-suite scope is the driver's own spelling.
@@ -178,8 +179,7 @@ def read_passes(run_dir: Path, *, scope: str = SCOPE_ALL) -> PassSeries:
                  f"({series.n_build_failed} a failed build)")
     if series.n_inconsistent:
         note += f"; {series.n_inconsistent} row(s) disagreed with their own failing list"
-    series.availability.set("passes", measured("selfcheck_log"))
-    series.availability.set("passes_note", measured(note))
+    series.availability.set("passes", Status(MEASURED, reason=note, source="selfcheck_log"))
     return series
 
 

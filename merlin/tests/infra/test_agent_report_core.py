@@ -16,6 +16,8 @@ from merlin.agentreport.index import (ArmSpec, UNKNOWN, arm_from_prefix, build_i
 from merlin.agentreport.passes import read_passes, _rebase
 from merlin.agentreport.spans import (FLUSH_FLOOR_S, SOURCE_RAW_ITEMS, SOURCE_TRANSCRIPT, Span,
                                       SpanSet, concurrency, read_spans)
+from merlin.agentreport.capsule_time import read_capsule_timings, summarize
+from merlin.agentreport.phase2 import read_phase2
 from merlin.agentreport.tokens import METERED, NOTIONAL, UNPRICED, normalize_model, read_tokens
 
 ARMS = (
@@ -389,3 +391,150 @@ def test_longest_match_decides_when_one_prefix_extends_another():
     for specs in (extended, tuple(reversed(extended))):
         assert arm_from_prefix("merlin_rtl_x", specs) == "armB"
         assert arm_from_prefix("merlin_plain_x", specs) == "armA"
+
+
+# ---------------------------------------------------------------- per-capsule tier cost
+
+def _capsule(dirpath, name, tiers):
+    d = dirpath / name
+    d.mkdir(parents=True)
+    (d / "capsule_result.json").write_text(json.dumps({"capsule": name, "tiers": tiers}))
+
+
+def _timing(build, sim, wait, wall):
+    return {"build_s": build, "sim_active_s": sim, "oracle_wait_s": wait, "adapter_wall_s": wall}
+
+
+def test_a_carried_tier_is_recorded_as_carried_and_never_costed(tmp_path):
+    """A reused certificate records `timing: null` on purpose -- copying a duration forward would
+    fabricate a measurement. It must not become a zero in the distribution."""
+    _capsule(tmp_path, "A0", {
+        "L2": {"status": "pass", "timing": _timing(0.1, 0.5, 0.0, 0.6)},
+        "L3": {"status": "pass", "timing": None,
+               "reason": "verdict carried: already certified at this tier on this instrument"}})
+    rows = read_capsule_timings(tmp_path)
+    l3 = [r for r in rows if r.tier == "L3"][0]
+    assert l3.carried is True and l3.has_timing is False and l3.active_s is None
+
+    s = summarize(rows, tier="L3", status="pass")
+    assert s.n == 1 and s.n_carried == 1 and s.median_active_s is None
+    status = s.availability.get("tier_cost")
+    assert status.kind == UNAVAILABLE and "carried" in status.reason
+
+
+def test_a_prefetched_measurement_is_flagged_and_its_wall_is_not_used(tmp_path):
+    """The performance lane measures ahead of the loop, so adapter_wall_s reads an already-computed
+    result: sim 52 s against a wall of 0.03 s. Reading that wall as the cost understates it ~2000x."""
+    _capsule(tmp_path, "P0", {"L3": {"status": "pass", "timing": _timing(0.0, 52.3, 0.0, 0.026)}})
+    rows = read_capsule_timings(tmp_path)
+    assert rows[0].wall_is_consistent is False
+    assert rows[0].active_s == pytest.approx(52.3)      # sim + build, never the wall
+    s = summarize(rows, tier="L3", status="pass")
+    assert s.wall_inconsistent == 1
+    assert "adapter wall" in s.availability.get("tier_cost").reason
+
+
+def test_a_consistent_wall_is_not_flagged(tmp_path):
+    """The other direction: the functional lane really did wait, and must not be marked suspect."""
+    _capsule(tmp_path, "F0", {"L3": {"status": "pass", "timing": _timing(1.4, 30.7, 0.1, 32.2)}})
+    rows = read_capsule_timings(tmp_path)
+    assert rows[0].wall_is_consistent is True
+    assert summarize(rows, tier="L3", status="pass").wall_inconsistent == 0
+
+
+def test_pass_and_fail_populations_are_never_pooled(tmp_path):
+    """A failing capsule aborts in hundredths of a second while a passing one simulates for tens.
+    Pooling them yields a median about the pass rate, not about cost."""
+    _capsule(tmp_path, "ok1", {"L3": {"status": "pass", "timing": _timing(1.0, 30.0, 0.0, 31.0)}})
+    _capsule(tmp_path, "ok2", {"L3": {"status": "pass", "timing": _timing(1.0, 34.0, 0.0, 35.0)}})
+    for i in range(6):
+        _capsule(tmp_path, f"bad{i}", {"L3": {"status": "fail", "timing": _timing(0.0, 0.01, 0.0, 0.02)}})
+    rows = read_capsule_timings(tmp_path)
+    passing = summarize(rows, tier="L3", status="pass")
+    failing = summarize(rows, tier="L3", status="fail")
+    assert passing.median_active_s == pytest.approx(33.0)   # median of 1+30 and 1+34
+    assert failing.median_active_s == pytest.approx(0.01)
+    # The pooled median would be ~0.01 -- an eight-capsule suite would look 3000x cheaper than it is.
+    assert passing.median_active_s > failing.median_active_s * 100
+
+
+def test_oracle_wait_is_not_counted_as_work(tmp_path):
+    """Queueing for a simulator slot is not simulation. It is kept, separately."""
+    _capsule(tmp_path, "Q0", {"L3": {"status": "pass", "timing": _timing(1.0, 10.0, 90.0, 101.0)}})
+    row = read_capsule_timings(tmp_path)[0]
+    assert row.active_s == pytest.approx(11.0)
+    assert row.oracle_wait_s == pytest.approx(90.0)
+
+
+# ---------------------------------------------------------------- the performance lane
+
+def _stage(tmp_path, *, tools=None, receipts=None, actions=None):
+    stage = tmp_path / "stage"
+    if tools is not None:
+        (stage / "agent").mkdir(parents=True)
+        (stage / "agent" / "tools.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in tools))
+    if receipts is not None:
+        (stage / "control" / "round_00").mkdir(parents=True)
+        (stage / "control" / "round_00" / "receipts.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in receipts))
+    if actions is not None:
+        (stage / "agent_workspaces" / "round_00").mkdir(parents=True)
+        (stage / "agent_workspaces" / "round_00" / "STAGE_CONTEXT.json").write_text(
+            json.dumps({"broker_actions": actions}))
+    stage.mkdir(parents=True, exist_ok=True)
+    return stage
+
+
+def test_point_events_are_excluded_from_span_math(tmp_path):
+    """`file_change` rows are logged at an instant, not over one. Counting them as spans would put
+    99% of the lane's 'tool calls' at zero duration and drag every occupancy figure down."""
+    stage = _stage(tmp_path, tools=[
+        {"kind": "command_execution", "t_start_s": 0.0, "t_end_s": 10.0, "command": "sim"},
+        {"kind": "file_change", "t_start_s": 3.0, "t_end_s": 3.0},
+        {"kind": "file_change", "t_start_s": 4.0, "t_end_s": 4.0},
+    ])
+    facts = read_phase2(stage)
+    assert len(facts.spanset.spans) == 1
+    assert facts.n_point_events == 2
+
+
+def test_broker_time_is_attributed_per_action(tmp_path):
+    """Where the brokered half of a performance run goes: the measurement, not the compiles."""
+    stage = _stage(tmp_path, receipts=[
+        {"action": "tuning-gsim-feedback", "elapsed_s": 40.0, "returncode": 0, "index": 0},
+        {"action": "tuning-gsim-feedback", "elapsed_s": 60.0, "returncode": 0, "index": 1},
+        {"action": "candidate-parse", "elapsed_s": 3.0, "returncode": 0, "index": 2},
+        {"action": "analyze-command-buffers", "elapsed_s": 0.002, "returncode": 0, "index": 3},
+    ])
+    totals = read_phase2(stage).action_totals()
+    assert totals["tuning-gsim-feedback"] == (2, pytest.approx(100.0))
+    assert totals["analyze-command-buffers"][1] < 0.01     # free by construction
+
+
+def test_the_declared_tool_surface_is_read_never_assumed(tmp_path):
+    """The action set is derived per run from the candidate's own manifest, so a hardcoded list would
+    describe one campaign and mislabel the next."""
+    stage = _stage(tmp_path, actions=["candidate-parse", "tuning-gsim-feedback", "probe-spike"])
+    facts = read_phase2(stage)
+    assert facts.broker_actions == ["candidate-parse", "probe-spike", "tuning-gsim-feedback"]
+    assert facts.availability.get("broker_actions").kind == MEASURED
+
+
+def test_a_stage_without_a_stage_context_refuses_to_state_its_tool_surface(tmp_path):
+    stage = _stage(tmp_path, tools=[])
+    facts = read_phase2(stage)
+    assert facts.broker_actions == []
+    status = facts.availability.get("broker_actions")
+    assert status.kind == UNAVAILABLE and "derived per run" in status.reason
+
+
+def test_a_serial_performance_stage_reports_no_concurrency(tmp_path):
+    """Measured over the real corpus: 4 overlapping pairs in 1,336. The lane is serial, and saying so
+    is a finding -- but it must come from the spans, not from an assumption."""
+    stage = _stage(tmp_path, tools=[
+        {"kind": "command_execution", "t_start_s": 0.0, "t_end_s": 10.0},
+        {"kind": "command_execution", "t_start_s": 12.0, "t_end_s": 20.0},
+    ])
+    c = concurrency(read_phase2(stage).spanset)
+    assert c.max_concurrent == 1 and c.overlap_s == 0.0
