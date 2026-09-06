@@ -742,6 +742,8 @@ artifacts:
       - gemmini_rtl
       - gsim_compiler
     config: GemminiGsimSerialClkConfig
+    target: gemmini
+    role: gsim_firrtl
     notes: >-
       COPIED OUT OF PURGEABLE SCRATCH ON PURPOSE. Until 2026-09-04 these bytes existed only at
       /scratch/agustin/tmp/gsim_cert_serialclk_v1/, a location the layout convention marks purgeable, and
@@ -992,3 +994,67 @@ artifacts:
       which elaboration it is valid for, because the artifact does not carry that field. Until `inputs`
       records the resolved dialect, a term's domain is asserted rather than evidenced -- and this pin is
       the only place the true input is written down.
+
+  gemmini_gsim_emulator:
+    description: >-
+      THE GSIM EMULATOR BINARY a gemmini cycle-accurate result was actually produced by, and the
+      candidate half of every GSIM/Verilator equivalence capture. Registered because the four artifacts
+      a capture is keyed on -- the two engine binaries and the two elaborations they were built from --
+      had exactly one entry between them (`gemmini_gsim_model_serialclk`), so nothing outside the
+      certificate itself could resolve what a capture was about. A capture is only valid for the engines
+      that produced it; a store keyed on the program alone would serve a rebuilt simulator's question
+      with the old simulator's answer, which is the whole reason these pins exist.
+      Built from the `gemmini_gsim_model_serialclk` elaboration (089d053b) by `gsim_compiler`.
+    path: /scratch/agustin/tmp/gsim_recert_20260904/emu_gemmini_gsim_recert
+    digest: "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea"
+    built_from:
+      - gemmini_gsim_model_serialclk
+      - gsim_compiler
+    config: GemminiGsimSerialClkConfig
+    target: gemmini
+    role: gsim_binary
+
+  gemmini_gsim_model_manifest:
+    description: >-
+      The generated-model manifest gsim emits beside the emulator, validated by
+      `produce_gsim_certificate.validate_model_manifest`. It is a pin in its own right because the
+      emulator and the FIRRTL do not between them establish WHICH generated sources were compiled: a
+      link that consumes fewer than all emitted translation units still runs while simulating an
+      incomplete design, and this file is what makes that countable.
+    path: /scratch/agustin/tmp/gsim_cert_serialclk_v1/gsim_generated_model_manifest.json
+    digest: "f822a628a3a809f64c91becea8b2d8bfae9c35633a7c4b21bbaced8a2ac6303d"
+    built_from:
+      - gemmini_gsim_model_serialclk
+      - gsim_compiler
+    config: GemminiGsimSerialClkConfig
+    target: gemmini
+    role: gsim_model
+
+  gemmini_verilator_firrtl:
+    description: >-
+      The elaboration the REFERENCE engine is built from. Distinct from the GSIM elaboration and not
+      interchangeable with it: the certificate's whole claim is that two engines built from two
+      elaborations of the same design agree on the same ELF, so recording only one of the two would
+      leave the reference half of every capture unattributed.
+    path: /scratch2/agustin/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.fir
+    digest: "fc1d1e715883a50e059a73026796dac7ee2e13f774b3f04f35e9ded933061070"
+    built_from:
+      - gemmini_rtl
+    config: GemminiRocketConfig
+    target: gemmini
+    role: verilator_firrtl
+
+  gemmini_verilator_simulator:
+    description: >-
+      THE REFERENCE SIMULATOR BINARY every equivalence capture's slow half was produced by. It is the
+      expensive engine -- a small multiple of a hundred cycles a second against the candidate's tens of
+      thousands -- which is why captures taken against it are cached rather than re-bought, and why the
+      cache key has to name this binary: a capture is an assertion about these two engines and no others.
+    path: /scratch2/agustin/chipyard/sims/verilator/simulator-chipyard.harness-GemminiRocketConfig
+    digest: "5b6c70217d18cf16b3944ee284ba7e3918b82c8bf4233160c709904256fe7421"
+    built_from:
+      - gemmini_verilator_firrtl
+      - gemmini_rtl
+    config: GemminiRocketConfig
+    target: gemmini
+    role: verilator_binary

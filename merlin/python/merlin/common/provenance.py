@@ -298,6 +298,15 @@ class Artifact:
     built_from: tuple[str, ...] = ()       # pin names this was elaborated from
     config: str = ""                       # the elaborated configuration, when there is one
     notes: str = ""
+    #: WHICH TARGET this artifact belongs to, and WHAT PART it plays for that target -- for example
+    #: ``(target="…", role="verilator_binary")``. Both are declared, never parsed out of the artifact's
+    #: NAME: a consumer that needs "this target's reference simulator" would otherwise have to encode a
+    #: naming convention, and one target's elaboration is called after its own config
+    #: (``…_gsim_model_serialclk``), which is not a convention any other target shares. Empty means the
+    #: artifact declares no role, and a role-based lookup then does not see it at all -- absent, never
+    #: guessed.
+    target: str = ""
+    role: str = ""
     #: ``file`` (one built file) or ``tree`` (a built DIRECTORY whose identity is all of its bytes).
     #: A tree is hashed with the SAME hasher the host-lane pin uses, so a descriptor's
     #: ``package_sha256`` and this registry's ``digest`` are literally the same number -- two hashers
@@ -371,7 +380,8 @@ def load_artifacts(path: "str | Path | None" = None) -> dict[str, Artifact]:
             digest=str(digest), root_env=str(body.get("root_env") or ""),
             kind=kind, repo_relative=bool(body.get("repo_relative", False)),
             built_from=tuple(str(b) for b in (body.get("built_from") or ())),
-            config=str(body.get("config") or ""), notes=str(body.get("notes") or ""))
+            config=str(body.get("config") or ""), notes=str(body.get("notes") or ""),
+            target=str(body.get("target") or ""), role=str(body.get("role") or ""))
     return out
 
 
