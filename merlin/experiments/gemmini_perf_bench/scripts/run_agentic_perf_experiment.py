@@ -132,6 +132,11 @@ class FunctionalGradeCohort:
     hidden: tuple[FunctionalCapsule, ...]
     public_source_count: int
     hidden_source_count: int
+    #: Capsules THIS submission stated it does not lower. They stay in the cohort -- they are part of
+    #: the scored denominator and the grade reports them as ``declined`` -- and they are excluded from
+    #: the one-ELF certificate envelope, because a declined capsule produced no ELF to cross-validate.
+    #: Empty when no run was consulted, which keeps the previous behaviour exactly.
+    declined: tuple[str, ...] = ()
 
 
 def _canonical(value: object) -> bytes:
@@ -507,6 +512,25 @@ def _functional_grade_cohort(target: object) -> FunctionalGradeCohort:
         public_source_count=len(public_source), hidden_source_count=len(hidden_source))
 
 
+def _declined_names(functional: object) -> tuple[str, ...]:
+    """Capsule names this submission's own grade recorded as DECLINED, public and hidden.
+
+    Read from the score the run already wrote, never re-derived: "the backend stated it does not lower
+    this" is a fact about the SUBMISSION, and recomputing it from the descriptor would answer a
+    different question.
+    """
+    names: set[str] = set()
+    for attribute in ("public_score", "hidden_score"):
+        score = getattr(functional, attribute, None)
+        if not isinstance(score, dict):
+            continue
+        for row in (score.get("declined") or ()):
+            name = row.get("capsule") if isinstance(row, dict) else row
+            if isinstance(name, str) and name:
+                names.add(name)
+    return tuple(sorted(names))
+
+
 def _functional_gsim_cases(cohort: FunctionalGradeCohort) -> tuple[FunctionalCapsule, ...]:
     """Exact admitted descriptors eligible for strict one-ELF GSIM/Verilator capture.
 
@@ -517,9 +541,20 @@ def _functional_gsim_cases(cohort: FunctionalGradeCohort) -> tuple[FunctionalCap
     post-candidate functional regrade, where the pinned GSIM runs every emitted tile and the model
     execution checker validates their ledger. They are excluded only from this *prebuilt one-ELF*
     certificate envelope.
+
+    A capsule the submission DECLINED is excluded for the same reason, and it IS the same reason: it
+    produced no ELF at all. The backend stated it does not lower these -- "rather than emitting a
+    program that writes nothing" -- so there is nothing for the two engines to disagree about, while
+    demanding a capture for one makes the whole certificate unbuildable over a fact that has nothing to
+    do with GSIM/Verilator agreement. Measured on the g4p1 submission: 10 host-lane bf16/f32 capsules,
+    every one already recorded ``declined`` by its own grade, blocked all 90 cases.
+
+    The exclusion is per-SUBMISSION and never a property of the corpus: a later submission that lowers
+    them puts them straight back into the envelope.
     """
+    declined = frozenset(cohort.declined)
     return tuple(capsule for capsule in (*cohort.public, *cohort.hidden)
-                 if capsule.kind != "model")
+                 if capsule.kind != "model" and capsule.name not in declined)
 
 
 def _verify_functional_certificate(certificate: GATE.CertificateRecord,
@@ -797,6 +832,10 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
         runs_root(target.target, "capsule-bench"), config.functional_run_id,
         config.functional_submission_sha256,
         waive=frozenset(config.waive_functional_gate or ()))
+    # WHAT THIS SUBMISSION DECLINED, from the grade that recorded it. The names travel on the cohort so
+    # the certificate BUILDER and the certificate VERIFIER derive one case set from one function;
+    # deriving them separately is how the two come to disagree about what was certified.
+    functional_cohort = replace(functional_cohort, declined=_declined_names(functional))
     certificate = GATE.load_certificate(
         config.gsim_certificate, expected_sha256=config.gsim_certificate_sha256)
     if certificate.target != target.target:

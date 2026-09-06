@@ -18,6 +18,7 @@ import stat
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace as _dc_replace
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -163,7 +164,8 @@ def _readonly_baseline(path: Path, expected_sha256: str) -> Path:
 def _declaration(*, target: Any, descriptor: Path, functional_base: Path,
                  functional_base_sha256: str, source: GATE.CertificateRecord,
                  cohort: ORCH.FunctionalGradeCohort, cases: Sequence[WorkloadCase], timeout: int,
-                 workers: int, gsim_max_cycles: int | None, reuse_source_captures: bool) -> dict[str, Any]:
+                 workers: int, gsim_max_cycles: int | None, reuse_source_captures: bool,
+                 reference_timeout: int | None = None) -> dict[str, Any]:
     return {
         "schema": SCHEMA, "policy": POLICY, "target": source.target,
         "target_descriptor": {"path": str(descriptor), "sha256": _sha_file(descriptor)},
@@ -186,7 +188,8 @@ def _declaration(*, target: Any, descriptor: Path, functional_base: Path,
                    "representative_manifest_sha256": case.manifest_sha256,
                    "capsules": list(case.capsule_names), "cohorts": list(case.cohorts)}
                   for case in cases],
-        "execution": {"timeout_seconds": timeout, "workers": workers,
+        "execution": {"timeout_seconds": timeout,
+                      "reference_timeout_seconds": reference_timeout, "workers": workers,
                       "gsim_max_cycles": gsim_max_cycles,
                       "reuse_identical_source_captures": reuse_source_captures,
                       "same_elf_engines": [GATE.REFERENCE_ENGINE, GATE.GSIM_ENGINE]},
@@ -278,11 +281,21 @@ def _lower_case(*, functional_base: Path, case: WorkloadCase, attempt: Path, tim
 
 def _capture_case(*, source: GATE.CertificateRecord, artifacts: PRODUCER.ArtifactPaths,
                   case: WorkloadCase, attempt: Path, lowered: Path, timeout: int,
-                  backend: Any, capturer: Callable[..., Mapping[str, Any]]) -> Path:
+                  backend: Any, capturer: Callable[..., Mapping[str, Any]],
+                  reference_timeout: int | None = None) -> Path:
     try:
         document = dict(capturer(
             target=source.target, capsule_manifest=case.manifest, artifact_dir=lowered,
-            workdir=attempt / "elf", artifacts=artifacts, timeout=timeout, backend=backend))
+            workdir=attempt / "elf", artifacts=artifacts, timeout=timeout,
+            # THE TWO ENGINES NEED DIFFERENT DEADLINES. `capture_case` has taken a separate reference
+            # deadline all along, for the reason its own docstring gives: the reference engine executes
+            # a small multiple of a hundred cycles a second while the candidate is more than an order of
+            # magnitude faster, so one deadline sized for the fast engine kills the slow one on exactly
+            # the deep members a certificate is most wanted for. This caller never passed it. Measured
+            # 2026-09-06: a 90-case build reached 62 and then sat on one reference leg for 59 minutes
+            # against a 3600 s cap it could not meet, and the whole fail-closed qualification was lost.
+            reference_timeout=reference_timeout,
+            backend=backend))
         if (document.get("workload_sha256") != case.identity
                 or document.get("workload") != PRODUCER.derive_workload(case.manifest)):
             raise FunctionalQualificationError("capture workload differs from its canonical case")
@@ -387,7 +400,9 @@ def reusable_certificate(root: Path, source: GATE.CertificateRecord) -> tuple[Pa
 def produce_functional_certificate(
         *, descriptor: Path, functional_base: Path, functional_base_sha256: str,
         source_certificate: Path, source_certificate_sha256: str, root: Path,
-        timeout: int = 3600, workers: int = 2, gsim_max_cycles: int | None = None,
+        timeout: int = 3600, reference_timeout: int | None = None,
+        declined: "Sequence[str]" = (),
+        workers: int = 2, gsim_max_cycles: int | None = None,
         reuse_source_captures: bool = True, reuse_completed_certificate: bool = True,
         target_experiment: Any | None = None,
         cohort: ORCH.FunctionalGradeCohort | None = None,
@@ -398,6 +413,10 @@ def produce_functional_certificate(
     if (isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0
             or isinstance(workers, bool) or not isinstance(workers, int) or workers <= 0):
         raise FunctionalQualificationError("timeout and workers must be positive integers")
+    if reference_timeout is not None and (isinstance(reference_timeout, bool)
+                                          or not isinstance(reference_timeout, int)
+                                          or reference_timeout <= 0):
+        raise FunctionalQualificationError("reference_timeout must be a positive integer or None")
     if (gsim_max_cycles is not None and (isinstance(gsim_max_cycles, bool)
             or not isinstance(gsim_max_cycles, int) or gsim_max_cycles <= 0)):
         raise FunctionalQualificationError("GSIM max cycles must be a positive integer")
@@ -414,13 +433,18 @@ def produce_functional_certificate(
     if getattr(target_experiment, "target", None) != source.target:
         raise FunctionalQualificationError("target descriptor differs from source certificate")
     cohort = cohort or ORCH._functional_grade_cohort(target_experiment)
+    if declined:
+        # A capsule this submission DECLINED produced no ELF, so there is nothing for the two engines
+        # to disagree about. Excluded from the envelope by the SAME function the verifier uses, so the
+        # built certificate and the checked one can never describe different case sets.
+        cohort = _dc_replace(cohort, declined=tuple(sorted({str(n) for n in declined if n})))
     cases = derive_cases(cohort)
     expected = {case.identity for case in cases}
     declaration = _declaration(
         target=target_experiment, descriptor=descriptor, functional_base=functional_base,
         functional_base_sha256=functional_base_sha256, source=source, cohort=cohort, cases=cases,
         timeout=timeout, workers=workers, gsim_max_cycles=gsim_max_cycles,
-        reuse_source_captures=reuse_source_captures)
+        reuse_source_captures=reuse_source_captures, reference_timeout=reference_timeout)
     root = Path(root)
     if root.is_symlink():
         raise FunctionalQualificationError("qualification root may not be a symlink")
@@ -462,7 +486,8 @@ def produce_functional_certificate(
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="functional-gsim") as pool:
             futures = {pool.submit(
                 _capture_case, source=source, artifacts=artifacts, case=case, attempt=attempt,
-                lowered=lowered, timeout=timeout, backend=selected_backend,
+                lowered=lowered, timeout=timeout, reference_timeout=reference_timeout,
+                backend=selected_backend,
                 capturer=capturer): case for case, attempt, lowered in attempts}
             for future in as_completed(futures):
                 case = futures[future]
@@ -517,6 +542,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-certificate-sha256", required=True)
     parser.add_argument("--root", required=True)
     parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument("--declined", default="",
+                        help="comma-separated capsule names THIS submission declined to lower. They "
+                             "produced no ELF, so they carry no cross-validation and are excluded "
+                             "from the envelope; the verifier excludes the same set.")
+    parser.add_argument("--reference-timeout", type=int, default=None,
+                        help="deadline for the REFERENCE engine leg alone (default: --timeout). The "
+                             "reference engine is more than an order of magnitude slower than the "
+                             "candidate, so one deadline sized for the candidate kills the deep cases.")
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--gsim-max-cycles", type=int)
     parser.add_argument("--no-reuse-source-captures", action="store_true")
@@ -532,7 +565,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         functional_base_sha256=args.functional_base_sha256,
         source_certificate=Path(args.source_certificate),
         source_certificate_sha256=args.source_certificate_sha256, root=Path(args.root),
-        timeout=args.timeout, workers=args.workers, gsim_max_cycles=args.gsim_max_cycles,
+        timeout=args.timeout, reference_timeout=args.reference_timeout,
+        declined=[n.strip() for n in str(args.declined or "").split(",") if n.strip()],
+        workers=args.workers, gsim_max_cycles=args.gsim_max_cycles,
         reuse_source_captures=not args.no_reuse_source_captures,
         reuse_completed_certificate=not args.force_refresh)
     print(GATE.canonical_json({"path": str(path), "sha256": digest}))
