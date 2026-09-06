@@ -89,6 +89,25 @@ class Verdict:
 
 
 @dataclass
+class Blocked:
+    """A capsule that never passed, and the plane its verdict actually turned on.
+
+    Worth carrying separately because "the agent kept working and the score did not move" and "the
+    remaining capsules could not move" look identical on a step plot and mean opposite things. On the
+    run this was written for, two of the four unresolved capsules PASS their RTL tier and fail on a
+    lane contract or a routing rule, and a third is marked incomplete because a lane was never
+    measured on this path at all -- none of which is a numerical failure the agent could fix by
+    trying harder."""
+
+    capsule: str
+    status: str
+    plane: str = ""
+    category: str = ""
+    deepest_tier_passed: str = ""
+    detail: str = ""
+
+
+@dataclass
 class Anatomy:
     run_id: str = ""
     target: str = ""
@@ -99,6 +118,7 @@ class Anatomy:
     verdicts: list[Verdict] = field(default_factory=list)
     token_curve: list[dict] = field(default_factory=list)
     cost_curve: list[dict] = field(default_factory=list)
+    blocked: list[Blocked] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -106,7 +126,7 @@ class Anatomy:
                 "wall_s": self.wall_s, "calls": [asdict(c) for c in self.calls],
                 "verdicts": [asdict(v) for v in self.verdicts],
                 "token_curve": self.token_curve, "cost_curve": self.cost_curve,
-                "notes": self.notes}
+                "blocked": [asdict(b) for b in self.blocked], "notes": self.notes}
 
 
 _TIERS = ("L0", "L1", "L2", "L3", "L4")
@@ -162,6 +182,33 @@ def read_verdicts(run_dir: Path) -> list[Verdict]:
     return out
 
 
+def read_blocked(run_dir: Path) -> list[Blocked]:
+    """Capsules unresolved at the last verdict, with the plane each actually turned on."""
+    history = run_dir / "qa_history"
+    if not history.is_dir():
+        return []
+    latest = None
+    for path in sorted(history.glob("verdict*.json")):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+        except (ValueError, OSError):
+            continue
+        if isinstance(doc, dict) and isinstance(doc.get("n_capsules"), int):
+            latest = doc
+    if latest is None:
+        return []
+    out = []
+    for c in latest.get("per_capsule") or []:
+        if not isinstance(c, dict) or c.get("status") == "pass":
+            continue
+        out.append(Blocked(capsule=str(c.get("capsule") or ""), status=str(c.get("status") or ""),
+                           plane=str(c.get("failure_plane") or ""),
+                           category=str(c.get("failure_category") or ""),
+                           deepest_tier_passed=_deepest_tier(c.get("tiers")),
+                           detail=str(c.get("failure_detail") or "")[:400]))
+    return out
+
+
 def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, arm: str,
                   model: str, token_curve=None, cost_curve=None) -> Anatomy:
     """Assemble one run's full record. Spans and verdicts keep their own clocks; both start at 0."""
@@ -169,6 +216,7 @@ def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, 
     for sp in spanset.spans:
         a.calls.append(Call(sp.start_s, sp.duration_s, categorize(sp.kind, sp.detail)))
     a.verdicts = read_verdicts(run_dir)
+    a.blocked = read_blocked(run_dir)
     a.token_curve = list(token_curve or [])
     a.cost_curve = list(cost_curve or [])
     if a.verdicts and a.wall_s > 0:
