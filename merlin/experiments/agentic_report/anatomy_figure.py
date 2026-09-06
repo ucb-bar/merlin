@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import textwrap
 from collections import Counter
 from pathlib import Path
 
@@ -36,7 +37,7 @@ import numpy as np                                                       # noqa:
 from matplotlib.lines import Line2D                                      # noqa: E402
 from matplotlib.patches import Patch                                     # noqa: E402
 
-from merlin.agentreport.anatomy import CATEGORIES                        # noqa: E402
+from merlin.agentreport.anatomy import CATEGORIES, PLANE_PLAIN            # noqa: E402
 from merlin.common.paths import artifacts_dir                            # noqa: E402
 from merlin.plotting.merlin_plotstyle import (BLUE, GOLD, INK, MAUVE, NAVY,   # noqa: E402
                                               SAGE, SLATE, suptitle, title,
@@ -93,8 +94,8 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
                          "savefig.facecolor": PAGE_BG})
 
     fig = plt.figure(figsize=(15.5, 10.6))
-    gs = fig.add_gridspec(3, 1, height_ratios=[1.9, 2.1, 1.3], hspace=0.38,
-                          left=0.085, right=0.885, top=0.905, bottom=0.115)
+    gs = fig.add_gridspec(3, 1, height_ratios=[1.9, 2.1, 1.3], hspace=0.46,
+                          left=0.085, right=0.885, top=0.856, bottom=0.125)
     ax_caps, ax_band, ax_tok = (fig.add_subplot(gs[i]) for i in range(3))
 
     # ---------------------------------------------------------------- 1. capsules
@@ -135,22 +136,23 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
                 continue
             prev = v["n_passed"]
             ax_caps.plot([v["t_s"] / 60.0], [v["n_passed"]], "o", color=INK, ms=5, zorder=5)
-            ax_caps.text(v["t_s"] / 60.0 + tail * 0.12, v["n_passed"] + len(order) * 0.02,
-                         f"{v['n_passed']}/{total}", fontsize=10, color=INK, fontweight="bold",
-                         zorder=5)
+            near_end = v["t_s"] / 60.0 > 0.82 * (edges[-1] or 1.0)
+            ax_caps.text(v["t_s"] / 60.0 + (-tail * 0.12 if near_end else tail * 0.12),
+                         v["n_passed"] + len(order) * 0.02, f"{v['n_passed']}/{total}",
+                         fontsize=10, color=INK, fontweight="bold", zorder=5,
+                         ha="right" if near_end else "left")
         step_x = [v["t_s"] / 60.0 for v in verdicts] + [edges[-1]]
         step_y = [v["n_passed"] for v in verdicts] + [verdicts[-1]["n_passed"]]
         ax_caps.step(step_x, step_y, where="post", color=INK, lw=1.6, zorder=4)
         style_ax(ax_caps, grid="")
         n_fail = sum(1 for st in verdicts[-1]["per_capsule"].values() if st == "fail")
         n_inc = sum(1 for st in verdicts[-1]["per_capsule"].values() if st == "incomplete")
-        title(ax_caps, f"What was passing, and which capsules turned green when — "
-                       f"{verdicts[-1]['n_passed']} passing, {n_fail} failing, "
-                       f"{n_inc} incomplete", fs=12.5, pad=16)
+        title(ax_caps, f"Tests passing over time — each row is one test, ordered by when it first "
+                       f"passed. Ended at {verdicts[-1]['n_passed']} of {total}", fs=12.5, pad=16)
         ax_caps.legend(handles=[Patch(facecolor=SAGE, alpha=0.85, label="passing"),
                                 Patch(facecolor=MAUVE, alpha=0.85, label="failing"),
-                                Patch(facecolor="#D8C7BE", label="incomplete"),
-                                Patch(facecolor="#EFEAE4", label="not in this grade")],
+                                Patch(facecolor="#D8C7BE", label="could not be judged"),
+                                Patch(facecolor="#EFEAE4", label="not graded yet")],
                        loc="upper left", bbox_to_anchor=(1.005, 1.02), fontsize=8.4)
 
     # ---------------------------------------------------------------- 2. activity band
@@ -177,12 +179,11 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
     style_ax(ax_band, grid="")
     dev_s = sum(c["duration_s"] for c in calls_all if not CATEGORIES[c["category"]][1])
     fb_s = sum(c["duration_s"] for c in calls_all if CATEGORIES[c["category"]][1])
-    title(ax_band, f"Where the clock went — feedback {fb_s / 3600:.1f} h vs development "
-                   f"{dev_s / 3600:.1f} h; the hatched remainder is the agent thinking. "
-                   f"每 marker above is one call, sized by duration".replace("每", "Each"), fs=12.5,
-          pad=26)
-    ax_band.legend(loc="upper left", bbox_to_anchor=(1.005, 1.02), fontsize=8.0,
-                   frameon=True, title="whole run", title_fontsize=8.4)
+    title(ax_band, f"Where the time went — waiting for feedback {fb_s / 3600:.1f} h against doing "
+                   f"the work {dev_s / 3600:.1f} h. Hatched = the agent thinking. Each dot above is "
+                   f"one tool call, sized by how long it took", fs=12.5, pad=28)
+    ax_band.legend(loc="upper left", bbox_to_anchor=(1.005, 1.02), fontsize=8.0, frameon=True,
+                   title="what the agent did (whole run)", title_fontsize=8.4)
 
     # Every call, marked in a strip INSIDE the same panel: the band is their aggregate, so stacking
     # them in their own panel spent a whole row restating one curve. Inside, not above, so nothing
@@ -204,8 +205,9 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
     # ---------------------------------------------------------------- 4. token rate
     curve = a.get("token_curve") or []
     if len(curve) >= 3:
-        for key, colour, label in (("input", SLATE, "fresh input"), ("output", NAVY, "output"),
-                                   ("cache_read", GOLD, "cached input")):
+        for key, colour, label in (("input", SLATE, "new input (fresh prompt)"),
+                                   ("output", NAVY, "output (what the agent writes)"),
+                                   ("cache_read", GOLD, "re-read context (cached)")):
             ts, vs = [], []
             for i in range(1, len(curve)):
                 lo = max(0, i - 2)
@@ -218,11 +220,11 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
                 ax_tok.plot(ts, [max(v, 1e-1) for v in vs], color=colour, lw=1.9, label=label,
                             marker="o", ms=3.2)
         ax_tok.set_yscale("log")
-    ax_tok.set_ylabel("tokens / min (log)")
+    ax_tok.set_ylabel("tokens per minute\n(log scale)")
     style_ax(ax_tok, grid="both")
-    ax_tok.legend(loc="upper left", bbox_to_anchor=(1.005, 1.02), fontsize=8.4)
-    title(ax_tok, "Token rate — cached input, fresh input and output move for different reasons",
-          fs=12.5)
+    ax_tok.legend(loc="upper left", bbox_to_anchor=(1.085, 1.02), fontsize=8.4)
+    title(ax_tok, "How fast tokens moved — re-read context, new input and generated output, with "
+                  "money spent on the right", fs=12.5)
 
     # Spend rides the same panel on its own axis: it is the integral of these rates against price,
     # so putting it anywhere else asks the reader to hold two pictures at once.
@@ -263,8 +265,15 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
             f"whole run {wall_min / 60:.1f} h, {len(calls_all)} tool calls, "
             f"{counts['selfcheck']} self-checks, {len(verdicts_all)} grades   ·   "
             f"shown: the first {span:.0f} min, to where the score stopped moving")
-    fig.text(0.085, 0.955, head, fontsize=10.5, color=INK)
-    suptitle(fig, "Anatomy of a phase-1 run", y=0.985)
+    fig.text(0.085, 0.958, head, fontsize=10.2, color=INK)
+    fig.text(0.085, 0.936, "\n".join(textwrap.wrap(
+             "Phase 1: an AI agent is given a chip it has never seen — its RTL and its instruction "
+             "set — and has to write a working compiler for it. A test (\u201ccapsule\u201d) is one "
+             "operation with its shapes and a correct answer the agent never sees. It checks its own "
+             "work with a redacted self-check, and can queue simulations of the real hardware.",
+             width=196)), fontsize=9.2, color=INK, alpha=0.85, va="top", linespacing=1.5)
+    suptitle(fig, "Anatomy of a phase-1 run: an agent writing a compiler for unseen hardware",
+             y=0.992)
 
     blocked = a.get("blocked") or []
     if tail_calls:
@@ -272,23 +281,26 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
         # Lead with WHY the score stopped, not with how long the agent kept going. "kept working
         # without improving" reads as a failure of persistence; these capsules could not move.
         if blocked:
-            planes = ", ".join(sorted({b["plane"] or b["category"] or "?" for b in blocked}))
-            summary = (f"the remaining {len(blocked)} capsule(s) could not move — blocked on "
-                       f"{planes}"
-                       + (f", and {len(deep)} of them PASS their RTL tier" if deep else "")
+            planes = "; ".join(sorted({PLANE_PLAIN.get(b["plane"], b["plane"] or b["category"]
+                                                        or "unknown") for b in blocked}))
+            summary = (f"the remaining {len(blocked)} test(s) could not be made to pass — they turn "
+                       f"on {planes}"
+                       + (f", and {len(deep)} of them ALREADY pass on simulated hardware"
+                          if deep else "")
                        + f". The run spent a further {(wall_min - (best_at or 0)) / 60:.1f} h and "
                          f"{len(tail_calls)} calls on them")
         else:
             summary = (f"the run continued {(wall_min - (best_at or 0)) / 60:.1f} h and "
                        f"{len(tail_calls)} more calls past this line without moving the score")
-        ax_band.text(0.998, 1.012, summary, transform=ax_band.transAxes, ha="right", va="bottom",
+        ax_band.text(0.004, -0.10, "\n".join(textwrap.wrap(summary, width=150)),
+                     transform=ax_band.transAxes, ha="left", va="top",
                      fontsize=8.8, color=GOLD, fontweight="bold")
     note = (a.get("notes") or [""])[0]
     fig.text(0.012, 0.012,
-             "Panel 1's clock is the grader's; panels 2 and 3 are the transcript's. Both start "
-             "when the run does. Feedback is the self-check and the oracle — the agent cannot "
-             "answer those itself and waits; development is everything it does under its own "
-             "power. " + (note + " " if note else "")
+             "The top panel is timed by the grader, the lower two by the agent's own transcript; "
+             "both start when the run does. \u201cFeedback\u201d is the self-check and the hardware "
+             "simulator — the agent cannot answer those itself and must wait; \u201cdoing the "
+             "work\u201d is everything it does under its own power. " + (note + " " if note else "")
              + f"Call durations come from paired arrival stamps, so an authoring edit that "
                f"completes inside one stamp registers as an event rather than a duration — which "
                f"is why authoring is {whole['author']} calls and under a second in total.",

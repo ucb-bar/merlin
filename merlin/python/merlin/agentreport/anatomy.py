@@ -30,13 +30,25 @@ from merlin.agentreport.spans import SpanSet
 #: Category -> (display label, whether it is feedback rather than development). Ordered as a stacked
 #: band reads, development at the bottom.
 CATEGORIES: dict[str, tuple[str, bool]] = {
-    "author": ("authoring an edit", False),
-    "inspect": ("inspecting files", False),
-    "merlin_tool": ("Merlin tool", False),
-    "build": ("build / compile", False),
-    "shell": ("other shell", False),
-    "selfcheck": ("self-check", True),
-    "oracle": ("oracle job", True),
+    "author": ("writing compiler code", False),
+    "inspect": ("reading files / searching", False),
+    "merlin_tool": ("Merlin helper (ISA encoder, CCA check)", False),
+    "build": ("compiling", False),
+    "shell": ("other shell commands", False),
+    "selfcheck": ("self-check: \u201cis my compiler right yet?\u201d", True),
+    "oracle": ("RTL simulation job (runs in background)", True),
+}
+
+#: Grading-plane ids -> what a plane actually means. The verdict speaks in these ids and nobody
+#: outside the project can read them; a figure that repeats them is not explaining anything.
+PLANE_PLAIN: dict[str, str] = {
+    "lanes": "which hardware unit ran the work",
+    "model": "whole-model numerical result",
+    "model_execution": "proof the whole model really executed",
+    "build": "the submission did not build",
+    "parse": "the emitted IR did not parse",
+    "trace_check": "the instruction trace did not match",
+    "integrity": "the submission read something it must not",
 }
 
 #: Command substrings that identify a category. Harness vocabulary, not target facts: these are the
