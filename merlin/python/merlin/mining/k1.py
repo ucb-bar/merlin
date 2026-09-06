@@ -22,6 +22,7 @@ import hashlib
 import json
 import math
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -1464,6 +1465,21 @@ def _ssh(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:
         capture_output=True, text=True, timeout=_bounded_timeout(timeout))
 
 
+def _remote_bounded(command: str, timeout: int) -> str:
+    """Make the board own the deadline so a lost SSH client cannot orphan an inference.
+
+    A host-side ``subprocess.run(timeout=...)`` kills only the local ssh process.  The remote child
+    keeps running after that connection disappears (observed: two smolVLA runs consumed board CPU
+    for more than a day after their cells timed out).  GNU timeout is present in the K1 image; put
+    the measured command under it and quote the complete shell fragment as one argument.
+    """
+    seconds = int(timeout)
+    if seconds < 1:
+        raise ValueError("remote timeout must be positive")
+    return (f"timeout --signal=TERM --kill-after=5s {seconds}s "
+            f"sh -c {shlex.quote(command)}")
+
+
 def board_vlenb() -> int | None:
     """Read VLENB (bytes) from the board, or None if unreachable. VLEN_bits = vlenb*8."""
     try:
@@ -1680,7 +1696,8 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
             conditions_before = board_conditions()
-            proc = _ssh(f"{wenv}{output_env}{envs}{taskset}{remote}", timeout=timeout)
+            command = f"{wenv}{output_env}{envs}{taskset}{remote}"
+            proc = _ssh(_remote_bounded(command, timeout), timeout=timeout + 15)
             result = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
             if remote_out:
                 _pull_full_output(remote_out, bwork, result)
@@ -1904,7 +1921,8 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
             conditions_before = board_conditions()
-            proc = _ssh(f"{wenv}{output_env}{env}{taskset}{remote}", timeout=timeout)
+            command = f"{wenv}{output_env}{env}{taskset}{remote}"
+            proc = _ssh(_remote_bounded(command, timeout), timeout=timeout + 15)
             r = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
             if remote_out:
                 _pull_full_output(remote_out, bwork, r)
@@ -1917,9 +1935,8 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             if (bwork / "HAS_SESSION_QUALITY").is_file():
                 quality_env = ("MERLIN_VALIDATE_SESSION=1 MERLIN_SESSION_REPEATS=1 "
                                "MERLIN_SESSION_WARMUPS=0 ")
-                qproc = _ssh(
-                    f"{wenv}{env}{quality_env}{taskset}{remote}",
-                    timeout=timeout)
+                quality_command = f"{wenv}{env}{quality_env}{taskset}{remote}"
+                qproc = _ssh(_remote_bounded(quality_command, timeout), timeout=timeout + 15)
                 qres = zm._parse_console(qproc.stdout + qproc.stderr, qproc.returncode)
                 qm = qres.get("metrics", {})
                 steps = int(qm.get("trajectory_steps") or 0)

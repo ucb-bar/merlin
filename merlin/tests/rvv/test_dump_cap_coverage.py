@@ -135,6 +135,24 @@ def test_binary_output_transfer_retries_a_dropped_scp_before_cleanup(monkeypatch
     assert np.array_equal(result["outputs"], values)
 
 
+def test_board_deadline_kills_the_remote_child_not_only_the_local_ssh() -> None:
+    command = "OMP_NUM_THREADS=8 /root/merlin_k1/model"
+    wrapped = k1._remote_bounded(command, 1800)
+    assert wrapped.startswith("timeout --signal=TERM --kill-after=5s 1800s sh -c ")
+    assert command in wrapped
+
+
+def test_board_deadline_refuses_a_non_positive_timeout() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        k1._remote_bounded("/root/merlin_k1/model", 0)
+
+
+def test_prebuilt_binary_path_also_uses_the_board_owned_deadline() -> None:
+    source = inspect.getsource(k1.run_binary_on_k1)
+    assert "_remote_bounded(command, timeout)" in source
+    assert "timeout=timeout + 15" in source
+
+
 def test_full_coverage_changes_only_the_ceiling() -> None:
     """Requesting full output must not perturb the rest of the harness.
 
