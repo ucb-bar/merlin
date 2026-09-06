@@ -434,44 +434,101 @@ def _tier_phrase(tier: Any) -> str:
 
 
 def _readme(sel: ChampionSelection, manifest: dict[str, Any]) -> str:
+    """The published repo's landing page.
+
+    A package published with ``--no-gate`` says so HERE, at the top, in the reader's first
+    paragraph. Suppressing the refusal to stderr and shipping the ordinary "certified champion"
+    wording is how an uncertified package gets cited as a certified one: the warning is seen by
+    the operator who already knows, and never by the person who clones the repo.
+    """
     merlin_sha = git_sha7()
     pub = manifest.get("publication") or {}
+    gate_ok, gate_detail = _check_gate(sel)
     lines = [
         f"# {sel.repo_name}",
         "",
         f"Standalone, buildable out-of-tree Merlin codegen backend for **{sel.target}** "
         f"(family `{sel.family or 'unknown'}`).",
         "",
-        "This repository is **generated** by Merlin's `merlin-target-publish` bridge: it is the "
-        "certified champion codegen package for the target, exported as its own repo. The buildable "
-        "tree at the repo root *is* the content; the package manifest + provenance ride along under "
-        "`.merlin/`.",
+    ]
+    if not gate_ok:
+        lines += [
+            "> ## \u26a0 NOT CERTIFIED \u2014 published with `--no-gate`",
+            ">",
+            "> This package did **not** pass Merlin's publication certification gate, and was "
+            "exported anyway with `--no-gate`. It is **not a champion** and it is **not the "
+            "baseline**.",
+            ">",
+            f"> Gate refusal, verbatim: `{gate_detail}`",
+            ">",
+            f"> Recorded status: `{sel.status or 'unknown'}`. Whatever this package earned is "
+            "recorded under `.merlin/certification.yaml` and in the `grading:` block of "
+            "`manifest.yaml` \u2014 read those before citing any number from it. A certification "
+            "gate is not a formality here: a functional pass, a graded pass and a cycle-accurate "
+            "RTL certification are three different claims.",
+            "",
+        ]
+    lines += [
+        ("This repository is **generated** by Merlin's `merlin-target-publish` bridge. The "
+         "buildable tree at the repo root *is* the content; the package manifest + provenance "
+         "ride along under `.merlin/`."
+         if not gate_ok else
+         "This repository is **generated** by Merlin's `merlin-target-publish` bridge: it is the "
+         "certified champion codegen package for the target, exported as its own repo. The "
+         "buildable tree at the repo root *is* the content; the package manifest + provenance "
+         "ride along under `.merlin/`."),
         "",
         "## What",
         "",
-        f"- Champion package: `{sel.package_id}`",
+        f"- {'Package' if not gate_ok else 'Champion package'}: `{sel.package_id}`",
         f"- Family: `{sel.family or 'unknown'}`",
         f"- Recorded status: `{sel.status or 'unknown'}`",
         f"- Merlin git sha (this export): `{merlin_sha}`",
         "",
-        "## How to build",
-        "",
-        "```sh",
-        f"git clone <this-repo> {sel.repo_name}",
-        f"cd {sel.repo_name}",
-        "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
-        "cmake --build build",
-        f"./build/bin/{sel.tool_name} --version",
-        "```",
-        "",
-        "The codegen payload (schedule/knobs for rvv; dialect/lowering/contracts for gemmini) lives "
-        "under `payload/`.",
-        "",
+    ]
+    # An interpreted package has no build step, and telling a reader to run cmake against a tree
+    # with no CMakeLists.txt sends them to debug a build that does not exist. `assemble_repo_tree`
+    # already omits the CMake skeleton for these; the README has to agree with the tree it ships.
+    tool_rel = str((manifest.get("entrypoints") or {}).get("tool") or sel.tool_name)
+    if _interpreted(manifest):
+        lines += [
+            "## How to run it",
+            "",
+            f"No build step: `{tool_rel}` is a script and the tree it imports ships beside it.",
+            "",
+            "```sh",
+            f"git clone <this-repo> {sel.repo_name}",
+            f"cd {sel.repo_name}",
+            f"./{tool_rel} --help",
+            "```",
+            "",
+            "`manifest.yaml` declares the entrypoint and the argv of every command the "
+            "experiment ABI expects; run those, not a build.",
+            "",
+        ]
+    else:
+        lines += [
+            "## How to build",
+            "",
+            "```sh",
+            f"git clone <this-repo> {sel.repo_name}",
+            f"cd {sel.repo_name}",
+            "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release",
+            "cmake --build build",
+            f"./build/bin/{sel.tool_name} --version",
+            "```",
+            "",
+        ]
+    lines += [
         "## Provenance",
         "",
         f"- Certification: `{pub.get('certification', sel.cert_status or 'recorded:' + (sel.status or 'unknown'))}`",
-        f"- Certified by run: `{pub.get('certified_by_run', sel.cert_run or 'n/a')}`",
-        f"- Certified against: {_tier_phrase(pub.get('certification_tier'))}",
+        f"- {'Graded' if not gate_ok else 'Certified'} by run: "
+        f"`{pub.get('certified_by_run', sel.cert_run or 'n/a')}`",
+        # An uncertified package's tier block describes the GRADING oracle, not a certification, so
+        # it must not be introduced with the word "certified".
+        f"- {'Oracle behind that tier' if not gate_ok else 'Certified against'}: "
+        f"{_tier_phrase(pub.get('certification_tier'))}",
         f"- Fingerprint: `{pub.get('fingerprint', 'n/a')}`",
         "",
         "See `.merlin/provenance.yaml` and `.merlin/certification.yaml` for the full lineage. Each "
@@ -824,10 +881,43 @@ def _populate_vector_schedule_payload(sel: ChampionSelection, payload: Path) -> 
         shutil.copytree(src_runs, payload / "baseline_runs")
 
 
+def _copy_package_root(src: Path, dest: Path) -> None:
+    """Copy a package whose tree is ALREADY repo-shaped (tool at the root) into ``dest`` verbatim.
+
+    ``manifest.yaml`` is skipped because the export rewrites it; caches and VCS metadata are
+    skipped because they are not part of the contract. ``copy2`` throughout, so the entrypoint
+    keeps its executable bit."""
+    for entry in sorted(src.iterdir()):
+        if entry.name in ("manifest.yaml", "build", "__pycache__", ".git", "payload"):
+            continue
+        target = dest / entry.name
+        if entry.is_dir():
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(entry, target,
+                            ignore=shutil.ignore_patterns("__pycache__", ".git"))
+        else:
+            shutil.copy2(entry, target)
+
+
 def _populate_mlir_oot(sel: ChampionSelection, dest: Path, payload: Path) -> bool:
     """gemmini family: move dialect.py/lowering.yaml/contracts/inputs into payload/; hoist any
-    mlir_oot/ tree to the repo root. Returns True iff an mlir_oot/ tree was hoisted."""
+    mlir_oot/ tree to the repo root. Returns True iff an mlir_oot/ tree was hoisted.
+
+    A package whose declared entrypoint sits at the package ROOT is NOT hoisted, because for that
+    shape the package root already IS the repo root. Hoisting it dissolved the `mlir_oot` package
+    the tool imports (`from mlir_oot.gemmini_opt import main`), moved its submodules to the top
+    level where their `from ..tables import ...` relative imports no longer resolve, and dropped
+    every root-level file the hoist does not look at -- the entrypoint script among them. Measured:
+    the assembled tree had no `<target>-opt` at all while `manifest.yaml` still named one, so the
+    published repo could not run the tool its own contract declares.
+    """
     src = sel.package_dir
+    tool = str((sel.manifest.get("entrypoints") or {}).get("tool") or "")
+    if tool and "/" not in tool and (src / tool).is_file():
+        _copy_package_root(src, dest)
+        return False
+
     for name in ("dialect.py", "lowering.yaml"):
         p = src / name
         if p.is_file():
@@ -1244,9 +1334,20 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
     _git(["-C", str(clone_dir), "add", "--", "."])
 
     merlin_sha = _git_sha_full()
-    subject = f"publish({sel.target}): champion {sel.package_id}"
+    gate_ok, gate_detail = _check_gate(sel)
+    # A --no-gate publish names itself in the SUBJECT. The history of a target repo is its
+    # provenance trail; a commit that says "champion" for a package the gate refused makes that
+    # trail assert the one thing that is not true about it.
+    subject = (f"publish({sel.target}): champion {sel.package_id}" if gate_ok
+               else f"publish({sel.target}): UNCERTIFIED package {sel.package_id}")
+    warning = "" if gate_ok else (
+        f"WARNING: published with --no-gate. This package did NOT pass the certification gate.\n"
+        f"Gate-Refusal: {gate_detail}\n"
+        f"Not-A-Champion: true\n"
+    )
     body = (
-        f"Champion: {sel.package_id}\n"
+        warning +
+        f"{'Champion' if gate_ok else 'Package'}: {sel.package_id}\n"
         f"Target: {sel.target}\n"
         f"Family: {sel.family}\n"
         f"Merlin-Sha: {merlin_sha}\n"
@@ -1266,7 +1367,9 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
         _git(["-C", str(clone_dir),
               "-c", "user.name=merlin-target-publish", "-c", "user.email=publish@merlin.local",
               "tag", "-a", tag, "-m",
-              f"{sel.target} champion {sel.package_id}\nMerlin-Publish-Fingerprint: {fingerprint}\n"])
+              (f"{sel.target} champion {sel.package_id}" if gate_ok else
+               f"{sel.target} UNCERTIFIED package {sel.package_id} (published --no-gate)")
+              + f"\nMerlin-Publish-Fingerprint: {fingerprint}\n"])
     commit_sha = _git(["-C", str(clone_dir), "rev-parse", "HEAD"]).stdout.strip()
 
     _git(["-C", str(clone_dir), "push", "origin", f"HEAD:refs/heads/{branch}"])

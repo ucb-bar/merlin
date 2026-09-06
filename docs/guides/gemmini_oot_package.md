@@ -3,7 +3,7 @@ title: Running the certified gemmini OOT backend on a fresh machine
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-09-02
+last_verified: 2026-09-06
 related: [whole_model_on_accelerator, reproducing_whole_model_on_rtl, gemmini_experiment, reproducibility, adding_a_target]
 code_refs: [merlin/python/merlin/targetgen/capsule_grade.py, merlin/python/merlin/targetgen/capsule_runner.py, merlin/python/merlin/targetgen/rtl_engine_policy.py, merlin/python/merlin/targetgen/contract/compile.py, merlin/python/merlin/targetgen/publish.py, merlin/python/merlin/targetgen/oot_runner.py, merlin/python/merlin/targetgen/_capsule_bundle_worker.py, merlin/python/merlin/perf/hw_counters.py, merlin/contract/hardware_pins.yaml]
 ---
@@ -17,6 +17,93 @@ correctly. Concepts for the *other* whole-model path live in
 [reproducing_whole_model_on_rtl](reproducing_whole_model_on_rtl.md). **This is a different artifact and
 a different flow** — an agent-generated OOT backend graded through `capsule_grade`, not
 `compile_model`.
+
+## Two published artifacts — do not confuse them
+
+This page documents **two** gemmini OOT backends. They are different artifacts, graded over different
+cohorts, and their numbers are not comparable.
+
+| | `gemmini_xdsl_rtl_v0` (2026-09-02) | `gemmini_xdsl_oot_v0` (2026-09-06) |
+|---|---|---|
+| branch | `stable/gemmini_xdsl_rtl_v0` | `profiling/gemmini_xdsl_oot_v0` |
+| tag | `v0-gemmini_xdsl_rtl_v0` | `v0-gemmini_xdsl_oot_v0` |
+| headline | 33/33 at L3 over a 34-capsule cohort | **83/96 public**, **14/14 hidden**, over the 96-capsule public set |
+| status | `rtl_certified` | `capsule_graded_l3_partial` (`certification: not_certified`) |
+
+The rest of this page's cohort arithmetic describes the FIRST artifact. The second is documented below.
+
+## `gemmini_xdsl_oot_v0` — the 2026-09-06 profiling artifact
+
+    git clone -b profiling/gemmini_xdsl_oot_v0 git@github.com:ucb-bar/gemmini-mlir.git
+
+Agent-generated from RTL-derived facts (`authoring.mode: agent_generated_from_rtl_facts`), lowering an
+interface dialect to RoCC command buffers and a linked ELF. Published with `--no-gate`: it is a
+**profiling artifact, not a champion**, and its manifest says so.
+
+### The measured result
+
+| | |
+|---|---|
+| public | **83/96**; tier_reached L0 83, L1 83, L2 82, **L3 78**; RTL-backed passes **76** |
+| hidden (held out) | **14/14**, `functional_pass: 1`, highest tier **L3** |
+| integrity | `clean`, `gradeable: true` |
+| L3 engine | **GSIM**, not Verilator |
+
+The cycle-accurate tier here was **GSIM**. Per this guide's own comparison, GSIM reports 0..+2
+cycles per invocation (<=+9 over a capsule window) against Verilator, so these numbers are
+elaborated-RTL but **must never be mixed with Verilator numbers in one comparison**.
+
+### Read this before treating the 13 non-passes as bugs
+
+**Ten of the thirteen are the backend DECLINING, not computing anything wrong.** Its own
+`DELIVERABLE_OUT_DTYPES` gate refused to hand back an f32/bf16 result it could not encode through the
+runner's integer readback at the time. It computed those regions correctly on its scalar lane; lifting
+only that gate later, 9 of 10 pass **bit-exact (`max_abs_error: 0`) at L3** against an independent
+`host_torch_eager` golden.
+
+The other three fail on three DIFFERENT planes, and none is simply "a routing bug":
+
+| capsule | plane | note |
+|---|---|---|
+| `SY_epilogue_bias_add` | spike / program-oracle | numeric compare is **exact**, `mismatch_count: 0`; the oracle rejects the `bias_add` epilogue name, and the two engines demand different ranks for the same bias operand |
+| `SY_micro_model` | model | whole-model execution proof |
+| `M3_host_island_seam_gemmini` | model_execution | `FALLBACK_ON_ELIGIBLE_REGION`, 21 regions — **open question**, see below |
+
+On `M3`, the submission's own `REPORT.md` argues the number is produced by the whole-model plane's own
+model compiler and is byte-identical even when `params.lanes` is rewritten to claim every region on the
+mesh — i.e. it may not be this package's routing at all. Treat it as unresolved rather than as a
+confirmed defect in this backend.
+
+### Getting the capsules it was graded against
+
+The public capsule SOURCES are tracked in the merlin repo and arrive with a normal clone:
+
+    merlin/contract/capsules/{isa,layers,model,model_slices,_perf}/
+
+The run graded a **materialized** public subset, not those directories directly. Regenerate it with
+`merlin.targetgen.contract.materialize.public_capsules_for(<target_experiment>)` rather than copying a
+cache path — the cache is not a source.
+
+**The authoritative list of what was graded** is `grading_public/score_capsule.json` (96 capsules, named,
+with per-capsule status) and `grading_hidden/score_capsule.json` (14). Do not reconstruct the set by
+guessing; read those files.
+
+**What is deliberately NOT published:** `merlin/contract/capsules/hidden/` and every `golden.yaml` /
+`golden.npy` are untracked on purpose — they are ANSWER KEYS. Publishing them would destroy the
+held-out set for every future run and make the 14/14 hidden result unciteable. Their absence is by
+design, not an oversight.
+
+**What that means in practice.** For **performance profiling** (cycles, utilization, roofline) goldens
+are not needed — run the capsule and measure. For **correctness grading** the pass/fail verdicts cannot
+be reproduced without goldens; use `capsule_grade --no-oracle` for structure-only checks, or cite the
+recorded verdicts in the score files above.
+
+### Citing cycle numbers from this artifact
+
+Measurements are against gemmini_rtl commit `63f0b68a68f1` **plus** the reviewed off-pin bytes in
+`src/main/scala/gemmini/LoadController.scala` and `include/gemmini.h`. Cite it as
+"`63f0b68a68f1` plus those bytes" — **never** as "pinned"; the bytes differ from the pinned revision
+and a claim derived from them is not a pinned claim.
 
 ## Read this before quoting the number
 
