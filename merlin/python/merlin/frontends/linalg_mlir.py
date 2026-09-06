@@ -112,7 +112,49 @@ def parse_mlir_text(text: str, ctx=None):
 
 
 def parse_mlir_file(path: str | Path, ctx=None):
-    return parse_mlir_text(Path(path).read_text(encoding="utf-8"), ctx=ctx)
+    """Parse an MLIR file, in whichever form it was printed.
+
+    xDSL's dialect coverage is deliberately partial: it implements the ops the derivations here
+    reason about and relies on everything else arriving in MLIR's GENERIC form, which needs no
+    per-op parser. A model2MLIR capture is printed that way, so a direct parse holds -- right up
+    until the module has been round-tripped through the MLIR printer, which prints CUSTOM form by
+    default. ``perop_blocks.tag_prepared_mlir`` and ``prov_cse.rewrite_prepared_file`` both do that,
+    so with ``perop_register_block`` or ``cse_through_provenance`` enabled every consumer downstream
+    of them meets a file it cannot read::
+
+        ParseError: Operation tensor.extract_slice does not have a custom format.
+
+    MEASURED, both failure modes from that one cause: it took EVERY ``tiny_llama`` int8 build down
+    outright (that model has a ``tensor.extract_slice``; ``lstmnetvit``, with the identical feature
+    set, does not -- which is why this looked model-specific rather than structural); and where a
+    consumer catches the error instead, it degrades SILENTLY -- the block-table derivation reports
+    "no contractions observed" and drops the register block, so the lever is reported as applied and
+    is not. ``tensor.extract_slice`` is not special and is not the last such op, so the fix cannot be
+    to teach xDSL one more spelling, and it does not belong in each consumer either: this is the one
+    door they all go through.
+
+    The re-print is attempted ONLY after a direct parse fails, so a module that already parses takes
+    exactly the path it took before -- same bytes, no extra subprocess. It fails CLOSED: if the
+    module cannot be re-printed either, the error names both attempts rather than yielding an empty
+    module, because a derivation that silently could not run is what this repo keeps re-learning.
+    """
+    from xdsl.utils.exceptions import ParseError
+
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        return parse_mlir_text(text, ctx=ctx)
+    except ParseError as first:
+        # Imported here, not at module scope: `generic_form` reaches back into this module, and the
+        # re-print runs in the m2m venv, which a caller that never hits this path need not have.
+        from ..llvmlower.generic_form import GenericFormError, to_generic_form
+        try:
+            generic = to_generic_form(path)
+        except GenericFormError as exc:
+            raise GenericFormError(
+                f"{path} is printed in MLIR custom form that xDSL cannot read "
+                f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
+                f"re-printed in generic form: {exc}") from first
+        return parse_mlir_text(generic.read_text(encoding="utf-8"), ctx=ctx)
 
 
 def load_manifest(path: str | Path) -> dict[int, dict[str, Any]]:
