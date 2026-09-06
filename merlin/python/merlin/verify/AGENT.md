@@ -14,7 +14,13 @@ and working log: `docs/design/compiler_verification.md`.
 - `smt_semantics.py` — a semantics for the `interface` dialect, given by lowering it to `smt`.
 - `refine.py` — translation validation: assert the negation of the refinement relation, solve.
 - `proofs.py` — audit `contract.prove` tokens as verified / asserted / unattributed.
-- `witness.py` — turn a solver counterexample into a schema-valid witness the bench can grade.
+- `counterexamples.py` — turn a solver counterexample into a capsule the bench grades, by writing a
+  `profiles/<target>.smt.yaml` entry (prefix `CX`, `source_role: smt_counterexample`) that
+  `generate_corpus.load_profile` merges. Going through the generator is the point: registration,
+  dedupe, `MANIFEST.yaml` provenance, scrubbing and `golden.yaml` all come for free, and the input
+  VALUES land under `out/artifacts/verification/` rather than in a capsule directory. An earlier
+  `witness.py` wrote the directory itself, got none of that, and put a counterexample-inputs file
+  where no ignore rule matched it — in a public repo. It is gone; do not reintroduce that shape.
 - `faults.py` — the seeded fault corpus, one knob each, applied to real pass output.
 - `evaluate.py` — run every fault past every layer; produce the detection matrix.
 - `plots.py` — the four figures, each generated from a JSON record, never from a literal.
