@@ -1,0 +1,79 @@
+{
+  "generated": "2026-09-06",
+  "status": "diagnostic; no across-model performance win is certified",
+  "historical_fp32_bitvla": {
+    "scope": "same Merlin graph/runtime; 15 f32 matmuls routed to the named kernel backend; not full ExecuTorch",
+    "source": "out/artifacts/kernel-mining/rvv/bench/k1_e2e_fair_bitvla.json",
+    "n_launches": 3,
+    "selection": "minimum wall time; every launch shown in the figure",
+    "latency_ms": {
+      "Merlin": 148.290003,
+      "XNNPACK kernels": 167.285549,
+      "OpenBLAS kernels": 180.545541
+    },
+    "launches_ms": {
+      "Merlin": [148.906745, 148.290003, 151.136658],
+      "XNNPACK kernels": [172.562394, 169.511386, 167.285549],
+      "OpenBLAS kernels": [181.033738, 180.545541, 180.775221]
+    }
+  },
+  "int8_one_core": {
+    "scope": "full-model W8A8/qd8, one core; best valid diagnostic walls, not a paired certification set",
+    "models": [
+      {
+        "model": "LSTMNetVIT",
+        "merlin_ms": 89.527437,
+        "executorch_ms": 50.057548666666664,
+        "source": "out/artifacts/compare/v1/compare_v1_20260905T185714Z_011d952/cells/lstmnetvit.json"
+      },
+      {
+        "model": "ResNet-50",
+        "merlin_ms": 2670.749381,
+        "executorch_ms": 884.7737303333334,
+        "source": "out/build/codex_candidates/resnet_im2col_panel_autovec (Merlin); out/artifacts/compare/v1/compare_v1_20260905T185714Z_011d952/cells/resnet50_v1_5.json (ExecuTorch)",
+        "note": "passes the shared W8A8 bar; independent fp32 golden is absent"
+      },
+      {
+        "model": "TinyLlama",
+        "merlin_ms": 1651.116805,
+        "executorch_ms": 1033.8364375,
+        "source": "out/build/codex_candidates/tiny_panel_* and exact qd8 board measurement",
+        "note": "full 256000-element output; shared accuracy bar passes"
+      },
+      {
+        "model": "smolVLA",
+        "merlin_ms": null,
+        "executorch_ms": null,
+        "source": "out/artifacts/compare/v1/compare_v1_20260905T185714Z_011d952/cells/smolvla.json",
+        "note": "pending clean rerun after stale remote-process and ExecuTorch bf16-dequant fixes"
+      }
+    ]
+  },
+  "tinyllama_core_scaling": {
+    "scope": "full-model W8A8/qd8; complete output; diagnostic walls grouped by compiler configuration",
+    "cores": [1, 8],
+    "merlin_configs": [
+      {
+        "label": "Merlin MR4/NR16",
+        "sessions_ms": {
+          "1": [1651.116805],
+          "8": [837.758529, 823.638384, 870.789001]
+        },
+        "note": "best current one-core configuration"
+      },
+      {
+        "label": "Merlin MR1/NR32",
+        "sessions_ms": {
+          "1": [2398.446554],
+          "8": [644.509646]
+        },
+        "note": "the one-core and eight-core points use the exact same ELF"
+      }
+    ],
+    "executorch_ms": [1033.8364375, 382.944629],
+    "executorch_statistic": "warm execution estimate; one validated estimate per core count",
+    "output_sha256": "9f0749c3282be030c36fcc8d0bcf42719f55e40aa154ac5a424fbcb9b5fe1575",
+    "source": "out/build/codex_candidates/tiny_panel_outer8 and tiny_panel_mr1_nr32_outer8_mid/same_elf_core_scaling.json",
+    "shared_accuracy_bar": "passes at both core counts; full 256000-element output"
+  }
+}
