@@ -512,8 +512,27 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
         from merlin.runtime.backends import base as backends
         backend = backends.get_backend(target)
     from merlin.runtime.reference import outputs_match, reference_outputs
+    from merlin.perf import capture_store as STORE
     expected = reference_outputs(cb)
     pins = artifacts.pinned()
+    # A CAPTURE IS A PURE FUNCTION OF THE ELF AND THE ENGINES, so one already taken for these exact
+    # bytes and pins answers this call. The reference leg is the expensive half by more than an order
+    # of magnitude -- a 90-case certificate cost over ninety minutes of serial reference simulation in
+    # front of a run that could not begin without it -- and every second of it was being re-paid.
+    #
+    # The workload identity is re-derived and compared before a hit is used: two capsules can compile
+    # to one ELF, and a stored document must not answer for a capsule whose declared workload differs
+    # from the one being asked about. The identity fields are then taken from THIS call, because the
+    # measurement is about the ELF while the manifest binding is about which capsule asked.
+    _workload = derive_workload(manifest_path)
+    _identity = GATE.workload_sha256(_workload)
+    _hit = STORE.lookup(target, elf_sha256=elf_digest, pins=pins)
+    if _hit is not None and _hit.get("workload_sha256") == _identity:
+        return {**_hit, "target": target,
+                "capsule": str(_load_mapping(manifest_path, yaml_input=True).get("name") or ""),
+                "capsule_manifest_path": str(manifest_path),
+                "capsule_manifest_sha256": _sha_file(manifest_path),
+                "workload": _workload, "workload_sha256": _identity}
     runs = {}
     for side, engine, binary_pin, firrtl_pin in (
             ("reference", GATE.REFERENCE_ENGINE, "verilator_binary", "verilator_firrtl"),
@@ -549,7 +568,7 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
     if runs["reference"]["output_sha256"] != runs["candidate"]["output_sha256"]:
         raise ProducerError("GSIM and Verilator output bytes differ")
     workload = derive_workload(manifest_path)
-    return {
+    document = {
         "schema_version": CAPTURE_SCHEMA, "target": target,
         "capsule": str(_load_mapping(manifest_path, yaml_input=True).get("name") or ""),
         "capsule_manifest_path": str(manifest_path),
@@ -558,6 +577,11 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
         "elf_sha256": elf_digest, "agreement": "AGREE", "evidence": GATE.STRONG_EVIDENCE,
         "bytes_match": True, **runs,
     }
+    # File it so the next run that presents these bytes and these engines does not pay again. The
+    # store REFUSES a document that does not answer for the key it is filed under, so a failure here
+    # loses a cache entry and nothing else -- the capture is returned either way.
+    STORE.store(target, elf_sha256=elf_digest, pins=pins, document=document)
+    return document
 
 
 def validate_capture(path: str | Path, *, target: str,
