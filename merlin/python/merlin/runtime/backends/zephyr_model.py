@@ -870,6 +870,13 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
             f"(contraction, fill, requant) tags it fuses on are applied by that request's tagger, "
             f"and only its schedule carries the fused arms. Named alone it would tag nothing, build "
             f"the baseline, and report as applied. Name both.")
+    from ...llvmlower import weight_panel as _wpan
+    if _wpan.FEATURE in features and PEROP_BLOCK_NAME not in features:
+        raise ValueError(
+            f"{_wpan.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel "
+            f"width IS the N tile that request's block table derives, and only its schedule arm can "
+            f"tile the packed contraction. Named alone it would repack every weight and leave every "
+            f"packed contraction to convert-linalg-to-loops. Name both.")
     if _ip.FEATURE in features and PEROP_BLOCK_NAME not in features:
         raise ValueError(
             f"{_ip.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel width "
@@ -951,13 +958,35 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # matmul it replaced -- a priced-but-absent geometry is exactly what `BlockAgreementError`
         # fails the build over. Returns {} and the SAME path when the feature is absent or every
         # candidate is refused, so the table, the tags, the schedule and the .ll stay byte-identical.
-        packed_entries: dict[str, tuple[int, int]] = {}
+        packed_entries: dict[str, tuple[str, int, int]] = {}
         if _ip.FEATURE in features:
             prepared, _pack = _ip.rewrite_prepared_file(
                 prepared, _pb.block_table(_cshapes(prepared), **_blk), work)
-            packed_entries = {k: (mr, nr) for k, mr, nr in _pack.entries}
+            packed_entries = {k: (_ip.FEATURE, mr, nr) for k, mr, nr in _pack.entries}
             print(f"[im2col_pack] packed={_pack.packed} "
                   + " ".join(f"{k}={v}" for k, v in sorted(_pack.refusals.items())))
+        # PANEL-PACKED WEIGHTS, default-off (`weight_panel.FEATURE`), and here for the same reason the
+        # im2col pack is: between the table that gives it its NR and the table the tagger is built
+        # from. It differs in ONE way that matters -- it retypes `@forward` arguments, so the weight
+        # BLOB and the ABI table have to be repacked to match. That half is materialized by
+        # `weight_panel.abi_bundle` from the plan left here; a caller that lowers this module and
+        # hands `c_runtime.generate` the STOCK bundle would build an object indexing a packed weight
+        # against unpacked bytes, which is why the plan is written where that caller must look.
+        if _wpan.FEATURE in features:
+            prepared, _wpk = _wpan.rewrite_prepared_file(
+                prepared, _pb.block_table(_cshapes(prepared), **_blk), work,
+                bundle=Path(mlir_path).resolve().parent)
+            print(f"[weight_panel] packed={_wpk.packed} dead_ops_erased={_wpk.dead_ops_erased} "
+                  + " ".join(f"{k}={v}" for k, v in sorted(_wpk.refusals.items())))
+            if not _wpk.packed:
+                # FAIL CLOSED. Building the baseline while the feature set says the lever is on is the
+                # inert-lever failure, and it would be measured as if the pack had happened.
+                raise ValueError(
+                    f"{_wpan.FEATURE}: no weight could be panel-packed in this module "
+                    f"({dict(sorted(_wpk.refusals.items())) or 'no contraction reached a weight'}); "
+                    f"refusing to build the baseline under the lever's name")
+            _wpan.write_plan(work, _wpk, prepared)
+            packed_entries.update({k: (_wpan.FEATURE, mr, nr) for k, mr, nr in _wpk.entries})
         table = _pb.block_table(_cshapes(prepared), **_blk)
         # DIRECT CONVOLUTIONS, priced into the SAME table (so the tagger, the priced-vs-tagged
         # agreement check and the schedule are one code path, not two). `contraction_shapes` cannot
@@ -975,9 +1004,9 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # ranked as if it were the whole thing, which is the failure mode this repo keeps re-finding.
         for _k, _want in sorted(packed_entries.items()):
             _got = table.get(_k)
-            if _got is None or int(_got[1]) != int(_want[1]):
+            if _got is None or int(_got[1]) != int(_want[2]):
                 raise ValueError(
-                    f"{_ip.FEATURE}: packed {_k} to a panel of {_want[1]} columns, but the block "
+                    f"{_want[0]}: packed {_k} to a panel of {_want[2]} columns, but the block "
                     f"policy prices that contraction at {_got}. The panel width and the N tile must "
                     f"agree or the packed layout is only half used; refusing to build a lever that "
                     f"would measure as itself and be something else.")

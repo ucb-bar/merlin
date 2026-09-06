@@ -1066,6 +1066,19 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # micro-optimization for big corpora: resnet50's 256-step, 154 MB session_inputs.npz becomes a
     # 770 MB model_io.h that costs ~7 GB of RSS to compile, and a correctness or per-step latency
     # run needs a handful of steps. None (the default) embeds the whole corpus, unchanged.
+    # PANEL-PACKED WEIGHTS (`prepack_weight_panels`, default-off). `prepare_for_lowering` retyped the
+    # packed `@forward` arguments in the module that became `model.ll`; this materializes the bundle
+    # whose weights.safetensors and manifest were packed to match and checks the two signatures agree
+    # argument by argument before the ABI table is built from it. Returns `model_dir` unchanged when
+    # the build packed nothing, so a run naming no feature is byte-identical.
+    from ..llvmlower import weight_panel as _wpan
+    model_dir, _panel = _wpan.abi_bundle(model_dir, work, prepared)
+    if _panel is not None:
+        (work / "PANEL_PACKED_BUNDLE").write_text(str(model_dir))
+        print(f"[weight_panel] {Path(model_dir).name}: {_panel['weights_packed']} weights packed "
+              f"into panels of {_panel['panel_widths']} columns, {_panel['args_retyped']} arguments "
+              f"retyped, {_panel['abi_args_checked']} ABI arguments checked "
+              f"(cached={_panel.get('cached')})")
     cinfo = c_runtime.generate(model_dir, cgen, inputs_npz,
                                max_session_steps=max_session_steps)
     if cinfo.get("has_session_quality"):

@@ -83,6 +83,14 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     whole corpus, which is what every existing caller gets.
     """
     model_dir, out_dir = Path(model_dir).resolve(), Path(out_dir).resolve()
+    # A build whose PREPARED module has panel-packed weight arguments must be handed the bundle whose
+    # blob and manifest were packed to match. The argument table below is built from THIS bundle while
+    # the compiled object follows the prepared module, so the stock bundle here would produce an
+    # object indexing [N/NR][K][NR] weights against [K][N] bytes -- it links, it runs, and it computes
+    # nonsense. The preparation step leaves its plan beside this call's work directory precisely so
+    # the mistake is detectable here rather than in a wrong result hours later.
+    from .weight_panel import guard_planned_pack
+    guard_planned_pack(model_dir, out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     sig = parse_forward_signature(model_dir / "model.mlir")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
