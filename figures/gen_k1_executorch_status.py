@@ -34,29 +34,38 @@ axes[0].set_ylim(0, max(values) * 1.22)
 axes[0].text(0.02, 0.98, "(a)", transform=axes[0].transAxes,
              ha="left", va="top", fontweight="bold")
 
-# (b) Current one-core INT8 status as a latency ratio. Missing smolVLA is explicit.
+# (b) Current INT8 status at both requested core counts. These are diagnostic best-valid cells,
+# not paired confidence intervals, so points are deliberately not joined into trend lines.
 rows = DATA["int8_one_core"]["models"]
+rows8 = DATA["int8_eight_core"]["models"]
 model_names = [row["model"] for row in rows]
 ratios = [(row["executorch_ms"] / row["merlin_ms"]
            if row["executorch_ms"] is not None and row["merlin_ms"] is not None else np.nan)
           for row in rows]
+ratios8 = [(row["executorch_ms"] / row["merlin_ms"]
+            if row["executorch_ms"] is not None and row["merlin_ms"] is not None else np.nan)
+           for row in rows8]
 y = np.arange(len(rows))
 axes[1].axvline(1.0, color="black", linestyle="--", linewidth=1)
 axes[1].set_yticks(y, model_names)
 axes[1].invert_yaxis()
 axes[1].set_xlabel(r"Latency ratio $T_{ET}/T_{Merlin}$")
 axes[1].set_xlim(0, 1.12)
-for y0, value in zip(y, ratios):
-    if np.isnan(value):
-        axes[1].scatter([0.03], [y0], marker="x", color=COLORS["pending"], s=32)
-        axes[1].text(0.07, y0, "not measured", ha="left", va="center",
-                     color=COLORS["pending"], fontstyle="italic", fontsize=8.5)
-    else:
-        axes[1].hlines(y0, 0, value, color=COLORS["merlin"], linewidth=2)
-        axes[1].scatter([value], [y0], color=COLORS["merlin"], edgecolor="black",
-                        linewidth=0.45, s=42, zorder=3)
-        axes[1].text(value + 0.025, y0, f"{value:.2f}",
-                     ha="left", va="center", fontsize=8.5)
+for label, values, offset, marker, color in (
+        ("1 core", ratios, -0.10, "o", COLORS["merlin"]),
+        ("8 cores", ratios8, 0.10, "s", COLORS["xnnpack"])):
+    for y0, value in zip(y, values):
+        if not np.isnan(value):
+            axes[1].scatter([value], [y0 + offset], marker=marker, color=color,
+                            edgecolor="black", linewidth=0.45, s=38, zorder=3,
+                            label=label if y0 == 0 else None)
+            axes[1].text(value + 0.025, y0 + offset, f"{value:.2f}",
+                         ha="left", va="center", fontsize=8.0)
+if np.isnan(ratios[-1]) and np.isnan(ratios8[-1]):
+    axes[1].scatter([0.03], [y[-1]], marker="x", color=COLORS["pending"], s=32)
+    axes[1].text(0.07, y[-1], "not measured", ha="left", va="center",
+                 color=COLORS["pending"], fontstyle="italic", fontsize=8.5)
+axes[1].legend(frameon=False, loc="upper right", fontsize=8.0)
 axes[1].text(0.02, 0.98, "(b)", transform=axes[1].transAxes,
              ha="left", va="top", fontweight="bold")
 

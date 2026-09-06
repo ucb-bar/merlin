@@ -49,6 +49,38 @@
       }
     ]
   },
+  "int8_eight_core": {
+    "scope": "full-model W8A8/qd8, eight requested cores; best valid diagnostic walls, not a paired certification set",
+    "models": [
+      {
+        "model": "LSTMNetVIT",
+        "merlin_ms": 88.38617,
+        "executorch_ms": 15.744349666666666,
+        "source": "out/artifacts/compare/v1 campaign cell started 20260905T093027Z"
+      },
+      {
+        "model": "ResNet-50",
+        "merlin_ms": 1394.09433,
+        "executorch_ms": 235.2818788,
+        "source": "out/build/codex_candidates/resnet_im2col_panel_outer8_mid/same_elf_core_scaling.json and et_resnet50_qd8_8core/runs.json",
+        "note": "Merlin passes the diagnostic absolute W8A8 bar; independent fp32 golden is absent"
+      },
+      {
+        "model": "TinyLlama",
+        "merlin_ms": 644.509646,
+        "executorch_ms": 382.944629,
+        "source": "out/build/codex_candidates/tiny_panel_mr1_nr32_outer8_mid/same_elf_core_scaling.json",
+        "note": "full 256000-element output; shared accuracy bar passes"
+      },
+      {
+        "model": "smolVLA",
+        "merlin_ms": null,
+        "executorch_ms": null,
+        "source": null,
+        "note": "pending clean bounded rerun"
+      }
+    ]
+  },
   "tinyllama_core_scaling": {
     "scope": "full-model W8A8/qd8; complete output; diagnostic walls grouped by compiler configuration",
     "cores": [1, 8],

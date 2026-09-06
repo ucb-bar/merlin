@@ -6,10 +6,11 @@
   experiment using the same Merlin graph/runtime, with only 15 FP32 matmuls routed to the named
   kernel backend. Points are three independent launches and horizontal marks are minima. Merlin's
   148.3 ms was 1.13$\times$ faster than the XNNPACK-kernel hybrid in this restricted experiment;
-  this was not a full ExecuTorch comparison. (b) Diagnostic one-core full-flow latency ratio
-  $T_{\mathrm{ET}}/T_{\mathrm{Merlin}}$ for W8A8/qd8; values below 1 mean Merlin is slower. These
-  are best valid diagnostic walls, not a paired uniform certification set, and smolVLA is not yet
-  measured. ResNet-50 passes the shared W8A8 bar but lacks an independent FP32 golden. (c)
+  this was not a full ExecuTorch comparison. (b) Diagnostic one- and eight-core full-flow latency
+  ratio $T_{\mathrm{ET}}/T_{\mathrm{Merlin}}$ for W8A8/qd8; values below 1 mean Merlin is slower.
+  These are best valid diagnostic walls, not a paired uniform certification set, and smolVLA is not
+  yet measured. ResNet-50 passes the diagnostic absolute W8A8 bar but lacks an independent FP32
+  golden. (c)
   Complete-output TinyLlama diagnostic points at one and eight cores, grouped by compiler
   configuration rather than splicing the best point from different binaries into one curve. The
   MR1/NR32 pair uses the exact same ELF and scales from 2398.4 to 644.5 ms; the latter is still
