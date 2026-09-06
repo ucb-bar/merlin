@@ -477,15 +477,28 @@ static void *worker(void *arg) {{
 
 session_complete: ;
   int k = MERLIN_OUT_ELEMS < MERLIN_DUMP_CAP ? MERLIN_OUT_ELEMS : MERLIN_DUMP_CAP;
-  printf("OUT %d", k);
-  for (int i = 0; i < k; i++) {{
-    uint32_t bits;
-    memcpy(&bits, &((float*)MERLIN_OUTPUT_PTR[0])[i], 4);
-    printf(" %u", (unsigned)bits);
+  const char *output_path = getenv("MERLIN_OUTPUT_FILE");
+  if (output_path && *output_path) {{
+    FILE *output_file = fopen(output_path, "wb");
+    if (!output_file) {{ fprintf(stderr, "FAIL open output file %s\\n", output_path); return NULL; }}
+    size_t written = fwrite(MERLIN_OUTPUT_PTR[0], sizeof(float), MERLIN_OUT_ELEMS, output_file);
+    if (fclose(output_file) != 0 || written != MERLIN_OUT_ELEMS) {{
+      fprintf(stderr, "FAIL write output file %s\\n", output_path); return NULL;
+    }}
+    /* Preserve the parser framing without streaming a multi-megabyte line through SSH. */
+    printf("OUT 0\\n");
+    printf("METRIC output_file_elems %d\\n", MERLIN_OUT_ELEMS);
+  }} else {{
+    printf("OUT %d", k);
+    for (int i = 0; i < k; i++) {{
+      uint32_t bits;
+      memcpy(&bits, &((float*)MERLIN_OUTPUT_PTR[0])[i], 4);
+      printf(" %u", (unsigned)bits);
+    }}
+    printf("\\n");
   }}
-  printf("\\n");
 
-  if (MERLIN_OUT_ELEMS > MERLIN_DUMP_CAP) {{
+  if ((!output_path || !*output_path) && MERLIN_OUT_ELEMS > MERLIN_DUMP_CAP) {{
     int rows = MERLIN_OUT_ELEMS / MERLIN_OUT_LASTDIM;
     printf("ARGMAX %d", rows);
     for (int r = 0; r < rows; r++) {{
@@ -1530,8 +1543,30 @@ def _remote_binary_path(binary: str | Path, name: str) -> str:
     return f"{K1_REMOTE_DIR}/{name}" if big else f"/tmp/{name}"
 
 
+def _pull_full_output(remote_out: str, bwork: Path, result: dict[str, Any]) -> None:
+    """Replace the empty console output with the complete binary tensor from the board.
+
+    The generated harness deliberately leaves an ``OUT 0`` framing record in stdout so the
+    existing parser still proves that the process reached ``DONE``.  The element count printed
+    beside the file is the independent completeness witness: a short or missing transfer fails
+    before any accuracy gate can mistake it for the model's answer.
+    """
+    local_out = bwork / "board_output.bin"
+    _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+          "-o", "StrictHostKeyChecking=no", f"{K1_HOST}:{remote_out}", local_out])
+    import numpy as _np
+    output = _np.fromfile(local_out, dtype=_np.float32)
+    expected = int(result.get("metrics", {}).get("output_file_elems") or 0)
+    if not expected or len(output) != expected:
+        raise K1Error(f"board output file has {len(output)} elements; expected {expected}")
+    result["outputs"] = output
+    result["prefix"] = output
+    result["output_complete"] = True
+
+
 def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str | Path, *,
-                     env: dict[str, str] | None = None, timeout: int = 600) -> dict[str, Any]:
+                     env: dict[str, str] | None = None, timeout: int = 600,
+                     capture_full_output: bool = False) -> dict[str, Any]:
     """Deploy and run an ALREADY-BUILT K1 binary, with an explicit environment.
 
     Split out of :func:`run_on_k1`'s build+run ladder so a measurement can run the SAME binary
@@ -1548,8 +1583,9 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
         raise K1Error("MERLIN_K1_HOST unset — board unreachable")
     bwork = Path(bwork)
     remote = _remote_binary_path(binary, f"{Path(model_dir).name}_{pkg.run_id}_envrun_merlin_k1")
+    remote_out = f"{K1_REMOTE_DIR}/{Path(remote).name}.output.bin" if capture_full_output else None
     with board_lock():
-        if remote.startswith(K1_REMOTE_DIR):
+        if remote.startswith(K1_REMOTE_DIR) or remote_out:
             _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
         _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
               "-o", "StrictHostKeyChecking=no", str(binary), f"{K1_HOST}:{remote}"])
@@ -1562,14 +1598,23 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
                   "-o", "StrictHostKeyChecking=no", marker.read_text().strip(),
                   f"{K1_HOST}:{remote_w}"])
             wenv = f"MERLIN_WEIGHTS={remote_w} "
+        output_env = f"MERLIN_OUTPUT_FILE={remote_out} " if remote_out else ""
         envs = "".join(f"{k}={v} " for k, v in (env or {}).items())
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
-            proc = _ssh(f"{wenv}{envs}{remote}", timeout=timeout)
-            return zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+            proc = _ssh(f"{wenv}{output_env}{envs}{remote}", timeout=timeout)
+            result = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+            if remote_out:
+                _pull_full_output(remote_out, bwork, result)
+            return result
         finally:
             try:
-                _ssh(f"rm -f {remote}" + (f" {remote_w}" if remote_w else ""), timeout=30)
+                cleanup = [remote]
+                if remote_w:
+                    cleanup.append(remote_w)
+                if remote_out:
+                    cleanup.append(remote_out)
+                _ssh("rm -f " + " ".join(cleanup), timeout=30)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -1765,11 +1810,18 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
                     f"MERLIN_SESSION_WARMUPS={int(warmup)} ")
         elif int(iters) > 1 or int(warmup) > 0:
             env += f"MERLIN_ITERS={int(iters)} MERLIN_WARMUP={int(warmup)} "
+        remote_out = (f"{K1_REMOTE_DIR}/{Path(remote).name}.output.bin"
+                      if dump_cap is None else None)
+        output_env = f"MERLIN_OUTPUT_FILE={remote_out} " if remote_out else ""
+        if remote_out:
+            _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
             conditions_before = board_conditions()
-            proc = _ssh(f"{wenv}{env}{taskset}{remote}", timeout=timeout)
+            proc = _ssh(f"{wenv}{output_env}{env}{taskset}{remote}", timeout=timeout)
             r = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+            if remote_out:
+                _pull_full_output(remote_out, bwork, r)
             conditions_after = board_conditions()
             r["board_conditions"] = {"before": conditions_before, "after": conditions_after}
             # The mask this wall was produced under. Recorded even when absent (None = unpinned),
@@ -1842,6 +1894,8 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         finally:
             try:
                 cleanup = ([remote_w] if remote_w else []) + remote_weights
+                if remote_out:
+                    cleanup.append(remote_out)
                 _ssh(f"rm -f {remote}" + (" " + " ".join(cleanup) if cleanup else ""), timeout=30)
             except Exception:  # noqa: BLE001
                 pass

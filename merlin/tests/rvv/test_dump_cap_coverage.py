@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import subprocess
 import struct
 import sys
 
@@ -63,6 +64,53 @@ def test_full_coverage_is_requestable_and_derived() -> None:
     assert lines == [f"{_CAP_DEFINE} MERLIN_OUT_ELEMS"], lines
     # and nothing numeric is left anywhere in the ceiling
     assert "4096" not in "\n".join(lines)
+
+
+def test_full_coverage_can_travel_as_a_binary_file_not_a_giant_console_line() -> None:
+    """Large outputs must not be streamed through SSH stdout.
+
+    TinyLlama's 256,000-value ``OUT`` line closes the board connection before ``DONE``.  The
+    generated binary therefore needs an opt-in file transport, while retaining the console path
+    for existing capped callers.
+    """
+    source = k1.main_linux_c(dump_cap=None)
+    assert "MERLIN_OUTPUT_FILE" in source
+    assert 'printf("OUT 0\\n")' in source
+
+
+def test_binary_output_transfer_replaces_both_parser_views_and_proves_length(
+        monkeypatch, tmp_path) -> None:
+    """The file transfer is the graded output, not an unused side channel."""
+    values = np.array([1.25, -2.5, 7.0], dtype=np.float32)
+    result = {"outputs": np.array([], dtype=np.float32),
+              "prefix": np.array([], dtype=np.float32),
+              "metrics": {"output_file_elems": len(values)}}
+
+    def fake_run(command, **_kwargs):
+        assert command[0] == "scp"
+        values.tofile(command[-1])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(k1, "_run", fake_run)
+    monkeypatch.setattr(k1, "K1_HOST", "board")
+    k1._pull_full_output("/remote/output.bin", tmp_path, result)
+
+    assert result["output_complete"] is True
+    assert np.array_equal(result["outputs"], values)
+    assert np.array_equal(result["prefix"], values)
+
+
+def test_binary_output_transfer_refuses_a_short_file(monkeypatch, tmp_path) -> None:
+    result = {"metrics": {"output_file_elems": 4}}
+
+    def fake_run(command, **_kwargs):
+        np.array([1.0, 2.0, 3.0], dtype=np.float32).tofile(command[-1])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(k1, "_run", fake_run)
+    monkeypatch.setattr(k1, "K1_HOST", "board")
+    with pytest.raises(k1.K1Error, match="3 elements; expected 4"):
+        k1._pull_full_output("/remote/output.bin", tmp_path, result)
 
 
 def test_full_coverage_changes_only_the_ceiling() -> None:
@@ -236,11 +284,11 @@ def test_a_declared_coverage_floor_vetoes_the_truncated_verdict() -> None:
 # 4. the transport survives the larger dump
 # ---------------------------------------------------------------------------------------------
 
-def test_a_full_lm_dump_round_trips_bit_exactly_through_the_console() -> None:
-    """256,000 elements is tiny_llama's real output size: ~2.8 MB on ONE console line.
+def test_the_parser_itself_can_still_read_a_full_lm_console_dump() -> None:
+    """Keep the legacy/capped stdout parser capable of reading a large synthetic dump.
 
-    ``_parse_console`` finds the OUT line by prefix and splits it whole, so the only way this can
-    fail is a genuine transport/parse limit. It does not — verified bit-exactly, not by cosine.
+    Real full-output runs use the binary file because SSH closed the connection on TinyLlama's
+    256,000-value line.  This host-only test covers parsing, not remote transport.
     """
     rng = np.random.default_rng(2)
     values = rng.standard_normal(256_000).astype(np.float32)
