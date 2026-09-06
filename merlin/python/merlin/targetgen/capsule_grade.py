@@ -1102,7 +1102,7 @@ def emit_perf_ledger(results: list, *, target: str, runs_root: str | Path, versi
     from merlin.perf import harvest as HV
     from merlin.perf import observations as OBS
     from merlin.perf.headroom import composition_operator
-    from merlin.perf.decompose import Unavailable
+    from merlin.perf.decompose import Unavailable, decompose_corpus, is_unknown
 
     auth = authority_for(target)
     rr = Path(runs_root) / "runs" / CR.suite_for(target)
@@ -1204,6 +1204,39 @@ def emit_perf_ledger(results: list, *, target: str, runs_root: str | Path, versi
             obs_rows.extend(x.to_dict() for x in o)
             refusals.extend(x.to_dict() for x in rf)
 
+    # WHERE THE CYCLES WENT, per workload and for the corpus. `decompose` was reachable the moment an
+    # activity source existed and nothing called it, so a run reported a total and never said which
+    # resource bound it. The FIXED bucket is the one to watch: cycles charged to no engine at all --
+    # layout conversion, dispatch, scalar epilogues, the allocate/copy/pack/evict traffic a tight
+    # hand-written program does not pay. A compute-vs-movement split alone cannot see it, and it is
+    # where this compiler loses to a directly-compiled baseline.
+    #
+    # THE LIMITER CANNOT REPORT IT. `binding` names the busiest ENGINE, and the fixed bucket is not an
+    # engine -- so a workload spending 70% of its cycles on no engine at all still reports "bound by
+    # the load unit". A reader who optimises the limiter alone would tune DMA and never touch the
+    # larger cost, which is why `fixed_share` is carried BESIDE the binding rather than left to be
+    # inferred from it.
+    corpus = decompose_corpus(sources)
+    modal = corpus.modal_binding_kind()
+    decomposition = {
+        "workloads": {name: {"binding": d.binding, "binding_kind": getattr(d.binding_kind, "value",
+                                                                          str(d.binding_kind)),
+                             "binding_share": round(float(d.binding_share), 4),
+                             "fixed_share": round(float(d.fixed_share), 4),
+                             "margin_to_second": (None if is_unknown(d.margin_to_second)
+                                                  else round(float(d.margin_to_second), 4)),
+                             "total_cycles": d.total_cycles}
+                      for name, d in sorted(corpus.workloads.items())},
+        # A workload whose decomposition REFUSED is named, not dropped: a corpus regime read off the
+        # survivors is a claim about a different corpus.
+        "unavailable": {name: {"what": u.what, "missing": list(u.missing)}
+                        for name, u in sorted(corpus.unavailable.items())},
+        "modal_binding_kind": (None if is_unknown(modal)
+                               else getattr(modal, "value", str(modal))),
+        "binding_kind_counts": {getattr(k, "value", str(k)): n
+                                for k, n in corpus.binding_kind_counts.most_common()},
+    }
+
     comp = composition_operator(sources, observed_overlap_cycles=overlaps or None)
     if isinstance(comp, Unavailable):
         # NAMED, not a bare "unknown": a reader has to be able to go and buy the missing evidence.
@@ -1240,6 +1273,8 @@ def emit_perf_ledger(results: list, *, target: str, runs_root: str | Path, versi
         "n_rows": len(rows), "n_observations": len(obs_rows), "n_refusals": len(refusals),
         "rows": rows,
         "composition_operator": composition,
+        # WHICH RESOURCE BOUND EACH WORKLOAD, and the share charged to no engine at all.
+        "decomposition": decomposition,
         "per_cycle_occupancy": {
             "dir": str(occ),
             "purgeable": True,
@@ -1253,7 +1288,14 @@ def emit_perf_ledger(results: list, *, target: str, runs_root: str | Path, versi
     return {"product": str(pd.path), "n_rows": len(rows), "n_observations": len(obs_rows),
             "n_refusals": len(refusals),
             "capsules_with_no_timing_capability": len(no_capability),
-            "composition_operator": composition}
+            "composition_operator": composition,
+            # The SUMMARY carries the corpus regime and the overhead share, not the per-workload
+            # table -- a reader of the score should see which resource this corpus is bound by, and
+            # how much of it went to no engine at all, without opening the product.
+            "modal_binding_kind": decomposition["modal_binding_kind"],
+            "binding_kind_counts": decomposition["binding_kind_counts"],
+            "n_workloads_decomposed": len(decomposition["workloads"]),
+            "n_workloads_undecomposable": len(decomposition["unavailable"])}
 
 
 def _headline(score: dict) -> str:
