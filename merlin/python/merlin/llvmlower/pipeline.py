@@ -380,6 +380,18 @@ def _reorder_generalize_before_fuse(passes: list[str]) -> list[str]:
     return [*out[:fuse], _GENERALIZE_NAMED, *out[fuse:]]
 
 
+def _par_residue_parallel() -> bool:
+    """Rebuild the OLD residue handling (``MERLIN_PAR_RESIDUE_PARALLEL=1``): send every op the
+    transform schedule did not claim through ``convert-linalg-to-parallel-loops`` as well.
+
+    An A/B escape hatch, kept for the same reason :func:`_dealloc_passes` keeps ``MERLIN_NO_DEALLOC``:
+    this changes the emitted code for every derived-split multicore build, and the honest way to
+    defend a claim about it is to be able to rebuild both arms.
+    """
+    import os
+    return bool(os.environ.get("MERLIN_PAR_RESIDUE_PARALLEL"))
+
+
 def _fuse_post() -> bool:
     """Whether to run the post-contraction fusion stage.
 
@@ -401,16 +413,33 @@ _PARALLEL_DIM_NUM_THREADS = {
 
 
 def parallel_transform_schedule(n_harts: int, *, matmul_dim: str = "n",
-                                batch_matmul_dim: str = "b") -> str:
+                                batch_matmul_dim: str = "b",
+                                chunks: "list | None" = None) -> str:
     """Transform schedule that wraps each contraction in an `scf.forall` over ``n_harts``.
 
     Runs BEFORE the package's own schedule (separate entry point, see above), so the inner
     tiling/vectorization — and therefore the emitted `vfmacc`/`vwmacc` — is untouched.
     ``matmul_dim`` / ``batch_matmul_dim`` name the parallel dim to split; K is never
     tileable here (it is the reduction dim and splitting it would race).
+
+    ``chunks`` (from :func:`perop_blocks.distinct_parallel_arms`) selects the PER-OP form, and it is
+    the form that keeps the claim in the paragraph above true. The class-wide ``num_threads`` split
+    below leaves each hart a ``ceil(dim / n_harts)`` tile the register block then has to mask, so the
+    block — and with it the emitted kernel — became a function of the hart count: measured on
+    lstmnetvit int8 at 8 harts, 5 matmuls fell out of the block table to scalar loops and the linked
+    ELF issued +63.5% instructions with 63% fewer vector ops before any thread was created. With
+    ``chunks``, merlin has already derived a tile that divides the dim EXACTLY and that the op's own
+    block still lowers on (``perop_blocks.parallel_chunk_table``), one arm per distinct (class, tile),
+    matched by the ``merlin.par_*`` tag the same prepare step applies. An op merlin could not split
+    that way carries no tag, matches no arm, and stays serial — with the 1-hart kernel intact.
+
+    ``chunks=None`` keeps the class-wide ``num_threads`` schedule byte-identical, for the packages
+    that carry no per-op block table for a split to be derived against.
     """
     if n_harts < 2:
         raise ValueError(f"parallel schedule needs n_harts >= 2, got {n_harts}")
+    if chunks is not None:
+        return _perop_parallel_schedule(chunks)
     body = []
     for op, dim in (("linalg.matmul", matmul_dim), ("linalg.batch_matmul", batch_matmul_dim)):
         choices = _PARALLEL_DIM_NUM_THREADS[op]
@@ -429,6 +458,42 @@ def parallel_transform_schedule(n_harts: int, *, matmul_dim: str = "n",
             "(%arg0: !transform.any_op {transform.readonly}) {\n"
             + "\n".join(body) + "\n"
             "    transform.yield\n"
+            "  }\n"
+            "}\n")
+
+
+def _perop_parallel_schedule(chunks: list) -> str:
+    """The PER-OP multicore library: one ``tile_using_forall`` arm per distinct (class, tile).
+
+    Matched by the ``merlin.par_*`` attribute, not by op name, for the same reason the block arms
+    match ``merlin.blk_*``: two contractions of the same class legitimately want different splits,
+    and a name match cannot tell them apart. Uses ``tile_sizes`` rather than ``num_threads`` because
+    the tile is the thing that has to be exact — merlin chose one that divides the extent, so every
+    chunk is STATIC and equal, and the package schedule below sees the same geometry it would have
+    seen at 1 hart.
+
+    An empty ``chunks`` (a hart count was asked for, but no contraction has a dim that splits into
+    equal block-legal pieces) yields a schedule with no arms: the module reaches the package schedule
+    exactly as the serial build does and the image runs on one core. Said rather than silently
+    produced -- see :func:`lower_to_llvm_ir`, which prints it.
+    """
+    from .perop_blocks import class_token, par_tag_for
+
+    body = []
+    for i, (op, tiles) in enumerate(chunks):
+        tiles = tuple(int(t) for t in tiles)
+        h = f"p{i}{class_token(op)}"
+        body.append(
+            f'    %{h} = transform.structured.match attributes{{{par_tag_for(op, tiles)}}} in %arg0 '
+            f': (!transform.any_op) -> !transform.any_op\n'
+            f'    %{h}_loop, %{h}_tiled = transform.structured.tile_using_forall '
+            f'%{h} tile_sizes [{", ".join(str(t) for t in tiles)}] '
+            f': (!transform.any_op) -> (!transform.any_op, !transform.any_op)')
+    return ("module attributes {transform.with_named_sequence} {\n"
+            f"  transform.named_sequence @{PARALLEL_ENTRY}"
+            "(%arg0: !transform.any_op {transform.readonly}) {\n"
+            + ("\n".join(body) + "\n" if body else "")
+            + "    transform.yield\n"
             "  }\n"
             "}\n")
 
@@ -536,7 +601,8 @@ def vec_pre_schedule(features: "frozenset[str]") -> "str | None":
 def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = True,
                        features: "frozenset[str]" = frozenset(),
                        par_sched_path: "str | Path | None" = None,
-                       vec_sched_path: "str | Path | None" = None) -> str:
+                       vec_sched_path: "str | Path | None" = None,
+                       perop_parallel: bool = False) -> str:
     """Whole-module pipeline with the transform vectorization stage spliced in after
     named-op generalization (vectorize on tensors) and before bufferization, plus the
     vector-lowering passes needed to reach LLVM. ``sched_path`` is the preloaded schedule.
@@ -631,14 +697,31 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         # away) leaves no such region to walk into. Still before the scf -> cf / openmp conversions,
         # because ownership analysis wants structured control flow.
         "__DEALLOC__",
-        # Multicore: the outer `scf.forall` becomes `scf.parallel`, and the non-vectorized
-        # fallback ops lower to parallel loops too (instead of serial `scf.for`) so the
-        # elementwise/norm tail scales with the harts as well. `convert-scf-to-openmp` then
-        # wraps every `scf.parallel` in `omp.parallel` + `omp.wsloop`. Reduction loops are
-        # NOT touched by convert-linalg-to-parallel-loops (they stay `scf.for`), so the
-        # accumulator is never raced.
+        # Multicore: the outer `scf.forall` becomes `scf.parallel` and `convert-scf-to-openmp`
+        # wraps every `scf.parallel` in `omp.parallel` + `omp.wsloop`. Reduction loops are NOT
+        # touched (they stay `scf.for`), so the accumulator is never raced.
+        #
+        # WHAT HAPPENS TO THE RESIDUE -- the ops the transform schedule did not claim (norms,
+        # activations, gathers, every elementwise generic) -- is a SEPARATE decision, and it is the
+        # second way the 1-hart and 8-hart images stopped being the same kernel. Sending the residue
+        # through `convert-linalg-to-parallel-loops` makes each of those ops its own `omp.parallel`
+        # region, and an outlined OpenMP region is not a loop nest LLVM's own vectorizer will touch:
+        # MEASURED on lstmnetvit int8 in the LINKED ELF, with the block table already held identical
+        # across the two arms, `vle32.v` 1825 -> 951 and `vlse32.v` 652 -> 27 while total issued
+        # instructions went 59,752 -> 98,059. The residue was not parallelized so much as
+        # devectorized, once per op, and it is the same conversion that produces the thousands of
+        # fork/join events `parallel_grain` exists to suppress.
+        #
+        # So when the split is the DERIVED per-op one (`perop_parallel`), parallelism is expressed by
+        # the `scf.forall` arms merlin chose and by nothing else, and the residue keeps the serial
+        # `convert-linalg-to-loops` the 1-hart build gives it. `MERLIN_PAR_RESIDUE_PARALLEL=1`
+        # rebuilds the old arm, for the same reason `MERLIN_NO_DEALLOC` exists: a claim about this is
+        # only defensible if both arms can be built. With the legacy class-wide split (no `chunks`)
+        # nothing moves -- that pipeline string is byte-identical to before.
         *(["scf-forall-to-parallel",
-           "func.func(convert-linalg-to-parallel-loops)",
+           *(["func.func(convert-linalg-to-loops)"]
+             if perop_parallel and not _par_residue_parallel()
+             else ["func.func(convert-linalg-to-parallel-loops)"]),
            "convert-scf-to-openmp", "canonicalize"]
           if par else
           ["func.func(convert-linalg-to-loops)"]),   # fallback: any op the vectorizer skipped
@@ -1059,7 +1142,8 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
                      vectorize: bool = False, transform_schedule: str | None = None,
                      hoist_static_allocs: bool = True, parallel: bool = False,
                      features: "frozenset[str] | None" = None,
-                     parallel_harts: int | None = None) -> str:
+                     parallel_harts: int | None = None,
+                     parallel_chunks: "list | None" = None) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
     ``vectorize=True`` selects the native RVV path: writes the transform schedule into
@@ -1115,8 +1199,19 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             par_sched = None
             if parallel_harts is not None:
                 par_sched = work / "rvv_parallel_schedule.mlir"
-                par_sched.write_text(parallel_transform_schedule(parallel_harts),
-                                     encoding="utf-8")
+                par_sched.write_text(
+                    parallel_transform_schedule(parallel_harts, chunks=parallel_chunks),
+                    encoding="utf-8")
+                if parallel_chunks is not None and not parallel_chunks:
+                    import sys as _sys
+                    # A multicore build whose split set is EMPTY is a single-core build wearing a
+                    # multicore build's flags. It happens honestly (no contraction has a parallel dim
+                    # that divides into equal, block-legal pieces), and it must never be inferred from
+                    # a disappointing wall time.
+                    print("[parallel_harts] WARNING: no contraction could be split without changing "
+                          "its register block, so this image carries NO scf.forall and will run on "
+                          "one core. See perop_blocks.parallel_chunk_table.",
+                          file=_sys.stderr, flush=True)
             # The non-contraction arms, as their own preloaded library, so they run while the
             # `merlin.vec_r{rank}` tags they match on are still on the ops. None (and no file) when
             # the lever is off -- see `vec_pre_schedule`.
@@ -1127,7 +1222,8 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
                 vec_sched.write_text(vec_text, encoding="utf-8")
             pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs,
                                           features=feats, par_sched_path=par_sched,
-                                          vec_sched_path=vec_sched)
+                                          vec_sched_path=vec_sched,
+                                          perop_parallel=parallel_chunks is not None)
         elif parallel:
             pipeline = _parallel_pipeline()   # multicore (OpenMP) scalar path — K1 big models
         else:

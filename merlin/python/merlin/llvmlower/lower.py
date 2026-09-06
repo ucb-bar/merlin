@@ -48,6 +48,7 @@ def lower_model(mlir_text: str, workdir: str | Path,
                 hoist_static_allocs: bool = True, parallel: bool = False,
                 features: "frozenset[str] | None" = None,
                 parallel_harts: int | None = None,
+                parallel_chunks: "list | None" = None,
                 static_arena: bool | None = None) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -60,6 +61,10 @@ def lower_model(mlir_text: str, workdir: str | Path,
 
     ``parallel_harts=N`` layers an outer OpenMP-parallel loop under that RVV schedule, so
     the object is BOTH vectorized and multicore (the multi-hart Saturn / Zephyr SMP path).
+    ``parallel_chunks`` (from ``perop_blocks.distinct_parallel_arms``, produced by the same prepare
+    step that tagged the IR) makes that split PER OP and block-preserving, so the emitted kernel is
+    the 1-hart kernel with a parallel wrapper around it rather than a differently-blocked one; None
+    keeps the legacy class-wide ``num_threads`` split.
 
     ``static_arena=True`` (or ``MERLIN_STATIC_ARENA=1``) binds the emitted per-intermediate
     ``malloc``/``free`` pairs to one statically planned arena -- see
@@ -81,7 +86,8 @@ def lower_model(mlir_text: str, workdir: str | Path,
                                    transform_schedule=transform_schedule,
                                    hoist_static_allocs=hoist_static_allocs,
                                    parallel=parallel, features=features,
-                                   parallel_harts=parallel_harts)
+                                   parallel_harts=parallel_harts,
+                                   parallel_chunks=parallel_chunks)
     except Exception as exc:
         # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
         # number in a machine-written module — not the captured layer that produced it. The commonest
@@ -127,10 +133,12 @@ def lower_model_file(mlir_path: str | Path, workdir: str | Path,
                      parallel: bool = False,
                      features: "frozenset[str] | None" = None,
                      parallel_harts: int | None = None,
+                     parallel_chunks: "list | None" = None,
                      static_arena: bool | None = None) -> LowerResult:
     return lower_model(Path(mlir_path).read_text(encoding="utf-8"), workdir, targets,
                        textual=textual, vectorize=vectorize,
                        transform_schedule=transform_schedule,
                        hoist_static_allocs=hoist_static_allocs,
                        parallel=parallel, features=features,
-                       parallel_harts=parallel_harts, static_arena=static_arena)
+                       parallel_harts=parallel_harts, parallel_chunks=parallel_chunks,
+                       static_arena=static_arena)

@@ -69,6 +69,115 @@ def tag_for(op: str, mr: int, nr: int) -> str:
     return f"{TAG_PREFIX}{class_token(op)}_{int(mr)}x{int(nr)}"
 
 
+#: Attribute prefix for the MULTICORE split. Same join-key contract as :data:`TAG_PREFIX`: one
+#: distinct attribute per distinct (op class, forall tile) pair, set by the tagger and matched by the
+#: parallel schedule. See :func:`parallel_chunk_table` for why the split is derived per op.
+PAR_TAG_PREFIX = "merlin.par_"
+
+
+def par_tag_for(op: str, tiles: "tuple[int, ...]") -> str:
+    """Attribute name for op class ``op`` split by ``scf.forall`` at ``tiles``."""
+    return f"{PAR_TAG_PREFIX}{class_token(op)}_" + "_".join(str(int(t)) for t in tiles)
+
+
+def _even_split(extent: int, harts: int, admits) -> "tuple[int, int] | None":
+    """``(chunk, k)`` — the most EQUAL, block-legal chunks ``<= harts`` this extent divides into.
+
+    EQUAL is the load-bearing word. ``tile_using_forall`` with a tile that does not divide the extent
+    emits an ``affine.min`` and hands the package schedule a DYNAMIC tile, which the register block
+    then has to mask — the very ``vector.mask`` failure this whole derivation exists to avoid. So only
+    exact divisors are candidates, and each candidate chunk must additionally satisfy the block's own
+    legality predicate (``admits``). No divisor qualifies -> None -> the op is left unsplit, i.e. it
+    keeps the 1-hart kernel and runs serially, which is a parallelism loss and never a codegen change.
+    """
+    for k in range(int(harts), 1, -1):
+        if int(extent) % k:
+            continue
+        chunk = int(extent) // k
+        if admits(chunk):
+            return chunk, k
+    return None
+
+
+def parallel_chunk_table(shapes, table: dict[str, tuple[int, int]],
+                         harts: int) -> dict[str, tuple[int, ...]]:
+    """``{shape_key: forall tile sizes}`` — how the multicore stage may split EACH contraction.
+
+    THE INVERSION THIS FIXES. The multicore stage used to split every ``linalg.matmul`` over N with
+    ``tile_using_forall num_threads [0, harts]``, and the block policy then had to choose a block that
+    fit ``ceil(N / harts)``. That makes the register block a function of the hart count, so the 8-hart
+    build and the 1-hart build are DIFFERENT KERNELS and no scaling number taken across them means
+    anything. Measured on lstmnetvit int8 (K1 package, per-op blocks) at ``harts=8``: 5 of 37 matmuls
+    lost their block entirely (untagged -> ``convert-linalg-to-loops``, i.e. scalar) and 9 more were
+    narrowed (``4x16 -> 4x8``, ``4x16 -> 4x2``, ``3x16 -> 3x4``); in the LINKED ELF the compute
+    symbols went from 59,752 instructions / 13,767 vector to 97,701 / 5,144 — +63.5% issued ops and
+    a 63% collapse in vector ops, before a single thread had been created.
+
+    So the dependency runs the other way here: the block is derived ONCE, from the model's own
+    extents, and the split is then chosen to preserve it. Per op, over every parallel dim the class
+    has, the chunk count is the largest ``k <= harts`` such that the dim divides into ``k`` EQUAL
+    pieces each of which the block still lowers on (``from_strategy._rvv_blocking_lowers``, the same
+    measured predicate ``block_table`` chose the block with). An op no dim can split that way is left
+    out of the table and runs serially — a parallelism loss, never a different kernel.
+
+    Axis preference on a TIE is N, then B, then M, and it is a traffic argument, not a style one: an
+    N-split gives each hart its own slice of the B operand and a shared A, an M-split gives each hart
+    its own slice of A and makes all of them stream the WHOLE of B. B is the weight matrix and is the
+    larger operand in every model here, so N keeps the replicated stream the small one. ``k`` still
+    wins over the preference — more real parallelism beats better locality.
+
+    ``harts < 2`` -> ``{}``: no split, and every schedule derived from this is absent.
+    """
+    from ..mining.from_strategy import _rvv_blocking_lowers
+
+    out: dict[str, tuple[int, ...]] = {}
+    if int(harts) < 2:
+        return out
+    for s in shapes:
+        par = tuple(int(d) for d in s.parallel)
+        red = tuple(int(d) for d in (getattr(s, "reduction", ()) or ()))
+        if len(par) < 2:
+            continue
+        key = shape_key(s.op, par, red)
+        blk = table.get(key)
+        if blk is None:                       # unblocked op: nothing to preserve, nothing to tag
+            continue
+        mr, nr = int(blk[0]), int(blk[1])
+        m, n = par[-2], par[-1]
+        # (axis index counted from the END of the parallel dims, admits-predicate, tie rank)
+        axes = [(1, lambda t: _rvv_blocking_lowers(mr, nr, m, t), 0),      # N
+                (2, lambda t: _rvv_blocking_lowers(mr, nr, t, n), 2)]     # M
+        if len(par) > 2:                      # batch_matmul: B is outside the (M, N) block entirely
+            axes.append((len(par), lambda _t: True, 1))
+        best = None
+        for back, admits, rank in axes:
+            got = _even_split(par[-back], harts, admits)
+            if got is None:
+                continue
+            chunk, k = got
+            cand = (k, -rank, back, chunk)
+            if best is None or cand[:2] > best[:2]:
+                best = cand
+        if best is None:
+            continue
+        _k, _rank, back, chunk = best
+        tiles = [0] * len(par)
+        tiles[len(par) - back] = chunk
+        out[key] = tuple(tiles)
+    return out
+
+
+def distinct_parallel_arms(par_table: dict[str, tuple[int, ...]]) -> list[tuple[str, tuple[int, ...]]]:
+    """``[(op class, tiles)]`` — the arms a parallel schedule needs for ``par_table``, deduplicated.
+
+    The op class is recovered from the key rather than carried alongside it for the same reason
+    :func:`distinct_blocks` does it: the key IS the geometry, and a second copy of the class could
+    disagree with it.
+    """
+    arms = {(k.split(":", 1)[0], v) for k, v in par_table.items()}
+    return sorted(arms)
+
+
 def shape_key(op: str, parallel: "tuple[int, ...]", reduction: "tuple[int, ...]") -> str:
     """Stable key for a contraction's geometry.
 
@@ -320,7 +429,6 @@ def _solve_block(mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None,
 
 
 def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
-                harts: int = 1,
                 vlen: int | None = None,
                 mr_vlen: int | None = None) -> dict[str, tuple[int, int]]:
     """``{shape_key: (MR, NR)}`` — the widest block legal for EACH contraction on its own.
@@ -349,34 +457,25 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
     M was a single scalar for the whole model and could differ between two ops only by ``gcd(M)``
     clipping it. Omitted -> ``mr_cap`` is used exactly as before, byte-identical.
 
-    ``harts`` is the hart count the image will be lowered for, and it changes the ANSWER without
-    changing the KEY. The multicore stage wraps each ``linalg.matmul`` in an ``scf.forall`` over N
-    before the package schedule runs, so the block must cover ``ceil(N / harts)`` and the remainder
-    tile, not the whole N — while the tag is applied to the still-unsplit op, so the key stays the
-    unsplit geometry. Choosing from the unsplit extents is how ``--harts 3`` on a 2-wide N produced
-    a masked parallel dim and died with ``'vector.mask' op expects only one operation to mask``, on a
-    model that built fine at 1 hart. The split is derived by the same helper the class-wide policy
-    uses, so the two cannot drift.
+    THE BLOCK IS NOT A FUNCTION OF THE HART COUNT, and it used to be. This took a ``harts`` argument
+    and priced every matmul against ``ceil(N / harts)``, because the multicore stage split N with
+    ``num_threads``. That made the 8-hart image a DIFFERENT KERNEL from the 1-hart one — measured on
+    lstmnetvit int8: 5 matmuls dropped out of this table entirely (untagged -> scalar loops) and 9
+    were narrowed, +63.5% instructions in the linked ELF before any thread existed — so a scaling
+    number taken across the two arms was not measuring threads. The dependency now runs the other
+    way: this table is derived from the model's own extents, and
+    :func:`parallel_chunk_table` chooses a split that preserves it.
     """
-    from ..mining.apply import _harts_split_shapes
-
     out: dict[str, tuple[int, int]] = {}
     for s in shapes:
         par = tuple(int(d) for d in s.parallel)
         red = tuple(int(d) for d in (getattr(s, "reduction", ()) or ()))
         if len(par) < 2:
             continue
-        # Every per-hart tile this op will be split into must accept the block, so hand them all to
-        # the predicate at once and let it pick one that is legal for the worst of them.
-        pairs = []
-        for tile in _harts_split_shapes([s], harts):
-            tpar = tuple(int(d) for d in tile.parallel)
-            if len(tpar) >= 2:
-                pairs.append((tpar[-2], tpar[-1]))
         # PER-SHAPE N cap: widened for this contraction's own narrowest element width when the board's
         # vlen is known (see nr_cap_for_dtypes). vlen=None -> the caller's cap, unchanged.
         shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
-        mr, nr = _solve_block(mr_cap, shape_nr_cap, pairs or [(par[-2], par[-1])],
+        mr, nr = _solve_block(mr_cap, shape_nr_cap, [(par[-2], par[-1])],
                               mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()))
         if nr <= 1:
             continue
@@ -952,9 +1051,14 @@ def tag_perop_blocks(module, ctx):
                     if blk is None:
                         seen_untagged.add(str(key))
                         continue
+                    par = _MERLIN_PAR_TABLE.get(key)
                     with ctx:
                         inner.operation.attributes["merlin.blk_%s_%dx%d" % (tok, blk[0], blk[1])] = \\
                             ir.UnitAttr.get()
+                        if par is not None:
+                            inner.operation.attributes[
+                                "merlin.par_%s_%s" % (tok, "_".join(str(t) for t in par))] = \\
+                                ir.UnitAttr.get()
                     hit.add(key)
                     n += 1
     walk(module.operation)

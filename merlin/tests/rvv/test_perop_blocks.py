@@ -13,6 +13,8 @@ attempt:
 """
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from merlin.common.paths import repo_root
@@ -156,29 +158,121 @@ def test_real_bundles_are_fully_claimed_per_op(bundle, expect_claimed):
     assert cov["claimed_mac_fraction"] >= expect_claimed, cov
 
 
-def test_a_per_op_block_covers_the_per_hart_tile_not_the_whole_extent():
-    """The multicore stage wraps each matmul in an scf.forall over N BEFORE the package schedule
-    runs, so a block chosen from the unsplit extent can exceed the tile a hart actually gets. That
-    is not a slowdown, it is a build failure: `'vector.mask' op expects only one operation to mask`,
-    measured on lstmnetvit at --harts 3 (an N=2 and an N=3 contraction) while 1 hart built fine."""
+def test_the_block_does_not_move_with_the_hart_count():
+    """THE INVERSION. This used to assert the opposite -- that a 3-wide N split over 3 harts had to
+    be declined to scalar -- because the multicore stage split N with ``num_threads`` and the block
+    had to survive whatever tile that left. The consequence was that the 8-hart image and the 1-hart
+    image were different kernels, so no scaling number taken across them was about threads: measured
+    on lstmnetvit int8, 5 of 37 matmuls fell out of the table to scalar loops at 8 harts, 9 more were
+    narrowed, and the linked ELF issued +63.5% instructions with 63% fewer vector ops before a single
+    thread existed. The split is now derived FROM the block instead
+    (:func:`perop_blocks.parallel_chunk_table`), so this table is a function of the model alone.
+    """
     from merlin.llvmlower import perop_blocks as pb
 
     class S:
         def __init__(self, op, par, red):
             self.op, self.parallel, self.reduction = op, par, red
 
-    narrow = S("linalg.matmul", (1, 3), (128,))       # N=3: one lane per hart at 3 harts
-    wide = S("linalg.matmul", (64, 96), (288,))       # N=96: 32 per hart, still blockable
+    narrow = S("linalg.matmul", (1, 3), (128,))
+    wide = S("linalg.matmul", (64, 96), (288,))
+    for shapes in ([narrow], [wide], [narrow, wide]):
+        assert pb.block_table(shapes, nr_cap=16), "every one of these blocks alone"
+    assert "harts" not in inspect.signature(pb.block_table).parameters, (
+        "block_table must not take a hart count: a block that moves with the thread count is what "
+        "made the two arms incomparable")
 
-    assert pb.block_table([narrow], nr_cap=16, harts=1)                  # blockable alone
-    assert not pb.block_table([narrow], nr_cap=16, harts=3), \
-        "a 3-wide N split over 3 harts leaves one lane; the op must be declined, not masked"
-    assert pb.block_table([wide], nr_cap=16, harts=3), "a wide N must stay on the vector path"
 
-    # The KEY must stay the unsplit geometry: the tag is applied to the op before the forall split,
-    # so a key computed from the tile would never match anything.
-    key = next(iter(pb.block_table([wide], nr_cap=16, harts=3)))
-    assert key == pb.shape_key("linalg.matmul", (64, 96), (288,))
+def test_the_derived_split_keeps_every_chunk_legal_for_the_block_it_was_given():
+    """Each chunk the forall produces must satisfy the SAME measured predicate the block was chosen
+    with, and must divide the extent EXACTLY -- an inexact tile hands the package schedule a dynamic
+    extent, which is the masked parallel dim the whole derivation exists to avoid."""
+    from merlin.llvmlower import perop_blocks as pb
+    from merlin.mining.from_strategy import _rvv_blocking_lowers
+
+    class S:
+        def __init__(self, op, par, red):
+            self.op, self.parallel, self.reduction = op, par, red
+
+    shapes = [S("linalg.matmul", (736, 16), (15,)),
+              S("linalg.matmul", (1, 512), (128,)),
+              S("linalg.matmul", (1, 3), (128,)),        # M=1, N=3: nothing splits
+              S("linalg.batch_matmul", (32, 8, 345), (72,))]
+    table = pb.block_table(shapes, mr_cap=4, nr_cap=16)
+    par = pb.parallel_chunk_table(shapes, table, 8)
+    assert par, "a model of this shape must have SOMETHING to split"
+    for s in shapes:
+        key = pb.shape_key(s.op, s.parallel, s.reduction)
+        tiles = par.get(key)
+        if tiles is None:
+            continue
+        mr, nr = table[key]
+        extents = list(s.parallel)
+        for axis, t in enumerate(tiles):
+            if not t:
+                continue
+            assert extents[axis] % t == 0, f"{key}: chunk {t} does not divide {extents[axis]}"
+            assert extents[axis] // t <= 8, "never more chunks than harts"
+            extents[axis] = t
+        assert _rvv_blocking_lowers(mr, nr, extents[-2], extents[-1]), (
+            f"{key}: the split leaves a tile the block ({mr}, {nr}) cannot lower")
+    # The op nothing can split stays OUT of the table rather than being split illegally.
+    assert pb.shape_key("linalg.matmul", (1, 3), (128,)) not in par
+
+
+def test_a_single_hart_derives_no_split_at_all():
+    """The 1-hart build must be byte-identical to the pre-multicore one, which means NO tag and NO
+    arm -- not an arm that happens to be a no-op."""
+    from merlin.llvmlower import perop_blocks as pb
+
+    class S:
+        op, parallel, reduction = "linalg.matmul", (64, 96), (288,)
+
+    shapes = [S()]
+    table = pb.block_table(shapes, mr_cap=4, nr_cap=16)
+    assert pb.parallel_chunk_table(shapes, table, 1) == {}
+    assert pb.parallel_chunk_table(shapes, table, 0) == {}
+
+
+def test_an_unblocked_contraction_is_never_split():
+    """A contraction with no block runs through convert-linalg-to-loops. Splitting it would put a
+    fork around scalar code and change nothing else -- and it would mean the split table could name
+    a geometry the tagger never tags, which is how a priced-but-absent arm gets into a schedule."""
+    from merlin.llvmlower import perop_blocks as pb
+
+    class S:
+        op, parallel, reduction = "linalg.matmul", (8, 1), (16,)     # N=1: no multi-lane block
+
+    shapes = [S()]
+    table = pb.block_table(shapes, mr_cap=4, nr_cap=16)
+    assert table == {}
+    assert pb.parallel_chunk_table(shapes, table, 8) == {}
+
+
+def test_the_split_tag_and_the_schedule_arm_are_generated_from_one_table():
+    """The tagger's attribute name and the schedule's match must be the same string. They are built
+    in two places (a runner source string in the m2m venv, and the transform library here), which is
+    exactly the shape of drift that leaves every contraction unsplit while the build still passes."""
+    from merlin.llvmlower import perop_blocks as pb
+    from merlin.llvmlower.pipeline import parallel_transform_schedule
+
+    class S:
+        op, parallel, reduction = "linalg.matmul", (64, 96), (288,)
+
+    shapes = [S()]
+    table = pb.block_table(shapes, mr_cap=4, nr_cap=16)
+    par = pb.parallel_chunk_table(shapes, table, 8)
+    arms = pb.distinct_parallel_arms(par)
+    sched = parallel_transform_schedule(8, chunks=arms)
+    runner = pb.runner_rewrite_src(table, par)
+    for op, tiles in arms:
+        tag = pb.par_tag_for(op, tiles)
+        assert f"attributes{{{tag}}}" in sched, f"{tag} has no schedule arm"
+        # the runner builds the name from the class token and the tile list; check the pieces it
+        # will actually join, not a second copy of the formatting
+        assert repr(tuple(int(t) for t in tiles)) in runner
+    assert "num_threads" not in sched, (
+        "the derived split must use tile_sizes: num_threads leaves a ceil() tile the block masks")
 
 
 def test_batch_matmul_blocks_are_unaffected_by_the_hart_count():
@@ -188,8 +282,10 @@ def test_batch_matmul_blocks_are_unaffected_by_the_hart_count():
     class S:
         op, parallel, reduction = "linalg.batch_matmul", (2, 96, 32), (6,)
 
-    assert (pb.block_table([S()], nr_cap=16, harts=1)
-            == pb.block_table([S()], nr_cap=16, harts=3))
+    table = pb.block_table([S()], nr_cap=16)
+    assert table == pb.block_table([S()], nr_cap=16)
+    par = pb.parallel_chunk_table([S()], table, 8)
+    assert par, "a 96-row batch_matmul has something to split"
 
 
 def test_the_block_cap_follows_the_boards_vector_length():

@@ -632,8 +632,14 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
     # away, enough to push the run past its own timeout. Build directly only when nothing else
     # will.
     if run != "k1":
-        binary = k1.build_k1_binary(bundle, work, pkg, inputs_npz=bundle / "inputs.npz")
+        # `--harts N` reaches THIS build too. It used not to: the flag was plumbed only to the
+        # run-on-hardware routes, so `--run none --harts 8` produced a single-core binary and
+        # reported success -- a compile-only multicore A/B silently compared two identical
+        # single-core images. Same expression as the `--run k1` call below, so the two agree.
+        binary = k1.build_k1_binary(bundle, work, pkg, inputs_npz=bundle / "inputs.npz",
+                                    parallel_harts=(harts if harts > 1 else None))
         out["binary"] = str(binary)
+        out["parallel_harts"] = harts if harts > 1 else None
     out["status"] = "compiled"
     if run == "none":
         return out

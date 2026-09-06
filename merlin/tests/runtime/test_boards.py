@@ -312,19 +312,30 @@ def test_the_two_compilers_do_not_share_flag_sets():
     assert "*clang_cflags" in src and "*gcc_cflags" in src
 
 
-def test_the_hart_count_reaches_the_block_table():
-    """A plumbing test, because this exact wire was missing: prepare_for_lowering accepted `harts`
-    and then called block_table without it, so every multicore build silently blocked for the
-    UNSPLIT extents and died with a masked parallel dim. The signature alone proves nothing."""
+def test_the_hart_count_reaches_the_split_and_not_the_block():
+    """A plumbing test, because both halves of this wire have been wrong.
+
+    First the hart count never reached the block policy and every multicore build died with a masked
+    parallel dim. Then it reached it and the block became a FUNCTION of the hart count, which made
+    the 8-hart and 1-hart images different kernels (lstmnetvit int8: 5 matmuls to scalar loops,
+    +63.5% instructions in the linked ELF, before any thread existed). The count now reaches the
+    SPLIT derivation only; the block is a function of the model alone."""
     import inspect
 
+    from merlin.llvmlower import perop_blocks as pb
     from merlin.runtime.backends import zephyr_model as zm
 
     src = inspect.getsource(zm.prepare_for_lowering)
-    assert "harts=harts" in src, "block_table must receive the hart count, not just the signature"
     assert "harts" in inspect.signature(zm.prepare_for_lowering).parameters
+    assert "parallel_chunk_table(_cshapes(prepared), table, harts)" in src, (
+        "the hart count must reach the split derivation")
+    assert "harts" not in inspect.signature(pb.block_table).parameters, (
+        "the block must not be a function of the hart count")
     # ...and build_app must pass the image's hart count down, not the default.
     assert "harts=n_harts" in inspect.getsource(zm.build_app)
+    # ...and the split it derived must reach the lowering, or the tags match no arm and every
+    # contraction silently stays serial while the build still succeeds.
+    assert "parallel_chunks=parallel_arms(work)" in inspect.getsource(zm.build_app)
 
 
 def test_every_in_process_mlir_parse_in_build_app_is_serialized():

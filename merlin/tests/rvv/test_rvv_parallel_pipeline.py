@@ -129,3 +129,122 @@ def test_llvm23_has_no_scf_for_to_parallel():
                                timeout=120).stdout
     assert "--scf-forall-to-parallel" in help_text
     assert "--scf-for-to-parallel" not in help_text
+
+
+# --- The DERIVED per-op split -----------------------------------------------------------------
+#
+# The class-wide `num_threads` split above is correct but it made the block a function of the hart
+# count, so the 8-hart and the 1-hart image were not the same kernel and no scaling number taken
+# across them was about threads. Measured on lstmnetvit int8 at 8 harts, in the LINKED ELF: 5 of 37
+# matmuls fell out of the block table to scalar loops, 9 more were narrowed, 59,752 -> 97,701 issued
+# instructions and 13,767 -> 5,144 vector ops. These tests pin the replacement.
+
+def _leading_op(line: str) -> str:
+    """The op name a printed MLIR line starts, read structurally: strip one leading result list
+    (``%x = ``) and take the first token. A generic contains substrings of every op name it wraps,
+    so a substring test would count nested ops in the enclosing op's line."""
+    s = line.strip()
+    if " = " in s:
+        s = s.split(" = ", 1)[1]
+    return s.split()[0] if s.split() else ""
+
+
+def test_the_derived_split_leaves_the_schedules_own_output_unchanged(tmp_path):
+    """THE CLAIM, checked on the IR the package schedule produces rather than on a pass list.
+
+    Same module, same package schedule, 1 hart vs 8: every vector op count must match and the only
+    difference is the ``scf.forall`` wrapper. This is the metric that survives inlining -- a static
+    count off the object cannot distinguish "devectorized" from "outlined".
+    """
+    if not MLIR_OPT.is_file():
+        pytest.skip("third_party/llvm-install MLIR tools not built")
+    from merlin.llvmlower import perop_blocks as pb
+
+    class S:
+        op, parallel, reduction = "linalg.matmul", (64, 512), (2048,)
+
+    (tmp_path / "mm.mlir").write_text("""
+func.func @forward(%A: tensor<64x2048xf32>, %B: tensor<2048x512xf32>,
+                   %C: tensor<64x512xf32>) -> tensor<64x512xf32> {
+  %0 = linalg.matmul {merlin.blk_mm_4x16, merlin.par_mm_0_64}
+       ins(%A, %B: tensor<64x2048xf32>, tensor<2048x512xf32>)
+       outs(%C: tensor<64x512xf32>) -> tensor<64x512xf32>
+  return %0 : tensor<64x512xf32>
+}
+""")
+    table = pb.block_table([S()], mr_cap=4, nr_cap=16)
+    assert table == {pb.shape_key("linalg.matmul", (64, 512), (2048,)): (4, 16)}
+    par = pb.parallel_chunk_table([S()], table, 8)
+    arms = pb.distinct_parallel_arms(par)
+    assert arms == [("linalg.matmul", (0, 64))], arms
+
+    sched = tmp_path / "sched.mlir"
+    sched.write_text(pb.schedule_text(table, 16))
+
+    def _counts(par_path):
+        pipe = P.build_rvv_pipeline(sched, par_sched_path=par_path,
+                                    perop_parallel=par_path is not None)
+        anchor = "transform-interpreter{entry-point=__transform_main},canonicalize,cse"
+        prefix = pipe[:pipe.index(anchor) + len(anchor)]
+        prefix += ")" * (prefix.count("(") - prefix.count(")"))
+        proc = subprocess.run(
+            [str(MLIR_OPT), str(tmp_path / "mm.mlir"),
+             f"--pass-pipeline=builtin.module({prefix})"],
+            capture_output=True, text=True, timeout=600)
+        assert proc.returncode == 0, proc.stderr[-3000:]
+        got = {}
+        for tok in ("vector.contract", "vector.transfer_read", "vector.transfer_write",
+                    "vector.mask", "linalg.matmul", "scf.forall"):
+            got[tok] = sum(1 for l in proc.stdout.splitlines()
+                           if _leading_op(l) == tok)
+        return got
+
+    parp = tmp_path / "par.mlir"
+    parp.write_text(P.parallel_transform_schedule(8, chunks=arms))
+    one, eight = _counts(None), _counts(parp)
+    assert eight["scf.forall"] == 1, "the parallel wrapper must be there"
+    assert one["scf.forall"] == 0
+    for tok in ("vector.contract", "vector.transfer_read", "vector.transfer_write",
+                "vector.mask", "linalg.matmul"):
+        assert one[tok] == eight[tok], (
+            f"{tok}: {one[tok]} at 1 hart vs {eight[tok]} at 8 -- the arms are not the same kernel")
+    assert eight["vector.mask"] == 0 and eight["linalg.matmul"] == 0
+
+
+def test_the_derived_split_keeps_the_residue_serial():
+    """Everything the schedule did not claim keeps the 1-hart ``convert-linalg-to-loops``.
+
+    Sending it through ``convert-linalg-to-parallel-loops`` makes each leftover op its own outlined
+    OpenMP region, and LLVM does not vectorize those: measured on lstmnetvit int8 with the block
+    table ALREADY held identical across the arms, ``vle32.v`` 1825 -> 951 and ``vlse32.v`` 652 -> 27.
+    So under the derived split the parallelism is the forall arms and nothing else.
+    """
+    perop = P.build_rvv_pipeline("/tmp/s.mlir", par_sched_path="/tmp/p.mlir", perop_parallel=True)
+    assert "func.func(convert-linalg-to-loops)" in perop
+    assert "func.func(convert-linalg-to-parallel-loops)" not in perop
+    assert "scf-forall-to-parallel" in perop and "convert-scf-to-openmp" in perop
+    # the legacy class-wide split is untouched, so no existing multicore build moves
+    legacy = P.build_rvv_pipeline("/tmp/s.mlir", par_sched_path="/tmp/p.mlir")
+    assert "func.func(convert-linalg-to-parallel-loops)" in legacy
+
+
+def test_an_empty_split_still_produces_a_valid_schedule():
+    """A hart count with nothing splittable must yield a well-formed (empty) library, not a crash
+    and not a silently omitted entry point -- the interpreter would then fail the whole build."""
+    sched = P.parallel_transform_schedule(8, chunks=[])
+    assert P.PARALLEL_ENTRY in sched and "tile_using_forall" not in sched
+    assert sched.count("{") == sched.count("}")
+
+
+def test_harts_reaches_the_compile_only_build():
+    """`merlin-compile --run none --harts 8` used to build a SINGLE-CORE binary and report success:
+    `--harts` was plumbed only to the run-on-hardware routes. A compile-only multicore A/B then
+    compared two identical images."""
+    import inspect
+
+    from merlin import compile_cli
+
+    src = inspect.getsource(compile_cli.compile_rvv)
+    head = src[:src.index('if run == "k1":')]
+    assert head.count("parallel_harts=(harts if harts > 1 else None)") >= 1, (
+        "the compile-only build must receive the hart count")

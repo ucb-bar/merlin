@@ -641,6 +641,49 @@ class MatrixRouting:
         return self.select if self.select is not None else tile_filling_selector(self.tile_edge())
 
 
+#: Where :func:`prepare_for_lowering` records the multicore split it derived, and where the build
+#: sites read it back. A FILE rather than a third return value because the two ends are already
+#: separated by the prepared-module handoff every backend does, and because the record is then
+#: readable after the fact -- "which contractions did this image actually split, and into how many
+#: pieces" is the first question any multicore number raises, and it must not have to be re-derived.
+PARALLEL_ARMS_FILE = "perop_parallel_arms.json"
+
+
+def _write_parallel_arms(work: Path, harts: int, table: dict, par_table: dict) -> None:
+    """Record the derived split next to the build. Written on EVERY per-op-blocked prepare."""
+    import json
+
+    from ...llvmlower.perop_blocks import distinct_parallel_arms
+
+    arms = distinct_parallel_arms(par_table)
+    (Path(work) / PARALLEL_ARMS_FILE).write_text(json.dumps(
+        {"harts": int(harts),
+         "priced_contractions": len(table),
+         "split_contractions": len(par_table),
+         # The residue, NAMED. A contraction with no split runs on one core; a count of them that
+         # nobody can turn back into shapes is not evidence about anything.
+         "serial_contractions": sorted(set(table) - set(par_table)),
+         "arms": [[op, list(tiles)] for op, tiles in arms],
+         "per_contraction": {k: list(v) for k, v in sorted(par_table.items())}},
+        indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def parallel_arms(work: Path) -> "list | None":
+    """The ``[(op class, tiles)]`` :func:`prepare_for_lowering` derived for ``work``, or None.
+
+    None means "this prepare derived no per-op block table", which is the packages whose block lives
+    in their schedule text -- there the multicore split stays the legacy class-wide one. An EMPTY
+    list is a different statement: a table existed and nothing in it could be split.
+    """
+    import json
+
+    path = Path(work) / PARALLEL_ARMS_FILE
+    if not path.is_file():
+        return None
+    rec = json.loads(path.read_text(encoding="utf-8"))
+    return [(op, tuple(int(t) for t in tiles)) for op, tiles in rec.get("arms", ())]
+
+
 def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                          features: "frozenset[str] | None" = None,
                          blocking: bool = True, harts: int = 1,
@@ -893,7 +936,13 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # each contraction's N cap is widened for ITS OWN narrowest element width; measured effect on
         # the block tables of the models on disk is MAC-weighted NR 16.00 -> 32.00 on every int8 model
         # and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
-        _blk = dict(mr_cap=mr_cap, nr_cap=perop_nr_cap(vlen), harts=harts,
+        # NO `harts` HERE, deliberately. The block used to be priced against `ceil(dim / harts)`,
+        # which made the emitted kernel a function of the hart count -- the 8-hart and 1-hart images
+        # were different compilers' output, so nothing measured across them was a thread effect
+        # (lstmnetvit int8 at 8 harts: 5 matmuls dropped out of the table to scalar loops, 9 narrowed,
+        # +63.5% instructions and -63% vector ops in the LINKED ELF, before any thread existed). The
+        # split is now derived FROM this block instead -- see `_pb.parallel_chunk_table` below.
+        _blk = dict(mr_cap=mr_cap, nr_cap=perop_nr_cap(vlen),
                     vlen=nr_fill_vlen, mr_vlen=mr_fill_vlen)
         # PANEL-PACKED im2col, default-off (`im2col_pack.FEATURE`). It has to run HERE, between the
         # table that gives it its NR and the table the tagger/schedule are built from: the panel width
@@ -1890,7 +1939,11 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
                                features=features,
                                parallel=(backend != "rvv" and n_harts > 1),
                                parallel_harts=(n_harts if n_harts > 1
-                                               and backend == "rvv" else None))
+                                               and backend == "rvv" else None),
+                               # The block-preserving split `prepare_for_lowering` above derived and
+                               # tagged this IR with; None for a package with no per-op block table,
+                               # which keeps the legacy class-wide split.
+                               parallel_chunks=parallel_arms(work))
     # What this lowering will ask the heap for, read off the IR that is about to be compiled. Measured
     # here rather than estimated later: the file exists for exactly this build, and the number decides the
     # region size below.

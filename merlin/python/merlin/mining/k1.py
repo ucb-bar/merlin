@@ -989,10 +989,15 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         # PERFORMANCE oracle for it: spike cannot answer that question (it simulates a spinning
         # hart at full speed), and RTL sim cannot run a whole model. Thread count is chosen at
         # RUN time via OMP_NUM_THREADS, so one binary yields a whole scaling curve.
+        # The split `prepare_for_lowering` derived and TAGGED the IR with. Reading it back (rather
+        # than re-deriving it here) is what keeps the tags and the schedule arms one decision: a
+        # second derivation could disagree with the tags and silently leave every contraction
+        # unsplit, which looks exactly like a model that does not parallelize.
         res = lower_model_file(prepared, work / "lower_vecomp", targets=(), textual=True,
                                vectorize=True, transform_schedule=pkg.schedule_text,
                                hoist_static_allocs=False, features=feats,
-                               parallel_harts=parallel_harts)
+                               parallel_harts=parallel_harts,
+                               parallel_chunks=zm.parallel_arms(work))
     elif parallel:
         # Multicore path: scalar int8 datapath + OpenMP parallel loops (no fixed-width
         # vectorize). Used for the big models (rdt/smolvla) that crash the vectorized lowering
@@ -1248,7 +1253,8 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
             lowered = lower_model_file(
                 prepared, stage_work / "lower", targets=(), textual=True, vectorize=True,
                 transform_schedule=pkg.schedule_text, hoist_static_allocs=False,
-                features=features, parallel_harts=parallel_harts)
+                features=features, parallel_harts=parallel_harts,
+                parallel_chunks=zm.parallel_arms(stage_work))
         except PipelineError:
             if fallback_policy == "forbid":
                 raise
