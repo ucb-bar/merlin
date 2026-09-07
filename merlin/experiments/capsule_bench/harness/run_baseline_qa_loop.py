@@ -2426,6 +2426,7 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
         _attach_shape_generalization(verdict, cand, run_dir, rnd, timeout=timeout,
                                      artifact_key=scratch_key)
         _record_plateau(run_dir)      # operator-side; deliberately not in the agent's verdict
+        _record_feedback_health(ws, run_dir)
     # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
     # verdict the agent ASKED for -- and a converged agent stops asking. Measured on the run that
     # motivated this: 24 self-checks in round 0, then ZERO in rounds 1 and 2 once it reached the corpus
@@ -2565,6 +2566,7 @@ def _fast_loop_verdict(ws: Path, run_dir: Path, tick: int, timeout: int) -> dict
     (ws / "qa").mkdir(exist_ok=True)
     _write_verdict(ws / "qa" / "verdict.json", verdict)
     _record_plateau(run_dir)          # operator-side; deliberately not in the agent's verdict
+    _record_feedback_health(ws, run_dir)
     return verdict
 
 
@@ -2722,6 +2724,37 @@ def _write_verdict(path: Path, verdict: dict) -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(verdict, indent=2))
     return verdict
+
+
+def _record_feedback_health(ws: Path, run_dir: Path) -> None:
+    """Check the self-check channel's health DURING the run and record it operator-side. Never raises.
+
+    `_feedback_health` already computes exactly the right thing -- expired requests, stranded ones,
+    orphan responses, broker restarts, whether the channel is healthy at all. It was only ever called
+    ONCE, in the end-of-run summary, where it gates whether the official grade counts as complete. By
+    then the run has spent its whole budget.
+
+    Measured on merlincirct_atlas_feedback_v3_20260906, evaluated by hand while it was still running:
+    `healthy: false`, 16 expired requests, 3 stranded, 6 broker starts -- and the last completed
+    self-check 5.5 h earlier while the agent kept editing. Every one of those facts was computable
+    hours before the run ended, by a function already written. A post-mortem that could have been a
+    warning is the same defect as a check that cannot fail: the information existed and nobody was
+    listening.
+
+    Operator-side only, for the reason `_write_stage_ledger` gives: telling the agent its feedback
+    channel is broken is feedback, and feedback defines an arm.
+    """
+    try:
+        health = _feedback_health(ws)
+        (run_dir / "feedback_health.json").write_text(json.dumps(health, indent=2))
+        if not health.get("healthy", True):
+            print(f"[feedback] channel UNHEALTHY: {health.get('expired', 0)} expired, "
+                  f"{health.get('stranded', 0)} stranded, "
+                  f"{health.get('orphan_responses', 0)} orphan response(s), "
+                  f"{health.get('broker_starts', 0)} broker start(s) — the agent may be iterating "
+                  f"without feedback", flush=True)
+    except Exception:  # noqa: BLE001 -- diagnostics may never fail a grade
+        return
 
 
 def _record_plateau(run_dir: Path) -> None:
