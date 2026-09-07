@@ -21,6 +21,9 @@ import time
 from typing import Any, Callable, Mapping
 
 
+_RESULT_TRANSPORT_GRACE_SECONDS = 5.0
+
+
 def _kill_group(pid: int) -> None:
     try:
         os.killpg(pid, signal.SIGKILL)
@@ -119,11 +122,22 @@ class IsolatedAnalysisWorker:
             if "<locals>" in verifier.__qualname__:
                 raise ValueError("worker verifier must be a host importable function")
             kwargs["verifier_import"] = [verifier.__module__, verifier.__qualname__]
+        sandboxes = self.sandbox_factory(Path(baseline), Path(candidate), scratch)
+        remaining = timeout_s - (time.monotonic() - started)
+        if remaining <= 0:
+            raise TimeoutError("analysis preparation exhausted its wall-clock budget")
+        # The child must stop before the caller's deadline so it can atomically serialize a
+        # potentially large whole-model result and the parent can read/rebind it.  Cap the reserve
+        # so short unit/probe budgets still spend most of their time doing useful analysis.
+        result_grace = min(_RESULT_TRANSPORT_GRACE_SECONDS, max(0.05, remaining * 0.1))
+        analysis_timeout = remaining - result_grace
+        if analysis_timeout <= 0:
+            raise TimeoutError("analysis preparation left no child execution budget")
         request = {
             "stage_path": str(self.stage_path), "baseline": str(Path(baseline).resolve()),
             "candidate": str(Path(candidate).resolve()), "sentinel": dataclasses.asdict(sentinel),
-            "timeout_s": timeout_s, "kwargs": kwargs,
-            "sandboxes": self.sandbox_factory(Path(baseline), Path(candidate), scratch),
+            "timeout_s": analysis_timeout, "kwargs": kwargs,
+            "sandboxes": sandboxes,
             "scratch": str(scratch), "result": str(work / "result.json"),
         }
         request_path = work / "request.json"
@@ -165,6 +179,7 @@ class IsolatedAnalysisWorker:
             (work / "receipt.json").write_text(json.dumps({
                 "schema": "bounded_host_analysis_worker_v1", "status": status,
                 "wall_seconds": time.monotonic() - started, "budget_seconds": timeout_s,
+                "analysis_budget_seconds": analysis_timeout,
                 "request_sha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
                 "worker_pid": process.pid if process else None,
                 "process_group_cleanup": process is not None,
@@ -188,6 +203,8 @@ def _worker(request_path: Path) -> int:
 
     def emit_pair(package: Any, interface: Path, unused_scratch: Path, tag: str,
                   timeout_s: int) -> tuple[int, str, str]:
+        from merlin.targetgen import oot_runner as OR
+
         scratch = Path(request["scratch"]) / tag
         scratch.mkdir()
         source = scratch / "interface.mlir"
@@ -201,7 +218,9 @@ def _worker(request_path: Path) -> int:
             (request_path.parent / f"{tag}_emission.json").write_text(json.dumps(diagnostics))
             (unused_scratch / f"emission_{tag}.json").write_text(json.dumps(diagnostics))
 
-        for name, destination in (("emit_command_buffer", output), ("lower_target_to_llvm", None)):
+        entrypoints = OR.analysis_emission_entrypoints(package)
+        for name in entrypoints:
+            destination = output if name in ("emit_command_buffer", "emit_analysis_bundle") else None
             try:
                 result = run_sandboxed_entrypoint(
                     package, name, source, destination, sandbox=request["sandboxes"][tag],
@@ -224,9 +243,10 @@ def _worker(request_path: Path) -> int:
                 # A failed compiler may leave a malformed/linked partial artifact. Preserve
                 # its first error without parsing that artifact or invoking the next emitter.
                 return result.returncode, "", ""
-        (request_path.parent / f"{tag}_lowered.mlir").write_text(results[1].stdout or "")
-        return (results[0].returncode or results[1].returncode, results[1].stdout or "",
-                _read_output(output))
+        target_result = results[0] if entrypoints == ("emit_analysis_bundle",) else results[1]
+        (request_path.parent / f"{tag}_lowered.mlir").write_text(target_result.stdout or "")
+        return (next((result.returncode for result in results if result.returncode), 0),
+                target_result.stdout or "", _read_output(output))
 
     def machine_audit(lowered_text: str, *, arm: str, timeout_s: float) -> dict[str, Any]:
         from merlin.runtime.backends.base import get_backend

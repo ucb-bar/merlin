@@ -80,6 +80,45 @@ def sentinel_identity(sentinel: PAS.StageE2ESentinel, *, role: str) -> dict[str,
     }
 
 
+def portfolio_member_analysis_allocation(
+        remaining_seconds: float,
+        remaining_sentinels: Sequence[PAS.StageE2ESentinel]) -> dict[str, Any]:
+    """Allocate one member's bounded analysis time from generic frozen-source complexity.
+
+    Half of the remaining budget is shared equally so every graph gets a chance. Half is
+    proportional to the host-pinned interface byte size so large generated programs are not forced
+    through the same compiler timeout as small ones. Recomputing this for each member rolls unused
+    wall time forward while preserving declared portfolio order and the outer iteration deadline.
+    """
+    if not remaining_sentinels:
+        raise ValueError("portfolio allocation requires at least one remaining member")
+    remaining_seconds = max(0.0, remaining_seconds)
+
+    interface_sizes: list[int] = []
+    for sentinel in remaining_sentinels:
+        source = Path(sentinel.frozen_source_path)
+        descriptor = PAS._mapping_file(source / "capsule.yaml", yaml_file=True)
+        interface = source / str(descriptor.get("interface_mlir") or "capsule.interface.mlir")
+        if interface.is_symlink() or not interface.is_file():
+            raise ValueError(f"frozen portfolio member has no real interface MLIR: {sentinel.capsule}")
+        interface_sizes.append(max(1, interface.stat().st_size))
+
+    members = len(remaining_sentinels)
+    equal_share = remaining_seconds / members
+    weighted_share = remaining_seconds * interface_sizes[0] / sum(interface_sizes)
+    allocated = (remaining_seconds if members == 1 else
+                 0.5 * equal_share + 0.5 * weighted_share)
+    return {
+        "schema": "portfolio_analysis_allocation_v1",
+        "policy": "half_equal_floor_plus_half_frozen_interface_bytes_with_rolling_surplus",
+        "allocated_seconds": allocated,
+        "remaining_seconds": remaining_seconds,
+        "remaining_members": members,
+        "interface_bytes": interface_sizes[0],
+        "remaining_interface_bytes": sum(interface_sizes),
+    }
+
+
 def host_verification_policy_record() -> dict[str, Any]:
     """Bind the interpretation of structural evidence to current host implementation bytes."""
     root = PAS.repo_root() / "merlin" / "python" / "merlin"
@@ -972,12 +1011,21 @@ class GlobalPerfExperiment:
             kwargs["artifact_sink"] = retained.update
             kwargs["baseline_artifacts"] = self._baseline_artifacts
         scope = self.validate_candidate_scope(submitted)
+        primary_allocation: dict[str, Any] = {
+            "schema": "portfolio_analysis_allocation_v1",
+            "policy": "half_equal_floor_plus_half_frozen_interface_bytes_with_rolling_surplus",
+            "allocated_seconds": 0.0,
+            "remaining_seconds": 0.0,
+            "remaining_members": len(self.portfolio_sentinels),
+            "status": "not_allocated",
+        }
         try:
             remaining = budget_seconds - (time.monotonic() - started)
             if remaining <= 0:
                 raise TimeoutError("global input verification and snapshot exhausted the iteration budget")
-            # Every full graph must get a chance. Unused time naturally rolls into later members.
-            kwargs["timeout_s"] = remaining / len(self.portfolio_sentinels)
+            primary_allocation = portfolio_member_analysis_allocation(
+                remaining, self.portfolio_sentinels)
+            kwargs["timeout_s"] = primary_allocation["allocated_seconds"]
             analysis = dict(self.analyzer(self.optimization_baseline, submitted, self.sentinel, **kwargs))
             analysis["compiler_edit_scope"] = scope
             if self.edit_guidance_inventory is not None:
@@ -1036,10 +1084,11 @@ class GlobalPerfExperiment:
         for index, sentinel in enumerate(secondary_sentinels):
             member_started = time.monotonic()
             remaining = budget_seconds - (member_started - started)
-            remaining_members = len(secondary_sentinels) - index
+            member_allocation = portfolio_member_analysis_allocation(
+                remaining, secondary_sentinels[index:])
             member_analysis, member_artifacts = self._analyze_portfolio_member(
                 submitted, candidate_sha256=after, sentinel=sentinel,
-                timeout_s=remaining / remaining_members, scope=scope)
+                timeout_s=member_allocation["allocated_seconds"], scope=scope)
             member_readiness = PAS.global_iteration_readiness(member_analysis)
             previous_member = previous_members.get(sentinel.capsule_sha256)
             member_comparison = self._compare_analyses(
@@ -1052,6 +1101,7 @@ class GlobalPerfExperiment:
                            == "ready_for_probe_admission" else "failed"),
                 "analysis": member_analysis, "readiness": member_readiness,
                 "static_comparison": member_comparison,
+                "analysis_allocation": member_allocation,
                 "elapsed_seconds": time.monotonic() - member_started,
                 "timing_status": "UNMEASURED_FULL_MODEL",
             })
@@ -1116,12 +1166,15 @@ class GlobalPerfExperiment:
                            == "ready_for_probe_admission" else "failed"),
                 "analysis_ref": "/analysis", "readiness": primary_readiness,
                 "static_comparison_ref": "/static_comparison",
+                "analysis_allocation": primary_allocation,
                 "elapsed_seconds": primary_elapsed,
                 "timing_status": "UNMEASURED_FULL_MODEL",
             }, *portfolio_rows],
             "members_ready": readiness["portfolio_members_ready"],
             "members_total": readiness["portfolio_members_total"],
             "selection": readiness["selection"],
+            "analysis_allocation_policy": (
+                "half_equal_floor_plus_half_frozen_interface_bytes_with_rolling_surplus"),
             "full_model_simulation_allowed": False,
         }
         self._write(f"iteration_{record['iteration']:04d}.json", record)

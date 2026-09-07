@@ -4,12 +4,14 @@ from merlin.perf.task_cfg_evidence import analyze_task_cfg
 from xdsl.dialects.llvm import LLVM
 
 
-def _check(body, tasks):
+def _check(body, tasks, *, globals_=""):
     context = make_context()
     context.load_dialect(LLVM)
-    module = parse_mlir_text('builtin.module { llvm.func @kernel(%p: !llvm.ptr, %c: i1) {'
+    module = parse_mlir_text('builtin.module {' + globals_
+                             + ' llvm.func @kernel(%p: !llvm.ptr, %c: i1) {'
                              + body + '} }', context)
-    return analyze_task_cfg(next(iter(module.body.block.ops)), tasks)
+    function = next(op for op in module.body.block.ops if op.name == "llvm.func")
+    return analyze_task_cfg(function, tasks)
 
 
 def test_task_present_only_on_one_returning_path_is_not_mandatory():
@@ -47,3 +49,82 @@ def test_load_is_not_permitted_as_unowned_prologue_plumbing():
     ''', [0])
     assert result["status"] == "refused"
     assert "kernel operation lacks task ownership: llvm.load" in result["problems"]
+
+
+def test_entry_symbol_address_is_shared_prologue_plumbing():
+    result = _check('''
+      %g = "llvm.mlir.addressof"() <{global_name = @weights}> : () -> !llvm.ptr
+      %v = llvm.load %g {merlin.global_task = 0 : i64} : !llvm.ptr -> i64
+      llvm.store %v, %p {merlin.global_task = 0 : i64} : i64, !llvm.ptr
+      llvm.return
+    ''', [0], globals_='''
+      "llvm.mlir.global"() <{global_type = i64, sym_name = "weights",
+          linkage = #llvm.linkage<"internal">, addr_space = 0 : i32, constant,
+          value = 0 : i64}> ({ llvm.return }) : () -> ()
+    ''')
+    assert result["status"] == "verified"
+    assert result["shared_prologue_operations"] == {"llvm.mlir.addressof": 1}
+
+
+def test_mutable_global_address_is_not_shared_prologue_plumbing():
+    result = _check('''
+      %g = "llvm.mlir.addressof"() <{global_name = @state}> : () -> !llvm.ptr
+      %v = llvm.load %g {merlin.global_task = 0 : i64} : !llvm.ptr -> i64
+      llvm.store %v, %p {merlin.global_task = 0 : i64} : i64, !llvm.ptr
+      llvm.return
+    ''', [0], globals_='''
+      "llvm.mlir.global"() <{global_type = i64, sym_name = "state",
+          linkage = #llvm.linkage<"internal">, addr_space = 0 : i32,
+          value = 0 : i64}> ({ llvm.return }) : () -> ()
+    ''')
+    assert result["status"] == "refused"
+    assert "kernel operation lacks task ownership: llvm.mlir.addressof" in result["problems"]
+
+
+def test_non_entry_symbol_address_still_requires_task_ownership():
+    result = _check('''
+      llvm.br ^work {merlin.global_task = 0 : i64}
+    ^work:
+      %g = "llvm.mlir.addressof"() <{global_name = @weights}> : () -> !llvm.ptr
+      %v = llvm.load %g {merlin.global_task = 0 : i64} : !llvm.ptr -> i64
+      llvm.store %v, %p {merlin.global_task = 0 : i64} : i64, !llvm.ptr
+      llvm.return
+    ''', [0], globals_='''
+      "llvm.mlir.global"() <{global_type = i64, sym_name = "weights",
+          linkage = #llvm.linkage<"internal">, addr_space = 0 : i32, constant,
+          value = 0 : i64}> ({ llvm.return }) : () -> ()
+    ''')
+    assert result["status"] == "refused"
+    assert "kernel operation lacks task ownership: llvm.mlir.addressof" in result["problems"]
+
+
+def test_gep_from_shared_symbol_address_still_requires_task_ownership():
+    result = _check('''
+      %g = "llvm.mlir.addressof"() <{global_name = @weights}> : () -> !llvm.ptr
+      %i = llvm.mlir.constant(0 : i64) : i64
+      %slot = llvm.getelementptr %g[%i] : (!llvm.ptr, i64) -> !llvm.ptr, i64
+      %v = llvm.load %slot {merlin.global_task = 0 : i64} : !llvm.ptr -> i64
+      llvm.store %v, %p {merlin.global_task = 0 : i64} : i64, !llvm.ptr
+      llvm.return
+    ''', [0], globals_='''
+      "llvm.mlir.global"() <{global_type = i64, sym_name = "weights",
+          linkage = #llvm.linkage<"internal">, addr_space = 0 : i32, constant,
+          value = 0 : i64}> ({ llvm.return }) : () -> ()
+    ''')
+    assert result["status"] == "refused"
+    assert "kernel operation lacks task ownership: llvm.getelementptr" in result["problems"]
+
+
+def test_store_through_shared_symbol_address_still_requires_task_ownership():
+    result = _check('''
+      %g = "llvm.mlir.addressof"() <{global_name = @weights}> : () -> !llvm.ptr
+      %v = llvm.load %g {merlin.global_task = 0 : i64} : !llvm.ptr -> i64
+      llvm.store %v, %p : i64, !llvm.ptr
+      llvm.return
+    ''', [0], globals_='''
+      "llvm.mlir.global"() <{global_type = i64, sym_name = "weights",
+          linkage = #llvm.linkage<"internal">, addr_space = 0 : i32, constant,
+          value = 0 : i64}> ({ llvm.return }) : () -> ()
+    ''')
+    assert result["status"] == "refused"
+    assert "kernel operation lacks task ownership: llvm.store" in result["problems"]

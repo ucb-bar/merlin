@@ -108,11 +108,13 @@ def test_metadata_only_edit_does_not_erase_cumulative_object_change(baseline_sta
     assert record == original
 
 
-def setup_experiment(tmp_path, *, verified=True, **experiment_options):
+def setup_experiment(tmp_path, *, verified=True, primary_interface_bytes=9, **experiment_options):
     baseline, candidate, source = (tmp_path / name for name in ("base", "candidate", "model"))
     for path in (baseline, candidate, source):
         path.mkdir()
         (path / "source.txt").write_text(path.name)
+    (source / "capsule.yaml").write_text("interface_mlir: capsule.interface.mlir\n")
+    (source / "capsule.interface.mlir").write_bytes(b"x" * primary_interface_bytes)
     sentinel = PAS.StageE2ESentinel("real-model", str(source), str(source),
                                    PAS._exact_tree_record(source)["sha256"], ("lane",), ("L2",))
     calls = []
@@ -144,10 +146,12 @@ def setup_experiment(tmp_path, *, verified=True, **experiment_options):
     return experiment, candidate, calls
 
 
-def _portfolio_sentinel(tmp_path, name):
+def _portfolio_sentinel(tmp_path, name, *, interface_bytes=9):
     source = tmp_path / name
     source.mkdir()
     (source / "source.txt").write_text(name)
+    (source / "capsule.yaml").write_text("interface_mlir: capsule.interface.mlir\n")
+    (source / "capsule.interface.mlir").write_bytes(b"x" * interface_bytes)
     return PAS.StageE2ESentinel(
         name, str(source), str(source), PAS._exact_tree_record(source)["sha256"], (), ())
 
@@ -173,6 +177,41 @@ def test_portfolio_recompiles_every_full_graph_on_one_candidate_snapshot(tmp_pat
     assert second["portfolio"]["members_ready"] == 3
     assert all(row["static_comparison"]["previous_iteration"] == 0
                for row in second["portfolio"]["members"][1:])
+
+
+def test_portfolio_budget_is_size_weighted_order_preserving_and_rolls_surplus(
+        tmp_path, monkeypatch):
+    extras = [
+        _portfolio_sentinel(tmp_path, "large-second", interface_bytes=900),
+        _portfolio_sentinel(tmp_path, "small-third", interface_bytes=100),
+        _portfolio_sentinel(tmp_path, "large-fourth", interface_bytes=900),
+    ]
+    experiment, candidate, _ = setup_experiment(
+        tmp_path, primary_interface_bytes=100, portfolio_sentinels=extras, timeout_s=100)
+    base_analyzer = experiment.analyzer
+    clock = [0.0]
+    monkeypatch.setattr(G.time, "monotonic", lambda: clock[0])
+    budgets = []
+    durations = {"real-model": 5.0, "large-second": 20.0,
+                 "small-third": 5.0, "large-fourth": 10.0}
+
+    def analyzer(base, current, objective, **kwargs):
+        budgets.append((objective.capsule, kwargs["timeout_s"]))
+        result = base_analyzer(base, current, objective, **kwargs)
+        clock[0] += durations[objective.capsule]
+        return result
+
+    experiment.analyzer = analyzer
+    record = experiment.analyze(candidate, hypothesis="bounded generic portfolio allocation")
+    assert [name for name, _ in budgets] == [
+        "real-model", "large-second", "small-third", "large-fourth"]
+    assert [budget for _, budget in budgets] == pytest.approx([
+        15.0, 38.3333333333, 22.5, 70.0])
+    allocations = [row["analysis_allocation"] for row in record["portfolio"]["members"]]
+    assert [row["interface_bytes"] for row in allocations] == [100, 900, 100, 900]
+    assert all(row["policy"] == record["portfolio"]["analysis_allocation_policy"]
+               for row in allocations)
+    assert record["elapsed_seconds"] == 40.0
 
 
 def test_portfolio_member_failure_blocks_current_revision_and_seal(tmp_path):

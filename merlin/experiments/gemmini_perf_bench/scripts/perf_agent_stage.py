@@ -2785,7 +2785,20 @@ def analyze_whole_model_emission(
     if interface.is_symlink() or not interface.is_file():
         raise StageGateError("frozen whole-model sentinel has no real interface MLIR")
     source_text = interface.read_text(encoding="utf-8")
-    per_entrypoint_timeout = max(1, min(int(ITERATION_MAX_SECONDS), int(timeout_s)) // 4)
+    baseline_sha256 = hash_tree(Path(baseline))["sha256"]
+    identical_compilers = candidate_before == baseline_sha256
+    baseline_package = OR.load_package(Path(baseline))
+    candidate_package = OR.load_package(Path(candidate))
+    # Divide the bounded analysis budget by the subprocesses we will actually launch.  An
+    # optional one-pass bundle counts once; a legacy pair counts twice; a retained baseline
+    # counts zero; and an exact candidate/optimization-baseline seed reuses the baseline arm.
+    baseline_entrypoints = (0 if baseline_artifacts is not None else
+                            len(OR.analysis_emission_entrypoints(baseline_package)))
+    candidate_entrypoints = (0 if identical_compilers else
+                             len(OR.analysis_emission_entrypoints(candidate_package)))
+    emitted_entrypoints = baseline_entrypoints + candidate_entrypoints
+    analysis_budget = min(int(ITERATION_MAX_SECONDS), int(timeout_s))
+    per_entrypoint_timeout = max(1, analysis_budget // max(1, emitted_entrypoints))
 
     def require_not_declined(payload: str, arm: str) -> None:
         # Some compiler entrypoints return success while emitting a structured
@@ -2802,7 +2815,7 @@ def analyze_whole_model_emission(
 
     with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR") or None) as raw:
         scratch = Path(raw)
-        baseline_identity = {"baseline_sha256": hash_tree(Path(baseline))["sha256"],
+        baseline_identity = {"baseline_sha256": baseline_sha256,
                              "capsule_sha256": sentinel.capsule_sha256, "target": target}
         if baseline_artifacts is not None:
             if (baseline_artifacts.get("identity") != baseline_identity
@@ -2816,7 +2829,7 @@ def analyze_whole_model_emission(
                                       baseline_artifacts["command_buffer_text"])
         else:
             base_rc, base_llvm, base_buffer = emit_pair(
-                OR.load_package(Path(baseline)), interface, scratch, "baseline",
+                baseline_package, interface, scratch, "baseline",
                 per_entrypoint_timeout)
         if base_rc != 0 or not base_buffer:
             detail_path = scratch / "emission_baseline.json"
@@ -2836,8 +2849,7 @@ def analyze_whole_model_emission(
             "host_verifier_policy_sha256": host_verifier_policy_sha256,
         }
         baseline_plan_cached = None
-        if (baseline_artifacts is not None and global_plan_verifier is None
-                and _is_sha256(host_verifier_policy_sha256)
+        if (baseline_artifacts is not None and _is_sha256(host_verifier_policy_sha256)
                 and ("verified_global_plan_emission" in baseline_artifacts
                      or "global_plan_evidence_binding" in baseline_artifacts)):
             proof = baseline_artifacts.get("verified_global_plan_emission")
@@ -2853,9 +2865,12 @@ def analyze_whole_model_emission(
             }.items()):
                 raise StageGateError("retained baseline verified plan contradicts its artifact binding")
             baseline_plan_cached = copy.deepcopy(dict(proof))
-        cand_rc, cand_llvm, cand_buffer = emit_pair(
-            OR.load_package(Path(candidate)), interface, scratch, "candidate",
-            per_entrypoint_timeout)
+        if identical_compilers:
+            cand_rc, cand_llvm, cand_buffer = base_rc, base_llvm, base_buffer
+        else:
+            cand_rc, cand_llvm, cand_buffer = emit_pair(
+                candidate_package, interface, scratch, "candidate",
+                per_entrypoint_timeout)
         if cand_rc == 0 and cand_buffer:
             require_not_declined(cand_buffer, "candidate")
         if base_rc != 0 or cand_rc != 0 or not base_buffer or not cand_buffer:
@@ -2878,25 +2893,60 @@ def analyze_whole_model_emission(
             peak_macs_per_cycle=peak_macs_per_cycle,
             achievable_macs_per_cycle=achievable_macs_per_cycle,
             target=target)
+        diagnostics["emission_execution"] = {
+            "schema": "whole_model_emission_execution_v1",
+            "identical_compiler_trees": identical_compilers,
+            "retained_baseline_reused": baseline_artifacts is not None,
+            "candidate_reused_baseline_artifacts": identical_compilers,
+            "launched_entrypoint_count": emitted_entrypoints,
+            "baseline_entrypoints": baseline_entrypoints,
+            "candidate_entrypoints": candidate_entrypoints,
+            "per_entrypoint_timeout_seconds": per_entrypoint_timeout,
+            "analysis_budget_seconds": analysis_budget,
+        }
         baseline_buffer = json.loads(base_buffer)
         candidate_buffer = json.loads(cand_buffer)
         expected = descriptor.get("expected") or {}
         cand_lowered_module = None
         base_lowered_module = None
         try:
-            if baseline_artifacts is not None:
-                base_trace = baseline_artifacts["decoded_trace"]
-            else:
+            if identical_compilers:
+                # Identical bytes imply identical IR and instruction semantics. Parse the exact
+                # artifact once, and either decode it once or reuse the already-bound baseline
+                # trace. Shallow arm rebinding keeps the large instruction vector shared in memory.
                 base_lowered_module = RD._parse_module(base_llvm)
-                base_trace = (RD.decode_module(base_lowered_module, source="immutable_optimization_baseline", target=target)
-                              if base_lowered_module is not None else
-                              RD._decode_by_text_scan(base_llvm, source="immutable_optimization_baseline", target=target))
-            # The complete candidate module can be large. Parse its exact bytes once and share
-            # the host-owned in-memory IR with instruction decoding and global-plan verification.
-            cand_lowered_module = RD._parse_module(cand_llvm)
-            cand_trace = (RD.decode_module(cand_lowered_module, source="live_phase2_candidate", target=target)
-                          if cand_lowered_module is not None else
-                          RD._decode_by_text_scan(cand_llvm, source="live_phase2_candidate", target=target))
+                cand_lowered_module = base_lowered_module
+                if baseline_artifacts is not None:
+                    shared_trace = baseline_artifacts["decoded_trace"]
+                else:
+                    shared_trace = (
+                        RD.decode_module(base_lowered_module,
+                                         source="immutable_optimization_baseline", target=target)
+                        if base_lowered_module is not None else
+                        RD._decode_by_text_scan(
+                            base_llvm, source="immutable_optimization_baseline", target=target))
+                base_trace = ({**shared_trace, "source": "immutable_optimization_baseline"}
+                              if isinstance(shared_trace, Mapping) else shared_trace)
+                cand_trace = ({**shared_trace, "source": "live_phase2_candidate"}
+                              if isinstance(shared_trace, Mapping) else shared_trace)
+            else:
+                if baseline_artifacts is not None:
+                    base_trace = baseline_artifacts["decoded_trace"]
+                else:
+                    base_lowered_module = RD._parse_module(base_llvm)
+                    base_trace = (
+                        RD.decode_module(base_lowered_module,
+                                         source="immutable_optimization_baseline", target=target)
+                        if base_lowered_module is not None else
+                        RD._decode_by_text_scan(
+                            base_llvm, source="immutable_optimization_baseline", target=target))
+                # The complete candidate module can be large. Parse its exact bytes once and share
+                # the host-owned in-memory IR with instruction decoding and global-plan verification.
+                cand_lowered_module = RD._parse_module(cand_llvm)
+                cand_trace = (
+                    RD.decode_module(cand_lowered_module, source="live_phase2_candidate", target=target)
+                    if cand_lowered_module is not None else
+                    RD._decode_by_text_scan(cand_llvm, source="live_phase2_candidate", target=target))
             base_has_stream = bool(base_trace.get("instructions"))
             cand_has_stream = bool(cand_trace.get("instructions"))
             if not cand_has_stream:
@@ -3032,24 +3082,31 @@ def analyze_whole_model_emission(
         baseline_plan_binding["evidence_sha256"] = _document_sha256(baseline_plan)
         diagnostics["verified_baseline_global_plan_emission"] = baseline_plan
         diagnostics["baseline_global_plan_evidence_binding"] = baseline_plan_binding
-        try:
-            if global_plan_verifier is not None:
-                diagnostics["verified_global_plan_emission"] = dict(global_plan_verifier(
-                    candidate=Path(candidate), interface=interface,
-                    lowered_text=cand_llvm, command_buffer=candidate_buffer,
-                    logical_graph=diagnostics["captured_logical_graph"],
-                    candidate_sha256=candidate_before))
-            else:
-                from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
-                diagnostics["verified_global_plan_emission"] = verify_compiler_global_plan(
-                    source_text=source_text, lowered_text=cand_llvm,
-                    command_buffer=candidate_buffer, candidate_sha256=candidate_before,
-                    command_buffer_sha256=_sha256(cand_buffer.encode("utf-8")),
-                    parsed_lowered_module=cand_lowered_module)
-        except Exception as exc:  # noqa: BLE001 - incomplete host verification is explicit
-            diagnostics["verified_global_plan_emission"] = {
-                "status": "UNKNOWN", "reason": f"host global-plan verifier failed: {type(exc).__name__}: {exc}",
-            }
+        if identical_compilers:
+            # The baseline proof is already bound to these exact compiler, source, lowered,
+            # command-buffer and graph digests. Reusing it avoids a second whole-module walk while
+            # preserving every candidate readiness binding (the compiler digest is identical).
+            diagnostics["verified_global_plan_emission"] = copy.deepcopy(baseline_plan)
+        else:
+            try:
+                if global_plan_verifier is not None:
+                    diagnostics["verified_global_plan_emission"] = dict(global_plan_verifier(
+                        candidate=Path(candidate), interface=interface,
+                        lowered_text=cand_llvm, command_buffer=candidate_buffer,
+                        logical_graph=diagnostics["captured_logical_graph"],
+                        candidate_sha256=candidate_before))
+                else:
+                    from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
+                    diagnostics["verified_global_plan_emission"] = verify_compiler_global_plan(
+                        source_text=source_text, lowered_text=cand_llvm,
+                        command_buffer=candidate_buffer, candidate_sha256=candidate_before,
+                        command_buffer_sha256=_sha256(cand_buffer.encode("utf-8")),
+                        parsed_lowered_module=cand_lowered_module)
+            except Exception as exc:  # noqa: BLE001 - incomplete host verification is explicit
+                diagnostics["verified_global_plan_emission"] = {
+                    "status": "UNKNOWN",
+                    "reason": f"host global-plan verifier failed: {type(exc).__name__}: {exc}",
+                }
         # Cache source-owned STATIC instruction presence while parsed IR is already
         # available. Reduced-source actions must not reparse the complete model.
         def task_instructions(text, raw_buffer, buffer, module, trace, proof, *, baseline_arm=False):
@@ -3072,11 +3129,17 @@ def analyze_whole_model_emission(
                 return {"status": "UNKNOWN", "route_correspondence": "UNKNOWN",
                     "timing_calibration_admissible": False,
                     "reason": f"static task instruction ownership unavailable: {type(exc).__name__}: {str(exc)[:200]}"}
+        baseline_task_instructions = task_instructions(
+            base_llvm, base_buffer, baseline_buffer, base_lowered_module,
+            base_trace, baseline_plan, baseline_arm=True)
+        candidate_task_instructions = (
+            copy.deepcopy(baseline_task_instructions) if identical_compilers else
+            task_instructions(cand_llvm, cand_buffer, candidate_buffer, cand_lowered_module,
+                              cand_trace, diagnostics["verified_global_plan_emission"]))
         diagnostics["task_instruction_evidence"] = {
-            "baseline": task_instructions(base_llvm, base_buffer, baseline_buffer, base_lowered_module,
-                base_trace, baseline_plan, baseline_arm=True),
-            "candidate": task_instructions(cand_llvm, cand_buffer, candidate_buffer, cand_lowered_module,
-                cand_trace, diagnostics["verified_global_plan_emission"])}
+            "baseline": baseline_task_instructions,
+            "candidate": candidate_task_instructions,
+        }
         try:
             from merlin.perf.context_probe import extract_queued_movement_context
             verified = diagnostics["verified_global_plan_emission"].get("status") == "verified"
@@ -3115,9 +3178,13 @@ def analyze_whole_model_emission(
                         "build_policy_identity": machine_build_policy_identity,
                         "failed_attempt_retained": True,
                         "reason": f"machine audit unavailable: {type(exc).__name__}: {str(exc)[:200]}"}
+        baseline_machine_activity = machine_activity(base_llvm, "baseline")
+        candidate_machine_activity = (
+            copy.deepcopy(baseline_machine_activity) if identical_compilers else
+            machine_activity(cand_llvm, "candidate"))
         diagnostics["machine_artifact_activity"] = {
-            "baseline": machine_activity(base_llvm, "baseline"),
-            "candidate": machine_activity(cand_llvm, "candidate"),
+            "baseline": baseline_machine_activity,
+            "candidate": candidate_machine_activity,
         }
         optimization_brief = guidance_for_emission_analysis(
             diagnostics, inspect_compiler_package(candidate))
@@ -3844,7 +3911,10 @@ def _emit_pair(package: "OR.Package", interface: Path, scratch: Path, tag: str,
     from merlin.targetgen import oot_runner as OR  # noqa: PLC0415
     buffer_path = scratch / f"cb_{tag}.json"
     rows = []
-    for name, destination in (("emit_command_buffer", buffer_path), ("lower_target_to_llvm", None)):
+    results = []
+    entrypoints = OR.analysis_emission_entrypoints(package)
+    for name in entrypoints:
+        destination = buffer_path if name in ("emit_command_buffer", "emit_analysis_bundle") else None
         try:
             result = OR.run_entrypoint(package, name, interface, destination, timeout=timeout_s)
         except (subprocess.TimeoutExpired, TimeoutError) as exc:
@@ -3862,7 +3932,9 @@ def _emit_pair(package: "OR.Package", interface: Path, scratch: Path, tag: str,
             "schema": "compiler_emission_diagnostics_v1", "arm": tag, "entrypoints": rows})
         if result.returncode != 0:
             return result.returncode, "", ""
-    return (0, result.stdout or "",
+        results.append(result)
+    target_result = results[0] if entrypoints == ("emit_analysis_bundle",) else results[1]
+    return (0, target_result.stdout or "",
             buffer_path.read_text(encoding="utf-8") if buffer_path.is_file() else "")
 
 

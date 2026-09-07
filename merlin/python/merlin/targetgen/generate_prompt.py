@@ -519,7 +519,7 @@ Build ONE general backend for every family — do not special-case individual ca
 ```
 submission/
   manifest.yaml   # artifact_type: mlir_oot_target_backend; target: {target}; language: cpp|python;
-                  # integrity_exempt: false; (cpp) a build block; the 4 command argv templates
+                  # integrity_exempt: false; (cpp) a build block; 4 required command argv templates
   mlir_oot/       # your OOT sources: input dialect + {target} target dialect + passes + {tool_stem}
   REPORT.md       # what you built + honest scope/limitations + a final status line (see end)
   docs/           # PLAN.md (first-round design plan) + public_facts_used.md (facts used + source) + iteration_notes.md
@@ -534,6 +534,12 @@ submission/
 Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
 contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
 
+For fast whole-model analysis, also declare the optional `emit_analysis_bundle` command when your
+driver can run its lowering pipeline once while handling both output flags. It writes the command
+buffer to `{{output_json}}` and the target artifact to stdout; the host feature-detects it and falls
+back to the two required emission commands when it is absent. This is an execution optimization,
+not a replacement for either independently required artifact or its validation.
+
 ### Also declare `components:` — it is what keeps your passing capsules passing
 Add a top-level `components:` block mapping **each command you declared** to the submission-relative
 files that implement it. A capsule certified on the expensive RTL tier keeps that certificate across any
@@ -545,6 +551,7 @@ components:
   lower_interface_to_target: [mlir_oot/lowering/]
   emit_command_buffer: [mlir_oot/cmdbuf.py]
   emit_target_artifact: [mlir_oot/codegen/, mlir_oot/tables/]
+  emit_analysis_bundle: [mlir_oot/]              # only when you declare the optional command
 ```
 Rules: keys must be command names you declared (anything else is rejected and reported); paths are
 submission-relative files or directories; the longest matching path wins, so a nested entry is not

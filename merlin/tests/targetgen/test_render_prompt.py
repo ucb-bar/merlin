@@ -20,6 +20,7 @@ _SHARED_BLOCKS = [
     "qa/verdict.json",
     "Final status line",
     "parse", "lower_interface_to_target", "emit_command_buffer", "emit_target_artifact",
+    "emit_analysis_bundle",
 ]
 
 

@@ -67,3 +67,13 @@ def test_manifest_schema_accepts_real_packages_and_rejects_missing_entrypoint():
     del man["commands"]["emit_command_buffer"]
     with pytest.raises(schemas.ContractViolation):
         schemas.validate_manifest(man)
+
+
+def test_manifest_schema_accepts_optional_one_pass_analysis_bundle():
+    import yaml
+    man = yaml.safe_load(
+        (REPO / "out/artifacts/targets/gemmini/merlin_native_v0/manifest.yaml").read_text())
+    man["commands"]["emit_analysis_bundle"] = {
+        "argv": ["{tool}", "--emit-command-buffer={output_json}",
+                 "--emit-target-artifact", "{input_mlir}"]}
+    schemas.validate_manifest(man)

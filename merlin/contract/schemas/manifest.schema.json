@@ -110,6 +110,7 @@
     },
     "commands": {
       "type": "object",
+      "description": "The four named properties are required certification commands. Packages may additionally declare emit_analysis_bundle, which bounded host analysis feature-detects to write the command buffer to {output_json} and the target artifact to stdout in one invocation.",
       "required": [
         "parse",
         "lower_interface_to_target",

@@ -1,5 +1,6 @@
 # Out-of-tree MLIR backend contract (experiment ABI v0.1)
-# The artifact a package IS, and the four CLI entrypoints the runner invokes (subprocess only).
+# The artifact a package IS, the four required CLI entrypoints, and the optional one-pass analysis
+# entrypoint the runner may invoke (subprocess only).
 version: "0.1"
 artifact_type: mlir_oot_target_backend
 
@@ -42,6 +43,12 @@ entrypoints:
     purpose: "target dialect -> the target's codegen artifact (per endpoint_kind; not necessarily LLVM)"
     example_argv: ["{tool}", "--convert-iface-to-{target}", "--emit-target-artifact", "{input_mlir}"]
     output: "the target artifact on stdout (its kind is decided by the target's endpoint_kind)"
+  emit_analysis_bundle:
+    required: false
+    purpose: "optional one-pass whole-model analysis: emit both independently required artifacts"
+    example_argv: ["{tool}", "--convert-iface-to-{target}", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
+    output: "writes the command buffer to {output_json} and the target artifact to stdout"
+    fallback: "when absent, the runner invokes emit_command_buffer and lower_target_to_llvm separately"
 
 kernel_abi:
   # The lowered LLVM module MUST define this entry the runner-owned harness calls. The harness

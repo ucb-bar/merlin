@@ -64,6 +64,25 @@ def test_a_package_relative_entrypoint_runs(tmp_path):
     assert out.read_text() == "module {}"
 
 
+def test_optional_analysis_bundle_is_feature_detected_and_resolved(tmp_path):
+    pkg = _pkg(tmp_path, '["python3", "mlir_oot/parse.py", "{input_mlir}", "{output_json}"]')
+    pkg.manifest["commands"]["emit_analysis_bundle"] = {
+        "argv": ["{tool}", "--emit-command-buffer={output_json}",
+                 "--emit-target-artifact", "{input_mlir}"]}
+    source = tmp_path / "in.mlir"
+    output = tmp_path / "out.json"
+    assert oot_runner.analysis_emission_entrypoints(pkg) == ("emit_analysis_bundle",)
+    argv = _resolve_argv(pkg, "emit_analysis_bundle", source, output)
+    assert f"--emit-command-buffer={output.resolve()}" in argv
+    assert argv[-1] == str(source.resolve())
+
+
+def test_analysis_emission_keeps_legacy_pair_when_optional_bundle_is_absent(tmp_path):
+    pkg = _pkg(tmp_path, '["python3", "mlir_oot/parse.py", "{input_mlir}", "{output_json}"]')
+    assert oot_runner.analysis_emission_entrypoints(pkg) == (
+        "emit_command_buffer", "lower_target_to_llvm")
+
+
 def test_a_relative_input_path_still_resolves(tmp_path, monkeypatch):
     """Moving cwd to the package must not break a caller that passes a relative capsule path."""
     pkg = _pkg(tmp_path, '["python3", "mlir_oot/parse.py", "{input_mlir}", "{output_json}"]')

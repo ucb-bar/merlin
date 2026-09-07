@@ -383,6 +383,21 @@ _ENTRYPOINT_ALIASES = {"emit_target_artifact": "lower_target_to_llvm",
                        "lower_target_to_llvm": "emit_target_artifact"}
 
 
+def analysis_emission_entrypoints(pkg: Package) -> tuple[str, ...]:
+    """Commands needed to obtain both artifacts for host-owned analysis.
+
+    The four experiment ABI commands remain mandatory.  A package may additionally expose
+    ``emit_analysis_bundle`` to produce the command buffer at ``{output_json}`` and the target
+    artifact on stdout in one compiler process.  Analysis feature-detects that optimization and
+    otherwise preserves the two-command protocol for existing packages.
+    """
+    manifest = getattr(pkg, "manifest", {}) or {}
+    commands = manifest.get("commands") or {}
+    if "emit_analysis_bundle" in commands:
+        return ("emit_analysis_bundle",)
+    return ("emit_command_buffer", "lower_target_to_llvm")
+
+
 def _resolve_argv(pkg: Package, name: str, input_mlir: Path, output_json: Path | None) -> list[str]:
     commands = pkg.manifest["commands"]
     if name not in commands and _ENTRYPOINT_ALIASES.get(name) in commands:

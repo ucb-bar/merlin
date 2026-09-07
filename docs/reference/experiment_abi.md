@@ -43,6 +43,11 @@ A package consumes an `*.interface.mlir` in the frozen `merlin_iface` grammar
 | `emit_command_buffer` | interface.mlir → `command_buffer.json` |
 | `lower_target_to_llvm` | interface.mlir → LLVM/RoCC MLIR (stdout) |
 
+The four commands remain required for certification. A package may additionally declare
+`emit_analysis_bundle` for bounded whole-model analysis: one invocation writes the same command
+buffer to `{output_json}` and emits the same target artifact on stdout. Analysis feature-detects
+this command and otherwise invokes the two required emission commands separately.
+
 The lowered LLVM must define `llvm.func @gemmini_kernel(weight*, lhs*…, out*…)` (the kernel ABI);
 the **runner** owns the harness (embeds deterministic tensors by name, prints `OUT/METRIC/DONE`),
 the link, and the oracle invocation. Schemas (`schemas/*.schema.json`) validate the manifest, the

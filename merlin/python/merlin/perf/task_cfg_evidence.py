@@ -54,6 +54,16 @@ def analyze_task_cfg(function: Any, task_ids: Sequence[int]) -> dict[str, Any]:
 
     # Hoisted definitions do not execute a task's computation. Only constants, entry-address
     # plumbing and statically sized allocations qualify. In particular loads are never shared.
+    parent = function.parent_op()
+    immutable_globals = set()
+    if parent is not None and parent.name == "builtin.module":
+        for operation in parent.body.block.ops:
+            if operation.name != "llvm.mlir.global" or "constant" not in operation.properties:
+                continue
+            symbol = operation.properties.get("sym_name")
+            name = getattr(symbol, "data", None)
+            if isinstance(name, str):
+                immutable_globals.add(name)
     constants = set()
     addresses = set(entry.args)
     shared = set()
@@ -62,6 +72,15 @@ def analyze_task_cfg(function: Any, task_ids: Sequence[int]) -> dict[str, Any]:
         if operation.name == "llvm.mlir.constant":
             constants.update(operation.results)
             shared.add(operation)
+        elif operation.name == "llvm.mlir.addressof":
+            reference = operation.properties.get("global_name")
+            root = getattr(reference, "root_reference", None)
+            name = getattr(root, "data", None)
+            if name in immutable_globals:
+                # An entry-hoisted immutable symbol address is shared pointer plumbing. Consumers
+                # still require ownership, as does an addressof inside an executable block.
+                addresses.update(operation.results)
+                shared.add(operation)
         elif operation.name == "llvm.ptrtoint" and operands and operands[0] in addresses:
             addresses.update(operation.results)
             shared.add(operation)
