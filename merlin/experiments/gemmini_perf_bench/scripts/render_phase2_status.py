@@ -174,7 +174,11 @@ def collect_status(run_root: Path, *, milestones: Path | None = None,
                   "completed_audits": len(audits), "failed_continuations": len(failures)},
         "iterations": {"processed": len(iterations), "latest_index": latest.get("iteration"),
             "latest_candidate_sha256": latest.get("candidate_sha256"),
-            "latest_readiness": latest.get("readiness", {}).get("status")},
+            "latest_readiness": latest.get("readiness", {}).get("status"),
+            "latest_analysis_execution": ("exact_static_analysis_reuse"
+                if latest.get("analysis_reuse") else "full_graph_compilation" if latest else None),
+            "latest_source_compilation_iteration": (latest.get("analysis_reuse") or {}).get(
+                "source_compilation_iteration")},
         "retained_checkpoint": checkpoint, "retained_iteration_binding_verified": retained is not None,
         "budget": {"total_authoring_seconds": launch.get("total_authoring_seconds"),
             "round_seconds": launch.get("round_seconds"), "iteration_seconds": launch.get("iteration_seconds"),
@@ -196,7 +200,8 @@ def render_markdown(status: dict) -> str:
     lines = ["# Phase-2 progress", "", f"Updated: {status['refreshed_at']}", "",
         f"Run: `{status['run_root']}`", f"Objective: `{status['objective']}`", f"State: **{status['state']}**", "",
         f"Round: {status['round']['latest_prepared_workspace'] or 'not prepared'}; terminal audit: {status['round']['latest_terminal_audit']}",
-        f"Processed iterations: {row['processed']}; latest readiness: {row['latest_readiness']}",
+        f"Processed iterations: {row['processed']}; latest readiness: {row['latest_readiness']}; "
+        f"latest analysis: {row.get('latest_analysis_execution') or 'none'}",
         f"Retained checkpoint: `{(status['retained_checkpoint'] or {}).get('candidate_sha256', 'none')}`", "",
         f"Budget: {budget['total_authoring_seconds']} s authoring; {budget['round_seconds']} s/round; {budget['iteration_seconds']} s/action.",
         f"Completed transport wall time: {budget['completed_transport_wall_seconds']:.1f} s. Current authoring elapsed: UNKNOWN.",

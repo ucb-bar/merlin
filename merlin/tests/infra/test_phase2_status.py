@@ -60,6 +60,28 @@ def test_terminal_receipt_and_failed_draft_do_not_replace_retained(tmp_path, mon
         assert any("receipt digest" in warning["reason"] for warning in bad["warnings"])
 
 
+def test_latest_iteration_reports_exact_static_reuse_instead_of_recompilation(tmp_path):
+    folder = tmp_path / "global_iterations"
+    write(folder / "iteration_0000.json", {
+        "schema": "global_perf_iteration_v1", "iteration": 0,
+        "candidate_sha256": "a" * 64, "readiness": {"status": "ready_for_probe_admission"},
+    })
+    write(folder / "iteration_0001.json", {
+        "schema": "global_perf_iteration_v1", "iteration": 1,
+        "candidate_sha256": "b" * 64, "readiness": {"status": "ready_for_probe_admission"},
+        "analysis_reuse": {"schema": "global_exact_static_analysis_reuse_v1",
+                           "source_iteration": 0, "source_compilation_iteration": 0,
+                           "full_graph_compiler_invoked": False},
+    })
+
+    status = S.collect_status(tmp_path, process_reader=lambda *_: [])
+
+    assert status["iterations"]["processed"] == 2
+    assert status["iterations"]["latest_analysis_execution"] == "exact_static_analysis_reuse"
+    assert status["iterations"]["latest_source_compilation_iteration"] == 0
+    assert "latest analysis: exact_static_analysis_reuse" in S.render_markdown(status)
+
+
 def test_only_exact_snapshot_output_process_is_published(tmp_path):
     proc = tmp_path / "proc"
     proc.mkdir()

@@ -1186,6 +1186,156 @@ def test_exact_unchanged_analysis_reuses_identity_without_compiling(tmp_path):
     assert len(calls) == len(experiment.iterations) == 1
     assert second["exact_analysis_reused"] is True
     assert first["candidate_sha256"] == second["candidate_sha256"]
+    receipt = second["analysis_reuse_receipt"]
+    assert PAS._sha256_file(Path(receipt["path"])) == receipt["sha256"]
+    evidence = PAS._mapping_file(Path(receipt["path"]))
+    assert evidence["duplicate_current_revision"] is True
+    assert evidence["full_graph_compiler_invoked"] is False
+
+
+def test_reverted_candidate_reuses_ready_static_analysis_as_new_iteration(tmp_path):
+    extra = _portfolio_sentinel(tmp_path, "second-model")
+    experiment, candidate, calls = setup_experiment(
+        tmp_path, portfolio_sentinels=[extra])
+    original = (candidate / "source.txt").read_text()
+    first = experiment.analyze(candidate, hypothesis="Inspect original revision")
+    # Later dynamic evidence belongs only to its originating iteration and must not
+    # become evidence for the chronologically new revisit.
+    experiment.iterations[0]["probe_receipts"].append({"path": "timed.json", "sha256": "a" * 64})
+    experiment.iterations[0]["decision_feedback"] = {"status": "measured_elsewhere"}
+    experiment._iteration_artifacts[0] = {
+        "candidate_sha256": first["candidate_sha256"],
+        "candidate_lowered_sha256": SHA["llvm"], "marker": "original"}
+    source_policy = {"candidate": {
+        "package_path": first["submitted_snapshot"],
+        "compiler_dependencies": first["compiler_dependencies"]}}
+    experiment._compiler_sandboxes[0] = copy.deepcopy(source_policy)
+
+    (candidate / "source.txt").write_text("rejected speculative revision")
+    second = experiment.analyze(candidate, hypothesis="Inspect speculative revision")
+    experiment._iteration_artifacts[1] = {
+        "candidate_sha256": second["candidate_sha256"],
+        "candidate_lowered_sha256": SHA["llvm"], "marker": "speculative"}
+    experiment._artifacts = copy.deepcopy(experiment._iteration_artifacts[1])
+    (candidate / "source.txt").write_text(original)
+
+    revisited = experiment.analyze(candidate, hypothesis="Return to qualified checkpoint")
+
+    assert len(calls) == 4  # two models for each of the two novel revisions
+    assert len(experiment.iterations) == 3
+    assert revisited["iteration"] == 2
+    assert revisited["candidate_sha256"] == first["candidate_sha256"]
+    assert revisited["submitted_snapshot"] == first["submitted_snapshot"]
+    assert revisited["hypothesis"] == "Return to qualified checkpoint"
+    assert revisited["readiness"]["status"] == "ready_for_probe_admission"
+    assert revisited["static_comparison"]["previous_iteration"] == 1
+    assert revisited["portfolio"]["members"][1]["static_comparison"]["previous_iteration"] == 1
+    assert revisited["portfolio"]["analysis_allocation_policy"] == \
+        "exact_immutable_ready_iteration_reuse_no_compilation"
+    assert revisited["portfolio"]["analysis_concurrency"]["admitted_workers"] == 0
+    assert all(member["analysis_allocation"]["allocated_seconds"] == 0
+               for member in revisited["portfolio"]["members"])
+    reuse = revisited["analysis_reuse"]
+    assert reuse["source_iteration"] == 0
+    assert reuse["result_iteration"] == 2
+    assert reuse["full_graph_compiler_invoked"] is False
+    assert reuse["probe_or_timing_receipts_reused"] is False
+    assert revisited["probe_receipts"] == []
+    assert "decision_feedback" not in revisited
+    assert experiment.current_artifacts(candidate)["marker"] == "original"
+    assert experiment.previous_artifacts(candidate)["marker"] == "speculative"
+    assert experiment._compiler_sandboxes[2] == source_policy
+    stored = PAS._mapping_file(experiment.output / "iteration_0002.json")
+    assert stored == experiment.iterations[2]
+    sealed = G.consume_global_candidate(experiment.seal(candidate, name="revisited"))
+    assert sealed["iteration"] == 2
+
+
+@pytest.mark.parametrize("unsafe_source", ["blocked", "wall_timeout"])
+def test_reverted_candidate_recompiles_an_unsafe_prior_result(
+        tmp_path, monkeypatch, unsafe_source):
+    experiment, candidate, _ = setup_experiment(
+        tmp_path, timeout_s=10 if unsafe_source == "wall_timeout" else 300)
+    delegate = experiment.analyzer
+    original = (candidate / "source.txt").read_text()
+    invocations = []
+    fail_first = [True]
+    now = [0.0]
+    if unsafe_source == "wall_timeout":
+        monkeypatch.setattr(G.time, "monotonic", lambda: now[0])
+
+    def analyzer(base, current, objective, **kwargs):
+        invocations.append((current / "source.txt").read_text())
+        if fail_first[0] and unsafe_source == "blocked":
+            fail_first[0] = False
+            return {"candidate_sha256": hash_tree(current)["sha256"],
+                    "workload": {"capsule_sha256": objective.capsule_sha256},
+                    "diagnostics": {"arms": {"candidate": {"status": "emission_failed"}}},
+                    "timing_status": "UNMEASURED"}
+        result = delegate(base, current, objective, **kwargs)
+        if fail_first[0]:
+            fail_first[0] = False
+            now[0] += 11.0
+        return result
+
+    experiment.analyzer = analyzer
+    unsafe = experiment.analyze(candidate, hypothesis="Initial unsafe result")
+    assert unsafe["readiness"]["status"] == "blocked"
+    if unsafe_source == "wall_timeout":
+        assert unsafe["readiness"]["blockers"] == ["iteration_wall_budget_exceeded"]
+    (candidate / "source.txt").write_text("safe intervening revision")
+    experiment.analyze(candidate, hypothesis="Compile intervening revision")
+    (candidate / "source.txt").write_text(original)
+
+    retried = experiment.analyze(candidate, hypothesis="Retry original bytes")
+
+    assert len(invocations) == 3
+    assert retried["iteration"] == 2
+    assert retried["readiness"]["status"] == "ready_for_probe_admission"
+    assert "analysis_reuse" not in retried
+
+
+def test_reverted_candidate_does_not_reuse_across_compiler_dependency_change(
+        tmp_path, monkeypatch):
+    experiment, candidate, calls = setup_experiment(tmp_path)
+    original = (candidate / "source.txt").read_text()
+    experiment.analyze(candidate, hypothesis="Initial dependency closure")
+    (candidate / "source.txt").write_text("intervening revision")
+    experiment.analyze(candidate, hypothesis="Changed candidate")
+    (candidate / "source.txt").write_text(original)
+    dependencies = experiment._compiler_dependencies
+
+    def changed_dependencies(package):
+        record = dependencies(package)
+        if (package.resolve() == candidate.resolve()
+                or package.parent.resolve() == experiment.output.resolve()
+                and package.name.startswith("submission_")):
+            record = {**record, "test_dependency_epoch": 1}
+        return record
+
+    monkeypatch.setattr(experiment, "_compiler_dependencies", changed_dependencies)
+    retried = experiment.analyze(candidate, hypothesis="New shared dependency closure")
+    assert len(calls) == 3
+    assert "analysis_reuse" not in retried
+    assert retried["compiler_dependencies"]["test_dependency_epoch"] == 1
+
+
+def test_reverted_candidate_recompiles_if_prior_snapshot_lost_immutability(tmp_path):
+    experiment, candidate, calls = setup_experiment(tmp_path)
+    original = (candidate / "source.txt").read_text()
+    first = experiment.analyze(candidate, hypothesis="Capture immutable original")
+    (candidate / "source.txt").write_text("intervening revision")
+    experiment.analyze(candidate, hypothesis="Compile intervening revision")
+    (candidate / "source.txt").write_text(original)
+    submitted_file = Path(first["submitted_snapshot"]) / "source.txt"
+    submitted_file.chmod(0o644)
+
+    retried = experiment.analyze(candidate, hypothesis="Do not trust writable cache source")
+
+    assert len(calls) == 3
+    assert retried["iteration"] == 2
+    assert "analysis_reuse" not in retried
+    assert retried["submitted_snapshot"] != first["submitted_snapshot"]
 
 
 def test_analysis_passes_frozen_host_verifier_policy_to_worker(tmp_path):

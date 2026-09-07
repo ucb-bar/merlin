@@ -904,7 +904,9 @@ class GlobalPerfExperiment:
 
     ``analyzer`` and ``plan_verifier`` are host integrations, never candidate-imported entrypoints.
     A candidate can suggest a transformation but cannot assert its own equivalence or objective.
-    Every submitted edit invokes full-model compilation again, including candidates later rejected.
+    Every novel submitted edit invokes full-model compilation, including candidates later rejected.
+    Revisiting an exact earlier promotion-ready snapshot may reuse its immutable static analysis;
+    the revisit still gets a new chronological iteration and never inherits probe/timing evidence.
     """
 
     def __init__(self, *, baseline: Path, baseline_sha256: str,
@@ -981,6 +983,7 @@ class GlobalPerfExperiment:
         self._analysis_lock = threading.Lock()
         self._artifacts: dict[str, Any] = {}
         self._previous_artifacts: Mapping[str, Any] | None = None
+        self._iteration_artifacts: dict[int, Mapping[str, Any]] = {}
         self._baseline_artifacts: Mapping[str, Any] | None = None
         self._portfolio_baseline_artifacts: dict[str, Mapping[str, Any]] = {}
         self._optimization_baseline_sandbox: Mapping[str, Any] | None = None
@@ -1403,9 +1406,272 @@ class GlobalPerfExperiment:
                 output=self.analyzer.output)
         return self.analyzer
 
+    def _analysis_reuse_binding(self, *, candidate_sha256: str,
+                                compiler_dependencies: Mapping[str, Any]) -> dict[str, Any]:
+        """Exact static-analysis inputs whose equality permits cross-iteration reuse."""
+        body = {
+            "candidate_sha256": candidate_sha256,
+            "compiler_dependencies": copy.deepcopy(compiler_dependencies),
+            "host_verification_policy_sha256": self.host_policy["sha256"],
+            "target_sha256": self.target_sha256,
+            "baseline_sha256": self.baseline_sha256,
+            "optimization_baseline_binding_sha256": self.optimization_baseline_binding_sha256,
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "historical_reference_binding_sha256": self._historical_reference_binding_sha256,
+            "phase1_qualification_sha256": PAS._document_sha256(self.phase1_binding),
+            "compiler_edit_authority_sha256": PAS._document_sha256(
+                getattr(self, "edit_scope_binding", None)),
+        }
+        return {"schema": "global_static_analysis_reuse_binding_v1", **body,
+                "sha256": PAS._document_sha256(body)}
+
+    def _immutable_reusable_iteration(
+            self, row: Mapping[str, Any], *, binding: Mapping[str, Any]) -> dict[str, Any] | None:
+        """Load and revalidate one prior ready iteration; malformed cache entries are misses."""
+        iteration = row.get("iteration")
+        if not isinstance(iteration, int) or isinstance(iteration, bool) or iteration < 0:
+            return None
+        path = self.output / f"iteration_{iteration:04d}.json"
+        try:
+            if (path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o222):
+                return None
+            source = PAS._mapping_file(path)
+            if (source.get("schema") != "global_perf_iteration_v1"
+                    or source.get("iteration") != iteration
+                    or source.get("analysis_reuse_binding") != binding
+                    or source.get("candidate_sha256") != binding["candidate_sha256"]
+                    or source.get("compiler_dependencies") != binding["compiler_dependencies"]
+                    or source.get("readiness", {}).get("status") != "ready_for_probe_admission"
+                    or "iteration_wall_budget_exceeded" in source.get("readiness", {}).get("blockers", ())
+                    or not isinstance(source.get("elapsed_seconds"), (int, float))
+                    or isinstance(source.get("elapsed_seconds"), bool)
+                    or not math.isfinite(source["elapsed_seconds"])
+                    or not isinstance(source.get("allocated_seconds"), (int, float))
+                    or isinstance(source.get("allocated_seconds"), bool)
+                    or not math.isfinite(source["allocated_seconds"])
+                    or source["elapsed_seconds"] > source["allocated_seconds"]
+                    or PAS._document_sha256(source.get("analysis"))
+                    != PAS._document_sha256(row.get("analysis"))):
+                return None
+            submitted = Path(source["submitted_snapshot"])
+            output = self.output.resolve()
+            if (submitted.is_symlink() or not submitted.is_dir()
+                    or not submitted.resolve().is_relative_to(output)
+                    or submitted.stat().st_mode & 0o222
+                    or any(path.is_symlink() or path.stat().st_mode & 0o222
+                           for path in submitted.rglob("*"))):
+                return None
+            PAS.assert_candidate_sealable(submitted)
+            if (hash_tree(submitted)["sha256"] != source["candidate_sha256"]
+                    or self._compiler_dependencies(submitted) != source["compiler_dependencies"]):
+                return None
+            analysis = source.get("analysis") or {}
+            portfolio = source.get("portfolio") or {}
+            if (analysis.get("candidate_sha256") != source["candidate_sha256"]
+                    or analysis.get("workload", {}).get("capsule_sha256")
+                    != self.sentinel.capsule_sha256
+                    or portfolio.get("candidate_sha256") != source["candidate_sha256"]
+                    or portfolio.get("portfolio_sha256") != self.portfolio_identity_sha256
+                    or portfolio.get("members_total") != len(self.portfolio_sentinels)):
+                return None
+            expected_members = [member.capsule_sha256 for member in self.portfolio_sentinels]
+            members = portfolio.get("members")
+            if not isinstance(members, list) or len(members) != len(expected_members):
+                return None
+            actual_members = [member.get("identity", {}).get("capsule_sha256")
+                              for member in members if isinstance(member, Mapping)]
+            if actual_members != expected_members:
+                return None
+            for index, (sentinel, member) in enumerate(zip(
+                    self.portfolio_sentinels, members, strict=True)):
+                member_analysis = analysis if index == 0 else member.get("analysis")
+                if (not isinstance(member_analysis, Mapping)
+                        or member_analysis.get("candidate_sha256") != source["candidate_sha256"]
+                        or member_analysis.get("workload", {}).get("capsule_sha256")
+                        != sentinel.capsule_sha256
+                        or member.get("readiness", {}).get("status")
+                        != "ready_for_probe_admission"):
+                    return None
+            return source
+        except (KeyError, OSError, TypeError, ValueError, PAS.StageGateError):
+            return None
+
+    def _find_reusable_iteration(self, *, binding: Mapping[str, Any]) -> dict[str, Any] | None:
+        for row in reversed(self.iterations):
+            if (row.get("candidate_sha256") == binding["candidate_sha256"]
+                    and row.get("compiler_dependencies") == binding["compiler_dependencies"]):
+                source = self._immutable_reusable_iteration(row, binding=binding)
+                if source is not None:
+                    return source
+        return None
+
+    @staticmethod
+    def _reuse_allocation(source: Mapping[str, Any], *, source_iteration: int) -> dict[str, Any]:
+        original = source.get("source_analysis_allocation", source)
+        return {
+            "schema": "portfolio_analysis_reuse_allocation_v1",
+            "policy": "exact_immutable_ready_iteration_reuse_no_compilation",
+            "allocated_seconds": 0.0,
+            "source_iteration": source_iteration,
+            "source_analysis_allocation": copy.deepcopy(original),
+        }
+
+    def _reuse_prior_analysis(self, candidate: Path, *, hypothesis: str,
+                              source: Mapping[str, Any], binding: Mapping[str, Any],
+                              started: float, budget_seconds: float) -> dict[str, Any]:
+        """Append a fresh iteration around reusable static evidence from an older revision."""
+        source_iteration = source["iteration"]
+        result_iteration = len(self.iterations)
+        analysis = copy.deepcopy(source["analysis"])
+        primary_readiness = PAS.global_iteration_readiness(analysis)
+        source_portfolio = source["portfolio"]
+        source_members = source_portfolio["members"]
+        previous_members = {
+            member["identity"]["capsule_sha256"]: member
+            for member in ((self.iterations[-1].get("portfolio") or {}).get("members") or ())
+        }
+        portfolio_rows: list[dict[str, Any]] = []
+        for sentinel, source_member in zip(
+                self.portfolio_sentinels[1:], source_members[1:], strict=True):
+            member_analysis = copy.deepcopy(source_member["analysis"])
+            member_readiness = PAS.global_iteration_readiness(member_analysis)
+            previous_member = previous_members.get(sentinel.capsule_sha256)
+            portfolio_rows.append({
+                "identity": sentinel_identity(sentinel, role="training"),
+                "status": ("completed" if member_readiness["status"]
+                           == "ready_for_probe_admission" else "failed"),
+                "analysis": member_analysis,
+                "readiness": member_readiness,
+                "static_comparison": self._compare_analyses(
+                    previous_member.get("analysis") if previous_member else None,
+                    member_analysis,
+                    previous_iteration=(self.iterations[-1]["iteration"]
+                                        if previous_member else None)),
+                "analysis_allocation": self._reuse_allocation(
+                    source_member.get("analysis_allocation") or {},
+                    source_iteration=source_iteration),
+                "elapsed_seconds": 0.0,
+                "timing_status": "UNMEASURED_FULL_MODEL",
+            })
+        readiness = copy.deepcopy(primary_readiness)
+        portfolio_blockers = [
+            f"portfolio:{member['identity']['capsule']}:{blocker}"
+            for member in portfolio_rows for blocker in member["readiness"]["blockers"]
+        ]
+        if portfolio_blockers:
+            readiness["status"] = "blocked"
+            readiness["blockers"] = [*readiness["blockers"], *portfolio_blockers]
+        readiness["portfolio_sha256"] = self.portfolio_identity_sha256
+        readiness["portfolio_members_ready"] = sum(
+            row["readiness"]["status"] == "ready_for_probe_admission"
+            for row in ({"readiness": primary_readiness}, *portfolio_rows))
+        readiness["portfolio_members_total"] = len(self.portfolio_sentinels)
+        readiness["selection"] = "multi_model_pareto_without_invented_static_cycle_total"
+        if readiness["status"] != "ready_for_probe_admission":
+            raise ValueError("reusable static analysis no longer satisfies current readiness policy")
+
+        current_artifacts = self._iteration_artifacts.get(source_iteration, {})
+        if current_artifacts and (
+                current_artifacts.get("candidate_sha256") != source["candidate_sha256"]
+                or current_artifacts.get("candidate_lowered_sha256")
+                != analysis.get("emission", {}).get("candidate_lowered_sha256")):
+            # Retained artifacts are an in-memory convenience, not part of the immutable
+            # static-analysis cache.  A stale copy removes probe eligibility; it cannot poison
+            # the reused readiness result or a relative semantic comparison.
+            current_artifacts = {}
+        previous_artifacts = self._artifacts
+        relative_semantics: Mapping[str, Any] = {
+            "status": "unavailable_target_completion_contract", "numerical_equivalence": False}
+        remaining = budget_seconds - (time.monotonic() - started)
+        if remaining <= 0:
+            raise TimeoutError("exact analysis reuse verification exhausted the iteration budget")
+        if self.completion_contract is not None and current_artifacts:
+            from merlin.perf.completion_delta import qualify_relative_completion_delta
+            relative_semantics = qualify_relative_completion_delta(
+                previous_analysis=self.iterations[-1]["analysis"], current_analysis=analysis,
+                previous_artifacts=previous_artifacts, current_artifacts=current_artifacts,
+                contract=self.completion_contract, timeout_seconds=min(30, remaining))
+        elapsed = time.monotonic() - started
+        if elapsed > budget_seconds:
+            raise TimeoutError("exact analysis reuse verification exhausted the iteration budget")
+        source_compilation_iteration = (source.get("analysis_reuse") or {}).get(
+            "source_compilation_iteration", source_iteration)
+        reuse = {
+            "schema": "global_exact_static_analysis_reuse_v1",
+            "source_iteration": source_iteration,
+            "source_compilation_iteration": source_compilation_iteration,
+            "result_iteration": result_iteration,
+            "binding": copy.deepcopy(binding),
+            "source_iteration_record": str(
+                (self.output / f"iteration_{source_iteration:04d}.json").resolve()),
+            "source_analysis_sha256": PAS._document_sha256(analysis),
+            "full_graph_compiler_invoked": False,
+            "full_model_simulation_executed": False,
+            "probe_or_timing_receipts_reused": False,
+            "source_elapsed_seconds": source["elapsed_seconds"],
+            "reuse_verification_elapsed_seconds": elapsed,
+        }
+        record = {
+            "schema": "global_perf_iteration_v1", "iteration": result_iteration,
+            "candidate_path": str(candidate.resolve()),
+            "candidate_sha256": source["candidate_sha256"],
+            "submitted_snapshot": source["submitted_snapshot"],
+            "compiler_dependencies": copy.deepcopy(source["compiler_dependencies"]),
+            "analysis_reuse_binding": copy.deepcopy(binding),
+            "analysis_reuse": reuse,
+            "exact_analysis_reused": True,
+            "baseline_sha256": self.baseline_sha256,
+            "optimization_baseline_sha256": self.optimization_baseline_sha256,
+            "optimization_baseline": copy.deepcopy(self.optimization_baseline_binding),
+            "hypothesis": hypothesis, "analysis": analysis, "readiness": readiness,
+            "historical_reference": copy.deepcopy(self.historical_reference),
+            "elapsed_seconds": elapsed, "timing_status": "UNMEASURED_FULL_MODEL",
+            "allocated_seconds": budget_seconds,
+            "probe_receipts": [], "global_performance_claim": "unproven",
+            "relative_semantic_evidence": relative_semantics,
+        }
+        record["static_comparison"] = self._compare(record)
+        record["portfolio"] = {
+            "schema": "full_model_portfolio_iteration_v1",
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "candidate_sha256": source["candidate_sha256"],
+            "members": [{
+                "identity": sentinel_identity(self.sentinel, role="primary"),
+                "status": "completed", "analysis_ref": "/analysis",
+                "readiness": primary_readiness,
+                "static_comparison_ref": "/static_comparison",
+                "analysis_allocation": self._reuse_allocation(
+                    source_members[0].get("analysis_allocation") or {},
+                    source_iteration=source_iteration),
+                "elapsed_seconds": 0.0,
+                "timing_status": "UNMEASURED_FULL_MODEL",
+            }, *portfolio_rows],
+            "members_ready": readiness["portfolio_members_ready"],
+            "members_total": readiness["portfolio_members_total"],
+            "selection": readiness["selection"],
+            "analysis_allocation_policy": "exact_immutable_ready_iteration_reuse_no_compilation",
+            "analysis_concurrency": {
+                "schema": "portfolio_analysis_reuse_concurrency_v1",
+                "requested_workers": self.portfolio_analysis_workers,
+                "admitted_workers": 0,
+                "members": len(self.portfolio_sentinels),
+                "policy": "no_workers_admitted_for_exact_immutable_analysis_reuse",
+            },
+            "full_model_simulation_allowed": False,
+        }
+        self._write(f"iteration_{result_iteration:04d}.json", record)
+        self.iterations.append(record)
+        self._previous_artifacts = previous_artifacts
+        self._artifacts = current_artifacts
+        self._iteration_artifacts[result_iteration] = current_artifacts
+        source_sandboxes = self._compiler_sandboxes.get(source_iteration)
+        if source_sandboxes is not None:
+            self._compiler_sandboxes[result_iteration] = copy.deepcopy(source_sandboxes)
+        return copy.deepcopy(record)
+
     def _analyze_locked(self, candidate: Path, *, hypothesis: str,
                         timeout_s: float | None = None) -> dict[str, Any]:
-        """One real full-graph compilation per edit, recorded even when readiness is blocked."""
+        """Compile a novel edit or chronologically reuse one exact prior ready analysis."""
         started = time.monotonic()
         self._check_inputs()
         if not hypothesis.strip():
@@ -1420,9 +1686,35 @@ class GlobalPerfExperiment:
             raise ValueError("historical reference is inside candidate-writable source")
         dependencies_before = self._compiler_dependencies(candidate)
         before = hash_tree(candidate)["sha256"]
-        if (self.iterations and self.iterations[-1]["candidate_sha256"] == before
-                and self.iterations[-1]["compiler_dependencies"] == dependencies_before):
-            return {**copy.deepcopy(self.iterations[-1]), "exact_analysis_reused": True}
+        reuse_binding = self._analysis_reuse_binding(
+            candidate_sha256=before, compiler_dependencies=dependencies_before)
+        reusable = self._find_reusable_iteration(binding=reuse_binding)
+        if reusable is not None:
+            if reusable["iteration"] != self.iterations[-1]["iteration"]:
+                return self._reuse_prior_analysis(
+                    candidate, hypothesis=hypothesis, source=reusable, binding=reuse_binding,
+                    started=started, budget_seconds=budget_seconds)
+            elapsed = time.monotonic() - started
+            if elapsed > budget_seconds:
+                raise TimeoutError("exact analysis reuse verification exhausted the iteration budget")
+            receipt = {
+                "schema": "global_exact_static_analysis_reuse_v1",
+                "source_iteration": reusable["iteration"],
+                "source_compilation_iteration": (reusable.get("analysis_reuse") or {}).get(
+                    "source_compilation_iteration", reusable["iteration"]),
+                "result_iteration": reusable["iteration"],
+                "binding": copy.deepcopy(reuse_binding),
+                "hypothesis": hypothesis,
+                "full_graph_compiler_invoked": False,
+                "full_model_simulation_executed": False,
+                "probe_or_timing_receipts_reused": False,
+                "duplicate_current_revision": True,
+                "reuse_verification_elapsed_seconds": elapsed,
+            }
+            receipt_path = self._write(f"analysis_reuse_{time.time_ns()}.json", receipt)
+            return {**copy.deepcopy(self.iterations[-1]), "exact_analysis_reused": True,
+                    "analysis_reuse_receipt": {
+                        "path": str(receipt_path), "sha256": PAS._sha256_file(receipt_path)}}
         # Analyze immutable submitted bytes. The agent may keep authoring while this request runs;
         # the result names this snapshot, and _current still refuses a newer unanalysed revision.
         submitted = self.output / f"submission_{len(self.iterations):04d}"
@@ -1588,6 +1880,8 @@ class GlobalPerfExperiment:
             "candidate_path": str(candidate.resolve()), "candidate_sha256": after,
             "submitted_snapshot": str(submitted.resolve()),
             "compiler_dependencies": dependencies_after,
+            "analysis_reuse_binding": self._analysis_reuse_binding(
+                candidate_sha256=after, compiler_dependencies=dependencies_after),
             "baseline_sha256": self.baseline_sha256,
             "optimization_baseline_sha256": self.optimization_baseline_sha256,
             "optimization_baseline": copy.deepcopy(self.optimization_baseline_binding),
@@ -1625,6 +1919,7 @@ class GlobalPerfExperiment:
         self._previous_artifacts, self._artifacts = self._artifacts, retained
         if "baseline_artifacts" in retained:
             self._baseline_artifacts = retained.pop("baseline_artifacts")
+        self._iteration_artifacts[record["iteration"]] = self._artifacts
         return copy.deepcopy(record)
 
     def _compare(self, current: Mapping[str, Any]) -> dict[str, Any]:
@@ -1902,7 +2197,10 @@ class GlobalPerfExperiment:
             if completed is None:
                 raise ValueError("preceding compiler has no retained successful answer-masked policy")
         else:
-            completed = getattr(self.analyzer, "completed_sandboxes", None)
+            # A reverted candidate may be backed by an older immutable analysis snapshot,
+            # while the worker's mutable ``completed_sandboxes`` points at the rejected edit.
+            completed = (self._compiler_sandboxes.get(row["iteration"])
+                         or getattr(self.analyzer, "completed_sandboxes", None))
         if not optimization_baseline:
             if completed is None:
                 return self.analyzer.sandbox_factory(self.optimization_baseline, candidate, scratch)["candidate"]
