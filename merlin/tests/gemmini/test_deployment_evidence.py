@@ -78,6 +78,91 @@ def _wrapper(old_order: bool = False) -> str:
             'printf("OUT Y 1 1");\nreturn 0;\n}\n')
 
 
+def _loop_hardware_and_facts():
+    hardware = '''hw.module @LoopMatmul(in %clk : !seq.clock, in %ready : i1) {
+    %dc_selector = hw.constant 11 : i7
+    %dc_match = comb.icmp bin eq %cmd_q.io_deq_bits_cmd_inst_funct, %dc_selector : i7
+    %dc_gate = comb.and bin %ready, %dc_match : i1
+    %c_addr = comb.extract %cmd_q.io_deq_bits_cmd_rs2 from 0 : (i64) -> i40
+    %c_next = comb.mux bin %dc_gate, %c_addr, %loops_0_c_dram_addr : i40
+    %loops_0_c_dram_addr = seq.firreg %c_next clock %clk : i40
+    %run_selector = hw.constant 8 : i7
+    %run_match = comb.icmp bin eq %cmd_q.io_deq_bits_cmd_inst_funct, %run_selector : i7
+    %run_gate = comb.and bin %ready, %run_match : i1
+    %full = comb.extract %cmd_q.io_deq_bits_cmd_rs1 from 1 : (i64) -> i1
+    %full_next = comb.mux bin %run_gate, %full, %loops_0_full_c : i1
+    %loops_0_full_c = seq.firreg %full_next clock %clk : i1
+    hw.output
+  }'''
+    facts = {
+        "inputs": {"core_hw_sha256": hashlib.sha256(hardware.encode()).hexdigest()},
+        "facts": {
+            "target": "gemmini",
+            "arrays": [{"name": "mesh", "rows": 16, "cols": 16}],
+            "datapaths": [
+                {"name": "input", "dtype": "i8", "evidence": "synthetic scratchpad path"},
+                {"name": "accumulator", "dtype": "i32", "evidence": "synthetic accumulator path"},
+            ],
+            "memories": [
+                {"name": "scratchpad", "bytes": 4096, "depth": 16, "source": "synthetic RTL"},
+                {"name": "accumulator", "bytes": 4096, "depth": 16, "source": "synthetic RTL"},
+            ],
+            "interfaces": [{
+                "name": "funct_decode_table",
+                "names": {"8": "LOOP_WS", "11": "LOOP_WS_CONFIG_ADDRS_DC"},
+                "legal_funct": [8, 11], "custom_opcode": 123, "funct3": 3,
+            }],
+        },
+    }
+    return hardware, facts
+
+
+def _loop_lowered() -> str:
+    return '''module {
+  llvm.func @gemmini_kernel(%a0: !llvm.ptr, %a1: !llvm.ptr,
+                            %a2: !llvm.ptr, %a3: !llvm.ptr) {
+    %zero = llvm.mlir.constant(0 : i64) : i64
+    %full = llvm.mlir.constant(2 : i64) : i64
+    %out0 = llvm.ptrtoint %a2 : !llvm.ptr to i64
+    %out1 = llvm.ptrtoint %a3 : !llvm.ptr to i64
+    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, 11, x0, $0, $1", "r,r"
+      %zero, %out0 : (i64, i64) -> ()
+    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, 8, x0, $0, $1", "r,r"
+      %zero, %zero : (i64, i64) -> ()
+    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, 11, x0, $0, $1", "r,r"
+      %zero, %out1 : (i64, i64) -> ()
+    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, 8, x0, $0, $1", "r,r"
+      %full, %zero : (i64, i64) -> ()
+    llvm.return
+  }
+}
+'''
+
+
+def _whole_program_loop_command_buffer() -> dict:
+    return {
+        "abi_version": "0.1", "target": "gemmini",
+        "tensors": {
+            "I0": {"shape": [16, 16], "dtype": "i8", "role": "input"},
+            "I1": {"shape": [16, 16], "dtype": "i8", "role": "input"},
+            "Y8": {"shape": [16, 16], "dtype": "i8", "role": "intermediate"},
+            "Y32": {"shape": [16, 16], "dtype": "i32", "role": "output"},
+        },
+        "commands": [],
+        "kernel_abi": {
+            "kind": "whole_program",
+            "args": [{"tensor": name, "access": "write" if name.startswith("Y") else "read"}
+                     for name in ("I0", "I1", "Y8", "Y32")],
+            "outputs": ["Y32"],
+        },
+        "params": {"global_program_plan": {"tasks": [
+            {"kind": "contraction", "reads": ["I0"], "writes": ["Y8"]},
+            {"kind": "host", "reads": ["Y8"], "writes": []},
+            {"kind": "convolution", "reads": ["I1"], "writes": ["Y32"]},
+        ]}},
+    }
+
+
 def _evidence(tmp_path: Path, profile_sha: str, output_dtype: str, *, old_wrapper=False):
     cb = _command_buffer(output_dtype)
     backend = backends.get_backend("gemmini")
@@ -195,3 +280,40 @@ def test_host_event_manifest_must_bind_exact_wrapper_token_stream(tmp_path):
     assert evidence["derivation_status"] == "verified"
     assert evidence["source_kind"] == "host_event_manifest"
     assert evidence["events"] == standard["events"]
+
+
+def test_representative_whole_program_joins_fused_loop_task_writes(tmp_path):
+    cb = _whole_program_loop_command_buffer()
+    hardware, facts = _loop_hardware_and_facts()
+    cb_path, cb_sha = _write(tmp_path / "whole.json", json.dumps(cb, sort_keys=True))
+    lowered_path, lowered_sha = _write(tmp_path / "whole.mlir", _loop_lowered())
+    object_path, object_sha = _write(tmp_path / "whole.o", b"exact object")
+    facts_path, facts_sha = _write(tmp_path / "facts.json", json.dumps(facts, sort_keys=True))
+    hardware_path, hardware_sha = _write(tmp_path / "core.hw.mlir", hardware)
+
+    evidence = derive_physical_egress_evidence(
+        profile_sha256=hashlib.sha256(b"profile").hexdigest(),
+        candidate_sha256=hashlib.sha256(b"candidate").hexdigest(),
+        command_buffer_path=cb_path, command_buffer_sha256=cb_sha,
+        lowered_path=lowered_path, lowered_sha256=lowered_sha,
+        object_path=object_path, object_sha256=object_sha,
+        rtl_facts_path=facts_path, rtl_facts_sha256=facts_sha,
+        elaborated_hardware_path=hardware_path,
+        elaborated_hardware_sha256=hardware_sha)
+
+    assert evidence["producer_status"] == "verified"
+    assert evidence["unknown_instruction_indices"] == []
+    assert evidence["missing_expected_egresses"] == []
+    assert evidence["egresses"] == [
+        {"name": "Y32", "status": "verified",
+         "emitted_representation": {"encoding": "signed_integer", "width_bits": 32},
+         "physical_readout": {"encoding": "signed_integer", "width_bits": 32},
+         "actual_readout_instruction_count": 1},
+        {"name": "Y8", "status": "verified",
+         "emitted_representation": {"encoding": "signed_integer", "width_bits": 8},
+         "physical_readout": {"encoding": "signed_integer", "width_bits": 8},
+         "actual_readout_instruction_count": 1},
+    ]
+    loop = evidence["fused_loop_writeback_evidence"]
+    assert loop["coverage_status"] == "complete"
+    assert [row["destination"]["arg_index"] for row in loop["writebacks"]] == [2, 3]

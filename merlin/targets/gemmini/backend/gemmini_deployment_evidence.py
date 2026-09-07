@@ -17,6 +17,8 @@ from merlin.perf.deployment_admissibility import deployment_profile_sha256
 from merlin.runtime.commandbuffer import declared_output_dtypes
 from merlin.targetgen.rocc.decode import decode_text
 
+from .gemmini_loop_matmul_decode import derive_layouts, derive_writebacks
+
 
 _HEX = frozenset("0123456789abcdef")
 _PROFILE_ROLES = ("contract", "config", "runtime_header", "bitstream")
@@ -147,7 +149,10 @@ def derive_physical_egress_evidence(
         *, profile_sha256: str, candidate_sha256: str,
         command_buffer_path: Path, command_buffer_sha256: str,
         lowered_path: Path, lowered_sha256: str,
-        object_path: Path, object_sha256: str) -> dict[str, Any]:
+        object_path: Path, object_sha256: str,
+        rtl_facts_path: Path | None = None, rtl_facts_sha256: str | None = None,
+        elaborated_hardware_path: Path | None = None,
+        elaborated_hardware_sha256: str | None = None) -> dict[str, Any]:
     """Join actual decoded readouts to exact declared output buffers, failing closed on gaps."""
     command_path = _require_exact_file(
         command_buffer_path, command_buffer_sha256, role="command_buffer")
@@ -169,6 +174,9 @@ def derive_physical_egress_evidence(
         raise ValueError("lowered artifact changed while deriving physical egress evidence")
     trace = decode_text(lowered_text, source=str(lowered_exact), target="gemmini")
     instructions = trace.get("instructions")
+    malformed_instruction_stream = not isinstance(instructions, list)
+    if malformed_instruction_stream:
+        instructions = []
     abi_arguments = _abi_arguments(command_buffer)
     expected = _expected_egresses(command_buffer)
     declared = declared_output_dtypes(dict(command_buffer))
@@ -177,15 +185,33 @@ def derive_physical_egress_evidence(
     actual: dict[str, set[str]] = {}
     unmatched: list[dict[str, Any]] = []
     unknown_instructions: list[int] = []
-    if not isinstance(instructions, list):
-        instructions = []
+    actual_readouts: list[dict[str, Any]] = []
+    loop_evidence = None
+    proof_args = (rtl_facts_path, rtl_facts_sha256,
+                  elaborated_hardware_path, elaborated_hardware_sha256)
+    if any(value is not None for value in proof_args):
+        if any(value is None for value in proof_args):
+            raise ValueError("fused-loop evidence requires exact facts and elaborated hardware paths+SHA-256")
+        facts_exact = _require_exact_file(
+            Path(rtl_facts_path), str(rtl_facts_sha256), role="rtl_facts")
+        hardware_exact = _require_exact_file(
+            Path(elaborated_hardware_path), str(elaborated_hardware_sha256),
+            role="elaborated_hardware")
+        layouts = derive_layouts(
+            facts_text=facts_exact.read_text(encoding="utf-8"),
+            hardware_text=hardware_exact.read_text(encoding="utf-8"))
+        loop_evidence = derive_writebacks(instructions, layouts=layouts)
+    covered_loop_indices = set((loop_evidence or {}).get("covered_instruction_indices", []))
+    if malformed_instruction_stream:
         unknown_instructions.append(-1)
     for index, instruction in enumerate(instructions):
         if not isinstance(instruction, Mapping):
             unknown_instructions.append(index)
             continue
+        instruction_index = instruction.get("index", index)
         if instruction.get("class") == "UNKNOWN":
-            unknown_instructions.append(index)
+            if instruction_index not in covered_loop_indices:
+                unknown_instructions.append(instruction_index)
             continue
         if instruction.get("class") != "MVOUT":
             continue
@@ -197,10 +223,38 @@ def derive_physical_egress_evidence(
         if (abi_arguments is None or not isinstance(arg_index, int)
                 or isinstance(arg_index, bool) or not 0 <= arg_index < len(abi_arguments)
                 or _dtype_encoding(readout) is None):
-            unmatched.append({"instruction_index": instruction.get("index", index),
+            unmatched.append({"instruction_index": instruction_index,
                               "reason": "readout destination or physical encoding is unresolved"})
             continue
-        actual.setdefault(abi_arguments[arg_index], set()).add(str(readout))
+        actual_readouts.append({"instruction_index": instruction_index,
+                                "arg_index": arg_index, "readout": str(readout)})
+
+    if loop_evidence is not None:
+        unmatched.extend(loop_evidence["unresolved_writebacks"])
+        for writeback in loop_evidence["writebacks"]:
+            destination = writeback.get("destination")
+            physical = writeback.get("physical_readout")
+            destination = destination if isinstance(destination, Mapping) else {}
+            physical = physical if isinstance(physical, Mapping) else {}
+            arg_index = destination.get("arg_index")
+            encoding, width = physical.get("encoding"), physical.get("width_bits")
+            if (abi_arguments is None or type(arg_index) is not int
+                    or not 0 <= arg_index < len(abi_arguments)
+                    or not isinstance(encoding, str) or type(width) is not int or width <= 0):
+                unmatched.append({"instruction_index": writeback.get("instruction_index"),
+                                  "reason": "fused-loop destination or physical encoding is unresolved"})
+                continue
+            readout = {"signed_integer": "i", "unsigned_integer": "u",
+                       "floating_point": "f"}.get(encoding)
+            if readout is None:
+                unmatched.append({"instruction_index": writeback.get("instruction_index"),
+                                  "reason": "fused-loop physical encoding is unsupported by dtype join"})
+                continue
+            actual_readouts.append({"instruction_index": writeback["instruction_index"],
+                                    "arg_index": arg_index, "readout": f"{readout}{width}"})
+
+    for readout in actual_readouts:
+        actual.setdefault(abi_arguments[readout["arg_index"]], set()).add(readout["readout"])
 
     names = sorted((expected or set()) | set(actual))
     rows = []
@@ -217,13 +271,9 @@ def derive_physical_egress_evidence(
             "emitted_representation": declared_encoding or {},
             "physical_readout": physical_encoding or {},
             "actual_readout_instruction_count": sum(
-                1 for instruction in instructions
-                if isinstance(instruction, Mapping) and instruction.get("class") == "MVOUT"
-                and isinstance(instruction.get("decoded"), Mapping)
-                and isinstance(instruction["decoded"].get("dram"), Mapping)
-                and name in argument_indices
-                and instruction["decoded"]["dram"].get("arg_index")
-                == argument_indices.get(name)),
+                1 for readout in actual_readouts
+                if name in argument_indices
+                and readout["arg_index"] == argument_indices.get(name)),
         })
     missing = sorted((expected or set()) - set(actual))
     status = ("verified" if rows and all(row["status"] == "verified" for row in rows)
@@ -249,6 +299,7 @@ def derive_physical_egress_evidence(
         "unmatched_readouts": unmatched,
         "missing_expected_egresses": missing,
         "unknown_instruction_indices": unknown_instructions,
+        "fused_loop_writeback_evidence": loop_evidence,
         "decoded_trace_sha256": hashlib.sha256(
             json.dumps(trace, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
         "metadata_gap": metadata_gap,
