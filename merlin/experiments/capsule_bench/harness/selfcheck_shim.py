@@ -7,7 +7,9 @@ it gets pass/fail + its own artifacts (in ./selfcheck_out/) — but the oracle/g
 """
 from __future__ import annotations
 import argparse
+import hashlib
 import json
+import math
 import os
 import secrets
 import sys
@@ -16,6 +18,30 @@ from pathlib import Path
 
 
 _SIMS = ("spike", "verilator", "gsim", "vcs")
+PROTOCOL_VERSION = 3
+_DIGEST_IGNORES = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
+_SUITE_SIZE_FALLBACK = 64
+_CALIBRATION_CAP = 3
+
+
+def _submission_digest(root: Path) -> str:
+    """Hash authored submission bytes using the same build-state exclusions as the broker."""
+    root = Path(root)
+    digest = hashlib.sha256()
+    if not root.is_dir():
+        return digest.hexdigest()
+    for path in sorted(root.rglob("*")):
+        rel = path.relative_to(root)
+        if any(part in _DIGEST_IGNORES for part in rel.parts):
+            continue
+        if path.is_symlink():
+            digest.update(rel.as_posix().encode() + b"\0SYMLINK\0" + os.readlink(path).encode())
+        elif path.is_file():
+            digest.update(rel.as_posix().encode() + b"\0")
+            with path.open("rb") as f:
+                while chunk := f.read(1024 * 1024):
+                    digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _required_rtl_engine() -> str | None:
@@ -52,6 +78,79 @@ def _request_id() -> str:
     cryptographic nonce and use the full nanosecond clock rather than a modulo clock.
     """
     return f"{os.getpid()}_{time.time_ns()}_{secrets.token_hex(16)}"
+
+
+def _requester_identity() -> dict[str, int | str]:
+    """Durable identity for the process waiting on a request.
+
+    A PID alone is not enough across a long-lived file channel because Linux may reuse it.  Field 22
+    of ``/proc/<pid>/stat`` is the process start time in clock ticks and distinguishes incarnations.
+    The namespace inode is part of the identity because a sandbox PID is meaningful only inside that
+    namespace; the host broker must not look the same number up in its own ``/proc``.
+    """
+    pid = os.getpid()
+    try:
+        tail = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+        start_ticks = int(tail[19])
+    except (OSError, ValueError, IndexError) as exc:
+        raise RuntimeError(f"cannot establish self-check requester identity: {exc}") from exc
+    try:
+        pid_namespace = os.readlink("/proc/self/ns/pid")
+    except OSError as exc:
+        raise RuntimeError(f"cannot establish self-check PID namespace: {exc}") from exc
+    return {"pid": pid, "start_ticks": start_ticks, "pid_namespace": pid_namespace}
+
+
+def _reply_is_usable(verdict: dict, rid: str, submission_sha256: str) -> tuple:
+    """``(usable, note)`` for a reply the broker published. ``note`` is empty when nothing needs saying.
+
+    WHICH BYTES AND WHOSE REQUEST ARE DIFFERENT QUESTIONS, and conflating them starved the loop. A
+    reply under the wrong request id is a channel fault and stays fatal. A reply about NEWER bytes is
+    not a fault at all: the broker grades the submission as it stands when it reaches the request,
+    because refusing otherwise means an agent that edits while its check is queued never gets a check.
+    Measured on merlincirct_atlas_feedback_v3_20260906: five queued requests carrying three distinct
+    digests, every one refused as stale, and the last COMPLETED self-check 5.5 h earlier while the
+    agent kept working.
+
+    Newer bytes are ACCEPTED AND ANNOUNCED. The verdict is about the agent's current code, which is
+    more useful than the code it had when it asked -- but only while it says so, or the agent reads a
+    verdict as describing something it has already replaced.
+
+    A pure function so it can be tested: this decision used to live inside the polling loop, where the
+    only way to exercise it was to run a broker.
+    """
+    if verdict.get("selfcheck_protocol") != PROTOCOL_VERSION:
+        return False, "carries the wrong protocol version"
+    if verdict.get("selfcheck_request_id") != rid:
+        return False, "belongs to a different request"
+    graded = verdict.get("submission_sha256")
+    if graded == submission_sha256:
+        return True, ""
+    if verdict.get("graded_newer_bytes"):
+        return True, (verdict.get("graded_newer_note")
+                      or "graded your CURRENT submission, not the bytes present when you asked")
+    return False, "is about submission bytes that are neither the ones requested nor declared newer"
+
+
+def _request_budget_seconds(timeout: int, *, capsules: str, workers: int,
+                            suite_size: int | None = None) -> int:
+    """Upper-bound the channel lifetime from the grader's *per-capsule* timeout.
+
+    ``agent_selfcheck`` passes ``timeout`` to every capsule run.  Treating that value as a deadline for
+    the entire request aborts a healthy full-suite check after one capsule-timeout, even though the suite
+    has a serial calibration head followed by several parallel worker waves.  Mirror that scheduling
+    shape here.  The bound is deliberately conservative: an individual capsule normally finishes far
+    below its timeout, so successful requests still return promptly.
+    """
+    per_capsule = max(1, int(timeout))
+    worker_count = max(1, int(workers))
+    if capsules == "all":
+        count = max(1, int(suite_size or _SUITE_SIZE_FALLBACK))
+    else:
+        count = max(1, len({name.strip() for name in capsules.split(",") if name.strip()}))
+    serial = min(_CALIBRATION_CAP, count)
+    parallel_waves = math.ceil(max(0, count - serial) / worker_count)
+    return (serial + parallel_waves) * per_capsule + 240
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -125,9 +224,23 @@ def main(argv=None):
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
     rid = _request_id()
-    deadline = time.time() + a.timeout + 240
+    requested_at_ns = time.time_ns()
+    submission = Path(a.submission)
+    if not submission.is_absolute():
+        submission = ws / submission
+    submission_sha256 = _submission_digest(submission)
+    suite_size = None
+    if a.capsules == "all":
+        public_root = ws / "contract" / "capsules"
+        discovered = sum(1 for _ in public_root.rglob("capsule.yaml")) if public_root.is_dir() else 0
+        suite_size = discovered or _SUITE_SIZE_FALLBACK
+    deadline = time.time() + _request_budget_seconds(
+        a.timeout, capsules=a.capsules, workers=a.workers, suite_size=suite_size)
     _atomic_write(ch / f"req_{rid}.json", json.dumps(
-        {"protocol": 2, "request_id": rid, "deadline_unix_ns": int(deadline * 1_000_000_000),
+        {"protocol": PROTOCOL_VERSION, "request_id": rid,
+         "requester": _requester_identity(),
+         "requested_at_unix_ns": requested_at_ns, "submission_sha256": submission_sha256,
+         "deadline_unix_ns": int(deadline * 1_000_000_000),
          "sim": a.sim, "capsules": a.capsules, "workers": a.workers, "timeout": a.timeout,
          "shape_coverage": bool(a.shape_coverage)}))
     resp, done = ch / f"resp_{rid}.json", ch / f"done_{rid}"
@@ -145,6 +258,13 @@ def main(argv=None):
                 print(json.dumps({"error": "self-check reply was not parseable as JSON — "
                                            "treating as FAILED, not as clean"}))
                 return 2
+            _ok, _why = _reply_is_usable(_v, rid, submission_sha256)
+            if not _ok:
+                print(json.dumps({"error": f"self-check reply {_why} — treating as FAILED, not as "
+                                           "stale feedback"}))
+                return 2
+            if _why:
+                print(json.dumps({"note": _why}))
             # the shape-coverage report has no `all_pass`; its verdict is `all_covered`
             if a.shape_coverage:
                 return 0 if _v.get("all_covered") else 1

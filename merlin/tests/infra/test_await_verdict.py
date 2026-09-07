@@ -62,23 +62,28 @@ def _tool_module():
 
 
 def test_two_grades_inside_one_second_are_distinguishable(ws):
-    """NANOSECOND resolution, and the reason is not pedantry.
+    """SUB-SECOND resolution, and the reason is not pedantry.
 
     What is waited for is a GRADE, not a change of score: two consecutive grades may agree exactly and
     the agent still needs to know the second one ran. A whole-second stamp cannot see a re-grade that
     lands in the same second as the baseline read, and the consequence is not a late return but a
     MISSED one -- the wait reports "nothing new" and the agent sleeps another full grade interval.
-    Written without any sleep so it fails deterministically rather than by luck.
+
+    Written with explicit mtimes rather than two quick writes: this filesystem stamps writes at about
+    millisecond granularity (measured: only 2 of 6 consecutive writes got distinct stamps), so a test
+    that wrote twice and demanded different stamps failed on the storage rather than on the code.
     """
+    import os
     mod = _tool_module()
     path = ws / "qa" / "verdict.json"
+    os.utime(path, ns=(1_000_000_000, 1_000_000_000))
     before = mod._stamp(path)
-    path.write_text(json.dumps({**VERDICT, "n_passed": 83}))
+    os.utime(path, ns=(1_000_000_000, 1_001_000_000))          # one millisecond later
     after = mod._stamp(path)
     assert before is not None and after is not None
     assert after > before, (
-        "a grade written in the same second as the baseline was not seen as newer; the wait would "
-        "report no new grade and the agent would sleep through it")
+        "two grades one millisecond apart were not distinguishable; a whole-second stamp would report "
+        "no new grade and the agent would sleep through it")
 
 
 def test_an_absent_verdict_has_no_stamp(ws):
