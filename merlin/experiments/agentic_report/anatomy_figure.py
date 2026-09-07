@@ -106,8 +106,8 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
     plt.rcParams.update({"axes.facecolor": PAGE_BG, "figure.facecolor": PAGE_BG,
                          "savefig.facecolor": PAGE_BG})
 
-    fig = plt.figure(figsize=(17.0, 9.6))
-    gs = fig.add_gridspec(2, 1, height_ratios=[3.1, 1.5], hspace=0.32,
+    fig = plt.figure(figsize=(17.0, 10.4))
+    gs = fig.add_gridspec(2, 1, height_ratios=[2.5, 2.0], hspace=0.30,
                           left=0.100, right=0.742, top=0.812, bottom=0.170)
     ax_band = fig.add_subplot(gs[0])
     ax_sim = fig.add_subplot(gs[1], sharex=ax_band)
@@ -282,8 +282,20 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
 
         def _amount(sec):
             return f"{sec / 60:.0f} min" if sec >= 60 else f"{sec:.0f} s"
-        title(ax_sim, "Hardware simulation — " + "  ·  ".join(
-            f"{n_by[t]} × {NAME[t]}, {_amount(secs[t])}" for t in tiers), fs=11.5, pad=8)
+        costs = a.get("grade_costs") or []
+        typical = [g for g in costs if g["sim_active_s"] and
+                   g["build_s"] / g["sim_active_s"] > 1]
+        head_bits = ["  ·  ".join(f"{n_by[t]} × {NAME[t]}, {_amount(secs[t])}" for t in tiers)]
+        title(ax_sim, "Hardware simulation — " + head_bits[0], fs=11.5, pad=26)
+        if typical:
+            g = max(typical, key=lambda g: g["build_s"])
+            # Sits between the title and the axes, where nothing else competes for the row.
+            ax_sim.text(0.0, 1.015,
+                        f"…but a grade is mostly REBUILDING: {g['build_s']:.0f} s compiling "
+                        f"{g['n_capsules']} tests to run {g['sim_active_s']:.0f} s of simulation — "
+                        f"{g['build_s'] / g['sim_active_s']:.0f}× more build than simulate",
+                        transform=ax_sim.transAxes, ha="left", va="bottom", fontsize=9.6,
+                        color=MAUVE, fontweight="bold")
         ax_sim.legend(loc="upper right", fontsize=8.2, labelspacing=0.35, framealpha=0.95,
                       borderaxespad=0.4)
 
@@ -299,8 +311,15 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
             sel = [e for e in sim if e["grade"] == best_grade]
             lo = min(e["start_s"] for e in sel)
             hi = max(e["end_s"] for e in sel)
-            pad = (hi - lo) * 0.06
-            ins = ax_sim.inset_axes([0.36, 0.16, 0.30, 0.62])
+            # Zoom the window that actually carries the work, not the grade's full extent: a long
+            # tail of stragglers flattens the burst the inset exists to show.
+            dense = _inflight(sel, np.linspace(lo, hi, 1200))
+            xs_d = np.linspace(lo, hi, 1200)
+            busy = xs_d[dense >= max(dense.max() * 0.12, 1)]
+            if len(busy):
+                lo, hi = float(busy[0]), float(busy[-1])
+            pad = (hi - lo) * 0.05
+            ins = ax_sim.inset_axes([0.30, 0.14, 0.46, 0.74])
             zgrid = np.linspace(lo - pad, hi + pad, 800)
             zser = [_inflight([e for e in sel if e["tier"] == t], zgrid) for t in tiers]
             ins.stackplot(zgrid / 60.0, *zser, colors=[TIER_COLOUR[t] for t in tiers],
@@ -308,14 +327,17 @@ def render(a: dict, out: Path, *, until_best: bool = True) -> Path:
             zpeak = int(max(sum(zser)))
             ins.set_ylim(0, max(zpeak * 1.2, 2))
             ins.set_xlim((lo - pad) / 60.0, (hi + pad) / 60.0)
-            ins.tick_params(labelsize=7.2, length=0)
+            ins.tick_params(labelsize=8.0, length=0)
             ins.set_facecolor("white")
             for sp in ("top", "right"):
                 ins.spines[sp].set_visible(False)
             work = sum(e["end_s"] - e["start_s"] for e in sel)
-            ins.set_title(f"busiest grade, zoomed: {len(sel)} evaluations in "
-                          f"{(hi - lo) / 60:.0f} min · {work / max(hi - lo, 1):.1f}× overlapped · "
-                          f"peak {zpeak}", fontsize=8.2, color=INK, pad=3)
+            inside = [e for e in sel if e["start_s"] < hi and e["end_s"] > lo]
+            ins.set_title(f"busiest grade, zoomed — {len(inside)} evaluations in "
+                          f"{(hi - lo) / 60:.1f} min · "
+                          f"{sum(e['end_s'] - e['start_s'] for e in inside) / max(hi - lo, 1):.1f}× "
+                          f"overlapped · peak {zpeak} at once", fontsize=9.0, color=INK, pad=4)
+            ins.set_xlabel("min", fontsize=7.6, labelpad=1)
             ax_sim.indicate_inset_zoom(ins, edgecolor=INK, alpha=0.45, lw=0.9)
     else:
         ax_sim.text(0.5, 0.5, "no per-capsule simulator timing recorded for this run",

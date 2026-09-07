@@ -144,6 +144,22 @@ class SimEvent:
 
 
 @dataclass
+class GradeCost:
+    """What one grade spent, split into building the agent's package and running it.
+
+    The distinction is the whole answer to "why does a self-check take six minutes when the
+    simulation is twenty seconds": every grade recompiles and re-emits every capsule from scratch.
+    Measured on one run, a spike-only grade spends 408 s building to run 18.6 s of simulation."""
+
+    grade: str
+    n_capsules: int
+    build_s: float
+    sim_active_s: float
+    oracle_wait_s: float
+    adapter_wall_s: float
+
+
+@dataclass
 class Anatomy:
     run_id: str = ""
     target: str = ""
@@ -156,6 +172,7 @@ class Anatomy:
     cost_curve: list[dict] = field(default_factory=list)
     blocked: list[Blocked] = field(default_factory=list)
     sim_events: list[SimEvent] = field(default_factory=list)
+    grade_costs: list[GradeCost] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -164,7 +181,8 @@ class Anatomy:
                 "verdicts": [asdict(v) for v in self.verdicts],
                 "token_curve": self.token_curve, "cost_curve": self.cost_curve,
                 "blocked": [asdict(b) for b in self.blocked],
-                "sim_events": [asdict(e) for e in self.sim_events], "notes": self.notes}
+                "sim_events": [asdict(e) for e in self.sim_events],
+                "grade_costs": [asdict(g) for g in self.grade_costs], "notes": self.notes}
 
 
 _TIERS = ("L0", "L1", "L2", "L3", "L4")
@@ -345,6 +363,38 @@ def read_sim_events(run_dir: Path, t0: float | None = None) -> list[SimEvent]:
     return sorted(out, key=lambda e: e.start_s)
 
 
+def read_grade_costs(run_dir: Path) -> list[GradeCost]:
+    """Build / simulate / queue, summed per grade."""
+    work = run_dir / "_qa_work"
+    if not work.is_dir():
+        return []
+    out = []
+    for grade in sorted(work.glob("runs_*")):
+        build = sim = wait = wall = 0.0
+        n = 0
+        for path in grade.rglob("capsule_result.json"):
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+            except (ValueError, OSError):
+                continue
+            if not isinstance(doc, dict):
+                continue
+            seen = False
+            for entry in (doc.get("tiers") or {}).values():
+                timing = entry.get("timing") if isinstance(entry, dict) else None
+                if not isinstance(timing, dict):
+                    continue
+                build += timing.get("build_s") or 0.0
+                sim += timing.get("sim_active_s") or 0.0
+                wait += timing.get("oracle_wait_s") or 0.0
+                wall += timing.get("adapter_wall_s") or 0.0
+                seen = True
+            n += seen
+        if n:
+            out.append(GradeCost(grade.name, n, build, sim, wait, wall))
+    return out
+
+
 def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, arm: str,
                   model: str, token_curve=None, cost_curve=None) -> Anatomy:
     """Assemble one run's full record. Spans and verdicts keep their own clocks; both start at 0."""
@@ -357,6 +407,7 @@ def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, 
     a.verdicts = read_verdicts(run_dir, started)
     a.blocked = read_blocked(run_dir)
     a.sim_events = read_sim_events(run_dir, started)
+    a.grade_costs = read_grade_costs(run_dir)
     if started is None:
         a.notes.append("this run recorded no start time, so the grader's series are anchored on "
                        "their own first event and may sit a few minutes off the transcript's clock")
