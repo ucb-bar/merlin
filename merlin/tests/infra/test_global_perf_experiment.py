@@ -2200,6 +2200,72 @@ def test_real_macro_round_transport_compiles_each_revision_without_micro_feedbac
     assert "Do not place shell or Python commands before or after a broker call" in task
     assert context["portfolio_action_digest"]["members"][0]["identity"]["capsule"] == "real-model"
     assert "mandatory_analysis_reserve" in context
+    assert context["mandatory_analysis_reserve"]["seconds"] == 0
+    assert context["host_post_authoring_validation"]["maximum_seconds"] == experiment.timeout_s
+    assert context["host_post_authoring_validation"]["full_model_simulation_allowed"] is False
+
+
+def test_macro_round_validates_final_bytes_after_authoring_with_independent_host_budget(
+        tmp_path, monkeypatch):
+    experiment, candidate, calls = setup_experiment(tmp_path, timeout_s=1200)
+    (candidate / "compiler.py").write_text("def lower():\n return 1\n")
+    contract = {"schema": "compiler_edit_contract_v1", "existing_symbols": [
+        {"surface_id": "lowering", "path": "compiler.py", "symbol": "lower"}],
+        "helper_extensions": []}
+    contract["sha256"] = PAS._document_sha256(contract)
+    experiment.freeze_edit_scope(candidate, contract)
+    experiment.phase1_binding = {"test_fixture": "verified existing qualification"}
+    action = PAS.BrokerAction(
+        PAS.E2E_ANALYSIS_ACTION, (PAS._HOST_E2E_ANALYSIS_SENTINEL,), (),
+        "optional in-round full-model analysis", False)
+    original_broker = PAS._Broker
+    brokers = []
+    analysis_timeouts = []
+    original_analyze = experiment.analyze
+
+    def analyze(*args, **kwargs):
+        analysis_timeouts.append(kwargs.get("timeout_s"))
+        return original_analyze(*args, **kwargs)
+
+    def broker(*args, **kwargs):
+        result = original_broker(*args, **kwargs)
+        brokers.append(result)
+        return result
+
+    def codex_round(*args, **kwargs):
+        (candidate / "compiler.py").write_text("def lower():\n return 2\n")
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text("{}\n")
+        return 0, transcript, None
+
+    experiment.analyze = analyze
+    monkeypatch.setattr(PAS, "_Broker", broker)
+    monkeypatch.setattr(PAS, "_codex_round", codex_round)
+    monkeypatch.setattr(PAS, "build_action_registry", lambda *_args, **kwargs: (action,))
+    monkeypatch.setattr(PAS, "verify_answer_free_agent_inputs", lambda *_: None)
+    monkeypatch.setattr(PAS, "inner_execution_policy", lambda *_: PAS.AgentSandboxPolicy(
+        ("bwrap",), (), "available_not_an_isolation_claim", True, True, True))
+    monkeypatch.setattr(PAS, "run_required_tool_probes", lambda *_: [])
+    monkeypatch.setattr(PAS, "inspect_compiler_package", lambda *_: SimpleNamespace(to_dict=lambda: {}))
+    monkeypatch.setattr(PAS, "_round_telemetry", lambda *_args, **_kwargs: {"complete": True})
+    monkeypatch.setattr(PAS, "audit_codex_transcript", lambda *_: {
+        "clean": True, "broker_invocations": []})
+
+    result = G.run_global_agent_round(
+        experiment, candidate, target_experiment=SimpleNamespace(), workspace=tmp_path,
+        stage_root=tmp_path / "stage", agent_inputs=SimpleNamespace(),
+        frozen_functional=SimpleNamespace(), frozen_corpus_manifest=tmp_path / "manifest.json",
+        model="test", resolved_model="test", effort="high", codex_binary=Path("codex"),
+        round_index=0, round_timeout_s=600, max_tool_calls=3)
+
+    assert result["status"] == "authored"
+    assert analysis_timeouts == [None, 1200]
+    assert len(calls) == 2 and calls[0] != calls[1]
+    assert brokers[0].deadline - PAS.time.monotonic() <= 420
+    assert brokers[0].mandatory_analysis_reserve_seconds == 0
+    assert result["host_post_authoring_validation"]["candidate_sha256"] == hash_tree(candidate)["sha256"]
+    assert result["host_post_authoring_validation"]["maximum_seconds"] == 1200
+    assert result["broker_evidence"]["required_actions"] == []
 
 
 def test_cached_policy_rebind_preserves_masks_and_rejects_identity_drift(tmp_path):

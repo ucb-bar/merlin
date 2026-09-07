@@ -283,9 +283,14 @@ current loop without rewriting Phase 1 or placing a multi-hour simulation in the
 The agent can refresh the source map with `inspect-optimization-surfaces`, rerun complete-model
 emission with `analyze-whole-model`, and request the warm reduced profile only when occupancy or
 overlap is the deciding unknown. The reduced result is labeled as calibration and cannot be promoted
-as an end-to-end result. The declared whole-model objective, every evaluation/mixed-lane harness, and
-the witness selection cannot change after candidate evidence is observed; formal promotion still
-evaluates the complete sealed cohort.
+as an end-to-end result. In-round complete-model analysis is optional screening: after a clean Codex
+exit, the host snapshots the exact submitted candidate and performs the mandatory final static
+portfolio analysis under its independent full-graph deadline. This keeps each authoring round and its
+broker at or below 600 seconds even when multi-model compilation needs longer; the post-authoring path
+uses the same answer-masked compiler worker, memory admission, and no-full-model-simulation policy.
+The declared whole-model objective, every evaluation/mixed-lane harness, and the witness selection
+cannot change after candidate evidence is observed; formal promotion still evaluates the complete
+sealed cohort.
 
 L3 is deliberately sparse. Per round, the broker permits one optional occupancy profile and two
 tuning GSIM calls: at most one exploratory promotion check and one call reserved for the exact bytes

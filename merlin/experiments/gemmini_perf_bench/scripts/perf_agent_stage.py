@@ -3591,9 +3591,13 @@ def build_action_registry(candidate: Path,
         not global_optimization))
     actions.append(BrokerAction(
         E2E_ANALYSIS_ACTION, (_HOST_E2E_ANALYSIS_SENTINEL,), (),
-        "required host-owned baseline/candidate emission and structural analysis of the fixed "
-        "declared complete-model objective; no simulator and no timing claim",
-        True))
+        ("optional in-round host-owned baseline/candidate emission and structural analysis of the "
+         "fixed declared complete-model objective; the macro controller separately validates the "
+         "submitted bytes after authoring; no simulator and no timing claim")
+        if global_optimization else
+        ("required host-owned baseline/candidate emission and structural analysis of the fixed "
+         "declared complete-model objective; no simulator and no timing claim"),
+        not global_optimization))
     actions.append(BrokerAction(
         ANALYSIS_ACTION, (_HOST_ANALYSIS_SENTINEL, "{baseline_json}", "{candidate_json}"),
         ("baseline_json", "candidate_json"),

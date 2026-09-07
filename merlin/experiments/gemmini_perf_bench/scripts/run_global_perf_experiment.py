@@ -3484,9 +3484,29 @@ def run_global_agent_round(
     initial = experiment.analyze(candidate, hypothesis="Inspect the current complete-model global plan")
     finalization_reserve_s = _agent_finalization_reserve_seconds(round_timeout_s)
     broker_window_s = round_timeout_s - finalization_reserve_s
-    mandatory_analysis_reserve = experiment.mandatory_analysis_reserve_seconds(broker_window_s)
-    mandatory_analysis_reserve_s = mandatory_analysis_reserve["seconds"]
-    authoring_tool_window_s = max(0.0, broker_window_s - mandatory_analysis_reserve_s)
+    # The complete portfolio can legitimately take longer than the entire Codex round.  It cannot
+    # therefore be a mandatory synchronous broker action: at a 600-second round the final-response
+    # reserve closes that broker after 420 seconds.  Keep the agent and every interactive tool under
+    # the declared round bound, then give the exact submitted bytes their own host-only static
+    # validation phase after the Codex process exits.  This adds no executable/path authority and
+    # does not change the analyzer's memory admission or no-full-model-simulation policy.
+    authoring_tool_window_s = broker_window_s
+    post_authoring_validation_contract = {
+        "schema": "host_post_authoring_static_validation_v1",
+        "maximum_seconds": experiment.timeout_s,
+        "execution": "host_after_codex_process_exit",
+        "candidate_binding": "host_read_only_snapshot_of_exact_submitted_bytes",
+        "broker_invocation_required": False,
+        "full_model_simulation_allowed": False,
+        "resource_admission": "unchanged_portfolio_analysis_policy",
+    }
+    # Retain the old context key for readers that render budget tables.  Its zero is material: no
+    # part of the separately bounded host validation is borrowed from the authoring/tool window.
+    mandatory_analysis_reserve = {
+        "schema": "in_round_mandatory_analysis_reserve_v2",
+        "seconds": 0,
+        "scope": "none; superseded by host_post_authoring_validation",
+    }
     prior_round_context = _prior_round_context(stage_root, round_index)
     portfolio_names = ", ".join(member.capsule for member in experiment.portfolio_sentinels)
     text = (
@@ -3511,8 +3531,10 @@ def run_global_agent_round(
         "missing surface instead of expanding your own authority. Before editing, state a compact "
         "work order using the contract's required fields: surface/source-operation IDs, current "
         "plan digest, hypothesis, expected emitted delta, semantic obligations, cheap validation "
-        "and stop/revert condition. Recompile the entire model portfolio with "
-        "analyze-whole-model after each proposed transformation and before finalizing. "
+        "and stop/revert condition. analyze-whole-model remains available for optional in-round "
+        "screening when the remaining broker window can cover it. The host automatically snapshots "
+        "and recompiles the exact submitted bytes after the Codex process exits, with the separate "
+        "full-graph static-analysis budget; do not spend the final response window waiting for it. "
         "Preserve verified emission for every member that is already ready and repair explicitly "
         "blocked members; every member must be verified before promotion or measurement. Prefer "
         "transformations that "
@@ -3564,17 +3586,17 @@ def run_global_agent_round(
         "profile-reduced-global-witness, profile-controlled-context and compare-controlled-context "
         "accept NO NAME=VALUE bindings; do not add HYPOTHESIS=. "
         "The response is compact and links a read-only full evidence file; inspect that file "
-        "separately with jq when detailed fields are needed. Full-model analysis is the required "
-        "compile action; individual candidate entrypoint smoke commands are optional in macro mode. "
+        "separately with jq when detailed fields are needed. The host post-authoring full-model "
+        "analysis is mandatory; an agent broker invocation and individual candidate entrypoint "
+        "smoke commands are optional in macro mode. "
         "At round end state the full-graph transformation, structural evidence, unknown costs, "
         "and remaining semantic/promotion blockers; do not claim measured full-model speedup. "
-        f"The host reserves the final {mandatory_analysis_reserve_s:g} seconds of the "
-        "tool window for analyze-whole-model. Other broker actions are refused once the preceding "
-        f"{authoring_tool_window_s:g}-second authoring/tool window closes. The complete broker "
-        f"closes after {broker_window_s} seconds, leaving "
-        f"{finalization_reserve_s} seconds for the final response. Finish the final full-model "
-        "analysis before that tool deadline, then emit the final response before the round "
-        "deadline; a valid intermediate edit does not make a timed-out round complete.\n")
+        f"The complete broker closes after {broker_window_s} seconds, leaving "
+        f"{finalization_reserve_s} seconds for the final response. Emit that response before the "
+        "round deadline; a valid intermediate edit does not make a timed-out round complete. After "
+        f"a clean round exits, the host gives the submitted bytes up to {experiment.timeout_s:g} "
+        "additional seconds for compile-only whole-portfolio validation. That host phase is outside "
+        "the authoring and broker deadlines and cannot be invoked or redirected by the agent.\n")
     text += (f"Phase-1 qualification compiler SHA: {experiment.baseline_sha256}. "
              f"Immutable optimization comparison compiler SHA: {experiment.optimization_baseline_sha256}. "
              f"Comparison selection reason: {experiment.optimization_baseline_binding['reason']}. "
@@ -3631,6 +3653,7 @@ def run_global_agent_round(
         "maximum_tool_window_seconds": broker_window_s,
         "maximum_non_analysis_tool_window_seconds": authoring_tool_window_s,
         "mandatory_analysis_reserve": mandatory_analysis_reserve,
+        "host_post_authoring_validation": post_authoring_validation_contract,
         "finalization_reserve_seconds": finalization_reserve_s,
         "probes_available": global_probe_provider is not None,
         "changed_region_qualification_available": global_semantic_provider is not None,
@@ -3648,7 +3671,7 @@ def run_global_agent_round(
         inner, target_experiment, candidate, actions, receipts,
         deadline=time.monotonic() + broker_window_s, max_calls=max_tool_calls,
         max_tool_seconds=experiment.timeout_s, global_experiment=experiment,
-        mandatory_analysis_reserve_seconds=mandatory_analysis_reserve_s,
+        mandatory_analysis_reserve_seconds=0,
         global_probe_provider=global_probe_provider, global_semantic_provider=global_semantic_provider,
         global_context_provider=global_context_provider,
         global_paired_context_provider=global_paired_context_provider,
@@ -3677,6 +3700,46 @@ def run_global_agent_round(
     except ValueError as exc:
         evidence = {"status": "refused", "reason": str(exc)}
         refusals.append(str(exc))
+    post_validation: dict[str, Any]
+    if rc == 0 and audit.get("clean") is True and not refusals:
+        validation_started = time.monotonic()
+        submitted_sha256 = hash_tree(candidate)["sha256"]
+        try:
+            validation = experiment.analyze(
+                candidate,
+                hypothesis="Host post-authoring validation of the exact submitted candidate",
+                timeout_s=experiment.timeout_s)
+            if (validation.get("candidate_sha256") != submitted_sha256
+                    or hash_tree(candidate)["sha256"] != submitted_sha256):
+                raise ValueError("post-authoring validation is not bound to the submitted candidate bytes")
+            iteration_record = experiment.output / f"iteration_{validation['iteration']:04d}.json"
+            post_validation = {
+                **post_authoring_validation_contract,
+                "status": "complete",
+                "candidate_sha256": submitted_sha256,
+                "iteration": validation["iteration"],
+                "iteration_record": str(iteration_record),
+                "iteration_record_sha256": PAS._sha256_file(iteration_record),
+                "readiness": copy.deepcopy(validation.get("readiness")),
+                "exact_analysis_reused": validation.get("exact_analysis_reused") is True,
+                "elapsed_seconds": time.monotonic() - validation_started,
+            }
+        except Exception as exc:  # noqa: BLE001 - failed mandatory host validation refuses the round
+            post_validation = {
+                **post_authoring_validation_contract,
+                "status": "refused",
+                "candidate_sha256": submitted_sha256,
+                "exception": type(exc).__name__,
+                "reason": str(exc),
+                "elapsed_seconds": time.monotonic() - validation_started,
+            }
+            refusals.append(f"host post-authoring full-model validation failed: {exc}")
+    else:
+        post_validation = {
+            **post_authoring_validation_contract,
+            "status": "not_started",
+            "reason": "Codex round or its audit/broker evidence was not clean",
+        }
     try:
         current = experiment._matching_current(candidate, require_ready=False)
     except ValueError as exc:
@@ -3690,6 +3753,7 @@ def run_global_agent_round(
     record = {"schema": "global_agent_round_v1", "round": round_index,
               "candidate_sha256": current["candidate_sha256"], "agent_exit_code": rc,
               "audit": audit, "broker_evidence": evidence, "telemetry": telemetry,
+              "host_post_authoring_validation": post_validation,
               "authoring_readiness": copy.deepcopy(current.get("readiness")),
               "promotion_ready": (current.get("readiness", {}).get("status")
                                   == "ready_for_probe_admission"),

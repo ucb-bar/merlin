@@ -1573,6 +1573,10 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
     assert whole_model.argv_template == (PAS._HOST_E2E_ANALYSIS_SENTINEL,)
     assert whole_model.required is True
     assert "complete-model objective" in whole_model.purpose
+    macro_whole_model = next(
+        action for action in macro if action.name == PAS.E2E_ANALYSIS_ACTION)
+    assert macro_whole_model.required is False
+    assert "macro controller separately validates" in macro_whole_model.purpose
     contract = PAS.action_registry_contract(actions, candidate)
     assert contract[0]["argv_template"] == ["{candidate}/target-opt", "parse", "{input_mlir}"]
     assert contract[1] == {
