@@ -675,3 +675,41 @@ def test_the_suite_size_is_the_mode_not_a_literal(tmp_path):
     ])
     s = read_passes(run)
     assert s.suite_size == 11 and [p.n_passed for p in s.points] == [2, 9]
+
+
+# ---------------------------------------------------------------------------------------------
+# HOW MUCH OF A COMMAND A SPAN KEEPS
+# ---------------------------------------------------------------------------------------------
+
+def test_a_compound_command_keeps_the_tool_that_dominates_it(tmp_path):
+    """The detail is the ONLY record of which tool a shell call ran, and an agent chains them.
+
+    Measured on one run at the previous 200-char cap: a 554 s command spelled
+    `isa_tools.py lint ... && isa_tools.py disasm ... && agent_selfcheck.py --capsules all` was cut
+    before the self-check appeared, so all 554 s were attributed to the linter -- reporting a 58 s mean
+    for a tool whose median is 7.2 s. Raising the cap moved self-check from 70.7% of tool time to
+    84.2% and isa_tools from 13.9% to 6.6%: the attribution was not imprecise, it named the wrong tool.
+    """
+    import json
+    from merlin.agentreport import spans as S
+
+    command = ("python3 isa_tools.py lint x.mlir && python3 isa_tools.py disasm x.mlir "
+               + "# " + "pad " * 60
+               + " && python3 agent_selfcheck.py --submission submission --capsules all")
+    assert len(command) > 200, "the fixture must exceed the OLD cap to be a regression test"
+    run = tmp_path / "run"
+    (run / "rounds").mkdir(parents=True)
+    tx = run / "rounds" / "round_00.transcript.jsonl"
+    tx.write_text("".join(json.dumps(row) + "\n" for row in [
+        {"type": "assistant", "arrived_at": "2026-09-06T00:00:00Z", "message": {"content": [
+            {"type": "tool_use", "id": "c1", "name": "Bash", "input": {"command": command}}]}},
+        {"type": "user", "arrived_at": "2026-09-06T00:10:00Z", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "c1"}]}},
+    ]))
+    got = S.read_spans(run)
+    assert got.spans, f"no spans read (source={got.source})"
+    detail = got.spans[0].detail or ""
+    assert "agent_selfcheck.py" in detail, (
+        "the tool that dominates the command was truncated away; every second of it would be "
+        "attributed to whichever name happened to come first")
+    assert len(detail) <= S.DETAIL_CHARS, "the cap must still bound a heredoc-carrying command"

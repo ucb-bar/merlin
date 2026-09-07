@@ -73,6 +73,11 @@ class TierResult:
     status: str                       # pass | fail | skipped | unavailable
     mandatory: bool
     reason: str | None = None
+    cache_unavailable: str = ""        # why this tier's certificate could not even be LOOKED UP.
+                                      # Distinct from a lookup that missed: both used to render as an
+                                      # absence, which is how a certificate cache that had never once
+                                      # fired for two of three targets went unnoticed. Rides the
+                                      # result so a reader sees it without re-deriving anything.
     cycles: int | None = None
     derived_from_rtl: bool = False
     cycle_accurate: bool = False
@@ -202,6 +207,8 @@ class TierResult:
              "cycles": self.cycles, "derived_from_rtl": self.derived_from_rtl,
              "cycle_accurate": self.cycle_accurate, "evidence": self.evidence,
              "timing": self.timing}
+        if self.cache_unavailable:
+            d["cache_unavailable"] = self.cache_unavailable
         if self.not_applicable:
             d["not_applicable"] = True
         if self.budget_deferred:
@@ -481,24 +488,76 @@ def _clear_stale_executable(generated) -> None:
     _BC.forget(generated)
 
 
-def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool):
-    """``(execution identity, instrument digest)`` for one (capsule, tier), or ``(None, None)``.
+def run_executables(generated) -> tuple:
+    """Every executable this run produced in ``generated``, as paths, sorted by name.
 
-    ``None`` is the answer whenever either half cannot be established -- no executable yet, a hardware
-    pin nobody could resolve, a grading-path file missing, an RTL tier whose engine is undecidable.
-    Every one of those makes the tier re-run.
+    DERIVED FROM THE BYTES, NOT FROM A NAME. The operator build path emits one ELF under a known name,
+    and the certificate identity used to assume it -- which silently excluded every target whose grade
+    links a differently-named executable, or more than one. Measured: one target's grade leaves
+    ``kernel.radiance.elf``, ``kernel.radiance.layout.elf`` and ``kernel.soc.elf``, so the assumed name
+    never existed and the cache could not fire for it at all, indistinguishably from having nothing to
+    carry.
+
+    An ELF identifies itself: the four magic bytes are the format's own, not any target's fact, so
+    asking each file what it is needs no per-target table. The known name is checked first purely to
+    keep the common case one stat instead of a directory walk.
     """
     from . import elf_lanes as _EL
+    root = Path(generated)
+    known = root / _EL.PACKAGE_ELF_NAME
+    if known.is_file():
+        return (known,)
+    found = []
+    try:
+        for path in sorted(root.iterdir()):
+            try:
+                if path.is_file() and path.open("rb").read(4) == b"\x7fELF":
+                    found.append(path)
+            except OSError:
+                continue
+    except OSError:
+        return ()
+    return tuple(found)
+
+
+def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool):
+    """``(execution identity, instrument digest, refusal reason)`` for one (capsule, tier).
+
+    The identity is ``None`` whenever either half cannot be established -- no executable yet, a
+    hardware pin nobody could resolve, a grading-path file missing, an RTL tier whose engine is
+    undecidable. Every one of those makes the tier re-run, and every one now carries a REASON: they
+    were all spelled ``None``, which a caller can only render as "nothing was carried", and that is
+    how a cache which had never once fired for two of three targets went unnoticed.
+    """
     from . import tier_cache as _TC
-    identity = _TC.execution_identity(target=target,
-                                      executable=Path(generated) / _EL.PACKAGE_ELF_NAME,
-                                      toolchain_shas=shas)
+    executables = run_executables(generated)
+    identity = _TC.execution_identity(target=target, executables=executables, toolchain_shas=shas)
     if identity is None:
-        return None, None
+        return None, None, _TC.execution_identity_reason(
+            target=target, executables=executables, toolchain_shas=shas)
     instrument = _TC.instrument_digest(target, tier, rtl_tier=from_rtl)
     if instrument is None:
-        return None, None
-    return identity, instrument
+        return None, None, (f"the instrument for tier {tier} could not be established (the grading "
+                            f"path, or the elaborated-RTL engine that would answer it today)")
+    return identity, instrument, ""
+
+
+def stamp_cache_refusals(tiers: dict, refusals: dict) -> None:
+    """Move a ladder's cache refusals onto the tier records they belong to.
+
+    DEFERRED, not written at refusal time: a tier whose certificate could not be looked up goes on to
+    EXECUTE, and that execution replaces its record -- so stamping when the refusal happens is undone
+    by the very verdict that proves the tier ran.
+
+    Module-level rather than a closure over the ladder because a closure cannot be tested, and two
+    mutations that disabled this entirely went unnoticed for precisely that reason.
+    """
+    for tier, why in (refusals or {}).items():
+        record = (tiers or {}).get(tier)
+        if record is None or not why:
+            continue
+        if not getattr(record, "cache_unavailable", ""):
+            record.cache_unavailable = str(why)
 
 
 def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas,
@@ -515,15 +574,19 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
 
     ``mandatory`` is TODAY's, never the stored one. Whether a tier is required is a property of the
     capsule being graded now.
+
+    Returns ``(result_or_None, refusal_reason)``. An empty reason means the question was ASKED and
+    missed, which is ordinary; a non-empty one means it could not be asked at all, which is the state
+    that used to be invisible.
     """
     from . import tier_cache as _TC
-    identity, instrument = _tier_certificate_key(capsule_name, tier, target=target,
-                                                 generated=generated, shas=shas, from_rtl=from_rtl)
+    identity, instrument, why = _tier_certificate_key(capsule_name, tier, target=target,
+                                                      generated=generated, shas=shas, from_rtl=from_rtl)
     if identity is None:
-        return None
+        return None, why
     hit = _TC.lookup(capsule_name, tier, identity, instrument)
     if hit is None:
-        return None
+        return None, ""            # asked and missed: the ordinary case, and not a defect
     stored = dict(hit.get("tier_result") or {})
     carried = _TC.carried_block(hit)
     carried["earned_evidence"] = {k: stored.pop(k) for k in _TC.ARTIFACTS_OF_THE_EARNING_RUN
@@ -540,7 +603,7 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
                       reason=("verdict carried: this tier was NOT executed in this run; the same "
                               "executable was already certified at this tier on this instrument"
                               + (f" ({stored_reason})" if stored_reason else "")),
-                      carried=carried, **kwargs)
+                      carried=carried, **kwargs), ""
 
 
 def record_tier_certificate(capsule_name: str, tier: str, result: "TierResult", *, target, generated,
@@ -553,8 +616,9 @@ def record_tier_certificate(capsule_name: str, tier: str, result: "TierResult", 
     """
     try:
         from . import tier_cache as _TC
-        identity, instrument = _tier_certificate_key(capsule_name, tier, target=target,
-                                                     generated=generated, shas=shas, from_rtl=from_rtl)
+        identity, instrument, _why = _tier_certificate_key(capsule_name, tier, target=target,
+                                                           generated=generated, shas=shas,
+                                                           from_rtl=from_rtl)
         if identity is None:
             return
         _TC.record(capsule_name, tier, identity, instrument, status=result.status,
@@ -3856,7 +3920,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _shas_memo["v"] = toolchain_shas(eff_target)
             return _shas_memo["v"]
 
+        _cache_refusals: dict = {}       # tier -> why its certificate could not even be looked up
         _executed_here = False           # has ANY tier actually run in this process, for this capsule?
+
+        def _stamp_cache_refusals() -> None:
+            stamp_cache_refusals(tiers, _cache_refusals)
         for tier in _tier_seq:
             mand = tier in required
             # THE SCREEN IS ALWAYS PAID FOR; the tiers above it are what a budget can decline. A capsule
@@ -3891,13 +3959,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # actually executed in this run, because that is what guarantees the executable on disk is
             # this run's and not a previous grade's (see `_clear_stale_executable`). The lookup fails
             # closed on every ambiguity, and a hit is reported AS a carry -- never as a measurement.
-            if _executed_here:
-                _carried = carried_tier_result(name, tier, mand, target=eff_target,
-                                               generated=paths.generated, shas=_pin_shas(),
-                                               from_rtl=tier in cfg.rtl_tiers)
+            if _executed_here and tier not in adapter_managed_tiers:
+                _carried, _why_not = carried_tier_result(name, tier, mand, target=eff_target,
+                                                         generated=paths.generated, shas=_pin_shas(),
+                                                         from_rtl=tier in cfg.rtl_tiers)
                 if _carried is not None:
                     tiers[tier] = _carried
                     continue
+                if _why_not:
+                    # The question could not be ASKED -- distinct from asking and missing, and the
+                    # distinction is the whole point: unrecorded, the two read identically.
+                    _cache_refusals[tier] = _why_not
             import time as _time
             _adapter_t0 = _time.perf_counter()
             try:
@@ -4151,8 +4223,10 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                             tiers[_later] = suppressed_tier_result(
                                 _later, _later in required, tier,
                                 from_rtl=_later in cfg.rtl_tiers)
+                    _stamp_cache_refusals()
                     raise _cf
 
+        _stamp_cache_refusals()
         if _first_cert_failure is not None:
             raise _first_cert_failure
 

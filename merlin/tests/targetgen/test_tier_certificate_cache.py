@@ -98,7 +98,7 @@ def test_execution_identity_is_the_one_promotion_binds_a_certificate_to(tmp_path
 
     from_promotion = tp.execution_digest(run / "capsule_result.json")
     from_cache = TC.execution_identity(target="t",
-                                       executable=generated / "package_kernel.elf",
+                                       executables=[generated / "package_kernel.elf"],
                                        toolchain_shas=SHAS)
     assert from_promotion is not None, "the promotion identity must still be computable"
     assert from_promotion == from_cache, (
@@ -106,17 +106,17 @@ def test_execution_identity_is_the_one_promotion_binds_a_certificate_to(tmp_path
 
 
 def test_execution_identity_moves_with_one_byte_of_the_executable(tmp_path):
-    a = TC.execution_identity(target="t", executable=_elf(tmp_path, b"AAAA") / "package_kernel.elf",
+    a = TC.execution_identity(target="t", executables=[_elf(tmp_path, b"AAAA") / "package_kernel.elf"],
                               toolchain_shas=SHAS)
-    b = TC.execution_identity(target="t", executable=_elf(tmp_path, b"AAAB") / "package_kernel.elf",
+    b = TC.execution_identity(target="t", executables=[_elf(tmp_path, b"AAAB") / "package_kernel.elf"],
                               toolchain_shas=SHAS)
     assert a and b and a != b, "one changed byte of the program must be a different identity"
 
 
 def test_execution_identity_moves_with_the_hardware_revision(tmp_path):
     elf = _elf(tmp_path) / "package_kernel.elf"
-    a = TC.execution_identity(target="t", executable=elf, toolchain_shas=SHAS)
-    b = TC.execution_identity(target="t", executable=elf,
+    a = TC.execution_identity(target="t", executables=[elf], toolchain_shas=SHAS)
+    b = TC.execution_identity(target="t", executables=[elf],
                               toolchain_shas={"merlin": SHAS["merlin"], "some_rtl": "c" * 40})
     assert a and b and a != b, "a certificate is about one device revision; another is not the same"
 
@@ -124,8 +124,8 @@ def test_execution_identity_moves_with_the_hardware_revision(tmp_path):
 def test_execution_identity_ignores_merlins_own_commit(tmp_path):
     """An edit that emits a byte-identical program on the same device has not changed the program."""
     elf = _elf(tmp_path) / "package_kernel.elf"
-    a = TC.execution_identity(target="t", executable=elf, toolchain_shas=SHAS)
-    b = TC.execution_identity(target="t", executable=elf,
+    a = TC.execution_identity(target="t", executables=[elf], toolchain_shas=SHAS)
+    b = TC.execution_identity(target="t", executables=[elf],
                               toolchain_shas={"merlin": "f" * 40, "some_rtl": PIN})
     assert a == b, "keying on merlin's commit would invalidate every certificate on every edit"
 
@@ -145,7 +145,7 @@ def test_execution_identity_fails_closed(tmp_path, target, shas, write_elf):
         elf = _elf(tmp_path) / "package_kernel.elf"
     else:
         elf = tmp_path / "generated" / "package_kernel.elf"
-    assert TC.execution_identity(target=target, executable=elf, toolchain_shas=shas) is None
+    assert TC.execution_identity(target=target, executables=[elf], toolchain_shas=shas) is None
 
 
 # ---------------------------------------------------------------------------------------------
@@ -361,14 +361,15 @@ def test_a_carried_tier_record_is_never_presented_as_freshly_measured(tmp_path, 
     f.write_text("x\n")
     _fixed_instrument(monkeypatch, [f])
     generated = _elf(tmp_path)
-    identity = TC.execution_identity(target="t", executable=generated / "package_kernel.elf",
+    identity = TC.execution_identity(target="t", executables=[generated / "package_kernel.elf"],
                                      toolchain_shas=SHAS)
     instrument = TC.instrument_digest("t", "L3", rtl_tier=True)
     TC.record("C0", "L3", identity, instrument, status="pass", tier_result=RESULT, run_id="earlier")
 
-    got = CR.carried_tier_result("C0", "L3", True, target="t", generated=generated, shas=SHAS,
-                                 from_rtl=True)
+    got, why = CR.carried_tier_result("C0", "L3", True, target="t", generated=generated, shas=SHAS,
+                                      from_rtl=True)
     assert got is not None and got.status == "pass"
+    assert why == "", "a HIT must not also report a refusal"
     d = got.to_dict()
     assert d["measured_now"] is False
     assert d["carried"]["carried"] is True
@@ -533,6 +534,23 @@ def test_ladder_never_carries_when_the_cache_is_off(tmp_path, _ladder, monkeypat
     res = _grade(tmp_path, "g2", b"\x7fELF-program-one", calls)
     assert calls == {"L2": 2, "L3": 2}
     assert res["tier_reuse"]["carried"] == []
+
+
+def test_adapter_owns_its_evidence_even_when_general_tier_cache_hits(tmp_path, _ladder):
+    calls = {}
+    program = b"\x7fELF-program-one"
+    _grade(tmp_path, "prime", program, calls)
+    result = CR.run_capsule(
+        _capsule(), "unused-package", runs_root=tmp_path / "scoped", run_id="scoped",
+        config=_two_tier_config(), oracle_adapters=_adapters(program, calls),
+        adapter_managed_tiers=("L3",))
+    assert result["status"] == "pass"
+    assert calls == {"L2": 2, "L3": 2}, "the general cache must not bypass an evidence-owning adapter"
+    assert result["tier_reuse"]["carried"] == []
+    # The opt-out is invocation-local. Ordinary grading still reuses the earned certificate.
+    ordinary = _grade(tmp_path, "ordinary", program, calls)
+    assert calls == {"L2": 3, "L3": 2}
+    assert ordinary["tier_reuse"]["carried"] == ["L3"]
 
 
 def test_a_stale_executable_from_an_earlier_grade_cannot_be_keyed_on(tmp_path, _ladder):

@@ -109,12 +109,12 @@ from pathlib import Path
 
 __all__ = ["EXECUTION_IDENTITY_VERSION", "RECORD_VERSION", "ARTIFACTS_OF_THE_EARNING_RUN",
            "cache_root", "ledger_paths",
-           "execution_identity", "grading_path", "instrument_digest", "lookup", "record",
-           "carried_block", "reuse_block", "disabled"]
+           "execution_identity", "execution_identity_reason", "grading_path", "instrument_digest",
+           "lookup", "record", "carried_block", "reuse_block", "disabled"]
 
 #: Version of the payload :func:`execution_identity` hashes. Bumping it invalidates every stored record,
 #: which is the correct effect of changing what "the same program on the same device" means.
-EXECUTION_IDENTITY_VERSION = 1
+EXECUTION_IDENTITY_VERSION = 2
 
 #: Version of the on-disk record shape. A record written by another version is not read.
 RECORD_VERSION = 1
@@ -195,38 +195,74 @@ def _valid_pin(name, value) -> bool:
             and all(c in "0123456789abcdef" for c in value))
 
 
-def execution_identity(*, target, executable, toolchain_shas) -> "str | None":
+def execution_identity(*, target, executables, toolchain_shas) -> "str | None":
     """Content identity for exactly what one capsule's hardware tier executes, or ``None``.
 
-    ``{ELF bytes} x {target} x {every declared hardware pin}``. Merlin's own commit is deliberately
-    excluded: a source edit that emits byte-identical code has not changed the program the RTL
-    certified. This is the SINGLE implementation of that identity --
-    ``tier_promote.execution_digest`` gathers the same three inputs off disk and calls it -- so the
-    recorder that binds a certificate to bytes and the reader that spends one cannot disagree about
-    what "the same bytes" means.
+    ``{the bytes of every executable this run produced} x {target} x {every declared hardware pin}``.
+    Merlin's own commit is deliberately excluded: a source edit that emits byte-identical code has not
+    changed the program the RTL certified.
+
+    EVERY EXECUTABLE, NOT ONE GUESSED BY NAME. This took a single path under the name the operator
+    build path happens to use, which is correct for a target whose grade links one ELF and wrong for
+    one that links several -- and "wrong" there meant the identity could not be formed at all, so the
+    cache silently never fired for that target while looking exactly like a cache with nothing to
+    carry. Picking one of several by name or by mtime is not the fix: keying a certificate on the wrong
+    program is the one direction this must never fail in. So the identity covers all of them, digested
+    under their own names in sorted order, and any change to any of them is a different identity.
     """
+    return _identity(target=target, executables=executables, toolchain_shas=toolchain_shas)[0]
+
+
+def execution_identity_reason(*, target, executables, toolchain_shas) -> str:
+    """Why :func:`execution_identity` refused, or ``""`` when it did not.
+
+    A CACHE THAT CANNOT HIT MUST SAY SO. Every refusal here is correct and deliberate, and all of them
+    used to be spelled the same way -- as ``None``, which the caller could only render as "nothing was
+    carried". That is indistinguishable from a converged run with nothing worth carrying, and it is how
+    a cache that had never once fired for two of three targets went unnoticed. Same computation as
+    :func:`execution_identity`, so the explanation cannot drift from the decision.
+    """
+    return _identity(target=target, executables=executables, toolchain_shas=toolchain_shas)[1]
+
+
+def _identity(*, target, executables, toolchain_shas) -> "tuple[str | None, str]":
+    """``(identity, refusal reason)`` -- one implementation, so the two public forms agree."""
     try:
-        elf = Path(executable)
-        if not isinstance(target, str) or not target.strip() or not isinstance(toolchain_shas, dict):
-            return None
+        if not isinstance(target, str) or not target.strip():
+            return None, "no target was supplied, so nothing identifies the device"
+        if not isinstance(toolchain_shas, dict):
+            return None, "no toolchain_shas mapping was supplied"
         hardware = {}
         for key, value in toolchain_shas.items():
             if isinstance(key, str) and key.lower() == "merlin":
                 continue
             if not _valid_pin(key, value):
-                return None
+                return None, (f"hardware pin {key!r} does not identify a revision precisely enough "
+                              f"to key a certificate on ({value!r}); a certificate must never be "
+                              f"attributed to a device whose identity was a guess")
             hardware[key] = value
-        if not hardware or not elf.is_file():
-            return None
+        if not hardware:
+            return None, (f"target {target!r} declares no hardware pin that resolves to a revision, so "
+                          f"a verdict cannot be attributed to a device -- declare one in "
+                          f"merlin/contract/hardware_pins.yaml (see Pin.targets)")
+        digests = {}
+        for item in executables or ():
+            path = Path(item)
+            if not path.is_file():
+                continue
+            digests[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if not digests:
+            return None, ("no executable produced by this run was found, so there are no bytes to "
+                          "identify; the first tier the ladder executes is what builds one")
         payload = {
             "version": EXECUTION_IDENTITY_VERSION,
             "target": target,
             "hardware": hardware,
-            "executable_sha256": hashlib.sha256(elf.read_bytes()).hexdigest(),
+            "executables": digests,
         }
-        return _digest_of(payload)
-    except OSError:                      # unreadable artifact: no identity, so the tier re-runs
-        return None
+        return _digest_of(payload), ""
+    except OSError as exc:               # unreadable artifact: no identity, so the tier re-runs
+        return None, f"an artifact could not be read: {exc}"
 
 
 def _digest_of(payload: dict) -> str:
@@ -476,17 +512,29 @@ def carried_block(hit: dict) -> dict:
 
 
 def reuse_block(tiers) -> dict:
-    """``{"executed": [...], "carried": [...]}`` for one capsule's tier records.
+    """``{"executed": [...], "carried": [...], "unavailable": {...}}`` for one capsule's tier records.
 
     Emitted on every capsule result, not only when something was carried: a run in which nothing was
     reused and a run in which the accounting was never computed have to look different, or a cached
     grade and a fresh one read the same.
+
+    ``unavailable`` names the tiers whose certificate could not be LOOKED UP at all, with the reason,
+    read off the records themselves. That is a different fact from a lookup that missed, and conflating
+    them is how a cache that had never fired for two of three targets stayed invisible: both rendered
+    as an absence.
     """
-    executed, carried = [], []
+    executed, carried, refusals = [], [], {}
     for tier in sorted(tiers or {}):
         rec = tiers[tier]
         block = rec.get("carried") if isinstance(rec, dict) else getattr(rec, "carried", None)
         (carried if isinstance(block, dict) and block.get("carried") else executed).append(tier)
-    return {"executed": executed, "carried": carried,
-            "note": ("carried tiers were not executed in this run; their verdict was earned earlier by "
-                     "the same executable on the same instrument (merlin.targetgen.tier_cache)")}
+        why = (rec.get("cache_unavailable") if isinstance(rec, dict)
+               else getattr(rec, "cache_unavailable", "")) or ""
+        if why:
+            refusals[tier] = why
+    block = {"executed": executed, "carried": carried,
+             "note": ("carried tiers were not executed in this run; their verdict was earned earlier by "
+                      "the same executable on the same instrument (merlin.targetgen.tier_cache)")}
+    if refusals:
+        block["unavailable"] = {str(k): str(v) for k, v in refusals.items()}
+    return block

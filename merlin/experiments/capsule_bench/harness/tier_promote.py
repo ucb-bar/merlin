@@ -196,7 +196,8 @@ def _submission_digest(ws) -> str:
 def execution_digest(capsule_result: str | Path) -> str | None:
     """Content identity for exactly what one capsule's hardware tier executes.
 
-    The identity covers the ELF bytes and the target/hardware revisions recorded beside the result. It
+    The identity covers the bytes of every executable the run produced and the target/hardware
+    revisions recorded beside the result. It
     deliberately excludes Merlin's source commit: a source edit that emits byte-identical code has not
     changed the program RTL certifies. Missing ELF, target, or a concrete hardware revision returns
     ``None`` so scheduling falls back to the conservative submission/component digest.
@@ -210,7 +211,7 @@ def execution_digest(capsule_result: str | Path) -> str | None:
     import json
     import yaml
 
-    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    from merlin.targetgen.capsule_runner import run_executables
     from merlin.targetgen.tier_cache import execution_identity
 
     cr = Path(capsule_result)
@@ -225,9 +226,12 @@ def execution_digest(capsule_result: str | Path) -> str | None:
         # did not, a payload key spelled differently). The consequence of such a drift is not a crash:
         # it is a cache that never hits, or -- far worse -- one that hits for bytes the recorder meant
         # something else by. One implementation, two callers.
+        # WHICH executables is also the library's question, not this reader's. Asking for one by name
+        # excluded every target whose grade links a differently-named one, or several -- and the
+        # exclusion presented as a null digest rather than as an error.
         return execution_identity(
             target=manifest.get("target") if isinstance(manifest, dict) else None,
-            executable=cr.parent / "generated" / PACKAGE_ELF_NAME,
+            executables=run_executables(cr.parent / "generated"),
             toolchain_shas=result.get("toolchain_shas") if isinstance(result, dict) else None)
     except Exception:  # noqa: BLE001 -- missing/unreadable provenance is the conservative fallback
         return None

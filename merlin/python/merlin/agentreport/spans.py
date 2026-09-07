@@ -124,6 +124,16 @@ class SpanSet:
         return any(sp.duration_s > FLUSH_FLOOR_S for sp in self.spans)
 
 
+#: How much of a command's text a span keeps. THE ONLY RECORD OF *WHICH* TOOL A SHELL CALL RAN, so it
+#: has to survive the way an agent actually invokes things: chained with `&&`, wrapped in `timeout`,
+#: fed a heredoc. Measured on one run at the previous 200: a 554 s command reading
+#: `isa_tools.py lint ... && isa_tools.py disasm ... && agent_selfcheck.py --capsules all` was cut
+#: before the self-check appeared, so the whole 554 s was attributed to the linter -- which then read
+#: as a 58 s mean for a tool whose median is 7.2 s. Per-tool attribution was not merely imprecise, it
+#: named the wrong tool. Long enough for a realistic compound command; still bounded, because a
+#: heredoc can carry an entire program and none of that is attribution.
+DETAIL_CHARS = 4000
+
 def _stamp(value) -> float | None:
     if not isinstance(value, str) or not value:
         return None
@@ -209,7 +219,7 @@ def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int, 
                     cid = str(block.get("tool_use_id") or "")
                     started = open_calls.pop(cid, None)
                     if started is not None:
-                        spans.append(Span(started[0], rel, started[1], started[2][:200]))
+                        spans.append(Span(started[0], rel, started[1], started[2][:DETAIL_CHARS]))
         unterminated += len(open_calls)
         offset = last
     return spans, idless, unstamped, unterminated, len(spans)
@@ -240,7 +250,8 @@ def _from_raw_items(paths: Sequence[Path]) -> tuple[list[Span], int]:
             if not iid:
                 continue
             if inner.get("type") == ITEM_STARTED:
-                open_items[iid] = (rel, str(item.get("type") or ""), str(item.get("command") or "")[:160])
+                open_items[iid] = (rel, str(item.get("type") or ""),
+                                   str(item.get("command") or "")[:DETAIL_CHARS])
             elif inner.get("type") == ITEM_COMPLETED:
                 started = open_items.pop(iid, None)
                 if started is not None:
