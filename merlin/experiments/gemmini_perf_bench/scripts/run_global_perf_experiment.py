@@ -90,6 +90,23 @@ def sentinel_identity(sentinel: PAS.StageE2ESentinel, *, role: str) -> dict[str,
     }
 
 
+def full_model_portfolio_identity(
+        sentinels: Sequence[PAS.StageE2ESentinel]) -> dict[str, Any]:
+    """Canonical identity shared by launch/resume checks and experiment receipts."""
+    if not sentinels:
+        raise ValueError("a full-model optimization portfolio cannot be empty")
+    return {
+        "schema": "full_model_optimization_portfolio_v1",
+        "members": [sentinel_identity(member, role=(
+            "primary" if index == 0 else "training"))
+                    for index, member in enumerate(sentinels)],
+        "selection": "multi_model_pareto_without_invented_static_cycle_total",
+        "execution": "bounded_host_admitted_analysis_with_deterministic_record_order",
+        "holdout_policy": "separate_post_authoring_evaluation",
+        "micro_graphs": "smoke_and_mechanism_calibration_only",
+    }
+
+
 def portfolio_member_analysis_allocation(
         remaining_seconds: float,
         remaining_sentinels: Sequence[PAS.StageE2ESentinel], *,
@@ -1023,15 +1040,7 @@ class GlobalPerfExperiment:
             "objective_numerical_qualification": "UNPROVEN", "phase1_regraded": False,
         }
         self.optimization_baseline_binding_sha256 = PAS._document_sha256(self.optimization_baseline_binding)
-        portfolio_identity = [sentinel_identity(member, role=(
-            "primary" if index == 0 else "training"))
-            for index, member in enumerate(self.portfolio_sentinels)]
-        self.portfolio_identity = {"schema": "full_model_optimization_portfolio_v1",
-            "members": portfolio_identity,
-            "selection": "multi_model_pareto_without_invented_static_cycle_total",
-            "execution": "bounded_host_admitted_analysis_with_deterministic_record_order",
-            "holdout_policy": "separate_post_authoring_evaluation",
-            "micro_graphs": "smoke_and_mechanism_calibration_only"}
+        self.portfolio_identity = full_model_portfolio_identity(self.portfolio_sentinels)
         self.portfolio_identity_sha256 = PAS._document_sha256(self.portfolio_identity)
         self.baseline_emission_cache_binding = None
         self.baseline_emission_cache_seeds: list[dict[str, Any]] = []

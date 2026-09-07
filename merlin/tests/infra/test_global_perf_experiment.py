@@ -166,6 +166,27 @@ def test_host_only_full_graph_and_authoring_budgets_are_distinct_from_probe_ceil
         setup_experiment(tmp_path / "too_long", timeout_s=1201)
 
 
+def test_launcher_and_controller_share_the_canonical_resume_portfolio_identity(tmp_path):
+    training_source = tmp_path / "training_model"
+    training_source.mkdir()
+    (training_source / "capsule.yaml").write_text(
+        "interface_mlir: capsule.interface.mlir\n", encoding="utf-8")
+    (training_source / "capsule.interface.mlir").write_text("module {}\n", encoding="utf-8")
+    training = PAS.StageE2ESentinel(
+        "training-model", str(training_source), str(training_source),
+        PAS._exact_tree_record(training_source)["sha256"], (), ())
+    experiment, _candidate, _calls = setup_experiment(
+        tmp_path, portfolio_sentinels=(training,))
+    launcher = importlib.import_module("launch_global_agent_experiment")
+
+    expected = G.full_model_portfolio_identity(experiment.portfolio_sentinels)
+
+    assert launcher.full_model_portfolio_identity is G.full_model_portfolio_identity
+    assert experiment.portfolio_identity == expected
+    assert experiment.portfolio_identity_sha256 == PAS._document_sha256(expected)
+    assert expected["execution"] == "bounded_host_admitted_analysis_with_deterministic_record_order"
+
+
 def test_launcher_refuses_static_analysis_above_distinct_host_ceiling():
     launcher = importlib.import_module("launch_global_agent_experiment")
 

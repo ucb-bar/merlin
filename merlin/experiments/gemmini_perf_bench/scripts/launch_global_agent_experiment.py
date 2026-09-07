@@ -21,8 +21,9 @@ from merlin.perf.execution_policy import (FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS
                                           GLOBAL_AUTHORING_ROUND_MAX_SECONDS)
 from merlin.targetgen.target_experiment import load_target_experiment
 from run_global_perf_experiment import (FrozenPhase1, GlobalPerfExperiment, configure_global_analysis,
+                                        full_model_portfolio_identity,
                                         run_global_agent_round, run_global_agent_sequence,
-                                        sentinel_identity, verify_retained_global_checkpoint,
+                                        verify_retained_global_checkpoint,
                                         validate_optimization_baseline_resume)
 
 
@@ -490,14 +491,7 @@ def main(argv: list[str] | None = None) -> int:
     portfolio_sentinels.extend(
         PAS.select_external_e2e_sentinel(external, inputs)
         for external in portfolio_externals)
-    portfolio_identity = {
-        "schema": "full_model_optimization_portfolio_v1",
-        "members": [sentinel_identity(member, role=("primary" if index == 0 else "training"))
-                    for index, member in enumerate((sentinel, *portfolio_sentinels))],
-        "selection": "multi_model_pareto_without_invented_static_cycle_total",
-        "execution": "sequential_under_one_iteration_budget",
-        "holdout_policy": "separate_post_authoring_evaluation",
-        "micro_graphs": "smoke_and_mechanism_calibration_only"}
+    portfolio_identity = full_model_portfolio_identity((sentinel, *portfolio_sentinels))
     portfolio_sha256 = PAS._document_sha256(portfolio_identity)
     resumed = None
     if args.resume_checkpoint:
