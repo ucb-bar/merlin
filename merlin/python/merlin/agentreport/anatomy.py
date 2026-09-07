@@ -173,6 +173,14 @@ class Anatomy:
     blocked: list[Blocked] = field(default_factory=list)
     sim_events: list[SimEvent] = field(default_factory=list)
     grade_costs: list[GradeCost] = field(default_factory=list)
+    # What the run COST, in the three states the harness can report. `cost_kind` is the load-bearing
+    # field: a subscription seat is not billed per token, so its dollar figure is what the same traffic
+    # WOULD have cost metered -- printing it beside a metered one as though both were money spent is the
+    # error this carries the kind to prevent. An unpriced run reports None, never 0.0.
+    cost_kind: str = ""
+    cost_usd: float | None = None
+    notional_usd: float | None = None
+    cost_reason: str = ""
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -182,7 +190,10 @@ class Anatomy:
                 "token_curve": self.token_curve, "cost_curve": self.cost_curve,
                 "blocked": [asdict(b) for b in self.blocked],
                 "sim_events": [asdict(e) for e in self.sim_events],
-                "grade_costs": [asdict(g) for g in self.grade_costs], "notes": self.notes}
+                "grade_costs": [asdict(g) for g in self.grade_costs],
+                "cost_kind": self.cost_kind, "cost_usd": self.cost_usd,
+                "notional_usd": self.notional_usd, "cost_reason": self.cost_reason,
+                "notes": self.notes}
 
 
 _TIERS = ("L0", "L1", "L2", "L3", "L4")
@@ -396,7 +407,7 @@ def read_grade_costs(run_dir: Path) -> list[GradeCost]:
 
 
 def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, arm: str,
-                  model: str, token_curve=None, cost_curve=None) -> Anatomy:
+                  model: str, token_curve=None, cost_curve=None, cost=None) -> Anatomy:
     """Assemble one run's full record. Spans and verdicts keep their own clocks; both start at 0."""
     a = Anatomy(run_id=run_id, target=target, arm=arm, model=model, wall_s=spanset.wall_s)
     for sp in spanset.spans:
@@ -413,6 +424,13 @@ def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, 
                        "their own first event and may sit a few minutes off the transcript's clock")
     a.token_curve = list(token_curve or [])
     a.cost_curve = list(cost_curve or [])
+    # Carried verbatim from the facts row rather than recomputed here: one reader of the cost YAMLs is
+    # enough, and a second would be free to disagree with it.
+    if cost:
+        a.cost_kind = str(cost.get("cost_kind") or "")
+        a.cost_usd = cost.get("cost_usd")
+        a.notional_usd = cost.get("notional_usd")
+        a.cost_reason = str(cost.get("cost_reason") or "")
     if a.verdicts and a.wall_s > 0:
         drift = abs((a.verdicts[-1].t_s) - a.wall_s) / a.wall_s
         if drift > 0.25:

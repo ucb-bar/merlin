@@ -415,7 +415,9 @@ def cmd_anatomy(a) -> int:
     spanset = read_spans(Path(f["path"]))
     anatomy = build_anatomy(Path(f["path"]), spanset, run_id=f["run_id"], target=f["target"],
                             arm=f["arm"], model=f.get("model") or "",
-                            token_curve=f.get("token_curve"), cost_curve=f.get("cost_curve"))
+                            token_curve=f.get("token_curve"), cost_curve=f.get("cost_curve"),
+                            cost={k: f.get(k) for k in
+                                  ("cost_kind", "cost_usd", "notional_usd", "cost_reason")})
     out = a.out or (artifacts_dir() / CONCERN / f"anatomy_{f['run_id']}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(anatomy.to_dict(), indent=2) + "\n")
