@@ -283,11 +283,11 @@ def test_whole_model_analysis_reuses_exact_seed_and_cached_baseline(tmp_path, mo
 
     retained = {}
     first = stage.analyze_whole_model_emission(
-        baseline, candidate, sentinel, timeout_s=100, peak_macs_per_cycle=None,
+        baseline, candidate, sentinel, timeout_s=1200, peak_macs_per_cycle=None,
         achievable_macs_per_cycle=None, target="fixture-target", global_plan_verifier=verify,
         artifact_sink=retained.update, emit_pair_runner=emit, machine_artifact_auditor=audit,
         machine_build_policy_identity=policy, host_verifier_policy_sha256="d" * 64)
-    assert emitted == [("baseline", 100)]
+    assert emitted == [("baseline", 1200)]
     assert len(parse_calls) == len(decode_calls) == len(verifier_calls) == len(machine_calls) == 1
     emission_execution = first["diagnostics"]["emission_execution"]
     measured_emission_wall = emission_execution.pop("baseline_emission_measured_wall_seconds")
@@ -297,7 +297,7 @@ def test_whole_model_analysis_reuses_exact_seed_and_cached_baseline(tmp_path, mo
         "identical_compiler_trees": True, "retained_baseline_reused": False,
         "candidate_reused_baseline_artifacts": True, "launched_entrypoint_count": 1,
         "baseline_entrypoints": 1, "candidate_entrypoints": 0,
-        "per_entrypoint_timeout_seconds": 100, "analysis_budget_seconds": 100,
+        "per_entrypoint_timeout_seconds": 1200, "analysis_budget_seconds": 1200,
         "baseline_emission_source": "compiler_executed",
         "baseline_emission_cache_key": None,
     }
@@ -369,6 +369,23 @@ def test_worker_reserves_result_transport_grace_inside_outer_budget(tmp_path):
     receipt = json.loads(next((tmp_path / "worker").glob("*/receipt.json")).read_text())
     assert receipt["analysis_budget_seconds"] == result["analysis_budget_seconds"]
     assert receipt["analysis_budget_seconds"] < receipt["budget_seconds"] == 10
+
+
+def test_worker_accepts_host_only_static_budget_above_simulation_ceiling(tmp_path):
+    stage = tmp_path / "trusted_stage.py"
+    stage.write_text(
+        "class StageE2ESentinel:\n"
+        " def __init__(self, **kwargs): pass\n"
+        "def analyze_whole_model_emission(*args, timeout_s, **kwargs):\n"
+        " return {'analysis_budget_seconds': timeout_s}\n")
+    worker = IsolatedAnalysisWorker(stage_path=stage,
+                                    sandbox_factory=lambda *args: {}, output=tmp_path / "worker")
+
+    result = worker(tmp_path, tmp_path, Sentinel(), timeout_s=1200)
+
+    assert 1190 <= result["analysis_budget_seconds"] < 1200
+    with pytest.raises(ValueError, match="at most 1200s"):
+        worker(tmp_path, tmp_path, Sentinel(), timeout_s=1201)
 
 
 def test_compiler_output_does_not_follow_link(tmp_path):

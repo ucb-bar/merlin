@@ -24,7 +24,10 @@ from typing import Any
 
 import perf_agent_stage as PAS
 from merlin.benchharness import hash_tree
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
+from merlin.perf.execution_policy import (
+    FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS,
+    ITERATION_MAX_SECONDS,
+)
 from merlin.perf.mechanism_probe import ProbeBinding, ProbeObservation, require_probe_admission
 
 
@@ -922,8 +925,10 @@ class GlobalPerfExperiment:
                  minimum_memory_available_bytes: int = 0,
                  analyzer: Callable[..., Mapping[str, Any]] = PAS.analyze_whole_model_emission,
                  plan_verifier: Callable[..., Mapping[str, Any]] | None = None):
-        if not 0 < timeout_s <= ITERATION_MAX_SECONDS:
-            raise ValueError("a global iteration must fit the 600-second wall budget")
+        if not 0 < timeout_s <= FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:
+            raise ValueError(
+                "full-graph static analysis must fit the "
+                f"{FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:g}-second host wall budget")
         if not PAS._is_sha256(target_sha256):
             raise ValueError("the target descriptor must have an exact SHA-256 identity")
         if hash_tree(baseline)["sha256"] != baseline_sha256:
@@ -1070,6 +1075,8 @@ class GlobalPerfExperiment:
             "portfolio_analysis_workers": self.portfolio_analysis_workers,
             "minimum_memory_available_bytes": self.minimum_memory_available_bytes,
             "maximum_iteration_seconds": timeout_s,
+            "maximum_full_graph_static_analysis_seconds": timeout_s,
+            "maximum_reduced_witness_seconds": int(ITERATION_MAX_SECONDS),
             "full_model_simulation_allowed": False, "probe_measurements_required": False,
             "firesim_stage": "optional_post_freeze_validation",
             "phase1_action": "reuse_exact_snapshot", "micro_plateau_stops_search": False,
@@ -3618,6 +3625,8 @@ def run_global_agent_round(
         "external_objective": external_objectives[0] if external_objectives else None,
         "external_objectives": external_objectives,
         "maximum_iteration_seconds": experiment.timeout_s,
+        "maximum_full_graph_static_analysis_seconds": experiment.timeout_s,
+        "maximum_reduced_witness_seconds": int(ITERATION_MAX_SECONDS),
         "maximum_round_seconds": round_timeout_s,
         "maximum_tool_window_seconds": broker_window_s,
         "maximum_non_analysis_tool_window_seconds": authoring_tool_window_s,

@@ -146,6 +146,38 @@ def setup_experiment(tmp_path, *, verified=True, primary_interface_bytes=9, **ex
     return experiment, candidate, calls
 
 
+def test_full_graph_static_analysis_budget_is_distinct_from_authoring_and_probe_ceiling(tmp_path):
+    experiment, candidate, calls = setup_experiment(tmp_path, timeout_s=1200)
+
+    record = experiment.analyze(candidate, hypothesis="Exercise the host-only static ceiling")
+
+    assert calls == [hash_tree(candidate)["sha256"]]
+    assert record["allocated_seconds"] == pytest.approx(1200, abs=0.01)
+    contract = json.loads((experiment.output / "experiment.json").read_text())
+    assert contract["maximum_full_graph_static_analysis_seconds"] == 1200
+    assert contract["maximum_reduced_witness_seconds"] == 600
+    with pytest.raises(ValueError, match="authoring bounds"):
+        G.run_global_agent_sequence(
+            experiment, candidate, run_round=lambda *_args, **_kwargs: {},
+            stage_root=tmp_path / "stage", max_rounds=1,
+            total_authoring_seconds=601, round_seconds=601)
+    (tmp_path / "too_long").mkdir()
+    with pytest.raises(ValueError, match="1200-second host wall budget"):
+        setup_experiment(tmp_path / "too_long", timeout_s=1201)
+
+
+def test_launcher_refuses_static_analysis_above_distinct_host_ceiling():
+    launcher = importlib.import_module("launch_global_agent_experiment")
+
+    with pytest.raises(SystemExit) as caught:
+        launcher.main([
+            "--campaign-config", "not-read.json", "--candidate", "candidate",
+            "--output", "not-created", "--iteration-seconds", "1201",
+        ])
+
+    assert caught.value.code == 2
+
+
 def _portfolio_sentinel(tmp_path, name, *, interface_bytes=9):
     source = tmp_path / name
     source.mkdir()

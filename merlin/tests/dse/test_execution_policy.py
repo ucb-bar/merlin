@@ -28,6 +28,15 @@ def test_rejects_the_old_seven_hour_reference_timeout() -> None:
         SimulationBudget(timeout_seconds=600, reference_timeout_seconds=25200)
 
 
+def test_static_analysis_ceiling_does_not_relax_reduced_witness_simulation() -> None:
+    from merlin.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS
+
+    assert FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS == 1200
+    with pytest.raises(ValueError, match="600"):
+        SimulationBudget(timeout_seconds=FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS,
+                         reference_timeout_seconds=600)
+
+
 def test_reduced_witness_is_admitted_from_measured_simulator_throughput() -> None:
     admission = admit_reduced_witness(
         estimated_cycles=50_000, measured_cycles_per_second=193,

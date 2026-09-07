@@ -51,7 +51,11 @@ import perf_prompt as PP
 from merlin.benchharness import hash_tree, runs_root
 from merlin.common.paths import merlin_dir, repo_root
 from merlin.perf.agent_guidance import guidance_for_emission_analysis, inspect_compiler_package
-from merlin.perf.execution_policy import FIRESIM_LIFECYCLE, ITERATION_MAX_SECONDS
+from merlin.perf.execution_policy import (
+    FIRESIM_LIFECYCLE,
+    FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS,
+    ITERATION_MAX_SECONDS,
+)
 from merlin.perf.external_objective import (ExternalObjective, OBJECTIVE_DIRECTORY,
                                              objective_directory)
 from merlin.targetgen.sandbox import bwrap as BW
@@ -3009,7 +3013,9 @@ def analyze_whole_model_emission(
     candidate_entrypoints = (0 if identical_compilers else
                              len(OR.analysis_emission_entrypoints(candidate_package)))
     emitted_entrypoints = baseline_entrypoints + candidate_entrypoints
-    analysis_budget = min(int(ITERATION_MAX_SECONDS), int(timeout_s))
+    # This path compiles and statically audits a complete graph; it does not execute it.  Its host
+    # deadline is intentionally distinct from the ten-minute reduced-witness simulator ceiling.
+    analysis_budget = min(int(FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS), int(timeout_s))
     per_entrypoint_timeout = max(1, analysis_budget // max(1, emitted_entrypoints))
 
     def require_not_declined(payload: str, arm: str) -> None:

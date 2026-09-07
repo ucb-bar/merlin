@@ -20,6 +20,8 @@ import sys
 import time
 from typing import Any, Callable, Mapping
 
+from merlin.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS
+
 
 _RESULT_TRANSPORT_GRACE_SECONDS = 5.0
 
@@ -110,8 +112,10 @@ class IsolatedAnalysisWorker:
                  artifact_sink: Callable[..., Any] | None = None, **kwargs: Any) -> dict[str, Any]:
         from tempfile import mkdtemp
 
-        if not 0 < timeout_s <= 600:
-            raise ValueError("analysis worker requires a positive wall-clock budget at most 600s")
+        if not 0 < timeout_s <= FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:
+            raise ValueError(
+                "analysis worker requires a positive full-graph static-analysis budget at most "
+                f"{FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:g}s")
         started = time.monotonic()
         self.output.mkdir(parents=True, exist_ok=True)
         work = Path(mkdtemp(prefix="analysis_", dir=self.output))

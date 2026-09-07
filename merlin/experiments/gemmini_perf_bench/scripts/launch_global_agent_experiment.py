@@ -17,6 +17,7 @@ import perf_agent_stage as PAS
 from merlin.benchharness import hash_tree
 from merlin.perf.host_resources import (HostResourcePolicy, HostResourceTripwire,
                                         sample_host_memory, summarize_samples, violations)
+from merlin.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS
 from merlin.targetgen.target_experiment import load_target_experiment
 from run_global_perf_experiment import (FrozenPhase1, GlobalPerfExperiment, configure_global_analysis,
                                         run_global_agent_round, run_global_agent_sequence,
@@ -253,7 +254,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--portfolio-external-objective-sha256", action="append", default=[],
                         help="exact SHA-256 paired by order with portfolio-external-objective")
     parser.add_argument("--round-seconds", type=int, default=600)
-    parser.add_argument("--iteration-seconds", type=int, default=600)
+    parser.add_argument(
+        "--iteration-seconds", type=int, default=600,
+        help=("host-only full-graph compile/static-analysis ceiling; at most "
+              f"{FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:g}s; does not extend authoring rounds or "
+              "permit full-model simulation"))
     parser.add_argument("--max-tool-calls", type=int, default=40)
     parser.add_argument("--max-rounds", type=int, default=1)
     parser.add_argument("--total-authoring-seconds", type=int,
@@ -331,6 +336,10 @@ def main(argv: list[str] | None = None) -> int:
     total_authoring = args.total_authoring_seconds if args.total_authoring_seconds is not None else args.round_seconds
     if min(args.max_rounds, total_authoring, args.round_seconds) <= 0 or args.round_seconds > 600:
         parser.error("authoring bounds must be positive and each round at most600 seconds")
+    if not 0 < args.iteration_seconds <= FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:
+        parser.error(
+            "iteration-seconds is the host-only full-graph static-analysis ceiling and must be "
+            f"in (0, {FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:g}]")
     if args.validation_only and (args.max_rounds != 1 or args.resume_checkpoint or args.total_authoring_seconds):
         parser.error("validation-only does not launch or resume an authoring sequence")
     if args.validation_only != bool(args.comparison_candidate):
