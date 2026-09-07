@@ -1937,8 +1937,14 @@ def _task_runtime_scope_block(te, sandbox: str) -> str:
         f"- Held-out capsules: **{scope['held_out_capsules']}**, derived from the descriptor's hidden "
         "roots; their contents remain sealed.\n"
         f"- Active sandbox: **`{sandbox}`** ({isolation}).\n"
-        "- If an older bundled document states a fixed capsule count or a different isolation mode, "
-        "this launch-generated block wins.\n")
+        "- The harness re-grades a snapshot of your workspace on its own schedule and refreshes "
+        "`qa/verdict.json` underneath you; you are NOT relaunched between grades. To wait for the "
+        "next one instead of checking repeatedly, run **`python await_verdict.py`** — it blocks until "
+        "a new grade lands and prints its score and failing capsules (`--timeout <s>` to bound the "
+        "wait; a timeout is reported, not an error). Polling `qa/verdict.json` in a loop costs you a "
+        "turn every time you look.\n"
+        "- If an older bundled document states a fixed capsule count, a different isolation mode, or "
+        "that you are relaunched each round, this launch-generated block wins.\n")
 
 
 def _build_task(arm: str, ws: Path, run_dir: Path, sandbox: str = "bwrap") -> None:
@@ -2244,6 +2250,12 @@ def _start_selfcheck_broker(ws: Path):
     (ch / "STOP").unlink(missing_ok=True)
     _stage_shim(ws, "selfcheck_shim.py", "agent_selfcheck.py")   # sync self-check (spike, fast)
     _stage_shim(ws, "simjob_shim.py", "simjob.py")               # async oracle (spike/verilator/vcs)
+    # Blocking wait on the harness's OWN grade. Not a broker and not a channel: it reads only
+    # qa/verdict.json, which the agent may already read, and imports nothing from merlin. It exists
+    # because every other wait in the toolbox blocks and this one did not, so the only way to notice a
+    # new grade was to look again -- measured at 89 polling commands in one 6.1 h run, each one a model
+    # round trip.
+    _stage_shim(ws, "await_verdict.py", "await_verdict.py")
     broker_specs = [("selfcheck_broker.py", "broker.log"), ("simjob_broker.py", "simjob_broker.log")]
     # Brokered TOOLS (the ISA assembler/disassembler/linter; the two mandated CCA calls) are part of the
     # arm's TREATMENT, so which ones start is read from the bundle's resolved tool set rather than from
