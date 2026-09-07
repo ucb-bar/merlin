@@ -70,6 +70,8 @@ def _feedback_document(*, candidate_sha256: str = SHA_B) -> dict:
             "candidate_utilization": 16.0 / 100,
             "baseline_share_of_achievable": 51.2 / 120,
             "candidate_share_of_achievable": 51.2 / 100,
+            "achievable_macs_per_cycle": 80.0,
+            "achievable_basis": "best host-owned rate at reduction depth 16",
             # A cell states a position on its own measurement, not just the numbers behind it.
             "verdict": "improved",
             "verdict_reason": "20 cycles saved, closing 29.1% of the gap to the achievable rate",
@@ -296,7 +298,7 @@ def _record() -> dict:
                       "evaluation_performed_by_stage": False,
                       "development_feedback_performed_by_stage": True,
                       "success_declared_by_stage": False,
-                      "consumer": "run_perf_bench.py"},
+                      "consumer": PAS.MEASUREMENT_CONSUMER},
     }
 
 
@@ -307,6 +309,21 @@ def test_candidate_record_keeps_network_out_of_the_isolation_claim():
         document["sandbox"][plane]["network"] = "unshared"
         with pytest.raises(PAS.StageGateError, match="outer|inner"):
             PAS.validate_candidate_record(document)
+
+
+def test_candidate_record_names_the_actual_measurement_consumer_and_keeps_v3_compatibility():
+    document = _record()
+    assert document["admission"]["consumer"] == "run_paired_perf_bench.py"
+    assert PAS.validate_candidate_record(document)["state"] == "sealed"
+
+    legacy = _record()
+    legacy["admission"]["consumer"] = "run_perf_bench.py"
+    assert PAS.validate_candidate_record(legacy)["state"] == "sealed"
+
+    foreign = _record()
+    foreign["admission"]["consumer"] = "some_other_runner.py"
+    with pytest.raises(PAS.StageGateError, match="evaluation boundary"):
+        PAS.validate_candidate_record(foreign)
 
 
 def test_candidate_record_requires_an_exact_functional_fork_and_tool_evidence():
@@ -354,6 +371,55 @@ def test_refused_candidate_is_not_consumable_but_its_evidence_can_be_read():
     with pytest.raises(PAS.StageGateError, match="not consumable"):
         PAS.validate_candidate_record(document)
     assert PAS.validate_candidate_record(document, require_consumable=False)["state"] == "refused"
+
+
+def _audit_only_refusal_record() -> dict:
+    document = _record()
+    document["state"] = "refused"
+    document["admission"].update({
+        "consumable": False,
+        "refusal": "combined Codex transcript failed the answer/tool-access audit",
+    })
+    document["functional_guard"] = {"status": "clean", "offenders": []}
+    document["candidate"]["rounds_completed"] = 1
+    refused_audit = copy.deepcopy(document["agent"]["audit"])
+    refused_audit.update({
+        "clean": False,
+        "hits": [{"kind": "answer_reconnaissance", "line": "7",
+                  "command_sha256": SHA_A}],
+    })
+    document["agent"]["audit"] = copy.deepcopy(refused_audit)
+    document["agent"]["rounds"][0]["audit"] = copy.deepcopy(refused_audit)
+    return document
+
+
+def test_audit_requalification_accepts_only_the_narrow_false_positive_refusal():
+    eligible = _audit_only_refusal_record()
+    PAS._require_audit_only_refusal(eligible)
+
+    real_execution_violation = copy.deepcopy(eligible)
+    real_execution_violation["agent"]["rounds"][0]["audit"]["hits"][0]["kind"] = (
+        "target_tool_outside_broker")
+    with pytest.raises(PAS.StageGateError, match="beyond answer-reconnaissance"):
+        PAS._require_audit_only_refusal(real_execution_violation)
+
+
+def test_audit_requalification_invariant_allows_only_audit_admission_fields():
+    source = _audit_only_refusal_record()
+    rewritten = copy.deepcopy(source)
+    rewritten["state"] = "sealed"
+    rewritten["admission"].update({"consumable": True, "refusal": None})
+    clean = copy.deepcopy(source["agent"]["audit"])
+    clean.update({"clean": True, "hits": []})
+    rewritten["agent"]["audit"] = copy.deepcopy(clean)
+    rewritten["agent"]["rounds"][0]["audit"] = copy.deepcopy(clean)
+    rewritten["audit_requalification"] = {"ignored-by-invariant": True}
+    assert (PAS._audit_requalification_invariant_sha256(source)
+            == PAS._audit_requalification_invariant_sha256(rewritten))
+
+    rewritten["candidate"]["sha256"] = SHA_C
+    assert (PAS._audit_requalification_invariant_sha256(source)
+            != PAS._audit_requalification_invariant_sha256(rewritten))
 
 
 def test_verified_handoff_is_the_narrow_measurement_boundary(tmp_path, monkeypatch):
@@ -768,6 +834,41 @@ def test_native_codex_accepts_only_an_exact_bash_lc_broker_payload(tmp_path, mon
 
 
 @pytest.mark.parametrize("payload", [
+    'rg -n "def .*sha|candidate_sha256|directory.*sha|tree.*hash" /perf-control/perf_tool.py /perf-control 2>/dev/null | head -100',
+    '/usr/bin/rg -n candidate_sha256 /perf-control/perf_tool.py',
+    'ripgrep -n candidate_sha256 /perf-control/perf_tool.py',
+])
+def test_readonly_search_of_broker_is_not_an_invocation(tmp_path, monkeypatch, payload):
+    """Actual round01 line55: search operands are data, not an interpreter's program."""
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    (candidate / "manifest.yaml").write_text("entrypoints: {tool: target-opt}\n")
+    monkeypatch.setattr(PAS, "audit_tokens", lambda _: {"answer": (), "grader": (), "oracle_subpath": ()})
+    monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _: [])
+    audit = PAS.audit_codex_transcript(_native_codex_transcript(tmp_path / "read.jsonl",
+        "/bin/bash -lc " + shlex.quote(payload)), SimpleNamespace(), candidate, ())
+    assert audit["clean"] is True
+    assert audit["broker_invocations"] == []
+
+
+@pytest.mark.parametrize("payload", [
+    'rg --pre=/perf-control/perf_tool.py pattern input.txt',
+    'rg --pre python3 pattern /perf-control/perf_tool.py',
+    'rg -n pattern /perf-control/perf_tool.py; python3 /perf-control/perf_tool.py undeclared-action',
+    'rg -n pattern /perf-control/perf_tool.py; cp /perf-control/perf_tool.py /tmp/broker-copy',
+])
+def test_search_cannot_hide_broker_execution_or_copy(tmp_path, monkeypatch, payload):
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    (candidate / "manifest.yaml").write_text("entrypoints: {tool: target-opt}\n")
+    monkeypatch.setattr(PAS, "audit_tokens", lambda _: {"answer": (), "grader": (), "oracle_subpath": ()})
+    monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _: [])
+    audit = PAS.audit_codex_transcript(_native_codex_transcript(tmp_path / "bad-search.jsonl",
+        "/bin/bash -lc " + shlex.quote(payload)), SimpleNamespace(), candidate, ())
+    assert "invalid_broker_invocation" in [hit["kind"] for hit in audit["hits"]]
+
+
+@pytest.mark.parametrize("payload", [
     "python3 /perf-control/perf_tool.py candidate-parse input_mlir=x.mlir; ./target-opt x.mlir",
     "cp /perf-control/perf_tool.py /tmp/x && python3 /tmp/x candidate-parse input_mlir=x.mlir",
     "python3 -c 'exec(open(\"/perf-control/perf_tool.py\").read())' candidate-parse",
@@ -994,6 +1095,43 @@ def test_feedback_broker_action_stays_host_side_and_writes_content_addressed_rec
                 "action": PAS.DEVELOPMENT_FEEDBACK_ACTION,
                 "bindings_sha256": binding_digest,
             }]}, candidate_sha256=SHA_D)
+
+
+def test_broker_enforces_sparse_l3_feedback_budget_per_round(tmp_path):
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "manifest.yaml").write_text("target: test\n", encoding="utf-8")
+    candidate_sha = hash_tree(candidate)["sha256"]
+    action = PAS.BrokerAction(
+        PAS.DEVELOPMENT_FEEDBACK_ACTION, (PAS._HOST_FEEDBACK_SENTINEL,), (),
+        "sparse host-owned frozen tuning feedback", True)
+
+    class Feedback:
+        def __init__(self):
+            self.calls = 0
+
+        def evaluate(self, _candidate, **_kwargs):
+            self.calls += 1
+            return _feedback_document(candidate_sha256=candidate_sha)
+
+    feedback = Feedback()
+    receipt_stream = tmp_path / "control" / "receipts.jsonl"
+    broker = PAS._Broker(
+        PAS.AgentSandboxPolicy(
+            ("bwrap",), (), "available_not_an_isolation_claim", True, True, True),
+        SimpleNamespace(), candidate, (action,), receipt_stream,
+        deadline=PAS.time.monotonic() + 60, max_calls=4, max_tool_seconds=10,
+        feedback_evaluator=feedback, feedback_round=0)
+
+    request = {"action": PAS.DEVELOPMENT_FEEDBACK_ACTION, "bindings": {}}
+    assert broker.execute(request)["returncode"] == 0
+    assert broker.execute(request)["returncode"] == 0
+    with pytest.raises(PAS.StageGateError, match="limited to 2 invocation"):
+        broker.execute(request)
+
+    assert feedback.calls == 2
+    rows = [json.loads(line) for line in receipt_stream.read_text().splitlines()]
+    assert [row["state"] for row in rows] == ["complete", "complete", "rejected"]
 
 
 def test_refused_binding_is_recorded_so_the_receipt_join_stays_total(tmp_path, monkeypatch):
@@ -1262,6 +1400,25 @@ def _stopper(*, achievable: float | None = 80.0, budget: int | None = 100):
         tuning_call_budget=budget)
 
 
+def test_development_executor_cannot_run_the_complete_model_even_via_injection(tmp_path):
+    feedback = _stopper()
+    calls = []
+    feedback.executor = lambda **kwargs: calls.append(kwargs)
+    member = SimpleNamespace(descriptor={"kind": "model"})
+    with pytest.raises(PAS.StageGateError, match="compile-only search objective"):
+        feedback._execute_once(arm="candidate", package=tmp_path, package_sha256="a" * 64,
+                               member=member, decision=None, workspace=tmp_path,
+                               timeout_s=1)
+    assert calls == []
+
+
+def test_profile_selection_refuses_a_corpus_containing_only_models():
+    feedback = _stopper()
+    feedback.corpus = SimpleNamespace(capsules=(SimpleNamespace(descriptor={"kind": "model"}),))
+    with pytest.raises(PAS.StageGateError, match="non-model probe"):
+        feedback.profile_witness()
+
+
 def _cells(total_cycles: int, *, macs: int = 4096):
     return [{"comparable": True, "baseline_gsim_cycles": 1000,
              "candidate_gsim_cycles": total_cycles, "declared_macs": macs}]
@@ -1396,14 +1553,26 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
     # The host-side analysis action is registered alongside the measurement action: it costs no
     # oracle time, so it is available for screening a candidate before paying for a measurement.
     assert [action.name for action in actions] == [
-        "candidate-parse", PAS.DEVELOPMENT_FEEDBACK_ACTION, PAS.ANALYSIS_ACTION]
+        "candidate-parse", PAS.DEVELOPMENT_FEEDBACK_ACTION, PAS.E2E_ANALYSIS_ACTION,
+        PAS.ANALYSIS_ACTION, PAS.INVENTORY_ACTION, PAS.OCCUPANCY_PROFILE_ACTION]
     assert actions[0].argv_template == (str(tool), "parse", "{input_mlir}")
+    macro=PAS.build_action_registry(candidate,SimpleNamespace(),global_optimization=True)
+    preparation=next(action for action in macro if action.name==PAS.SOURCE_CONVOLUTION_PREPARATION_ACTION)
+    assert preparation.placeholders==("comparison_arm",)
+    assert preparation.argv_template==(PAS._HOST_SOURCE_CONVOLUTION_PREPARATION_SENTINEL,"{comparison_arm}")
+    assert preparation.required is False
+    assert "no simulator" in preparation.purpose
+    assert all(action.name!=PAS.SOURCE_CONVOLUTION_PREPARATION_ACTION for action in actions)
     feedback = actions[1]
     assert feedback.argv_template == (PAS._HOST_FEEDBACK_SENTINEL,)
     assert feedback.placeholders == ()
     assert feedback.required is True
     assert "host-owned frozen-tuning" in feedback.purpose
     assert "certified GSIM" in feedback.purpose
+    whole_model = actions[2]
+    assert whole_model.argv_template == (PAS._HOST_E2E_ANALYSIS_SENTINEL,)
+    assert whole_model.required is True
+    assert "complete-model objective" in whole_model.purpose
     contract = PAS.action_registry_contract(actions, candidate)
     assert contract[0]["argv_template"] == ["{candidate}/target-opt", "parse", "{input_mlir}"]
     assert contract[1] == {
@@ -1416,11 +1585,70 @@ def test_named_action_registry_pins_manifest_argv_without_accepting_arbitrary_ex
     reconstructed = PAS.actions_from_registry_contract(contract, candidate)
     assert reconstructed == actions
     assert '"argv":' not in PAS._BROKER_SHIM
-
     malformed = copy.deepcopy(contract)
     malformed[0]["placeholders"] = []
     with pytest.raises(PAS.StageGateError, match="binding contract"):
         PAS.actions_from_registry_contract(malformed, candidate)
+
+
+def test_source_convolution_broker_requires_explicit_arm_and_does_not_run_inner_command(tmp_path,monkeypatch):
+    candidate=tmp_path/"candidate"
+    candidate.mkdir()
+    action=PAS.BrokerAction(PAS.SOURCE_CONVOLUTION_PREPARATION_ACTION,
+        (PAS._HOST_SOURCE_CONVOLUTION_PREPARATION_SENTINEL,"{comparison_arm}"),("comparison_arm",),
+        "host source preparation only",False)
+    seen=[]
+    def prepare(path,**kwargs):
+        seen.append((path,kwargs))
+        return {"status":"runtime_pending","numerical_pass":False,"runtime_admitted":False}
+    experiment=SimpleNamespace(validate_candidate_scope=lambda _:None,prepare_source_convolution=prepare)
+    policy=PAS.AgentSandboxPolicy(("bwrap",),(),"available_not_an_isolation_claim",True,True,True)
+    broker=PAS._Broker(policy,SimpleNamespace(),candidate,(action,),tmp_path/"control"/"receipts.jsonl",
+        deadline=PAS.time.monotonic()+30,max_calls=2,max_tool_seconds=10,global_experiment=experiment)
+    monkeypatch.setattr(PAS,"inner_command",lambda *args,**kwargs:pytest.fail("preparation must not dispatch arbitrary inner command"))
+    with pytest.raises(PAS.StageGateError,match="exact bindings"):
+        broker.execute({"action":action.name,"bindings":{},"timeout_s":10})
+    result=broker.execute({"action":action.name,"bindings":{"comparison_arm":"optimization_baseline"},"timeout_s":10})
+    assert result["returncode"]==0
+    assert seen==[(candidate,{"comparison_arm":"optimization_baseline","timeout_s":10})]
+    assert json.loads(result["stdout"])["numerical_pass"] is False
+
+
+@pytest.mark.parametrize("action_name",[PAS.SOURCE_CONTRACTION_PREPARATION_ACTION,PAS.SOURCE_CONTRACTION_QUALIFICATION_ACTION])
+def test_source_contraction_broker_uses_only_typed_host_actions(tmp_path,monkeypatch,action_name):
+    candidate=tmp_path/"candidate"
+    candidate.mkdir()
+    (candidate/"target-opt").write_text("#!/bin/sh\n")
+    (candidate/"manifest.yaml").write_text(yaml.safe_dump({"entrypoints":{"tool":"target-opt"},
+        "commands":{"parse":{"argv":["{tool}","parse","{input_mlir}"]}}}))
+    monkeypatch.setattr(PAS.TC,"required_tool_probes",lambda _:[])
+    actions=PAS.build_action_registry(candidate,SimpleNamespace(),global_optimization=True)
+    action=next(a for a in actions if a.name==action_name)
+    seen=[]
+    def host(path,**kwargs):
+        seen.append((path,kwargs))
+        return {"numerical_pass":False,"full_model_numerics_qualified":False}
+    experiment=SimpleNamespace(validate_candidate_scope=lambda _:None,
+        prepare_source_contraction=host,qualify_source_contraction=host)
+    provider=object()
+    policy=PAS.AgentSandboxPolicy(("bwrap",),(),"available_not_an_isolation_claim",True,True,True)
+    broker=PAS._Broker(policy,SimpleNamespace(),candidate,(action,),tmp_path/"control"/"receipts.jsonl",
+        deadline=PAS.time.monotonic()+30,max_calls=3,max_tool_seconds=20,global_experiment=experiment,
+        global_source_pair_provider=provider)
+    monkeypatch.setattr(PAS,"inner_command",lambda *a,**k:pytest.fail("host action cannot dispatch arbitrary argv"))
+    bindings=({"comparison_arm":"optimization_baseline","source_op_index":"48","max_m":"2","max_n":"3","max_k":"4"}
+        if action_name==PAS.SOURCE_CONTRACTION_PREPARATION_ACTION else {"preparation_sha256":"a"*64})
+    with pytest.raises(PAS.StageGateError,match="exact bindings"):
+        broker.execute({"action":action.name,"bindings":{}})
+    result=broker.execute({"action":action.name,"bindings":bindings,"timeout_s":10})
+    assert result["returncode"]==0 and len(seen)==1
+    if action_name==PAS.SOURCE_CONTRACTION_PREPARATION_ACTION:
+        assert seen[0][1]["source_op_index"]==48
+        malformed={**bindings,"max_m":"2;true"}
+        assert broker.execute({"action":action.name,"bindings":malformed})["returncode"]==125
+        assert len(seen)==1
+    else:
+        assert seen[0][1]["provider"] is provider
 
 
 @pytest.mark.parametrize("row,kind", [
@@ -1478,6 +1706,218 @@ def test_transcript_answer_reconnaissance_refuses_even_when_the_read_would_be_ma
     assert result["hits"][0]["kind"] == "answer_reconnaissance"
 
 
+def test_transcript_replay_can_use_its_frozen_audit_token_set(tmp_path, monkeypatch):
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    monkeypatch.setattr(
+        PAS, "audit_tokens",
+        lambda _te: (_ for _ in ()).throw(AssertionError("ambient policy must not be read")))
+    monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _te: [])
+    result = PAS.audit_codex_transcript(
+        _transcript(tmp_path / "frozen-policy.jsonl", "cat /some/golden.yaml"),
+        SimpleNamespace(), candidate,
+        audit_token_set={
+            "answer": ["golden.yaml"], "grader": ["capsule_grade"],
+            "oracle_subpath": ["runtime_adapter"],
+        })
+    assert result["clean"] is False
+    assert [hit["kind"] for hit in result["hits"]] == ["answer_reconnaissance"]
+
+
+def test_transcript_allows_find_that_explicitly_excludes_answer_files(
+        tmp_path, monkeypatch):
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    monkeypatch.setattr(PAS, "audit_tokens", lambda _te: {
+        "answer": ("golden.yaml", "expected_instruction_coverage.yaml"),
+        "grader": (), "oracle_subpath": ()})
+    monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _te: [])
+    result = PAS.audit_codex_transcript(
+        _transcript(
+            tmp_path / "excluded.jsonl",
+            "find /perf-corpus -type f -not -name golden.yaml "
+            "-not -name expected_instruction_coverage.yaml -print"),
+        SimpleNamespace(), candidate)
+    assert result["clean"] is True
+    assert result["hits"] == []
+
+
+@pytest.mark.parametrize("spelling", [
+    "--glob '!merlin/targetgen/rtl/mlc_bridge.py'",
+    "--glob='!merlin/targetgen/rtl/mlc_bridge.py'",
+    "-g'!merlin/targetgen/rtl/mlc_bridge.py'",
+])
+def test_transcript_allows_rg_that_explicitly_excludes_an_answer_path(
+        tmp_path, monkeypatch, spelling):
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    monkeypatch.setattr(PAS, "audit_tokens", lambda _te: {
+        "answer": ("merlin/targetgen/rtl/mlc_bridge",),
+        "grader": (), "oracle_subpath": ()})
+    monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _te: [])
+    result = PAS.audit_codex_transcript(
+        _transcript(
+            tmp_path / "excluded-rg.jsonl",
+            f"rg -n plan source/merlin/python {spelling}"),
+        SimpleNamespace(), candidate)
+    assert result["clean"] is True
+    assert result["hits"] == []
+
+
+def test_transcript_positive_rg_glob_for_an_answer_path_still_refuses(
+        tmp_path, monkeypatch):
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    monkeypatch.setattr(PAS, "audit_tokens", lambda _te: {
+        "answer": ("merlin/targetgen/rtl/mlc_bridge",),
+        "grader": (), "oracle_subpath": ()})
+    monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _te: [])
+    result = PAS.audit_codex_transcript(
+        _transcript(
+            tmp_path / "included-rg.jsonl",
+            "rg -n plan source --glob 'merlin/targetgen/rtl/mlc_bridge.py'"),
+        SimpleNamespace(), candidate)
+    assert result["clean"] is False
+    assert [hit["kind"] for hit in result["hits"]] == ["answer_reconnaissance"]
+
+
+def test_public_structural_lowering_is_not_an_oracle_subpath(tmp_path, monkeypatch):
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _te: [])
+    descriptor = (merlin_dir()
+                  / "experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+    target = PAS.load_target_experiment(descriptor)
+
+    public = PAS.audit_codex_transcript(
+        _transcript(
+            tmp_path / "public-lowering.jsonl",
+            "sed -n '1,40p' merlin/python/merlin/xdsl_dialects/lowering/dispatch_program.py"),
+        target, candidate)
+    assert public["clean"] is True
+    assert public["hits"] == []
+
+    oracle = PAS.audit_codex_transcript(
+        _transcript(
+            tmp_path / "oracle-pipeline.jsonl",
+            "sed -n '1,40p' merlin/python/merlin/xdsl_dialects/lowering/pipeline.py"),
+        target, candidate)
+    assert oracle["clean"] is False
+    assert [hit["kind"] for hit in oracle["hits"]] == ["answer_reconnaissance"]
+
+
+def test_explicit_global_objective_wins_over_legacy_small_cross_lane_fallback(
+        tmp_path, monkeypatch):
+    live_repo = tmp_path / "live"
+    snapshot = tmp_path / "snapshot"
+    model_root = snapshot / "repo" / "capsules" / "model"
+    model_root.mkdir(parents=True)
+
+    def model(name, *, objective, lanes, payload):
+        root = model_root / name
+        root.mkdir()
+        descriptor = {
+            "name": name, "kind": "model", "label": "public",
+            "interface_mlir": "capsule.interface.mlir",
+            "lanes": {"require": lanes}, "required_oracle_tiers": ["L0", "L1", "L2"],
+        }
+        if objective:
+            descriptor["performance"] = {"global_objective": True}
+        (root / "capsule.yaml").write_text(yaml.safe_dump(descriptor), encoding="utf-8")
+        (root / "capsule.interface.mlir").write_text(payload, encoding="utf-8")
+
+    model("small_seam", objective=False, lanes=["on_mesh", "scalar_rvv_lane"], payload="module {}\n")
+    model("real_model", objective=True, lanes=["on_mesh"], payload="module { func.func @forward() }\n")
+    monkeypatch.setattr(PAS, "repo_root", lambda: live_repo)
+    selected = PAS.select_full_model_sentinel(
+        SimpleNamespace(bundle_input_snapshot={"path": str(snapshot)}),
+        SimpleNamespace(capsule_corpus=live_repo / "capsules" / "isa"))
+    assert selected.capsule == "real_model"
+
+    duplicate = yaml.safe_load((model_root / "small_seam" / "capsule.yaml").read_text())
+    duplicate["performance"] = {"global_objective": True}
+    (model_root / "small_seam" / "capsule.yaml").write_text(
+        yaml.safe_dump(duplicate), encoding="utf-8")
+    with pytest.raises(PAS.StageGateError, match="multiple performance.global_objective"):
+        PAS.select_full_model_sentinel(
+            SimpleNamespace(bundle_input_snapshot={"path": str(snapshot)}),
+            SimpleNamespace(capsule_corpus=live_repo / "capsules" / "isa"))
+
+
+def test_experiment_declares_complete_model_for_pre_metadata_phase1_snapshot(
+        tmp_path, monkeypatch):
+    live_repo = tmp_path / "live"
+    snapshot = tmp_path / "snapshot"
+    model_root = snapshot / "repo" / "capsules" / "model"
+    model_root.mkdir(parents=True)
+
+    def model(name, payload):
+        root = model_root / name
+        root.mkdir()
+        descriptor = {
+            "name": name, "kind": "model", "label": "public",
+            "interface_mlir": "capsule.interface.mlir",
+            "lanes": {"require": ["on_mesh", "scalar_rvv_lane"]},
+            "required_oracle_tiers": ["L0", "L1", "L2", "L3"],
+        }
+        (root / "capsule.yaml").write_text(yaml.safe_dump(descriptor), encoding="utf-8")
+        (root / "capsule.interface.mlir").write_text(payload, encoding="utf-8")
+
+    model("small_seam", "module {}\n")
+    model("complete_model", "module { func.func @forward() }\n")
+    monkeypatch.setattr(PAS, "repo_root", lambda: live_repo)
+    functional = SimpleNamespace(bundle_input_snapshot={"path": str(snapshot)})
+    experiment = SimpleNamespace(
+        capsule_corpus=live_repo / "capsules" / "isa",
+        performance_global_objective="complete_model")
+
+    selected = PAS.select_full_model_sentinel(functional, experiment)
+    assert selected.capsule == "complete_model"
+
+    experiment.performance_global_objective = "absent_model"
+    with pytest.raises(PAS.StageGateError, match="immutable Phase 1 snapshot"):
+        PAS.select_full_model_sentinel(functional, experiment)
+
+
+def test_explicit_frozen_objective_selects_host_model_without_mutating_default(
+        tmp_path, monkeypatch):
+    live_repo = tmp_path / "live"
+    snapshot = tmp_path / "snapshot"
+    model_root = snapshot / "repo" / "capsules" / "model"
+    for name, label, kind in (("default_model", "public", "model"),
+                              ("host_model", "public", "model"),
+                              ("private_model", "hidden", "model"),
+                              ("single_layer", "public", "layer")):
+        root = model_root / name
+        root.mkdir(parents=True)
+        descriptor = {
+            "name": name, "kind": kind, "label": label,
+            "lanes": {"require": ["host"]}, "required_oracle_tiers": ["L2"],
+            "performance": {"global_objective": name == "default_model"},
+        }
+        if name == "host_model":
+            del descriptor["lanes"]  # Older frozen models have no lane metadata.
+        (root / "capsule.yaml").write_text(yaml.safe_dump(descriptor))
+        (root / "capsule.interface.mlir").write_text("module {}\n")
+    monkeypatch.setattr(PAS, "repo_root", lambda: live_repo)
+    functional = SimpleNamespace(bundle_input_snapshot={"path": str(snapshot)})
+    experiment = SimpleNamespace(capsule_corpus=live_repo / "capsules" / "isa",
+                                 performance_global_objective="default_model")
+    before = PAS._exact_tree_record(model_root)
+    selected = PAS.select_full_model_sentinel(functional, experiment,
+                                              objective_capsule="host_model")
+    assert selected.capsule == "host_model"
+    assert selected.source_dir == (model_root / "host_model").resolve()
+    assert PAS.select_full_model_sentinel(functional, experiment).capsule == "default_model"
+    assert PAS._exact_tree_record(model_root) == before
+    for excluded in ("absent_model", "private_model", "single_layer"):
+        with pytest.raises(PAS.StageGateError, match="immutable Phase 1 snapshot"):
+            PAS.select_full_model_sentinel(functional, experiment, objective_capsule=excluded)
+    for escaping in ("../host_model", "/host_model", ""):
+        with pytest.raises(PAS.StageGateError):
+            PAS.select_full_model_sentinel(functional, experiment, objective_capsule=escaping)
+
+
 def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
     inputs = PAS.StagePromptInputs(
         target="target", approach="arm4", functional_run_id="functional",
@@ -1524,6 +1964,67 @@ def test_current_prompt_adapter_keeps_formal_claim_and_two_plane_boundary():
     assert "inner execution plane" in text
     assert f'"exact_count": {len(REPLICATE_IDS)}' in text
     assert '"capsule": "M2"' in text
+    assert "initial_whole_model_analysis" in text
+    assert "inspect-optimization-surfaces" in text
+    assert "smallest affected witness while debugging" in text
+    assert "Report-only edits may record that result without rerunning it" in text
+    assert "execution-relevant edit requires a new final analysis" in text
+    assert "one unmeasured warm invocation followed by exactly one measured invocation" in text
+    assert "Never modify an evaluation or mixed-lane harness" in text
+    assert "`firesim kill` -> `firesim infrasetup` -> `firesim runworkload` ->" in text
+
+
+def test_frozen_functional_grants_relocate_from_phase1_repo_to_sealed_source(
+        tmp_path, monkeypatch):
+    origin_repo = tmp_path / "phase1-checkout"
+    sealed_repo = tmp_path / "sealed-source"
+    snapshot = tmp_path / "functional-inputs"
+    direct_source = snapshot / "repo/merlin/contract"
+    shorthand_source = snapshot / "repo/merlin/experiments/capsule_bench"
+    host_source = snapshot / "repo/out/artifacts/targets/rvv/host"
+    for source in (direct_source, shorthand_source, host_source):
+        source.mkdir(parents=True)
+        (source / "sentinel.txt").write_text("frozen\n", encoding="utf-8")
+    document = {
+        "version": 2,
+        "repo": str(origin_repo),
+        "content_sha256": SHA_B,
+        "grants": [
+            {
+                "path": "merlin/contract/",
+                "destination": str(origin_repo / "merlin/contract"),
+                "snapshot": "repo/merlin/contract",
+            },
+            {
+                "path": "experiments/capsule_bench/",
+                "destination": str(origin_repo / "merlin/experiments/capsule_bench"),
+                "snapshot": "repo/merlin/experiments/capsule_bench",
+            },
+        ],
+    }
+    marker = snapshot / "snapshot.json"
+    marker.write_text(json.dumps(document), encoding="utf-8")
+    functional = SimpleNamespace(
+        bundle_input_snapshot={"path": str(snapshot), "content_sha256": SHA_B},
+        model_host_package=host_source,
+    )
+    monkeypatch.setattr(PAS, "repo_root", lambda: sealed_repo)
+
+    frozen = PAS.load_frozen_functional_inputs(functional)
+
+    assert [grant.destination for grant in frozen.grants[:2]] == [
+        sealed_repo / "merlin/contract",
+        sealed_repo / "merlin/experiments/capsule_bench",
+    ]
+    assert [grant.source for grant in frozen.grants[:2]] == [
+        direct_source,
+        shorthand_source,
+    ]
+
+    document["grants"][0]["destination"] = str(tmp_path / "foreign/contract")
+    marker.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(PAS.StageGateError, match="foreign destination"):
+        PAS.load_frozen_functional_inputs(functional)
 
 
 def test_mocked_one_round_run_stage_seals_candidate_with_receipts(
@@ -1693,11 +2194,14 @@ def test_mocked_one_round_run_stage_seals_candidate_with_receipts(
     )
     monkeypatch.setattr(PAS, "_require_executable",
                         lambda name, **_kw: bwrap if name == "bwrap" else codex)
-    monkeypatch.setattr(PAS, "inspect_stage_functional_run", lambda *_args: functional)
+    monkeypatch.setattr(PAS, "inspect_stage_functional_run", lambda *_args, **_kwargs: functional)
     monkeypatch.setattr(PAS, "discover_performance_corpus", lambda *_args, **_kw: corpus)
     monkeypatch.setattr(PAS, "load_frozen_functional_inputs", lambda _run: frozen_inputs)
     monkeypatch.setattr(PAS, "prepare_development_feedback", lambda **_kwargs: feedback)
     monkeypatch.setattr(PAS, "select_e2e_sentinel", lambda *_args: sentinel)
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", lambda *_args, **_kwargs: {
+        "schema": "host_owned_whole_model_emission_analysis_v1",
+        "timing_status": "UNMEASURED"})
     monkeypatch.setattr(PAS, "answer_surfaces", lambda _te: [])
     monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _te: [])
     monkeypatch.setattr(PAS, "inner_execution_policy", lambda *_args: policy)
@@ -1722,6 +2226,31 @@ def test_mocked_one_round_run_stage_seals_candidate_with_receipts(
         max_tool_calls=4, tool_timeout_seconds=10, codex_binary=str(codex),
         telemetry_price_table=price_table)
     document = json.loads(record.read_text(encoding="utf-8"))
+    context = json.loads((tmp_path / "stage/agent_workspaces/round_00/STAGE_CONTEXT.json")
+                         .read_text(encoding="utf-8"))
+    assert "automatic_optimization_inventory" in context
+    assert context["initial_whole_model_analysis"]["timing_status"] == "UNMEASURED"
+    assert context["reduced_global_profile"]["broker_action"] == \
+        PAS.OCCUPANCY_PROFILE_ACTION
+    assert PAS.OCCUPANCY_PROFILE_ACTION in context["broker_actions"]
+    assert context["iteration_measurement_contract"]["warmup_runs"] == 1
+    assert context["iteration_measurement_contract"]["primary_metric"] == \
+        "total_compute_cycles"
+    assert context["iteration_measurement_contract"]["firesim_queue_operation"] == \
+        "runworkload-full"
+    assert context["iteration_measurement_contract"]["firesim_required"] is False
+    assert context["expensive_measurement_budget"] == {
+        "scope": "per_round",
+        "tuning_gsim_feedback_calls": 2,
+        "exploratory_tuning_calls": 1,
+        "reserved_final_byte_tuning_calls": 1,
+        "reduced_occupancy_profile_calls": 1,
+        "firesim_calls": 0,
+        "free_iteration_actions": [PAS.E2E_ANALYSIS_ACTION, PAS.ANALYSIS_ACTION,
+                                   PAS.INVENTORY_ACTION],
+    }
+    assert context["iteration_measurement_contract"]["firesim_lifecycle"] == [
+        "firesim kill", "firesim infrasetup", "firesim runworkload", "firesim kill"]
     assert document["state"] == "sealed"
     assert document["candidate"]["initial_sha256"] == digest
     assert document["candidate"]["sha256"] != digest
@@ -1807,6 +2336,27 @@ def test_a_refused_inner_command_still_gets_a_receipt_so_the_ledger_has_no_gap(t
     assert rows[0]["state"] == "rejected" and rows[0]["returncode"] != 0
     # And the ledger stays gapless: indices are exactly their positions.
     assert [r["index"] for r in rows] == list(range(len(rows)))
+
+
+def test_a_call_after_the_broker_deadline_gets_a_rejection_receipt(tmp_path):
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    action = PAS.BrokerAction("candidate-parse", ("tool", "{input_mlir}"), ("input_mlir",),
+                              "parse", True)
+    stream = tmp_path / "control" / "receipts.jsonl"
+    broker = PAS._Broker(
+        PAS.AgentSandboxPolicy(("bwrap",), (), "available_not_an_isolation_claim", True, True, True),
+        SimpleNamespace(), candidate, (action,), stream,
+        deadline=PAS.time.monotonic() - 1, max_calls=8, max_tool_seconds=10)
+
+    with pytest.raises(PAS.StageGateError, match="wall-clock budget is exhausted"):
+        broker.execute({"action": "candidate-parse", "bindings": {"input_mlir": "x.mlir"}})
+
+    rows = [json.loads(line) for line in stream.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["index"] == 0
+    assert rows[0]["state"] == "rejected"
+    assert rows[0]["rejection_reason"] == "performance stage wall-clock budget is exhausted"
 
 
 # ------------------------------------------------------------- where the objective's cycles actually are

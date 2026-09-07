@@ -5,7 +5,7 @@ This stage deliberately does not grade or promote anything.  It gives Codex a fr
 functionally certified package and an answer-free view of the generated performance contracts.  Any
 compiler/tool execution requested by the agent goes through a second, credential-free
 bwrap broker.  When the bounded authoring rounds end, the candidate is copied to a read-only snapshot
-and described by a content-addressed record for :mod:`run_perf_bench` to consume.
+and described by a content-addressed record for :mod:`run_paired_perf_bench` to consume.
 
 There are two distinct filesystem and credential boundaries.  The outer Codex control plane gets one
 isolated ``CODEX_HOME`` plus the explicit authentication mount and the functional run's frozen authoring
@@ -50,6 +50,10 @@ import perf_pk_claim as PK
 import perf_prompt as PP
 from merlin.benchharness import hash_tree, runs_root
 from merlin.common.paths import merlin_dir, repo_root
+from merlin.perf.agent_guidance import guidance_for_emission_analysis, inspect_compiler_package
+from merlin.perf.execution_policy import FIRESIM_LIFECYCLE, ITERATION_MAX_SECONDS
+from merlin.perf.external_objective import (ExternalObjective, OBJECTIVE_DIRECTORY,
+                                             objective_directory)
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_tokens
@@ -57,6 +61,16 @@ from merlin.targetgen.target_experiment import TargetExperiment, load_target_exp
 
 
 SCHEMA_VERSION = 3
+MEASUREMENT_CONSUMER = "run_paired_perf_bench.py"
+# Schema-v3 records were already sealed while the generated-corpus runner still lived in
+# ``run_perf_bench.py``.  The paired runner superseded that entry point without changing the
+# record schema.  Keep those immutable records readable, but author every new record with the
+# entry point that actually consumes it.
+LEGACY_MEASUREMENT_CONSUMERS = frozenset({"run_perf_bench.py"})
+AUDIT_REQUALIFICATION_KIND = "audit_policy_requalification"
+AUDIT_REQUALIFICATION_REASON = (
+    "original refusal was caused only by answer-reconnaissance audit false positives"
+)
 AGENT_CORPUS_MOUNT = Path("/perf-corpus")
 FUNCTIONAL_BASE_MOUNT = Path("/perf-functional-base")
 FUNCTIONAL_INPUT_MANIFEST_MOUNT = Path("/perf-functional-inputs/snapshot.json")
@@ -71,6 +85,34 @@ _HOST_FEEDBACK_SENTINEL = "__host_owned_tuning_gsim_feedback__"
 #: time to discover. This prices the agent's own emitted artifacts instead: no oracle, no goldens,
 #: no holdout, so it can be called as often as the agent likes and can leak nothing.
 ANALYSIS_ACTION = "analyze-command-buffers"
+INVENTORY_ACTION = "inspect-optimization-surfaces"
+_HOST_INVENTORY_SENTINEL = "__host_owned_optimization_inventory__"
+E2E_ANALYSIS_ACTION = "analyze-whole-model"
+_HOST_E2E_ANALYSIS_SENTINEL = "__host_owned_whole_model_analysis__"
+OCCUPANCY_PROFILE_ACTION = "profile-reduced-global-witness"
+_HOST_OCCUPANCY_PROFILE_SENTINEL = "__host_owned_reduced_global_profile__"
+CHANGED_REGION_ACTION = "qualify-changed-region"
+_HOST_CHANGED_REGION_SENTINEL = "__host_owned_changed_region_qualification__"
+SOURCE_CONVOLUTION_PREPARATION_ACTION = "prepare-source-convolution"
+_HOST_SOURCE_CONVOLUTION_PREPARATION_SENTINEL = "__host_owned_source_convolution_preparation__"
+SOURCE_CONTRACTION_PREPARATION_ACTION = "prepare-source-contraction"
+_HOST_SOURCE_CONTRACTION_PREPARATION_SENTINEL = "__host_owned_source_contraction_preparation__"
+SOURCE_CONTRACTION_QUALIFICATION_ACTION = "qualify-source-contraction"
+_HOST_SOURCE_CONTRACTION_QUALIFICATION_SENTINEL = "__host_owned_source_contraction_qualification__"
+CONTROLLED_CONTEXT_ACTION = "profile-controlled-context"
+_HOST_CONTROLLED_CONTEXT_SENTINEL = "__host_owned_controlled_source_prefix__"
+PAIRED_CONTEXT_ACTION = "compare-controlled-context"
+_HOST_PAIRED_CONTEXT_SENTINEL = "__host_owned_paired_fixed_work_context__"
+# Expensive evidence is a sparse promotion gate. One exploratory cohort query plus the mandatory
+# final-byte query is enough to reject or promote a lever; the dedicated counter profile is a
+# separate one-shot instrument for an occupancy/overlap unknown. Structural/analytical actions stay
+# bounded only by the ordinary tool-call budget because they launch no simulator.
+EXPENSIVE_ACTION_LIMITS = {
+    DEVELOPMENT_FEEDBACK_ACTION: 2,
+    OCCUPANCY_PROFILE_ACTION: 1,
+    CONTROLLED_CONTEXT_ACTION: 1,
+    PAIRED_CONTEXT_ACTION: 1,
+}
 
 #: The exit code a round returns when its own deadline killed it, as opposed to failing. A round
 #: that spent its whole budget and a round that crashed are different events and are classified
@@ -420,6 +462,9 @@ class DevelopmentGsimFeedback:
     #: members already ran ABOVE it at baseline, and its dispersion of 0.472 put the "already at the
     #: ceiling" line at 42.25 -- so 14 of 38 members were told they had no headroom left.
     seed_points: tuple = ()
+    #: Every host-owned point currently eligible to establish a rate.  Unlike the scalar summary
+    #: ceiling, per-member scoring filters these by exact contraction reduction depth.
+    _achievable_points: tuple = ()
     functional_run_id: str = ""
     #: Median measured simulation seconds per capsule, and how the ordering was arrived at. Used to
     #: sweep cheapest-first, so a losing candidate is refuted before the corpus's slowest members
@@ -436,18 +481,61 @@ class DevelopmentGsimFeedback:
     _spend: "list[tuple[str, float]] | None" = None
     executor: Callable[..., Mapping[str, Any]] | None = None
     _baseline_cache: dict[tuple[str, str], dict[str, Any]] | None = None
+    _profile_baseline_cache: dict[tuple[str, str], dict[str, Any]] | None = None
     #: Rows a wave measured ahead of the loop that consumes them, keyed by (member index, arm).
     _prefetched: dict = field(default_factory=dict)
 
     def _execute(self, *, arm: str, package: Path, package_sha256: str,
                  member: PerformanceCapsule, decision: GATE.EvaluationDecision,
-                 workspace: Path, timeout_s: int) -> Mapping[str, Any]:
+                 workspace: Path, timeout_s: int,
+                 hardware_counters: bool = False) -> Mapping[str, Any]:
+        """Retry an unavailable instrument once, never a verdict or certificate rejection.
+
+        Both attempts use the same frozen bytes and original wall deadline. All raw outcomes stay
+        host-private, so an infrastructure retry neither teaches the agent nor selects a faster result.
+        """
+        deadline = time.monotonic() + timeout_s
+        attempts = []
+        for index in range(2):
+            remaining = timeout_s if index == 0 else int(deadline - time.monotonic())
+            if remaining <= 0:
+                break
+            destination = workspace if index == 0 else workspace.with_name(workspace.name + "__retry_01")
+            raw = self._execute_once(
+                arm=arm, package=package, package_sha256=package_sha256, member=member,
+                decision=decision, workspace=destination, timeout_s=remaining,
+                hardware_counters=hardware_counters)
+            measurement = raw.get("measurement") or {}
+            qualification = measurement.get("gsim_qualification") or {}
+            outcome = (measurement.get("execution_outcome") or {}).get("gsim") or {}
+            tier = outcome.get("tier_outcome") or {}
+            attempts.append({"attempt": index, "workspace": str(destination), "raw": raw})
+            _write_json(workspace.with_name(workspace.name + ".attempts.json"), {
+                "schema": "performance-execution-attempts.v1", "package_sha256": package_sha256,
+                "max_attempts": 2, "timeout_seconds": timeout_s, "attempts": attempts})
+            if not (qualification.get("kind") == "execution_missing"
+                    and measurement.get("numeric") == "pass"
+                    and tier.get("status") == "unavailable"):
+                break
+        if not attempts:
+            raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
+        return raw
+
+    def _execute_once(self, *, arm: str, package: Path, package_sha256: str,
+                      member: PerformanceCapsule, decision: GATE.EvaluationDecision,
+                      workspace: Path, timeout_s: int,
+                      hardware_counters: bool = False) -> Mapping[str, Any]:
+        from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
+        try:
+            require_probe_execution(member.descriptor)
+        except ValueError as exc:
+            raise StageGateError(str(exc)) from exc
         if self.executor is not None:
             return self.executor(
                 arm=arm, package=package, package_sha256=package_sha256, member=member,
                 decision=decision, workspace=workspace, timeout_s=timeout_s,
                 certificate=self.certificate, target_experiment=self.target_experiment,
-                rtl_identity=self.rtl_identity)
+                rtl_identity=self.rtl_identity, hardware_counters=hardware_counters)
         # Lazy import avoids the paired runner's import of this module during
         # stage startup.  Its run_execution path is the package-sandboxed Arm4
         # Spike+GSIM path; no simulator binary or raw output reaches Codex.
@@ -461,7 +549,8 @@ class DevelopmentGsimFeedback:
             gsim_certificate=self.certificate)
         return PAIR.run_execution(
             spec, workspace, timeout_s, self.target_experiment, self.rtl_identity,
-            hardware_counters=False, workers=_sweep_workers())
+            hardware_counters=hardware_counters,
+            workers=1 if hardware_counters else _sweep_workers())
 
     @staticmethod
     def _tier_skipped_beyond_declared_ceiling(measurement: Mapping[str, Any],
@@ -493,6 +582,12 @@ class DevelopmentGsimFeedback:
         measurement = raw.get("measurement")
         if not isinstance(measurement, Mapping):
             raise StageGateError(f"development GSIM {arm}/{family}/{capsule} returned no measurement")
+        qualification = measurement.get("gsim_qualification")
+        if isinstance(qualification, Mapping) and qualification.get("kind") == "execution_missing":
+            outcome = (measurement.get("execution_outcome") or {}).get("gsim") or {}
+            raise StageGateError(
+                f"development GSIM {arm}/{family}/{capsule}: no GSIM execution evidence was produced; "
+                f"tier outcome: {str(outcome.get('tier_outcome'))[:300]}")
         per_sim = measurement.get("per_sim")
         if not isinstance(per_sim, Mapping):
             raise StageGateError(f"development GSIM {arm}/{family}/{capsule} omitted simulator rows")
@@ -511,7 +606,7 @@ class DevelopmentGsimFeedback:
             # HOST had to reconstruct the cause by decoding receipts and reading host_refusals --
             # measured 2026-09-06, when eleven of twelve measurement calls were refused and the run
             # was then discarded for "not measuring its final candidate bytes".
-            failure = raw.get("failure") if isinstance(raw.get("failure"), Mapping) else {}
+            failure = measurement.get("failure") if isinstance(measurement.get("failure"), Mapping) else {}
             reason = qualification.get("reason") if isinstance(qualification, Mapping) else None
             detail = failure.get("detail") or reason
             raise StageGateError(
@@ -529,6 +624,190 @@ class DevelopmentGsimFeedback:
             raise StageGateError(
                 f"development GSIM {arm}/{family}/{capsule} lacks a positive certified cycle count")
         return {"correct": correct, "gsim_cycles": cycles}
+
+    def profile_witness(self) -> tuple[PerformanceCapsule, str]:
+        """The fixed reduced witness used only to explain a global candidate's cycle change.
+
+        Selection reads the frozen descriptor and baseline-only simulation-cost history.  It is made
+        without candidate output or cycles, prefers an objective member, and stays fixed for the
+        stage.  Formal promotion still evaluates the entire sealed cohort.
+        """
+        from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
+        members = []
+        for member in tuple(getattr(self.corpus, "capsules", ()) or ()):
+            try:
+                require_probe_execution(member.descriptor)
+            except ValueError:
+                continue
+            members.append(member)
+        if not members:
+            raise StageGateError("the reduced occupancy profile has no frozen non-model probe")
+        ordered, cost_basis = order_members_by_cost(members, self.member_cost)
+        objective = [member for member in ordered
+                     if (((member.descriptor or {}).get("performance") or {})
+                         .get("member_class") == self.OBJECTIVE_CLASS)]
+        member = (objective or list(ordered))[0]
+        basis = ("first objective member under " + cost_basis if objective else
+                 "no member declares the objective class; first member under " + cost_basis)
+        return member, basis
+
+    @staticmethod
+    def _physical_profile(linked: Mapping[str, Any]) -> dict[str, Any]:
+        physical = linked.get("physical_byte_counters")
+        physical = physical if isinstance(physical, Mapping) else {}
+        facts = physical.get("counter_facts")
+        readings = physical.get("readings")
+        if (physical.get("semantic_resolution") != "rtl_bound_physical_bytes"
+                or not isinstance(facts, Sequence) or isinstance(facts, (str, bytes))
+                or not isinstance(readings, Mapping)):
+            return {"status": "UNKNOWN", "total_bytes": None,
+                    "reason": "physical counters lack exhaustive RTL-bound byte semantics"}
+        try:
+            from merlin.perf.dma_volume import physical_volume_from_counters  # noqa: PLC0415
+            volume = physical_volume_from_counters(readings, counter_facts=facts)
+        except Exception as exc:  # noqa: BLE001 - a failed binding remains unknown
+            return {"status": "UNKNOWN", "total_bytes": None,
+                    "reason": f"physical byte derivation failed ({type(exc).__name__})"}
+        if volume.total_bytes is None:
+            return {"status": "UNKNOWN", "total_bytes": None,
+                    "reason": "; ".join(volume.unresolved)}
+        return {"status": "measured", "total_bytes": int(volume.total_bytes),
+                "read_bytes": volume.read_bytes, "write_bytes": volume.write_bytes,
+                "basis": "identity-linked counters with byte meanings derived from exact RTL facts"}
+
+    def _redact_profile(self, raw: Mapping[str, Any], decision: GATE.EvaluationDecision, *,
+                        arm: str, member: PerformanceCapsule) -> dict[str, Any]:
+        cycle = self._redact_execution(
+            raw, decision, arm=arm, family=member.family, capsule=member.capsule,
+            required_tiers=tuple(member.descriptor.get("required_oracle_tiers") or ()))
+        if cycle["correct"] is not True:
+            raise StageGateError(f"reduced occupancy profile {arm} is not correct")
+        measurement = raw.get("measurement")
+        measurement = measurement if isinstance(measurement, Mapping) else {}
+        per_sim = measurement.get("per_sim")
+        per_sim = per_sim if isinstance(per_sim, Mapping) else {}
+        gsim = per_sim.get("gsim")
+        gsim = gsim if isinstance(gsim, Mapping) else {}
+        conditions = gsim.get("measurement_conditions")
+        conditions = conditions if isinstance(conditions, Mapping) else {}
+        if (conditions.get("cache_protocol") != "one_unmeasured_predecessor"
+                or conditions.get("requested_cache_condition") != "warm"):
+            raise StageGateError(
+                "reduced occupancy profile did not prove one unmeasured warm predecessor")
+        linked = measurement.get("linked_counter_evidence")
+        linked = linked if isinstance(linked, Mapping) else {}
+        occupancy = linked.get("occupancy")
+        occupancy = occupancy if isinstance(occupancy, Mapping) else {}
+        overlap = occupancy.get("overlap")
+        overlap = overlap if isinstance(overlap, Mapping) else {}
+        busy = overlap.get("busy_cycles") if overlap.get("state") == "measured" else None
+        busy = dict(sorted((str(key), int(value)) for key, value in busy.items())) \
+            if isinstance(busy, Mapping) else None
+        try:
+            from merlin.runtime.backends.base import get_backend  # noqa: PLC0415
+            reader = getattr(get_backend(self.target_experiment.target),
+                             "counter_engine_kinds", None)
+            raw_kinds = reader() if callable(reader) else None
+            kinds = ({str(key): str(getattr(value, "value", value))
+                      for key, value in raw_kinds.items()}
+                     if isinstance(raw_kinds, Mapping) else None)
+        except Exception:  # noqa: BLE001 - roles remain unknown; counter values are retained
+            kinds = None
+        command_artifact = measurement.get("command_buffer_artifact")
+        command = (command_artifact.get("command_buffer")
+                   if isinstance(command_artifact, Mapping) else None)
+        declared_commands = None
+        representation = None
+        if isinstance(command, Mapping):
+            from merlin.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
+            from merlin.perf.movement_volume import movement_from_command_buffer  # noqa: PLC0415
+            movement = movement_from_command_buffer(command)
+            declared_commands = sum(
+                1 for row in movement.commands
+                if ((row.bytes_in or 0) + (row.bytes_out or 0)) > 0)
+            representation = representation_activity(command)
+        physical = self._physical_profile(linked)
+        missing: list[str] = []
+        if linked.get("status") != "linked":
+            missing.append("identity-linked occupancy and physical-byte counter passes")
+        if busy is None or overlap.get("state") != "measured":
+            missing.append("proved joint resource occupancy and compute/movement overlap")
+        if kinds is None:
+            missing.append("target-declared resource roles for the measured counters")
+        if physical["status"] != "measured":
+            missing.append("physical movement bytes")
+        missing.extend(("issued movement command count", "executed encoding transition count"))
+        return {
+            "correct": True,
+            "total_compute_cycles": cycle["gsim_cycles"],
+            "resource_busy_cycles": busy,
+            "resource_kinds": kinds,
+            "movement_compute_overlap_cycles": overlap.get("realised_cycles"),
+            "overlap_available_cycles": overlap.get("available_cycles"),
+            "latency_hiding_efficiency": overlap.get("eta"),
+            "physical_movement": physical,
+            "declared_movement_commands": declared_commands,
+            "representation_activity": representation,
+            "issued_movement_commands": None,
+            "executed_encoding_transitions": None,
+            "measurement_conditions": dict(conditions),
+            "missing": missing,
+        }
+
+    def profile(self, candidate: Path, *, round_index: int, call_index: int,
+                timeout_s: int) -> dict[str, Any]:
+        """Warm-profile one preselected reduced witness with only occupancy/movement counters."""
+        candidate = Path(candidate).resolve(strict=True)
+        member, selection_basis = self.profile_witness()
+        key = (member.family, member.capsule)
+        decision = self.decisions.get(key)
+        if decision is None:
+            raise StageGateError(f"reduced occupancy profile decision is absent for {key}")
+        root = self.work_root / f"round_{round_index:02d}" / f"profile_{call_index:03d}"
+        if root.exists() or root.is_symlink():
+            raise StageGateError(f"reduced occupancy profile workspace is not fresh: {root}")
+        root.mkdir(parents=True)
+        measured_candidate = root / "_measured_candidate"
+        shutil.copytree(candidate, measured_candidate, symlinks=True)
+        candidate_sha = str(hash_tree(measured_candidate)["sha256"])
+        started = time.monotonic()
+        deadline = started + min(timeout_s, int(ITERATION_MAX_SECONDS))
+        if self._profile_baseline_cache is None:
+            self._profile_baseline_cache = {}
+
+        def execute(arm: str, package: Path, digest: str) -> dict[str, Any]:
+            remaining = int(deadline - time.monotonic())
+            if remaining <= 0:
+                raise StageGateError("reduced occupancy profile exceeded its deterministic timeout")
+            raw = self._execute(
+                arm=arm, package=package, package_sha256=digest, member=member,
+                decision=decision, workspace=root / arm, timeout_s=remaining,
+                hardware_counters=True)
+            return self._redact_profile(raw, decision, arm=arm, member=member)
+
+        baseline = self._profile_baseline_cache.get(key)
+        if baseline is None:
+            baseline = execute("baseline", self.baseline, self.baseline_sha256)
+            self._profile_baseline_cache[key] = baseline
+        candidate_row = execute("candidate", measured_candidate, candidate_sha)
+        if str(hash_tree(measured_candidate)["sha256"]) != candidate_sha:
+            raise StageGateError("reduced occupancy profile mutated the candidate snapshot")
+        return {
+            "schema": "host_owned_reduced_global_profile_v1",
+            "purpose": ("calibrate occupancy, movement, and latency hiding for a complete-model "
+                        "plan; never a whole-model performance result"),
+            "witness": {"family": member.family, "capsule": member.capsule,
+                        "selection": selection_basis,
+                        "selected_before_candidate_measurement": True},
+            "candidate_sha256": candidate_sha,
+            "profile_contract": {"warmup_runs": 1, "measured_runs": 1,
+                                 "primary_metric": "total_compute_cycles",
+                                 "maximum_simulator_seconds": int(ITERATION_MAX_SECONDS)},
+            "baseline": baseline,
+            "candidate": candidate_row,
+            "cycle_delta": candidate_row["total_compute_cycles"] - baseline["total_compute_cycles"],
+            "elapsed_s": round(time.monotonic() - started, 3),
+        }
 
 
     #: A losing prefix must be this long before it may stop the sweep. One member is an anecdote --
@@ -647,11 +926,25 @@ class DevelopmentGsimFeedback:
         # stop condition fire before the objective had actually been reached.
         attainable = SELECT.UNKNOWN
         macs = [c.get("declared_macs") for c in judged]
+        def _member_rate(cell: Mapping[str, Any]) -> Any:
+            # Compatibility for callers of this internal method that predate per-cell evidence.
+            # Production cells always carry the key, including an explicit None when no matched
+            # cohort exists; only a genuinely absent key may use the old global context value.
+            return (cell.get("achievable_macs_per_cycle")
+                    if "achievable_macs_per_cycle" in cell else self.achievable_macs_per_cycle)
+
         unpriced = sorted(str(c.get("capsule")) for c in judged
                           if not (isinstance(c.get("declared_macs"), int)
-                                  and c.get("declared_macs") > 0))
-        if self.achievable_macs_per_cycle and not unpriced and macs:
-            attainable = float(sum(macs)) / float(self.achievable_macs_per_cycle)
+                                  and c.get("declared_macs") > 0
+                                  and isinstance(_member_rate(c), (int, float))
+                                  and not isinstance(_member_rate(c), bool)
+                                  and _member_rate(c) > 0))
+        if not unpriced and macs:
+            # Each member is priced at the best rate reached by a HOST-OWNED point with the same
+            # reduction depth.  Summing work and dividing by the global maximum was dimensionally
+            # neat and empirically wrong: it scored k=16 members against deep-k rates that fixed
+            # issue/fill cost makes unreachable.
+            attainable = sum(float(c["declared_macs"]) / float(_member_rate(c)) for c in judged)
 
         if self._spend is None:
             self._spend = []
@@ -787,6 +1080,7 @@ class DevelopmentGsimFeedback:
 
         baseline_points = harvest_baseline_points(self.work_root)
         points = list(self.seed_points) + list(baseline_points)
+        self._achievable_points = tuple(points)
         if not points:
             return
         ceiling = PMODEL.achievable_ceiling(points, provenance="functional and frozen baseline")
@@ -800,6 +1094,35 @@ class DevelopmentGsimFeedback:
             f"phase-1 functional run {self.functional_run_id} and {len(baseline_points)} from the "
             f"frozen-baseline arm of the performance corpus (baseline arms only; no candidate "
             f"measurement contributes to this ceiling)")
+
+    def _matched_achievable(self, member: PerformanceCapsule) -> tuple[float | None, str, float | None]:
+        """Best measured rate for the member's exact contraction-depth signature.
+
+        Reduction depth is the amortisation axis for a weight-stationary contraction.  A global max
+        over unrelated K values is useful context, but it is not an attainable target for this
+        member.  Both signatures come from declared/emitted operand geometry; absence refuses rather
+        than silently falling back to the flattering global number.
+        """
+        import perf_capsule_verdict as CV                                  # noqa: PLC0415
+        import perf_model as PMODEL                                        # noqa: PLC0415
+
+        signature, signature_basis = declared_reduction_depths(member.descriptor)
+        if not signature:
+            return None, f"member-matched achievable rate unavailable: {signature_basis}", None
+        matched = [point for point in self._achievable_points
+                   if tuple(getattr(point, "reduction_depths", ())) == signature]
+        if not matched:
+            return None, ("member-matched achievable rate unavailable: no host-owned measured point "
+                          f"has exact reduction-depth signature {list(signature)}"), None
+        ceiling = PMODEL.achievable_ceiling(
+            matched, provenance=f"exact reduction-depth signature {list(signature)}")
+        if not ceiling.known:
+            return None, ceiling.reason, None
+        dispersion = CV.ceiling_dispersion(
+            [{"macs": point.macs, "cycles": point.cycles} for point in matched])
+        return float(ceiling.value), (
+            f"best rate over {len(matched)} host-owned measured point(s) with exact "
+            f"reduction-depth signature {list(signature)}; {signature_basis}"), dispersion
 
     def evaluate(self, candidate: Path, *, round_index: int, call_index: int,
                  timeout_s: int) -> dict[str, Any]:
@@ -898,7 +1221,7 @@ class DevelopmentGsimFeedback:
                     return None
                 return (ideal / cycles) if cycles > 0 else None
 
-            achievable = self.achievable_macs_per_cycle
+            achievable, achievable_basis, matched_dispersion = self._matched_achievable(member)
             achievable_ideal = (spec_macs / achievable) if (spec_macs and achievable) else None
 
             def _share(cycles: Any) -> float | None:
@@ -921,11 +1244,13 @@ class DevelopmentGsimFeedback:
                 "candidate_utilization": _utilization(ccycles),
                 "baseline_share_of_achievable": _share(bcycles),
                 "candidate_share_of_achievable": _share(ccycles),
+                "achievable_macs_per_cycle": achievable,
+                "achievable_basis": achievable_basis,
                 **_capsule_verdict_fields(
                     capsule=member.capsule, declared_macs=spec_macs,
-                    achievable_rate=self.achievable_macs_per_cycle,
+                    achievable_rate=achievable,
                     baseline_cycles=bcycles, candidate_cycles=ccycles if comparable else None,
-                    dispersion=self.achievable_dispersion),
+                    dispersion=matched_dispersion),
                 "measured": True, "skip_reason": None,
             })
             # STOP ONLY A LOSING CANDIDATE, NEVER PROMOTE A WINNING ONE. The rule is one-directional
@@ -951,20 +1276,27 @@ class DevelopmentGsimFeedback:
         # round that sets the agent's whole plan -- scored against phase 1's corpus, which is the
         # case that was actually wrong.
         self._refresh_achievable()
-        rate = self.achievable_macs_per_cycle
-        if rate:
-            for row in cells:
-                if not row.get("measured") or not row.get("declared_macs"):
-                    continue            # an unmeasured cell keeps its nulls
-                ideal = float(row["declared_macs"]) / float(rate)
+        members_by_identity = {(member.family, member.capsule): member for member in members}
+        for row in cells:
+            if not row.get("measured") or not row.get("declared_macs"):
+                continue                # an unmeasured cell keeps its nulls
+            member = members_by_identity[(row["family"], row["capsule"])]
+            rate, basis, dispersion = self._matched_achievable(member)
+            row["achievable_macs_per_cycle"] = rate
+            row["achievable_basis"] = basis
+            if rate:
+                ideal = float(row["declared_macs"]) / rate
                 row["baseline_share_of_achievable"] = ideal / row["baseline_gsim_cycles"]
                 row["candidate_share_of_achievable"] = (
                     ideal / row["candidate_gsim_cycles"] if row["comparable"] else None)
-                row.update(_capsule_verdict_fields(
-                    capsule=row["capsule"], declared_macs=row["declared_macs"],
-                    achievable_rate=rate, baseline_cycles=row["baseline_gsim_cycles"],
-                    candidate_cycles=(row["candidate_gsim_cycles"] if row["comparable"] else None),
-                    dispersion=self.achievable_dispersion))
+            else:
+                row["baseline_share_of_achievable"] = None
+                row["candidate_share_of_achievable"] = None
+            row.update(_capsule_verdict_fields(
+                capsule=row["capsule"], declared_macs=row["declared_macs"],
+                achievable_rate=rate, baseline_cycles=row["baseline_gsim_cycles"],
+                candidate_cycles=(row["candidate_gsim_cycles"] if row["comparable"] else None),
+                dispersion=dispersion))
 
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
@@ -984,13 +1316,13 @@ class DevelopmentGsimFeedback:
                 cells, label=f"round_{round_index:02d}/call_{call_index:03d}",
                 elapsed_s=time.monotonic() - started),
             "summary": {"members": len(cells), "comparable": len(comparable),
-                        "all_correct": len(comparable) == len(cells),
+                        "all_correct": all(row["comparable"] for row in cells
+                                           if row["measured"]),
                         "peak_macs_per_cycle": self.peak_macs_per_cycle,
                         "peak_basis": self.peak_basis,
                         "achievable_macs_per_cycle": self.achievable_macs_per_cycle,
                         "achievable_basis": self.achievable_basis,
-                        "recoverable": recoverable_cycles(
-                            cells, self.achievable_macs_per_cycle)},
+                        "recoverable": recoverable_cycles(cells)},
         })
 
 
@@ -1477,7 +1809,16 @@ def expected_perf_cells(
 
 def select_full_model_sentinel(
         functional: StageFunctionalRun,
-        target_experiment: TargetExperiment) -> FullModelSentinel:
+        target_experiment: TargetExperiment, *,
+        objective_capsule: str | None = None) -> FullModelSentinel:
+    """Choose an immutable public model; an explicit experiment choice overrides the default.
+
+    Selection does not requalify Phase 1 or establish that a model-kind capsule represents a
+    complete application rather than a seam. That scope remains the captured workload's evidence.
+    Explicit selection only changes which frozen graph the new experiment optimizes.
+    """
+    if objective_capsule is not None:
+        objective_capsule = _safe_component(objective_capsule, label="global objective capsule")
     snapshot_repo = Path(functional.bundle_input_snapshot["path"]) / "repo"
     try:
         relative = Path(target_experiment.capsule_corpus).resolve().relative_to(repo_root())
@@ -1492,9 +1833,10 @@ def select_full_model_sentinel(
         required = lanes.get("require") if isinstance(lanes, Mapping) else None
         tiers = descriptor.get("required_oracle_tiers")
         if (descriptor.get("kind") != "model" or descriptor.get("label") != "public"
-                or not isinstance(required, list)
-                or not {"on_mesh", "scalar_rvv_lane"}.issubset(required)
-                or not isinstance(tiers, list) or not {"L2", "L3"}.issubset(tiers)):
+                or (objective_capsule is None and (not isinstance(required, list) or not required))
+                or (required is not None and (not isinstance(required, list)
+                    or any(not isinstance(lane, str) or not lane for lane in required)))
+                or not isinstance(tiers, list) or "L2" not in tiers):
             continue
         name = _safe_component(str(descriptor.get("name") or ""), label="E2E sentinel")
         if source.name != name:
@@ -1504,8 +1846,38 @@ def select_full_model_sentinel(
             name, source.resolve(), descriptor, str(tree["sha256"]),
             int(tree["n_files"]), int(tree["n_bytes"])))
     if not candidates:
-        raise StageGateError("functional snapshot has no public cross-lane L2/L3 model")
-    return min(candidates, key=lambda item: (item.n_bytes, item.capsule))
+        raise StageGateError("functional snapshot has no public model with a declared lane and L2 screen")
+    if objective_capsule is not None:
+        matches = [item for item in candidates if item.capsule == objective_capsule]
+        if len(matches) != 1:
+            raise StageGateError(
+                "explicit global objective is not one public L2-screened model "
+                f"in the immutable Phase 1 snapshot: {objective_capsule!r}")
+        return matches[0]
+    objectives = [item for item in candidates
+                  if isinstance(item.descriptor.get("performance"), Mapping)
+                  and item.descriptor["performance"].get("global_objective") is True]
+    if len(objectives) > 1:
+        raise StageGateError(
+            "functional snapshot declares multiple performance.global_objective models: "
+            f"{[item.capsule for item in objectives]}")
+    declared = getattr(target_experiment, "performance_global_objective", None)
+    if objectives:
+        if declared is not None and objectives[0].capsule != declared:
+            raise StageGateError(
+                "capsule and experiment declarations disagree about the performance global "
+                f"objective: {objectives[0].capsule!r} != {declared!r}")
+        return objectives[0]
+    if declared is None:
+        raise StageGateError(
+            "functional snapshot has no capsule-level performance.global_objective and the "
+            "experiment declares no performance.global_objective_capsule")
+    matches = [item for item in candidates if item.capsule == declared]
+    if len(matches) != 1:
+        raise StageGateError(
+            "declared performance.global_objective_capsule is not one public L2-screened model "
+            f"in the immutable Phase 1 snapshot: {declared!r}")
+    return matches[0]
 
 
 def load_prompt(path: Path) -> PromptArtifact:
@@ -1536,6 +1908,10 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
             ("tool_timeout_seconds", inputs.tool_timeout_seconds)):
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise StageGateError(f"performance prompt {name} must be a positive integer")
+    if inputs.tool_timeout_seconds > ITERATION_MAX_SECONDS:
+        raise StageGateError(
+            f"performance prompt tool timeout exceeds the {ITERATION_MAX_SECONDS:g}s "
+            "reduced-witness iteration limit")
     if inputs.smoke_replicates >= inputs.replicates:
         raise StageGateError("smoke replicate count cannot masquerade as the formal cohort")
     expected_replicas = tuple(f"r{index:03d}" for index in range(inputs.replicates))
@@ -1547,9 +1923,9 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
     claim_family = str(inputs.formal_claim.get("family") or "")
     _verify_supported_acceptance(
         _declaration_module(declaration, claim_family), declaration, claim_family)
-    if (set(inputs.e2e_sentinel.required_lanes) != {"on_mesh", "scalar_rvv_lane"}
-            or "L3" not in inputs.e2e_sentinel.required_tiers):
-        raise StageGateError("performance prompt E2E sentinel lacks its cross-lane L3 contract")
+    if (not inputs.e2e_sentinel.required_lanes
+            or "L2" not in inputs.e2e_sentinel.required_tiers):
+        raise StageGateError("performance prompt E2E objective lacks a declared lane and L2 screen")
 
     base_families = tuple(PP.PerfFamily(
         family.family, family.claim, family.negative_control,
@@ -1611,7 +1987,58 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
         },
         "family_acceptance": family_acceptance,
     }
-    return rendered + "\n\n## Sealed authoring-stage supplement\n\n" + (
+    return rendered + "\n\n## Whole-model optimization loop (primary objective)\n\n" + (
+        "Optimize the complete E2E sentinel and its global dataflow first. Capsules are reduced "
+        "witnesses used to calibrate or refute a mechanism; they are not the objective and a "
+        "capsule win is never evidence of an E2E win. At the start of each round, read "
+        "`STAGE_CONTEXT.json` → `automatic_optimization_inventory`: it maps real Python AST "
+        "symbols to the manifest commands that consume them and lists structurally verified, "
+        "author-declared semantic edit surfaces. Use `inspect-optimization-surfaces` after source "
+        "or manifest edits to refresh "
+        "that inventory. A missing semantic mapping is UNKNOWN: declare the real surface in "
+        "`manifest.yaml`, then let the host validate it; do not guess from a filename.\n\n"
+        "Read `STAGE_CONTEXT.json` → `initial_whole_model_analysis` before choosing a lever, then "
+        "invoke the required `analyze-whole-model` action once after the related compiler edits have "
+        "stabilized; use the smallest affected witness while debugging those edits. Report-only edits "
+        "may record that result without rerunning it, while any later compiler, manifest, or other "
+        "execution-relevant edit requires a new final analysis. Both analysis paths emit "
+        "frozen-baseline and live-candidate buffers for the fixed sentinel on the host, so there is "
+        "no path substitution. "
+        "Its `captured_logical_graph` is the complete unpruned dispatch graph, including scalar "
+        "glue and constants, with source/dag digests and exact shared compiler entrypoints. "
+        "`OutlinedGlobalPlanEmitter` can emit contiguous global fusion regions and prove the "
+        "expanded before/after model IR structurally equivalent; integrate it in candidate code "
+        "to expose multi-operation functions to target codegen. Its UNKNOWN cost is intentional: "
+        "fewer function boundaries alone do not prove fewer physical transfers or faster cycles. "
+        "The free command-buffer analysis reports declared representations, movement volume, "
+        "barriers, placement boundaries, and structural findings. The whole-model action also "
+        "decodes the lowered target artifact through the target-derived role table, lifts a "
+        "program-scope CCA, runs the exact redundant-residency check, and joins each observed gap "
+        "to declared AST edit surfaces. Read its `gap_coverage`: a row is not covered unless it has "
+        "both evidence and a verified edit surface. If whole-model lowering is `declined` or the "
+        "target stream is absent, fix that macro blocker and re-emit before spending a simulator "
+        "call; an empty stream is UNKNOWN, never zero work. It intentionally leaves occupancy and "
+        "contention UNKNOWN until an event adapter or warm counter establishes them. Then run the "
+        "smallest shape preserving the same pressure/signature: one "
+        "unmeasured warm invocation followed by exactly one measured invocation, capturing compute "
+        "cycles and only the resource/movement counters needed to explain them. Invoke "
+        f"`{OCCUPANCY_PROFILE_ACTION}` when occupancy or overlap is the deciding UNKNOWN; its fixed "
+        "witness and selection basis are recorded in `STAGE_CONTEXT.json` before candidate "
+        "measurement. No simulator tool "
+        f"may exceed {ITERATION_MAX_SECONDS:g}s. Never modify an evaluation or mixed-lane harness "
+        "after seeing a candidate; keep the frozen declared E2E objective fixed. Never simulate the "
+        "complete model or complete layer during search, even if it would finish quickly: only "
+        "separate mechanism-equivalent probes calibrate costs. Full-size execution is an "
+        "optional post-freeze validation, not a Phase-2 prerequisite. If FireSim is explicitly "
+        "available and requested for that validation, use only the queue-owned `runworkload-full`; "
+        "the queue must own exactly `firesim kill` -> `firesim infrasetup` -> "
+        "`firesim runworkload` -> `firesim kill`, in that order.\n\n"
+        "Use L3 sparsely: the broker permits at most one reduced occupancy profile and two tuning "
+        "GSIM feedback calls per round. Treat the first tuning call, if used, as the sole exploratory "
+        "promotion check and reserve the second for the exact final bytes. Iterate freely with "
+        "`analyze-whole-model`, `analyze-command-buffers`, and "
+        "`inspect-optimization-surfaces`; these launch no simulator.\n\n"
+        "## Sealed authoring-stage supplement\n\n") + (
         "The outer Codex control plane has only its isolated authentication mount. "
         "The inner execution plane has the live descriptor-derived toolchain, `--clearenv`, "
         "and no credentials. Network availability is not an isolation claim. The JSON below "
@@ -1646,6 +2073,9 @@ def load_frozen_functional_inputs(functional: StageFunctionalRun) -> FrozenFunct
     records = document.get("grants")
     if not isinstance(records, list) or not records:
         raise StageGateError("functional v2 input snapshot has no exact grant table")
+    recorded_repo = Path(str(document.get("repo") or ""))
+    if not recorded_repo.is_absolute() or ".." in recorded_repo.parts:
+        raise StageGateError("functional v2 input snapshot has no safe recorded repo root")
     grants: list[FrozenGrant] = []
     resolved_root = root.resolve(strict=True)
     repo = repo_root().absolute()
@@ -1655,13 +2085,29 @@ def load_frozen_functional_inputs(functional: StageFunctionalRun) -> FrozenFunct
         declared = str(row.get("path") or "")
         destination = Path(str(row.get("destination") or ""))
         relative = Path(str(row.get("snapshot") or ""))
-        if (not declared or not destination.is_absolute() or relative.is_absolute()
+        declared_path = Path(declared)
+        if (not declared or declared_path.is_absolute() or ".." in declared_path.parts
+                or not destination.is_absolute() or relative.is_absolute()
                 or ".." in relative.parts):
             raise StageGateError("functional v2 input snapshot contains an unsafe grant")
-        allowed_destinations = {(repo / declared).absolute(),
-                                (repo / "merlin" / declared).absolute()}
-        if destination not in allowed_destinations:
+        # The v2 record binds its original checkout in ``repo``.  A sealed performance suite runs
+        # this code from a byte-identical source snapshot at a different root, so accepting only the
+        # current ``repo_root()`` rejects every legitimate Phase-1 grant before an agent can launch.
+        # First prove the recorded absolute destination is exactly one of the two bundle-convention
+        # interpretations under the RECORDED root; then carry that same interpretation to this
+        # sealed checkout.  The untrusted absolute path is never used as the new mount destination.
+        recorded_destinations = (
+            (recorded_repo / declared_path).absolute(),
+            (recorded_repo / "merlin" / declared_path).absolute(),
+        )
+        try:
+            interpretation = recorded_destinations.index(destination)
+        except ValueError:
             raise StageGateError(f"functional frozen grant has foreign destination: {declared}")
+        destination = (
+            (repo / declared_path).absolute(),
+            (repo / "merlin" / declared_path).absolute(),
+        )[interpretation]
         source = root / relative
         try:
             resolved_source = source.resolve(strict=True)
@@ -1870,7 +2316,7 @@ def _verify_supported_acceptance(module: Any, declaration: Mapping[str, Any], fa
             f"frozen {family} acceptance differs from the supported claim contract")
 
 
-def prepare_formal_pk_claim(
+def prepare_formal_claim(
         capsules: Sequence[PerformanceCapsule],
         requested_replicates: int | None = None) -> dict[str, Any]:
     """Admit the frozen formal claim declaration and derive its formal result cohort.
@@ -1917,6 +2363,18 @@ def prepare_formal_pk_claim(
     return copy.deepcopy(dict(preflight))
 
 
+def prepare_formal_pk_claim(
+        capsules: Sequence[PerformanceCapsule],
+        requested_replicates: int | None = None) -> dict[str, Any]:
+    """Compatibility name for snapshots created before formal dispatch became generic.
+
+    The implementation has never been PK-specific: it dispatches through each frozen capsule's
+    declared analyzer identity.  Keep the old public name so immutable campaign snapshots and
+    downstream callers remain readable, but use :func:`prepare_formal_claim` in new orchestration.
+    """
+    return prepare_formal_claim(capsules, requested_replicates)
+
+
 def _family_declarations(
         capsules: Sequence[PerformanceCapsule],
         formal_claim: Mapping[str, Any]) -> tuple[PerformanceFamilyDeclaration, ...]:
@@ -1953,9 +2411,11 @@ def _family_declarations(
 
 
 def select_e2e_sentinel(functional: StageFunctionalRun, frozen: FrozenFunctionalInputs,
-                        target_experiment: TargetExperiment) -> StageE2ESentinel:
-    """Select the smallest already-passed public whole-model L3 cross-lane capsule."""
-    selected = select_full_model_sentinel(functional, target_experiment)
+                        target_experiment: TargetExperiment, *,
+                        objective_capsule: str | None = None) -> StageE2ESentinel:
+    """Select the declared frozen whole-model objective, with a legacy fallback."""
+    selected = select_full_model_sentinel(
+        functional, target_experiment, objective_capsule=objective_capsule)
     snapshot_repo = (frozen.root / "repo").resolve(strict=True)
     try:
         relative = selected.source_dir.resolve(strict=True).relative_to(snapshot_repo)
@@ -1965,9 +2425,13 @@ def select_e2e_sentinel(functional: StageFunctionalRun, frozen: FrozenFunctional
     # Prove the prompt destination is one of the exact frozen grant views.
     if _frozen_path_for_destination(frozen, destination).resolve() != selected.source_dir.resolve():
         raise StageGateError("full-model sentinel does not map to its frozen grant destination")
+    # Older frozen complete models can have no lane declaration. Preserve that absence instead
+    # of inventing host/device coverage or excluding them from compile-only optimization.
+    lanes = selected.descriptor.get("lanes")
+    required_lanes = lanes.get("require", ()) if isinstance(lanes, Mapping) else ()
     return StageE2ESentinel(
         selected.capsule, str(destination), str(selected.source_dir), selected.source_sha256,
-        tuple(selected.descriptor["lanes"]["require"]),
+        tuple(required_lanes or ()),
         tuple(selected.descriptor["required_oracle_tiers"]))
 
 
@@ -1988,6 +2452,11 @@ def _demand_lower_bound(buffer: Mapping[str, Any], peak_macs_per_cycle: int | No
     schedule re-fetches, so real movement is only ever larger -- which keeps the result honestly a
     lower bound rather than an estimate that could flatter a candidate.
     """
+    declined = buffer.get("declined")
+    if isinstance(declined, Mapping):
+        return {"status": "unavailable",
+                "reason": ("the compiler declined this whole-program lowering: "
+                           f"{str(declined.get('reason') or 'reason unavailable')[:400]}")}
     if not peak_macs_per_cycle:
         return {"status": "unavailable", "reason": "no derived structural peak for this target"}
     from merlin.perf.work_volume import work_from_command_buffer            # noqa: PLC0415
@@ -2095,6 +2564,8 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     ORDERING_ONLY or REFUSED with its reason. An absolute magnitude for an unmeasured shape is
     exactly the over-claim the corpus-calibrated model is not licensed to make.
     """
+    from merlin.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
+    from merlin.perf.movement_volume import movement_from_command_buffer  # noqa: PLC0415
     from merlin.perf.work_volume import work_from_command_buffer          # noqa: PLC0415
 
     def _load(path: Path) -> Mapping[str, Any]:
@@ -2115,23 +2586,47 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
             raise StageGateError(f"command buffer is absent or linked: {resolved}{hint}")
         return json.loads(resolved.read_text(encoding="utf-8"))
 
-    out: dict[str, Any] = {"schema_version": 1, "kind": "host_owned_command_buffer_analysis",
+    buffers = {arm: _load(path)
+               for arm, path in (("baseline", baseline_json), ("candidate", candidate_json))}
+    out: dict[str, Any] = {"schema_version": 2, "kind": "host_owned_command_buffer_analysis",
                            "basis": "emitted artifacts only; no oracle, no golden, no holdout"}
     arms: dict[str, Any] = {}
-    for arm, path in (("baseline", baseline_json), ("candidate", candidate_json)):
-        work = work_from_command_buffer(_load(path))
+    for arm, buffer in buffers.items():
+        work = work_from_command_buffer(buffer)
+        movement = movement_from_command_buffer(buffer)
         macs = int(getattr(work, "known_macs", 0) or 0)
+        declined = buffer.get("declined")
+        declined = declined if isinstance(declined, Mapping) else None
         # A LOWER BOUND IS NOT A TOTAL. `work_volume` prices each command it can and records a
         # refusal for each it cannot, so `is_lower_bound` means "there is unpriced work here".
         # Reporting that as a total would understate the candidate's demand and silently flatter it.
         row: dict[str, Any] = {
-            "macs": macs,
-            "exact": not bool(getattr(work, "is_lower_bound", False)),
-            "unpriced_commands": [str(r) for r in (getattr(work, "refusals", ()) or ())][:8],
+            "status": "declined" if declined else "emitted",
+            "declined": ({key: declined.get(key) for key in ("op", "reason", "shape")
+                          if key in declined} if declined else None),
+            "macs": None if declined else macs,
+            "exact": False if declined else not bool(getattr(work, "is_lower_bound", False)),
+            "unpriced_commands": ([f"whole-model lowering declined: "
+                                    f"{str(declined.get('reason') or 'reason unavailable')[:400]}"]
+                                   if declined else
+                                   [str(r) for r in (getattr(work, "refusals", ()) or ())][:8]),
+            "movement": {
+                "known_bytes_in": None if declined else movement.known_bytes_in,
+                "known_bytes_out": None if declined else movement.known_bytes_out,
+                "known_bytes": None if declined else movement.known_bytes,
+                "exact_bytes": False if declined else movement.exact_bytes,
+                "is_lower_bound": True if declined else movement.is_lower_bound,
+                "refusals": (["whole-model lowering declined before movement was emitted"]
+                             if declined else list(movement.refusals)[:8]),
+                "counts": "declared_by_command_buffer",
+                "cannot_detect": ("a lowering that re-loads a resident operand; compare issued "
+                                  "load count with declared resident-pack count"),
+            },
+            "representation_activity": representation_activity(buffer),
         }
-        if peak_macs_per_cycle:
+        if peak_macs_per_cycle and not declined:
             row["ideal_cycles_at_peak"] = macs / float(peak_macs_per_cycle)
-        if achievable_macs_per_cycle:
+        if achievable_macs_per_cycle and not declined:
             row["ideal_cycles_at_achievable"] = macs / float(achievable_macs_per_cycle)
         arms[arm] = row
     out["arms"] = arms
@@ -2142,9 +2637,6 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     # artifacts, so none can leak a golden or a holdout, and none costs oracle time. Together they
     # let a bad candidate be ELIMINATED before a measurement is spent on it -- the measured rule is
     # that a cheap tier which REFUTES is sound (12/12) while one that PASSES certifies nothing.
-    buffers = {arm: _load(path)
-               for arm, path in (("baseline", baseline_json), ("candidate", candidate_json))}
-
     # NO CALIBRATED CYCLE ESTIMATE IS OFFERED, and the reason is measured, not cautious.
     #
     # The per-command cost model is accurate on absolute magnitude for in-distribution shapes
@@ -2235,8 +2727,507 @@ def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,
     return out
 
 
+def whole_program_schema_record() -> dict[str, str]:
+    """Current compiler API, separate from the immutable Phase-1 grading contract."""
+    path = repo_root() / "merlin/contract/schemas/command_buffer.schema.json"
+    if path.is_symlink() or not path.is_file():
+        raise StageGateError("current whole-program compiler schema is absent or linked")
+    return {"path": str(path), "sha256": _sha256_file(path)}
+
+
+def validate_whole_program_schema(buffer: Mapping[str, Any], record: Mapping[str, Any], *, arm: str) -> None:
+    """Host-side validation is mandatory even when a compiler omits its own validator."""
+    import jsonschema
+    if dict(record) != whole_program_schema_record():
+        raise StageGateError("whole-program compiler API schema binding changed")
+    schema = json.loads(Path(record["path"]).read_text(encoding="utf-8"))
+    errors = list(jsonschema.Draft202012Validator(schema).iter_errors(buffer))
+    if errors:
+        details = [f"/{'/'.join(map(str, error.path))}: {error.message}" for error in errors[:8]]
+        raise StageGateError(f"whole-model {arm} command buffer violates current compiler API schema: "
+                             + "; ".join(details))
+
+
+def analyze_whole_model_emission(
+        baseline: Path, candidate: Path, sentinel: StageE2ESentinel, *, timeout_s: int,
+        peak_macs_per_cycle: int | None, achievable_macs_per_cycle: float | None,
+        target: str, global_plan_verifier: Callable[..., Mapping[str, Any]] | None = None,
+        artifact_sink: Callable[[Mapping[str, Any]], None] | None = None,
+        baseline_artifacts: Mapping[str, Any] | None = None,
+        emit_pair_runner: Callable[..., tuple[int, str, str]] | None = None,
+        machine_artifact_auditor: Callable[..., Mapping[str, Any]] | None = None,
+        machine_build_policy_identity: Mapping[str, Any] | None = None,
+        host_verifier_policy_sha256: str | None = None,
+        compiler_api_schema: Mapping[str, Any] | None = None,
+        ) -> dict[str, Any]:
+    """Emit and compare the fixed complete-model sentinel without running a simulator.
+
+    The host owns both compiler invocations, so the candidate cannot substitute a capsule or mutate
+    the frozen baseline.  This is a fast global structural screen; warm measured cycles remain the
+    only timing verdict.
+    """
+    from merlin.perf.artifact_activity import analyze_artifact_activity  # noqa: PLC0415
+    from merlin.perf.model_placement import captured_global_graph, contraction_placement  # noqa: PLC0415
+    from merlin.targetgen import oot_runner as OR  # noqa: PLC0415
+    from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
+    from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
+
+    analysis_started = time.monotonic()
+    emit_pair = emit_pair_runner or _emit_pair
+    candidate_before = hash_tree(Path(candidate))["sha256"]
+    source = Path(sentinel.frozen_source_path)
+    if source.is_symlink() or not source.is_dir():
+        raise StageGateError("frozen whole-model sentinel is absent or linked")
+    if _exact_tree_record(source)["sha256"] != sentinel.capsule_sha256:
+        raise StageGateError("frozen whole-model sentinel bytes changed")
+    descriptor = _mapping_file(source / "capsule.yaml", yaml_file=True)
+    interface = source / str(descriptor.get("interface_mlir") or "capsule.interface.mlir")
+    if interface.is_symlink() or not interface.is_file():
+        raise StageGateError("frozen whole-model sentinel has no real interface MLIR")
+    source_text = interface.read_text(encoding="utf-8")
+    per_entrypoint_timeout = max(1, min(int(ITERATION_MAX_SECONDS), int(timeout_s)) // 4)
+
+    def require_not_declined(payload: str, arm: str) -> None:
+        # Some compiler entrypoints return success while emitting a structured
+        # decline and an empty function. That is not a valid comparison arm.
+        buffer = json.loads(payload)
+        if not isinstance(buffer, Mapping):
+            raise StageGateError(f"whole-model {arm} command buffer is not an object")
+        if buffer.get("declined") is not None:
+            raise StageGateError(
+                f"whole-model {arm} lowering declined; no structural or cycle comparison is admissible: "
+                + json.dumps(buffer["declined"], sort_keys=True)[:2000])
+        if compiler_api_schema is not None:
+            validate_whole_program_schema(buffer, compiler_api_schema, arm=arm)
+
+    with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR") or None) as raw:
+        scratch = Path(raw)
+        baseline_identity = {"baseline_sha256": hash_tree(Path(baseline))["sha256"],
+                             "capsule_sha256": sentinel.capsule_sha256, "target": target}
+        if baseline_artifacts is not None:
+            if (baseline_artifacts.get("identity") != baseline_identity
+                    or _sha256(baseline_artifacts["lowered_text"].encode("utf-8"))
+                    != baseline_artifacts.get("lowered_sha256")
+                    or _sha256(baseline_artifacts["command_buffer_text"].encode("utf-8"))
+                    != baseline_artifacts.get("command_buffer_sha256")):
+                raise StageGateError("retained frozen baseline artifact identity changed")
+            base_rc = 0
+            base_llvm, base_buffer = (baseline_artifacts["lowered_text"],
+                                      baseline_artifacts["command_buffer_text"])
+        else:
+            base_rc, base_llvm, base_buffer = emit_pair(
+                OR.load_package(Path(baseline)), interface, scratch, "baseline",
+                per_entrypoint_timeout)
+        if base_rc != 0 or not base_buffer:
+            detail_path = scratch / "emission_baseline.json"
+            details = json.loads(detail_path.read_text(encoding="utf-8")) if detail_path.is_file() else {}
+            raise StageGateError(
+                "whole-model baseline emission failed; candidate was not invoked "
+                f"(baseline_rc={base_rc}, baseline_buffer={bool(base_buffer)}): "
+                + json.dumps(details, sort_keys=True))
+        if base_rc == 0 and base_buffer:
+            require_not_declined(base_buffer, "baseline")
+        baseline_plan_binding = {
+            "schema": "baseline_global_plan_evidence_binding_v1",
+            "source_sha256": _sha256(source_text.encode("utf-8")),
+            "lowered_sha256": _sha256(base_llvm.encode("utf-8")),
+            "command_buffer_sha256": _sha256(base_buffer.encode("utf-8")),
+            "compiler_sha256": baseline_identity["baseline_sha256"],
+            "host_verifier_policy_sha256": host_verifier_policy_sha256,
+        }
+        baseline_plan_cached = None
+        if (baseline_artifacts is not None and global_plan_verifier is None
+                and _is_sha256(host_verifier_policy_sha256)
+                and ("verified_global_plan_emission" in baseline_artifacts
+                     or "global_plan_evidence_binding" in baseline_artifacts)):
+            proof = baseline_artifacts.get("verified_global_plan_emission")
+            expected_binding = {**baseline_plan_binding, "evidence_sha256": _document_sha256(proof)}
+            if (not isinstance(proof, Mapping)
+                    or baseline_artifacts.get("global_plan_evidence_binding") != expected_binding):
+                raise StageGateError("retained baseline global-plan evidence binding changed")
+            if proof.get("status") == "verified" and any(proof.get(key) != value for key, value in {
+                    "source_sha256": baseline_plan_binding["source_sha256"],
+                    "candidate_sha256": baseline_plan_binding["compiler_sha256"],
+                    "candidate_lowered_sha256": baseline_plan_binding["lowered_sha256"],
+                    "candidate_command_buffer_sha256": baseline_plan_binding["command_buffer_sha256"],
+            }.items()):
+                raise StageGateError("retained baseline verified plan contradicts its artifact binding")
+            baseline_plan_cached = copy.deepcopy(dict(proof))
+        cand_rc, cand_llvm, cand_buffer = emit_pair(
+            OR.load_package(Path(candidate)), interface, scratch, "candidate",
+            per_entrypoint_timeout)
+        if cand_rc == 0 and cand_buffer:
+            require_not_declined(cand_buffer, "candidate")
+        if base_rc != 0 or cand_rc != 0 or not base_buffer or not cand_buffer:
+            failures = {}
+            for tag in ("baseline", "candidate"):
+                detail_path = scratch / f"emission_{tag}.json"
+                if detail_path.is_file():
+                    failures[tag] = json.loads(detail_path.read_text(encoding="utf-8"))
+            raise StageGateError(
+                "whole-model emission failed "
+                f"(baseline_rc={base_rc}, candidate_rc={cand_rc}, "
+                f"baseline_buffer={bool(base_buffer)}, candidate_buffer={bool(cand_buffer)}): "
+                + json.dumps(failures, sort_keys=True))
+        baseline_json = scratch / "whole_baseline.json"
+        candidate_json = scratch / "whole_candidate.json"
+        baseline_json.write_text(base_buffer, encoding="utf-8")
+        candidate_json.write_text(cand_buffer, encoding="utf-8")
+        diagnostics = analyze_command_buffers(
+            baseline_json, candidate_json,
+            peak_macs_per_cycle=peak_macs_per_cycle,
+            achievable_macs_per_cycle=achievable_macs_per_cycle,
+            target=target)
+        baseline_buffer = json.loads(base_buffer)
+        candidate_buffer = json.loads(cand_buffer)
+        expected = descriptor.get("expected") or {}
+        cand_lowered_module = None
+        base_lowered_module = None
+        try:
+            if baseline_artifacts is not None:
+                base_trace = baseline_artifacts["decoded_trace"]
+            else:
+                base_lowered_module = RD._parse_module(base_llvm)
+                base_trace = (RD.decode_module(base_lowered_module, source="immutable_optimization_baseline", target=target)
+                              if base_lowered_module is not None else
+                              RD._decode_by_text_scan(base_llvm, source="immutable_optimization_baseline", target=target))
+            # The complete candidate module can be large. Parse its exact bytes once and share
+            # the host-owned in-memory IR with instruction decoding and global-plan verification.
+            cand_lowered_module = RD._parse_module(cand_llvm)
+            cand_trace = (RD.decode_module(cand_lowered_module, source="live_phase2_candidate", target=target)
+                          if cand_lowered_module is not None else
+                          RD._decode_by_text_scan(cand_llvm, source="live_phase2_candidate", target=target))
+            base_has_stream = bool(base_trace.get("instructions"))
+            cand_has_stream = bool(cand_trace.get("instructions"))
+            if not cand_has_stream:
+                trace_conformance = {
+                    "status": "UNKNOWN",
+                    "reason": ("the candidate lowered artifact contains no target instruction "
+                               "stream; absence cannot prove encoding, residency, or dispatch"),
+                    "baseline_has_target_stream": base_has_stream,
+                    "candidate_has_target_stream": False,
+                    "introduced_candidate_findings": ([
+                        "conformance: candidate removed the target instruction stream"
+                    ] if base_has_stream else []),
+                }
+            else:
+                base_check = TCK.check(base_trace, expected, baseline_buffer)
+                cand_check = TCK.check(cand_trace, expected, candidate_buffer)
+                base_residency = TCK.residency_findings(base_trace)
+                cand_residency = TCK.residency_findings(cand_trace)
+                base_findings = {f"conformance: {value}" for value in base_check["violations"]}
+                base_findings.update(f"residency: {value}" for value in base_residency)
+                cand_findings = {f"conformance: {value}" for value in cand_check["violations"]}
+                cand_findings.update(f"residency: {value}" for value in cand_residency)
+                trace_conformance = {
+                    "status": "checked",
+                    "baseline": {
+                        "advisory_status": base_check["status"],
+                        "finding_count": len(base_findings),
+                        "residency_reload_findings": base_residency,
+                        "drives_accelerator": bool(TCK.drives_accelerator(base_trace)),
+                    },
+                    "candidate": {
+                        "advisory_status": cand_check["status"],
+                        "finding_count": len(cand_findings),
+                        "residency_reload_findings": cand_residency,
+                        "drives_accelerator": bool(TCK.drives_accelerator(cand_trace)),
+                    },
+                    "introduced_candidate_findings": sorted(cand_findings - base_findings),
+                    "comparison_policy": (
+                        "differential against the immutable optimization comparison baseline; advisory trace "
+                        "findings are not a numeric-correctness verdict"
+                    ),
+                }
+        except Exception as exc:  # noqa: BLE001 - absent decode evidence is explicit, never clean
+            base_trace = cand_trace = None
+            trace_conformance = {
+                "status": "UNKNOWN",
+                "reason": f"target trace diagnosis failed: {type(exc).__name__}: {str(exc)[:200]}",
+                "introduced_candidate_findings": [],
+            }
+
+        def _artifact(trace: Mapping[str, Any] | None, arm: str) -> dict[str, Any]:
+            if trace is None:
+                return {"status": "UNKNOWN", "arm": arm,
+                        "reason": "the lowered target trace was unavailable"}
+            try:
+                return analyze_artifact_activity(trace, target=target, op=str(
+                    (descriptor.get("operation") or {}).get("op") or "model"))
+            except Exception as exc:  # noqa: BLE001 - an unreadable semantic map is UNKNOWN
+                return {"status": "UNKNOWN", "arm": arm,
+                        "reason": ("emitted artifact activity could not be lifted: "
+                                   f"{type(exc).__name__}: {str(exc)[:200]}")}
+
+        base_activity = _artifact(base_trace, "baseline")
+        cand_activity = _artifact(cand_trace, "candidate")
+        issued_delta: dict[str, int | float] = {}
+        base_issued = base_activity.get("issued")
+        cand_issued = cand_activity.get("issued")
+        if isinstance(base_issued, Mapping) and isinstance(cand_issued, Mapping):
+            for key in sorted(set(base_issued).intersection(cand_issued)):
+                left, right = base_issued[key], cand_issued[key]
+                if (isinstance(left, (int, float)) and not isinstance(left, bool)
+                        and isinstance(right, (int, float)) and not isinstance(right, bool)):
+                    issued_delta[key] = right - left
+        diagnostics["target_artifact_activity"] = {
+            "baseline": base_activity,
+            "candidate": cand_activity,
+            "candidate_minus_baseline_issued": issued_delta,
+        }
+        diagnostics["trace_conformance"] = trace_conformance
+
+        def _placement(buffer: Mapping[str, Any]) -> dict[str, Any]:
+            params = buffer.get("params")
+            params = params if isinstance(params, Mapping) else {}
+            rows = params.get("lane_placement")
+            if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+                return {"status": "UNKNOWN", "reason": "compiler emitted no region-to-lane map"}
+            try:
+                return contraction_placement(interface, rows, target=target, entry=descriptor.get("entry"))
+            except Exception as exc:  # noqa: BLE001 - incomplete placement is explicit evidence
+                return {"status": "UNKNOWN",
+                        "reason": ("MAC-weighted placement could not be derived: "
+                                   f"{type(exc).__name__}: {str(exc)[:200]}")}
+
+        diagnostics["model_contraction_placement"] = {
+            "baseline": _placement(baseline_buffer),
+            "candidate": _placement(candidate_buffer),
+            "comparison_basis": (
+                "exact captured contraction MACs by compiler-declared lane; non-contraction cycles "
+                "remain unpriced"
+            ),
+        }
+        try:
+            diagnostics["captured_logical_graph"] = captured_global_graph(interface)
+        except Exception as exc:  # noqa: BLE001 - report missing graph coverage explicitly
+            diagnostics["captured_logical_graph"] = {
+                "status": "UNKNOWN",
+                "reason": f"whole-graph outlining failed: {type(exc).__name__}: {str(exc)[:200]}",
+            }
+        if baseline_plan_cached is not None:
+            baseline_plan = baseline_plan_cached
+        else:
+            try:
+                if global_plan_verifier is not None:
+                    baseline_plan = dict(global_plan_verifier(
+                        candidate=Path(baseline), interface=interface, lowered_text=base_llvm,
+                        command_buffer=baseline_buffer, logical_graph=diagnostics["captured_logical_graph"],
+                        candidate_sha256=baseline_identity["baseline_sha256"]))
+                else:
+                    from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
+                    baseline_plan = verify_compiler_global_plan(
+                        source_text=source_text, lowered_text=base_llvm, command_buffer=baseline_buffer,
+                        candidate_sha256=baseline_identity["baseline_sha256"],
+                        command_buffer_sha256=baseline_plan_binding["command_buffer_sha256"],
+                        parsed_lowered_module=base_lowered_module)
+            except Exception as exc:
+                baseline_plan = {"status": "UNKNOWN",
+                    "reason": f"host baseline global-plan verifier failed: {type(exc).__name__}: {exc}"}
+        # Bind the actual JSON document retained across the worker boundary. Verifier
+        # task maps have integer keys; JSON turns them into strings, whose canonical
+        # order differs for task 10 versus task 2. Hashing pre-transport Python maps
+        # made an unchanged multi-task proof fail its own next-iteration binding.
+        baseline_plan = json.loads(_canonical_json(baseline_plan))
+        baseline_plan_binding["evidence_sha256"] = _document_sha256(baseline_plan)
+        diagnostics["verified_baseline_global_plan_emission"] = baseline_plan
+        diagnostics["baseline_global_plan_evidence_binding"] = baseline_plan_binding
+        try:
+            if global_plan_verifier is not None:
+                diagnostics["verified_global_plan_emission"] = dict(global_plan_verifier(
+                    candidate=Path(candidate), interface=interface,
+                    lowered_text=cand_llvm, command_buffer=candidate_buffer,
+                    logical_graph=diagnostics["captured_logical_graph"],
+                    candidate_sha256=candidate_before))
+            else:
+                from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
+                diagnostics["verified_global_plan_emission"] = verify_compiler_global_plan(
+                    source_text=source_text, lowered_text=cand_llvm,
+                    command_buffer=candidate_buffer, candidate_sha256=candidate_before,
+                    command_buffer_sha256=_sha256(cand_buffer.encode("utf-8")),
+                    parsed_lowered_module=cand_lowered_module)
+        except Exception as exc:  # noqa: BLE001 - incomplete host verification is explicit
+            diagnostics["verified_global_plan_emission"] = {
+                "status": "UNKNOWN", "reason": f"host global-plan verifier failed: {type(exc).__name__}: {exc}",
+            }
+        # Cache source-owned STATIC instruction presence while parsed IR is already
+        # available. Reduced-source actions must not reparse the complete model.
+        def task_instructions(text, raw_buffer, buffer, module, trace, proof, *, baseline_arm=False):
+            try:
+                from merlin.perf.task_instruction_evidence import (
+                    digest, summarize_task_instructions, task_instruction_binding, target_instruction_facts)
+                facts = target_instruction_facts(target)
+                binding_args = dict(source_text=source_text, lowered_text=text,
+                    command_buffer_text=raw_buffer, verified_plan=proof,
+                    target_facts=facts, host_policy_sha256=host_verifier_policy_sha256)
+                binding = task_instruction_binding(**binding_args)
+                cached = (baseline_artifacts or {}).get("task_instruction_evidence") if baseline_arm else None
+                if (isinstance(cached, Mapping) and cached.get("binding") == binding
+                        and (baseline_artifacts or {}).get("task_instruction_evidence_sha256") == digest(cached)):
+                    return copy.deepcopy(dict(cached))
+                return summarize_task_instructions(**binding_args,
+                    command_buffer=buffer, parsed_module=module, decoded_trace=trace,
+                    decode_module=lambda parsed: RD.decode_module(parsed, target=target))
+            except Exception as exc:
+                return {"status": "UNKNOWN", "route_correspondence": "UNKNOWN",
+                    "timing_calibration_admissible": False,
+                    "reason": f"static task instruction ownership unavailable: {type(exc).__name__}: {str(exc)[:200]}"}
+        diagnostics["task_instruction_evidence"] = {
+            "baseline": task_instructions(base_llvm, base_buffer, baseline_buffer, base_lowered_module,
+                base_trace, baseline_plan, baseline_arm=True),
+            "candidate": task_instructions(cand_llvm, cand_buffer, candidate_buffer, cand_lowered_module,
+                cand_trace, diagnostics["verified_global_plan_emission"])}
+        try:
+            from merlin.perf.context_probe import extract_queued_movement_context
+            verified = diagnostics["verified_global_plan_emission"].get("status") == "verified"
+            diagnostics["queued_movement_context"] = extract_queued_movement_context(
+                cand_trace, target=target, artifact_sha256=_sha256(cand_llvm.encode("utf-8")),
+                artifact_text=cand_llvm, command_buffer=candidate_buffer if verified else None,
+                parsed_module=cand_lowered_module, max_commands=32, max_motifs=4)
+        except Exception as exc:
+            diagnostics["queued_movement_context"] = {
+                "status": "UNKNOWN", "calibration_admissible": False,
+                "reason": f"queued-context extraction unavailable: {type(exc).__name__}: {str(exc)[:200]}",
+            }
+        def machine_activity(text: str, arm: str) -> dict[str, Any]:
+            digest = _sha256(text.encode("utf-8"))
+            cached = ((baseline_artifacts or {}).get("machine_artifact_activity")
+                      if arm == "baseline" else None)
+            if (isinstance(cached, Mapping) and cached.get("source_sha256") == digest
+                    and machine_build_policy_identity is not None
+                    and cached.get("build_policy_identity") == machine_build_policy_identity):
+                return dict(cached)
+            if machine_artifact_auditor is None:
+                return {"status": "UNKNOWN", "reason": "answer-masked machine auditor unavailable"}
+            try:
+                remaining = min(60.0, timeout_s - (time.monotonic() - analysis_started))
+                if remaining <= 0:
+                    raise TimeoutError("no remaining whole-model analysis budget")
+                result = dict(machine_artifact_auditor(text, arm=arm, timeout_s=remaining))
+                if result.get("source_sha256") != digest:
+                    raise ValueError("machine audit source does not match the current emitted artifact")
+                if (machine_build_policy_identity is None
+                        or result.get("build_policy_identity") != machine_build_policy_identity):
+                    raise ValueError("machine audit build policy changed during compilation")
+                return result
+            except Exception as exc:
+                return {"status": "UNKNOWN", "source_sha256": digest,
+                        "build_policy_identity": machine_build_policy_identity,
+                        "failed_attempt_retained": True,
+                        "reason": f"machine audit unavailable: {type(exc).__name__}: {str(exc)[:200]}"}
+        diagnostics["machine_artifact_activity"] = {
+            "baseline": machine_activity(base_llvm, "baseline"),
+            "candidate": machine_activity(cand_llvm, "candidate"),
+        }
+        optimization_brief = guidance_for_emission_analysis(
+            diagnostics, inspect_compiler_package(candidate))
+        if artifact_sink is not None:
+            artifact_sink({
+                "lowered_text": cand_llvm, "decoded_trace": cand_trace,
+                "parsed_lowered_module": cand_lowered_module,
+                "command_buffer": candidate_buffer, "command_buffer_text": cand_buffer, "interface": interface,
+                "candidate_sha256": candidate_before,
+                "candidate_lowered_sha256": _sha256(cand_llvm.encode("utf-8")),
+                "candidate_command_buffer_sha256": _sha256(cand_buffer.encode("utf-8")),
+                "task_instruction_evidence": diagnostics["task_instruction_evidence"]["candidate"],
+                "baseline_artifacts": {
+                    "identity": baseline_identity, "lowered_text": base_llvm,
+                    "command_buffer_text": base_buffer, "decoded_trace": base_trace,
+                    "lowered_sha256": _sha256(base_llvm.encode("utf-8")),
+                    "command_buffer_sha256": _sha256(base_buffer.encode("utf-8")),
+                    "machine_artifact_activity": diagnostics["machine_artifact_activity"]["baseline"],
+                    "verified_global_plan_emission": copy.deepcopy(baseline_plan),
+                    "global_plan_evidence_binding": copy.deepcopy(baseline_plan_binding),
+                    "task_instruction_evidence": diagnostics["task_instruction_evidence"]["baseline"],
+                    "task_instruction_evidence_sha256": _document_sha256(
+                        diagnostics["task_instruction_evidence"]["baseline"]),
+                },
+            })
+    candidate_after = hash_tree(Path(candidate))["sha256"]
+    if candidate_before != candidate_after:
+        raise StageGateError("candidate bytes changed during whole-model analysis")
+    document = {
+        "schema": "host_owned_whole_model_emission_analysis_v2",
+        "candidate_sha256": candidate_after,
+        "workload": {
+            "capsule": sentinel.capsule,
+            "capsule_sha256": sentinel.capsule_sha256,
+            "required_lanes": list(sentinel.required_lanes),
+            "required_tiers": list(sentinel.required_tiers),
+        },
+        "emission": {
+            "baseline_lowered_sha256": _sha256(base_llvm.encode("utf-8")),
+            "candidate_lowered_sha256": _sha256(cand_llvm.encode("utf-8")),
+            "lowered_identical": base_llvm == cand_llvm,
+            "baseline_command_buffer_sha256": _sha256(base_buffer.encode("utf-8")),
+            "candidate_command_buffer_sha256": _sha256(cand_buffer.encode("utf-8")),
+            "command_buffer_identical": base_buffer == cand_buffer,
+        },
+        "diagnostics": diagnostics,
+        "optimization_brief": optimization_brief,
+        "timing_status": "UNMEASURED",
+        "next_measurement": {
+            "scope": "separate_mechanism_equivalent_probe",
+            "warmup_runs": 1,
+            "measured_runs": 1,
+            "primary_metric": "total_compute_cycles",
+            "maximum_simulator_seconds": int(ITERATION_MAX_SECONDS),
+        },
+    }
+    document["iteration_readiness"] = global_iteration_readiness(document)
+    return document
+
+
+def global_iteration_readiness(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Expose exactly which full-graph evidence is missing before a search measurement.
+
+    This consumes host analysis, never candidate-provided readiness booleans. A parsed input graph
+    is insufficient: the candidate must have a checked plan-to-emission receipt for that graph.
+    The target adapter supplies that receipt after verifying the concrete candidate artifact.
+    """
+    diagnostics = document.get("diagnostics") or {}
+    graph = diagnostics.get("captured_logical_graph") or {}
+    arm = (diagnostics.get("arms") or {}).get("candidate") or {}
+    plan = diagnostics.get("verified_global_plan_emission") or {}
+    emission = document.get("emission") or {}
+    blockers: list[str] = []
+    if not _is_sha256(document.get("candidate_sha256")):
+        blockers.append("candidate_digest_missing")
+    if graph.get("status") != "verified" or not _is_sha256(graph.get("logical_dispatch_digest")):
+        blockers.append("complete_logical_graph_unverified")
+    if arm.get("status") != "emitted":
+        blockers.append("whole_model_lowering_not_emitted")
+    # Only a host adapter which has verified plan ownership, graph coverage, and artifact binding
+    # may populate this field. The compiler's params/global_plan metadata is not copied here.
+    if plan.get("status") != "verified":
+        blockers.append("candidate_global_plan_emission_unverified")
+    else:
+        bindings = {
+            "candidate_sha256": document.get("candidate_sha256"),
+            "logical_dispatch_digest": graph.get("logical_dispatch_digest"),
+            "candidate_lowered_sha256": emission.get("candidate_lowered_sha256"),
+            "candidate_command_buffer_sha256": emission.get("candidate_command_buffer_sha256"),
+        }
+        if (not _is_sha256(plan.get("plan_digest"))
+                or any(not _is_sha256(value) or plan.get(key) != value
+                       for key, value in bindings.items())):
+            blockers.append("candidate_global_plan_binding_mismatch")
+    return {
+        "schema": "global_iteration_readiness_v1",
+        "status": "ready_for_probe_admission" if not blockers else "blocked",
+        "candidate_sha256": document.get("candidate_sha256"),
+        "blockers": blockers,
+        "probe_admission": "required_separately_for_each_measured_mechanism",
+        "full_model_simulation_allowed": False,
+        "micro_plateau_can_stop_global_search": False,
+        "proof_scope": "structural graph/plan/artifact binding; authoring and probe admission only",
+        "promotion_blockers": ["changed_region_semantic_qualification", "global_cost_evidence"],
+    }
+
+
 def build_action_registry(candidate: Path,
-                          target_experiment: TargetExperiment) -> tuple[BrokerAction, ...]:
+                          target_experiment: TargetExperiment, *,
+                          global_optimization: bool = False) -> tuple[BrokerAction, ...]:
     """Create named candidate-manifest actions; no caller-selected executable is accepted."""
     manifest_path = candidate / "manifest.yaml"
     if manifest_path.is_symlink() or not manifest_path.is_file():
@@ -2263,7 +3254,7 @@ def build_action_registry(candidate: Path,
             raise StageGateError(f"candidate manifest command {command_name!r} has embedded tool token")
         actions.append(BrokerAction(
             f"candidate-{command_name.replace('_', '-')}", argv, placeholders,
-            f"candidate manifest command {command_name}", True))
+            f"candidate manifest command {command_name}", not global_optimization))
     for probe in TC.required_tool_probes(target_experiment):
         slug = re.sub(r"[^A-Za-z0-9._-]+", "-", probe.label).strip("-").lower()
         if not slug:
@@ -2272,7 +3263,13 @@ def build_action_registry(candidate: Path,
                                     f"descriptor-derived probe for {probe.label}", False))
     actions.append(BrokerAction(
         DEVELOPMENT_FEEDBACK_ACTION, (_HOST_FEEDBACK_SENTINEL,), (),
-        "host-owned frozen-tuning correctness and certified GSIM cycle deltas; invoke after edits",
+        "sparse host-owned frozen-tuning correctness and certified GSIM cycle deltas; at most one "
+        "exploratory call, then reserve the second and final call for the exact bytes being sealed",
+        not global_optimization))
+    actions.append(BrokerAction(
+        E2E_ANALYSIS_ACTION, (_HOST_E2E_ANALYSIS_SENTINEL,), (),
+        "required host-owned baseline/candidate emission and structural analysis of the fixed "
+        "declared complete-model objective; no simulator and no timing claim",
         True))
     actions.append(BrokerAction(
         ANALYSIS_ACTION, (_HOST_ANALYSIS_SENTINEL, "{baseline_json}", "{candidate_json}"),
@@ -2284,6 +3281,56 @@ def build_action_registry(candidate: Path,
         "spending a measurement on it. It cannot certify one: nothing here predicts which of two "
         "orderings is faster, and the block it returns says so",
         False))
+    actions.append(BrokerAction(
+        INVENTORY_ACTION, (_HOST_INVENTORY_SENTINEL,), (),
+        "host-owned live AST inventory of compiler command ownership and verified manifest "
+        "optimization surfaces; rerun after changing source or manifest declarations",
+        False))
+    actions.append(BrokerAction(
+        OCCUPANCY_PROFILE_ACTION, (_HOST_OCCUPANCY_PROFILE_SENTINEL,), (),
+        "host-owned warm profile of one preselected frozen reduced witness; returns total compute "
+        "cycles and only proved occupancy, movement, and overlap evidence; absent executed-encoding "
+        "evidence remains explicitly UNKNOWN. The witness calibrates the complete-model plan and "
+        "is never a whole-model result",
+        False))
+    if global_optimization:
+        actions.append(BrokerAction(
+            SOURCE_CONTRACTION_PREPARATION_ACTION,
+            (_HOST_SOURCE_CONTRACTION_PREPARATION_SENTINEL, "{comparison_arm}", "{source_op_index}",
+             "{max_m}", "{max_n}", "{max_k}"),
+            ("comparison_arm", "source_op_index", "max_m", "max_n", "max_k"),
+            "prepare one explicitly selected current-source contraction through both exact normal "
+            "compiler arms under 60 seconds; explicit baseline/previous and integer source/bounds only. "
+            "Returns preparation SHA and independent typed oracle; no runtime or numerical pass", False))
+        actions.append(BrokerAction(
+            SOURCE_CONTRACTION_QUALIFICATION_ACTION,
+            (_HOST_SOURCE_CONTRACTION_QUALIFICATION_SENTINEL, "{preparation_sha256}"), ("preparation_sha256",),
+            "execute a current host-prepared reduced source pair through the optional host runtime "
+            "provider under 60 seconds, warm1/measured1 per arm; only a preparation SHA, never a file "
+            "path. Full-model route relevance, numerics and timing remain separate obligations", False))
+        actions.append(BrokerAction(
+            SOURCE_CONVOLUTION_PREPARATION_ACTION,
+            (_HOST_SOURCE_CONVOLUTION_PREPARATION_SENTINEL, "{comparison_arm}"), ("comparison_arm",),
+            "prepare actual changed host-to-convolution source using cached full-model proofs and both "
+            "normal compiler entrypoints, within 60 seconds; comparison_arm must explicitly be "
+            "optimization_baseline or previous. Returns source opportunities and allowed edit surfaces; "
+            "no simulator, runtime admission or numerical pass", False))
+        actions.append(BrokerAction(
+            CHANGED_REGION_ACTION, (_HOST_CHANGED_REGION_SENTINEL,), (),
+            "host-selected reduced semantic witness for the actual changed full-model region; "
+            "same candidate compiler under answer-masked policy plus independent reference. "
+            "Reports only the qualified mechanism/domain, never full-model numerics or cycles",
+            False))
+        actions.append(BrokerAction(
+            CONTROLLED_CONTEXT_ACTION, (_HOST_CONTROLLED_CONTEXT_SENTINEL,), (),
+            "host-extracted bounded prefix of the current emitted model, including queued loads; "
+            "one warm and one measured prefix under a total 60-second budget. Reports controlled "
+            "occupancy only, not full task/model equivalence or global cost calibration", False))
+        actions.append(BrokerAction(
+            PAIRED_CONTEXT_ACTION, (_HOST_PAIRED_CONTEXT_SENTINEL,), (),
+            "host-projected identical bounded work in previous/current emitted schedules; "
+            "warm1/measured1 per arm under one total 60-second budget. Reports controlled "
+            "fixed-work cycle differences, never full-model cycles or statistical confirmation", False))
     names = [action.name for action in actions]
     if len(names) != len(set(names)):
         raise StageGateError("broker action registry contains duplicate names")
@@ -2301,7 +3348,11 @@ def _record_host_refusal(stage: Any, exc: BaseException, *, round_index: Any, ca
         import traceback                                                    # noqa: PLC0415
 
         evaluator = getattr(stage, "feedback_evaluator", None)
-        root = Path(getattr(evaluator, "work_root", "")) / "host_refusals"
+        macro = getattr(stage, "global_experiment", None)
+        private_root = getattr(macro, "output", None) or getattr(evaluator, "work_root", None)
+        if private_root is None:
+            return  # Never fall back to a cwd which could be part of an agent-visible workspace.
+        root = Path(private_root) / "host_refusals"
         root.mkdir(parents=True, exist_ok=True)
         (root / f"round_{round_index}_call_{call_index}.txt").write_text(
             f"{type(exc).__name__}: {exc}\n\n"
@@ -2340,7 +3391,7 @@ RECOVERABLE_RANK_LIMIT = 8
 
 
 def recoverable_cycles(cells: Sequence[Mapping[str, Any]],
-                       achievable_macs_per_cycle: float | None) -> dict[str, Any]:
+                       achievable_macs_per_cycle: float | None = None) -> dict[str, Any]:
     """Which members hold the cycles, ranked, and what fraction of the objective each one is.
 
     ⚠️ WHY THIS EXISTS, measured on a completed campaign. The corpus total was 171,739 cycles and the
@@ -2363,17 +3414,22 @@ def recoverable_cycles(cells: Sequence[Mapping[str, Any]],
     hand back a number that does not exist. A member already at or past the achievable rate recovers
     nothing rather than a negative amount.
     """
-    if not achievable_macs_per_cycle or achievable_macs_per_cycle <= 0:
+    rates = [row.get("achievable_macs_per_cycle", achievable_macs_per_cycle) for row in cells]
+    if not any(isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate > 0
+               for rate in rates):
         return {"status": "unavailable",
-                "reason": "no achievable rate was derived, so headroom cannot be priced in cycles",
+                "reason": ("no member-matched achievable rate was derived, so headroom cannot be "
+                           "priced in cycles"),
                 "ranked": [], "corpus_total_cycles": None}
     priced, total = [], 0.0
     for row in cells:
         macs, cycles = row.get("declared_macs"), row.get("baseline_gsim_cycles")
-        if not row.get("measured") or not isinstance(macs, int) or not isinstance(cycles, int):
+        rate = row.get("achievable_macs_per_cycle", achievable_macs_per_cycle)
+        if (not row.get("measured") or not isinstance(macs, int) or not isinstance(cycles, int)
+                or not isinstance(rate, (int, float)) or isinstance(rate, bool) or rate <= 0):
             continue
         total += float(cycles)
-        ideal = float(macs) / float(achievable_macs_per_cycle)
+        ideal = float(macs) / float(rate)
         priced.append({"family": row["family"], "capsule": row["capsule"],
                        "baseline_cycles": int(cycles),
                        "recoverable_cycles": max(0.0, float(cycles) - ideal)})
@@ -2391,7 +3447,7 @@ def recoverable_cycles(cells: Sequence[Mapping[str, Any]],
             "total_recoverable_share": recoverable_total / total,
             "ranked": ranked, "ranked_members": len(ranked), "priced_members": len(priced),
             "basis": ("baseline cycles minus the cycles this member's own declared work would take at "
-                      "the best rate anything on this machine has reached"),
+                      "the best host-owned measured rate with the same reduction-depth signature"),
             "licence": ("where the objective's cycles are, not a prediction that they are reachable; "
                         "a member's lever may not exist")}
 
@@ -2422,6 +3478,10 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
                    "declared_macs", "declared_work_basis", "ideal_cycles_at_peak",
                    "baseline_utilization", "candidate_utilization",
                    "baseline_share_of_achievable", "candidate_share_of_achievable",
+                   # The ceiling used for THIS member and the geometry-matching rule that selected
+                   # it.  The summary's global maximum is context only; these fields are the
+                   # denominator used by the ratios and stopping rule.
+                   "achievable_macs_per_cycle", "achievable_basis",
                    # Whether this member is FINISHED, better, or still owes cycles. Everything
                    # above is a number the reader has to interpret; without this the cell records
                    # a measurement and states no position on it, which is how a member at 3% of
@@ -2468,6 +3528,15 @@ def validate_redacted_feedback(document: Mapping[str, Any]) -> dict[str, Any]:
                     raise StageGateError(
                         f"development feedback cell {index} was not measured but carries {field}")
             continue
+        matched_rate = row.get("achievable_macs_per_cycle")
+        if (matched_rate is not None
+                and (isinstance(matched_rate, bool)
+                     or not isinstance(matched_rate, (int, float)) or matched_rate <= 0)):
+            raise StageGateError(
+                f"development feedback cell {index} has an invalid member-matched achievable rate")
+        if not isinstance(row.get("achievable_basis"), str) or not row["achievable_basis"]:
+            raise StageGateError(
+                f"development feedback cell {index} omits its member-matched achievable basis")
         # Utilization is derived or it is null. A ratio outside (0, 1] would mean the program beat a
         # ceiling its own RTL says is unreachable, which is a broken derivation, not a fast program.
         macs = row.get("declared_macs")
@@ -2715,6 +3784,56 @@ def declared_capsule_macs(descriptor: Mapping[str, Any]) -> tuple[int | None, st
     return lhs[0] * lhs[1] * weight[1], basis
 
 
+def declared_reduction_depths(descriptor: Mapping[str, Any]) -> tuple[tuple[int, ...] | None, str]:
+    """Contraction-depth signature of a frozen member, from its declared operand geometry.
+
+    This mirrors the operation families accepted by :func:`declared_capsule_macs`, but returns only
+    the axis that controls fixed-cost amortisation.  It intentionally does not infer a target tile
+    size or bucket nearby depths: exact equality is the conservative notion of "could resemble".
+    """
+    operation = descriptor.get("operation")
+    inputs = descriptor.get("inputs")
+    if not isinstance(operation, Mapping) or not isinstance(inputs, Sequence):
+        return None, "the member has no declared operation and inputs"
+    attributes = operation.get("attributes")
+    if not isinstance(attributes, Mapping):
+        return None, "the member operation has no declared attributes"
+    shapes: dict[str, tuple[int, ...]] = {}
+    for row in inputs:
+        if not isinstance(row, Mapping) or not isinstance(row.get("name"), str):
+            continue
+        raw = row.get("shape")
+        if (isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) and raw
+                and all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in raw)):
+            shapes[str(row["name"])] = tuple(int(v) for v in raw)
+
+    op = operation.get("op")
+    if op == _ATTENTION_QK_OPERATION:
+        lhs = shapes.get(str(attributes.get("q")))
+        return ((lhs[1],), "declared attention reduction depth") if lhs and len(lhs) == 2 else (
+            None, "the declared attention query is not rank 2")
+    if op == _BATCHED_OPERATION:
+        lhs = shapes.get(str(attributes.get("lhs")))
+        return ((lhs[2],), "declared batched-contraction reduction depth") \
+            if lhs and len(lhs) == 3 else (None, "the declared batched lhs is not rank 3")
+
+    weight = shapes.get(str(attributes.get("weight")))
+    if weight is None or len(weight) != 2:
+        return None, "the declared weight is not rank 2"
+    if op == _CONV_OPERATION:
+        return (weight[0],), "declared packed convolution-window depth"
+    reuses = attributes.get("matmuls")
+    if isinstance(reuses, Sequence) and not isinstance(reuses, (str, bytes)):
+        if not reuses:
+            return None, "the declared resident operation has no reuses"
+        return tuple(sorted(weight[0] for _ in reuses)), (
+            "declared reduction depth for every reuse of the resident weight")
+    lhs = shapes.get(str(attributes.get("lhs")))
+    if lhs is None or len(lhs) != 2 or lhs[1] != weight[0]:
+        return None, "the declared matmul operands do not form a rank-2 contraction"
+    return (lhs[1],), "declared matmul reduction depth"
+
+
 _GUARD_UNCHANGED = "unchanged"
 _GUARD_CHANGED = "changed"
 
@@ -2724,9 +3843,26 @@ def _emit_pair(package: "OR.Package", interface: Path, scratch: Path, tag: str,
     """One capsule's emitted artifacts under one compiler: (rc, lowered LLVM, command buffer)."""
     from merlin.targetgen import oot_runner as OR  # noqa: PLC0415
     buffer_path = scratch / f"cb_{tag}.json"
-    OR.run_entrypoint(package, "emit_command_buffer", interface, buffer_path, timeout=timeout_s)
-    lowered = OR.run_entrypoint(package, "lower_target_to_llvm", interface, None, timeout=timeout_s)
-    return (lowered.returncode, lowered.stdout or "",
+    rows = []
+    for name, destination in (("emit_command_buffer", buffer_path), ("lower_target_to_llvm", None)):
+        try:
+            result = OR.run_entrypoint(package, name, interface, destination, timeout=timeout_s)
+        except (subprocess.TimeoutExpired, TimeoutError) as exc:
+            stderr = getattr(exc, "stderr", None) or ""
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="replace")
+            rows.append({"command": name, "returncode": None,
+                         "exception": type(exc).__name__, "stderr_tail": stderr[-4096:]})
+            _write_json(scratch / f"emission_{tag}.json", {
+                "schema": "compiler_emission_diagnostics_v1", "arm": tag, "entrypoints": rows})
+            raise
+        rows.append({"command": name, "returncode": result.returncode,
+                     "stderr_tail": str(result.stderr or "")[-4096:]})
+        _write_json(scratch / f"emission_{tag}.json", {
+            "schema": "compiler_emission_diagnostics_v1", "arm": tag, "entrypoints": rows})
+        if result.returncode != 0:
+            return result.returncode, "", ""
+    return (0, result.stdout or "",
             buffer_path.read_text(encoding="utf-8") if buffer_path.is_file() else "")
 
 
@@ -2843,6 +3979,7 @@ def _unmeasured_cell(member: Any, *, reason: str) -> dict[str, Any]:
         "declared_macs": None, "declared_work_basis": None, "ideal_cycles_at_peak": None,
         "baseline_utilization": None, "candidate_utilization": None,
         "baseline_share_of_achievable": None, "candidate_share_of_achievable": None,
+        "achievable_macs_per_cycle": None, "achievable_basis": None,
         "verdict": "refused", "verdict_reason": reason,
         "factor_to_achievable": None, "ideal_cycles_at_achievable": None,
         "cycles_saved": None, "gap_closed": None,
@@ -3024,6 +4161,7 @@ def prepare_development_feedback(
         peak_macs_per_cycle=peak_macs, peak_basis=peak_basis,
         achievable_macs_per_cycle=achievable_macs, achievable_basis=achievable_basis,
         achievable_dispersion=achievable_dispersion, seed_points=seed_points,
+        _achievable_points=seed_points,
         functional_run_id=(Path(functional_run_dir).name if functional_run_dir is not None else ""),
         member_cost=member_cost, member_cost_basis=member_cost_basis,
         tuning_call_budget=tuning_call_budget)
@@ -3165,7 +4303,8 @@ def _path_is_answer(path: Path, surfaces: Sequence) -> bool:
 
 def build_answer_free_agent_inputs(
         corpus: FrozenPerformanceCorpus, target_experiment: TargetExperiment,
-        destination: Path) -> AgentInputSnapshot:
+        destination: Path, *, external_objective: ExternalObjective | None = None,
+        external_objectives: Sequence[ExternalObjective] = ()) -> AgentInputSnapshot:
     """Copy only non-answer capsule bytes into the read-only view exposed to the agent.
 
     The complete frozen corpus remains host-only.  Filtering is derived from the same answer-surface
@@ -3175,6 +4314,14 @@ def build_answer_free_agent_inputs(
     if raw_destination.exists() or raw_destination.is_symlink():
         raise StageGateError(f"agent input snapshot already exists: {raw_destination}")
     destination = raw_destination.resolve()
+    if external_objective is not None and external_objectives:
+        raise StageGateError("use either the legacy external objective or the ordered portfolio")
+    objectives = ((external_objective,) if external_objective is not None
+                  else tuple(external_objectives))
+    if (any(type(objective) is not ExternalObjective for objective in objectives)
+            or len({objective.objective_id for objective in objectives}) != len(objectives)
+            or len({objective.source_sha256 for objective in objectives}) != len(objectives)):
+        raise StageGateError("external objectives require distinct host-loaded typed snapshots")
     surfaces = answer_surfaces(target_experiment)
     rows: list[dict[str, Any]] = []
     destination.mkdir(parents=True)
@@ -3192,6 +4339,17 @@ def build_answer_free_agent_inputs(
             output.write_bytes(payload)
             rows.append({"path": relative.as_posix(), "sha256": _sha256(payload),
                          "n_bytes": len(payload)})
+    for objective in objectives:
+        relative_root = (Path(OBJECTIVE_DIRECTORY) if external_objective is not None
+                         else objective_directory(objective.objective_id))
+        objective_root = destination / relative_root
+        if objective_root.exists():
+            raise StageGateError("external objective collides with an existing corpus path")
+        objective_root.mkdir(parents=True)
+        for name, payload in objective.files():
+            relative = relative_root / name
+            (destination / relative).write_bytes(payload)
+            rows.append({"path": relative.as_posix(), "sha256": _sha256(payload), "n_bytes": len(payload)})
     if not rows:
         raise StageGateError("answer-free performance input view contains zero files")
     aggregate = hashlib.sha256()
@@ -3213,6 +4371,10 @@ def build_answer_free_agent_inputs(
         "n_files": len(rows),
         "n_bytes": sum(int(row["n_bytes"]) for row in rows),
     }
+    if external_objective is not None:
+        manifest["external_objective"] = external_objective.record()
+    if external_objectives:
+        manifest["external_objectives"] = [objective.record() for objective in objectives]
     manifest_path = destination / "agent_input_manifest.json"
     payload = _canonical_json(manifest)
     manifest_path.write_bytes(payload)
@@ -3221,6 +4383,30 @@ def build_answer_free_agent_inputs(
     destination.chmod(0o555)
     return AgentInputSnapshot(destination, manifest_path, _sha256(payload), content_sha,
                               len(rows), int(manifest["n_bytes"]))
+
+
+def select_external_e2e_sentinel(objective: ExternalObjective,
+                                 inputs: AgentInputSnapshot) -> StageE2ESentinel:
+    """Select only the exact external source already sealed into the ordinary RO grant."""
+    if type(objective) is not ExternalObjective:
+        raise StageGateError("external objective requires host-loaded typed source bytes")
+    verify_answer_free_agent_inputs(inputs)
+    manifest = _mapping_file(inputs.manifest_path)
+    portfolio = manifest.get("external_objectives")
+    if isinstance(portfolio, list):
+        matches = [row for row in portfolio if row.get("id") == objective.objective_id]
+        if len(matches) != 1 or matches[0] != objective.record():
+            raise StageGateError("external objective is not a member of the sealed portfolio")
+        relative_root = objective_directory(objective.objective_id)
+    else:
+        relative_root = Path(OBJECTIVE_DIRECTORY)
+    source = inputs.root / relative_root
+    expected = dict(objective.files())
+    if (set(path.name for path in source.iterdir()) != set(expected)
+            or any((source / name).read_bytes() != payload for name, payload in expected.items())):
+        raise StageGateError("sealed external objective differs from host-pinned source")
+    return StageE2ESentinel(objective.objective_id, str(AGENT_CORPUS_MOUNT / relative_root),
+        str(source), _exact_tree_record(source)["sha256"], (), ())
 
 
 def verify_answer_free_agent_inputs(snapshot: AgentInputSnapshot) -> None:
@@ -3389,7 +4575,15 @@ class _Broker:
                  candidate: Path, actions: Sequence[BrokerAction], receipt_path: Path, *,
                  deadline: float, max_calls: int, max_tool_seconds: int,
                  feedback_evaluator: DevelopmentGsimFeedback | None = None,
-                 feedback_round: int | None = None):
+                 feedback_round: int | None = None,
+                 functional_base: Path | None = None,
+                 e2e_sentinel: StageE2ESentinel | None = None,
+                 global_experiment: Any | None = None,
+                 global_probe_provider: Callable[..., Mapping[str, Any]] | None = None,
+                 global_semantic_provider: Callable[..., Mapping[str, Any]] | None = None,
+                 global_context_provider: Callable[..., Mapping[str, Any]] | None = None,
+                 global_paired_context_provider: Callable[..., Mapping[str, Any]] | None = None,
+                 global_source_pair_provider: Callable[..., Mapping[str, Any]] | None = None):
         self.policy = policy
         self.target_experiment = target_experiment
         self.candidate = candidate
@@ -3399,6 +4593,14 @@ class _Broker:
         self.actions = {action.name: action for action in actions}
         self.feedback_evaluator = feedback_evaluator
         self.feedback_round = feedback_round
+        self.functional_base = functional_base
+        self.e2e_sentinel = e2e_sentinel
+        self.global_experiment = global_experiment
+        self.global_probe_provider = global_probe_provider
+        self.global_semantic_provider = global_semantic_provider
+        self.global_context_provider = global_context_provider
+        self.global_paired_context_provider = global_paired_context_provider
+        self.global_source_pair_provider = global_source_pair_provider
         if not self.actions or len(self.actions) != len(actions):
             raise StageGateError("broker requires a non-empty unique action registry")
         self.receipt_path = receipt_path
@@ -3411,6 +4613,37 @@ class _Broker:
         self._lock = threading.Lock()
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+
+    def _record_refusal_locked(self, action_name: str, bindings: Mapping[str, Any],
+                               reason: str) -> StageGateError:
+        """Record a refusal while ``self._lock`` is held and return its exception."""
+        if len(self.calls) >= self.max_calls:
+            return StageGateError("inner tool-call budget is exhausted")
+        call_index = len(self.calls)
+        recorded = {key: str(value) for key, value in sorted(bindings.items())}
+        entry: dict[str, Any] = {
+            "index": call_index,
+            "action": action_name,
+            "bindings": recorded,
+            "argv_sha256": _sha256(_canonical_json(
+                list(self.actions[action_name].argv_template))),
+            "timeout_s": 0,
+            "state": "rejected",
+            "returncode": 126,
+            "stdout_sha256": _sha256(b""),
+            "stderr_sha256": _sha256(b""),
+            "rejection_reason": reason,
+        }
+        self.calls.append(entry)
+        receipt = dict(entry)
+        receipt["receipt_schema_version"] = 1
+        receipt["bindings_command_sha256"] = _sha256(_canonical_json(
+            [f"{key}={value}" for key, value in sorted(recorded.items())]))
+        payload = _canonical_json(receipt)
+        with self.receipt_path.open("ab", buffering=0) as stream:
+            stream.write(payload)
+            os.fsync(stream.fileno())
+        return StageGateError(reason)
 
     def _refuse(self, action_name: str, bindings: Mapping[str, Any],
                 reason: str) -> StageGateError:
@@ -3429,34 +4662,7 @@ class _Broker:
         now visible in the ledger instead of vanishing from it.
         """
         with self._lock:
-            if len(self.calls) >= self.max_calls:
-                # Budget is spent, so the run ends here anyway; do not let refusals grow the ledger.
-                return StageGateError("inner tool-call budget is exhausted")
-            call_index = len(self.calls)
-            recorded = {key: str(value) for key, value in sorted(bindings.items())}
-            entry: dict[str, Any] = {
-                "index": call_index,
-                "action": action_name,
-                "bindings": recorded,
-                "argv_sha256": _sha256(_canonical_json(
-                    list(self.actions[action_name].argv_template))),
-                "timeout_s": 0,
-                "state": "rejected",
-                "returncode": 126,
-                "stdout_sha256": _sha256(b""),
-                "stderr_sha256": _sha256(b""),
-                "rejection_reason": reason,
-            }
-            self.calls.append(entry)
-            receipt = dict(entry)
-            receipt["receipt_schema_version"] = 1
-            receipt["bindings_command_sha256"] = _sha256(_canonical_json(
-                [f"{key}={value}" for key, value in sorted(recorded.items())]))
-            payload = _canonical_json(receipt)
-            with self.receipt_path.open("ab", buffering=0) as stream:
-                stream.write(payload)
-                os.fsync(stream.fileno())
-        return StageGateError(reason)
+            return self._record_refusal_locked(action_name, bindings, reason)
 
     def execute(self, request: Mapping[str, Any]) -> dict[str, Any]:
         action_name, bindings = request.get("action"), request.get("bindings", {})
@@ -3492,21 +4698,38 @@ class _Broker:
             _PLACEHOLDER.sub(lambda match: rendered[match.group(1)], value)
             for value in action.argv_template
         ]
+        budget_error: StageGateError | None = None
         with self._lock:
             if len(self.calls) >= self.max_calls:
                 raise StageGateError("inner tool-call budget is exhausted")
-            remaining = int(self.deadline - time.monotonic())
-            requested = request.get("timeout_s", self.max_tool_seconds)
-            if isinstance(requested, bool) or not isinstance(requested, int):
-                raise StageGateError("broker timeout must be an integer")
-            timeout_s = min(requested, self.max_tool_seconds, remaining)
-            if timeout_s <= 0:
-                raise StageGateError("performance stage wall-clock budget is exhausted")
-            call_index = len(self.calls)
-            self.calls.append({"index": call_index, "action": action_name,
-                               "bindings": dict(sorted(rendered.items())),
-                               "argv_sha256": _sha256(_canonical_json(raw_argv)),
-                               "timeout_s": timeout_s, "state": "running"})
+            action_limit = EXPENSIVE_ACTION_LIMITS.get(action_name)
+            action_uses = sum(call.get("action") == action_name for call in self.calls)
+            if action_limit is not None and action_uses >= action_limit:
+                budget_error = self._record_refusal_locked(
+                    action_name, rendered,
+                    f"expensive action {action_name!r} is limited to {action_limit} invocation(s) "
+                    "per round; iterate with structural/analytical actions and reserve the final "
+                    "tuning query for the exact bytes you seal")
+                call_index, timeout_s = -1, 0
+            else:
+                remaining = int(self.deadline - time.monotonic())
+                requested = request.get("timeout_s", self.max_tool_seconds)
+                if isinstance(requested, bool) or not isinstance(requested, int):
+                    raise StageGateError("broker timeout must be an integer")
+                timeout_s = min(requested, self.max_tool_seconds, remaining)
+                if timeout_s <= 0:
+                    budget_error = self._record_refusal_locked(
+                        action_name, rendered,
+                        "performance stage wall-clock budget is exhausted")
+                    call_index, timeout_s = -1, 0
+                else:
+                    call_index = len(self.calls)
+                    self.calls.append({"index": call_index, "action": action_name,
+                                       "bindings": dict(sorted(rendered.items())),
+                                       "argv_sha256": _sha256(_canonical_json(raw_argv)),
+                                       "timeout_s": timeout_s, "state": "running"})
+        if budget_error is not None:
+            raise budget_error
         started = time.monotonic()
         try:
             return self._execute_allocated(request, action_name, rendered, raw_argv,
@@ -3544,9 +4767,170 @@ class _Broker:
                            rendered: dict[str, str], raw_argv: list[str], call_index: int,
                            timeout_s: int, started: float) -> dict[str, Any]:
         feedback_document: dict[str, Any] | None = None
+        if self.global_experiment is not None and action_name != E2E_ANALYSIS_ACTION:
+            try:
+                self.global_experiment.validate_candidate_scope(self.candidate)
+            except ValueError as exc:
+                # Scope/input-integrity checks use ValueError for a denied submission. Normalize
+                # only that check's expected refusal to the broker gate protocol so execute()
+                # closes its allocated receipt before HTTP reports the denial. Unexpected faults
+                # still propagate; none of these paths may reach candidate execution.
+                _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
+                raise StageGateError(
+                    "compiler edit authority or input integrity refused candidate execution") from exc
         # set when the search reports it has converged; distinct from `refusal`, which is a NO-GO
         self.stop_verdict = getattr(self, "stop_verdict", None)
-        if action_name == ANALYSIS_ACTION:
+        if action_name == E2E_ANALYSIS_ACTION:
+            try:
+                if self.global_experiment is not None:
+                    document = self.global_experiment.analyze(
+                        self.candidate, hypothesis=str(request.get("hypothesis") or
+                            "Agent-requested complete-model compiler revision"), timeout_s=timeout_s)
+                    from run_global_perf_experiment import agent_analysis_view
+                    detail = self.receipt_path.parent / f"full_model_analysis_{call_index:04d}.json"
+                    _write_json(detail, document)
+                    detail.chmod(0o444)
+                    document = agent_analysis_view(
+                        document, complete_evidence=f"/perf-control/{detail.name}",
+                        context_provider_installed=self.global_context_provider is not None)
+                elif self.functional_base is None or self.e2e_sentinel is None:
+                    raise StageGateError("whole-model baseline or sentinel is unavailable")
+                else:
+                    evaluator = self.feedback_evaluator
+                    document = analyze_whole_model_emission(
+                        self.functional_base, self.candidate, self.e2e_sentinel,
+                        timeout_s=timeout_s,
+                        peak_macs_per_cycle=getattr(evaluator, "peak_macs_per_cycle", None),
+                        achievable_macs_per_cycle=getattr(
+                            evaluator, "achievable_macs_per_cycle", None),
+                        target=str(getattr(self.target_experiment, "target", "") or ""))
+                result = {"returncode": 0,
+                          "stdout": _canonical_json(document).decode("utf-8"), "stderr": "",
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+            except Exception as exc:  # noqa: BLE001 - inability to inspect the objective is a refusal
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": ("whole-model analysis refused "
+                                     f"({type(exc).__name__}: {str(exc)[:200]})"),
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+        elif action_name == INVENTORY_ACTION:
+            try:
+                document = (self.global_experiment.inspect_optimization_surfaces(self.candidate)
+                            if self.global_experiment is not None
+                            else inspect_compiler_package(self.candidate).to_dict())
+                result = {"returncode": 0,
+                          "stdout": _canonical_json(document).decode("utf-8"), "stderr": "",
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+            except Exception as exc:  # noqa: BLE001 - malformed declarations are an actionable refusal
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": ("optimization-surface inventory refused "
+                                     f"({type(exc).__name__}: {str(exc)[:200]})"),
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+        elif action_name == PAIRED_CONTEXT_ACTION:
+            try:
+                if self.global_experiment is None or self.global_paired_context_provider is None:
+                    raise StageGateError("paired fixed-work context extraction is unavailable")
+                document = self.global_experiment.compare_controlled_context(
+                    self.candidate, provider=self.global_paired_context_provider, timeout_s=timeout_s)
+                result = {"returncode": 0, "stdout": _canonical_json(document).decode("utf-8"),
+                          "stderr": "", "elapsed_s": round(time.monotonic()-started, 3)}
+            except Exception as exc:
+                _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": f"paired context comparison refused ({type(exc).__name__})",
+                          "elapsed_s": round(time.monotonic()-started, 3)}
+        elif action_name == CONTROLLED_CONTEXT_ACTION:
+            try:
+                if self.global_experiment is None or self.global_context_provider is None:
+                    raise StageGateError("controlled source-prefix extraction is unavailable")
+                document = self.global_experiment.profile_controlled_context(
+                    self.candidate, provider=self.global_context_provider, timeout_s=timeout_s)
+                result = {"returncode": 0, "stdout": _canonical_json(document).decode("utf-8"),
+                          "stderr": "", "elapsed_s": round(time.monotonic()-started, 3)}
+            except Exception as exc:
+                _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": f"controlled source-prefix profile refused ({type(exc).__name__})",
+                          "elapsed_s": round(time.monotonic()-started, 3)}
+        elif action_name in {SOURCE_CONTRACTION_PREPARATION_ACTION, SOURCE_CONTRACTION_QUALIFICATION_ACTION}:
+            try:
+                if self.global_experiment is None:
+                    raise StageGateError("source contraction actions require a global experiment")
+                if action_name == SOURCE_CONTRACTION_PREPARATION_ACTION:
+                    values = {}
+                    for key in ("source_op_index", "max_m", "max_n", "max_k"):
+                        value = rendered[key]
+                        if not isinstance(value, str) or not value.isascii() or not value.isdecimal() or len(value) > 10:
+                            raise StageGateError("source contraction indices and bounds must be decimal integers")
+                        values[key] = int(value)
+                    document = self.global_experiment.prepare_source_contraction(
+                        self.candidate, comparison_arm=rendered["comparison_arm"], **values, timeout_s=timeout_s)
+                else:
+                    if self.global_source_pair_provider is None:
+                        raise StageGateError("complete source-pair runtime provider is unavailable")
+                    document = self.global_experiment.qualify_source_contraction(self.candidate,
+                        preparation_sha256=rendered["preparation_sha256"],
+                        provider=self.global_source_pair_provider, timeout_s=timeout_s)
+                result = {"returncode": 0, "stdout": _canonical_json(document).decode("utf-8"),
+                          "stderr": "", "elapsed_s": round(time.monotonic()-started, 3)}
+            except Exception as exc:
+                _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": f"source contraction action refused ({type(exc).__name__})",
+                          "elapsed_s": round(time.monotonic()-started, 3)}
+        elif action_name == SOURCE_CONVOLUTION_PREPARATION_ACTION:
+            try:
+                if self.global_experiment is None:
+                    raise StageGateError("source-convolution preparation requires a global experiment")
+                document = self.global_experiment.prepare_source_convolution(
+                    self.candidate, comparison_arm=rendered["comparison_arm"], timeout_s=timeout_s)
+                result = {"returncode": 0, "stdout": _canonical_json(document).decode("utf-8"),
+                          "stderr": "", "elapsed_s": round(time.monotonic()-started, 3)}
+            except Exception as exc:
+                _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": f"source-convolution preparation refused ({type(exc).__name__})",
+                          "elapsed_s": round(time.monotonic()-started, 3)}
+        elif action_name == CHANGED_REGION_ACTION:
+            try:
+                if self.global_experiment is None or self.global_semantic_provider is None:
+                    raise StageGateError("host changed-region semantic extraction is unavailable")
+                document = self.global_experiment.qualify_changed_region(
+                    self.candidate, provider=self.global_semantic_provider, timeout_s=timeout_s)
+                result = {"returncode": 0, "stdout": _canonical_json(document).decode("utf-8"),
+                          "stderr": "", "elapsed_s": round(time.monotonic() - started, 3)}
+            except Exception as exc:
+                _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": f"changed-region semantic qualification refused ({type(exc).__name__})",
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+        elif action_name == OCCUPANCY_PROFILE_ACTION:
+            try:
+                if self.global_experiment is not None:
+                    if self.global_probe_provider is None:
+                        raise StageGateError("host mechanism-equivalent probe extraction is unavailable")
+                    prepared = self.global_probe_provider(
+                        candidate=self.candidate, experiment=self.global_experiment,
+                        timeout_s=timeout_s)
+                    document = self.global_experiment.measure_probe(
+                        self.candidate, admission_inputs=prepared["admission_inputs"],
+                        execute=prepared["execute"], timeout_s=timeout_s)
+                elif self.feedback_evaluator is None or self.feedback_round is None:
+                    raise StageGateError("reduced global profile evaluator is unavailable")
+                else:
+                    document = self.feedback_evaluator.profile(
+                        self.candidate, round_index=self.feedback_round, call_index=call_index,
+                        timeout_s=timeout_s)
+                result = {"returncode": 0,
+                          "stdout": _canonical_json(document).decode("utf-8"), "stderr": "",
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+            except Exception as exc:  # noqa: BLE001 - partial counter evidence is never invented
+                _record_host_refusal(self, exc, round_index=self.feedback_round,
+                                     call_index=call_index)
+                result = {"returncode": 125, "stdout": "",
+                          "stderr": ("reduced global profile refused by the host-owned evaluator "
+                                     f"({type(exc).__name__})"),
+                          "elapsed_s": round(time.monotonic() - started, 3)}
+        elif action_name == ANALYSIS_ACTION:
             try:
                 evaluator = self.feedback_evaluator
                 document = analyze_command_buffers(
@@ -3567,6 +4951,10 @@ class _Broker:
                           "elapsed_s": round(time.monotonic() - started, 3)}
         elif action_name == DEVELOPMENT_FEEDBACK_ACTION:
             try:
+                if self.global_experiment is not None:
+                    raise StageGateError(
+                        "a corpus microbenchmark sweep is not a global iteration; use full-model "
+                        "analysis and an admitted separate mechanism probe")
                 if self.feedback_evaluator is None or self.feedback_round is None:
                     raise StageGateError("development GSIM feedback certificate is unavailable")
                 feedback_document = validate_redacted_feedback(self.feedback_evaluator.evaluate(
@@ -3790,7 +5178,9 @@ def _split_heredocs(text: str) -> tuple[list[str], str]:
 
 def audit_codex_transcript(path: Path, target_experiment: TargetExperiment,
                            candidate: Path,
-                           actions: Sequence[BrokerAction] = ()) -> dict[str, Any]:
+                           actions: Sequence[BrokerAction] = (), *,
+                           audit_token_set: Mapping[str, Sequence[str]] | None = None
+                           ) -> dict[str, Any]:
     """Reject answer reconnaissance and direct execution in translated or native Codex JSONL.
 
     This audit is a second line of defence.  Answer bytes are absent from the outer mount table, and
@@ -3798,7 +5188,13 @@ def audit_codex_transcript(path: Path, target_experiment: TargetExperiment,
     non-consumable even if the attempted command failed.  Native Codex emits both ``item.started`` and
     ``item.completed`` for one command, so those envelopes are validated independently but counted once.
     """
-    tokens = audit_tokens(target_experiment)
+    tokens = audit_tokens(target_experiment) if audit_token_set is None else audit_token_set
+    if (not isinstance(tokens, Mapping)
+            or set(tokens) != {"answer", "grader", "oracle_subpath"}
+            or any(not isinstance(values, Sequence) or isinstance(values, (str, bytes))
+                   or any(not isinstance(value, str) or not value for value in values)
+                   for values in tokens.values())):
+        raise StageGateError("transcript audit token set is malformed")
     answer_tokens = tuple(value.lower() for values in tokens.values() for value in values if value)
     entry_tokens: set[str] = set()
     manifest = candidate / "manifest.yaml"
@@ -3885,7 +5281,7 @@ def audit_codex_transcript(path: Path, target_experiment: TargetExperiment,
         # `cp <broker> /tmp/x && python3 /tmp/x ...` and
         # `python3 -c 'exec(open("<broker>").read())'` straight through, both of which are pinned as
         # must-fail by test_wrapped_broker_compound_rename_and_python_exec_forms_fail_closed.
-        _READ_ONLY_VERBS = {"ls", "stat", "cat", "head", "tail", "wc", "sed", "grep", "find",
+        _READ_ONLY_VERBS = {"ls", "stat", "cat", "head", "tail", "wc", "sed", "grep", "find", "rg", "ripgrep",
                             "file", "readlink", "test", "diff", "sha256sum", "md5sum", "cksum",
                             "du", "basename", "dirname", "realpath"}
 
@@ -3986,7 +5382,15 @@ def audit_codex_transcript(path: Path, target_experiment: TargetExperiment,
             # -c, unknown verb) is an invalid invocation.
             if BROKER_NAME.lower() in simple.lower():
                 verb = Path(sub_words[0]).name.lower() if sub_words else ""
-                if verb not in _READ_ONLY_VERBS or BROKER_NAME in sub_words[:1]:
+                # The existing quote-aware shell parser identifies the executable
+                # position. A search operand mentioning the broker is not a call.
+                # Ripgrep's preprocessor, however, executes another program: it
+                # cannot receive this read-only exemption (including --pre=...).
+                search_exec = (verb in {"rg", "ripgrep"} and
+                               (any(value == "--pre" or value.startswith("--pre=")
+                                    for value in sub_words[1:])
+                                or any(value in payload_text for value in ("`", "$"))))
+                if verb not in _READ_ONLY_VERBS or BROKER_NAME in sub_words[:1] or search_exec:
                     hits.append({"kind": "invalid_broker_invocation", "line": str(line_number),
                                  "command_sha256": _sha256(command.encode("utf-8"))})
 
@@ -4009,7 +5413,42 @@ def audit_codex_transcript(path: Path, target_experiment: TargetExperiment,
         if simple_brokered and simple_brokered != simple_total:
             hits.append({"kind": "invalid_broker_invocation", "line": str(line_number),
                          "command_sha256": _sha256(command.encode("utf-8"))})
-        if any(token in lowered for token in answer_tokens):
+        # A NEGATED SEARCH PREDICATE NAMES WHAT MUST NOT BE READ.  Treating
+        # `find /perf-corpus -not -name golden.yaml` as reconnaissance refused a clean PR trial
+        # whose command did exactly what the answer-surface policy requires.  Ripgrep expresses
+        # the same exclusion as `--glob '!golden.yaml'`; that spelling refused the direct PQ run
+        # even though the excluded oracle file was never searched.  Remove only the pattern
+        # operand of an immediately negated find predicate or an explicitly negated rg glob;
+        # every positive predicate, every other command, and every heredoc body remains
+        # fail-closed.
+        reconnaissance_texts: list[str] = []
+        negatable_find_predicates = {"-name", "-iname", "-path", "-ipath", "-wholename",
+                                    "-iwholename", "-regex", "-iregex"}
+        for group in simple_groups:
+            filtered: list[str] = []
+            index = 0
+            is_find = bool(group) and Path(group[0]).name.lower() == "find"
+            is_rg = bool(group) and Path(group[0]).name.lower() in ("rg", "ripgrep")
+            while index < len(group):
+                if (is_find and group[index] in ("-not", "!") and index + 2 < len(group)
+                        and group[index + 1].lower() in negatable_find_predicates):
+                    filtered.extend(group[index:index + 2])
+                    index += 3
+                    continue
+                if (is_rg and group[index] in ("-g", "--glob") and index + 1 < len(group)
+                        and group[index + 1].startswith("!")):
+                    filtered.append(group[index])
+                    index += 2
+                    continue
+                if (is_rg and (group[index].startswith("--glob=!")
+                               or group[index].startswith("-g!"))):
+                    index += 1
+                    continue
+                filtered.append(group[index])
+                index += 1
+            reconnaissance_texts.append(" ".join(filtered).lower())
+        reconnaissance_texts.extend(body.lower() for body in heredoc_bodies)
+        if any(token in text for token in answer_tokens for text in reconnaissance_texts):
             hits.append({"kind": "answer_reconnaissance", "line": str(line_number),
                          "command_sha256": _sha256(command.encode("utf-8"))})
 
@@ -4375,8 +5814,137 @@ def _validate_formal_claim_facts(
             f"performance candidate {family} formal identities drift from expected cells")
 
 
+def _audit_requalification_invariant_sha256(document: Mapping[str, Any]) -> str:
+    """Hash every candidate fact except the audit-policy admission decision.
+
+    Requalification is deliberately narrower than a waiver: it may replace only the transcript
+    audits and the state/admission fields those audits determined.  Normalizing those exact fields
+    lets the verifier prove that compiler bytes, receipts, feedback, telemetry, prompt, corpus, and
+    every other fact still come from the immutable refused record.
+    """
+    normalized = copy.deepcopy(dict(document))
+    normalized.pop("audit_requalification", None)
+    normalized["state"] = "<audit-policy-decision>"
+    admission = normalized.get("admission")
+    agent = normalized.get("agent")
+    if not isinstance(admission, dict) or not isinstance(agent, dict):
+        raise StageGateError("performance candidate cannot normalize its audit admission")
+    admission["consumable"] = "<audit-policy-decision>"
+    admission["refusal"] = "<audit-policy-decision>"
+    agent["audit"] = "<audit-policy-decision>"
+    rounds = agent.get("rounds")
+    if not isinstance(rounds, list):
+        raise StageGateError("performance candidate cannot normalize its round audits")
+    for row in rounds:
+        if not isinstance(row, dict):
+            raise StageGateError("performance candidate has a malformed round audit")
+        row["audit"] = "<audit-policy-decision>"
+    return _sha256(_canonical_json(normalized))
+
+
+def _require_audit_only_refusal(document: Mapping[str, Any]) -> None:
+    """Require a complete run whose sole refusal class is answer-reconnaissance audit hits."""
+    admission = document.get("admission")
+    agent = document.get("agent")
+    candidate = document.get("candidate")
+    broker = document.get("broker")
+    guard = document.get("functional_guard")
+    if (not isinstance(admission, Mapping) or not isinstance(agent, Mapping)
+            or not isinstance(candidate, Mapping) or not isinstance(broker, Mapping)
+            or not isinstance(guard, Mapping)):
+        raise StageGateError("audit requalification source omits complete stage evidence")
+    if (document.get("audit_requalification") is not None
+            or document.get("state") != "refused"
+            or admission.get("consumable") is not False
+            or admission.get("refusal")
+            != "combined Codex transcript failed the answer/tool-access audit"):
+        raise StageGateError("source is not the exact audit-only refusal eligible for requalification")
+    round_rows = agent.get("rounds")
+    audits = [agent.get("audit")]
+    if isinstance(round_rows, list):
+        audits.extend(row.get("audit") if isinstance(row, Mapping) else None for row in round_rows)
+    if (not isinstance(round_rows, list) or not round_rows
+            or agent.get("rounds_requested") != len(round_rows)
+            or candidate.get("rounds_completed") != len(round_rows)
+            or any(not isinstance(audit, Mapping) or audit.get("clean") is not False
+                   or not isinstance(audit.get("hits"), list) or not audit["hits"]
+                   or any(not isinstance(hit, Mapping)
+                          or hit.get("kind") != "answer_reconnaissance"
+                          for hit in audit["hits"])
+                   or not isinstance(audit.get("commands_seen"), int)
+                   or isinstance(audit.get("commands_seen"), bool)
+                   or audit["commands_seen"] <= 0
+                   or audit.get("broker_required") != BROKER_NAME
+                   or not isinstance(audit.get("broker_invocations"), list)
+                   for audit in audits)
+            or any(not isinstance(row, Mapping)
+                   or row.get("agent_exit_code") not in (0, ROUND_DEADLINE_EXIT)
+                   for row in round_rows)
+            or ((candidate.get("delta") or {}).get(
+                "execution_relevant_changed_file_count", 0) <= 0)
+            or broker.get("all_required_succeeded") is not True
+            or guard.get("status") != "clean" or guard.get("offenders") != []):
+        raise StageGateError(
+            "source has a refusal or incomplete evidence beyond answer-reconnaissance audit hits")
+
+
+def _validate_audit_requalification(document: Mapping[str, Any]) -> None:
+    requalification = document.get("audit_requalification")
+    if requalification is None:
+        return
+    if not isinstance(requalification, Mapping):
+        raise StageGateError("audit requalification provenance is not a mapping")
+    source = requalification.get("source_record")
+    original = requalification.get("original_audits")
+    corrected = requalification.get("corrected_audits")
+    snapshots = requalification.get("policy_snapshots")
+    token_set = requalification.get("audit_token_set")
+    agent = document.get("agent")
+    round_rows = agent.get("rounds") if isinstance(agent, Mapping) else None
+    expected_roles = {"audit_implementation", "answer_surface_policy"}
+    if (requalification.get("schema_version") != 1
+            or requalification.get("kind") != AUDIT_REQUALIFICATION_KIND
+            or requalification.get("reason") != AUDIT_REQUALIFICATION_REASON
+            or not isinstance(source, Mapping) or not isinstance(source.get("path"), str)
+            or not source.get("path") or not _is_sha256(source.get("sha256"))
+            or not _is_sha256(requalification.get("invariant_evidence_sha256"))
+            or not isinstance(original, Mapping) or not _is_sha256(original.get("combined_sha256"))
+            or not isinstance(original.get("round_sha256"), list)
+            or not isinstance(corrected, Mapping)
+            or not _is_sha256(corrected.get("combined_sha256"))
+            or not isinstance(corrected.get("round_sha256"), list)
+            or not isinstance(round_rows, list)
+            or len(original["round_sha256"]) != len(round_rows)
+            or len(corrected["round_sha256"]) != len(round_rows)
+            or any(not _is_sha256(value) for value in (
+                *original["round_sha256"], *corrected["round_sha256"]))
+            or not isinstance(original.get("hits"), list) or not original["hits"]
+            or not isinstance(snapshots, list) or len(snapshots) != len(expected_roles)
+            or {row.get("role") for row in snapshots if isinstance(row, Mapping)}
+            != expected_roles
+            or any(not isinstance(row, Mapping) or not isinstance(row.get("source_path"), str)
+                   or not row.get("source_path") or not isinstance(row.get("frozen_path"), str)
+                   or not row.get("frozen_path") or not _is_sha256(row.get("sha256"))
+                   for row in snapshots)
+            or not isinstance(token_set, Mapping)
+            or set(token_set) != {"answer", "grader", "oracle_subpath"}
+            or any(not isinstance(values, list) or not values
+                   or any(not isinstance(value, str) or not value for value in values)
+                   for values in token_set.values())
+            or not _is_sha256(requalification.get("audit_token_set_sha256"))
+            or _sha256(_canonical_json(token_set))
+            != requalification.get("audit_token_set_sha256")
+            or not _is_sha256(requalification.get("policy_set_sha256"))):
+        raise StageGateError("audit requalification provenance is incomplete")
+    if (_sha256(_canonical_json(document["agent"]["audit"]))
+            != corrected["combined_sha256"]
+            or [_sha256(_canonical_json(row["audit"])) for row in round_rows]
+            != corrected["round_sha256"]):
+        raise StageGateError("corrected audit evidence disagrees with requalification provenance")
+
+
 def validate_candidate_record(document: Mapping[str, Any], *, require_consumable: bool = True) -> dict:
-    """Pure schema/boundary validator intended for ``run_perf_bench`` integration."""
+    """Pure schema/boundary validator for the paired measurement runner."""
     if not isinstance(document, Mapping) or document.get("schema_version") != SCHEMA_VERSION:
         raise StageGateError("performance candidate record has an unsupported schema")
     if document.get("kind") != "arm4_performance_candidate":
@@ -4697,8 +6265,10 @@ def validate_candidate_record(document: Mapping[str, Any], *, require_consumable
     if (admission.get("evaluation_performed_by_stage") is not False
             or admission.get("development_feedback_performed_by_stage") is not True
             or admission.get("success_declared_by_stage") is not False
-            or admission.get("consumer") != "run_perf_bench.py"):
+            or admission.get("consumer") not in (
+                {MEASUREMENT_CONSUMER} | LEGACY_MEASUREMENT_CONSUMERS)):
         raise StageGateError("performance authoring stage crossed the evaluation boundary")
+    _validate_audit_requalification(document)
     if require_consumable:
         if (admission.get("consumable") is not True or document.get("state") != "sealed"
                 or rounds_requested != len(round_rows) or audit.get("clean") is not True
@@ -4714,6 +6284,204 @@ def validate_candidate_record(document: Mapping[str, Any], *, require_consumable
                        for row in round_rows)):
             raise StageGateError(f"performance candidate is not consumable: {admission.get('refusal')}")
     return dict(document)
+
+
+def _round_audit_candidate(row: Mapping[str, Any]) -> Path:
+    """Recover and verify the exact candidate tree against which a round was audited."""
+    audit = row.get("audit")
+    path = Path(str(audit.get("candidate") or "")) if isinstance(audit, Mapping) else Path("")
+    if (not path.is_absolute() or path.is_symlink() or not path.is_dir()
+            or not _is_sha256(row.get("candidate_sha256"))
+            or hash_tree(path)["sha256"] != row["candidate_sha256"]):
+        raise StageGateError("audit requalification round candidate bytes are absent or changed")
+    return path
+
+
+def _recomputed_candidate_audits(
+        document: Mapping[str, Any], target_experiment: TargetExperiment, *,
+        audit_token_set: Mapping[str, Sequence[str]] | None = None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Replay the current audit policy on immutable transcript/candidate evidence."""
+    agent = document["agent"]
+    round_rows = agent["rounds"]
+    final_candidate = _round_audit_candidate(round_rows[-1])
+    actions = actions_from_registry_contract(document["broker"]["registry"], final_candidate)
+    combined = audit_codex_transcript(
+        Path(agent["transcript"]), target_experiment, final_candidate, actions,
+        audit_token_set=audit_token_set)
+    rounds: list[dict[str, Any]] = []
+    for row in round_rows:
+        round_candidate = _round_audit_candidate(row)
+        round_actions = actions_from_registry_contract(
+            document["broker"]["registry"], round_candidate)
+        rounds.append(audit_codex_transcript(
+            Path(row["transcript"]), target_experiment, round_candidate, round_actions,
+            audit_token_set=audit_token_set))
+    return combined, rounds
+
+
+def _require_policy_only_audit_change(
+        before: Mapping[str, Any], after: Mapping[str, Any], *, label: str) -> None:
+    """Prove a replay removed hits without changing command or broker evidence."""
+    if (after.get("clean") is not True or after.get("hits") != []
+            or after.get("commands_seen") != before.get("commands_seen")
+            or after.get("broker_required") != before.get("broker_required")
+            or after.get("broker_invocations") != before.get("broker_invocations")):
+        raise StageGateError(
+            f"{label} did not become clean solely through the corrected audit policy")
+
+
+def _verify_audit_requalification(
+        record_path: Path, document: Mapping[str, Any],
+        target_experiment: TargetExperiment | None) -> None:
+    """Verify the immutable refused source, policy snapshot, and allowed-field-only rewrite."""
+    requalification = document.get("audit_requalification")
+    if requalification is None:
+        return
+    source_fact = requalification["source_record"]
+    source_path = Path(source_fact["path"])
+    if (source_path.resolve() == record_path.resolve() or source_path.is_symlink()
+            or not source_path.is_file() or _sha256_file(source_path) != source_fact["sha256"]
+            or source_path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)):
+        raise StageGateError("audit requalification source record is absent, mutable, or changed")
+    source = verify_candidate_record(
+        source_path, require_consumable=False, verify_authoring_tools=False,
+        target_experiment=None)
+    _require_audit_only_refusal(source)
+    invariant = _audit_requalification_invariant_sha256(source)
+    if (invariant != requalification["invariant_evidence_sha256"]
+            or _audit_requalification_invariant_sha256(document) != invariant):
+        raise StageGateError("audit requalification changed evidence outside the audit decision")
+    original = requalification["original_audits"]
+    if (_sha256(_canonical_json(source["agent"]["audit"])) != original["combined_sha256"]
+            or [_sha256(_canonical_json(row["audit"]))
+                for row in source["agent"]["rounds"]] != original["round_sha256"]
+            or source["agent"]["audit"]["hits"] != original["hits"]):
+        raise StageGateError("original audit provenance disagrees with its refused source")
+    snapshots = requalification["policy_snapshots"]
+    for row in snapshots:
+        frozen = Path(row["frozen_path"])
+        try:
+            frozen.resolve().relative_to(record_path.parent.resolve())
+        except ValueError:
+            raise StageGateError("audit policy snapshot escapes its requalification directory") from None
+        if (frozen.is_symlink() or not frozen.is_file() or _sha256_file(frozen) != row["sha256"]
+                or frozen.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)):
+            raise StageGateError("audit policy snapshot is absent, mutable, or changed")
+    if (_sha256(_canonical_json(snapshots)) != requalification["policy_set_sha256"]):
+        raise StageGateError("audit policy snapshot set changed")
+    if target_experiment is None:
+        return
+    audit_source = next(row for row in snapshots if row["role"] == "audit_implementation")
+    if _sha256_file(Path(__file__).resolve()) != audit_source["sha256"]:
+        raise StageGateError(
+            "live audit implementation differs from the requalification policy snapshot")
+    combined, rounds = _recomputed_candidate_audits(
+        document, target_experiment,
+        audit_token_set=requalification["audit_token_set"])
+    if (_canonical_json(combined) != _canonical_json(document["agent"]["audit"])
+            or [_canonical_json(row) for row in rounds]
+            != [_canonical_json(row["audit"]) for row in document["agent"]["rounds"]]):
+        raise StageGateError("live corrected transcript audit disagrees with requalification record")
+
+
+def requalify_audit_only_candidate(
+        source_record: Path, output_record: Path,
+        target_experiment: TargetExperiment) -> Path:
+    """Seal a new consumable record when a corrected audit clears an audit-only refusal.
+
+    The refused record is never modified.  The new record embeds an allowed-field-only invariant,
+    exact source identity, and read-only copies of the policy sources used for the replay.
+    """
+    source_path = Path(source_record)
+    output_path = Path(output_record)
+    if (source_path.is_symlink() or not source_path.is_file()
+            or source_path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)):
+        raise StageGateError("audit requalification requires an immutable refused source record")
+    if output_path.exists() or output_path.is_symlink() or output_path.parent.exists():
+        raise StageGateError("audit requalification output must be in a fresh directory")
+    source = verify_candidate_record(
+        source_path, require_consumable=False, verify_authoring_tools=False,
+        target_experiment=None)
+    _require_audit_only_refusal(source)
+    derived_tokens = audit_tokens(target_experiment)
+    token_set = {key: list(values) for key, values in sorted(derived_tokens.items())}
+    combined, rounds = _recomputed_candidate_audits(
+        source, target_experiment, audit_token_set=token_set)
+    _require_policy_only_audit_change(source["agent"]["audit"], combined, label="combined audit")
+    for index, (before, after) in enumerate(zip(source["agent"]["rounds"], rounds)):
+        _require_policy_only_audit_change(
+            before["audit"], after, label=f"round {index} audit")
+
+    answer_policy_path = Path(inspect.getsourcefile(answer_surfaces) or "").resolve()
+    policy_sources = (
+        ("audit_implementation", Path(__file__).resolve()),
+        ("answer_surface_policy", answer_policy_path),
+    )
+    policy_payloads: list[tuple[str, Path, bytes, str]] = []
+    for role, source_policy in policy_sources:
+        if source_policy.is_symlink() or not source_policy.is_file():
+            raise StageGateError(f"audit policy source is absent or linked: {source_policy}")
+        payload = source_policy.read_bytes()
+        policy_payloads.append((role, source_policy, payload, _sha256(payload)))
+    # The replay above must be attributed to the same source bytes copied below.  A concurrent edit
+    # cannot silently turn the snapshot into a description of a different policy.
+    if any(source_policy.read_bytes() != payload
+           for _role, source_policy, payload, _digest in policy_payloads):
+        raise StageGateError("audit policy source changed during requalification")
+
+    output_path.parent.mkdir(parents=True, exist_ok=False)
+    policy_dir = output_path.parent / "policy"
+    policy_dir.mkdir()
+    snapshots: list[dict[str, str]] = []
+    for role, source_policy, payload, digest in policy_payloads:
+        frozen = policy_dir / f"{role}{source_policy.suffix}"
+        with frozen.open("xb") as stream:
+            stream.write(payload)
+        frozen.chmod(0o444)
+        snapshots.append({
+            "role": role, "source_path": str(source_policy),
+            "frozen_path": str(frozen.resolve()), "sha256": digest,
+        })
+
+    rewritten = copy.deepcopy(source)
+    rewritten["state"] = "sealed"
+    rewritten["admission"]["consumable"] = True
+    rewritten["admission"]["refusal"] = None
+    rewritten["agent"]["audit"] = combined
+    for row, audit in zip(rewritten["agent"]["rounds"], rounds):
+        row["audit"] = audit
+    rewritten["audit_requalification"] = {
+        "schema_version": 1,
+        "kind": AUDIT_REQUALIFICATION_KIND,
+        "reason": AUDIT_REQUALIFICATION_REASON,
+        "source_record": {
+            "path": str(source_path.resolve()), "sha256": _sha256_file(source_path),
+        },
+        "invariant_evidence_sha256": _audit_requalification_invariant_sha256(source),
+        "original_audits": {
+            "combined_sha256": _sha256(_canonical_json(source["agent"]["audit"])),
+            "round_sha256": [_sha256(_canonical_json(row["audit"]))
+                             for row in source["agent"]["rounds"]],
+            "hits": copy.deepcopy(source["agent"]["audit"]["hits"]),
+        },
+        "corrected_audits": {
+            "combined_sha256": _sha256(_canonical_json(combined)),
+            "round_sha256": [_sha256(_canonical_json(audit)) for audit in rounds],
+        },
+        "audit_token_set": token_set,
+        "audit_token_set_sha256": _sha256(_canonical_json(token_set)),
+        "policy_snapshots": snapshots,
+        "policy_set_sha256": _sha256(_canonical_json(snapshots)),
+    }
+    with output_path.open("xb") as stream:
+        stream.write(_canonical_json(rewritten))
+    output_path.chmod(0o444)
+    verify_candidate_record(
+        output_path, require_consumable=True, verify_authoring_tools=False,
+        target_experiment=target_experiment)
+    output_path.parent.chmod(0o555)
+    return output_path
 
 
 def verify_candidate_record(path: Path, *, require_consumable: bool = True,
@@ -4753,7 +6521,10 @@ def verify_candidate_record(path: Path, *, require_consumable: bool = True,
         raise StageGateError("performance candidate transcript is absent or linked")
     if _sha256(transcript.read_bytes()) != document["agent"]["transcript_sha256"]:
         raise StageGateError("performance candidate transcript bytes do not match their record")
-    if target_experiment is not None:
+    # Requalified records replay below with the exact frozen audit-token set.  The paired runner
+    # deliberately imports target libraries from its frozen source snapshot; using that ambient
+    # policy here would make the same record change verdict with Python import order.
+    if target_experiment is not None and document.get("audit_requalification") is None:
         recorded_actions = actions_from_registry_contract(
             document["broker"]["registry"], candidate)
         observed_audit = audit_codex_transcript(
@@ -4808,7 +6579,7 @@ def verify_candidate_record(path: Path, *, require_consumable: bool = True,
             expected_target=str(document["target"]["name"]))
     except PC.CampaignGateError as exc:
         raise StageGateError(f"frozen performance corpus verification failed: {exc}") from exc
-    observed_formal_claim = prepare_formal_pk_claim(
+    observed_formal_claim = prepare_formal_claim(
         frozen_loaded.capsules, int(corpus["replicates"]))
     if _canonical_json(observed_formal_claim) != _canonical_json(corpus["formal_claim"]):
         raise StageGateError("frozen performance descriptors changed their formal claim preflight")
@@ -4873,6 +6644,7 @@ def verify_candidate_record(path: Path, *, require_consumable: bool = True,
             feedback_certificate["path"], expected_sha256=feedback_certificate["sha256"])
     except GATE.GsimGateError as exc:
         raise StageGateError(f"development GSIM certificate bytes changed: {exc}") from exc
+    _verify_audit_requalification(path, document, target_experiment)
     return document
 
 
@@ -5468,6 +7240,10 @@ def run_stage(
            (wall_budget_seconds, rounds, round_timeout_seconds, max_tool_calls, tool_timeout_seconds,
             smoke_replicates)):
         raise StageGateError("all performance stage budgets must be positive integers")
+    if tool_timeout_seconds > ITERATION_MAX_SECONDS:
+        raise StageGateError(
+            f"tool_timeout_seconds exceeds the {ITERATION_MAX_SECONDS:g}s reduced-witness "
+            "iteration limit; reduce the witness")
     if not model.strip():
         raise StageGateError("an explicit Codex model is required")
     bwrap_binary = _require_executable("bwrap", label="bwrap")
@@ -5503,7 +7279,7 @@ def run_stage(
     stage_root.mkdir(parents=True)
     base = PC.materialize_perf_workspace(functional, stage_root / "_frozen_functional")
     frozen_corpus = freeze_performance_corpus(discovered, stage_root / "_frozen_corpus")
-    formal_claim = prepare_formal_pk_claim(frozen_corpus.capsules, replicates)
+    formal_claim = prepare_formal_claim(frozen_corpus.capsules, replicates)
     replicates = len(_preflight_cohort(formal_claim))
     agent_inputs = build_answer_free_agent_inputs(
         frozen_corpus, target_experiment, stage_root / "_agent_inputs")
@@ -5568,6 +7344,35 @@ def run_stage(
         workspace = stage_root / "agent_workspaces" / f"round_{round_index:02d}"
         candidate = fresh_round_workspace(previous_submission, workspace, previous_digest)
         (workspace / "TASK.md").write_text(prompt.text, encoding="utf-8")
+        optimization_inventory = inspect_compiler_package(candidate).to_dict()
+        initial_whole_model_analysis = analyze_whole_model_emission(
+            base, candidate, prompt_inputs.e2e_sentinel,
+            timeout_s=min(tool_timeout_seconds, remaining),
+            peak_macs_per_cycle=getattr(feedback, "peak_macs_per_cycle", None),
+            achievable_macs_per_cycle=getattr(feedback, "achievable_macs_per_cycle", None),
+            target=str(getattr(target_experiment, "target", "") or ""))
+        profile_selector = getattr(feedback, "profile_witness", None)
+        if callable(profile_selector):
+            profile_member, profile_selection = profile_selector()
+            reduced_global_profile = {
+                "status": "ready",
+                "broker_action": OCCUPANCY_PROFILE_ACTION,
+                "family": profile_member.family,
+                "capsule": profile_member.capsule,
+                "selection": profile_selection,
+                "selected_before_candidate_measurement": True,
+                "purpose": ("calibrate complete-model occupancy, movement, and latency hiding; "
+                            "never a measured whole-model performance result"),
+            }
+        else:
+            # Compatibility for test/dry-run feedback providers. Production preparation always
+            # supplies DevelopmentGsimFeedback and therefore a frozen selector.
+            reduced_global_profile = {
+                "status": "UNKNOWN", "broker_action": OCCUPANCY_PROFILE_ACTION,
+                "family": None, "capsule": None, "selection": None,
+                "selected_before_candidate_measurement": None,
+                "purpose": "feedback provider exposes no fixed reduced global witness",
+            }
         _write_json(workspace / "STAGE_CONTEXT.json", {
             "functional_run_id": functional.run_id,
             "functional_submission_sha256": functional.digest,
@@ -5584,6 +7389,34 @@ def run_stage(
             "round": round_index,
             "rounds": rounds,
             "remaining_wall_budget_seconds": remaining,
+            "automatic_optimization_inventory": optimization_inventory,
+            "initial_whole_model_analysis": initial_whole_model_analysis,
+            "reduced_global_profile": reduced_global_profile,
+            "iteration_measurement_contract": {
+                "maximum_simulator_seconds": int(ITERATION_MAX_SECONDS),
+                "warmup_runs": 1,
+                "measured_runs": 1,
+                "primary_metric": "total_compute_cycles",
+                "allowed_explanatory_metrics": [
+                    "resource_busy_cycles", "movement_bytes", "movement_commands",
+                    "movement_compute_overlap_cycles", "overlap_available_cycles",
+                    "latency_hiding_efficiency", "encoding_transitions"],
+                "full_size_execution": "optional_post_freeze_validation_not_phase2_required",
+                "firesim_required": False,
+                "firesim_queue_operation": "runworkload-full",
+                "firesim_lifecycle": [" ".join(command) for command in FIRESIM_LIFECYCLE],
+            },
+            "expensive_measurement_budget": {
+                "scope": "per_round",
+                "tuning_gsim_feedback_calls": EXPENSIVE_ACTION_LIMITS[
+                    DEVELOPMENT_FEEDBACK_ACTION],
+                "exploratory_tuning_calls": 1,
+                "reserved_final_byte_tuning_calls": 1,
+                "reduced_occupancy_profile_calls": EXPENSIVE_ACTION_LIMITS[
+                    OCCUPANCY_PROFILE_ACTION],
+                "firesim_calls": 0,
+                "free_iteration_actions": [E2E_ANALYSIS_ACTION, ANALYSIS_ACTION, INVENTORY_ACTION],
+            },
         })
         actions = build_action_registry(candidate, target_experiment)
         if action_registry_contract(actions, candidate) != prepared_action_contract:
@@ -5599,7 +7432,8 @@ def run_stage(
         broker = _Broker(inner, target_experiment, candidate, actions, receipt_path,
                          deadline=deadline, max_calls=max_tool_calls - total_calls,
                          max_tool_seconds=tool_timeout_seconds,
-                         feedback_evaluator=feedback, feedback_round=round_index)
+                         feedback_evaluator=feedback, feedback_round=round_index,
+                         functional_base=base, e2e_sentinel=prompt_inputs.e2e_sentinel)
         round_timeout = min(round_timeout_seconds, remaining)
         try:
             with broker.serving() as (host, port):
@@ -5958,7 +7792,7 @@ def run_stage(
             "development_feedback_performed_by_stage": True,
             "evaluation_performed_by_stage": False,
             "success_declared_by_stage": False,
-            "consumer": "run_perf_bench.py",
+            "consumer": MEASUREMENT_CONSUMER,
         },
     }
     record_path = stage_root / "performance_candidate.json"
