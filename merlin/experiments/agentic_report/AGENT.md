@@ -10,11 +10,18 @@ rather than inside either one.
 build_report.py rescue    # copy light telemetry out of the roots marked fragile
 build_report.py index     # identify every run: target, bench, phase, arm, driver, model
 build_report.py facts     # extract every number, and mark the best run per cell + every ladder
+build_report.py coverage  # per-capsule corpus coverage, unioned across every run
 figures.py                # render the figure kit
 write_report.py           # write the prose from the same facts file
 ```
-Everything lands under `out/artifacts/agentic-report/`. The figures and the prose read
-`run_facts.json` and nothing else, so a caption cannot drift from the run that produced it.
+Everything lands under `out/artifacts/agentic-report/`. The figures and the prose read the facts
+files and nothing else, so a caption cannot drift from the run that produced it.
+
+There are two facts files because there are two shapes. `run_facts.json` is one row per RUN;
+`coverage_facts.json` is one row per CAPSULE, unioned over every run that ever graded it — and the
+union is the point, since no single run covers a corpus. Each figure DECLARES which one it reads
+(`@figure(..., needs=...)`), and a figure whose input was never built is refused with the command
+that builds it rather than drawn empty.
 
 ## What lives here vs in the library
 `merlin/python/merlin/agentreport/` does the reading and may not know a target name, an absolute path

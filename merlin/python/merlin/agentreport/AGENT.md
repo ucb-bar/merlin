@@ -17,8 +17,20 @@ zero plots as a finding; a refusal plots as a gap.
 - `spans.py` — tool-call spans, transcript first then the driver's raw event stream, plus `concurrency()`.
 - `passes.py` — capsules passing over time, from `selfcheck_log.jsonl` or (derived) from verdict mtimes.
 - `tokens.py` — token buckets and the three-state cost classification.
+- `corpus_coverage.py` — how much of a target's DECLARED corpus has evidence, unioned over
+  every run. One row per capsule, not per run, so it does not live in `run_facts.json`.
 
 ## Facts about the data that are encoded here, not rediscovered
+- **Coverage has three denominators and they must not be unioned.** A capsule name in a verdict is
+  not automatically coverage of the target it was graded under: it may be on that target's roster,
+  declared by ANOTHER target's roster (a self-check globbed the wrong suite — 17 capsules, really),
+  or in no current roster at all (retired since). Only the first is scored; the other two are
+  counted and attributed. Unioning them turns a suite bug into a coverage claim.
+- **The certifying tier is per capsule, and declared by the capsule.** 429 capsules demand L3, 201
+  are satisfied by L2. One corpus-wide bar either credits a capsule for evidence it never needed or
+  faults it for evidence it never asked for. Read `required_oracle_tiers` from the capsule.
+- **A tier pass is not an overall pass.** 31 capsules passed a tier while their verdict failed
+  (numerics agree, a trace check does not). Both facts are kept; a figure showing one overstates.
 - **The arm is not the directory.** Arms 3 and 4 launch into the same run-dir subtree, and
   `run_manifest.yaml:arm` records that subtree. Resolve from the input bundle, else the run-id prefix.
   When the two disagree the bundle wins (an arm *is* its grant set) and the conflict is recorded.
