@@ -493,6 +493,14 @@ def _decode_by_text_scan(text: str, *, target: str, source: str | None = None) -
     return trace.to_dict()
 
 
+#: Decoded traces, keyed by content. Process-local: a grade decodes the same emitted program once per
+#: capsule per tier, and re-parsing it is neither cheap nor informative the second time.
+_DECODE_MEMO: dict = {}
+
+#: Bound on the memo, so a long-lived driver cannot grow it without limit. Oldest-inserted first.
+_DECODE_MEMO_MAX = 2048
+
+
 def decode_text(text: str, source: str | None = None, *, target: str) -> dict:
     """Decode LLVM-MLIR ``text`` into a structured instruction trace dict, using ``target``'s RTL-derived
     ISA facts (custom opcode + func7->class map). The target is required — the decoder holds no default and
@@ -500,11 +508,55 @@ def decode_text(text: str, source: str | None = None, *, target: str) -> dict:
     :func:`decode_module`) so operands are read from the IR regardless of the ``llvm.inline_asm`` spelling;
     otherwise a tolerant line scan (:func:`_decode_by_text_scan`) still SEES every present instruction and
     marks UNKNOWN (never drops) what it cannot classify — we do not assume we know every form a backend
-    emits."""
+    emits.
+
+    MEMOIZED ON CONTENT, because this is a pure function of the text and the target's derived facts and
+    a grade calls it with the same text repeatedly. Measured on one 24-capsule grade: 13.5 s here, of
+    which 13.1 s was the xDSL parse of IR the same grade had just parsed to compile. The key is the
+    text, the target, and the derived ISA constants -- so a change to the RTL those constants come from
+    is a different key rather than a stale hit. ``source`` is a LABEL on the output and is applied after
+    the lookup, so two callers naming the same text differently share the work and still each get their
+    own label.
+    """
+    key = _decode_key(text, target)
+    if key is not None:
+        hit = _DECODE_MEMO.get(key)
+        if hit is not None:
+            out = dict(hit)
+            out["source"] = source          # a label, never part of the decode
+            return out
     module = _parse_module(text)
-    if module is not None:
-        return decode_module(module, target=target, source=source)
-    return _decode_by_text_scan(text, target=target, source=source)
+    got = (decode_module(module, target=target, source=source) if module is not None
+           else _decode_by_text_scan(text, target=target, source=source))
+    if key is not None and isinstance(got, dict):
+        if len(_DECODE_MEMO) >= _DECODE_MEMO_MAX:
+            _DECODE_MEMO.pop(next(iter(_DECODE_MEMO)), None)
+        _DECODE_MEMO[key] = dict(got)
+    return got
+
+
+def _decode_key(text: str, target: str) -> "str | None":
+    """Content key for one decode, or ``None`` to decode afresh.
+
+    Covers the ISA CONSTANTS the decode is performed against, not merely the target's name: the same
+    target re-elaborated from different RTL derives different constants, and a hit keyed on the name
+    alone would decode one revision's trace against another's. Anything that cannot be established
+    yields ``None``, which decodes normally -- a memo that cannot be keyed must not be guessed at.
+    """
+    import hashlib
+    import json as _json
+    try:
+        constants = isa_constants(target)
+        payload = _json.dumps(constants, sort_keys=True, separators=(",", ":"), default=str)
+    except Exception:                       # noqa: BLE001 -- unestablished facts: no key, plain decode
+        return None
+    h = hashlib.sha256()
+    h.update(text.encode("utf-8", "replace"))
+    h.update(b"\x00")
+    h.update(str(target).encode("utf-8"))
+    h.update(b"\x00")
+    h.update(payload.encode("utf-8"))
+    return h.hexdigest()
 
 
 def decode_file(path: str | Path, *, target: str) -> dict:
