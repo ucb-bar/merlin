@@ -176,10 +176,9 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
     cached = _bc.reuse(work, key, PACKAGE_ELF_NAME)
     if cached is not None:
         return cached
-    before = _bc.snapshot(work) if key else {}
     obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
     elf = link_elf(cb, obj, work, target=target, inputs=inputs)
-    _bc.store(key, work, before, PACKAGE_ELF_NAME)
+    _bc.store(key, work, PACKAGE_ELF_NAME)
     return elf
 
 

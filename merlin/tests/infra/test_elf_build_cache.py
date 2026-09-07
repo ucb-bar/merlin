@@ -180,9 +180,8 @@ def test_unresolvable_toolchain_reports_none(monkeypatch):
 
 def test_round_trip_restores_every_file_the_build_produced(key_of, tmp_path):
     key, first = key_of(), tmp_path / "first"
-    before = BC.snapshot(first)
     _build(first)
-    BC.store(key, first, before, ELF)
+    BC.store(key, first, ELF)
 
     second = tmp_path / "second"
     restored = BC.reuse(second, key, ELF)
@@ -195,7 +194,7 @@ def test_round_trip_restores_every_file_the_build_produced(key_of, tmp_path):
 
 def test_a_miss_is_a_miss(key_of, tmp_path):
     _build(tmp_path / "first")
-    BC.store(key_of(), tmp_path / "first", {}, ELF)
+    BC.store(key_of(), tmp_path / "first", ELF)
     other = key_of(lowered_mlir_text="module { // different }")
     assert BC.reuse(tmp_path / "second", other, ELF) is None
 
@@ -203,7 +202,7 @@ def test_a_miss_is_a_miss(key_of, tmp_path):
 def test_a_corrupted_entry_is_a_miss_and_leaves_nothing_behind(key_of, tmp_path, store):
     key = key_of()
     _build(tmp_path / "first")
-    BC.store(key, tmp_path / "first", {}, ELF)
+    BC.store(key, tmp_path / "first", ELF)
     stored = next(p for p in store.rglob(f"files/{ELF}"))
     stored.write_text("tampered")
 
@@ -215,7 +214,7 @@ def test_a_corrupted_entry_is_a_miss_and_leaves_nothing_behind(key_of, tmp_path,
 def test_a_truncated_entry_is_a_miss(key_of, tmp_path, store):
     key = key_of()
     _build(tmp_path / "first")
-    BC.store(key, tmp_path / "first", {}, ELF)
+    BC.store(key, tmp_path / "first", ELF)
     next(p for p in store.rglob("files/kernel.ll")).unlink()
     assert BC.reuse(tmp_path / "second", key, ELF) is None
 
@@ -223,7 +222,7 @@ def test_a_truncated_entry_is_a_miss(key_of, tmp_path, store):
 def test_a_record_from_another_version_is_not_read(key_of, tmp_path, store):
     key = key_of()
     _build(tmp_path / "first")
-    BC.store(key, tmp_path / "first", {}, ELF)
+    BC.store(key, tmp_path / "first", ELF)
     rec = next(store.rglob("record.json"))
     payload = json.loads(rec.read_text())
     payload["version"] = BC.RECORD_VERSION + 1
@@ -233,7 +232,7 @@ def test_a_record_from_another_version_is_not_read(key_of, tmp_path, store):
 
 def test_no_key_never_hits_and_never_writes(tmp_path, store):
     _build(tmp_path / "w")
-    BC.store(None, tmp_path / "w", {}, ELF)
+    BC.store(None, tmp_path / "w", ELF)
     assert BC.reuse(tmp_path / "w2", None, ELF) is None
     assert not store.exists() or not any(store.rglob("record.json"))
 
@@ -245,7 +244,7 @@ def test_no_key_never_hits_and_never_writes(tmp_path, store):
 def test_the_marker_makes_a_second_tier_free(key_of, tmp_path, store, monkeypatch):
     key, work = key_of(), tmp_path / "w"
     _build(work)
-    BC.store(key, work, {}, ELF)
+    BC.store(key, work, ELF)
     assert (work / BC.KEY_MARKER).read_text() == key
     # With the store made unreachable, only the marker can answer -- so a hit here proves the ladder's
     # second tier never touches it.
@@ -256,7 +255,7 @@ def test_the_marker_makes_a_second_tier_free(key_of, tmp_path, store, monkeypatc
 def test_the_marker_does_not_answer_for_a_different_key(key_of, tmp_path, monkeypatch):
     work = tmp_path / "w"
     _build(work)
-    BC.store(key_of(), work, {}, ELF)
+    BC.store(key_of(), work, ELF)
     monkeypatch.setenv("MERLIN_ELF_BUILD_CACHE", str(tmp_path / "elsewhere"))
     assert BC.reuse(work, key_of(lowered_mlir_text="other"), ELF) is None
 
@@ -264,7 +263,7 @@ def test_the_marker_does_not_answer_for_a_different_key(key_of, tmp_path, monkey
 def test_forget_drops_the_claim(key_of, tmp_path, monkeypatch):
     work = tmp_path / "w"
     _build(work)
-    BC.store(key_of(), work, {}, ELF)
+    BC.store(key_of(), work, ELF)
     BC.forget(work)
     assert not (work / BC.KEY_MARKER).exists()
     monkeypatch.setenv("MERLIN_ELF_BUILD_CACHE", str(tmp_path / "elsewhere"))
@@ -272,16 +271,88 @@ def test_forget_drops_the_claim(key_of, tmp_path, monkeypatch):
     BC.forget(work)                      # idempotent: a directory with no marker is not an error
 
 
-def test_snapshot_separates_what_the_build_produced(tmp_path):
+def test_the_whole_directory_is_stored_not_a_diff(key_of, tmp_path):
+    """A restore must reproduce the directory, including what the emit step left there before the
+    build. A stat diff could miss a rewrite landing on the same size inside one mtime tick, which
+    would restore a stale file beside a fresh executable; storing everything cannot err that way."""
     work = tmp_path / "w"
     work.mkdir()
-    (work / "pre_existing.json").write_text("{}")
-    before = BC.snapshot(work)
+    (work / "command_buffer.json").write_text('{"commands": []}')   # written by the emit step
     _build(work)
-    after = BC.snapshot(work)
-    produced = {rel for rel, sha in after.items() if before.get(rel) != sha}
-    assert ELF in produced and "kernel.ll" in produced
-    assert "pre_existing.json" not in produced
+    assert set(BC.contents(work)) == {"command_buffer.json", "kernel.ll", "harness.c", ELF}
+    BC.store(key_of(), work, ELF)
+    second = tmp_path / "second"
+    assert BC.reuse(second, key_of(), ELF) is not None
+    assert (second / "command_buffer.json").read_text() == '{"commands": []}'
+
+
+def test_contents_never_stores_the_key_marker(key_of, tmp_path):
+    """The marker names the key its directory holds; storing it would ship one key inside another."""
+    work = tmp_path / "w"
+    _build(work)
+    BC.store(key_of(), work, ELF)
+    assert (work / BC.KEY_MARKER).is_file()
+    assert BC.KEY_MARKER not in BC.contents(work)
+    second = tmp_path / "second"
+    BC.reuse(second, key_of(), ELF)
+    assert (second / BC.KEY_MARKER).read_text() == key_of()
+
+
+def test_a_restore_skips_what_is_already_in_place(key_of, tmp_path, monkeypatch):
+    """On a hit the emit step's output is already in the directory. Re-copying it is the whole reason
+    a restore was slower than it needed to be, so an identical file must be left alone -- and a file
+    that DIFFERS must still be replaced, or a restore would leave a stale byte stream behind."""
+    work = tmp_path / "w"
+    work.mkdir()
+    (work / "lowered.llvm.mlir").write_text("module { /* emitted */ }")
+    _build(work)
+    BC.store(key_of(), work, ELF)
+
+    second = tmp_path / "second"
+    second.mkdir()
+    (second / "lowered.llvm.mlir").write_text("module { /* emitted */ }")   # identical: skip
+    (second / "kernel.ll").write_text("; STALE, wrong length")              # differs: replace
+    copied = []
+    real = BC.shutil.copyfile
+    monkeypatch.setattr(BC.shutil, "copyfile", lambda s, d: (copied.append(Path(d).name), real(s, d))[1])
+    assert BC.reuse(second, key_of(), ELF) is not None
+    assert "lowered.llvm.mlir" not in copied, "an identical file was copied anyway"
+    assert "kernel.ll" in copied and (second / "kernel.ll").read_text() == "; ir"
+    assert (second / ELF).read_text() == "elf-bytes"
+
+
+def test_a_same_length_but_different_file_is_replaced(key_of, tmp_path):
+    """Size is only the cheap negative; the digest decides. Skipping on length alone would restore a
+    directory whose IR does not match its executable."""
+    work = tmp_path / "w"
+    work.mkdir()
+    (work / "kernel.ll").write_text("; ir")
+    _build(work)
+    BC.store(key_of(), work, ELF)
+    second = tmp_path / "second"
+    second.mkdir()
+    (second / "kernel.ll").write_text("; XX")            # same length, different bytes
+    assert BC.reuse(second, key_of(), ELF) is not None
+    assert (second / "kernel.ll").read_text() == "; ir"
+
+
+def test_contents_does_not_read_file_contents(tmp_path, monkeypatch):
+    """Walked on every miss, before compiling. It must not re-read what is already on disk."""
+    work = tmp_path / "w"
+    work.mkdir()
+    (work / "big.ll").write_text("x" * 4096)
+    monkeypatch.setattr(BC, "_file_sha", lambda p: pytest.fail("contents read a file's contents"))
+    assert "big.ll" in BC.contents(work)
+
+
+def test_the_build_path_digest_is_memoized_but_not_stale(tmp_path):
+    """Memoized on the covering files' stat signature, so an edit misses rather than being missed."""
+    src = tmp_path / "builder.py"
+    src.write_text("# v1")
+    first = BC._build_path_digest((src,))
+    assert BC._build_path_digest((src,)) == first
+    src.write_text("# v2 -- edited")
+    assert BC._build_path_digest((src,)) != first
 
 
 def test_the_store_stays_bounded(key_of, tmp_path, store, monkeypatch):
@@ -289,6 +360,6 @@ def test_the_store_stays_bounded(key_of, tmp_path, store, monkeypatch):
     for i in range(6):
         work = tmp_path / f"w{i}"
         _build(work, text=f"elf-{i}")
-        BC.store(key_of(lowered_mlir_text=f"module {i}"), work, {}, ELF)
+        BC.store(key_of(lowered_mlir_text=f"module {i}"), work, ELF)
     entries = [d for shard in store.iterdir() if shard.is_dir() for d in shard.iterdir()]
     assert len(entries) <= 3

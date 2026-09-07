@@ -50,10 +50,9 @@ the tier cache keys on them because it carries a VERDICT, and this does not.
 
 **What is stored is the whole build, not just the ELF.** The generated directory is an artifact the
 agent reads -- its ``kernel.ll``, its ``harness.c`` -- and restoring only the executable would silently
-empty it. :func:`snapshot` records the directory before the build and :func:`store` keeps every file the
-build created or changed, so a hit reproduces the directory the build would have produced. Files are
-verified against their recorded digests on the way out; a store that has been corrupted or truncated is
-a miss, never a partial restore.
+empty it. :func:`store` keeps every file in the directory, so a hit reproduces what the build would
+have produced. Files are verified against their recorded digests on the way out; a store that has been
+corrupted or truncated is a miss, never a partial restore.
 
 **Within one grade the ladder builds once.** Every tier's adapter calls the compile path with the same
 workdir, so a capsule reaching the cert tier used to compile a byte-identical ELF twice. A key marker
@@ -77,7 +76,7 @@ from typing import Any, Mapping
 
 __all__ = ["BUILD_IDENTITY_VERSION", "RECORD_VERSION", "KEY_MARKER", "DEFAULT_MAX_ENTRIES",
            "disabled", "cache_root", "build_path", "recipe_token", "toolchain_token",
-           "build_identity", "snapshot", "reuse", "store", "forget"]
+           "build_identity", "contents", "reuse", "store", "forget"]
 
 #: Version of the payload :func:`build_identity` hashes. Bumping it invalidates every stored build,
 #: which is the correct effect of changing what "the same inputs" means.
@@ -259,6 +258,28 @@ def recipe_token(recipe: Any) -> "dict | None":
         return None
 
 
+#: Build-path digests, keyed by the stat signature of the files they cover. Reading and hashing ~75
+#: source files is cheap once and not cheap per capsule per tier; a stat walk decides whether the answer
+#: is still current, and because the signature is part of the KEY there is no stale window.
+_BUILD_PATH_MEMO: dict = {}
+
+
+def _build_path_digest(files) -> str:
+    """One digest over the bytes of the code that performs the build, memoized on their stat signature."""
+    signature = []
+    for p in files:
+        try:
+            st = p.stat()
+            signature.append((str(p), st.st_size, st.st_mtime_ns))
+        except OSError:
+            signature.append((str(p), -1, -1))
+    memo_key = _digest_of(signature)
+    if memo_key not in _BUILD_PATH_MEMO:
+        from merlin.common.provenance import source_digest
+        _BUILD_PATH_MEMO[memo_key] = source_digest([str(p) for p in files])
+    return _BUILD_PATH_MEMO[memo_key]
+
+
 def build_identity(*, target: str, lowered_mlir_text: str, cb: Mapping,
                    inputs: "Mapping | None", recipe: Any) -> "str | None":
     """Content identity for exactly what one compile would produce, or ``None`` to build normally.
@@ -279,7 +300,6 @@ def build_identity(*, target: str, lowered_mlir_text: str, cb: Mapping,
     if not files:
         return None
     try:
-        from merlin.common.provenance import source_digest
         payload = {
             "version": BUILD_IDENTITY_VERSION,
             "target": target,
@@ -288,7 +308,7 @@ def build_identity(*, target: str, lowered_mlir_text: str, cb: Mapping,
             "inputs": _digest_of(inputs) if inputs else "",
             "recipe": recipe_rec,
             "toolchain": tool,
-            "build_path": source_digest([str(p) for p in files]),
+            "build_path": _build_path_digest(files),
         }
         return _digest_of(payload)
     except Exception:                    # noqa: BLE001 -- an unhashable input is not a key
@@ -299,25 +319,49 @@ def build_identity(*, target: str, lowered_mlir_text: str, cb: Mapping,
 # THE STORE
 # ---------------------------------------------------------------------------------------------
 
-def snapshot(workdir: "str | Path") -> dict:
-    """``{relative path: sha256}`` for the build directory as it stands, so :func:`store` can tell what
-    the build produced. Unreadable entries are omitted, which makes them look NEW afterwards -- the
-    direction that stores too much rather than too little."""
+def contents(workdir: "str | Path") -> list:
+    """Every file in the build directory, as relative paths, excluding the key marker.
+
+    WHAT IS STORED IS THE WHOLE DIRECTORY, not a diff against its state before the build. An earlier
+    version snapshotted first and kept only what changed, which was both slower and less safe: the
+    pre-build walk re-read megabytes of emitted IR on every MISS -- measurably worse than having no
+    cache at all on a build-once workload -- and a stat-based diff can miss a rewrite that lands on the
+    same size inside one mtime tick, which would leave a restored directory holding a stale file beside
+    a fresh executable. Storing everything cannot be wrong in that direction, and the extra bytes are
+    the few files the emit step put there, whose content the key already pins.
+    """
     root = Path(workdir)
-    out: dict = {}
+    out: list = []
     if not root.is_dir():
         return out
     for p in root.rglob("*"):
-        if not p.is_file():
+        try:
+            if p.is_file() and p.name != KEY_MARKER:
+                out.append(str(p.relative_to(root)))
+        except OSError:
             continue
-        sha = _file_sha(p)
-        if sha is not None:
-            out[str(p.relative_to(root))] = sha
     return out
 
 
 def _entry(root: Path, key: str) -> Path:
     return root / key[:2] / key
+
+
+def _already_there(dst: Path, meta: Mapping) -> bool:
+    """Whether ``dst`` already holds exactly the bytes the record says, so the copy can be skipped.
+
+    THE ENTRY HOLDS THE WHOLE DIRECTORY, AND MOST OF IT IS ALREADY IN PLACE ON A HIT. A capsule's
+    build directory is written by the emit step before the compile runs, so a restore into a live run
+    re-copies megabytes of emitted IR that are already there and already identical. Size is checked
+    first because it settles the common negative for free; the digest is what decides, so a file that
+    differs in content but not in length is still replaced.
+    """
+    try:
+        if not dst.is_file() or dst.stat().st_size != int(meta.get("size", -1)):
+            return False
+    except (OSError, TypeError, ValueError):
+        return False
+    return _file_sha(dst) == meta.get("sha256")
 
 
 def reuse(workdir: "str | Path", key: "str | None", elf_name: str) -> "Path | None":
@@ -361,6 +405,8 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: str) -> "Path | No
         work.mkdir(parents=True, exist_ok=True)
         for src, rel, meta in staged:
             dst = work / rel
+            if _already_there(dst, meta):
+                continue        # the emit step's own output: present by construction, and identical
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             mode = meta.get("mode")
@@ -380,7 +426,7 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: str) -> "Path | No
     return work / record["elf"]
 
 
-def store(key: "str | None", workdir: "str | Path", before: Mapping, elf_name: str) -> None:
+def store(key: "str | None", workdir: "str | Path", elf_name: str) -> None:
     """Keep every file this build created or changed, under ``key``. Never raises.
 
     The entry is assembled in a temporary directory and moved into place, so a concurrent worker
@@ -405,22 +451,24 @@ def store(key: "str | None", workdir: "str | Path", before: Mapping, elf_name: s
         return
     tmp = None
     try:
-        after = snapshot(work)
-        produced = {rel: sha for rel, sha in after.items()
-                    if rel != KEY_MARKER and before.get(rel) != sha}
+        produced = contents(work)
         if elf_name not in produced:
-            produced[elf_name] = after.get(elf_name, "")
+            produced.append(elf_name)
         entry.parent.mkdir(parents=True, exist_ok=True)
         tmp = Path(tempfile.mkdtemp(prefix=".staging_", dir=entry.parent))
         files: dict = {}
-        for rel, sha in produced.items():
+        for rel in produced:
             src = work / rel
             if not src.is_file():
                 continue
             dst = tmp / "files" / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
-            files[rel] = {"sha256": sha or _file_sha(src), "mode": src.stat().st_mode & 0o777}
+            # Digested from the COPY: that is the byte sequence a restore will hand back, so if the
+            # source changed under us mid-copy the record describes what was actually stored.
+            st = src.stat()
+            files[rel] = {"sha256": _file_sha(dst), "mode": st.st_mode & 0o777,
+                          "size": dst.stat().st_size}
         if elf_name not in files:
             raise OSError("the executable did not survive staging")
         (tmp / "record.json").write_text(json.dumps(
