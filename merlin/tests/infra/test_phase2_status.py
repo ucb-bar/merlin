@@ -60,6 +60,42 @@ def test_terminal_receipt_and_failed_draft_do_not_replace_retained(tmp_path, mon
         assert any("receipt digest" in warning["reason"] for warning in bad["warnings"])
 
 
+def test_portfolio_dashboard_reports_secondary_model_deltas(tmp_path, monkeypatch):
+    from merlin.perf import structural_delta
+
+    identities = [
+        {"capsule": "primary", "capsule_sha256": "1" * 64},
+        {"capsule": "secondary", "capsule_sha256": "2" * 64},
+    ]
+    seed = {"analysis": {"value": 10}, "portfolio": {"members": [
+        {"identity": identities[0], "analysis_ref": "/analysis"},
+        {"identity": identities[1], "analysis": {"value": 20}},
+    ]}}
+    retained = {"analysis": {"value": 10}, "portfolio": {"members": [
+        {"identity": identities[0], "analysis_ref": "/analysis"},
+        {"identity": identities[1], "analysis": {"value": 12}},
+    ]}}
+
+    def compare(left, right):
+        return {"status": "compared", "metrics": {"host_load_payload_bytes": {
+            "before": left["value"], "after": right["value"],
+            "delta": right["value"] - left["value"],
+        }}}
+
+    monkeypatch.setattr(structural_delta, "compare_full_model_structure", compare)
+    comparison = S.compare_portfolio_iterations(seed, retained)
+    assert comparison["status"] == "compared"
+    assert comparison["changed_members"] == 1
+    assert not comparison["members"][0]["has_nonzero_structural_delta"]
+    assert comparison["members"][1]["has_nonzero_structural_delta"]
+
+    status = S.collect_status(tmp_path, process_reader=lambda *_: [])
+    status["structural_portfolio_seed_to_retained"] = comparison
+    rendered = S.render_markdown(status)
+    assert "secondary | host_load_payload_bytes | 20 | 12 | -8" in rendered
+    assert "No bound retained structural change" not in rendered
+
+
 def test_latest_iteration_reports_exact_static_reuse_instead_of_recompilation(tmp_path):
     folder = tmp_path / "global_iterations"
     write(folder / "iteration_0000.json", {

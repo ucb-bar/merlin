@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import fcntl
 import json
 import math
@@ -28,6 +29,13 @@ from run_global_perf_experiment import (FrozenPhase1, GlobalPerfExperiment, conf
 
 
 _GIB = 1024 ** 3
+
+
+def _mechanism_catalog_worker_arguments(path: Path | None, digest: str | None) -> tuple[str, ...]:
+    """Forward the already-validated raw pin without resolving or rediscovering it."""
+    if path is None:
+        return ()
+    return ("--mechanism-catalog", str(path), "--mechanism-catalog-sha256", str(digest))
 
 
 def _acquire_host_resource_lease(stage_root: Path):
@@ -156,9 +164,16 @@ def _run_resource_guarded_worker(command: list[str], environment: dict[str, str]
     return 75 if stop_decision is not None else int(returncode)
 
 
-def run_analysis_only(experiment, candidate: Path, *, stage_root: Path, **analysis_policy) -> int:
+def run_analysis_only(experiment, candidate: Path, *, stage_root: Path,
+                      static_analysis_seed_checkpoint: Path | None = None,
+                      static_analysis_seed_sha256: str | None = None,
+                      **analysis_policy) -> int:
     """Use the real compile/static-analysis boundary without authoring, probes or a seal."""
     configure_global_analysis(experiment, stage_root=stage_root, **analysis_policy)
+    if static_analysis_seed_checkpoint is not None:
+        experiment.import_static_analysis_checkpoint(
+            candidate, checkpoint=static_analysis_seed_checkpoint,
+            checkpoint_sha256=static_analysis_seed_sha256)
     analysis = experiment.analyze(candidate, hypothesis="Host-requested full-objective compile/static preflight")
     result = {"schema": "global_analysis_only_v1", "readiness": analysis["readiness"],
         "candidate_sha256": analysis["candidate_sha256"],
@@ -268,8 +283,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--on-round-failure", choices=("stop", "resume-last-checkpoint"), default="stop")
     parser.add_argument("--resume-checkpoint", type=Path,
                         help="exact prior sealed candidate; starts an explicit newly frozen policy segment")
+    parser.add_argument("--static-analysis-seed-checkpoint", type=Path,
+                        help="explicit prior global candidate whose static analysis may be imported")
+    parser.add_argument("--static-analysis-seed-sha256",
+                        help="required exact SHA-256 of static-analysis-seed-checkpoint")
     parser.add_argument("--edit-contract", type=Path,
                         help="host-approved edit_contract.json with sibling receipt.json initial source-file pins")
+    parser.add_argument("--mechanism-catalog", type=Path,
+                        help="absolute immutable host compiler_mechanism_catalog_v1 JSON")
+    parser.add_argument("--mechanism-catalog-sha256",
+                        help="required exact raw-file SHA-256 for mechanism-catalog")
     parser.add_argument("--validation-only", action="store_true",
                         help="validate and seal an existing checkpoint without a new paid authoring round")
     parser.add_argument("--analysis-only", action="store_true",
@@ -315,6 +338,26 @@ def main(argv: list[str] | None = None) -> int:
         consecutive_violations_to_stop=args.resource_trip_samples)
     if bool(args.historical_reference) != bool(args.historical_reference_sha256):
         parser.error("historical-reference requires its exact historical-reference-sha256 pin")
+    if bool(args.static_analysis_seed_checkpoint) != bool(args.static_analysis_seed_sha256):
+        parser.error("static-analysis seed requires both checkpoint path and exact SHA-256")
+    if args.static_analysis_seed_checkpoint:
+        seed = args.static_analysis_seed_checkpoint
+        if (not PAS._is_sha256(args.static_analysis_seed_sha256) or seed.is_symlink()
+                or not seed.is_file() or PAS._sha256_file(seed) != args.static_analysis_seed_sha256):
+            parser.error("static-analysis seed checkpoint is linked, absent, or differs from its pin")
+    if bool(args.mechanism_catalog) != bool(args.mechanism_catalog_sha256):
+        parser.error("mechanism-catalog requires its exact mechanism-catalog-sha256 pin")
+    if args.mechanism_catalog:
+        catalog = args.mechanism_catalog
+        if not args.edit_contract:
+            parser.error("mechanism-catalog requires an explicit host edit-contract")
+        if (not PAS._is_sha256(args.mechanism_catalog_sha256) or not catalog.is_absolute()
+                or catalog.resolve() != catalog or catalog.is_symlink() or not catalog.is_file()
+                or catalog.stat().st_mode & 0o222
+                or PAS._sha256_file(catalog) != args.mechanism_catalog_sha256):
+            parser.error("mechanism-catalog must be an exact immutable absolute file")
+    if args.validation_only and args.static_analysis_seed_checkpoint:
+        parser.error("validation-only compares two revisions and cannot import an initial static seed")
     if args.historical_reference:
         from run_global_perf_experiment import load_historical_reference
         load_historical_reference(args.historical_reference, args.historical_reference_sha256,
@@ -322,7 +365,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.analysis_only and (args.validation_only or args.resume_checkpoint or args.comparison_candidate
             or args.probe_interface or args.probe_runtime_receipt or args.probe_profile != "none"
             or args.compare_controlled_context or args.semantic_only or args.max_rounds != 1
-            or args.total_authoring_seconds is not None or args.edit_contract):
+            or args.total_authoring_seconds is not None or args.edit_contract
+            or args.mechanism_catalog):
         parser.error("analysis-only excludes authoring/resume, qualification and profiling options")
     if bool(args.optimization_baseline) != bool(args.optimization_baseline_sha256):
         parser.error("optimization-baseline requires its exact optimization-baseline-sha256 pin")
@@ -347,6 +391,8 @@ def main(argv: list[str] | None = None) -> int:
             f"in (0, {FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:g}]")
     if args.validation_only and (args.max_rounds != 1 or args.resume_checkpoint or args.total_authoring_seconds):
         parser.error("validation-only does not launch or resume an authoring sequence")
+    if args.validation_only and args.mechanism_catalog:
+        parser.error("mechanism-catalog is for an authored round, not validation-only comparison")
     if args.validation_only != bool(args.comparison_candidate):
         parser.error("validation-only requires exactly one comparison-candidate")
     if args.compare_controlled_context and not args.validation_only:
@@ -405,12 +451,20 @@ def main(argv: list[str] | None = None) -> int:
                 command.extend(("--total-authoring-seconds", str(total_authoring)))
             if args.resume_checkpoint:
                 command.extend(("--resume-checkpoint", str(args.resume_checkpoint.resolve())))
+            if args.static_analysis_seed_checkpoint:
+                command.extend(("--static-analysis-seed-checkpoint",
+                                str(args.static_analysis_seed_checkpoint.resolve()),
+                                "--static-analysis-seed-sha256",
+                                args.static_analysis_seed_sha256))
             if args.optimization_baseline:
                 command.extend(("--optimization-baseline", str(args.optimization_baseline.resolve()),
                                 "--optimization-baseline-sha256", args.optimization_baseline_sha256,
                                 "--optimization-baseline-reason", args.optimization_baseline_reason))
             if args.edit_contract:
                 command.extend(("--edit-contract", str(args.edit_contract.resolve())))
+            if args.mechanism_catalog:
+                command.extend(_mechanism_catalog_worker_arguments(
+                    args.mechanism_catalog, args.mechanism_catalog_sha256))
             if args.historical_reference:
                 command.extend(("--historical-reference", str(args.historical_reference.resolve()),
                                 "--historical-reference-sha256", args.historical_reference_sha256))
@@ -534,6 +588,8 @@ def main(argv: list[str] | None = None) -> int:
         baseline_emission_seed_runs=tuple(args.baseline_emission_cache_seed_run),
         portfolio_analysis_workers=args.portfolio_analysis_workers,
         minimum_memory_available_bytes=resource_policy.minimum_memory_available_bytes,
+        source_snapshot_root=PAS.repo_root(),
+        source_snapshot_files_sha256=PAS._document_sha256(snapshot_receipt["files"]),
         output=stage_root / "global_iterations", timeout_s=args.iteration_seconds)
     if args.analysis_only:
         PAS._write_json(stage_root / "launch.json", {
@@ -557,11 +613,17 @@ def main(argv: list[str] | None = None) -> int:
             "external_objective_spec_sha256": args.external_objective_sha256,
             "portfolio_external_objective_spec_sha256": args.portfolio_external_objective_sha256,
             "full_model_simulation_allowed": False, "simulators_enabled": False,
+            "static_analysis_seed": ({"path": str(args.static_analysis_seed_checkpoint.resolve()),
+                "sha256": args.static_analysis_seed_sha256}
+                if args.static_analysis_seed_checkpoint else None),
             "authoring_launched": False, "iteration_seconds": args.iteration_seconds,
             "host_resource_policy": resource_policy.record()})
         return run_analysis_only(experiment, candidate, stage_root=stage_root,
             target_experiment=target, agent_inputs=inputs, frozen_functional=frozen_functional,
-            frozen_corpus_manifest=corpus.manifest_path)
+            frozen_corpus_manifest=corpus.manifest_path,
+            static_analysis_seed_checkpoint=(args.static_analysis_seed_checkpoint.resolve()
+                if args.static_analysis_seed_checkpoint else None),
+            static_analysis_seed_sha256=args.static_analysis_seed_sha256)
     if not args.validation_only:
         from merlin.perf.agent_guidance import build_compiler_edit_contract
         source_pins = None
@@ -577,6 +639,9 @@ def main(argv: list[str] | None = None) -> int:
             contract = build_compiler_edit_contract(PAS.inspect_compiler_package(candidate))
         experiment.freeze_edit_scope(candidate, contract, source_pins=source_pins,
                                      host_surface_declarations=host_surfaces)
+        if args.mechanism_catalog:
+            experiment.freeze_mechanism_catalog(
+                args.mechanism_catalog, args.mechanism_catalog_sha256)
     provider = None
     semantic_provider = None
     context_provider = None
@@ -673,12 +738,19 @@ def main(argv: list[str] | None = None) -> int:
         "iteration_seconds": args.iteration_seconds, "round_seconds": args.round_seconds,
         "maximum_rounds": args.max_rounds, "total_authoring_seconds": total_authoring,
         "on_round_failure": args.on_round_failure,
+        "compiler_mechanism_catalog": copy.deepcopy(experiment.mechanism_catalog_binding),
+        "static_analysis_seed": ({"path": str(args.static_analysis_seed_checkpoint.resolve()),
+            "sha256": args.static_analysis_seed_sha256,
+            "policy": "exact_content_hit_or_cold_analysis_miss"}
+            if args.static_analysis_seed_checkpoint else None),
         "resume_checkpoint": ({"path": str(args.resume_checkpoint.resolve()),
             "sha256": PAS._sha256_file(args.resume_checkpoint),
             "candidate_sha256": resumed["candidate_sha256"],
             "previous_host_policy": resumed["host_verification_policy"],
             "current_host_policy": experiment.host_policy,
-            "policy_transition": "explicit_new_segment_with_fresh_initial_model_analysis",
+            "policy_transition": ("explicit_new_segment_with_exact_static_seed_or_fresh_analysis"
+                                  if args.static_analysis_seed_checkpoint else
+                                  "explicit_new_segment_with_fresh_initial_model_analysis"),
             "old_verdict_modified": False} if resumed else None),
     })
     print(f"GLOBAL {'VALIDATION' if args.validation_only else 'AUTHORING'}: {stage_root} "
@@ -734,10 +806,17 @@ def main(argv: list[str] | None = None) -> int:
         global_semantic_provider=semantic_provider, global_context_provider=context_provider,
         global_paired_context_provider=paired_context_provider,
         global_source_pair_provider=source_pair_provider)
-    sequence = run_authoring_with_terminal_receipt(stage_root,
-        configure=lambda: configure_global_analysis(experiment, target_experiment=target,
+    def configure_and_seed():
+        configure_global_analysis(experiment, target_experiment=target,
             agent_inputs=inputs, frozen_functional=frozen_functional,
-            frozen_corpus_manifest=corpus.manifest_path, stage_root=stage_root),
+            frozen_corpus_manifest=corpus.manifest_path, stage_root=stage_root)
+        if args.static_analysis_seed_checkpoint:
+            experiment.import_static_analysis_checkpoint(
+                candidate, checkpoint=args.static_analysis_seed_checkpoint.resolve(),
+                checkpoint_sha256=args.static_analysis_seed_sha256)
+
+    sequence = run_authoring_with_terminal_receipt(stage_root,
+        configure=configure_and_seed,
         sequence=lambda: run_global_agent_sequence(experiment, candidate, run_round=author_round,
             stage_root=stage_root, max_rounds=args.max_rounds,
             total_authoring_seconds=total_authoring, round_seconds=args.round_seconds,

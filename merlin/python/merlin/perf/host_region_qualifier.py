@@ -197,7 +197,8 @@ class HostChangedRegionQualifier:
         self.output = Path(output)
         self.float_atol, self.float_rtol = float_atol, float_rtol
 
-    def __call__(self, *, candidate: Path, experiment: Any, timeout_s: float) -> dict[str, Any]:
+    def __call__(self, *, candidate: Path, experiment: Any, timeout_s: float,
+                 portfolio_member: Mapping[str, Any] | None = None) -> dict[str, Any]:
         from tempfile import mkdtemp
         import numpy as np
         from xdsl.dialects.llvm import LLVM
@@ -227,12 +228,32 @@ class HostChangedRegionQualifier:
             return value
 
         try:
-            binding = experiment.current_probe_binding(candidate).to_dict()
-            current = experiment.current_artifacts(candidate)
-            previous = experiment.previous_artifacts(candidate)
+            selected_context = None
+            if callable(getattr(experiment, "selected_changed_portfolio_context", None)):
+                selected_context = experiment.selected_changed_portfolio_context(
+                    candidate, portfolio_member)
+                current_context = selected_context["current"]
+                previous_context = selected_context["previous"]
+                binding = current_context["probe_binding"].to_dict()
+                preceding_binding = previous_context["probe_binding"].to_dict()
+                current = current_context["artifacts"]
+                previous = previous_context["artifacts"]
+                before, after = (previous_context["analysis"], current_context["analysis"])
+                record["portfolio_member_binding"] = {
+                    "selection": selected_context["selection"],
+                    "previous": previous_context["member_binding"],
+                    "current": current_context["member_binding"],
+                }
+            else:
+                if portfolio_member is not None:
+                    raise ValueError("portfolio member selection requires member-aware experiment accessors")
+                binding = experiment.current_probe_binding(candidate).to_dict()
+                preceding_binding = experiment.previous_probe_binding(candidate).to_dict()
+                current = experiment.current_artifacts(candidate)
+                previous = experiment.previous_artifacts(candidate)
+                before, after = (row["analysis"] for row in experiment.iterations[-2:])
             if not previous or len(experiment.iterations) < 2:
                 raise ValueError("qualification needs a previous bound full-model candidate artifact")
-            before, after = (row["analysis"] for row in experiment.iterations[-2:])
             before_plan = before["diagnostics"]["verified_global_plan_emission"]
             after_plan = after["diagnostics"]["verified_global_plan_emission"]
             for plan, artifact in ((before_plan, previous), (after_plan, current)):
@@ -327,7 +348,7 @@ class HostChangedRegionQualifier:
                 raise ValueError("bounded source selection found no changed reduced host codegen")
             record.update(binding=binding, extraction=extraction, task_index=task["task_index"],
                           comparison_prior_task_indices=task["comparison_prior_task_indices"],
-                          preceding_binding=experiment.previous_probe_binding(candidate).to_dict(),
+                          preceding_binding=preceding_binding,
                           task_payload_before_after=payload,
                           selection_scope="supported actual source chain within a same-source host task with changed "
                                           "payload or integer work; bytes prioritized separately from operations",
@@ -623,7 +644,14 @@ class HostChangedRegionQualifier:
                               "expected_sha256": [_sha(value.tobytes()) for value in expected]})
                 if not correct:
                     raise ValueError("candidate differs from independent typed source reference")
-            if experiment.current_probe_binding(candidate).to_dict() != binding:
+            if selected_context is not None:
+                verified = experiment.selected_changed_portfolio_context(
+                    candidate, selected_context["selection"])
+                if (verified["current"]["probe_binding"].to_dict() != binding
+                        or verified["previous"]["probe_binding"].to_dict()
+                        != preceding_binding):
+                    raise ValueError("compiler or selected portfolio evidence changed during qualification")
+            elif experiment.current_probe_binding(candidate).to_dict() != binding:
                 raise ValueError("compiler or whole-model evidence changed during qualification")
             record.update(status="passed_reduced_source_witness", cases=cases,
                           source_mechanism_correspondence="exact scalar regions/maps, reduced extents",

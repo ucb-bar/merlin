@@ -146,6 +146,772 @@ def setup_experiment(tmp_path, *, verified=True, primary_interface_bytes=9, **ex
     return experiment, candidate, calls
 
 
+def _static_cache_analyzer(calls):
+    def analyzer(base, current, objective, **kwargs):
+        candidate_sha = hash_tree(current)["sha256"]
+        calls.append(candidate_sha)
+        lowered = "module { func.func @compiled() }\n"
+        command_text = '{"commands":[],"tensors":{}}\n'
+        lowered_sha = PAS._sha256(lowered.encode())
+        command_sha = PAS._sha256(command_text.encode())
+        plan = {"status": "verified", "plan_digest": SHA["plan"],
+                "candidate_sha256": candidate_sha, "logical_dispatch_digest": SHA["graph"],
+                "source_sha256": PAS._sha256_file(
+                    Path(objective.frozen_source_path) / "capsule.interface.mlir"),
+                "candidate_lowered_sha256": lowered_sha,
+                "candidate_command_buffer_sha256": command_sha, "emitted_dispatches": 0}
+        analysis = {
+            "candidate_sha256": candidate_sha,
+            "workload": {"capsule_sha256": objective.capsule_sha256},
+            "emission": {"candidate_lowered_sha256": lowered_sha,
+                         "candidate_command_buffer_sha256": command_sha},
+            "diagnostics": {
+                "captured_logical_graph": {"status": "verified",
+                                           "logical_dispatch_digest": SHA["graph"]},
+                "verified_global_plan_emission": plan,
+                "emission_execution": {"elapsed_seconds": 123.0},
+                "arms": {"candidate": {"status": "emitted", "macs": 0, "exact": True,
+                                       "movement": {"known_bytes": 0}}},
+            },
+            "timing_status": "UNMEASURED",
+        }
+        kwargs["artifact_sink"]({
+            "lowered_text": lowered, "decoded_trace": {"instructions": []},
+            "command_buffer": json.loads(command_text), "command_buffer_text": command_text,
+            "interface": str(Path(objective.frozen_source_path) / "capsule.interface.mlir"),
+            "candidate_sha256": candidate_sha, "candidate_lowered_sha256": lowered_sha,
+            "candidate_command_buffer_sha256": command_sha,
+            "task_instruction_evidence": {"status": "verified", "tasks": []},
+        })
+        return analysis
+    return analyzer
+
+
+def _portfolio_selection_analyzer(calls, *, changing_capsules, include_host_activity=True):
+    changing_capsules = frozenset(changing_capsules)
+
+    def analyzer(base, current, objective, **kwargs):
+        candidate_sha = hash_tree(current)["sha256"]
+        calls.append((objective.capsule, candidate_sha))
+        changed = objective.capsule in changing_capsules
+        revision = candidate_sha if changed else "stable-emission"
+        lowered = f"module {{ func.func @compiled() }} // {objective.capsule}:{revision}\n"
+        command_buffer = {"commands": [], "tensors": {}, "params": {
+            "portfolio_fixture": {"capsule": objective.capsule, "revision": revision}}}
+        command_text = json.dumps(command_buffer, sort_keys=True, separators=(",", ":")) + "\n"
+        lowered_sha = PAS._sha256(lowered.encode())
+        command_sha = PAS._sha256(command_text.encode())
+        source = Path(objective.frozen_source_path) / "capsule.interface.mlir"
+        revision_work = 100 if changed and Path(current, "source.txt").read_text() != "candidate" else 0
+        plan = {
+            "status": "verified",
+            "plan_digest": PAS._document_sha256({
+                "capsule": objective.capsule, "revision": revision}),
+            "candidate_sha256": candidate_sha,
+            "logical_dispatch_digest": PAS._document_sha256({"capsule": objective.capsule}),
+            "source_sha256": PAS._sha256_file(source),
+            "candidate_lowered_sha256": lowered_sha,
+            "candidate_command_buffer_sha256": command_sha,
+            "emitted_dispatches": 0,
+        }
+        if include_host_activity:
+            plan.update(tasks=2 + int(bool(revision_work)), host_activity={
+                "status": "derived",
+                "load_payload_bytes": 10 + revision_work,
+                "store_payload_bytes": 20,
+                "static_allocation_payload_bytes": 30,
+                "dynamic_operations": {"llvm.load": 1 + revision_work},
+            })
+        analysis = {
+            "candidate_sha256": candidate_sha,
+            "workload": {"capsule_sha256": objective.capsule_sha256},
+            "emission": {"candidate_lowered_sha256": lowered_sha,
+                         "candidate_command_buffer_sha256": command_sha},
+            "diagnostics": {
+                "captured_logical_graph": {"status": "verified",
+                    "logical_dispatch_digest": plan["logical_dispatch_digest"]},
+                "verified_global_plan_emission": plan,
+                "arms": {"candidate": {"status": "emitted", "macs": 0, "exact": True,
+                    "movement": {"known_bytes": 0, "exact_bytes": True}}},
+            },
+            "timing_status": "UNMEASURED",
+        }
+        kwargs["artifact_sink"]({
+            "lowered_text": lowered, "decoded_trace": {"instructions": []},
+            "command_buffer": command_buffer, "command_buffer_text": command_text,
+            "interface": str(source), "candidate_sha256": candidate_sha,
+            "candidate_lowered_sha256": lowered_sha,
+            "candidate_command_buffer_sha256": command_sha,
+            "task_instruction_evidence": {"status": "verified", "tasks": []},
+        })
+        return analysis
+
+    return analyzer
+
+
+def _portfolio_selection_experiment(tmp_path, monkeypatch, *, changing_capsules,
+                                    name="selection", include_host_activity=True):
+    snapshot, snapshot_sha = _make_test_source_snapshot(
+        tmp_path, name + "_policy", "POLICY = 1\n")
+    monkeypatch.setattr(G, "host_verification_policy_record", lambda: _test_host_policy(snapshot))
+    extra_model = tmp_path / (name + "_secondary_model")
+    extra_model.mkdir()
+    (extra_model / "capsule.yaml").write_text(
+        "interface_mlir: capsule.interface.mlir\n")
+    (extra_model / "capsule.interface.mlir").write_text("module { func.func @secondary() }\n")
+    extra = PAS.StageE2ESentinel(
+        "secondary-model", str(extra_model), str(extra_model),
+        PAS._exact_tree_record(extra_model)["sha256"], (), ())
+    calls = []
+    analyzer = _portfolio_selection_analyzer(
+        calls, changing_capsules=changing_capsules,
+        include_host_activity=include_host_activity)
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", analyzer)
+    experiment, candidate = _make_static_cache_experiment(
+        tmp_path, name, snapshot, snapshot_sha, analyzer, portfolio_sentinels=[extra])
+    return experiment, candidate, calls
+
+
+def _make_test_source_snapshot(tmp_path, name, policy_text):
+    snapshot_tool = importlib.import_module("perf_snapshot")
+    source = tmp_path / (name + "_source")
+    policy_dir = source / "policy"
+    policy_dir.mkdir(parents=True)
+    (policy_dir / "verifier.py").write_text(policy_text)
+    snapshot = tmp_path / (name + ".source")
+    snapshot_tool.create(source, snapshot, output_root=tmp_path / "unused-out",
+                         source_roots=("policy",))
+    receipt = snapshot_tool.verify(snapshot)
+    return snapshot, PAS._document_sha256(receipt["files"])
+
+
+def _test_host_policy(snapshot):
+    source = snapshot / "policy/verifier.py"
+    sources = {str(source.resolve()): PAS._sha256_file(source)}
+    relative = {"policy/verifier.py": PAS._sha256_file(source)}
+    return {"schema": "global_host_verification_policy_v1", "sources": sources,
+            "sha256": PAS._document_sha256(relative),
+            "location_sha256": PAS._document_sha256(sources)}
+
+
+def _make_static_cache_experiment(tmp_path, name, snapshot, snapshot_sha, analyzer, **options):
+    root = tmp_path / name
+    root.mkdir()
+    baseline, candidate, model = (root / item for item in ("baseline", "candidate", "model"))
+    for path, text in ((baseline, "compiler"), (candidate, "candidate")):
+        path.mkdir()
+        (path / "source.txt").write_text(text)
+    model.mkdir()
+    (model / "capsule.yaml").write_text("interface_mlir: capsule.interface.mlir\n")
+    (model / "capsule.interface.mlir").write_text("module {}\n")
+    sentinel = PAS.StageE2ESentinel(
+        "cache-model", str(model), str(model), PAS._exact_tree_record(model)["sha256"], (), ())
+    experiment = G.GlobalPerfExperiment(
+        baseline=baseline, baseline_sha256=hash_tree(baseline)["sha256"], sentinel=sentinel,
+        target="test-target", target_sha256=SHA["target"], output=root / "run",
+        source_snapshot_root=snapshot, source_snapshot_files_sha256=snapshot_sha,
+        analyzer=analyzer, **options)
+    return experiment, candidate
+
+
+def test_exact_cross_run_static_checkpoint_hit_recomputes_current_state_without_measurements(
+        tmp_path, monkeypatch):
+    first_snapshot, first_snapshot_sha = _make_test_source_snapshot(
+        tmp_path, "first", "POLICY = 1\n")
+    second_snapshot, second_snapshot_sha = _make_test_source_snapshot(
+        tmp_path, "second", "POLICY = 1\n")
+    active_policy = [_test_host_policy(first_snapshot)]
+    monkeypatch.setattr(G, "host_verification_policy_record", lambda: copy.deepcopy(active_policy[0]))
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", _static_cache_analyzer(seed_calls := []))
+    seed, seed_candidate = _make_static_cache_experiment(
+        tmp_path, "seed", first_snapshot, first_snapshot_sha, PAS.analyze_whole_model_emission)
+    seed.analyze(seed_candidate, hypothesis="produce exact static seed")
+    checkpoint = seed.seal(seed_candidate)
+
+    active_policy[0] = _test_host_policy(second_snapshot)
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", _static_cache_analyzer(new_calls := []))
+    current, current_candidate = _make_static_cache_experiment(
+        tmp_path, "current", second_snapshot, second_snapshot_sha,
+        PAS.analyze_whole_model_emission)
+    receipt = current.import_static_analysis_checkpoint(
+        current_candidate, checkpoint=checkpoint, checkpoint_sha256=PAS._sha256_file(checkpoint))
+
+    assert receipt["status"] == "hit"
+    assert len(seed_calls) == 1 and new_calls == []
+    assert len(current.iterations) == 1
+    row = current.iterations[0]
+    assert row["readiness"]["status"] == "ready_for_probe_admission"
+    assert row["probe_receipts"] == []
+    assert row["static_comparison"]["structural_change"]["status"] == "initial_observation"
+    assert row["analysis_reuse"]["probe_or_timing_receipts_reused"] is False
+    assert row["analysis_reuse"]["semantic_or_decision_feedback_reused"] is False
+    assert row["analysis"]["diagnostics"]["emission_execution"]["timing_evidence_imported"] is False
+    assert "elapsed_seconds" not in row["analysis"]["diagnostics"]["emission_execution"]
+    assert Path(current.current_artifacts(current_candidate)["interface"]).is_file()
+    assert list(current.current_portfolio_artifacts(current_candidate)) == [
+        current.sentinel.capsule_sha256]
+    assert Path(row["submitted_snapshot"]).stat().st_mode & 0o222 == 0
+
+
+def test_v11_v13_style_host_policy_byte_mutation_is_an_explicit_cache_miss(
+        tmp_path, monkeypatch):
+    first_snapshot, first_snapshot_sha = _make_test_source_snapshot(
+        tmp_path, "v11", "POLICY = 11\n")
+    second_snapshot, second_snapshot_sha = _make_test_source_snapshot(
+        tmp_path, "v13", "POLICY = 13\n")
+    active_policy = [_test_host_policy(first_snapshot)]
+    monkeypatch.setattr(G, "host_verification_policy_record", lambda: copy.deepcopy(active_policy[0]))
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", _static_cache_analyzer(seed_calls := []))
+    seed, seed_candidate = _make_static_cache_experiment(
+        tmp_path, "v11_run", first_snapshot, first_snapshot_sha, PAS.analyze_whole_model_emission)
+    seed.analyze(seed_candidate, hypothesis="v11 static analysis")
+    checkpoint = seed.seal(seed_candidate)
+
+    active_policy[0] = _test_host_policy(second_snapshot)
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", _static_cache_analyzer(new_calls := []))
+    current, current_candidate = _make_static_cache_experiment(
+        tmp_path, "v13_run", second_snapshot, second_snapshot_sha,
+        PAS.analyze_whole_model_emission)
+    miss = current.import_static_analysis_checkpoint(
+        current_candidate, checkpoint=checkpoint, checkpoint_sha256=PAS._sha256_file(checkpoint))
+    assert miss["status"] == "miss"
+    assert miss["reason"] == "host_verification_policy_content_changed"
+    assert current.iterations == [] and new_calls == []
+    current.analyze(current_candidate, hypothesis="cold v13 analysis after safe miss")
+    assert len(new_calls) == 1
+
+
+def test_cross_run_static_checkpoint_direct_api_rejects_raw_symlink_and_relative_path(
+        tmp_path, monkeypatch):
+    snapshot, snapshot_sha = _make_test_source_snapshot(
+        tmp_path, "direct_path", "POLICY = 1\n")
+    monkeypatch.setattr(G, "host_verification_policy_record", lambda: _test_host_policy(snapshot))
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", _static_cache_analyzer([]))
+    seed, seed_candidate = _make_static_cache_experiment(
+        tmp_path, "direct_path_seed", snapshot, snapshot_sha,
+        PAS.analyze_whole_model_emission)
+    seed.analyze(seed_candidate, hypothesis="produce exact static seed")
+    checkpoint = seed.seal(seed_candidate)
+    linked = tmp_path / "linked_checkpoint.json"
+    linked.symlink_to(checkpoint)
+
+    linked_current, linked_candidate = _make_static_cache_experiment(
+        tmp_path, "direct_path_linked", snapshot, snapshot_sha,
+        PAS.analyze_whole_model_emission)
+    with pytest.raises(ValueError, match="absent, mutable, linked, or changed"):
+        linked_current.import_static_analysis_checkpoint(
+            linked_candidate, checkpoint=linked,
+            checkpoint_sha256=PAS._sha256_file(checkpoint))
+
+    relative_current, relative_candidate = _make_static_cache_experiment(
+        tmp_path, "direct_path_relative", snapshot, snapshot_sha,
+        PAS.analyze_whole_model_emission)
+    with pytest.raises(ValueError, match="absent, mutable, linked, or changed"):
+        relative_current.import_static_analysis_checkpoint(
+            relative_candidate, checkpoint=Path("relative-checkpoint.json"),
+            checkpoint_sha256=PAS._sha256_file(checkpoint))
+
+
+def test_cross_run_static_checkpoint_direct_api_rejects_linked_snapshot_root(
+        tmp_path, monkeypatch):
+    snapshot, snapshot_sha = _make_test_source_snapshot(
+        tmp_path, "snapshot_real", "POLICY = 1\n")
+    monkeypatch.setattr(G, "host_verification_policy_record", lambda: _test_host_policy(snapshot))
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", _static_cache_analyzer([]))
+    seed, seed_candidate = _make_static_cache_experiment(
+        tmp_path, "snapshot_seed", snapshot, snapshot_sha,
+        PAS.analyze_whole_model_emission)
+    seed.analyze(seed_candidate, hypothesis="produce exact static seed")
+    checkpoint = seed.seal(seed_candidate)
+    linked_snapshot = tmp_path / "linked_snapshot.source"
+    linked_snapshot.symlink_to(snapshot, target_is_directory=True)
+    current, candidate = _make_static_cache_experiment(
+        tmp_path, "snapshot_current", linked_snapshot, snapshot_sha,
+        PAS.analyze_whole_model_emission)
+
+    with pytest.raises(ValueError, match="source snapshot root is relative, linked, mutable, or absent"):
+        current.import_static_analysis_checkpoint(
+            candidate, checkpoint=checkpoint,
+            checkpoint_sha256=PAS._sha256_file(checkpoint))
+
+
+def test_changed_region_selects_secondary_when_primary_emission_is_unchanged(
+        tmp_path, monkeypatch):
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"})
+    experiment.analyze(candidate, hypothesis="initial portfolio emission")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="change secondary lowering mechanism")
+
+    selection = experiment.select_changed_portfolio_member(candidate)
+    assert selection["portfolio_index"] == 1
+    assert selection["capsule"] == "secondary-model"
+    assert selection["changed_artifact_fields"] == [
+        "plan_digest", "lowered_sha256", "command_buffer_sha256"]
+    assert selection["performance_inference"] == "none"
+
+    seen = []
+    def provider(*, candidate, experiment, timeout_s, portfolio_member):
+        selected = experiment.selected_changed_portfolio_context(candidate, portfolio_member)
+        binding = {"selection": selected["selection"],
+                   "previous": selected["previous"]["member_binding"],
+                   "current": selected["current"]["member_binding"]}
+        seen.append((portfolio_member["capsule"], selected["current"]["interface"].read_text()))
+        return {"status": "passed", "portfolio_member_binding": binding}
+
+    receipt = experiment.qualify_changed_region(candidate, provider=provider, timeout_s=30)
+    assert seen == [("secondary-model", "module { func.func @secondary() }\n")]
+    assert receipt["portfolio_member_binding"]["selection"] == selection
+    current_binding = receipt["portfolio_member_binding"]["current"]
+    assert receipt["binding"] == {
+        "graph_digest": current_binding["logical_dispatch_digest"],
+        "plan_digest": current_binding["plan_digest"],
+        "compiler_digest": current_binding["compiler_implementation_sha256"],
+        "target_digest": current_binding["target_sha256"],
+    }
+    assert receipt["full_model_cycles"] is None
+    checkpoint = experiment.seal(candidate)
+    consumed = G.consume_global_candidate(checkpoint)
+    assert consumed["semantic_receipts"] == experiment.iterations[-1]["semantic_receipts"]
+
+
+def test_changed_region_selects_primary_when_primary_is_the_changed_member(
+        tmp_path, monkeypatch):
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"cache-model"})
+    experiment.analyze(candidate, hypothesis="initial portfolio emission")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="change primary lowering mechanism")
+
+    selection = experiment.select_changed_portfolio_member(candidate)
+    assert selection["portfolio_index"] == 0
+    assert selection["capsule"] == "cache-model"
+
+
+def _selected_member_semantic_provider(*, candidate, experiment, timeout_s, portfolio_member):
+    selected = experiment.selected_changed_portfolio_context(candidate, portfolio_member)
+    return {"status": "passed", "portfolio_member_binding": {
+        "selection": selected["selection"], "previous": selected["previous"]["member_binding"],
+        "current": selected["current"]["member_binding"]}}
+
+
+def _qualified_secondary_checkpoint(tmp_path, monkeypatch):
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"})
+    experiment.analyze(candidate, hypothesis="initial portfolio")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="changed secondary")
+    semantic = experiment.qualify_changed_region(
+        candidate, provider=_selected_member_semantic_provider, timeout_s=30)
+    checkpoint = experiment.seal(candidate)
+    return experiment, candidate, semantic, checkpoint
+
+
+@pytest.mark.parametrize("mutation", [
+    "missing_prior", "changed_prior", "cross_run", "prior_portfolio_digest",
+    "invented_previous_binding", "ranking_delta", "cross_member", "legacy",
+])
+def test_semantic_consumer_rederives_pinned_prior_portfolio(tmp_path, monkeypatch, mutation):
+    experiment, candidate, semantic, checkpoint = _qualified_secondary_checkpoint(tmp_path, monkeypatch)
+    document = PAS._mapping_file(checkpoint)
+    reference = document["semantic_receipts"][0]
+    semantic_path = Path(reference["path"])
+    prior_path = Path(semantic["previous_iteration_record"])
+    if mutation == "missing_prior":
+        prior_path.unlink()
+    elif mutation == "changed_prior":
+        prior_path.chmod(0o644)
+        prior_path.write_text(prior_path.read_text() + "\n")
+        prior_path.chmod(0o444)
+    elif mutation == "cross_run":
+        elsewhere = tmp_path / "other_run"
+        elsewhere.mkdir()
+        copied = elsewhere / prior_path.name
+        copied.write_bytes(prior_path.read_bytes())
+        copied.chmod(0o444)
+        semantic["previous_iteration_record"] = str(copied)
+    elif mutation == "prior_portfolio_digest":
+        semantic["previous_portfolio_iteration_sha256"] = "f" * 64
+    elif mutation == "invented_previous_binding":
+        # All duplicated claims agree, but the previous immutable iteration contradicts them.
+        binding = semantic["portfolio_member_binding"]
+        binding["previous"]["lowered_sha256"] = "f" * 64
+        binding["selection"]["previous"] = copy.deepcopy(binding["previous"])
+        semantic["previous_artifact_sha256"] = "f" * 64
+        semantic["evidence"]["portfolio_member_binding"] = copy.deepcopy(binding)
+    elif mutation == "ranking_delta":
+        binding = semantic["portfolio_member_binding"]
+        binding["selection"]["structural_host_work_delta"]["host_payload_bytes_absolute_delta"] += 1000
+        semantic["evidence"]["portfolio_member_binding"] = copy.deepcopy(binding)
+    elif mutation == "cross_member":
+        semantic["portfolio_member_binding"]["selection"]["portfolio_index"] = 0
+    else:
+        semantic["schema"] = "global_changed_region_semantic_receipt_v1"
+    semantic_path.chmod(0o644)
+    semantic_path.write_text(json.dumps(semantic))
+    semantic_path.chmod(0o444)
+    reference["sha256"] = PAS._sha256_file(semantic_path)
+    checkpoint.chmod(0o644)
+    checkpoint.write_text(json.dumps(document))
+    checkpoint.chmod(0o444)
+    with pytest.raises(ValueError, match="semantic|preceding|legacy"):
+        G.consume_global_candidate(checkpoint)
+
+
+def test_secondary_semantic_supplement_binds_both_portfolios(tmp_path, monkeypatch):
+    experiment, candidate, semantic, checkpoint = _qualified_secondary_checkpoint(tmp_path, monkeypatch)
+    # Real old-policy subprocess verification is separately exercised by checkpoint consumers.
+    monkeypatch.setattr(G, "verify_retained_global_checkpoint", G.consume_global_candidate)
+    semantic_path = Path(experiment.iterations[-1]["semantic_receipts"][0]["path"])
+    result = G.write_semantic_supplement(
+        original_candidate_receipt=checkpoint,
+        previous_iteration_receipt=Path(semantic["previous_iteration_record"]),
+        semantic_receipt=semantic_path, output=tmp_path / "supplement.json")
+    assert result["semantic_status"] == "passed"
+    assert result["portfolio_member_binding"]["current"]["capsule"] == "secondary-model"
+    assert result["full_model_numerics_qualified"] is False
+    assert result["global_speedup_proven"] is False
+    wrong_previous = tmp_path / "wrong_previous.json"
+    wrong_previous.write_bytes(Path(semantic["previous_iteration_record"]).read_bytes())
+    wrong_previous.chmod(0o444)
+    with pytest.raises(ValueError, match="supplement preceding iteration"):
+        G.write_semantic_supplement(
+            original_candidate_receipt=checkpoint, previous_iteration_receipt=wrong_previous,
+            semantic_receipt=semantic_path, output=tmp_path / "wrong_supplement.json")
+
+
+def test_semantic_supplement_explicitly_refuses_legacy_schema(tmp_path):
+    path = tmp_path / "old_supplement.json"
+    path.write_text(json.dumps({"schema": "global_semantic_supplement_v1"}))
+    with pytest.raises(ValueError, match="policy or scope"):
+        G.consume_semantic_supplement(path)
+
+
+def test_structural_selector_treats_exact_empty_operation_maps_as_known_zero():
+    before = {"diagnostics": {"verified_global_plan_emission": {
+        "host_activity": {"dynamic_operations": {}}}}}
+    after = copy.deepcopy(before)
+    delta = G.GlobalPerfExperiment._known_structural_host_work_delta(before, after)
+    assert delta["host_dynamic_operations_absolute_delta"] == 0
+    assert delta["host_payload_bytes_absolute_delta"] is None
+    assert delta["planned_task_count_absolute_delta"] is None
+
+
+def test_changed_region_selector_records_stable_fallback_when_all_host_work_is_unknown(
+        tmp_path, monkeypatch):
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"cache-model", "secondary-model"},
+        include_host_activity=False)
+    experiment.analyze(candidate, hypothesis="initial portfolio emission")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="same mechanism changes both portfolio members")
+
+    selection = experiment.select_changed_portfolio_member(candidate)
+    assert selection["portfolio_index"] == 0
+    assert selection["selection_basis"] == \
+        "stable_portfolio_order_no_known_structural_host_work"
+    assert selection["known_ranking_metrics"] == []
+    assert selection["stable_portfolio_order_tie_break_applied"] is True
+    assert selection["performance_inference"] == "none"
+
+
+def test_changed_region_member_artifact_tamper_refuses_before_provider(
+        tmp_path, monkeypatch):
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"})
+    experiment.analyze(candidate, hypothesis="initial portfolio emission")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="change secondary lowering mechanism")
+    secondary = experiment.portfolio_sentinels[1].capsule_sha256
+    experiment._portfolio_artifacts[secondary]["candidate_lowered_sha256"] = "0" * 64
+    called = []
+
+    with pytest.raises(ValueError, match="binding changed"):
+        experiment.qualify_changed_region(
+            candidate, timeout_s=30,
+            provider=lambda **kwargs: called.append(kwargs) or {"status": "passed"})
+    assert called == []
+
+
+def test_changed_region_cross_member_artifact_substitution_refuses(tmp_path, monkeypatch):
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"})
+    experiment.analyze(candidate, hypothesis="initial portfolio emission")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="change secondary lowering mechanism")
+    primary, secondary = (member.capsule_sha256 for member in experiment.portfolio_sentinels)
+    experiment._portfolio_artifacts[secondary] = experiment._portfolio_artifacts[primary]
+
+    with pytest.raises(ValueError, match="binding changed"):
+        experiment.select_changed_portfolio_member(candidate)
+
+
+def test_changed_region_refuses_when_no_portfolio_emission_changed(tmp_path, monkeypatch):
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules=set())
+    experiment.analyze(candidate, hypothesis="initial portfolio emission")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="metadata-only compiler revision")
+    called = []
+
+    with pytest.raises(ValueError, match="no portfolio member has a changed emitted artifact"):
+        experiment.qualify_changed_region(
+            candidate, timeout_s=30,
+            provider=lambda **kwargs: called.append(kwargs) or {"status": "passed"})
+    assert called == []
+
+
+def test_imported_static_portfolio_bundle_can_be_previous_changed_member_context(
+        tmp_path, monkeypatch):
+    seed, seed_candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"}, name="import_seed")
+    seed.analyze(seed_candidate, hypothesis="produce portfolio static seed")
+    checkpoint = seed.seal(seed_candidate)
+
+    current, candidate, calls = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"}, name="import_current")
+    receipt = current.import_static_analysis_checkpoint(
+        candidate, checkpoint=checkpoint, checkpoint_sha256=PAS._sha256_file(checkpoint))
+    assert receipt["status"] == "hit"
+    assert calls == []
+    assert current.current_portfolio_member_context(candidate, index=1)[
+        "member_binding"]["capsule"] == "secondary-model"
+
+    (candidate / "source.txt").write_text("candidate-v2")
+    current.analyze(candidate, hypothesis="change secondary after imported static seed")
+    selection = current.select_changed_portfolio_member(candidate)
+    assert selection["portfolio_index"] == 1
+    assert selection["capsule"] == "secondary-model"
+    semantic = current.qualify_changed_region(
+        candidate, provider=_selected_member_semantic_provider, timeout_s=30)
+    assert Path(semantic["previous_iteration_record"]) == current.output / "iteration_0000.json"
+    assert semantic["previous_iteration_record_sha256"] == PAS._sha256_file(
+        current.output / "iteration_0000.json")
+    assert G.consume_global_candidate(current.seal(candidate))["semantic_receipts"]
+
+
+def test_imported_secondary_member_can_compile_with_exact_previous_production_policy(
+        tmp_path, monkeypatch):
+    import subprocess
+    from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+    from merlin.perf import analysis_worker as worker
+    from merlin.targetgen import oot_runner
+
+    seed, seed_candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"},
+        name="probe_import_seed")
+    seed.analyze(seed_candidate, hypothesis="produce portfolio static seed")
+    checkpoint = seed.seal(seed_candidate)
+
+    current, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"},
+        name="probe_import_current")
+    delegate = current.analyzer
+    factory_calls = []
+
+    def sandbox_factory(baseline, package, scratch):
+        factory_calls.append((Path(package), Path(scratch)))
+        result = {}
+        for arm, selected in (("baseline", Path(baseline)), ("candidate", Path(package))):
+            result[arm] = {
+                "package_path": str(selected.resolve()),
+                "scratch_path": str(Path(scratch).resolve()),
+                "compiler_dependencies": current._compiler_dependencies(selected),
+                "command_prefix": ["bwrap", "--clearenv", "PAYLOAD"],
+                "bwrap_argv_length": 2, "answer_surfaces": [], "overlay_trees": {},
+            }
+        return result
+
+    class FixtureIsolatedWorker(IsolatedAnalysisWorker):
+        calls = 0
+        def __call__(self, baseline, package, objective, *, artifact_sink=None, **kwargs):
+            type(self).calls += 1
+            scratch = tmp_path / f"fixture_worker_scratch_{type(self).calls}"
+            scratch.mkdir()
+            self.completed_sandboxes = self.sandbox_factory(baseline, package, scratch)
+            return delegate(baseline, package, objective,
+                            artifact_sink=artifact_sink, **kwargs)
+
+    current.analyzer = FixtureIsolatedWorker(
+        stage_path=Path(PAS.__file__), sandbox_factory=sandbox_factory,
+        output=tmp_path / "fixture_worker")
+    # Preserve the production worker API while keeping this regression compiler-free.
+    current._member_analyzer = lambda: current.analyzer
+    imported = current.import_static_analysis_checkpoint(
+        candidate, checkpoint=checkpoint, checkpoint_sha256=PAS._sha256_file(checkpoint))
+    reconstruction = current.iterations[0]["analysis_reuse"]["compiler_sandbox_reconstruction"]
+    assert imported["status"] == "hit"
+    assert reconstruction["status"] == "prepared_from_current_trusted_factory"
+    assert reconstruction["compiler_invoked"] is False
+    assert current._compiler_sandbox_sha256[0] == reconstruction["policy_set_sha256"]
+    imported_submission = Path(current.iterations[0]["submitted_snapshot"])
+    assert factory_calls[0][0] == imported_submission
+
+    (candidate / "source.txt").write_text("candidate-v2")
+    current.analyze(candidate, hypothesis="change secondary after imported static seed")
+    assert current.select_changed_portfolio_member(candidate)["portfolio_index"] == 1
+    loaded, observed = [], []
+    monkeypatch.setattr(oot_runner, "load_package",
+                        lambda path: loaded.append(path) or object())
+    monkeypatch.setattr(worker, "run_sandboxed_entrypoint",
+        lambda *args, **kwargs: observed.append(kwargs["sandbox"])
+        or subprocess.CompletedProcess([], 0, "module {}", ""))
+    secondary_interface = current.selected_changed_portfolio_context(candidate)[
+        "previous"]["interface"]
+    result = current.compile_previous_probe_candidate(
+        candidate, secondary_interface, tmp_path / "previous_secondary_probe", timeout_s=10)
+
+    assert result.returncode == 0
+    assert loaded == [imported_submission]
+    assert observed[0]["package_path"] == str(imported_submission)
+    assert observed[0]["compiler_dependencies"] == current.iterations[0]["compiler_dependencies"]
+
+
+def test_imported_previous_probe_refuses_reconstructed_policy_tamper(tmp_path, monkeypatch):
+    from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+
+    seed, seed_candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"},
+        name="policy_tamper_seed")
+    seed.analyze(seed_candidate, hypothesis="produce portfolio static seed")
+    checkpoint = seed.seal(seed_candidate)
+    current, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"},
+        name="policy_tamper_current")
+
+    def sandbox_factory(baseline, package, scratch):
+        return {arm: {"package_path": str(Path(selected).resolve()),
+            "scratch_path": str(Path(scratch).resolve()),
+            "compiler_dependencies": current._compiler_dependencies(Path(selected)),
+            "command_prefix": ["bwrap", "--clearenv", "PAYLOAD"],
+            "bwrap_argv_length": 2, "answer_surfaces": [], "overlay_trees": {}}
+            for arm, selected in (("baseline", baseline), ("candidate", package))}
+
+    current.analyzer = IsolatedAnalysisWorker(
+        stage_path=Path(PAS.__file__), sandbox_factory=sandbox_factory,
+        output=tmp_path / "tamper_worker")
+    current.import_static_analysis_checkpoint(
+        candidate, checkpoint=checkpoint, checkpoint_sha256=PAS._sha256_file(checkpoint))
+    current._compiler_sandboxes[0]["candidate"]["command_prefix"].append("tampered")
+    scratch = tmp_path / "tampered_policy_probe"
+    scratch.mkdir()
+    with pytest.raises(ValueError, match="policy changed identity"):
+        current._probe_sandbox(candidate, scratch)
+
+
+def test_cross_run_static_checkpoint_bundle_tamper_fails_closed(tmp_path, monkeypatch):
+    snapshot, snapshot_sha = _make_test_source_snapshot(tmp_path, "same", "POLICY = 1\n")
+    monkeypatch.setattr(G, "host_verification_policy_record",
+                        lambda: _test_host_policy(snapshot))
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", _static_cache_analyzer([]))
+    seed, candidate = _make_static_cache_experiment(
+        tmp_path, "tamper_seed", snapshot, snapshot_sha, PAS.analyze_whole_model_emission)
+    row = seed.analyze(candidate, hypothesis="produce exact static seed")
+    checkpoint = seed.seal(candidate)
+    bundle = Path(row["static_analysis_bundle"]["path"])
+    bundle.chmod(0o644)
+    current, current_candidate = _make_static_cache_experiment(
+        tmp_path, "tamper_current", snapshot, snapshot_sha, PAS.analyze_whole_model_emission)
+    with pytest.raises(ValueError, match="artifact bundle is absent, mutable, linked, or changed"):
+        current.import_static_analysis_checkpoint(
+            current_candidate, checkpoint=checkpoint, checkpoint_sha256=PAS._sha256_file(checkpoint))
+
+
+def test_cross_run_static_checkpoint_analysis_option_change_is_a_cold_miss(tmp_path, monkeypatch):
+    first_snapshot, first_snapshot_sha = _make_test_source_snapshot(
+        tmp_path, "option_first", "POLICY = 1\n")
+    second_snapshot, second_snapshot_sha = _make_test_source_snapshot(
+        tmp_path, "option_second", "POLICY = 1\n")
+    active_policy = [_test_host_policy(first_snapshot)]
+    monkeypatch.setattr(G, "host_verification_policy_record", lambda: copy.deepcopy(active_policy[0]))
+    monkeypatch.setattr(PAS, "analyze_whole_model_emission", _static_cache_analyzer([]))
+    seed, candidate = _make_static_cache_experiment(
+        tmp_path, "option_seed", first_snapshot, first_snapshot_sha,
+        PAS.analyze_whole_model_emission, timeout_s=300)
+    seed.analyze(candidate, hypothesis="produce exact static seed")
+    checkpoint = seed.seal(candidate)
+    active_policy[0] = _test_host_policy(second_snapshot)
+    current, current_candidate = _make_static_cache_experiment(
+        tmp_path, "option_current", second_snapshot, second_snapshot_sha,
+        PAS.analyze_whole_model_emission, timeout_s=301)
+    miss = current.import_static_analysis_checkpoint(
+        current_candidate, checkpoint=checkpoint, checkpoint_sha256=PAS._sha256_file(checkpoint))
+    assert miss["status"] == "miss"
+    assert "analysis_options" in miss["reason"]
+    assert current.iterations == []
+
+
+def test_launcher_requires_static_analysis_seed_path_and_sha_together():
+    launcher = importlib.import_module("launch_global_agent_experiment")
+    with pytest.raises(SystemExit) as caught:
+        launcher.main([
+            "--campaign-config", "not-read.json", "--candidate", "candidate",
+            "--output", "not-created", "--static-analysis-seed-checkpoint", "checkpoint.json",
+        ])
+    assert caught.value.code == 2
+
+
+def test_cross_run_identity_is_path_neutral_but_content_and_order_strict(tmp_path):
+    dep = {"candidate_sha256": SHA["graph"], "shared_sources": {"planner.py": SHA["plan"]},
+           "selected_lazy_exports": {"merlin.plan": "merlin.planner"}}
+    left_opt = {"schema": "global_optimization_baseline_v1", "selection": "explicit_host_seed",
+                "path": "/old/run/optimization_baseline", "sha256": SHA["graph"],
+                "compiler_dependencies": {**dep, "shared_source_root": "/old/source"},
+                "reason": "fixed seed", "scope": "comparison", "phase1_regraded": False,
+                "objective_numerical_qualification": "UNPROVEN"}
+    right_opt = copy.deepcopy(left_opt)
+    right_opt["path"] = "/new/run/optimization_baseline"
+    right_opt["compiler_dependencies"]["shared_source_root"] = "/new/source"
+    assert G._portable_optimization_baseline_binding(left_opt) == \
+        G._portable_optimization_baseline_binding(right_opt)
+
+    edit = {"schema": "host_frozen_compiler_edit_authority_v1",
+            "initial_candidate_sha256": SHA["graph"],
+            "contract_document_sha256": SHA["plan"],
+            "contract": {"existing_symbols": [{"path": "compiler.py", "symbol": "lower"}]},
+            "seed_path": "/old/run/edit_scope_seed"}
+    moved_edit = {**edit, "seed_path": "/new/run/edit_scope_seed"}
+    assert G._portable_edit_authority(edit) == G._portable_edit_authority(moved_edit)
+    assert G._portable_historical_reference(
+        {"path": "/old/history", "sha256": SHA["graph"], "summary": {"rows": 1}}) == \
+        G._portable_historical_reference(
+            {"path": "/new/history", "sha256": SHA["graph"], "summary": {"rows": 1}})
+    assert G._portable_phase1_binding({"run_dir": "/old/phase1", "run_id": "p1",
+                                       "evidence_sha256": {"freeze.json": SHA["buffer"]}}) == \
+        G._portable_phase1_binding({"run_dir": "/new/phase1", "run_id": "p1",
+                                    "evidence_sha256": {"freeze.json": SHA["buffer"]}})
+
+    first_tool = tmp_path / "first-tool"
+    second_tool = tmp_path / "second-tool"
+    first_tool.write_bytes(b"same tool")
+    second_tool.write_bytes(b"same tool")
+    digest = PAS._sha256_file(first_tool)
+    left_policy = {"schema": "machine_artifact_policy_identity_v1",
+                   "compiler": {"path": str(first_tool), "resolved_path": str(first_tool),
+                                "sha256": digest}, "flags": ["-O2"]}
+    right_policy = copy.deepcopy(left_policy)
+    right_policy["compiler"].update(path=str(second_tool), resolved_path=str(second_tool))
+    assert G._portable_machine_build_policy(left_policy, verify_files=True) == \
+        G._portable_machine_build_policy(right_policy, verify_files=True)
+    second_tool.write_bytes(b"different tool")
+    with pytest.raises(ValueError, match="executable or implementation changed"):
+        G._portable_machine_build_policy(right_policy, verify_files=True)
+
+    first = G.full_model_portfolio_identity([
+        SimpleNamespace(capsule="a", capsule_sha256=SHA["graph"], required_lanes=(),
+                        required_tiers=()),
+        SimpleNamespace(capsule="b", capsule_sha256=SHA["plan"], required_lanes=(),
+                        required_tiers=()),
+    ])
+    second = G.full_model_portfolio_identity([
+        SimpleNamespace(capsule="b", capsule_sha256=SHA["plan"], required_lanes=(),
+                        required_tiers=()),
+        SimpleNamespace(capsule="a", capsule_sha256=SHA["graph"], required_lanes=(),
+                        required_tiers=()),
+    ])
+    assert PAS._document_sha256(first) != PAS._document_sha256(second)
+
+
 def test_host_only_full_graph_and_authoring_budgets_are_distinct_from_probe_ceiling(tmp_path):
     experiment, candidate, calls = setup_experiment(tmp_path, timeout_s=1200)
 
@@ -495,7 +1261,10 @@ def test_portfolio_action_digest_resolves_primary_and_filters_exact_authority(tm
               "detail": "delete materialization", "evidence": {"bytes": 128},
               "required_effects": ["movement"], "edit_surfaces": [surface,
                   {**surface, "id": "unapproved", "symbol": "Other.run"}]}
-    record["analysis"]["optimization_brief"] = {"ranked_actions": [action]}
+    optimization_order = {"schema": "macro_optimization_order_v1", "tiers": [{
+        "tier": 1, "name": "whole_program_work_deletion"}]}
+    record["analysis"]["optimization_brief"] = {
+        "ranked_actions": [action], "optimization_order": optimization_order}
     record["analysis"]["diagnostics"]["arms"]["candidate"].update({
         "macs": 8192, "movement": {"known_bytes": 128},
         "representation_activity": {"command_counts": {"MATMUL": 2},
@@ -512,6 +1281,8 @@ def test_portfolio_action_digest_resolves_primary_and_filters_exact_authority(tm
     assert primary["totals"]["movement_known_bytes"] == 128
     assert primary["top_ranked_actions"][0]["authorized_edit_surfaces"] == [{
         **surface, "authority": "exact_host_frozen_existing_symbol"}]
+    assert primary["optimization_order"] == optimization_order
+    assert digest["optimization_order"] == optimization_order
 
 
 def test_portfolio_member_failure_blocks_current_revision_and_seal(tmp_path):
@@ -1079,6 +1850,150 @@ def test_host_scope_checked_before_compile_and_again_by_sealed_consumer(tmp_path
         {"surface_id": "forged", "path": "compiler.py", "symbol": "protected"})
     with pytest.raises(ValueError, match="edit authority"):
         experiment.validate_candidate_scope(candidate)
+
+
+def _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, mechanisms):
+    contract = {"schema": "compiler_edit_contract_v1", "existing_symbols": [
+        {"surface_id": name, "path": "compiler.py", "symbol": name}
+        for name in ("optimize", "schedule")], "helper_extensions": []}
+    contract["sha256"] = PAS._document_sha256(contract)
+    experiment.freeze_edit_scope(candidate, contract)
+    catalog = {"schema": "compiler_mechanism_catalog_v1",
+               "contract_sha256": contract["sha256"], "mechanisms": mechanisms}
+    catalog["sha256"] = PAS._document_sha256(catalog)
+    path = tmp_path / "mechanism_catalog.json"
+    path.write_bytes(PAS._canonical_json(catalog))
+    path.chmod(0o444)
+    binding = experiment.freeze_mechanism_catalog(path, PAS._sha256_file(path))
+    return path, binding
+
+
+def test_mechanism_catalog_gates_before_analysis_and_binds_iteration_checkpoint(
+        tmp_path):
+    experiment, candidate, calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _path, binding = _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    seed = experiment.analyze(candidate, hypothesis="bind exact seed")
+    assert seed["round_mechanism_attribution"]["status"] == "initial_seed"
+    experiment.begin_mechanism_round(candidate, round_index=0)
+    compiler = candidate / "compiler.py"
+    compiler.write_text(compiler.read_text().replace("return 1", "return 2", 1))
+
+    gate = experiment.finalize_mechanism_round(candidate, round_index=0)
+    assert gate["status"] == "allowed"
+    assert gate["selected_mechanism_id"] == "epilogue"
+    assert len(calls) == 1  # Attribution itself never compiles a model.
+    row = experiment.analyze(candidate, hypothesis="delete exact epilogue materialization")
+    assert len(calls) == 2
+    assert row["compiler_mechanism_catalog"] == binding
+    assert row["round_mechanism_attribution"]["candidate_sha256"] == row["candidate_sha256"]
+    assert row["round_mechanism_attribution"]["selected_mechanism_id"] == "epilogue"
+    checkpoint = experiment.seal(candidate)
+    consumed = G.consume_global_candidate(checkpoint)
+    assert consumed["compiler_mechanism_catalog"] == binding
+    assert consumed["round_mechanism_attribution"] == row["round_mechanism_attribution"]
+
+
+def test_multi_mechanism_candidate_is_refused_before_full_model_analyzer(tmp_path):
+    experiment, candidate, calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [
+        {"id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}]},
+        {"id": "latency", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "schedule"}]},
+    ])
+    experiment.analyze(candidate, hypothesis="bind exact seed")
+    experiment.begin_mechanism_round(candidate, round_index=0)
+    compiler = candidate / "compiler.py"
+    compiler.write_text(compiler.read_text().replace("return 1", "return 2"))
+
+    with pytest.raises(ValueError, match="one-mechanism policy"):
+        experiment.analyze(candidate, hypothesis="attempt two mechanisms")
+    assert len(calls) == 1
+    refusal = PAS._mapping_file(next(experiment.output.glob("mechanism_analysis_refusal_*.json")))
+    assert refusal["mechanism_ids"] == ["epilogue", "latency"]
+
+
+def test_final_mechanism_gate_records_and_refuses_semantic_noop(tmp_path):
+    experiment, candidate, calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    experiment.analyze(candidate, hypothesis="bind exact seed")
+    experiment.begin_mechanism_round(candidate, round_index=0)
+
+    gate = experiment.finalize_mechanism_round(candidate, round_index=0)
+    assert gate["status"] == "refused"
+    assert gate["semantic_noop"] is True
+    assert "no semantic compiler mechanism delta" in gate["violations"][-1]["reason"]
+    with pytest.raises(ValueError, match="refused compiler mechanism round"):
+        experiment.analyze(candidate, hypothesis="must not compile no-op round")
+    assert len(calls) == 1
+
+
+def test_mechanism_catalog_requires_raw_absolute_readonly_exact_file(tmp_path):
+    experiment, candidate, _calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    contract = {"schema": "compiler_edit_contract_v1", "existing_symbols": [
+        {"surface_id": "optimize", "path": "compiler.py", "symbol": "optimize"}],
+        "helper_extensions": []}
+    contract["sha256"] = PAS._document_sha256(contract)
+    experiment.freeze_edit_scope(candidate, contract)
+    catalog = {"schema": "compiler_mechanism_catalog_v1",
+               "contract_sha256": contract["sha256"], "mechanisms": [{
+                   "id": "epilogue", "selectors": [{
+                       "kind": "function", "path": "compiler.py", "symbol": "optimize"}]}]}
+    catalog["sha256"] = PAS._document_sha256(catalog)
+    real = tmp_path / "catalog.json"
+    real.write_bytes(PAS._canonical_json(catalog))
+    digest = PAS._sha256_file(real)
+    with pytest.raises(ValueError, match="immutable absolute"):
+        experiment.freeze_mechanism_catalog(Path("catalog.json"), digest)
+    link = tmp_path / "catalog-link.json"
+    link.symlink_to(real)
+    with pytest.raises(ValueError, match="immutable absolute"):
+        experiment.freeze_mechanism_catalog(link, digest)
+    with pytest.raises(ValueError, match="immutable absolute"):
+        experiment.freeze_mechanism_catalog(real, "0" * 64)
+    real.chmod(0o444)
+    binding = experiment.freeze_mechanism_catalog(real, digest)
+    assert PAS._mapping_file(Path(binding["frozen_path"])) == catalog
+    assert PAS._mapping_file(
+        experiment.output / "compiler_mechanism_catalog_receipt.json") == binding
+    frozen = Path(binding["frozen_path"])
+    frozen.chmod(0o644)
+    frozen.write_bytes(b"{}\n")
+    with pytest.raises(ValueError, match="mechanism catalog changed"):
+        experiment._check_inputs()
+
+
+@pytest.mark.parametrize("flag", ["--mechanism-catalog", "--mechanism-catalog-sha256"])
+def test_launcher_requires_mechanism_catalog_path_sha_and_edit_contract(flag, tmp_path):
+    launcher = importlib.import_module("launch_global_agent_experiment")
+    value = str((tmp_path / "catalog.json").resolve()) if flag.endswith("catalog") else "a" * 64
+    with pytest.raises(SystemExit) as caught:
+        launcher.main(["--campaign-config", "not-read.json", "--candidate", "candidate",
+                       "--output", "not-created", flag, value])
+    assert caught.value.code == 2
+
+
+def test_source_worker_receives_the_exact_mechanism_catalog_pin(tmp_path):
+    launcher = importlib.import_module("launch_global_agent_experiment")
+    path = (tmp_path / "catalog.json").resolve()
+    digest = "a" * 64
+    assert launcher._mechanism_catalog_worker_arguments(path, digest) == (
+        "--mechanism-catalog", str(path), "--mechanism-catalog-sha256", digest)
+    assert launcher._mechanism_catalog_worker_arguments(None, None) == ()
 
 
 def test_context_provider_installation_is_not_current_motif_applicability():
@@ -2322,6 +3237,15 @@ def test_real_macro_round_transport_compiles_each_revision_without_micro_feedbac
         {"surface_id": "lowering", "path": "compiler.py", "symbol": "lower"}], "helper_extensions": []}
     contract["sha256"] = PAS._document_sha256(contract)
     experiment.freeze_edit_scope(candidate, contract)
+    mechanism_catalog = {"schema": "compiler_mechanism_catalog_v1",
+        "contract_sha256": contract["sha256"], "mechanisms": [{
+            "id": "lowering", "selectors": [
+                {"kind": "function", "path": "compiler.py", "symbol": "lower"}]}]}
+    mechanism_catalog["sha256"] = PAS._document_sha256(mechanism_catalog)
+    mechanism_path = tmp_path / "active_mechanism_catalog.json"
+    mechanism_path.write_bytes(PAS._canonical_json(mechanism_catalog))
+    mechanism_path.chmod(0o444)
+    experiment.freeze_mechanism_catalog(mechanism_path, PAS._sha256_file(mechanism_path))
     # Qualification IO is tested separately; this fixture exercises the authoring transport.
     experiment.phase1_binding = {"test_fixture": "verified existing qualification"}
     action = PAS.BrokerAction(PAS.E2E_ANALYSIS_ACTION, (PAS._HOST_E2E_ANALYSIS_SENTINEL,), (),
@@ -2361,6 +3285,10 @@ def test_real_macro_round_transport_compiles_each_revision_without_micro_feedbac
         model="test", resolved_model="test", effort="high", codex_binary=Path("codex"),
         round_index=0, round_timeout_s=30, max_tool_calls=3)
     assert result["status"] == "authored"
+    assert result["mechanism_attribution"]["status"] == "allowed"
+    assert result["mechanism_attribution"]["selected_mechanism_id"] == "lowering"
+    assert PAS._mapping_file(Path(result["mechanism_attribution"]["receipt"]["path"]))[
+        "candidate_sha256"] == result["candidate_sha256"]
     assert result["global_speedup_proven"] is False
     assert len(calls) == 2 and calls[0] != calls[1]
     assert result["broker_evidence"]["successful_actions"] == [PAS.E2E_ANALYSIS_ACTION]
@@ -2369,6 +3297,10 @@ def test_real_macro_round_transport_compiles_each_revision_without_micro_feedbac
     context = json.loads((tmp_path / "STAGE_CONTEXT.json").read_text())
     assert "Do not run Python directly against any path in the candidate workspace" in task
     assert "Do not place shell or Python commands before or after a broker call" in task
+    assert "exactly one coherent optimization mechanism per round" in task
+    assert "must not include opportunistic unrelated edits" in task
+    assert "delete whole-program work and boundaries" in task
+    assert "only then operator, tile, or local scalar cleanup" in task
     assert context["portfolio_action_digest"]["members"][0]["identity"]["capsule"] == "real-model"
     assert "mandatory_analysis_reserve" in context
     assert context["mandatory_analysis_reserve"]["seconds"] == 0

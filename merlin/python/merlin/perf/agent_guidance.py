@@ -159,6 +159,85 @@ _GAP_AXES = {
 }
 
 
+# Phase 2 is a whole-program optimization loop. A flat list of actionable findings can make a
+# cheap local rewrite look as important as deleting a model-wide representation boundary. Keep
+# the ordering target-neutral: tiers name compiler/dataflow scope, never a target opcode or model.
+_MACRO_OPTIMIZATION_LADDER = (
+    {
+        "tier": 0,
+        "name": "correctness_and_regression_repair",
+        "gaps": (),
+        "purpose": "repair emission, correctness, work, movement, synchronization, or trace regressions",
+    },
+    {
+        "tier": 1,
+        "name": "whole_program_work_deletion",
+        "gaps": (
+            "whole_model_placement_and_coverage",
+            "fusion_and_host_boundaries",
+            "exact_quantized_epilogues_and_residuals",
+            "arena_lifetimes_and_reuse",
+            "entry_abi_and_runtime_overhead",
+        ),
+        "purpose": "delete whole-model tasks, materializations, boundaries, redundant representations, and runtime work",
+    },
+    {
+        "tier": 2,
+        "name": "global_dataflow_and_representation",
+        "gaps": (
+            "encoding_and_layout",
+            "movement_and_materialization",
+            "residency_across_operations",
+        ),
+        "purpose": "select encodings globally and keep values resident instead of converting, spilling, or reloading them",
+    },
+    {
+        "tier": 3,
+        "name": "global_execution_and_latency_hiding",
+        "gaps": (
+            "dispatch_and_loop_offload",
+            "latency_hiding_and_double_buffering",
+            "synchronization",
+            "capacity_and_contention",
+        ),
+        "purpose": "keep engines occupied by issuing independent work early and minimizing exposed waits",
+    },
+    {
+        "tier": 4,
+        "name": "operator_layer_and_tile_efficiency",
+        "gaps": ("arithmetic_lowering",),
+        "purpose": "improve an operator or tile only after larger whole-program opportunities are terminal for this revision",
+    },
+    {
+        "tier": 5,
+        "name": "local_scalar_cleanup",
+        "gaps": (),
+        "purpose": "apply peepholes and scalar cleanup only when no higher-tier mechanism remains actionable",
+    },
+)
+
+
+def macro_optimization_order() -> dict[str, Any]:
+    """Return the host-owned largest-to-smallest Phase-2 selection contract."""
+    return {
+        "schema": "macro_optimization_order_v1",
+        "selection": (
+            "choose the lowest numbered nonterminal tier; within it prefer quantified dynamic "
+            "extent, then cross-model coverage; use a matched reduced cycle witness when unlike "
+            "costs trade off"
+        ),
+        "descent_gate": (
+            "every higher tier must have a retained structural change or an explicit source/plan-"
+            "bound refusal or no-op for the current compiler revision"
+        ),
+        "prohibited_shortcut": (
+            "an easy local rewrite, capsule win, or unknown cost cannot bypass an actionable "
+            "whole-program or global-dataflow mechanism"
+        ),
+        "tiers": [dict(row) for row in _MACRO_OPTIMIZATION_LADDER],
+    }
+
+
 @dataclass(frozen=True)
 class SourceSymbol:
     path: str
@@ -440,6 +519,7 @@ def guidance_for_report(report: WholeModelReport,
     return {
         "schema": "agent_global_optimization_brief_v1",
         "objective": "minimize warm complete-model compute cycles",
+        "optimization_order": macro_optimization_order(),
         "success_gates": dict(report.gates),
         "ranked_actions": actions,
         "package_inventory": inventory.to_dict(),
@@ -859,6 +939,7 @@ def guidance_for_emission_analysis(
     return {
         "schema": "agent_emission_optimization_brief_v1",
         "objective": "minimize warm complete-model compute cycles",
+        "optimization_order": macro_optimization_order(),
         "timing_status": "UNMEASURED",
         "ranked_actions": ranked,
         "package_inventory": inventory.to_dict(),

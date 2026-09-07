@@ -8,6 +8,7 @@ from merlin.perf.agent_guidance import (
     guidance_for_emission_analysis,
     guidance_for_report,
     inspect_compiler_package,
+    macro_optimization_order,
 )
 from merlin.perf.global_planner import OccupancySummary
 from merlin.perf.whole_model_report import ModelPerformance, evaluate_whole_models
@@ -127,6 +128,22 @@ def test_global_catalog_exposes_unpriced_abi_arena_and_exact_epilogue_gaps(tmp_p
         assert gaps[name]['evidence_status'].startswith('UNKNOWN')
         assert gaps[name]['cheap_validation']
     assert brief['compiler_edit_contract_template']['existing_symbols']
+
+
+def test_macro_optimization_order_requires_global_work_before_local_cleanup(tmp_path):
+    order = macro_optimization_order()
+    tiers = {row["name"]: row for row in order["tiers"]}
+
+    assert tiers["whole_program_work_deletion"]["tier"] == 1
+    assert "exact_quantized_epilogues_and_residuals" in \
+        tiers["whole_program_work_deletion"]["gaps"]
+    assert tiers["global_dataflow_and_representation"]["tier"] < \
+        tiers["operator_layer_and_tile_efficiency"]["tier"]
+    assert tiers["global_execution_and_latency_hiding"]["tier"] < \
+        tiers["local_scalar_cleanup"]["tier"]
+    assert "cannot bypass" in order["prohibited_shortcut"]
+    assert guidance_for_emission_analysis(
+        {}, inspect_compiler_package(_package(tmp_path)))["optimization_order"] == order
 
 
 def test_host_payload_guides_edits_without_claiming_cycles(tmp_path) -> None:

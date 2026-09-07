@@ -65,6 +65,35 @@ def test_dispatch_never_falls_back_after_marked_copy_refusal(marked):
     assert calls == ["legacy" if marked == "none" else "physical"]
 
 
+def test_dispatch_routes_from_selected_secondary_member_not_primary_artifacts():
+    selection = {"schema": "global_changed_portfolio_member_selection_v1",
+                 "portfolio_index": 1, "capsule": "secondary"}
+    artifact = {"command_buffer": {"params": {"global_program_plan": {
+        "physical_transitions": [declaration()]}}}, "lowered_text": ""}
+    selected = {"selection": selection,
+                "previous": {"artifacts": {"command_buffer": {"params": {
+                    "global_program_plan": {}}}, "lowered_text": ""}},
+                "current": {"artifacts": artifact}}
+    calls = []
+    class Provider:
+        abi_provenance = {"host": "test"}
+        def __init__(self, name): self.name = name
+        def __call__(self, **kwargs):
+            calls.append((self.name, kwargs["portfolio_member"]))
+            return {"status": "UNKNOWN"}
+    experiment = SimpleNamespace(
+        selected_changed_portfolio_context=lambda _candidate, supplied: selected
+        if supplied in (None, selection) else (_ for _ in ()).throw(ValueError("substituted")),
+        previous_artifacts=lambda _: (_ for _ in ()).throw(AssertionError("primary read")),
+        current_artifacts=lambda _: (_ for _ in ()).throw(AssertionError("primary read")))
+    dispatch = Q.ChangedRegionQualifierDispatch(
+        physical=Provider("physical"), legacy=Provider("legacy"))
+
+    assert dispatch(candidate=Path("candidate"), experiment=experiment,
+                    timeout_s=60, portfolio_member=selection)["status"] == "UNKNOWN"
+    assert calls == [("physical", selection)]
+
+
 def experiment_fixture(tmp_path, monkeypatch, *, mode="match"):
     source = tmp_path / "full.mlir"
     source.write_text(source_chain())

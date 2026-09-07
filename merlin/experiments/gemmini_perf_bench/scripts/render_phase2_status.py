@@ -59,6 +59,44 @@ def matching_processes(run_root: Path, source_snapshot: str | None, *, proc: Pat
     return rows
 
 
+def compare_portfolio_iterations(seed: dict[str, Any], retained: dict[str, Any]) -> dict[str, Any]:
+    """Compare every ordered portfolio member with itself, never as a fabricated total."""
+    from merlin.perf.structural_delta import compare_full_model_structure
+
+    def members(row: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        result = []
+        for index, member in enumerate((row.get("portfolio") or {}).get("members") or ()):
+            identity = member.get("identity") or {}
+            analysis = row.get("analysis") if index == 0 else member.get("analysis")
+            if not isinstance(identity, dict) or not isinstance(analysis, dict):
+                raise ValueError("portfolio iteration lacks an identity-bound member analysis")
+            result.append((identity, analysis))
+        return result
+
+    try:
+        before, after = members(seed), members(retained)
+        before_ids = [(item.get("capsule"), item.get("capsule_sha256")) for item, _ in before]
+        after_ids = [(item.get("capsule"), item.get("capsule_sha256")) for item, _ in after]
+        if not before or before_ids != after_ids:
+            raise ValueError("seed and retained ordered portfolios differ")
+        rows = []
+        for (identity, left), (_, right) in zip(before, after, strict=True):
+            comparison = compare_full_model_structure(left, right)
+            changed = any(value.get("delta") not in (None, 0)
+                          for value in (comparison.get("metrics") or {}).values()
+                          if isinstance(value, dict))
+            rows.append({"identity": identity, "comparison": comparison,
+                         "has_nonzero_structural_delta": changed})
+        return {"schema": "phase2_portfolio_structural_comparison_v1", "status": "compared",
+                "members": rows, "changed_members": sum(
+                    row["has_nonzero_structural_delta"] for row in rows),
+                "aggregation": "none; each model is compared only with itself"}
+    except ValueError as exc:
+        return {"schema": "phase2_portfolio_structural_comparison_v1", "status": "UNKNOWN",
+                "reason": str(exc), "members": [],
+                "aggregation": "none; each model is compared only with itself"}
+
+
 def collect_status(run_root: Path, *, milestones: Path | None = None,
                    source_snapshot: Path | None = None,
                    process_reader=matching_processes) -> dict[str, Any]:
@@ -138,9 +176,14 @@ def collect_status(run_root: Path, *, milestones: Path | None = None,
             if retained is None:
                 warnings.append({"reason": "retained checkpoint iteration binding unavailable or mismatched"})
     comparison = {"status": "UNKNOWN", "reason": "no bound retained checkpoint and seed analysis"}
+    portfolio_comparison = {
+        "schema": "phase2_portfolio_structural_comparison_v1", "status": "UNKNOWN",
+        "reason": "no bound retained checkpoint and seed portfolio", "members": [],
+        "aggregation": "none; each model is compared only with itself"}
     if retained and iterations:
         from merlin.perf.structural_delta import compare_full_model_structure
         comparison = compare_full_model_structure(iterations[0]["analysis"], retained["analysis"])
+        portfolio_comparison = compare_portfolio_iterations(iterations[0], retained)
     measured = {"full_model_speedup": "UNPROVEN", "scope": "short mechanism receipts only; not model timing",
                 "retained_probe_receipts": (retained or {}).get("probe_receipts", []),
                 "retained_controlled_context_receipts": (retained or {}).get("context_receipts", []),
@@ -186,7 +229,9 @@ def collect_status(run_root: Path, *, milestones: Path | None = None,
             "completed_transport_wall_seconds": sum(row.get("wall_s", 0) for row in summaries),
             "current_authoring_elapsed_seconds": "UNKNOWN",
             "note": "launcher wall time includes setup; reserved budget is not measured authoring time"},
-        "structural_seed_to_retained": comparison, "measured_evidence": measured,
+        "structural_seed_to_retained": comparison,
+        "structural_portfolio_seed_to_retained": portfolio_comparison,
+        "measured_evidence": measured,
         "development_gaps": {"full_model_numerical_qualification": "UNPROVEN",
             "full_model_speedup": "UNPROVEN", "phase1_passed": phase1.get("public_passed"),
             "phase1_total": phase1.get("public_total"), "frozen_phase1_gap_ids": phase1.get("known_functional_gap_ids", []),
@@ -210,11 +255,19 @@ def render_markdown(status: dict) -> str:
         "Static work estimates only—not measured traffic or end-to-end speedup.", ""]
     if status.get("latest_analysis_failure"):
         lines[8:8] = ["Recorded analysis failure: " + status["latest_analysis_failure"]["reason"], ""]
-    metrics = status["structural_seed_to_retained"].get("metrics", {})
-    changed = [(name, value) for name, value in metrics.items() if value.get("delta") not in (None, 0)]
+    portfolio = status.get("structural_portfolio_seed_to_retained") or {}
+    changed = []
+    for member in portfolio.get("members") or ():
+        capsule = (member.get("identity") or {}).get("capsule", "UNKNOWN")
+        for name, value in ((member.get("comparison") or {}).get("metrics") or {}).items():
+            if isinstance(value, dict) and value.get("delta") not in (None, 0):
+                changed.append((capsule, name, value))
     if changed:
-        lines += ["| Metric | Before | After | Delta |", "|---|---:|---:|---:|"]
-        lines += [f"| {name} | {value.get('before')} | {value.get('after')} | {value.get('delta')} |" for name, value in changed]
+        lines += ["| Model | Metric | Before | After | Delta |", "|---|---|---:|---:|---:|"]
+        lines += [f"| {capsule} | {name} | {value.get('before')} | {value.get('after')} | {value.get('delta')} |"
+                  for capsule, name, value in changed]
+    elif portfolio.get("status") == "compared":
+        lines.append("The retained checkpoint has no nonzero structural delta on any portfolio member.")
     else:
         lines.append("No bound retained structural change available.")
     lines += ["", "Full-model speedup: **UNPROVEN**. Short probe results do not establish full-model timing.",

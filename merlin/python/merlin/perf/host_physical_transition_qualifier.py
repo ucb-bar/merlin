@@ -108,12 +108,21 @@ class ChangedRegionQualifierDispatch:
         self.physical, self.legacy = physical, legacy
         self.abi_provenance = physical.abi_provenance
 
-    def __call__(self, *, candidate, experiment, timeout_s):
-        artifacts = (experiment.previous_artifacts(candidate), experiment.current_artifacts(candidate))
+    def __call__(self, *, candidate, experiment, timeout_s, portfolio_member=None):
+        selected = None
+        if callable(getattr(experiment, "selected_changed_portfolio_context", None)):
+            selected = experiment.selected_changed_portfolio_context(candidate, portfolio_member)
+            artifacts = (selected["previous"]["artifacts"], selected["current"]["artifacts"])
+        else:
+            if portfolio_member is not None:
+                raise ValueError("portfolio member selection requires member-aware experiment accessors")
+            artifacts = (experiment.previous_artifacts(candidate), experiment.current_artifacts(candidate))
         if any(has_physical_transition(artifact) for artifact in artifacts):
             # A missing/rejected copy witness must not become an unrelated legacy pass.
-            return self.physical(candidate=candidate, experiment=experiment, timeout_s=timeout_s)
-        return self.legacy(candidate=candidate, experiment=experiment, timeout_s=timeout_s)
+            return self.physical(candidate=candidate, experiment=experiment, timeout_s=timeout_s,
+                                 portfolio_member=selected["selection"] if selected else None)
+        return self.legacy(candidate=candidate, experiment=experiment, timeout_s=timeout_s,
+                           portfolio_member=selected["selection"] if selected else None)
 
 
 class HostPhysicalTransitionQualifier:
@@ -123,7 +132,7 @@ class HostPhysicalTransitionQualifier:
         self.native_layout, self.expected_symbol = native_layout, expected_symbol
         self.abi_provenance, self.output = dict(abi_provenance), Path(output)
 
-    def __call__(self, *, candidate, experiment, timeout_s):
+    def __call__(self, *, candidate, experiment, timeout_s, portfolio_member=None):
         if not isfinite(timeout_s) or timeout_s <= 0:
             raise ValueError("physical transition witness requires a finite positive budget")
         start, deadline = monotonic(), monotonic() + min(timeout_s, 60)
@@ -143,11 +152,30 @@ class HostPhysicalTransitionQualifier:
             return value
 
         try:
-            artifacts = {"before": experiment.previous_artifacts(candidate),
-                         "after": experiment.current_artifacts(candidate)}
+            selected_context = None
+            if callable(getattr(experiment, "selected_changed_portfolio_context", None)):
+                selected_context = experiment.selected_changed_portfolio_context(
+                    candidate, portfolio_member)
+                artifacts = {"before": selected_context["previous"]["artifacts"],
+                             "after": selected_context["current"]["artifacts"]}
+                analyses = {"before": selected_context["previous"]["analysis"],
+                            "after": selected_context["current"]["analysis"]}
+                member_binding = {
+                    "selection": selected_context["selection"],
+                    "previous": selected_context["previous"]["member_binding"],
+                    "current": selected_context["current"]["member_binding"],
+                }
+                record["portfolio_member_binding"] = member_binding
+            else:
+                if portfolio_member is not None:
+                    raise ValueError("portfolio member selection requires member-aware experiment accessors")
+                artifacts = {"before": experiment.previous_artifacts(candidate),
+                             "after": experiment.current_artifacts(candidate)}
+                analyses = dict(zip(
+                    artifacts, (row["analysis"] for row in experiment.iterations[-2:]), strict=True))
             sources = {}
             full = {}
-            for arm, analysis in zip(artifacts, (row["analysis"] for row in experiment.iterations[-2:]), strict=True):
+            for arm, analysis in analyses.items():
                 artifact = artifacts[arm]
                 plan = analysis["diagnostics"]["verified_global_plan_emission"]
                 sources[arm] = Path(artifact["interface"]).read_text()
@@ -219,6 +247,16 @@ class HostPhysicalTransitionQualifier:
                 record["arms"][arm].update(self._native(candidate, experiment, work / arm,
                     lowered, cb, text, extraction, remaining))
             remaining()
+            if selected_context is not None:
+                selected_after = experiment.selected_changed_portfolio_context(
+                    candidate, selected_context["selection"])
+                actual_member_binding = {
+                    "selection": selected_after["selection"],
+                    "previous": selected_after["previous"]["member_binding"],
+                    "current": selected_after["current"]["member_binding"],
+                }
+                if actual_member_binding != member_binding:
+                    raise ValueError("portfolio member source, plan, or artifacts changed during qualification")
             record["status"] = "passed"
         except (ValueError, KeyError, TypeError, StopIteration, TimeoutError) as error:
             record["reason"] = f"{type(error).__name__}: {error}"

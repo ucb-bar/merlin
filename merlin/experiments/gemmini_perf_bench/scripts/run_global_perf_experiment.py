@@ -14,6 +14,7 @@ import concurrent.futures
 import hashlib
 import json
 import math
+import os
 import shutil
 import threading
 import time
@@ -236,6 +237,194 @@ def compiler_dependency_content_sha256(record: Mapping[str, Any]) -> str:
     return PAS._document_sha256({name: record[name] for name in required})
 
 
+def _verified_relative_source_hashes(record: Mapping[str, Any], *, source_root: Path
+                                     ) -> dict[str, str]:
+    """Rebind one host policy to source-relative bytes after checking every named file.
+
+    Absolute paths are retained in receipts for auditability, but are not semantic identity.  A
+    prior policy is portable only when the current verifier can prove that each pinned absolute
+    path was a real file below its sealed source snapshot and still has the recorded bytes.
+    """
+    sources = record.get("sources")
+    root = Path(source_root).resolve()
+    if record.get("schema") != "global_host_verification_policy_v1" or not isinstance(sources, Mapping):
+        raise ValueError("host verification policy is malformed")
+    relative: dict[str, str] = {}
+    for raw_path, digest in sources.items():
+        if not isinstance(raw_path, str) or not PAS._is_sha256(digest):
+            raise ValueError("host verification policy source identity is malformed")
+        path = Path(raw_path)
+        if not path.is_absolute() or path.is_symlink() or not path.is_file():
+            raise ValueError("host verification policy source is absent, linked, or non-absolute")
+        try:
+            name = path.resolve().relative_to(root).as_posix()
+        except ValueError as exc:
+            raise ValueError("host verification policy source escaped its sealed source root") from exc
+        if name in relative or PAS._sha256_file(path) != digest:
+            raise ValueError("host verification policy source bytes changed")
+        relative[name] = digest
+    if not relative:
+        raise ValueError("host verification policy has no source identities")
+    return dict(sorted(relative.items()))
+
+
+def host_policy_content_sha256(record: Mapping[str, Any], *, source_root: Path) -> str:
+    """Path-neutral, byte-exact identity used only for cross-run static-analysis reuse."""
+    return PAS._document_sha256(
+        _verified_relative_source_hashes(record, source_root=source_root))
+
+
+def _portable_machine_build_policy(record: Mapping[str, Any] | None, *, verify_files: bool
+                                   ) -> Mapping[str, Any] | None:
+    """Remove executable spellings while retaining and optionally verifying their bytes."""
+    if record is None:
+        return None
+
+    def normalize(value: Any) -> Any:
+        if isinstance(value, Mapping):
+            if "path" in value or "resolved_path" in value:
+                digest = value.get("sha256")
+                raw_path = value.get("path")
+                if not PAS._is_sha256(digest) or not isinstance(raw_path, str):
+                    raise ValueError("machine build policy path lacks an exact content identity")
+                path = Path(raw_path)
+                if verify_files and (path.is_symlink() or not path.is_file()
+                                     or PAS._sha256_file(path) != digest):
+                    raise ValueError("machine build policy executable or implementation changed")
+                return {key: normalize(item) for key, item in value.items()
+                        if key not in ("path", "resolved_path")}
+            return {key: normalize(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [normalize(item) for item in value]
+        return copy.deepcopy(value)
+
+    return normalize(record)
+
+
+def _current_machine_build_policy(target: str) -> Mapping[str, Any] | None:
+    """Resolve the same optional non-executing object-build policy used by analysis workers."""
+    from merlin.runtime.backends.base import get_backend
+
+    try:
+        backend = get_backend(target)
+    except (ImportError, KeyError, ValueError):
+        return {"schema": "machine_build_policy_not_supported_v1", "target": target,
+                "cross_run_reuse_allowed": True}
+    provider = getattr(backend, "machine_artifact_policy_identity", None)
+    if provider is None:
+        return {"schema": "machine_build_policy_not_supported_v1", "target": target,
+                "cross_run_reuse_allowed": True}
+    try:
+        return _portable_machine_build_policy(provider(), verify_files=True)
+    except (ImportError, KeyError, OSError, ValueError) as exc:
+        return {"schema": "machine_build_policy_identity_unavailable_v1", "target": target,
+                "failure_type": type(exc).__name__, "cross_run_reuse_allowed": False}
+
+
+def _portable_phase1_binding(record: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    if record is None:
+        return None
+    result = copy.deepcopy(dict(record))
+    result.pop("run_dir", None)
+    return result
+
+
+def _portable_optimization_baseline_binding(record: Mapping[str, Any]) -> dict[str, Any]:
+    result = copy.deepcopy(dict(record))
+    dependencies = result.pop("compiler_dependencies", None)
+    result.pop("path", None)
+    result["compiler_dependencies_content_sha256"] = compiler_dependency_content_sha256(dependencies)
+    return result
+
+
+def _portable_edit_authority(record: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    if record is None:
+        return None
+    result = copy.deepcopy(dict(record))
+    result.pop("seed_path", None)
+    return result
+
+
+def _portable_historical_reference(record: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    if record is None:
+        return None
+    result = copy.deepcopy(dict(record))
+    result.pop("path", None)
+    return result
+
+
+_DYNAMIC_EVIDENCE_KEYS = frozenset({
+    "probe_receipts", "semantic_receipts", "context_receipts", "paired_context_receipts",
+    "source_contraction_preparation_receipts", "source_pair_receipts", "decision_feedback",
+    "relative_semantic_evidence", "global_performance_claim", "global_speedup_proven",
+    "full_model_cycles", "elapsed_seconds", "wall_seconds", "build_wall_seconds",
+    "run_wall_seconds", "emission_wall_seconds", "observed_analysis_wall_seconds",
+})
+
+
+def _static_only_copy(value: Any) -> Any:
+    """Copy analytical evidence while excluding measurements and decision/semantic feedback."""
+    if isinstance(value, Mapping):
+        result = {}
+        for key, item in value.items():
+            if key in _DYNAMIC_EVIDENCE_KEYS or key == "emission_execution":
+                continue
+            result[key] = _static_only_copy(item)
+        return result
+    if isinstance(value, list):
+        return [_static_only_copy(item) for item in value]
+    if isinstance(value, tuple):
+        return [_static_only_copy(item) for item in value]
+    return copy.deepcopy(value)
+
+
+def _verify_source_snapshot(root: Path, expected_files_sha256: str | None = None
+                            ) -> dict[str, Any]:
+    """Use the current trusted snapshot verifier, never code from a seed checkpoint."""
+    import perf_snapshot
+
+    root = Path(root)
+    if (not root.is_absolute() or root.is_symlink() or not root.is_dir()
+            or root.resolve() != root or root.stat().st_mode & 0o222):
+        raise ValueError("source snapshot root is relative, linked, mutable, or absent")
+    receipt = perf_snapshot.verify(root)
+    files_sha256 = PAS._document_sha256(receipt.get("files"))
+    if expected_files_sha256 is not None and files_sha256 != expected_files_sha256:
+        raise ValueError("source snapshot files identity changed")
+    return {"root": str(root), "files_sha256": files_sha256, "receipt": receipt}
+
+
+def _source_snapshot_root_from_policy(record: Mapping[str, Any]) -> Path:
+    """Locate the sealed snapshot that owns every absolute policy source in a pinned receipt."""
+    sources = record.get("sources")
+    if not isinstance(sources, Mapping) or not sources:
+        raise ValueError("seed host policy has no source paths")
+    first = Path(next(iter(sources)))
+    if not first.is_absolute():
+        raise ValueError("seed host policy source is not absolute")
+    for parent in first.parents:
+        try:
+            if len(list(parent.glob("snapshot.*.json"))) == 1 and all(
+                    Path(path).resolve().is_relative_to(parent.resolve()) for path in sources):
+                if (not parent.is_absolute() or parent.is_symlink()
+                        or parent.resolve() != parent or not parent.is_dir()
+                        or parent.stat().st_mode & 0o222):
+                    continue
+                return parent
+        except OSError:
+            continue
+    raise ValueError("seed host policy is not owned by a verifiable source snapshot")
+
+
+def _load_pinned_read_only_mapping(path: Path, digest: str, *, label: str) -> dict[str, Any]:
+    path = Path(path)
+    if (not PAS._is_sha256(digest) or not path.is_absolute() or path.is_symlink()
+            or not path.is_file() or path.stat().st_mode & 0o222
+            or PAS._sha256_file(path) != digest):
+        raise ValueError(f"{label} is absent, mutable, linked, or changed")
+    return PAS._mapping_file(path)
+
+
 def seed_baseline_emission_cache_from_run(*, cache_binding: Mapping[str, Any],
                                           seed_run: Path, baseline: Path,
                                           sentinels: Sequence[PAS.StageE2ESentinel],
@@ -375,9 +564,20 @@ def host_verification_policy_record() -> dict[str, Any]:
                root / "perf/historical_reference.py", root / "perf/harvest.py",
                root / "perf/work_volume.py",
                root / "perf/execution_policy.py", root / "targetgen/rocc/decode.py"]
+    repo = PAS.repo_root().resolve()
     hashes = {str(path.resolve()): PAS._sha256_file(path) for path in sources}
+    relative = {}
+    for path, digest in hashes.items():
+        try:
+            name = Path(path).relative_to(repo).as_posix()
+        except ValueError as exc:
+            raise ValueError("host verification policy source escaped the current source root") from exc
+        if name in relative:
+            raise ValueError("host verification policy has duplicate source-relative identities")
+        relative[name] = digest
     return {"schema": "global_host_verification_policy_v1", "sources": hashes,
-            "sha256": PAS._document_sha256(hashes)}
+            "sha256": PAS._document_sha256(dict(sorted(relative.items()))),
+            "location_sha256": PAS._document_sha256(hashes)}
 
 
 def controlled_context_capability(analysis: Mapping[str, Any], *, provider_installed: bool | None
@@ -714,6 +914,7 @@ def agent_analysis_view(record: Mapping[str, Any], *, complete_evidence: str,
             "failure": copy.deepcopy(member_analysis.get("failure")),
             "optimization_brief": {
                 "objective": copy.deepcopy(member_brief.get("objective")),
+                "optimization_order": copy.deepcopy(member_brief.get("optimization_order")),
                 "ranked_actions": ranked,
                 "gap_coverage": copy.deepcopy(member_brief.get("gap_coverage")),
                 "global_planner_wiring": copy.deepcopy(member_brief.get("global_planner_wiring")),
@@ -747,10 +948,14 @@ def portfolio_action_digest(record: Mapping[str, Any], *, complete_evidence: str
         if isinstance(row, Mapping)
     }
     rows = []
+    shared_optimization_order = None
     for index, member in enumerate(members):
         analysis = record.get("analysis") if index == 0 else member.get("analysis")
         if not isinstance(analysis, Mapping):
             analysis = {}
+        member_brief = analysis.get("optimization_brief") or {}
+        if shared_optimization_order is None:
+            shared_optimization_order = copy.deepcopy(member_brief.get("optimization_order"))
         diagnostics = analysis.get("diagnostics") or {}
         arm = (diagnostics.get("arms") or {}).get("candidate") or {}
         representation = arm.get("representation_activity") or {}
@@ -762,7 +967,7 @@ def portfolio_action_digest(record: Mapping[str, Any], *, complete_evidence: str
         for kind in (plan.get("declared_task_kinds") or {}).values():
             task_kinds[str(kind)] = task_kinds.get(str(kind), 0) + 1
         actions = []
-        for action in ((analysis.get("optimization_brief") or {}).get("ranked_actions") or ())[:4]:
+        for action in (member_brief.get("ranked_actions") or ())[:4]:
             surfaces = []
             for surface in action.get("edit_surfaces") or ():
                 key = (surface.get("id"), surface.get("path"), surface.get("symbol"))
@@ -798,6 +1003,7 @@ def portfolio_action_digest(record: Mapping[str, Any], *, complete_evidence: str
                 "host_static_allocation_payload_bytes": host.get("static_allocation_payload_bytes"),
             },
             "top_ranked_actions": actions,
+            "optimization_order": copy.deepcopy(member_brief.get("optimization_order")),
             "complete_unpruned_evidence": {
                 "path": complete_evidence,
                 "json_pointer": "/analysis" if index == 0 else
@@ -808,6 +1014,7 @@ def portfolio_action_digest(record: Mapping[str, Any], *, complete_evidence: str
             "portfolio_sha256": portfolio.get("portfolio_sha256"),
             "candidate_sha256": record.get("candidate_sha256"),
             "members": rows,
+            "optimization_order": shared_optimization_order,
             "selection": "per-model Pareto evidence; totals are never summed across models",
             "timing_status": "UNMEASURED_FULL_MODEL"}
 
@@ -943,6 +1150,8 @@ class GlobalPerfExperiment:
                  baseline_emission_seed_runs: Sequence[Path] = (),
                  portfolio_analysis_workers: int = 1,
                  minimum_memory_available_bytes: int = 0,
+                 source_snapshot_root: Path | None = None,
+                 source_snapshot_files_sha256: str | None = None,
                  analyzer: Callable[..., Mapping[str, Any]] = PAS.analyze_whole_model_emission,
                  plan_verifier: Callable[..., Mapping[str, Any]] | None = None):
         if not 0 < timeout_s <= FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:
@@ -968,6 +1177,11 @@ class GlobalPerfExperiment:
             raise ValueError("optimization baseline must contain real immutable source files")
         if output.exists():
             raise ValueError("global experiment output must be fresh")
+        if (source_snapshot_root is None) != (source_snapshot_files_sha256 is None):
+            raise ValueError("source snapshot requires both an explicit root and files digest")
+        if source_snapshot_files_sha256 is not None and not PAS._is_sha256(
+                source_snapshot_files_sha256):
+            raise ValueError("source snapshot files digest must be SHA-256")
         if (historical_reference_path is None) != (historical_reference_sha256 is None):
             raise ValueError("historical reference requires both explicit path and SHA-256")
         reference_raw, reference_brief = (load_historical_reference(
@@ -997,19 +1211,34 @@ class GlobalPerfExperiment:
         self.phase1 = phase1
         self.phase1_binding = phase1.verify(baseline) if phase1 is not None else None
         self.host_policy = host_verification_policy_record()
+        self.source_snapshot_root = (Path(source_snapshot_root)
+                                     if source_snapshot_root is not None else None)
+        self.source_snapshot_files_sha256 = source_snapshot_files_sha256
+        self.machine_build_policy = _current_machine_build_policy(target)
         self.iterations: list[dict[str, Any]] = []
         self._analysis_lock = threading.Lock()
+        self._cross_run_seed_attempted = False
         self._artifacts: dict[str, Any] = {}
         self._previous_artifacts: Mapping[str, Any] | None = None
         self._iteration_artifacts: dict[int, Mapping[str, Any]] = {}
+        self._portfolio_artifacts: dict[str, Mapping[str, Any]] = {}
+        self._previous_portfolio_artifacts: Mapping[str, Mapping[str, Any]] | None = None
+        self._iteration_portfolio_artifacts: dict[
+            int, Mapping[str, Mapping[str, Any]]] = {}
         self._baseline_artifacts: Mapping[str, Any] | None = None
         self._portfolio_baseline_artifacts: dict[str, Mapping[str, Any]] = {}
         self._optimization_baseline_sandbox: Mapping[str, Any] | None = None
         self._optimization_baseline_sandbox_sha256: str | None = None
         self._compiler_sandboxes: dict[int, Mapping[str, Any]] = {}
+        self._compiler_sandbox_sha256: dict[int, str] = {}
         self.completion_contract: Any | None = None
         self.edit_contract: dict[str, Any] | None = None
+        self.edit_scope_initial_source: Path | None = None
         self.edit_guidance_inventory = None
+        self.mechanism_catalog: dict[str, Any] | None = None
+        self.mechanism_catalog_binding: dict[str, Any] | None = None
+        self._mechanism_catalog_binding_sha256: str | None = None
+        self._active_mechanism_round: dict[str, Any] | None = None
         self.output.mkdir(parents=True)
         if reference_raw is not None:
             reference_path = self.output / "historical_reference.json"
@@ -1095,6 +1324,10 @@ class GlobalPerfExperiment:
             "phase1_action": "reuse_exact_snapshot", "micro_plateau_stops_search": False,
             "launch_scope": "qualified_macro_experiment" if self.phase1_binding else "development_readiness_only",
             "phase1_qualification": self.phase1_binding, "host_verification_policy": self.host_policy,
+            "source_snapshot": (str(self.source_snapshot_root)
+                                if self.source_snapshot_root is not None else None),
+            "source_snapshot_files_sha256": self.source_snapshot_files_sha256,
+            "machine_build_policy": self.machine_build_policy,
         })
 
     def _baseline_emission_observations(self) -> dict[str, dict[str, Any]]:
@@ -1219,6 +1452,8 @@ class GlobalPerfExperiment:
     def _check_inputs(self) -> None:
         if host_verification_policy_record() != self.host_policy:
             raise ValueError("host verification policy changed during the global experiment")
+        if _current_machine_build_policy(self.target) != self.machine_build_policy:
+            raise ValueError("machine build toolchain policy changed during the global experiment")
         if (PAS._document_sha256(self.portfolio_identity) != self.portfolio_identity_sha256
                 or self.portfolio_identity["members"] != [sentinel_identity(member, role=(
                     "primary" if index == 0 else "training"))
@@ -1239,6 +1474,38 @@ class GlobalPerfExperiment:
                     PAS._document_sha256(self.edit_guidance_inventory.to_dict()) != guidance or
                     PAS._document_sha256(self.edit_scope_binding.get("guidance_inventory")) != guidance):
                 raise ValueError("host-frozen compiler guidance changed")
+        if self.mechanism_catalog_binding is not None:
+            from merlin.perf.compiler_edit_scope import validate_mechanism_catalog
+            binding = self.mechanism_catalog_binding
+            frozen = Path(binding["frozen_path"])
+            source = Path(binding["source_path"])
+            receipt = self.output / "compiler_mechanism_catalog_receipt.json"
+            if (self.edit_contract is None or self.mechanism_catalog is None
+                    or self._mechanism_catalog_binding_sha256 is None
+                    or binding.get("sha256") != self._mechanism_catalog_binding_sha256
+                    or binding.get("sha256") != PAS._document_sha256({
+                        key: value for key, value in binding.items() if key != "sha256"})
+                    or binding.get("contract_document_sha256")
+                    != self.edit_scope_binding["contract_document_sha256"]
+                    or binding.get("initial_candidate_sha256")
+                    != self.edit_scope_binding["initial_candidate_sha256"]
+                    or binding.get("catalog") != self.mechanism_catalog
+                    or PAS._document_sha256(self.mechanism_catalog)
+                    != binding.get("catalog_document_sha256")
+                    or frozen != self.output / "compiler_mechanism_catalog.json"
+                    or frozen.is_symlink() or not frozen.is_file()
+                    or frozen.stat().st_mode & 0o222
+                    or PAS._sha256_file(frozen) != binding.get("canonical_bytes_sha256")
+                    or PAS._mapping_file(frozen) != self.mechanism_catalog
+                    or receipt.is_symlink() or not receipt.is_file()
+                    or PAS._mapping_file(receipt) != binding
+                    or not source.is_absolute() or source.resolve() != source
+                    or source.is_symlink() or not source.is_file()
+                    or source.stat().st_mode & 0o222
+                    or PAS._sha256_file(source) != binding.get("source_file_sha256")):
+                raise ValueError("host-frozen compiler mechanism catalog changed")
+            validate_mechanism_catalog(
+                self.mechanism_catalog, self.edit_scope_seed, self.edit_contract)
         if self.phase1 is not None and self.phase1.verify(self.baseline) != self.phase1_binding:
             raise ValueError("frozen Phase-1 qualification or waivers changed during global search")
         if (self.target_descriptor is not None
@@ -1294,6 +1561,7 @@ class GlobalPerfExperiment:
             path.chmod(path.stat().st_mode & ~0o222)
         seed.chmod(0o555)
         self.edit_contract, self.edit_scope_seed = validated, seed
+        self.edit_scope_initial_source = candidate.resolve()
         self.edit_guidance_inventory = guidance
         self.edit_scope_binding = {"schema": "host_frozen_compiler_edit_authority_v1",
             "initial_candidate_sha256": hash_tree(seed)["sha256"],
@@ -1304,6 +1572,163 @@ class GlobalPerfExperiment:
             self.edit_scope_binding["guidance_inventory_sha256"] = PAS._document_sha256(guidance.to_dict())
         self._write("compiler_edit_authority.json", self.edit_scope_binding)
         return copy.deepcopy(self.edit_scope_binding)
+
+    def freeze_mechanism_catalog(self, source: Path, source_sha256: str) -> dict[str, Any]:
+        """Freeze one explicit read-only host catalog; its selectors grant no edit authority."""
+        from merlin.perf.compiler_edit_scope import validate_mechanism_catalog
+
+        source = Path(source)
+        if self.edit_contract is None:
+            raise ValueError("compiler mechanism catalog requires frozen compiler edit authority")
+        if self.iterations or self.mechanism_catalog_binding is not None:
+            raise ValueError("compiler mechanism catalog must be frozen once before candidate execution")
+        if (not PAS._is_sha256(source_sha256) or not source.is_absolute()
+                or source.resolve() != source or source.is_symlink() or not source.is_file()
+                or source.stat().st_mode & 0o222
+                or PAS._sha256_file(source) != source_sha256):
+            raise ValueError("compiler mechanism catalog is not an exact immutable absolute file")
+        if (source.is_relative_to(self.edit_scope_seed.resolve())
+                or source.is_relative_to(self.edit_scope_initial_source)):
+            raise ValueError("compiler mechanism catalog cannot originate in candidate-editable source")
+        raw = source.read_bytes()
+        if len(raw) > 4_000_000:
+            raise ValueError("compiler mechanism catalog exceeds the host metadata bound")
+        try:
+            document = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("compiler mechanism catalog must be one JSON object") from exc
+        if not isinstance(document, Mapping):
+            raise ValueError("compiler mechanism catalog must be one JSON object")
+        validated = validate_mechanism_catalog(
+            document, self.edit_scope_seed, self.edit_contract)
+        canonical = PAS._canonical_json(validated)
+        frozen = self.output / "compiler_mechanism_catalog.json"
+        with frozen.open("xb") as stream:
+            stream.write(canonical)
+        frozen.chmod(0o444)
+        body = {
+            "schema": "host_frozen_compiler_mechanism_catalog_v1",
+            "source_path": str(source), "source_file_sha256": source_sha256,
+            "frozen_path": str(frozen),
+            "canonical_bytes_sha256": PAS._sha256(canonical),
+            "catalog_document_sha256": PAS._document_sha256(validated),
+            "catalog_declared_sha256": validated["sha256"],
+            "contract_document_sha256": self.edit_scope_binding["contract_document_sha256"],
+            "initial_candidate_sha256": self.edit_scope_binding["initial_candidate_sha256"],
+            "catalog": validated,
+            "permission_scope": "mechanism attribution only; cumulative edit authority unchanged",
+        }
+        binding = {**body, "sha256": PAS._document_sha256(body)}
+        self.mechanism_catalog = validated
+        self.mechanism_catalog_binding = binding
+        self._mechanism_catalog_binding_sha256 = binding["sha256"]
+        self._write("compiler_mechanism_catalog_receipt.json", binding)
+        self._check_inputs()
+        return copy.deepcopy(binding)
+
+    def begin_mechanism_round(self, candidate: Path, *, round_index: int) -> dict[str, Any] | None:
+        """Capture immutable round-start bytes before an author receives the workspace."""
+        if self.mechanism_catalog_binding is None:
+            return None
+        if not isinstance(round_index, int) or isinstance(round_index, bool) or round_index < 0:
+            raise ValueError("compiler mechanism round index must be a nonnegative integer")
+        self._check_inputs()
+        self.validate_candidate_scope(candidate)
+        if (self._active_mechanism_round is not None
+                and self._active_mechanism_round.get("closed") is not True):
+            raise ValueError("preceding compiler mechanism round is not closed")
+        before = hash_tree(candidate)["sha256"]
+        dependencies = self._compiler_dependencies(candidate)
+        snapshot = self.output / f"mechanism_round_start_{round_index:04d}"
+        shutil.copytree(candidate, snapshot, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        if hash_tree(snapshot)["sha256"] != before:
+            raise ValueError("compiler changed while capturing the mechanism round start")
+        for path in snapshot.rglob("*"):
+            if path.is_symlink():
+                raise ValueError("compiler mechanism round start contains a symlink")
+            path.chmod(path.stat().st_mode & ~0o222)
+        snapshot.chmod(0o555)
+        self.validate_candidate_scope(snapshot)
+        binding = {
+            "schema": "global_compiler_mechanism_round_start_v1", "round": round_index,
+            "candidate_path": str(candidate.resolve()), "candidate_sha256": before,
+            "round_start_path": str(snapshot.resolve()),
+            "compiler_dependencies": dependencies,
+            "mechanism_catalog_sha256": self._mechanism_catalog_binding_sha256,
+            "edit_authority_sha256": PAS._document_sha256(self.edit_scope_binding),
+        }
+        receipt = self._write(f"mechanism_round_start_{round_index:04d}.json", binding)
+        self._active_mechanism_round = {**copy.deepcopy(binding), "closed": False,
+            "round_start_receipt": {"path": str(receipt.resolve()),
+                                    "sha256": PAS._sha256_file(receipt)}}
+        return copy.deepcopy(self._active_mechanism_round)
+
+    def _inspect_active_mechanism_round(
+            self, candidate: Path, *, require_semantic_edit: bool) -> dict[str, Any] | None:
+        """Attribute current bytes before compilation; initial seed analysis has no round delta."""
+        from merlin.perf.compiler_edit_scope import inspect_round_mechanism_edits
+
+        if self.mechanism_catalog_binding is None:
+            return None
+        self._check_inputs()
+        active = self._active_mechanism_round
+        candidate_sha256 = hash_tree(candidate)["sha256"]
+        if active is None:
+            if candidate_sha256 != self.edit_scope_binding["initial_candidate_sha256"]:
+                raise ValueError("edited compiler analysis has no immutable mechanism round start")
+            return {"schema": "global_compiler_mechanism_seed_analysis_v1",
+                    "status": "initial_seed", "candidate_sha256": candidate_sha256,
+                    "mechanism_catalog_sha256": self._mechanism_catalog_binding_sha256}
+        start = Path(active["round_start_path"])
+        start_receipt = Path(active["round_start_receipt"]["path"])
+        if (Path(candidate).resolve() != Path(active["candidate_path"])
+                or start.is_symlink() or not start.is_dir() or start.stat().st_mode & 0o222
+                or hash_tree(start)["sha256"] != active["candidate_sha256"]
+                or self._compiler_dependencies(start) != active["compiler_dependencies"]
+                or start_receipt.is_symlink() or not start_receipt.is_file()
+                or PAS._sha256_file(start_receipt) != active["round_start_receipt"]["sha256"]
+                or PAS._mapping_file(start_receipt) != {
+                    key: value for key, value in active.items()
+                    if key not in ("closed", "round_start_receipt", "finalized_candidate_sha256",
+                                   "final_status")
+                }):
+            raise ValueError("immutable compiler mechanism round-start binding changed")
+        finalized = active.get("finalized_candidate_sha256")
+        if finalized is not None and candidate_sha256 != finalized:
+            raise ValueError("compiler changed after final mechanism attribution")
+        if active.get("closed") is True and active.get("final_status") != "allowed":
+            raise ValueError("refused compiler mechanism round cannot be analyzed")
+        result = inspect_round_mechanism_edits(
+            self.edit_scope_seed, start, candidate, self.edit_contract, self.mechanism_catalog)
+        result.update({
+            "round": active["round"], "round_start_path": str(start),
+            "round_start_sha256": active["candidate_sha256"],
+            "round_start_receipt": copy.deepcopy(active["round_start_receipt"]),
+            "candidate_sha256": candidate_sha256,
+            "candidate_compiler_dependencies": self._compiler_dependencies(candidate),
+            "mechanism_catalog_binding_sha256": self._mechanism_catalog_binding_sha256,
+        })
+        if require_semantic_edit and result["semantic_noop"]:
+            result["status"] = "refused"
+            result["violations"].append({
+                "reason": "authored round has no semantic compiler mechanism delta"})
+        return result
+
+    def finalize_mechanism_round(self, candidate: Path, *, round_index: int) -> dict[str, Any] | None:
+        """Persist the final pre-analysis attribution for the exact submitted round bytes."""
+        if self.mechanism_catalog_binding is None:
+            return None
+        active = self._active_mechanism_round
+        if active is None or active.get("round") != round_index or active.get("closed") is True:
+            raise ValueError("compiler mechanism round finalization has no matching open round")
+        result = self._inspect_active_mechanism_round(candidate, require_semantic_edit=True)
+        assert result is not None
+        path = self._write(f"mechanism_round_{round_index:04d}.json", result)
+        active["closed"] = True
+        active["finalized_candidate_sha256"] = result["candidate_sha256"]
+        active["final_status"] = result["status"]
+        return {**copy.deepcopy(result), "receipt": {
+            "path": str(path.resolve()), "sha256": PAS._sha256_file(path)}}
 
     def validate_candidate_scope(self, candidate: Path) -> dict[str, Any]:
         from merlin.perf.compiler_edit_scope import inspect_compiler_edits
@@ -1435,6 +1860,593 @@ class GlobalPerfExperiment:
         return {"schema": "global_static_analysis_reuse_binding_v1", **body,
                 "sha256": PAS._document_sha256(body)}
 
+    def _cross_run_static_analysis_binding(
+            self, *, candidate_sha256: str,
+            compiler_dependencies: Mapping[str, Any]) -> dict[str, Any]:
+        """Content-only identity for an explicitly pinned static-analysis checkpoint."""
+        schema = PAS.whole_program_schema_record()
+        body = {
+            "candidate_sha256": candidate_sha256,
+            "candidate_compiler_dependencies_content_sha256":
+                compiler_dependency_content_sha256(compiler_dependencies),
+            "baseline_sha256": self.baseline_sha256,
+            "baseline_compiler_dependencies_content_sha256":
+                compiler_dependency_content_sha256(self.baseline_dependencies),
+            "optimization_baseline": _portable_optimization_baseline_binding(
+                self.optimization_baseline_binding),
+            "host_verification_policy_content_sha256": self.host_policy["sha256"],
+            "target": self.target,
+            "target_descriptor_sha256": self.target_sha256,
+            "ordered_portfolio": copy.deepcopy(self.portfolio_identity),
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "phase1_qualification": _portable_phase1_binding(self.phase1_binding),
+            "historical_reference": _portable_historical_reference(self.historical_reference),
+            "compiler_edit_authority": _portable_edit_authority(
+                getattr(self, "edit_scope_binding", None)),
+            "compiler_api_schema": {"name": Path(schema["path"]).name,
+                                    "sha256": schema["sha256"]},
+            "analysis_options": {
+                "schema": "global_cross_run_analysis_options_v1",
+                "maximum_full_graph_static_analysis_seconds": self.timeout_s,
+                "portfolio_analysis_workers": self.portfolio_analysis_workers,
+                "minimum_memory_available_bytes": self.minimum_memory_available_bytes,
+                "peak_macs_per_cycle": None,
+                "achievable_macs_per_cycle": None,
+                "full_model_simulation_allowed": False,
+                "analyzer": "host_owned_whole_model_emission_with_current_readiness_v1",
+            },
+            "machine_build_policy": copy.deepcopy(self.machine_build_policy),
+        }
+        return {"schema": "global_cross_run_static_analysis_binding_v1", **body,
+                "sha256": PAS._document_sha256(body)}
+
+    def _atomic_static_write(self, name: str, record: Mapping[str, Any]) -> Path:
+        """Publish one immutable cache object only after its complete payload reaches storage."""
+        path = self.output / name
+        if path.exists() or path.is_symlink():
+            raise FileExistsError(path)
+        temporary = self.output / f".{name}.{os.getpid()}.{time.time_ns()}.tmp"
+        try:
+            payload = PAS._canonical_json(record)
+            with temporary.open("xb") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary.chmod(0o444)
+            # link(2) is atomic and refuses an existing destination; replace(2) would silently
+            # overwrite a concurrently published cache object.
+            os.link(temporary, path)
+            temporary.unlink()
+            directory = os.open(self.output, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        return path
+
+    @staticmethod
+    def _validate_static_artifacts(artifacts: Mapping[str, Any], *,
+                                   analysis: Mapping[str, Any]) -> dict[str, Any]:
+        """Validate the minimal artifact set used by current host-owned probe preparation."""
+        allowed = {
+            "lowered_text", "decoded_trace", "command_buffer", "command_buffer_text",
+            "candidate_sha256", "candidate_lowered_sha256",
+            "candidate_command_buffer_sha256", "task_instruction_evidence",
+            "baseline_artifacts",
+        }
+        required = {
+            "lowered_text", "decoded_trace", "command_buffer", "command_buffer_text",
+            "candidate_sha256", "candidate_lowered_sha256",
+            "candidate_command_buffer_sha256", "task_instruction_evidence",
+        }
+        if not isinstance(artifacts, Mapping) or not required.issubset(artifacts):
+            raise ValueError("static analysis bundle lacks required primary artifacts")
+        if set(artifacts) - allowed:
+            raise ValueError("static analysis bundle contains a non-static artifact field")
+        result = copy.deepcopy(dict(artifacts))
+        lowered, command_text = result["lowered_text"], result["command_buffer_text"]
+        if (not isinstance(lowered, str) or not isinstance(command_text, str)
+                or PAS._sha256(lowered.encode("utf-8")) != result["candidate_lowered_sha256"]
+                or PAS._sha256(command_text.encode("utf-8"))
+                != result["candidate_command_buffer_sha256"]
+                or result["candidate_sha256"] != analysis.get("candidate_sha256")
+                or result["candidate_lowered_sha256"]
+                != (analysis.get("emission") or {}).get("candidate_lowered_sha256")
+                or result["candidate_command_buffer_sha256"]
+                != (analysis.get("emission") or {}).get("candidate_command_buffer_sha256")):
+            raise ValueError("static analysis artifact content binding changed")
+        try:
+            parsed = json.loads(command_text)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("static analysis command buffer is malformed") from exc
+        if parsed != result["command_buffer"]:
+            raise ValueError("static analysis command-buffer representations disagree")
+        baseline = result.get("baseline_artifacts")
+        if baseline is not None:
+            if (not isinstance(baseline, Mapping)
+                    or PAS._sha256(str(baseline.get("lowered_text", "")).encode("utf-8"))
+                    != baseline.get("lowered_sha256")
+                    or PAS._sha256(str(baseline.get("command_buffer_text", "")).encode("utf-8"))
+                    != baseline.get("command_buffer_sha256")):
+                raise ValueError("static analysis baseline artifact content binding changed")
+        return result
+
+    def _persist_static_analysis_bundle(
+            self, record: Mapping[str, Any], artifacts: Mapping[str, Any], *,
+            portfolio_artifacts: Mapping[str, Mapping[str, Any]] | None = None,
+            ) -> dict[str, Any] | None:
+        """Persist only reusable analytical documents and primary emitted artifact bytes."""
+        if not artifacts:
+            return None  # Lightweight custom analyzers may deliberately expose no artifact sink.
+        required_artifacts = {
+            "lowered_text", "decoded_trace", "command_buffer", "command_buffer_text",
+            "candidate_sha256", "candidate_lowered_sha256",
+            "candidate_command_buffer_sha256", "task_instruction_evidence",
+        }
+        if not required_artifacts.issubset(artifacts):
+            return None  # Test/development analyzers may publish only an auxiliary cache object.
+        static_artifacts = {key: copy.deepcopy(value) for key, value in artifacts.items()
+                            if key != "interface" and key != "parsed_lowered_module"}
+        if "baseline_artifacts" in static_artifacts:
+            static_artifacts["baseline_artifacts"] = _static_only_copy(
+                static_artifacts["baseline_artifacts"])
+        static_artifacts = self._validate_static_artifacts(
+            static_artifacts, analysis=record["analysis"])
+        analyses = [record["analysis"], *[
+            member["analysis"] for member in record["portfolio"]["members"][1:]]]
+        member_artifacts = []
+        by_capsule = dict(portfolio_artifacts or {})
+        by_capsule.setdefault(self.sentinel.capsule_sha256, artifacts)
+        for index, (sentinel, analysis) in enumerate(zip(
+                self.portfolio_sentinels, analyses, strict=True)):
+            current = by_capsule.get(sentinel.capsule_sha256)
+            if not current:
+                raise ValueError("static analysis bundle lacks one portfolio member's artifacts")
+            if index == 0:
+                selected = static_artifacts
+            else:
+                selected = {key: copy.deepcopy(value) for key, value in current.items()
+                            if key != "interface" and key != "parsed_lowered_module"}
+                if "baseline_artifacts" in selected:
+                    selected["baseline_artifacts"] = _static_only_copy(
+                        selected["baseline_artifacts"])
+            member_artifacts.append({
+                "capsule_sha256": sentinel.capsule_sha256,
+                "artifacts": self._validate_static_artifacts(selected, analysis=analysis),
+            })
+        bundle = {
+            "schema": "global_cross_run_static_analysis_bundle_v1",
+            "candidate_sha256": record["candidate_sha256"],
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "binding": copy.deepcopy(record["cross_run_static_analysis_binding"]),
+            "member_analyses": [_static_only_copy(analysis) for analysis in analyses],
+            "portfolio_member_artifacts": member_artifacts,
+            "excluded_evidence": sorted(_DYNAMIC_EVIDENCE_KEYS),
+            "full_graph_compiler_invoked_by_import": False,
+            "full_model_simulation_executed": False,
+        }
+        name = f"static_analysis_artifacts_{record['iteration']:04d}.json"
+        path = self._atomic_static_write(name, bundle)
+        return {"path": str(path.resolve()), "sha256": PAS._sha256_file(path),
+                "schema": bundle["schema"]}
+
+    def _record_cross_run_seed_miss(self, *, checkpoint: Path, checkpoint_sha256: str,
+                                    current_binding: Mapping[str, Any], reason: str
+                                    ) -> dict[str, Any]:
+        receipt = {
+            "schema": "global_cross_run_static_analysis_import_v1",
+            "status": "miss",
+            "reason": reason,
+            "seed_checkpoint": {"path": str(checkpoint.resolve()),
+                                "sha256": checkpoint_sha256},
+            "current_binding_sha256": current_binding["sha256"],
+            "full_graph_compiler_invoked": False,
+            "full_model_simulation_executed": False,
+            "probe_or_timing_receipts_reused": False,
+            "semantic_or_decision_feedback_reused": False,
+        }
+        path = self._atomic_static_write("cross_run_static_analysis_seed.json", receipt)
+        return {**receipt, "receipt": {"path": str(path), "sha256": PAS._sha256_file(path)}}
+
+    def _reconstruct_imported_compiler_sandboxes(
+            self, submitted: Path, *, dependencies: Mapping[str, Any]
+            ) -> tuple[Mapping[str, Any] | None, dict[str, Any]]:
+        """Prepare the current trusted answer masks without invoking the compiler.
+
+        Static artifact portability does not make an old absolute bwrap command portable.  A
+        production cache hit therefore asks the *current* host sandbox factory to rebuild its
+        grants for the fresh immutable submission, then binds the exact resulting policies.  A
+        lightweight development analyzer remains analysis-only and has no probe authority.
+        """
+        from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+
+        if not isinstance(self.analyzer, IsolatedAnalysisWorker):
+            return None, {
+                "schema": "cross_run_imported_compiler_sandbox_v1",
+                "status": "unavailable_non_production_analyzer",
+                "previous_probe_compilation_available": False,
+                "compiler_invoked": False,
+            }
+        scratch = self.output / "cross_run_imported_compiler_scratch_0000"
+        if scratch.exists() or scratch.is_symlink():
+            raise ValueError("imported compiler sandbox scratch must be fresh")
+        scratch.mkdir(mode=0o700)
+        sandboxes = self.analyzer.sandbox_factory(
+            self.optimization_baseline, submitted, scratch)
+        if not isinstance(sandboxes, Mapping):
+            raise ValueError("current sandbox factory returned no bound compiler policies")
+        expected = {
+            "baseline": (self.optimization_baseline,
+                         self.optimization_baseline_binding["compiler_dependencies"]),
+            "candidate": (submitted, dependencies),
+        }
+        for arm, (package, arm_dependencies) in expected.items():
+            policy = sandboxes.get(arm)
+            if not isinstance(policy, Mapping):
+                raise ValueError(f"current sandbox factory omitted the {arm} policy")
+            prefix = policy.get("command_prefix")
+            boundary = policy.get("bwrap_argv_length")
+            if (Path(str(policy.get("package_path"))).resolve() != package.resolve()
+                    or Path(str(policy.get("scratch_path"))).resolve() != scratch.resolve()
+                    or policy.get("compiler_dependencies") != arm_dependencies
+                    or not isinstance(prefix, list) or any(not isinstance(value, str) for value in prefix)
+                    or type(boundary) is not int or not 0 < boundary < len(prefix)
+                    or not isinstance(policy.get("answer_surfaces"), list)):
+                raise ValueError(f"reconstructed {arm} sandbox has stale package, dependency, or policy identity")
+            for directory, digest in (policy.get("overlay_trees") or {}).items():
+                overlay = Path(directory)
+                if (not PAS._is_sha256(digest) or overlay.is_symlink() or not overlay.is_dir()
+                        or PAS._exact_tree_record(overlay)["sha256"] != digest):
+                    raise ValueError(f"reconstructed {arm} sandbox dependency overlay changed")
+        if any(scratch.iterdir()):
+            raise ValueError("sandbox reconstruction unexpectedly populated compiler scratch")
+        scratch.chmod(0o555)
+        retained = copy.deepcopy(dict(sandboxes))
+        policy_sha256 = PAS._document_sha256(retained)
+        receipt = {
+            "schema": "cross_run_imported_compiler_sandbox_v1",
+            "status": "prepared_from_current_trusted_factory",
+            "candidate_sha256": dependencies["candidate_sha256"],
+            "candidate_package": str(submitted.resolve()),
+            "candidate_dependencies": copy.deepcopy(dict(dependencies)),
+            "optimization_baseline_sha256": self.optimization_baseline_sha256,
+            "optimization_baseline_package": str(self.optimization_baseline.resolve()),
+            "optimization_baseline_dependencies": copy.deepcopy(
+                self.optimization_baseline_binding["compiler_dependencies"]),
+            "policy_set_sha256": policy_sha256,
+            "candidate_policy_sha256": PAS._document_sha256(retained["candidate"]),
+            "baseline_policy_sha256": PAS._document_sha256(retained["baseline"]),
+            "scratch": str(scratch.resolve()),
+            "compiler_invoked": False,
+            "previous_probe_compilation_available": True,
+            "scope": "current trusted answer masks rebound to fresh immutable imported submission",
+        }
+        path = self._atomic_static_write(
+            "cross_run_imported_compiler_sandbox_0000.json", receipt)
+        receipt["receipt"] = {"path": str(path), "sha256": PAS._sha256_file(path)}
+        return retained, receipt
+
+    def import_static_analysis_checkpoint(self, candidate: Path, *, checkpoint: Path,
+                                          checkpoint_sha256: str) -> dict[str, Any]:
+        """Import an exact explicitly pinned static checkpoint under the current verifier.
+
+        This is deliberately not a run-directory search.  Identity mismatches are safe cache
+        misses; malformed/tampered inputs fail closed.  A hit makes a fresh immutable submission,
+        recomputes readiness, and carries no measurement, semantic, or decision receipt.
+        """
+        started = time.monotonic()
+        if self._cross_run_seed_attempted or self.iterations:
+            raise ValueError("cross-run static analysis may be seeded exactly once before iterations")
+        self._cross_run_seed_attempted = True
+        self._check_inputs()
+        self.validate_candidate_scope(candidate)
+        candidate_sha256 = hash_tree(candidate)["sha256"]
+        dependencies = self._compiler_dependencies(candidate)
+        current_binding = self._cross_run_static_analysis_binding(
+            candidate_sha256=candidate_sha256, compiler_dependencies=dependencies)
+        checkpoint = Path(checkpoint)
+        document = _load_pinned_read_only_mapping(
+            checkpoint, checkpoint_sha256, label="static analysis seed checkpoint")
+        checkpoint = checkpoint.resolve()
+        if document.get("schema") != "global_perf_candidate_v1":
+            raise ValueError("static analysis seed is not a promotable global candidate checkpoint")
+        if self.machine_build_policy.get("cross_run_reuse_allowed") is False:
+            return self._record_cross_run_seed_miss(
+                checkpoint=checkpoint, checkpoint_sha256=checkpoint_sha256,
+                current_binding=current_binding, reason="machine_toolchain_identity_unavailable")
+
+        prior_policy = document.get("host_verification_policy")
+        if not isinstance(prior_policy, Mapping):
+            raise ValueError("static analysis seed has no host verification policy")
+        source_root_value = document.get("source_snapshot")
+        source_root = (Path(source_root_value)
+                       if isinstance(source_root_value, str)
+                       else _source_snapshot_root_from_policy(prior_policy))
+        verified_source = _verify_source_snapshot(
+            source_root, document.get("source_snapshot_files_sha256"))
+        prior_shared_source = source_root / "merlin/python/merlin"
+        if not prior_shared_source.is_dir():
+            # Development/unit snapshots can intentionally contain only the policy fixture.  A
+            # production snapshot always carries merlin/python under perf_snapshot.SOURCE_ROOTS.
+            prior_shared_source = PAS.merlin_dir() / "python/merlin"
+        prior_policy_sha256 = host_policy_content_sha256(prior_policy, source_root=source_root)
+        if "location_sha256" in prior_policy and (
+                prior_policy.get("location_sha256")
+                != PAS._document_sha256(prior_policy.get("sources"))
+                or prior_policy.get("sha256") != prior_policy_sha256):
+            raise ValueError("static analysis seed host policy contradicts its verified sources")
+        if prior_policy_sha256 != self.host_policy["sha256"]:
+            return self._record_cross_run_seed_miss(
+                checkpoint=checkpoint, checkpoint_sha256=checkpoint_sha256,
+                current_binding=current_binding,
+                reason="host_verification_policy_content_changed")
+        if self.source_snapshot_root is None:
+            raise ValueError("cross-run static import requires the current sealed source snapshot")
+        _verify_source_snapshot(self.source_snapshot_root, self.source_snapshot_files_sha256)
+        if host_policy_content_sha256(
+                self.host_policy, source_root=self.source_snapshot_root) != self.host_policy["sha256"]:
+            raise ValueError("current host policy contradicts its verified source snapshot")
+
+        seed_binding = document.get("cross_run_static_analysis_binding")
+        if not isinstance(seed_binding, Mapping):
+            return self._record_cross_run_seed_miss(
+                checkpoint=checkpoint, checkpoint_sha256=checkpoint_sha256,
+                current_binding=current_binding, reason="checkpoint_predates_static_analysis_bundle_v1")
+        seed_body = {key: value for key, value in seed_binding.items()
+                     if key not in ("schema", "sha256")}
+        if (seed_binding.get("schema") != "global_cross_run_static_analysis_binding_v1"
+                or seed_binding.get("sha256") != PAS._document_sha256(seed_body)
+                or seed_binding.get("host_verification_policy_content_sha256")
+                != prior_policy_sha256):
+            raise ValueError("static analysis seed binding is malformed or contradicts its source")
+        if seed_binding != current_binding:
+            changed = sorted(key for key in set(seed_binding) | set(current_binding)
+                             if seed_binding.get(key) != current_binding.get(key))
+            return self._record_cross_run_seed_miss(
+                checkpoint=checkpoint, checkpoint_sha256=checkpoint_sha256,
+                current_binding=current_binding,
+                reason="exact_content_identity_changed:" + ",".join(changed))
+
+        comparison = document.get("optimization_baseline")
+        if not isinstance(comparison, Mapping):
+            raise ValueError("static analysis seed lacks its optimization baseline binding")
+        comparison_path_value = comparison.get("path")
+        comparison_path = (Path(comparison_path_value) if isinstance(comparison_path_value, str)
+                           else Path())
+        if (not comparison_path.is_absolute() or comparison_path.is_symlink()
+                or not comparison_path.is_dir()
+                or hash_tree(comparison_path)["sha256"] != comparison.get("sha256")
+                or compiler_dependency_content_sha256(
+                    compiler_dependency_record(
+                        comparison_path, shared_source_root=prior_shared_source))
+                != seed_binding["optimization_baseline"][
+                    "compiler_dependencies_content_sha256"]
+                or _portable_optimization_baseline_binding(comparison)
+                != seed_binding["optimization_baseline"]):
+            raise ValueError("static analysis seed optimization baseline bytes changed")
+
+        seed_candidate_value = document.get("candidate_path")
+        if not isinstance(seed_candidate_value, str):
+            raise ValueError("static analysis seed candidate path is malformed")
+        seed_candidate = Path(seed_candidate_value)
+        if (not seed_candidate.is_absolute() or seed_candidate.is_symlink()
+                or not seed_candidate.is_dir() or seed_candidate.parent.resolve() != checkpoint.parent
+                or seed_candidate.stat().st_mode & 0o222
+                or any(path.is_symlink() or path.stat().st_mode & 0o222
+                       for path in seed_candidate.rglob("*"))
+                or hash_tree(seed_candidate)["sha256"] != candidate_sha256
+                or compiler_dependency_content_sha256(compiler_dependency_record(
+                    seed_candidate, shared_source_root=prior_shared_source))
+                != seed_binding["candidate_compiler_dependencies_content_sha256"]):
+            raise ValueError("static analysis seed candidate bytes or dependencies changed")
+        iteration_path_value = document.get("iteration_record")
+        if not isinstance(iteration_path_value, str):
+            raise ValueError("static analysis seed iteration path is malformed")
+        iteration_path = Path(iteration_path_value)
+        if (not iteration_path.is_absolute() or iteration_path.parent.resolve() != checkpoint.parent):
+            raise ValueError("static analysis seed iteration escaped its experiment")
+        iteration = _load_pinned_read_only_mapping(
+            iteration_path, document.get("iteration_record_sha256"),
+            label="static analysis seed iteration")
+        if (iteration.get("schema") != "global_perf_iteration_v1"
+                or iteration.get("candidate_sha256") != candidate_sha256
+                or iteration.get("cross_run_static_analysis_binding") != seed_binding
+                or iteration.get("readiness", {}).get("status") != "ready_for_probe_admission"
+                or PAS._document_sha256(iteration.get("analysis"))
+                != document.get("analysis_sha256")):
+            raise ValueError("static analysis seed iteration binding changed")
+
+        bundle_ref = document.get("static_analysis_bundle")
+        if not isinstance(bundle_ref, Mapping) or bundle_ref != iteration.get("static_analysis_bundle"):
+            raise ValueError("static analysis seed checkpoint has no exact artifact bundle")
+        bundle_path_value = bundle_ref.get("path")
+        if not isinstance(bundle_path_value, str):
+            raise ValueError("static analysis seed artifact bundle path is malformed")
+        bundle_path = Path(bundle_path_value)
+        if (not bundle_path.is_absolute() or bundle_path.parent.resolve() != checkpoint.parent):
+            raise ValueError("static analysis seed artifact bundle escaped its experiment")
+        bundle = _load_pinned_read_only_mapping(
+            bundle_path, bundle_ref.get("sha256"), label="static analysis seed artifact bundle")
+        analyses = bundle.get("member_analyses")
+        artifact_rows = bundle.get("portfolio_member_artifacts")
+        if (bundle.get("schema") != "global_cross_run_static_analysis_bundle_v1"
+                or bundle.get("binding") != seed_binding
+                or bundle.get("candidate_sha256") != candidate_sha256
+                or bundle.get("portfolio_sha256") != self.portfolio_identity_sha256
+                or not isinstance(analyses, list) or not isinstance(artifact_rows, list)
+                or len(analyses) != len(self.portfolio_sentinels)
+                or len(artifact_rows) != len(self.portfolio_sentinels)):
+            raise ValueError("static analysis seed bundle coverage or binding changed")
+
+        current_analyses: list[dict[str, Any]] = []
+        current_artifacts: dict[str, dict[str, Any]] = {}
+        for index, (sentinel, raw_analysis, artifact_row) in enumerate(zip(
+                self.portfolio_sentinels, analyses, artifact_rows, strict=True)):
+            if (not isinstance(raw_analysis, Mapping) or not isinstance(artifact_row, Mapping)
+                    or artifact_row.get("capsule_sha256") != sentinel.capsule_sha256
+                    or raw_analysis.get("candidate_sha256") != candidate_sha256
+                    or raw_analysis.get("workload", {}).get("capsule_sha256")
+                    != sentinel.capsule_sha256):
+                raise ValueError("static analysis seed member identity or order changed")
+            analysis = copy.deepcopy(dict(raw_analysis))
+            analysis["optimization_baseline"] = copy.deepcopy(self.optimization_baseline_binding)
+            analysis["compiler_edit_scope"] = self.validate_candidate_scope(candidate)
+            diagnostics = analysis.setdefault("diagnostics", {})
+            diagnostics["emission_execution"] = {
+                "schema": "cross_run_static_analysis_import_execution_v1",
+                "source_checkpoint_sha256": checkpoint_sha256,
+                "full_graph_compiler_invoked": False,
+                "full_model_simulation_executed": False,
+                "timing_evidence_imported": False,
+            }
+            readiness = PAS.global_iteration_readiness(analysis)
+            analysis["iteration_readiness"] = copy.deepcopy(readiness)
+            if readiness["status"] != "ready_for_probe_admission":
+                raise ValueError("imported static analysis fails current readiness recomputation")
+            artifacts = self._validate_static_artifacts(
+                artifact_row.get("artifacts"), analysis=analysis)
+            source = Path(sentinel.frozen_source_path)
+            descriptor = PAS._mapping_file(source / "capsule.yaml", yaml_file=True)
+            interface = source / str(descriptor.get("interface_mlir") or "capsule.interface.mlir")
+            if interface.is_symlink() or not interface.is_file():
+                raise ValueError("current portfolio interface is absent or linked")
+            artifacts["interface"] = str(interface.resolve())
+            current_analyses.append(analysis)
+            current_artifacts[sentinel.capsule_sha256] = artifacts
+        submitted = self.output / "submission_0000"
+        shutil.copytree(candidate, submitted, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        if hash_tree(submitted)["sha256"] != candidate_sha256:
+            raise ValueError("candidate changed while capturing imported static analysis submission")
+        for path in submitted.rglob("*"):
+            if path.is_symlink():
+                raise ValueError("captured imported static analysis submission contains a link")
+            path.chmod(path.stat().st_mode & ~0o222)
+        submitted.chmod(0o555)
+        current_scope = self.validate_candidate_scope(submitted)
+        for analysis in current_analyses:
+            analysis["compiler_edit_scope"] = copy.deepcopy(current_scope)
+        reconstructed_sandboxes, sandbox_reconstruction = \
+            self._reconstruct_imported_compiler_sandboxes(
+                submitted, dependencies=dependencies)
+
+        primary = current_analyses[0]
+        primary_readiness = PAS.global_iteration_readiness(primary)
+        members = [{
+            "identity": sentinel_identity(self.sentinel, role="primary"),
+            "status": "completed", "analysis_ref": "/analysis",
+            "readiness": primary_readiness, "static_comparison_ref": "/static_comparison",
+            "analysis_allocation": {"schema": "portfolio_cross_run_import_allocation_v1",
+                                    "policy": "exact_static_import_no_compilation",
+                                    "allocated_seconds": 0.0},
+            "elapsed_seconds": 0.0, "timing_status": "UNMEASURED_FULL_MODEL",
+        }]
+        for sentinel, analysis in zip(self.portfolio_sentinels[1:], current_analyses[1:], strict=True):
+            readiness = PAS.global_iteration_readiness(analysis)
+            members.append({
+                "identity": sentinel_identity(sentinel, role="training"), "status": "completed",
+                "analysis": analysis, "readiness": readiness,
+                "static_comparison": self._compare_analyses(
+                    None, analysis, previous_iteration=None),
+                "analysis_allocation": {"schema": "portfolio_cross_run_import_allocation_v1",
+                                        "policy": "exact_static_import_no_compilation",
+                                        "allocated_seconds": 0.0},
+                "elapsed_seconds": 0.0, "timing_status": "UNMEASURED_FULL_MODEL",
+            })
+        readiness = copy.deepcopy(primary_readiness)
+        readiness.update({
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "portfolio_members_ready": len(members),
+            "portfolio_members_total": len(members),
+            "selection": "multi_model_pareto_without_invented_static_cycle_total",
+        })
+        elapsed = time.monotonic() - started
+        reuse = {
+            "schema": "global_exact_cross_run_static_analysis_import_v1",
+            "source_checkpoint": str(checkpoint), "source_checkpoint_sha256": checkpoint_sha256,
+            "source_snapshot": verified_source["root"],
+            "source_snapshot_files_sha256": verified_source["files_sha256"],
+            "binding": copy.deepcopy(current_binding),
+            "full_graph_compiler_invoked": False,
+            "full_model_simulation_executed": False,
+            "probe_or_timing_receipts_reused": False,
+            "semantic_or_decision_feedback_reused": False,
+            "compiler_sandbox_reconstruction": sandbox_reconstruction,
+            "reuse_verification_elapsed_seconds": elapsed,
+        }
+        record = {
+            "schema": "global_perf_iteration_v1", "iteration": 0,
+            "candidate_path": str(candidate.resolve()), "candidate_sha256": candidate_sha256,
+            "submitted_snapshot": str(submitted.resolve()),
+            "compiler_dependencies": dependencies,
+            "analysis_reuse_binding": self._analysis_reuse_binding(
+                candidate_sha256=candidate_sha256, compiler_dependencies=dependencies),
+            "cross_run_static_analysis_binding": copy.deepcopy(current_binding),
+            "analysis_reuse": reuse, "exact_analysis_reused": True,
+            "baseline_sha256": self.baseline_sha256,
+            "optimization_baseline_sha256": self.optimization_baseline_sha256,
+            "optimization_baseline": copy.deepcopy(self.optimization_baseline_binding),
+            "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "round_mechanism_attribution": {
+                "schema": "global_compiler_mechanism_seed_analysis_v1",
+                "status": "initial_seed", "candidate_sha256": candidate_sha256,
+                "mechanism_catalog_sha256": self._mechanism_catalog_binding_sha256,
+            } if self.mechanism_catalog_binding is not None else None,
+            "hypothesis": "Bind initial seed from exact cross-run static analysis",
+            "analysis": primary, "readiness": readiness,
+            "historical_reference": copy.deepcopy(self.historical_reference),
+            "elapsed_seconds": elapsed, "timing_status": "UNMEASURED_FULL_MODEL",
+            "allocated_seconds": self.timeout_s, "probe_receipts": [],
+            "global_performance_claim": "unproven",
+            "relative_semantic_evidence": {
+                "status": "unavailable_cross_run_static_import", "numerical_equivalence": False},
+        }
+        record["static_comparison"] = self._compare(record)
+        record["portfolio"] = {
+            "schema": "full_model_portfolio_iteration_v1",
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "candidate_sha256": candidate_sha256, "members": members,
+            "members_ready": len(members), "members_total": len(members),
+            "selection": readiness["selection"],
+            "analysis_allocation_policy": "exact_cross_run_static_import_no_compilation",
+            "analysis_concurrency": {
+                "schema": "portfolio_cross_run_import_concurrency_v1",
+                "requested_workers": self.portfolio_analysis_workers,
+                "admitted_workers": 0, "members": len(members),
+                "policy": "no_workers_admitted_for_exact_cross_run_static_import",
+            },
+            "full_model_simulation_allowed": False,
+        }
+        primary_artifacts = current_artifacts[self.sentinel.capsule_sha256]
+        static_bundle = self._persist_static_analysis_bundle(
+            record, primary_artifacts, portfolio_artifacts=current_artifacts)
+        assert static_bundle is not None
+        record["static_analysis_bundle"] = static_bundle
+        self._write("iteration_0000.json", record)
+        self.iterations.append(record)
+        self._portfolio_artifacts = current_artifacts
+        self._artifacts = primary_artifacts
+        baseline_artifacts = self._artifacts.pop("baseline_artifacts", None)
+        if baseline_artifacts is not None:
+            self._baseline_artifacts = baseline_artifacts
+        self._iteration_artifacts[0] = self._artifacts
+        self._iteration_portfolio_artifacts[0] = self._portfolio_artifacts
+        if reconstructed_sandboxes is not None:
+            self._compiler_sandboxes[0] = reconstructed_sandboxes
+            self._compiler_sandbox_sha256[0] = sandbox_reconstruction["policy_set_sha256"]
+            self._optimization_baseline_sandbox = copy.deepcopy(
+                reconstructed_sandboxes["baseline"])
+            self._optimization_baseline_sandbox_sha256 = PAS._document_sha256(
+                self._optimization_baseline_sandbox)
+        receipt = {**reuse, "status": "hit", "result_iteration": 0,
+                   "result_iteration_record": str((self.output / "iteration_0000.json").resolve()),
+                   "result_iteration_record_sha256": PAS._sha256_file(
+                       self.output / "iteration_0000.json")}
+        path = self._atomic_static_write("cross_run_static_analysis_seed.json", receipt)
+        return {**receipt, "receipt": {"path": str(path), "sha256": PAS._sha256_file(path)}}
+
     def _immutable_reusable_iteration(
             self, row: Mapping[str, Any], *, binding: Mapping[str, Any]) -> dict[str, Any] | None:
         """Load and revalidate one prior ready iteration; malformed cache entries are misses."""
@@ -1528,6 +2540,7 @@ class GlobalPerfExperiment:
 
     def _reuse_prior_analysis(self, candidate: Path, *, hypothesis: str,
                               source: Mapping[str, Any], binding: Mapping[str, Any],
+                              mechanism_attribution: Mapping[str, Any] | None,
                               started: float, budget_seconds: float) -> dict[str, Any]:
         """Append a fresh iteration around reusable static evidence from an older revision."""
         source_iteration = source["iteration"]
@@ -1628,8 +2641,13 @@ class GlobalPerfExperiment:
             "submitted_snapshot": source["submitted_snapshot"],
             "compiler_dependencies": copy.deepcopy(source["compiler_dependencies"]),
             "analysis_reuse_binding": copy.deepcopy(binding),
+            "cross_run_static_analysis_binding": self._cross_run_static_analysis_binding(
+                candidate_sha256=source["candidate_sha256"],
+                compiler_dependencies=source["compiler_dependencies"]),
             "analysis_reuse": reuse,
             "exact_analysis_reused": True,
+            "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "round_mechanism_attribution": copy.deepcopy(mechanism_attribution),
             "baseline_sha256": self.baseline_sha256,
             "optimization_baseline_sha256": self.optimization_baseline_sha256,
             "optimization_baseline": copy.deepcopy(self.optimization_baseline_binding),
@@ -1640,6 +2658,8 @@ class GlobalPerfExperiment:
             "probe_receipts": [], "global_performance_claim": "unproven",
             "relative_semantic_evidence": relative_semantics,
         }
+        if source.get("static_analysis_bundle") is not None:
+            record["static_analysis_bundle"] = copy.deepcopy(source["static_analysis_bundle"])
         record["static_comparison"] = self._compare(record)
         record["portfolio"] = {
             "schema": "full_model_portfolio_iteration_v1",
@@ -1674,9 +2694,17 @@ class GlobalPerfExperiment:
         self._previous_artifacts = previous_artifacts
         self._artifacts = current_artifacts
         self._iteration_artifacts[result_iteration] = current_artifacts
+        previous_portfolio = self._portfolio_artifacts
+        current_portfolio = self._iteration_portfolio_artifacts.get(source_iteration)
+        self._previous_portfolio_artifacts = previous_portfolio or None
+        self._portfolio_artifacts = copy.deepcopy(current_portfolio or {})
+        self._iteration_portfolio_artifacts[result_iteration] = self._portfolio_artifacts
         source_sandboxes = self._compiler_sandboxes.get(source_iteration)
         if source_sandboxes is not None:
             self._compiler_sandboxes[result_iteration] = copy.deepcopy(source_sandboxes)
+            source_sandbox_sha256 = self._compiler_sandbox_sha256.get(source_iteration)
+            if source_sandbox_sha256 is not None:
+                self._compiler_sandbox_sha256[result_iteration] = source_sandbox_sha256
         return copy.deepcopy(record)
 
     def _analyze_locked(self, candidate: Path, *, hypothesis: str,
@@ -1689,6 +2717,14 @@ class GlobalPerfExperiment:
         budget_seconds = self.timeout_s if timeout_s is None else min(self.timeout_s, timeout_s)
         if budget_seconds <= 0:
             raise ValueError("full-model analysis has no remaining iteration budget")
+        mechanism_attribution = self._inspect_active_mechanism_round(
+            candidate, require_semantic_edit=False)
+        if (mechanism_attribution is not None
+                and mechanism_attribution.get("status") not in ("allowed", "initial_seed")):
+            self._write(f"mechanism_analysis_refusal_{time.time_ns()}.json",
+                        mechanism_attribution)
+            raise ValueError("candidate violates the host-frozen one-mechanism policy: "
+                             + str(mechanism_attribution.get("violations")))
         self.validate_candidate_scope(candidate)
         if self.historical_reference_source is not None and (
                 self.historical_reference_source.resolve().is_relative_to(candidate.resolve())
@@ -1703,6 +2739,7 @@ class GlobalPerfExperiment:
             if reusable["iteration"] != self.iterations[-1]["iteration"]:
                 return self._reuse_prior_analysis(
                     candidate, hypothesis=hypothesis, source=reusable, binding=reuse_binding,
+                    mechanism_attribution=mechanism_attribution,
                     started=started, budget_seconds=budget_seconds)
             elapsed = time.monotonic() - started
             if elapsed > budget_seconds:
@@ -1816,6 +2853,8 @@ class GlobalPerfExperiment:
         if (isinstance(completed_sandboxes, Mapping)
                 and Path(completed_sandboxes["candidate"]["package_path"]).resolve() == submitted.resolve()):
             self._compiler_sandboxes[len(self.iterations)] = copy.deepcopy(completed_sandboxes)
+            self._compiler_sandbox_sha256[len(self.iterations)] = PAS._document_sha256(
+                completed_sandboxes)
             comparison_policy = completed_sandboxes.get("baseline")
             if (primary_readiness["status"] == "ready_for_probe_admission"
                     and isinstance(comparison_policy, Mapping)
@@ -1830,10 +2869,13 @@ class GlobalPerfExperiment:
             for member in ((self.iterations[-1].get("portfolio") or {}).get("members") or ())
         } if self.iterations else {}
         portfolio_rows: list[dict[str, Any]] = []
+        portfolio_artifacts: dict[str, Mapping[str, Any]] = {
+            self.sentinel.capsule_sha256: retained}
         for index, sentinel in enumerate(self.portfolio_sentinels[1:], start=1):
             member_result = member_results[index]
             assert member_result is not None
             member_analysis, member_artifacts, _, member_allocation, member_elapsed = member_result
+            portfolio_artifacts[sentinel.capsule_sha256] = member_artifacts
             member_readiness = PAS.global_iteration_readiness(member_analysis)
             previous_member = previous_members.get(sentinel.capsule_sha256)
             member_comparison = self._compare_analyses(
@@ -1892,9 +2934,13 @@ class GlobalPerfExperiment:
             "compiler_dependencies": dependencies_after,
             "analysis_reuse_binding": self._analysis_reuse_binding(
                 candidate_sha256=after, compiler_dependencies=dependencies_after),
+            "cross_run_static_analysis_binding": self._cross_run_static_analysis_binding(
+                candidate_sha256=after, compiler_dependencies=dependencies_after),
             "baseline_sha256": self.baseline_sha256,
             "optimization_baseline_sha256": self.optimization_baseline_sha256,
             "optimization_baseline": copy.deepcopy(self.optimization_baseline_binding),
+            "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "round_mechanism_attribution": copy.deepcopy(mechanism_attribution),
             "hypothesis": hypothesis, "analysis": analysis, "readiness": readiness,
             "historical_reference": copy.deepcopy(self.historical_reference),
             "elapsed_seconds": elapsed, "timing_status": "UNMEASURED_FULL_MODEL",
@@ -1924,12 +2970,19 @@ class GlobalPerfExperiment:
             "analysis_concurrency": concurrency,
             "full_model_simulation_allowed": False,
         }
+        static_bundle = self._persist_static_analysis_bundle(
+            record, retained, portfolio_artifacts=portfolio_artifacts)
+        if static_bundle is not None:
+            record["static_analysis_bundle"] = static_bundle
         self._write(f"iteration_{record['iteration']:04d}.json", record)
         self.iterations.append(record)
         self._previous_artifacts, self._artifacts = self._artifacts, retained
+        self._previous_portfolio_artifacts = self._portfolio_artifacts or None
+        self._portfolio_artifacts = portfolio_artifacts
         if "baseline_artifacts" in retained:
             self._baseline_artifacts = retained.pop("baseline_artifacts")
         self._iteration_artifacts[record["iteration"]] = self._artifacts
+        self._iteration_portfolio_artifacts[record["iteration"]] = self._portfolio_artifacts
         return copy.deepcopy(record)
 
     def _compare(self, current: Mapping[str, Any]) -> dict[str, Any]:
@@ -2014,6 +3067,237 @@ class GlobalPerfExperiment:
                 != row["analysis"]["emission"]["candidate_lowered_sha256"]):
             raise ValueError("current analysis has no retained emitted artifacts")
         return self._artifacts
+
+    def current_portfolio_artifacts(self, candidate: Path) -> Mapping[str, Mapping[str, Any]]:
+        """Exact retained artifacts for every member of the current analyzed portfolio."""
+        row = self._current(candidate)
+        expected = [member.capsule_sha256 for member in self.portfolio_sentinels]
+        if list(self._portfolio_artifacts) != expected:
+            raise ValueError("current analysis has no complete retained portfolio artifacts")
+        for index, capsule_sha256 in enumerate(expected):
+            analysis = row["analysis"] if index == 0 else row["portfolio"]["members"][index]["analysis"]
+            artifacts = self._portfolio_artifacts[capsule_sha256]
+            if (artifacts.get("candidate_sha256") != row["candidate_sha256"]
+                    or artifacts.get("candidate_lowered_sha256")
+                    != analysis["emission"]["candidate_lowered_sha256"]):
+                raise ValueError("retained portfolio artifacts changed identity")
+        return self._portfolio_artifacts
+
+    @staticmethod
+    def _portfolio_member_analysis(row: Mapping[str, Any], index: int) -> Mapping[str, Any]:
+        if index == 0:
+            return row["analysis"]
+        members = (row.get("portfolio") or {}).get("members")
+        if not isinstance(members, list) or index >= len(members):
+            raise ValueError("portfolio iteration omits a declared member analysis")
+        analysis = members[index].get("analysis")
+        if not isinstance(analysis, Mapping):
+            raise ValueError("portfolio secondary member analysis is malformed")
+        return analysis
+
+    def _validated_portfolio_member_context(
+            self, row: Mapping[str, Any], artifacts_by_capsule: Mapping[str, Mapping[str, Any]],
+            *, index: int, arm: str) -> dict[str, Any]:
+        """Bind one member's source, plan, emitted artifacts, compiler and target exactly."""
+        if arm not in ("previous", "current") or not 0 <= index < len(self.portfolio_sentinels):
+            raise ValueError("portfolio member context arm or index is invalid")
+        sentinel = self.portfolio_sentinels[index]
+        expected = [member.capsule_sha256 for member in self.portfolio_sentinels]
+        if list(artifacts_by_capsule) != expected:
+            raise ValueError(f"{arm} portfolio artifact set is incomplete or reordered")
+        analysis = self._portfolio_member_analysis(row, index)
+        artifacts = artifacts_by_capsule.get(sentinel.capsule_sha256)
+        if not isinstance(artifacts, Mapping):
+            raise ValueError(f"{arm} portfolio member has no retained artifacts")
+        portfolio_member = (row.get("portfolio") or {}).get("members", [])[index]
+        expected_identity = sentinel_identity(
+            sentinel, role="primary" if index == 0 else "training")
+        if (portfolio_member.get("identity") != expected_identity
+                or analysis.get("candidate_sha256") != row.get("candidate_sha256")
+                or analysis.get("workload", {}).get("capsule_sha256") != sentinel.capsule_sha256
+                or PAS.global_iteration_readiness(analysis).get("status")
+                != "ready_for_probe_admission"):
+            raise ValueError(f"{arm} portfolio analysis identity or readiness changed")
+        diagnostics = analysis.get("diagnostics") or {}
+        graph = diagnostics.get("captured_logical_graph") or {}
+        plan = diagnostics.get("verified_global_plan_emission") or {}
+        emission = analysis.get("emission") or {}
+        lowered_text = artifacts.get("lowered_text")
+        command_text = artifacts.get("command_buffer_text")
+        if not isinstance(lowered_text, str) or not isinstance(command_text, str):
+            raise ValueError(f"{arm} portfolio emitted artifact bytes are unavailable")
+        lowered_sha256 = PAS._sha256(lowered_text.encode("utf-8"))
+        command_sha256 = PAS._sha256(command_text.encode("utf-8"))
+        try:
+            parsed_command_buffer = json.loads(command_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{arm} portfolio command buffer is malformed") from exc
+        if (artifacts.get("candidate_sha256") != row.get("candidate_sha256")
+                or artifacts.get("candidate_lowered_sha256") != lowered_sha256
+                or artifacts.get("candidate_command_buffer_sha256") != command_sha256
+                or artifacts.get("command_buffer") != parsed_command_buffer
+                or emission.get("candidate_lowered_sha256") != lowered_sha256
+                or emission.get("candidate_command_buffer_sha256") != command_sha256
+                or plan.get("status") != "verified"
+                or plan.get("candidate_sha256") != row.get("candidate_sha256")
+                or plan.get("logical_dispatch_digest") != graph.get("logical_dispatch_digest")
+                or plan.get("candidate_lowered_sha256") != lowered_sha256
+                or plan.get("candidate_command_buffer_sha256") != command_sha256):
+            raise ValueError(f"{arm} portfolio source/plan/emitted artifact binding changed")
+        interface_value = artifacts.get("interface")
+        if not isinstance(interface_value, (str, Path)):
+            raise ValueError(f"{arm} portfolio interface identity is unavailable")
+        interface = Path(interface_value)
+        source_root = Path(sentinel.frozen_source_path).resolve()
+        if (interface.is_symlink() or not interface.is_file()
+                or not interface.resolve().is_relative_to(source_root)
+                or PAS._sha256_file(interface) != plan.get("source_sha256")):
+            raise ValueError(f"{arm} portfolio source does not match its verified plan")
+        dependencies = row.get("compiler_dependencies") or {}
+        compiler_sha256 = dependencies.get("compiler_implementation_sha256")
+        if not PAS._is_sha256(compiler_sha256):
+            raise ValueError(f"{arm} portfolio compiler dependency identity is unavailable")
+        binding = ProbeBinding(
+            graph_digest=graph["logical_dispatch_digest"], plan_digest=plan["plan_digest"],
+            compiler_digest=compiler_sha256, target_digest=self.target_sha256)
+        member_binding = {
+            "schema": "global_portfolio_member_artifact_binding_v1", "arm": arm,
+            "portfolio_index": index, "capsule": sentinel.capsule,
+            "capsule_sha256": sentinel.capsule_sha256,
+            "source_sha256": plan["source_sha256"],
+            "candidate_sha256": row["candidate_sha256"],
+            "compiler_implementation_sha256": compiler_sha256,
+            "target_sha256": self.target_sha256,
+            "logical_dispatch_digest": graph["logical_dispatch_digest"],
+            "plan_digest": plan["plan_digest"],
+            "lowered_sha256": lowered_sha256,
+            "command_buffer_sha256": command_sha256,
+        }
+        return {"identity": expected_identity, "analysis": analysis, "artifacts": artifacts,
+                "interface": interface, "probe_binding": binding,
+                "member_binding": member_binding}
+
+    def current_portfolio_member_context(self, candidate: Path, *, index: int) -> dict[str, Any]:
+        """Strict current analysis/artifact context for one ordered portfolio member."""
+        row = self._current(candidate)
+        return self._validated_portfolio_member_context(
+            row, self._portfolio_artifacts, index=index, arm="current")
+
+    def previous_portfolio_member_context(self, candidate: Path, *, index: int) -> dict[str, Any]:
+        """Strict immediately preceding analysis/artifact context for one portfolio member."""
+        self._current(candidate)
+        if len(self.iterations) < 2 or self._previous_portfolio_artifacts is None:
+            raise ValueError("changed-region qualification requires prior portfolio artifacts")
+        previous = self.iterations[-2]
+        if previous.get("readiness", {}).get("status") != "ready_for_probe_admission":
+            raise ValueError("changed-region qualification requires a ready prior portfolio")
+        return self._validated_portfolio_member_context(
+            previous, self._previous_portfolio_artifacts, index=index, arm="previous")
+
+    @staticmethod
+    def _known_structural_host_work_delta(before: Mapping[str, Any],
+                                          after: Mapping[str, Any]) -> dict[str, Any]:
+        """Lexicographic same-unit deltas; never convert bytes or operations into cycles."""
+        plans = [(analysis.get("diagnostics") or {}).get("verified_global_plan_emission") or {}
+                 for analysis in (before, after)]
+        host = [plan.get("host_activity") or {} for plan in plans]
+        byte_fields = ("load_payload_bytes", "store_payload_bytes",
+                       "static_allocation_payload_bytes")
+        byte_known = all(type(row.get(field)) is int and row[field] >= 0
+                         for row in host for field in byte_fields)
+        byte_delta = (sum(abs(host[1][field] - host[0][field]) for field in byte_fields)
+                      if byte_known else None)
+        operations = [row.get("dynamic_operations") for row in host]
+        operations_are_maps = all(isinstance(row, Mapping) for row in operations)
+        categories = (set(operations[0]) | set(operations[1])
+                      if operations_are_maps else set())
+        operations_known = operations_are_maps and all(
+            isinstance(category, str) and type(row.get(category, 0)) is int
+            and row.get(category, 0) >= 0
+            for row in operations for category in categories)
+        operation_delta = (sum(abs(operations[1].get(category, 0)
+                                       - operations[0].get(category, 0))
+                               for category in categories) if operations_known else None)
+        tasks = [plan.get("tasks") for plan in plans]
+        task_delta = abs(tasks[1] - tasks[0]) if all(type(value) is int for value in tasks) else None
+        return {
+            "host_payload_bytes_absolute_delta": byte_delta,
+            "host_dynamic_operations_absolute_delta": operation_delta,
+            "planned_task_count_absolute_delta": task_delta,
+            "ranking_policy": (
+                "lexicographic_known_host_payload_bytes_then_known_dynamic_operations_then_"
+                "planned_task_count; units are never added or converted to cycles"),
+        }
+
+    def select_changed_portfolio_member(self, candidate: Path) -> dict[str, Any]:
+        """Select an emitted-changed member by exact known host-work deltas and stable order."""
+        contexts = [(self.previous_portfolio_member_context(candidate, index=index),
+                     self.current_portfolio_member_context(candidate, index=index))
+                    for index in range(len(self.portfolio_sentinels))]
+        return self._select_changed_portfolio_contexts(contexts)
+
+    @staticmethod
+    def _select_changed_portfolio_contexts(contexts) -> dict[str, Any]:
+        """One selection policy for live artifacts and independently verified receipt records."""
+        candidates = []
+        for index, (before, after) in enumerate(contexts):
+            prior_binding, current_binding = before["member_binding"], after["member_binding"]
+            if prior_binding["capsule_sha256"] != current_binding["capsule_sha256"]:
+                raise ValueError("portfolio member identity changed across candidate revisions")
+            if prior_binding["source_sha256"] != current_binding["source_sha256"]:
+                raise ValueError("portfolio member source changed across candidate revisions")
+            changed_fields = [field for field in (
+                "plan_digest", "lowered_sha256", "command_buffer_sha256")
+                if prior_binding[field] != current_binding[field]]
+            # A plan-only metadata delta has no changed lowered/command artifact from which to
+            # extract and compile a source witness. It is not silently attributed to another unit.
+            if not {"lowered_sha256", "command_buffer_sha256"}.intersection(changed_fields):
+                continue
+            delta = GlobalPerfExperiment._known_structural_host_work_delta(
+                before["analysis"], after["analysis"])
+            values = [delta["host_payload_bytes_absolute_delta"],
+                      delta["host_dynamic_operations_absolute_delta"],
+                      delta["planned_task_count_absolute_delta"]]
+            rank = tuple(item for value in values for item in (
+                value is not None, value if value is not None else -1))
+            candidates.append((rank, -index, {
+                "schema": "global_changed_portfolio_member_selection_v1",
+                "portfolio_index": index, "capsule": current_binding["capsule"],
+                "capsule_sha256": current_binding["capsule_sha256"],
+                "changed_artifact_fields": changed_fields,
+                "structural_host_work_delta": delta,
+                "previous": copy.deepcopy(prior_binding),
+                "current": copy.deepcopy(current_binding),
+                "performance_inference": "none",
+            }))
+        if not candidates:
+            raise ValueError("no portfolio member has a changed emitted artifact")
+        winner = max(candidates, key=lambda item: (item[0], item[1]))
+        selection = winner[2]
+        known = [name for name in (
+            "host_payload_bytes_absolute_delta",
+            "host_dynamic_operations_absolute_delta",
+            "planned_task_count_absolute_delta")
+            if selection["structural_host_work_delta"][name] is not None]
+        selection["selection_basis"] = (
+            "known_structural_host_work_lexicographic"
+            if known else "stable_portfolio_order_no_known_structural_host_work")
+        selection["known_ranking_metrics"] = known
+        selection["stable_portfolio_order_tie_break_applied"] = sum(
+            rank == winner[0] for rank, _order, _record in candidates) > 1
+        return selection
+
+    def selected_changed_portfolio_context(
+            self, candidate: Path, selection: Mapping[str, Any] | None = None
+            ) -> dict[str, Any]:
+        """Recompute and validate a selected member before a host qualifier consumes it."""
+        expected = self.select_changed_portfolio_member(candidate)
+        if selection is not None and dict(selection) != expected:
+            raise ValueError("changed portfolio member selection is stale or caller-substituted")
+        index = expected["portfolio_index"]
+        return {"selection": expected,
+                "previous": self.previous_portfolio_member_context(candidate, index=index),
+                "current": self.current_portfolio_member_context(candidate, index=index)}
 
     def current_probe_binding(self, candidate: Path) -> ProbeBinding:
         row = self._current(candidate)
@@ -2214,12 +3498,21 @@ class GlobalPerfExperiment:
         if not optimization_baseline:
             if completed is None:
                 return self.analyzer.sandbox_factory(self.optimization_baseline, candidate, scratch)["candidate"]
+            retained_sha256 = self._compiler_sandbox_sha256.get(row["iteration"])
+            if (retained_sha256 is not None
+                    and PAS._document_sha256(completed) != retained_sha256):
+                raise ValueError("retained compiler sandbox policy changed identity")
             sandbox = completed["candidate"]
             expected_package = Path(row["submitted_snapshot"])
             expected_dependencies = row["compiler_dependencies"]
         if (Path(sandbox["package_path"]).resolve() != expected_package.resolve()
                 or sandbox.get("compiler_dependencies") != expected_dependencies):
             raise ValueError("prepared sandbox is not bound to the current immutable compiler")
+        for overlay_path, overlay_sha256 in (sandbox.get("overlay_trees") or {}).items():
+            overlay = Path(overlay_path)
+            if (overlay.is_symlink() or not overlay.is_dir()
+                    or PAS._exact_tree_record(overlay)["sha256"] != overlay_sha256):
+                raise ValueError("prepared sandbox dependency overlay changed identity")
         directory = scratch.resolve(strict=True)
         if scratch.is_symlink() or not directory.is_dir():
             raise ValueError("probe scratch must be a real dedicated directory")
@@ -2501,30 +3794,54 @@ class GlobalPerfExperiment:
                                timeout_s: float) -> dict[str, Any]:
         """Record a host-selected semantic mechanism witness without upgrading model timing."""
         row = self._current(candidate)
-        binding = self.current_probe_binding(candidate)
-        previous = self.previous_artifacts(candidate)
-        current = self.current_artifacts(candidate)
+        selected = self.selected_changed_portfolio_context(candidate)
+        selection = selected["selection"]
+        previous = selected["previous"]
+        current = selected["current"]
+        binding = current["probe_binding"]
+        member_binding = {"selection": selection,
+                          "previous": previous["member_binding"],
+                          "current": current["member_binding"]}
+        previous_record = self.output / f"iteration_{self.iterations[-2]['iteration']:04d}.json"
+        previous_pointer = {
+            "previous_iteration_record": str(previous_record.absolute()),
+            "previous_iteration_record_sha256": PAS._sha256_file(previous_record),
+            "previous_portfolio_iteration_sha256": PAS._document_sha256(
+                self.iterations[-2]["portfolio"]),
+        }
         started = time.monotonic()
         remaining = min(float(timeout_s), self.timeout_s - row["elapsed_seconds"])
         if remaining <= 0:
             raise TimeoutError("changed-region qualification exhausted its iteration budget")
         try:
-            evidence = dict(provider(candidate=candidate, experiment=self, timeout_s=remaining))
-            if self.current_probe_binding(candidate) != binding:
-                raise ValueError("compiler or global plan changed during semantic qualification")
+            evidence = dict(provider(candidate=candidate, experiment=self, timeout_s=remaining,
+                                     portfolio_member=selection))
+            selected_after = self.selected_changed_portfolio_context(candidate, selection)
+            actual_member_binding = {"selection": selected_after["selection"],
+                "previous": selected_after["previous"]["member_binding"],
+                "current": selected_after["current"]["member_binding"]}
+            if (actual_member_binding != member_binding
+                    or selected_after["current"]["probe_binding"] != binding
+                    or evidence.get("portfolio_member_binding") != member_binding):
+                raise ValueError("compiler, portfolio member, source, plan, or artifacts changed during qualification")
             elapsed = time.monotonic() - started
             if elapsed > remaining:
                 raise TimeoutError("changed-region semantic qualification exceeded its wall budget")
             receipt = {
-                "schema": "global_changed_region_semantic_receipt_v1",
+                "schema": "global_changed_region_semantic_receipt_v2",
                 "iteration": row["iteration"], "binding": binding.to_dict(),
-                "previous_artifact_sha256": previous["candidate_lowered_sha256"],
-                "current_artifact_sha256": current["candidate_lowered_sha256"],
+                **previous_pointer,
+                "portfolio_member_binding": member_binding,
+                "previous_artifact_sha256": previous["member_binding"]["lowered_sha256"],
+                "current_artifact_sha256": current["member_binding"]["lowered_sha256"],
                 "evidence": evidence, "elapsed_seconds": elapsed,
                 "scope": "selected changed mechanism and tested reduced domain only",
                 "full_model_numerics_qualified": False, "global_speedup_proven": False,
                 "full_model_cycles": None,
             }
+            _verify_changed_region_semantic_receipt(
+                receipt, iteration=row, portfolio_identity=self.portfolio_identity,
+                target_sha256=self.target_sha256, experiment_root=self.output)
             path = self._write(f"semantic_{row['iteration']:04d}_{time.time_ns()}.json", receipt)
             row.setdefault("semantic_receipts", []).append(
                 {"path": str(path), "sha256": PAS._sha256_file(path)})
@@ -2818,8 +4135,16 @@ class GlobalPerfExperiment:
             "candidate_path": str(snapshot.resolve()), "iteration": row["iteration"],
             "candidate_read_only": True,
             "phase1_qualification": self.phase1_binding, "host_verification_policy": self.host_policy,
+            "source_snapshot": (str(self.source_snapshot_root)
+                                if self.source_snapshot_root is not None else None),
+            "source_snapshot_files_sha256": self.source_snapshot_files_sha256,
+            "machine_build_policy": copy.deepcopy(self.machine_build_policy),
             "compiler_edit_authority": self.edit_scope_binding if self.edit_contract is not None else None,
+            "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "round_mechanism_attribution": copy.deepcopy(row.get("round_mechanism_attribution")),
             "compiler_dependencies": row["compiler_dependencies"],
+            "cross_run_static_analysis_binding": row.get("cross_run_static_analysis_binding"),
+            "static_analysis_bundle": row.get("static_analysis_bundle"),
             "analysis_sha256": PAS._document_sha256(row["analysis"]),
             "iteration_record": str((self.output / f"iteration_{row['iteration']:04d}.json").resolve()),
             "iteration_record_sha256": PAS._sha256_file(
@@ -2878,8 +4203,16 @@ class GlobalPerfExperiment:
             "historical_reference": copy.deepcopy(self.historical_reference),
             "phase1_qualification": self.phase1_binding,
             "host_verification_policy": self.host_policy,
+            "source_snapshot": (str(self.source_snapshot_root)
+                                if self.source_snapshot_root is not None else None),
+            "source_snapshot_files_sha256": self.source_snapshot_files_sha256,
+            "machine_build_policy": copy.deepcopy(self.machine_build_policy),
             "compiler_edit_authority": self.edit_scope_binding if self.edit_contract is not None else None,
+            "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "round_mechanism_attribution": copy.deepcopy(row.get("round_mechanism_attribution")),
             "compiler_dependencies": row["compiler_dependencies"],
+            "cross_run_static_analysis_binding": row.get("cross_run_static_analysis_binding"),
+            "static_analysis_bundle": row.get("static_analysis_bundle"),
             "analysis_sha256": PAS._document_sha256(row["analysis"]),
             "iteration_record": str(iteration_path.resolve()),
             "iteration_record_sha256": PAS._sha256_file(iteration_path),
@@ -2909,6 +4242,40 @@ class GlobalPerfExperiment:
             candidate, hypothesis = proposal
             self.analyze(candidate, hypothesis=hypothesis)
         return copy.deepcopy(tuple(self.iterations))
+
+
+def _verify_checkpoint_mechanism_catalog(
+        root: Path, binding: Mapping[str, Any] | None,
+        authority: Mapping[str, Any] | None) -> None:
+    """Verify a checkpoint's local frozen catalog without depending on its original host path."""
+    if binding is None:
+        return
+    from merlin.perf.compiler_edit_scope import validate_mechanism_catalog
+
+    if not isinstance(authority, Mapping) or not isinstance(binding, Mapping):
+        raise ValueError("checkpoint mechanism catalog has no frozen edit authority")
+    body = {key: value for key, value in binding.items() if key != "sha256"}
+    frozen = root / "compiler_mechanism_catalog.json"
+    receipt = root / "compiler_mechanism_catalog_receipt.json"
+    initial = root / "edit_scope_seed"
+    catalog = binding.get("catalog")
+    frozen_path = binding.get("frozen_path")
+    if (binding.get("schema") != "host_frozen_compiler_mechanism_catalog_v1"
+            or binding.get("sha256") != PAS._document_sha256(body)
+            or binding.get("contract_document_sha256")
+            != authority.get("contract_document_sha256")
+            or binding.get("initial_candidate_sha256")
+            != authority.get("initial_candidate_sha256")
+            or not isinstance(frozen_path, str) or not Path(frozen_path).is_absolute()
+            or Path(frozen_path).resolve() != frozen.resolve()
+            or frozen.is_symlink() or not frozen.is_file() or frozen.stat().st_mode & 0o222
+            or PAS._sha256_file(frozen) != binding.get("canonical_bytes_sha256")
+            or not isinstance(catalog, Mapping) or PAS._mapping_file(frozen) != catalog
+            or PAS._document_sha256(catalog) != binding.get("catalog_document_sha256")
+            or receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_mode & 0o222
+            or PAS._mapping_file(receipt) != binding):
+        raise ValueError("checkpoint compiler mechanism catalog changed")
+    validate_mechanism_catalog(catalog, initial, authority["contract"])
 
 
 def consume_authoring_checkpoint(path: Path) -> dict[str, Any]:
@@ -2950,6 +4317,8 @@ def consume_authoring_checkpoint(path: Path) -> dict[str, Any]:
         if inspect_compiler_edits(
                 initial, Path(document["candidate_path"]), authority["contract"])["status"] != "allowed":
             raise ValueError("authoring checkpoint exceeds its host-frozen edit authority")
+    _verify_checkpoint_mechanism_catalog(
+        path.parent, document.get("compiler_mechanism_catalog"), authority)
     candidate = Path(document["candidate_path"])
     if (candidate.is_symlink() or candidate.parent.resolve() != path.parent.resolve()
             or document.get("candidate_read_only") is not True
@@ -2969,6 +4338,10 @@ def consume_authoring_checkpoint(path: Path) -> dict[str, Any]:
     members, identities = portfolio.get("members"), portfolio_identity.get("members")
     if (iteration.get("candidate_sha256") != document.get("candidate_sha256")
             or iteration.get("compiler_dependencies") != document.get("compiler_dependencies")
+            or iteration.get("compiler_mechanism_catalog")
+                != document.get("compiler_mechanism_catalog")
+            or iteration.get("round_mechanism_attribution")
+                != document.get("round_mechanism_attribution")
             or PAS._document_sha256(analysis) != document.get("analysis_sha256")
             or readiness != document.get("readiness") or readiness.get("status") != "blocked"
             or PAS._document_sha256(portfolio_identity) != document.get("portfolio_sha256")
@@ -3033,6 +4406,8 @@ def consume_global_candidate(path: Path) -> dict[str, Any]:
         validate_edit_contract(authority["contract"], initial)
         if inspect_compiler_edits(initial, Path(document["candidate_path"]), authority["contract"])["status"] != "allowed":
             raise ValueError("sealed compiler exceeds its host-frozen edit authority")
+    _verify_checkpoint_mechanism_catalog(
+        path.parent, document.get("compiler_mechanism_catalog"), authority)
     qualification = document.get("phase1_qualification")
     if qualification is not None:
         if qualification.get("submission_sha256") != document.get("baseline_sha256"):
@@ -3075,6 +4450,11 @@ def consume_global_candidate(path: Path) -> dict[str, Any]:
     experiment_record = PAS._mapping_file(path.parent / "experiment.json")
     portfolio_identity = document.get("portfolio")
     portfolio = iteration.get("portfolio") or {}
+    if (iteration.get("compiler_mechanism_catalog")
+            != document.get("compiler_mechanism_catalog")
+            or iteration.get("round_mechanism_attribution")
+            != document.get("round_mechanism_attribution")):
+        raise ValueError("sealed compiler mechanism attribution changed")
     if (not isinstance(portfolio_identity, Mapping)
             or PAS._document_sha256(portfolio_identity) != document.get("portfolio_sha256")
             or experiment_record.get("portfolio") != portfolio_identity
@@ -3199,12 +4579,9 @@ def consume_global_candidate(path: Path) -> dict[str, Any]:
                 or PAS._sha256_file(semantic_path) != receipt.get("sha256")):
             raise ValueError("optional changed-region semantic receipt changed")
         semantic = PAS._mapping_file(semantic_path)
-        if (semantic.get("binding") != expected
-                or semantic.get("current_artifact_sha256") != analysis["emission"]["candidate_lowered_sha256"]
-                or semantic.get("full_model_numerics_qualified") is not False
-                or semantic.get("global_speedup_proven") is not False
-                or semantic.get("full_model_cycles") is not None):
-            raise ValueError("optional semantic evidence is stale or overstates its scope")
+        _verify_changed_region_semantic_receipt(
+            semantic, iteration=iteration, portfolio_identity=portfolio_identity,
+            target_sha256=document["target_sha256"], experiment_root=path.parent)
     for receipt in document.get("probe_receipts") or []:
         probe_path = Path(receipt["path"])
         if (probe_path.is_symlink() or probe_path.parent.resolve() != path.parent.resolve()
@@ -3218,6 +4595,147 @@ def consume_global_candidate(path: Path) -> dict[str, Any]:
     return document
 
 
+def _recorded_portfolio_contexts(row: Mapping[str, Any], *, portfolio_identity: Mapping[str, Any],
+                                 target_sha256: str, arm: str) -> list[dict[str, Any]]:
+    """Reconstruct every member from a pinned iteration, never from a semantic claim."""
+    identities = portfolio_identity.get("members")
+    portfolio = row.get("portfolio") or {}
+    members = portfolio.get("members")
+    candidate_sha256 = row.get("candidate_sha256")
+    compiler_sha256 = (row.get("compiler_dependencies") or {}).get("compiler_implementation_sha256")
+    if (row.get("schema") != "global_perf_iteration_v1"
+            or not PAS._is_sha256(candidate_sha256) or not PAS._is_sha256(compiler_sha256)
+            or row.get("readiness", {}).get("status") != "ready_for_probe_admission"
+            or not isinstance(identities, list) or not identities
+            or not isinstance(members, list) or len(members) != len(identities)
+            or portfolio.get("members_total") != len(identities)
+            or portfolio.get("members_ready") != len(identities)
+            or portfolio.get("candidate_sha256") != candidate_sha256
+            or portfolio.get("portfolio_sha256") != PAS._document_sha256(portfolio_identity)):
+        raise ValueError("semantic preceding/current portfolio record is incomplete or substituted")
+    contexts = []
+    for index, (identity, member) in enumerate(zip(identities, members, strict=True)):
+        if (member.get("identity") != identity
+                or (index == 0 and (member.get("analysis_ref") != "/analysis"
+                    or member.get("static_comparison_ref") != "/static_comparison"))):
+            raise ValueError("semantic portfolio member order or identity changed")
+        analysis = GlobalPerfExperiment._portfolio_member_analysis(row, index)
+        diagnostics = analysis.get("diagnostics") or {}
+        graph = diagnostics.get("captured_logical_graph") or {}
+        plan = diagnostics.get("verified_global_plan_emission") or {}
+        emission = analysis.get("emission") or {}
+        if (analysis.get("candidate_sha256") != candidate_sha256
+                or analysis.get("workload", {}).get("capsule_sha256") != identity.get("capsule_sha256")
+                or PAS.global_iteration_readiness(analysis).get("status") != "ready_for_probe_admission"
+                or plan.get("candidate_sha256") != candidate_sha256
+                or plan.get("status") != "verified"
+                or plan.get("logical_dispatch_digest") != graph.get("logical_dispatch_digest")
+                or any(plan.get(field) != emission.get(field) for field in (
+                    "candidate_lowered_sha256", "candidate_command_buffer_sha256"))):
+            raise ValueError("semantic portfolio source/plan/artifact record changed")
+        binding = {
+            "schema": "global_portfolio_member_artifact_binding_v1", "arm": arm,
+            "portfolio_index": index, "capsule": identity.get("capsule"),
+            "capsule_sha256": identity.get("capsule_sha256"),
+            "source_sha256": plan.get("source_sha256"), "candidate_sha256": candidate_sha256,
+            "compiler_implementation_sha256": compiler_sha256, "target_sha256": target_sha256,
+            "logical_dispatch_digest": graph.get("logical_dispatch_digest"),
+            "plan_digest": plan.get("plan_digest"),
+            "lowered_sha256": emission.get("candidate_lowered_sha256"),
+            "command_buffer_sha256": emission.get("candidate_command_buffer_sha256"),
+        }
+        if any(not PAS._is_sha256(binding[key]) for key in (
+                "capsule_sha256", "source_sha256", "target_sha256", "logical_dispatch_digest",
+                "plan_digest", "lowered_sha256", "command_buffer_sha256")):
+            raise ValueError("semantic portfolio artifact identity is missing")
+        contexts.append({"analysis": analysis, "member_binding": binding})
+    return contexts
+
+
+def _verify_changed_region_semantic_receipt(
+        semantic: Mapping[str, Any], *, iteration: Mapping[str, Any],
+        portfolio_identity: Mapping[str, Any], target_sha256: str,
+        experiment_root: Path) -> dict[str, Any]:
+    """Verify both ordered portfolios and independently rerun the member-selection policy.
+
+    Legacy v1 lacks a pinned previous portfolio. It cannot establish secondary-member or
+    selection evidence and is deliberately refused by this verifier, including supplements.
+    """
+    if semantic.get("schema") != "global_changed_region_semantic_receipt_v2":
+        raise ValueError("legacy semantic receipt lacks pinned prior portfolio; requalify under v2")
+    number = iteration.get("iteration")
+    previous_value = semantic.get("previous_iteration_record")
+    if type(number) is not int or number < 1 or not isinstance(previous_value, str):
+        raise ValueError("semantic receipt has no valid preceding iteration record")
+    previous_path = Path(previous_value)
+    expected_path = experiment_root / f"iteration_{number - 1:04d}.json"
+    if (not previous_path.is_absolute() or previous_path.is_symlink()
+            or not previous_path.is_file() or previous_path.stat().st_mode & 0o222
+            or previous_path != expected_path.absolute()
+            or previous_path.resolve() != expected_path.absolute()
+            or PAS._sha256_file(previous_path) != semantic.get("previous_iteration_record_sha256")):
+        raise ValueError("semantic preceding iteration record is absent, changed, linked, or cross-run")
+    previous = PAS._mapping_file(previous_path)
+    if (previous.get("iteration") != number - 1
+            or semantic.get("iteration") != number
+            or (iteration.get("static_comparison") or {}).get("previous_iteration") != number - 1
+            or PAS._document_sha256(previous.get("portfolio"))
+            != semantic.get("previous_portfolio_iteration_sha256")):
+        raise ValueError("semantic preceding portfolio digest or iteration changed")
+    prior_snapshot_value = previous.get("submitted_snapshot")
+    if not isinstance(prior_snapshot_value, str):
+        raise ValueError("semantic preceding compiler snapshot is absent")
+    prior_snapshot = Path(prior_snapshot_value)
+    if (not prior_snapshot.is_absolute() or prior_snapshot.is_symlink()
+            or not prior_snapshot.is_dir() or prior_snapshot.stat().st_mode & 0o222
+            or prior_snapshot.parent != experiment_root.absolute()
+            or prior_snapshot.resolve() != prior_snapshot
+            or any(item.is_symlink() for item in prior_snapshot.rglob("*"))
+            or hash_tree(prior_snapshot)["sha256"] != previous.get("candidate_sha256")):
+        raise ValueError("semantic preceding compiler snapshot is changed or cross-run")
+    policies = []
+    for record in (previous, iteration):
+        policy = copy.deepcopy(record.get("analysis_reuse_binding") or {})
+        digest = policy.pop("sha256", None)
+        schema = policy.pop("schema", None)
+        if (schema != "global_static_analysis_reuse_binding_v1"
+                or PAS._document_sha256(policy) != digest
+                or policy.get("candidate_sha256") != record.get("candidate_sha256")
+                or policy.get("compiler_dependencies") != record.get("compiler_dependencies")
+                or policy.get("target_sha256") != target_sha256
+                or policy.get("portfolio_sha256") != PAS._document_sha256(portfolio_identity)):
+            raise ValueError("semantic preceding/current analysis policy binding changed")
+        policy.pop("candidate_sha256")
+        policy.pop("compiler_dependencies")
+        policies.append(policy)
+    if policies[0] != policies[1]:
+        raise ValueError("semantic preceding/current portfolios have different experiment policies")
+    before = _recorded_portfolio_contexts(previous, portfolio_identity=portfolio_identity,
+                                         target_sha256=target_sha256, arm="previous")
+    after = _recorded_portfolio_contexts(iteration, portfolio_identity=portfolio_identity,
+                                        target_sha256=target_sha256, arm="current")
+    selection = GlobalPerfExperiment._select_changed_portfolio_contexts(
+        list(zip(before, after, strict=True)))
+    index = selection["portfolio_index"]
+    binding = {"selection": selection, "previous": before[index]["member_binding"],
+               "current": after[index]["member_binding"]}
+    current = binding["current"]
+    probe = {"compiler_digest": current["compiler_implementation_sha256"],
+             "target_digest": target_sha256, "graph_digest": current["logical_dispatch_digest"],
+             "plan_digest": current["plan_digest"]}
+    if (semantic.get("portfolio_member_binding") != binding
+            or semantic.get("binding") != probe
+            or semantic.get("evidence", {}).get("portfolio_member_binding") != binding
+            or semantic.get("previous_artifact_sha256") != binding["previous"]["lowered_sha256"]
+            or semantic.get("current_artifact_sha256") != current["lowered_sha256"]
+            or semantic.get("scope") != "selected changed mechanism and tested reduced domain only"
+            or semantic.get("full_model_numerics_qualified") is not False
+            or semantic.get("global_speedup_proven") is not False
+            or semantic.get("full_model_cycles") is not None):
+        raise ValueError("semantic portfolio selection or evidence is stale or substituted")
+    return binding
+
+
 def write_semantic_supplement(*, original_candidate_receipt: Path, previous_iteration_receipt: Path,
                               semantic_receipt: Path, output: Path) -> dict[str, Any]:
     """Add scoped evidence to an immutable checkpoint without relabeling its original verdict."""
@@ -3227,7 +4745,8 @@ def write_semantic_supplement(*, original_candidate_receipt: Path, previous_iter
                 for name, path in (("original_candidate_receipt", original_candidate_receipt),
                                    ("previous_iteration_receipt", previous_iteration_receipt),
                                    ("semantic_receipt", semantic_receipt))}
-    document = {"schema": "global_semantic_supplement_v1", **pointers,
+    document = {"schema": "global_semantic_supplement_v2", **pointers,
+                "legacy_receipt_policy": "v1_refused_requires_requalification",
                 "host_verification_policy": host_verification_policy_record(),
                 "analysis_action": "reuse_existing_bound_immutable_graph_receipts",
                 "original_verdict_modified": False, "full_model_numerics_qualified": False,
@@ -3271,7 +4790,8 @@ def verify_retained_global_checkpoint(original_path: Path) -> dict[str, Any]:
 def consume_semantic_supplement(path: Path) -> dict[str, Any]:
     """Verify old checkpoint under its own policy, and new mechanism evidence under this policy."""
     document = PAS._mapping_file(path)
-    if (document.get("schema") != "global_semantic_supplement_v1"
+    if (document.get("schema") != "global_semantic_supplement_v2"
+            or document.get("legacy_receipt_policy") != "v1_refused_requires_requalification"
             or document.get("host_verification_policy") != host_verification_policy_record()
             or document.get("analysis_action") != "reuse_existing_bound_immutable_graph_receipts"
             or document.get("full_model_cycles") is not None
@@ -3287,23 +4807,18 @@ def consume_semantic_supplement(path: Path) -> dict[str, Any]:
         loaded[key] = PAS._mapping_file(source)
     original_path = Path(document["original_candidate_receipt"]["path"])
     original = verify_retained_global_checkpoint(original_path)
-    final_analysis = PAS._mapping_file(Path(original["iteration_record"]))["analysis"]
-    previous = loaded["previous_iteration_receipt"]
+    final_iteration = PAS._mapping_file(Path(original["iteration_record"]))
     semantic = loaded["semantic_receipt"]
-    expected = {"compiler_digest": original["compiler_dependencies"]["compiler_implementation_sha256"],
-                "target_digest": original["target_sha256"],
-                "graph_digest": final_analysis["diagnostics"]["captured_logical_graph"]["logical_dispatch_digest"],
-                "plan_digest": final_analysis["diagnostics"]["verified_global_plan_emission"]["plan_digest"]}
-    if (semantic.get("binding") != expected
-            or semantic.get("current_artifact_sha256") != final_analysis["emission"]["candidate_lowered_sha256"]
-            or semantic.get("previous_artifact_sha256") != previous["analysis"]["emission"]["candidate_lowered_sha256"]
-            or previous["analysis"]["diagnostics"]["captured_logical_graph"]["logical_dispatch_digest"] != expected["graph_digest"]
-            or semantic.get("full_model_cycles") is not None
-            or semantic.get("global_speedup_proven") is not False
-            or semantic.get("full_model_numerics_qualified") is not False):
-        raise ValueError("supplement semantic evidence is stale or overstates its scope")
+    if document["previous_iteration_receipt"] != {
+            "path": semantic.get("previous_iteration_record"),
+            "sha256": semantic.get("previous_iteration_record_sha256")}:
+        raise ValueError("supplement preceding iteration differs from semantic evidence")
+    binding = _verify_changed_region_semantic_receipt(
+        semantic, iteration=final_iteration, portfolio_identity=original["portfolio"],
+        target_sha256=original["target_sha256"], experiment_root=original_path.parent)
     return {**document, "candidate_sha256": original["candidate_sha256"],
             "semantic_status": semantic["evidence"].get("status"),
+            "portfolio_member_binding": binding,
             "original_checkpoint_verified": True}
 
 
@@ -3790,6 +5305,8 @@ def run_global_agent_round(
     PAS.run_required_tool_probes(inner, target_experiment, candidate)
     configure_global_analysis(experiment, target_experiment=target_experiment, agent_inputs=agent_inputs,
         frozen_functional=frozen_functional, frozen_corpus_manifest=frozen_corpus_manifest, stage_root=stage_root)
+    mechanism_round_start = experiment.begin_mechanism_round(
+        candidate, round_index=round_index)
     initial = experiment.analyze(candidate, hypothesis="Inspect the current complete-model global plan")
     finalization_reserve_s = _agent_finalization_reserve_seconds(round_timeout_s)
     broker_window_s = round_timeout_s - finalization_reserve_s
@@ -3835,12 +5352,25 @@ def run_global_agent_round(
         "The host_frozen_edit_authority is the edit permission contract: edit only its exact AST "
         "symbols and explicitly listed helper-extension directories. Candidate manifest entries "
         "describe changes but cannot authorize additional files or symbols. Preserve manifest "
-        "execution controls. Imports in approved owning files remain subject to the masked shared "
+        "execution controls. When host_frozen_mechanism_catalog is present it is machine enforced: "
+        "every semantic compiler edit in this round must map to exactly one catalog mechanism ID, "
+        "and an unchanged or formatting-only submission is recorded as a refused no-op. "
+        "Imports in approved owning files remain subject to the masked shared "
         "dependency policy. If a needed compiler lever has no approved owner, report that specific "
         "missing surface instead of expanding your own authority. Before editing, state a compact "
         "work order using the contract's required fields: surface/source-operation IDs, current "
         "plan digest, hypothesis, expected emitted delta, semantic obligations, cheap validation "
-        "and stop/revert condition. analyze-whole-model remains available for optional in-round "
+        "and stop/revert condition. Execute exactly one coherent optimization mechanism per round; "
+        "it may span the target-general paths and models required to implement that mechanism, but "
+        "must not include opportunistic unrelated edits. Finish it, or record its refusal/no-op and "
+        "stopping condition, before attempting another mechanism. Follow the host-owned "
+        "optimization_order in portfolio_action_digest from lowest numbered tier to highest: repair "
+        "regressions, then delete whole-program work and boundaries, then optimize global dataflow, "
+        "representation and residency, then global issue/overlap/synchronization, and only then "
+        "operator, tile, or local scalar cleanup. A higher tier may be closed only by a retained "
+        "structural change or an explicit source/plan-bound refusal or no-op for the current "
+        "revision. Do not choose a smaller easy rewrite while a higher-tier mechanism has a "
+        "quantified dynamic extent and an authorized edit surface. analyze-whole-model remains available for optional in-round "
         "screening when the remaining broker window can cover it. The host automatically snapshots "
         "and recompiles the exact submitted bytes after the Codex process exits, with the separate "
         "full-graph static-analysis budget; do not spend the final response window waiting for it. "
@@ -3942,6 +5472,8 @@ def run_global_agent_round(
         "portfolio_action_digest": action_digest,
         "prior_round_context": prior_round_context,
         "host_frozen_edit_authority": experiment.edit_scope_binding if experiment.edit_contract is not None else None,
+        "host_frozen_mechanism_catalog": copy.deepcopy(experiment.mechanism_catalog_binding),
+        "mechanism_round_start": copy.deepcopy(mechanism_round_start),
         "automatic_optimization_inventory": PAS.inspect_compiler_package(candidate).to_dict(),
         "optimization_surfaces_schema": PAS._mapping_file(
             PAS.merlin_dir() / "contract/schemas/manifest.schema.json")["properties"]["optimization_surfaces"],
@@ -4004,6 +5536,22 @@ def run_global_agent_round(
             receipts.chmod(0o444)
     audit = PAS.audit_codex_transcript(transcript, target_experiment, candidate, actions)
     refusals = []
+    mechanism_attribution = None
+    if experiment.mechanism_catalog_binding is not None:
+        try:
+            mechanism_attribution = experiment.finalize_mechanism_round(
+                candidate, round_index=round_index)
+            if mechanism_attribution["status"] != "allowed":
+                refusals.append("compiler mechanism attribution refused: "
+                                + str(mechanism_attribution["violations"]))
+        except Exception as exc:  # noqa: BLE001 - any incomplete host gate refuses the round
+            mechanism_attribution = {
+                "schema": "global_compiler_mechanism_round_failure_v1",
+                "status": "refused", "round": round_index,
+                "candidate_sha256": hash_tree(candidate)["sha256"],
+                "exception": type(exc).__name__, "reason": str(exc),
+            }
+            refusals.append(f"compiler mechanism attribution failed: {exc}")
     try:
         evidence = verify_global_broker_receipts(receipts, actions=actions, audit=audit)
     except ValueError as exc:
@@ -4062,6 +5610,7 @@ def run_global_agent_round(
     record = {"schema": "global_agent_round_v1", "round": round_index,
               "candidate_sha256": current["candidate_sha256"], "agent_exit_code": rc,
               "audit": audit, "broker_evidence": evidence, "telemetry": telemetry,
+              "mechanism_attribution": mechanism_attribution,
               "host_post_authoring_validation": post_validation,
               "authoring_readiness": copy.deepcopy(current.get("readiness")),
               "promotion_ready": (current.get("readiness", {}).get("status")
