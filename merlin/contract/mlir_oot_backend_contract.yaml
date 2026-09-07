@@ -95,13 +95,14 @@ kernel_abi:
       prose: "[the movement source] ++ [the movement destination]"
     - shape: native_whole_op
       when: "the buffer contains EXACTLY ONE whole-op command, whose opcode is one of `opcodes` below"
-      opcodes: [ATTENTION_QK, ATTENTION_PV, CONV2D]
+      opcodes: [ATTENTION_QK, ATTENTION_PV, BATCHED_MATMUL, CONV2D]
       signature: "void {target}_kernel(ptr t_0 .. ptr t_{N-1})"
       order: [interface_external_tensors_in_declaration_order]
       prose: "the interface's OWN external tensors (role input | weight | bias | output) in DECLARATION
               order - NOT weight-first, and NOT operand-role order. A conv declaring `IFM, W, Y0` is
-              called `(IFM, W, Y0)`; the same conv declaring `W, IFM, Y0` is called `(W, IFM, Y0)`. A
-              whole-op artifact receives neither a reordered weight nor a codegen-only derived buffer,
+              called `(IFM, W, Y0)`; the same conv declaring `W, IFM, Y0` is called `(W, IFM, Y0)`.
+              Batched matmul likewise preserves its interface declaration order and logical result rank.
+              A whole-op artifact receives neither a reordered weight nor a codegen-only derived buffer,
               so an im2col matrix is an internal lowering detail and never a pointer argument."
     - shape: resident_matmul
       when: "otherwise - the RES_PACK / MATMUL(_RESIDENT) / COMMIT form, including a CONV2D the package

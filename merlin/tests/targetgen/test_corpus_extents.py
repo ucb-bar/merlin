@@ -72,3 +72,19 @@ def test_the_attention_builder_reads_both_spellings_too():
     _doc, mlir = CS.build_attention_qk(entry, _binding())
     assert f"{2 * TILE}x{4 * TILE}" in mlir, (
         "the bare M/K spelling did not reach the emitted attention shapes")
+
+
+def test_batched_builder_and_integer_golden_preserve_the_batch_axis():
+    """Source conversion must not regenerate the old flattened ``[B*M,N]`` contract."""
+    from merlin.targetgen.capsule_golden import golden
+    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
+    entry = {"name": "B", "kind": "layer", "source_role": "derived_sweep",
+             "source_reference": "two independent slices", "label": "dev",
+             "B": 2, "M": 3, "H": 5, "N": 4}
+    capsule, mlir = CS.build_gemv_batched(entry, _binding())
+    parsed = parse_interface_mlir(mlir)
+    assert parsed["tensors"]["Y0"] == {
+        "shape": [2, 3, 4], "dtype": "i32", "role": "output"}
+    result = golden(capsule)["Y0"]
+    assert (len(result), len(result[0]), len(result[0][0])) == (2, 3, 4)

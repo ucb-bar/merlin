@@ -276,13 +276,35 @@ def available(simulator: str = "verilator") -> bool:
 
 def compile_command_buffer(cb: dict[str, Any], workdir: str | Path,
                            driver_src: str | None = None) -> Path:
-    """Generate the Gemmini C driver and compile the bare-metal ELF; return the ELF path.
+    """Compile a Gemmini command buffer to a bare-metal ELF and return its path.
 
     ``driver_src`` overrides the in-tree codegen with externally-provided C (used to certify
-    an agent-generated kernel) — the rest of the build/run/gate path is identical.
+    an agent-generated kernel). Direct rank-N contractions use the production LLVM/RoCC emitter and
+    runner-owned harness/link path; legacy command forms retain the C-driver path.
     """
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
+    # BATCHED_MATMUL is production-owned by the LLVM/RoCC emitter.  Sending it through the legacy C
+    # generator changes the operation into the resident-matmul grammar (and currently refuses it for
+    # lacking RES_PACK), so use the existing runner-owned MLIR -> object -> harness -> link path.  The
+    # externally supplied C override remains authoritative, and every other command buffer keeps the
+    # byte-identical legacy build below.
+    if driver_src is None and any(
+            isinstance(command, dict) and command.get("opcode") == "BATCHED_MATMUL"
+            for command in (cb.get("commands") or [])):
+        from merlin.runtime.backends import base as _backend_registry
+        from merlin.targetgen.contract.compile import compile_lowered_to_elf
+        from .gemmini_codegen_mlir import emit_kernel_mlir
+        lowered, _arguments = emit_kernel_mlir(cb)
+        # OOT discovery registers the backend package while this function lives in its ``.gemmini``
+        # implementation submodule; an in-tree direct import registers the implementation module.
+        # Resolve either packaging form from module identity instead of copying the target name.
+        try:
+            target = _backend_registry.name_of_module(__package__)
+        except KeyError:
+            target = _backend_registry.name_of_module(__name__)
+        return compile_lowered_to_elf(
+            cb, lowered, work, target=target)
     main_c = work / "main.c"
     main_c.write_text(driver_src if driver_src is not None else generate_driver(cb),
                       encoding="utf-8")
@@ -405,8 +427,50 @@ def parse_output(text: str) -> tuple[dict[str, list], dict[str, int]]:
     """Parse the OUT/METRIC/DONE console into (outputs, raw metrics) — shared protocol parser, with
     the gemmini-specific robustness: strip stray Verilator ``%Warning:`` fragments + tolerate a
     malformed METRIC line instead of raising."""
-    from merlin.runtime.backends.base import parse_console
-    return parse_console(text, error_cls=GemminiError, strip_warnings=True, tolerant_metric=True)
+    from merlin.runtime.backends.base import _strip_warning_fragments, parse_console
+
+    cleaned = _strip_warning_fragments(text)
+    outputs, raw = parse_console(
+        cleaned, error_cls=GemminiError, tolerant_metric=True)
+
+    def reshape(values: list[int], dimensions: tuple[int, ...]):
+        if len(dimensions) == 1:
+            return values
+        stride = 1
+        for extent in dimensions[1:]:
+            stride *= extent
+        return [reshape(values[index:index + stride], dimensions[1:])
+                for index in range(0, len(values), stride)]
+
+    # ``OUT`` remains byte-for-byte compatible. ``OUT_ND`` is the target-owned extension needed by a
+    # rank-N whole-op ABI; flattening it to an OUT matrix would discard source-visible batch rank.
+    for line in cleaned.splitlines():
+        parts = line.split()
+        if not parts or parts[0] != "OUT_ND":
+            continue
+        try:
+            name = parts[1]
+            rank = int(parts[2])
+            if rank <= 0:
+                raise ValueError("rank must be positive")
+            if len(parts) < 3 + rank:
+                raise ValueError("dimension list is truncated")
+            dimensions = tuple(int(value) for value in parts[3:3 + rank])
+            if any(extent <= 0 for extent in dimensions):
+                raise ValueError("dimensions must be positive")
+            values = [int(value) for value in parts[3 + rank:]]
+        except (IndexError, ValueError) as exc:
+            raise GemminiError(f"malformed OUT_ND line: {line!r}: {exc}") from exc
+        expected = 1
+        for extent in dimensions:
+            expected *= extent
+        if len(values) != expected:
+            raise GemminiError(
+                f"OUT_ND {name}: expected {expected} values, got {len(values)}")
+        if name in outputs:
+            raise GemminiError(f"output {name!r} was printed more than once")
+        outputs[name] = reshape(values, dimensions)
+    return outputs, raw
 
 
 def _metrics(raw: dict[str, int], simulator: str) -> dict[str, Any]:
@@ -546,8 +610,8 @@ def harness_build_recipe():
 # strings, so it belongs with the backend rather than behind a contract key no second target could
 # implement. What the CONTRACT still supplies is the harness ABI (entry symbol, fence, includes,
 # metric), read through `harness_abi.for_target` below.
-from .gemmini_codegen_mlir import (_harness_c, _measurement_c_fragments, container_for,
-                                   container_words)
+from .gemmini_codegen_mlir import (_batched_matmul_harness_c, _harness_c,
+                                   _measurement_c_fragments, container_for, container_words)
 
 
 def _is_movement_cb(cb: dict) -> bool:
@@ -558,7 +622,7 @@ def _is_movement_cb(cb: dict) -> bool:
                     and c.get("attributes", {}).get("combine") == "identity") for c in cmds))
 
 
-_NATIVE_INTERFACE_OPS = frozenset({"ATTENTION_QK", "ATTENTION_PV", "CONV2D"})
+_NATIVE_INTERFACE_OPS = frozenset({"ATTENTION_QK", "ATTENTION_PV", "BATCHED_MATMUL", "CONV2D"})
 
 
 def _native_interface_command(cb: dict) -> dict | None:
@@ -692,6 +756,10 @@ def _native_interface_harness_c(cb: dict, command: dict, *, inputs: dict | None 
 
     tensors = cb.get("tensors") or {}
     opcode = command.get("opcode")
+    if opcode == "BATCHED_MATMUL":
+        # This helper validates the exact a/w/dst interface, preserves rank-N output, and uses the
+        # identical target-padded buffer geometry as the direct MLIR emitter.
+        return _batched_matmul_harness_c(cb, inputs=inputs)
     operands = command.get("operands") or {}
     packs = {item.get("operands", {}).get("dst"): item.get("operands", {}).get("src")
              for item in cb.get("commands", []) if item.get("opcode") == "RES_PACK"}

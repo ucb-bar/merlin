@@ -573,6 +573,34 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
         "commands": [],
     }
 
+    def declare_named_result(name: str, op: dict[str, Any]) -> None:
+        """Declare a named whole-op's tensor result from its own result type.
+
+        Unlike ``commit``, a named whole-op has no separate tensor declaration: its SSA result is
+        the program-visible tensor.  Omitting it left the parsed command pointing at an undeclared
+        destination, so rank-N shapes in particular disappeared before a target could validate or
+        lower them.  Every named result is declared as an output here.  This matches the command-buffer
+        convention for fused whole-op programs, where produced intermediates also carry ``role:
+        output`` and dataflow (not role spelling) distinguishes the final result.
+        """
+        if not isinstance(name, str) or not name:
+            raise InterfaceGrammarError(
+                f"merlin_iface.{op['mnemonic']} needs a non-empty named tensor result")
+        try:
+            shape, dtype = _shape_dtype(_last_type(op["tail"]))
+        except ValueError as exc:
+            raise InterfaceGrammarError(
+                f"merlin_iface.{op['mnemonic']} result {name!r} must have a tensor type: {exc}") from exc
+        declared = cb["tensors"].get(name)
+        result_spec = {"shape": shape, "dtype": dtype, "role": "output"}
+        if declared is None:
+            cb["tensors"][name] = result_spec
+            return
+        if (declared.get("shape"), declared.get("dtype")) != (shape, dtype):
+            raise InterfaceGrammarError(
+                f"merlin_iface.{op['mnemonic']} result {name!r} has type "
+                f"{_last_type(op['tail'])!r}, inconsistent with its tensor declaration {declared!r}")
+
     # ONE decomposition per line, then a dispatch on the mnemonic. Previously each op form had its own
     # pattern and the line was tried against each in turn, which is what let an undefined op fall
     # through every one of them and vanish. Here an unknown mnemonic cannot fall through: it either
@@ -601,8 +629,14 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
                                    "operands": {"lhs": srcs[0], "rhs": srcs[1], "dst": result}})
         elif mnem in _NAMED_OP_OPERAND_KEYS:
             keys = _NAMED_OP_OPERAND_KEYS[mnem]
+            if len(srcs) != len(keys):
+                raise InterfaceGrammarError(
+                    f"merlin_iface.{mnem} needs exactly {len(keys)} operand(s) "
+                    f"{keys}, got {len(srcs)} {srcs}; truncating either side would change its ABI")
             operands = {k: s for k, s in zip(keys, srcs)}
-            operands["dst"] = attrs.pop("name", result)
+            dst = attrs.pop("name", result)
+            operands["dst"] = dst
+            declare_named_result(dst, op)
             cb["commands"].append({"opcode": _NAMED_OP_TO_OPCODE[mnem],
                                    "operands": operands, "attributes": attrs})
         elif mnem == "commit":

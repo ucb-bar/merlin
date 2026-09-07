@@ -506,7 +506,9 @@ def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | 
     if isinstance(bc, dict) and bc.get("batches"):
         return {"fmt": bc.get("fmt", "fp8_e4m3"), "batched": True,
                 "B": bc["B"], "M": bc["M"], "H": bc["H"], "N": bc["N"],
-                "stacked_out_shape": bc.get("stacked_out_shape"), "batches": bc["batches"]}
+                "stacked_out_shape": bc.get("stacked_out_shape"),
+                "logical_output_shape": bc.get("logical_output_shape"),
+                "batches": bc["batches"]}
     # Flash attention (fused MX): O = mx_matmul(softmax(mx_matmul(Q,Kᵀ)/scale), V). The golden decomposes it
     # into the two MX matmul stages (each with its own operand codes + E8M0 scales) plus the softmax scale +
     # the P (softmax output) requant scales, so the reference kernel can chain two mxgemm calls with an
@@ -628,8 +630,8 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
 
     if op in ("gemv_batched", "batch_matmul"):
         # A BATCHED CONTRACTION IS B INDEPENDENT ONES. The device's shim loops over B calling the same
-        # (M,N,K) kernel per slice, so the reference does the same and stacks the results row-major into
-        # [B*M, N] -- the layout the batched interface already declares as its result type.
+        # (M,N,K) kernel per slice, so the reference does the same while preserving the source-visible
+        # [B,M,N] result rank. Flattening batch into M is a storage implementation, not the operation ABI.
         #
         # It exists because the ONLY batched golden in this repo was block-scaled, so `ops_gradeable_at`
         # refused this op at every non-MX dtype and the `contraction.batched` requirement came out as
@@ -649,12 +651,12 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         b2, k2, n = w.shape
         if b != b2 or k != k2:
             raise ValueError(f"batched matmul shape mismatch: {lhs.shape} x {w.shape}")
-        rows: list = []
+        batches: list = []
         for i in range(b):
             a_i = Tensor((m, k), lhs.data[i * m * k:(i + 1) * m * k], lhs.dtype)
             w_i = Tensor((k, n), w.data[i * k * n:(i + 1) * k * n], w.dtype)
-            rows.extend(_apply_epilogue(a_i.matmul(w_i), attrs, env).to_list())
-        return {out_name: rows}
+            batches.append(_apply_epilogue(a_i.matmul(w_i), attrs, env).to_list())
+        return {out_name: batches}
 
     if op == "movement":
         src = env[attrs.get("src", _pick("input"))]

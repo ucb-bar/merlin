@@ -783,7 +783,7 @@ def _float_golden(entry, binding):
     elif op in ("gemv_batched", "batch_matmul"):
         # A BATCHED CONTRACTION IS B INDEPENDENT ONES, and that is the whole of it: the device's shim
         # loops over B calling the same (M,N,K) kernel per slice, so the golden is the same `mm` per
-        # slice with the results stacked row-major into [B*M, N]. It exists because the corpus could not
+        # slice with source-visible shape [B,M,N]. It exists because the corpus could not
         # express a rank-3 region on this datapath at all -- the only batched golden was block-scaled,
         # so a target whose contract admits batching had its `contraction.batched` requirement reported
         # as "no builder materializes a rank-3 region" while the rewrite, the device kernel and the
@@ -793,15 +793,15 @@ def _float_golden(entry, binding):
         K = entry.get("K", entry.get("H", entry.get("K_tiles", 2) * dim))
         N = entry.get("N", entry.get("N_tiles", 1) * dim)
         lhs, weight = entry.get("lhs", "A0"), entry.get("weight", "W")
-        rows: list = []
+        batches: list = []
         for b in range(B):
             # One operand PER SLICE, salted by the slice index. Reusing one operand across B would make
             # every slice's output identical, and a kernel that computed one slice and broadcast it
             # would match the golden exactly -- the degeneracy this corpus already refuses elsewhere.
             a = reg(f"{lhs}_b{b}", (M, K))
             w = reg(f"{weight}_b{b}", (K, N))
-            rows.extend(mm(a, (M, K), w, (K, N)))
-        outputs[entry.get("out", "Y0")] = floats(rows)
+            batches.append(floats(mm(a, (M, K), w, (K, N))))
+        outputs[entry.get("out", "Y0")] = batches
     elif op == "movement":
         M = entry.get("M", entry.get("M_tiles", 1) * dim)
         N = entry.get("N", entry.get("N_tiles", 1) * dim)
@@ -1293,7 +1293,7 @@ def _mx_attention_golden(entry, binding):
 
 def _mx_gemv_batched_golden(entry, binding):
     """Batched MX matmul golden (radiance-kernels decode-time gemv_batched, MX regime): ``B`` independent
-    MX GEMMs ``A_b[M,H] @ W_b[H,N]`` on the block-scaled mx_pe, stacked row-major into ``[B*M, N]`` bf16.
+    MX GEMMs ``A_b[M,H] @ W_b[H,N]`` on the block-scaled mx_pe, returned as ``[B,M,N]`` bf16.
     (The MX PE tiles N by ``DIM``=16, so N must be a multiple of 16 — a literal N=1 gemv is not expressible
     on the mx_ref datapath; this is the faithful batched analog.) mxfp8 only; golden from mlc mx_ref."""
     import numpy as np
@@ -1337,7 +1337,7 @@ def _mx_gemv_batched_golden(entry, binding):
             if prob:
                 raise AssertionError(f"non-rigorous E8M0 stream {nm}{sc.shape}: {prob}")
         C = np.asarray(mx.mx_matmul(enc(A), enc(W), SA, SB, M, N, H, fmt=mx.FMT_FP8))
-        rows_out.extend([[float(mx.bf16_to_f32(int(C[i, j]))) for j in range(N)] for i in range(M)])
+        rows_out.append([[float(mx.bf16_to_f32(int(C[i, j]))) for j in range(N)] for i in range(M)])
         A_dec.append(A.reshape(-1).tolist())
         W_dec.append(W.reshape(-1).tolist())
         batches.append({"A_bytes": enc(A).reshape(-1).tolist(), "W_bytes": enc(W).reshape(-1).tolist(),
@@ -1346,7 +1346,10 @@ def _mx_gemv_batched_golden(entry, binding):
         lhs: {"shape": [B, M, H], "decoded": A_dec},
         weight: {"shape": [B, H, N], "decoded": W_dec},
         "batched_codes": {"lhs": lhs, "weight": weight, "fmt": tok, "B": B, "M": M, "H": H, "N": N,
-                          "stacked_out_shape": [B * M, N], "batches": batches},
+                          # The MX reference emitter retains a flattened physical backing buffer, but
+                          # that layout is not the logical result type exposed by the capsule.
+                          "stacked_out_shape": [B * M, N], "logical_output_shape": [B, M, N],
+                          "batches": batches},
         "scale_example": {"SA0[0][0]": batches[0]["SA"][0],
                           "as_scale": e8m0_decode(int(batches[0]["SA"][0]))},
         # The per-batch scale streams under the operand names the capsule declares, so a submitted
@@ -1407,7 +1410,7 @@ def _simt_golden(entry, binding):
         prov[entry.get("weight", "W")] = {"shape": [K, N], "decoded": W.reshape(-1).tolist()}
         outputs[entry.get("out", "Y0")] = rnd_out(y)
     elif op in ("gemv_batched", "batch_matmul"):
-        # B independent GEMMs stacked row-major into [B*M, N] -- the same decomposition the integer and
+        # B independent GEMMs with source-visible output [B,M,N] -- the same decomposition the integer and
         # specir engines make, because it is the one the device's shim performs: a loop over B calling
         # the (M,N,K) kernel once per slice. One operand PER SLICE, salted by index, so a kernel that
         # computed one slice and broadcast it does not match.
@@ -1418,11 +1421,11 @@ def _simt_golden(entry, binding):
         lhs, weight = entry.get("lhs", "A0"), entry.get("weight", "W")
         A = np.stack([synth(f"{lhs}_b{b}", (M, K)) for b in range(B)])
         W = np.stack([synth(f"{weight}_b{b}", (K, N)) for b in range(B)])
-        y = np.concatenate([(A[b].astype(np.float32) @ W[b].astype(np.float32)).astype(np.float64)
-                            for b in range(B)], axis=0)
+        y = [(A[b].astype(np.float32) @ W[b].astype(np.float32)).astype(np.float64)
+             for b in range(B)]
         prov[lhs] = {"shape": [B, M, K], "decoded": A.reshape(-1).tolist()}
         prov[weight] = {"shape": [B, K, N], "decoded": W.reshape(-1).tolist()}
-        outputs[entry.get("out", "Y0")] = rnd_out(y)
+        outputs[entry.get("out", "Y0")] = [rnd_out(batch) for batch in y]
     elif op == "movement":
         # A load->store movement (mvin/mvout) moves data and computes nothing, so the reference is the
         # operand itself at the OUTPUT format. Its value as a capsule is that it exercises the movement

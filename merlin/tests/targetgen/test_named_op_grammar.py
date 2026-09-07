@@ -76,12 +76,27 @@ def test_matmul_batched_mnemonic_emits_the_consumed_opcode():
 module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
   %A0 = merlin_iface.tensor {name = "A0", role = "input"} : tensor<2x16x32xf8E4M3FN>
   %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<2x32x16xf8E4M3FN>
-  %Y0 = merlin_iface.matmul_batched %A0, %W {name = "Y0", batch = 2 : i64, output_dtype = "bf16"} : (tensor<2x16x32xf8E4M3FN>, tensor<2x32x16xf8E4M3FN>) -> tensor<32x16xbf16>
+  %Y0 = merlin_iface.matmul_batched %A0, %W {name = "Y0", batch = 2 : i64, output_dtype = "bf16"} : (tensor<2x16x32xf8E4M3FN>, tensor<2x32x16xf8E4M3FN>) -> tensor<2x16x16xbf16>
 }
 """
     cb = parse_interface_mlir(mb)
     assert cb["commands"][0]["opcode"] == "BATCHED_MATMUL"
+    assert cb["tensors"]["Y0"] == {
+        "shape": [2, 16, 16], "dtype": "bf16", "role": "output"}
     schemas.validate_command_buffer(cb)
+
+
+@pytest.mark.parametrize("operands", ["%A0", "%A0, %W, %A0"])
+def test_matmul_batched_parser_refuses_noncanonical_operand_arity(operands):
+    mb = f'''\
+module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"}} {{
+  %A0 = merlin_iface.tensor {{name = "A0", role = "input"}} : tensor<2x16x32xi8>
+  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : tensor<2x32x16xi8>
+  %Y0 = merlin_iface.matmul_batched {operands} {{name = "Y0", batch = 2 : i64, output_dtype = "i32"}} : (tensor<2x16x32xi8>, tensor<2x32x16xi8>) -> tensor<2x16x16xi32>
+}}
+'''
+    with pytest.raises(ValueError, match="needs exactly 2 operand"):
+        parse_interface_mlir(mb)
 
 
 _ROPE = """

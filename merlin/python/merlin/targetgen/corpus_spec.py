@@ -1246,8 +1246,8 @@ def _batched_mx_inputs(lhs: str, weight: str, B: int, M: int, H: int, N: int, id
 
 def build_gemv_batched(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """A batched contraction (op == gemv_batched): B independent GEMMs ``A_b[M,H] @ W_b[H,N]``, output
-    stacked row-major to ``[B*M, N]``. Interface presents the batched tensors + a batched matmul op; the
-    device iterates the B tiles.
+    preserving source-visible rank as ``[B, M, N]``. Interface presents the batched tensors + a batched
+    matmul op; a target may iterate the B tiles internally, but may not flatten the operation's ABI.
 
     DATATYPE-AGNOSTIC, and it was not. It was written for the block-scaled datapath and declared
     ``block_scale = "e8m0"`` unconditionally, so the only rank-3 capsule this corpus could produce was
@@ -1300,7 +1300,8 @@ def build_gemv_batched(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     L += [
         f'  %{out} = merlin_iface.matmul_batched %{lhs}, %{weight} {{name = "{out}", batch = {B} : i64, '
         f'{_bs}output_dtype = "{odt}"}} '
-        f': (tensor<{B}x{M}x{H}x{midt}>, tensor<{B}x{H}x{N}x{midt}>) -> tensor<{B * M}x{N}x{modt}>', "}"]
+        f': (tensor<{B}x{M}x{H}x{midt}>, tensor<{B}x{H}x{N}x{midt}>) -> '
+        f'tensor<{B}x{M}x{N}x{modt}>', "}"]
     return cap, "\n".join(L) + "\n"
 
 

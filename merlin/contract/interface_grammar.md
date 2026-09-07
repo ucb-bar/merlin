@@ -44,7 +44,7 @@ contract surface describes the *computation*, not where it runs.
 
 | Type | Meaning |
 |------|---------|
-| `tensor<RxCxDT>` | a dense 2-D tensor, `DT ∈ {i8, i32}` (builtin MLIR tensor type) |
+| `tensor<D0x...xDNxDT>` | a dense, nonempty ranked tensor; `DT` is a command-buffer-registered dtype (builtin MLIR tensor type) |
 | `!merlin_iface.resident` | an opaque handle to a resident (packed, stationary) weight |
 | `!merlin_iface.acc<i32>` | an opaque integer accumulator handle |
 
@@ -55,7 +55,7 @@ contract surface describes the *computation*, not where it runs.
 %W  = merlin_iface.tensor {name = "W",  role = "weight"} : tensor<16x16xi8>
 %A0 = merlin_iface.tensor {name = "A0", role = "input"}  : tensor<16x16xi8>
 ```
-`role ∈ {weight, input, bias}`. Result type gives shape + dtype.
+`role ∈ {weight, input, bias, scale}`. Result type gives shape + dtype.
 
 ### `merlin_iface.resident_pack` — make a weight resident
 ```mlir
@@ -124,6 +124,23 @@ It exists so a fused epilogue has something to be measured against: the fusion c
 needs the unfused halves to be expressible. A backend may map it to whatever its own vector or
 accumulator-readout path provides; a target with no separate vector class is expected to fold it into
 the readout, and its capsule then requires no vector instruction (see `expected_instruction_coverage`).
+
+### `merlin_iface.matmul_batched` — independent rank-N contractions
+
+```mlir
+%Y0 = merlin_iface.matmul_batched %A0, %W {
+        name = "Y0", batch = 2 : i64, output_dtype = "i32"
+      } : (tensor<2x16x32xi8>, tensor<2x32x16xi8>) -> tensor<2x16x16xi32>
+```
+
+Maps to `BATCHED_MATMUL` with the exact operand map `{a: A0, w: W, dst: Y0}`. For a nonempty
+batch prefix `B...`, its shapes are `A[B..., M, K]`, `W[B..., K, N]`, and `Y[B..., M, N]`.
+Both operands vary independently at every batch coordinate; broadcasting, shared-weight relabelling,
+and flattening `B...` into `M` change the operation and are not permitted. If present, `batch` equals
+the product of the batch-prefix extents. The result type declares the destination tensor's complete
+rank, shape, and dtype; the reference parser records that destination as `role = "output"`, just as it
+does for every named whole-op result. A fused program may later consume such a produced tensor; final
+output selection is then determined by command dataflow rather than by the role spelling alone.
 
 ### `merlin_iface.evict` — release a resident weight
 ```mlir

@@ -136,6 +136,15 @@ def _probe_native_whole_op(opcode: str) -> dict | None:
                             "Y0": {"shape": [16, 16], "dtype": "i32", "role": "output"}},
                 "commands": [{"opcode": opcode, "operands": {a: "A", b: "B", "dst": "Y0"},
                               "attributes": {"output_dtype": "i32"}}]}
+    if opcode == "BATCHED_MATMUL":
+        return {"abi_version": "0.1",
+                "tensors": {"A": {"shape": [2, 3, 5], "dtype": "i8", "role": "input"},
+                            "W": {"shape": [2, 5, 4], "dtype": "i8", "role": "weight"},
+                            "Y0": {"shape": [2, 3, 4], "dtype": "i32", "role": "output"}},
+                "commands": [{"opcode": opcode,
+                              "operands": {"a": "A", "w": "W", "dst": "Y0"},
+                              "attributes": {"batch": 2, "output_dtype": "i32"}}],
+                "outputs": ["Y0"]}
     return None
 
 

@@ -20,8 +20,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from .gemmini_codegen import _ceil_dim, _pad_rowmajor, _parse, CodegenError   # sibling — moves together
-from merlin.runtime.commandbuffer import (BIAS_STAGES, bias_tensor_name, conv_out_dims,
-                                          materialize_inputs, pool_params)
+from merlin.runtime.commandbuffer import (BIAS_STAGES, DERIVATION_RECIPE_KEYS,
+                                          BatchedMatmulGeometry, batched_matmul_geometry,
+                                          bias_tensor_name, conv_out_dims, materialize_inputs,
+                                          pool_params)
 from merlin.runtime.tensor import pool_out_dims
 
 GARBAGE = 0xFFFFFFFF                  # universal, not target-specific — no derivation needed
@@ -168,6 +170,185 @@ class Job:
     pool: PoolSpec | None
     #: Name of the DRAM tensor a fused bias epilogue consumes, or None when the job has no bias stage.
     bias: str | None = None
+
+
+@dataclass(frozen=True)
+class BatchedMatmulSlice:
+    """One logical slice's offsets in the target-padded external buffer ABI."""
+
+    flat_index: int
+    batch_index: tuple[int, ...]
+    a_byte_offset: int
+    w_byte_offset: int
+    dst_byte_offset: int
+
+
+@dataclass(frozen=True)
+class BatchedMatmulPlan:
+    """Validated direct lowering of one semantic ``BATCHED_MATMUL`` command."""
+
+    a: str
+    w: str
+    dst: str
+    arguments: tuple[str, ...]
+    geometry: BatchedMatmulGeometry
+    dim: int
+    mp: int
+    kp: int
+    np: int
+    output_element_bytes: int
+    scratchpad_rows: int
+    accumulator_rows: int
+    schedule: str
+
+    def slice(self, flat_index: int) -> BatchedMatmulSlice:
+        if flat_index < 0 or flat_index >= self.geometry.batch_count:
+            raise IndexError(flat_index)
+        remaining = flat_index
+        coordinates = [0] * len(self.geometry.batch_shape)
+        for axis in range(len(coordinates) - 1, -1, -1):
+            extent = self.geometry.batch_shape[axis]
+            coordinates[axis] = remaining % extent
+            remaining //= extent
+        return BatchedMatmulSlice(
+            flat_index=flat_index,
+            batch_index=tuple(coordinates),
+            # Each logical row has the target-padded trailing stride. Batch slices themselves are
+            # contiguous: partial tile rows are carried in the instruction's rows field, not by
+            # inserting a fake tensor dimension or a block-diagonal expansion.
+            a_byte_offset=flat_index * self.geometry.m * self.kp,
+            w_byte_offset=flat_index * self.geometry.k * self.np,
+            dst_byte_offset=(flat_index * self.geometry.m * self.np
+                             * self.output_element_bytes),
+        )
+
+
+_BATCHED_MATMUL_ATTRS = frozenset({"batch", "epilogue", "output_dtype", "semantic"})
+
+
+def _batched_matmul_plan(cb: dict, *, isa=None) -> BatchedMatmulPlan | None:
+    """Validate one direct batched contraction and derive its capacity-safe slice schedule.
+
+    The batch dimension never contributes to on-chip capacity: slices execute independently. If a
+    whole RHS slice fits it is retained only for that slice; otherwise W and A stream one tile each.
+    Thus the minimum concurrent operand footprint is exactly two target-derived tile rows.
+    """
+    commands = cb.get("commands")
+    if not isinstance(commands, list):
+        raise CodegenError("BATCHED_MATMUL command buffer needs a command list")
+    batched = [command for command in commands
+               if isinstance(command, dict) and command.get("opcode") == "BATCHED_MATMUL"]
+    if not batched:
+        return None
+    if len(batched) != 1 or len(commands) != 1:
+        raise CodegenError(
+            "direct BATCHED_MATMUL lowering supports exactly one isolated semantic command")
+    params = cb.get("params") or {}
+    if not isinstance(params, dict):
+        raise CodegenError("BATCHED_MATMUL params must be a mapping")
+    derived = [name for name in DERIVATION_RECIPE_KEYS if params.get(name)]
+    if derived:
+        raise CodegenError(
+            f"direct BATCHED_MATMUL consumes its original a/w slices; derived recipes {derived} "
+            "would change that ABI")
+    command = batched[0]
+    operands = command.get("operands")
+    if not isinstance(operands, dict) or set(operands) != {"a", "w", "dst"}:
+        raise CodegenError(
+            "BATCHED_MATMUL operands must be exactly the canonical a/w/dst mapping")
+    a, w, dst = (operands[key] for key in ("a", "w", "dst"))
+    if any(not isinstance(name, str) or not name for name in (a, w, dst)):
+        raise CodegenError("BATCHED_MATMUL a/w/dst must name non-empty tensor buffers")
+    tensors = cb.get("tensors")
+    if not isinstance(tensors, dict):
+        raise CodegenError("BATCHED_MATMUL needs a declared tensor table")
+    missing = [name for name in (a, w, dst) if not isinstance(tensors.get(name), dict)]
+    if missing:
+        raise CodegenError(f"BATCHED_MATMUL tensor(s) {missing} are not declared")
+    try:
+        geometry = batched_matmul_geometry(
+            tensors[a].get("shape"), tensors[w].get("shape"), tensors[dst].get("shape"),
+            op="Gemmini BATCHED_MATMUL")
+    except ValueError as exc:
+        raise CodegenError(str(exc)) from exc
+
+    attrs = command.get("attributes") or {}
+    if not isinstance(attrs, dict):
+        raise CodegenError("BATCHED_MATMUL attributes must be a mapping")
+    unknown = sorted(set(attrs) - _BATCHED_MATMUL_ATTRS)
+    if unknown:
+        raise CodegenError(f"BATCHED_MATMUL does not implement attribute(s) {unknown}")
+    if attrs.get("epilogue") not in (None, []):
+        raise CodegenError(
+            f"BATCHED_MATMUL does not implement an epilogue, got {attrs.get('epilogue')!r}")
+    asserted_batch = attrs.get("batch")
+    if asserted_batch is not None and (isinstance(asserted_batch, bool)
+                                       or not isinstance(asserted_batch, int)
+                                       or asserted_batch != geometry.batch_count):
+        raise CodegenError(
+            f"BATCHED_MATMUL batch attribute {asserted_batch!r} disagrees with shape-derived "
+            f"batch count {geometry.batch_count}")
+
+    isa = _isa() if isa is None else isa
+    operand_dtype = _build_support.format.OPERAND_DTYPE
+    if tensors[a].get("dtype") != operand_dtype or tensors[w].get("dtype") != operand_dtype:
+        raise CodegenError(
+            f"BATCHED_MATMUL requires two {operand_dtype} target operands, got "
+            f"{tensors[a].get('dtype')!r} and {tensors[w].get('dtype')!r}")
+    acc_dtype, acc_bits = isa.ACC_ELEM_DTYPE, isa.ACC_ELEM_BITS
+    if acc_dtype != "i32" or acc_bits != 32 or tensors[dst].get("dtype") != acc_dtype:
+        raise CodegenError(
+            "BATCHED_MATMUL requires the RTL-derived i32 accumulator and an i32 destination; "
+            f"target has {acc_dtype!r}/{acc_bits!r} bits and dst is "
+            f"{tensors[dst].get('dtype')!r}")
+    if attrs.get("output_dtype", acc_dtype) != acc_dtype:
+        raise CodegenError(
+            f"BATCHED_MATMUL output_dtype must be {acc_dtype}, got {attrs.get('output_dtype')!r}")
+    if tensors[a].get("role") not in {"input", "weight"} or tensors[w].get("role") not in {
+            "input", "weight"}:
+        raise CodegenError(
+            "BATCHED_MATMUL a/w must both be declared leaf input or weight buffers")
+    if tensors[dst].get("role") != "output":
+        raise CodegenError(f"BATCHED_MATMUL destination {dst!r} is not declared as an output")
+    external_roles = {"input", "weight", "bias", "scale", "output"}
+    arguments = tuple(name for name, spec in tensors.items()
+                      if isinstance(spec, dict) and spec.get("role") in external_roles)
+    if len(arguments) != 3 or set(arguments) != {a, w, dst}:
+        raise CodegenError(
+            "isolated BATCHED_MATMUL ABI must contain exactly its a/w/dst external buffers")
+    declared_outputs = cb.get("outputs")
+    if declared_outputs is not None and declared_outputs != [dst]:
+        raise CodegenError(
+            f"isolated BATCHED_MATMUL outputs must be exactly [{dst!r}], got "
+            f"{declared_outputs!r}")
+
+    dim = int(isa.DIM)
+    scratchpad_rows, accumulator_rows = isa.SCRATCHPAD_ROWS, isa.ACCUMULATOR_ROWS
+    if not isinstance(scratchpad_rows, int) or scratchpad_rows <= 0:
+        raise CodegenError("BATCHED_MATMUL needs RTL-derived positive scratchpad capacity")
+    if not isinstance(accumulator_rows, int) or accumulator_rows < dim:
+        raise CodegenError(
+            f"BATCHED_MATMUL needs at least one {dim}-row accumulator tile, target has "
+            f"{accumulator_rows!r}")
+    if scratchpad_rows < 2 * dim:
+        raise CodegenError(
+            f"BATCHED_MATMUL needs two concurrent {dim}-row operand tiles, target has "
+            f"{scratchpad_rows} scratchpad rows")
+    # Padding is a consequence of this target's derived mesh dimension.  Do not call the legacy
+    # helper here: it closes over the conventional Gemmini DIM and would make an otherwise-derived
+    # capacity proof silently describe a different target geometry.
+    ceil_tile = lambda value: ((value + dim - 1) // dim) * dim
+    mp, kp, np_ = (ceil_tile(value) for value in (geometry.m, geometry.k, geometry.n))
+    kt, nt = kp // dim, np_ // dim
+    weight_rows = kt * nt * dim
+    if weight_rows + kt * dim <= scratchpad_rows:
+        schedule = "slice_weight_and_a_panel_resident"
+    elif weight_rows + dim <= scratchpad_rows:
+        schedule = "slice_weight_resident"
+    else:
+        schedule = "two_tile_streaming"
+    return BatchedMatmulPlan(a, w, dst, arguments, geometry, dim, mp, kp, np_,
+                             acc_bits // 8, scratchpad_rows, accumulator_rows, schedule)
 
 
 _CONV2D_ATTRS = frozenset({
@@ -500,6 +681,151 @@ def _parse_groups(cb: dict):
     return groups
 
 
+def _emit_batched_matmul_mlir(cb: dict, plan: BatchedMatmulPlan) -> tuple[str, list[str]]:
+    """Emit row-major independent slices for one semantic rank-N contraction.
+
+    A varying RHS is moved from its own slice; neither operand is relabelled as cross-slice resident,
+    and every output tile is read out before its accumulator rows are reused. Tail dimensions travel
+    in the RoCC rows/cols fields, so a partial tile cannot consume a following compact batch slice.
+    """
+    isa = _isa()
+    if plan.dim != isa.DIM:
+        raise CodegenError(
+            f"BATCHED_MATMUL plan DIM {plan.dim} disagrees with target DIM {isa.DIM}")
+    args = list(plan.arguments)
+    arg_decl = ", ".join(f"%a{i}: !llvm.ptr" for i in range(len(args)))
+    body: list[str] = []
+    counter = [0]
+
+    def fresh() -> str:
+        counter[0] += 1
+        return f"%v{counter[0]}"
+
+    def konst(value: int) -> str:
+        symbol = fresh()
+        body.append(f"    {symbol} = llvm.mlir.constant({int(value)} : i64) : i64")
+        return symbol
+
+    def rocc(funct: int, rs1: str, rs2: str) -> None:
+        body.append(
+            f'    llvm.inline_asm has_side_effects ".insn r {hex(isa.CUSTOM_OPCODE)}, '
+            f'{hex(isa.FUNCT3)}, {funct}, x0, $0, $1", "r,r" {rs1}, {rs2} : '
+            f'(i64, i64) -> ()')
+
+    def packed(local_addr: int, *, rows: int, cols: int) -> int:
+        if not (0 <= rows <= plan.dim and 0 <= cols <= plan.dim):
+            raise CodegenError(
+                f"BATCHED_MATMUL tile {rows}x{cols} exceeds target DIM {plan.dim}")
+        return ((rows << (isa.ADDR_LEN + 16)) | (cols << isa.ADDR_LEN)
+                | (local_addr & 0xFFFFFFFF))
+
+    pointer_ints: dict[str, str] = {}
+    for index, name in enumerate(args):
+        symbol = fresh()
+        body.append(f"    {symbol} = llvm.ptrtoint %a{index} : !llvm.ptr to i64")
+        pointer_ints[name] = symbol
+
+    def addr(name: str, byte_offset: int) -> str:
+        if byte_offset == 0:
+            return pointer_ints[name]
+        symbol = fresh()
+        body.append(
+            f"    {symbol} = llvm.add {pointer_ints[name]}, {konst(byte_offset)} : i64")
+        return symbol
+
+    last_load_stride: list[int | None] = [None]
+
+    def config_ld(stride: int) -> None:
+        if last_load_stride[0] == stride:
+            return
+        rocc(isa.K_CONFIG, konst(isa.CFG_LD_RS1), konst(stride))
+        last_load_stride[0] = stride
+
+    dim = plan.dim
+    mt, kt, nt = plan.mp // dim, plan.kp // dim, plan.np // dim
+    weight_rows = kt * nt * dim
+    resident_weight = plan.schedule != "two_tile_streaming"
+    resident_panel = plan.schedule == "slice_weight_and_a_panel_resident"
+    weight_slot = 0
+    activation_slot = weight_rows if resident_weight else dim
+
+    body.append('    llvm.inline_asm has_side_effects "fence", "" : () -> ()')
+    rocc(isa.K_FLUSH, konst(0), konst(0))
+    rocc(isa.K_CONFIG, konst(isa.CFG_EX_RS1), konst(isa.CFG_EX_RS2))
+    # Identity i32 readout, no activation; row stride follows the padded trailing dimension.
+    rocc(isa.K_CONFIG, konst(_pool_config_rs1(None, acc_act=0)),
+         konst((isa.F1 << 32) | (plan.np * plan.output_element_bytes)))
+
+    for flat_index in range(plan.geometry.batch_count):
+        slice_ = plan.slice(flat_index)
+        if resident_weight:
+            config_ld(plan.np)
+            for k_tile in range(kt):
+                k_rows = min(dim, plan.geometry.k - k_tile * dim)
+                for n_tile in range(nt):
+                    n_cols = min(dim, plan.geometry.n - n_tile * dim)
+                    weight_offset = (slice_.w_byte_offset + k_tile * dim * plan.np
+                                     + n_tile * dim)
+                    local_weight = weight_slot + (k_tile * nt + n_tile) * dim
+                    rocc(isa.K_MVIN, addr(plan.w, weight_offset),
+                         konst(packed(local_weight, rows=k_rows, cols=n_cols)))
+
+        for m_tile in range(mt):
+            m_rows = min(dim, plan.geometry.m - m_tile * dim)
+            if resident_panel:
+                config_ld(plan.kp)
+                for k_tile in range(kt):
+                    k_cols = min(dim, plan.geometry.k - k_tile * dim)
+                    activation_offset = (slice_.a_byte_offset + m_tile * dim * plan.kp
+                                         + k_tile * dim)
+                    local_activation = activation_slot + k_tile * dim
+                    rocc(isa.K_MVIN, addr(plan.a, activation_offset),
+                         konst(packed(local_activation, rows=m_rows, cols=k_cols)))
+
+            for n_tile in range(nt):
+                n_cols = min(dim, plan.geometry.n - n_tile * dim)
+                for k_tile in range(kt):
+                    k_extent = min(dim, plan.geometry.k - k_tile * dim)
+                    if not resident_weight:
+                        config_ld(plan.np)
+                        weight_offset = (slice_.w_byte_offset + k_tile * dim * plan.np
+                                         + n_tile * dim)
+                        rocc(isa.K_MVIN, addr(plan.w, weight_offset),
+                             konst(packed(weight_slot, rows=k_extent, cols=n_cols)))
+                        local_weight = weight_slot
+                    else:
+                        local_weight = weight_slot + (k_tile * nt + n_tile) * dim
+
+                    if resident_panel:
+                        local_activation = activation_slot + k_tile * dim
+                    else:
+                        config_ld(plan.kp)
+                        activation_offset = (slice_.a_byte_offset + m_tile * dim * plan.kp
+                                             + k_tile * dim)
+                        rocc(isa.K_MVIN, addr(plan.a, activation_offset),
+                             konst(packed(activation_slot, rows=m_rows, cols=k_extent)))
+                        local_activation = activation_slot
+
+                    accumulator = isa.C_ACC | (isa.ACC_ACCUM if k_tile else 0)
+                    rocc(isa.K_PRELOAD,
+                         konst(packed(local_weight, rows=k_extent, cols=n_cols)),
+                         konst(packed(accumulator, rows=m_rows, cols=n_cols)))
+                    rocc(isa.K_COMPUTE_PRELOADED,
+                         konst(packed(local_activation, rows=m_rows, cols=k_extent)),
+                         konst(packed(GARBAGE, rows=m_rows, cols=n_cols)))
+
+                output_offset = (slice_.dst_byte_offset
+                                 + (m_tile * dim * plan.np + n_tile * dim)
+                                 * plan.output_element_bytes)
+                rocc(isa.K_MVOUT, addr(plan.dst, output_offset),
+                     konst(packed(isa.C_ACC, rows=m_rows, cols=n_cols)))
+
+    body.append('    llvm.inline_asm has_side_effects "fence", "" : () -> ()')
+    text = ("module {\n  llvm.func @gemmini_kernel(" + arg_decl + ") {\n"
+            + "\n".join(body) + "\n    llvm.return\n  }\n}\n")
+    return text, args
+
+
 def emit_kernel_mlir(cb: dict, *, native_conv_contract=None,
                      native_conv_selection_receipt: dict | None = None) -> tuple[str, list[str]]:
     """Return (mlir_text, arg_order) for the command buffer.
@@ -524,6 +850,9 @@ def emit_kernel_mlir(cb: dict, *, native_conv_contract=None,
                 native_conv_selection_receipt.update(selection)
             return text, arguments
     cb = _normalize_command_buffer(cb)
+    batched_plan = _batched_matmul_plan(cb)
+    if batched_plan is not None:
+        return _emit_batched_matmul_mlir(cb, batched_plan)
     if _structurally_empty(cb):
         # This is still compiled and called by the production harness.  It executes no accelerator
         # command, so its measured window is a legitimate shared runner/compiler baseline.
@@ -912,6 +1241,72 @@ def _const_operand(symbol: str, ctype: str, data: list, *, dtype: str,
     return f"extern const {ctype} {symbol}[{len(data)}];"
 
 
+def _batched_matmul_harness_c(cb: dict, inputs: dict | None = None, *,
+                              blobs: dict | None = None,
+                              plan: BatchedMatmulPlan | None = None) -> str:
+    """Render the original rank-N ABI around the direct per-slice Gemmini kernel."""
+    plan = _batched_matmul_plan(cb) if plan is None else plan
+    if plan is None:  # pragma: no cover - private caller proves the opcode before dispatch
+        raise CodegenError("BATCHED_MATMUL harness received no BATCHED_MATMUL command")
+    tensors = cb["tensors"]
+    leaves = materialize_inputs(cb, inputs)
+    ceil_tile = lambda value: ((value + plan.dim - 1) // plan.dim) * plan.dim
+
+    decls: list[str] = []
+    for name in plan.arguments:
+        spec = tensors[name]
+        if name == plan.dst:
+            output_rows = plan.geometry.batch_count * plan.geometry.m
+            padded_rows = ceil_tile(output_rows)
+            decls.append(container_for("i32").decl(
+                f"T_{name}", padded_rows * plan.np))
+            continue
+        if name == plan.a:
+            rows, cols, padded_cols = (plan.geometry.batch_count * plan.geometry.m,
+                                       plan.geometry.k, plan.kp)
+        elif name == plan.w:
+            rows, cols, padded_cols = (plan.geometry.batch_count * plan.geometry.k,
+                                       plan.geometry.n, plan.np)
+        else:  # pragma: no cover - plan's exact external-buffer proof makes this unreachable
+            raise CodegenError(f"unexpected BATCHED_MATMUL ABI buffer {name!r}")
+        if name not in leaves:
+            raise CodegenError(f"BATCHED_MATMUL input {name!r} was not materialized")
+        padded_rows = ceil_tile(rows)
+        padded = _pad_rowmajor(
+            list(leaves[name].data), rows, cols, padded_rows, padded_cols)
+        decls.append(_const_operand(
+            f"T_{name}", OPERAND_CTYPE, padded, dtype=OPERAND_DTYPE, blobs=blobs))
+
+    call_args = ", ".join(f"(void*)T_{name}" for name in plan.arguments)
+    measured_call = f"  gemmini_kernel({call_args});\n  gemmini_fence();"
+    fragments = _measurement_c_fragments(measured_call)
+    dims = " ".join(str(extent) for extent in plan.geometry.output_shape)
+    rank = len(plan.geometry.output_shape)
+    output = container_for("i32")
+    print_value = output.printf_element(
+        f"T_{plan.dst}[(b * {plan.geometry.m} + i) * {plan.np} + j]")
+    prints = [
+        f'  printf("OUT_ND {plan.dst} {rank} {dims}");',
+        (f"  for (long b = 0; b < {plan.geometry.batch_count}; b++) "
+         f"for (long i = 0; i < {plan.geometry.m}; i++) "
+         f"for (long j = 0; j < {plan.geometry.n}; j++) {print_value}"),
+        '  printf("\\n");',
+    ]
+    return ("#include <stdint.h>\n#include <stdio.h>\n#include \"include/gemmini_testutils.h\"\n"
+            + fragments["include"]
+            + "extern void gemmini_kernel();\n" + "\n".join(decls) + "\nint main() {\n"
+            + fragments["warmup"]
+            + fragments["prologue"]
+            + "  uint64_t c0 = read_cycles();\n"
+            + measured_call + "\n"
+            + "  uint64_t c1 = read_cycles();\n"
+            + fragments["epilogue"]
+            + '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));\n'
+            + '  printf("METRIC cycle_window_gemmini_region 1\\n");\n'
+            + "\n".join(prints) + "\n"
+            + '  printf("DONE\\n");\n  return 0;\n}\n')
+
+
 def _harness_c(cb: dict, inputs: dict | None = None, *,
                blobs: dict | None = None) -> str:
     """Thin C harness: embed padded leaf data, call the MLIR kernel, print outputs (cropped).
@@ -919,6 +1314,10 @@ def _harness_c(cb: dict, inputs: dict | None = None, *,
     ``inputs`` (name -> nested-list) INJECTS explicit operand values so the device runs the model's real
     activations/weights; absent, each leaf is materialized deterministically from its name (reproducible)."""
     cb = _normalize_command_buffer(cb)
+    batched_plan = _batched_matmul_plan(cb)
+    if batched_plan is not None:
+        return _batched_matmul_harness_c(
+            cb, inputs, blobs=blobs, plan=batched_plan)
     groups = [] if _structurally_empty(cb) else _parse_groups(cb)
     leaves = materialize_inputs(cb, inputs)
     weights = [g[0] for g in groups]
