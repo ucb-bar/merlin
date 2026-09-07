@@ -39,6 +39,58 @@ def test_differently_named_executables_are_found(tmp_path):
     assert [p.name for p in CR.run_executables(tmp_path)] == ["kernel.radiance.elf", "kernel.soc.elf"]
 
 
+def test_a_declared_program_counts_as_what_ran(tmp_path):
+    """A target that executes no linked ELF declares the bytes it ran; without this its verdict can
+    never be content-addressed. Measured on one such target: 89% of emitted programs identical to a
+    previous grade, 84% of simulation re-earning a verdict it already had."""
+    (tmp_path / "oracle.program").write_text('{"words": [1, 2, 3]}')
+    (tmp_path / "command_buffer.json").write_text("{}")
+    got = CR.run_executables(tmp_path)
+    assert [p.name for p in got] == ["oracle.program"]
+    assert TC.execution_identity(target="t", executables=got, toolchain_shas=SHAS)
+
+
+def test_a_declared_program_and_an_elf_both_count(tmp_path):
+    """A target may produce both; short-circuiting on the known ELF name would drop the declaration."""
+    _elf(tmp_path, "package_kernel.elf")
+    (tmp_path / "oracle.program").write_text('{"words": [1]}')
+    assert [p.name for p in CR.run_executables(tmp_path)] == ["oracle.program", "package_kernel.elf"]
+
+
+def test_changing_the_declared_program_changes_the_identity(tmp_path):
+    a, b = tmp_path / "one", tmp_path / "two"
+    a.mkdir(); b.mkdir()
+    (a / "oracle.program").write_text('{"words": [1, 2, 3]}')
+    (b / "oracle.program").write_text('{"words": [1, 2, 4]}')
+    ia = TC.execution_identity(target="t", executables=CR.run_executables(a), toolchain_shas=SHAS)
+    ib = TC.execution_identity(target="t", executables=CR.run_executables(b), toolchain_shas=SHAS)
+    assert ia and ib and ia != ib
+
+
+def test_nothing_is_inferred_on_a_targets_behalf(tmp_path):
+    """Only a DECLARED program counts. Guessing which of a directory's files was executed is the one
+    mistake a certificate identity may not make -- these are the files a grade leaves beside it."""
+    for name in ("command_buffer.json", "lowered.target.mlir", "kernel.S", "input.interface.mlir"):
+        (tmp_path / name).write_text("x")
+    assert CR.run_executables(tmp_path) == ()
+
+
+def test_the_declaration_covers_program_AND_stimulus():
+    """The same program on different operands is a different execution; a digest over one of them
+    would carry a verdict across a change in the other."""
+    from merlin.common.paths import repo_root
+    src = (repo_root() / "merlin" / "python" / "merlin" / "targetgen" / "program_oracle.py").read_text()
+    # Scoped to the function, not a character count: a fixed window spilled into the next function,
+    # which mentions x["b64"] for its own reasons -- so the assertion passed on unrelated code and a
+    # mutation that dropped the stimulus from the declaration went unnoticed.
+    i = src.index("def _declare_executed_program")
+    j = src.find("\ndef ", i + 1)
+    body = src[i:j if j != -1 else len(src)]
+    assert '"words": bundle.get("words")' in body, "the program is not in the declaration"
+    assert 'i.get("b64")' in body, "the stimulus is not in the declaration"
+    assert "_declare_executed_program(Path(workdir), bundle)" in src, "declared but never called"
+
+
 def test_non_executables_are_not_mistaken_for_one(tmp_path):
     (tmp_path / "notes.txt").write_text("not an elf")
     (tmp_path / "kernel.ll").write_text("; ir")

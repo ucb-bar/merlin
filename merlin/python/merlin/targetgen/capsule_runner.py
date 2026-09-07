@@ -488,8 +488,17 @@ def _clear_stale_executable(generated) -> None:
     _BC.forget(generated)
 
 
+#: Suffix by which an oracle DECLARES the bytes it executed, for a target that runs no linked ELF.
+#: Not every accelerator is reached through one: a self-hosted-ISA target assembles a word stream in
+#: its model's own venv and executes that, so there is no file for an ELF scan to find and its verdict
+#: could never be content-addressed -- 84% of one such target's simulation is spent re-running programs
+#: byte-identical to a previous grade's (12,376 s of 14,821 s on disk). An adapter that writes what it
+#: ran here becomes carryable; one that does not is exactly as it was.
+PROGRAM_ARTIFACT_SUFFIX = ".program"
+
+
 def run_executables(generated) -> tuple:
-    """Every executable this run produced in ``generated``, as paths, sorted by name.
+    """Everything this run EXECUTED in ``generated``, as paths, sorted by name.
 
     DERIVED FROM THE BYTES, NOT FROM A NAME. The operator build path emits one ELF under a known name,
     and the certificate identity used to assume it -- which silently excluded every target whose grade
@@ -498,20 +507,27 @@ def run_executables(generated) -> tuple:
     never existed and the cache could not fire for it at all, indistinguishably from having nothing to
     carry.
 
-    An ELF identifies itself: the four magic bytes are the format's own, not any target's fact, so
-    asking each file what it is needs no per-target table. The known name is checked first purely to
-    keep the common case one stat instead of a directory walk.
+    Two kinds count, and the second is why this is not called ``elf_files``. An ELF identifies itself
+    -- the four magic bytes are the format's own, not any target's fact, so asking each file what it is
+    needs no per-target table. A target that executes no ELF instead DECLARES what it ran, by writing
+    those bytes under :data:`PROGRAM_ARTIFACT_SUFFIX`; nothing is inferred on its behalf, because
+    guessing which of a directory's files was the program is the one mistake a certificate identity
+    may not make.
+
+    The whole directory is walked rather than short-circuiting on the known name: a target may produce
+    both, and listing fifteen files costs nothing next to being wrong about what ran.
     """
     from . import elf_lanes as _EL
     root = Path(generated)
-    known = root / _EL.PACKAGE_ELF_NAME
-    if known.is_file():
-        return (known,)
     found = []
     try:
         for path in sorted(root.iterdir()):
             try:
-                if path.is_file() and path.open("rb").read(4) == b"\x7fELF":
+                if not path.is_file():
+                    continue
+                if path.name == _EL.PACKAGE_ELF_NAME or path.name.endswith(PROGRAM_ARTIFACT_SUFFIX):
+                    found.append(path)
+                elif path.open("rb").read(4) == b"\x7fELF":
                     found.append(path)
             except OSError:
                 continue

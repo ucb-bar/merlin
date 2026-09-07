@@ -246,6 +246,31 @@ def _output_name(cb: dict | None) -> str:
                  if t.get("role") == "output"), "Y0") if cb else "Y0"
 
 
+def _declare_executed_program(workdir: Path, bundle: dict) -> None:
+    """Record the exact program+stimulus this oracle is about to execute. Never raises.
+
+    THIS TARGET EXECUTES NO LINKED ELF, so nothing on disk identified what ran and its verdict could
+    not be content-addressed: measured across its runs, 89% of emitted programs are byte-identical to a
+    previous grade's and 84% of simulation time (12,376 s of 14,821 s) re-derives a verdict already
+    earned. Writing what it runs makes those carryable.
+
+    BOTH halves, because either alone would be a false identity. ``words`` is the assembled program;
+    the inputs are the stimulus it is run on, and the same program on different operands is a different
+    execution. A digest over one of them would let a verdict be carried across a change in the other.
+
+    Best-effort: an unwritable artifact means the tier is measured afresh, which is the safe direction.
+    """
+    from .capsule_runner import PROGRAM_ARTIFACT_SUFFIX
+    try:
+        payload = {"words": bundle.get("words"),
+                   "inputs": [{"base": i.get("base"), "b64": i.get("b64")}
+                              for i in (bundle.get("inputs") or []) if isinstance(i, dict)]}
+        (workdir / f"oracle{PROGRAM_ARTIFACT_SUFFIX}").write_text(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    except Exception:                     # noqa: BLE001 -- a missing declaration only costs a re-run
+        return
+
+
 def _bundle_preload(bundle: dict, cb: dict | None) -> list[tuple[int, bytes]]:
     """DRAM preload ``(base, bytes)`` from the emit bundle's laid-out inputs, falling back to the cb's
     canonical leaf operands (``preload_b64``) exactly like the cosim path (see AW5)."""
@@ -285,6 +310,7 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     bundle = emit_bundle(model_ext=model_ext, program=program, kernel_s=kernel_s, inputs=inputs,
                          fix_itype_rd=fix_itype_rd, workdir=workdir, timeout=timeout)
     words = bundle["words"]
+    _declare_executed_program(Path(workdir), bundle)
     # Capsule path: preload arc DRAM with the capsule's CANONICAL leaf inputs, attached to the cb's
     # leaf tensors by the grader (``preload_b64`` = the exact bytes the independent golden used — the
     # float target's operand palette, not the integer 0..3 fill). Base comes from the agent's cb tensor
