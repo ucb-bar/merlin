@@ -2176,7 +2176,7 @@ def consume_authoring_checkpoint(path: Path) -> dict[str, Any]:
             or portfolio.get("members_total") != len(members)
             or portfolio.get("members_ready") != document.get("portfolio_members_ready")
             or document.get("portfolio_members_total") != len(members)
-            or not 0 <= document.get("portfolio_members_ready", -1) < len(members)
+            or not 0 <= document.get("portfolio_members_ready", -1) <= len(members)
             or portfolio.get("full_model_simulation_allowed") is not False):
         raise ValueError("authoring checkpoint portfolio binding or blocked readiness changed")
     for index, (identity, member) in enumerate(zip(identities, members, strict=True)):

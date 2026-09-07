@@ -227,6 +227,33 @@ def test_blocked_portfolio_has_exact_non_promotable_authoring_checkpoint(tmp_pat
         G.consume_global_candidate(checkpoint)
 
 
+def test_timeout_only_blocked_portfolio_retains_all_ready_authoring_checkpoint(
+        tmp_path, monkeypatch):
+    extra = _portfolio_sentinel(tmp_path, "large-transformer")
+    experiment, candidate, _ = setup_experiment(
+        tmp_path, portfolio_sentinels=[extra], timeout_s=10)
+    primary_analyzer = experiment.analyzer
+    now = [0.0]
+    monkeypatch.setattr(G.time, "monotonic", lambda: now[0])
+
+    def analyzer(*args, **kwargs):
+        analysis = primary_analyzer(*args, **kwargs)
+        now[0] += 6.0
+        return analysis
+
+    experiment.analyzer = analyzer
+    record = experiment.analyze(candidate, hypothesis="retain completed portfolio evidence")
+    assert record["portfolio"]["members_ready"] == record["portfolio"]["members_total"] == 2
+    assert record["readiness"]["status"] == "blocked"
+    assert record["readiness"]["blockers"] == ["iteration_wall_budget_exceeded"]
+
+    checkpoint = experiment.checkpoint_authoring(candidate, name="timeout_seed")
+    consumed = G.consume_authoring_checkpoint(checkpoint)
+    assert consumed["portfolio_members_ready"] == consumed["portfolio_members_total"] == 2
+    assert consumed["readiness"]["status"] == "blocked"
+    assert consumed["promotion_status"] == "blocked_authoring_checkpoint"
+
+
 def test_sustained_sequence_can_repair_blocked_initial_portfolio(tmp_path):
     extra = _portfolio_sentinel(tmp_path, "large-transformer")
     experiment, candidate, _ = setup_experiment(tmp_path, portfolio_sentinels=[extra])
