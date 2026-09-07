@@ -2748,6 +2748,204 @@ def validate_whole_program_schema(buffer: Mapping[str, Any], record: Mapping[str
                              + "; ".join(details))
 
 
+def baseline_emission_cache_identity(*, baseline_sha256: str, capsule_sha256: str,
+                                     source_sha256: str, target: str,
+                                     compiler_dependencies_sha256: str,
+                                     compiler_api_schema: Mapping[str, Any] | None,
+                                     entrypoints: Sequence[str]) -> dict[str, Any]:
+    """Bind a reusable compiler emission to every input that can affect its bytes."""
+    if not all(_is_sha256(value) for value in (
+            baseline_sha256, capsule_sha256, source_sha256,
+            compiler_dependencies_sha256)):
+        raise ValueError("baseline emission cache identity requires exact SHA-256 inputs")
+    schema = dict(compiler_api_schema) if compiler_api_schema is not None else None
+    if schema is not None and (not _is_sha256(schema.get("sha256"))
+                               or not isinstance(schema.get("path"), str)):
+        raise ValueError("baseline emission cache requires an exact compiler API schema")
+    schema_identity = (None if schema is None else {
+        "filename": Path(schema["path"]).name, "sha256": schema["sha256"]})
+    if not target or not entrypoints or any(not isinstance(name, str) or not name for name in entrypoints):
+        raise ValueError("baseline emission cache target or entrypoint identity is incomplete")
+    return {
+        "schema": "baseline_emission_cache_identity_v1",
+        "baseline_sha256": baseline_sha256,
+        "capsule_sha256": capsule_sha256,
+        "source_sha256": source_sha256,
+        "target": target,
+        "compiler_dependencies_sha256": compiler_dependencies_sha256,
+        "compiler_api_schema": schema_identity,
+        "entrypoints": list(entrypoints),
+    }
+
+
+def _baseline_emission_cache_root(binding: Mapping[str, Any]) -> Path:
+    root_value = binding.get("root")
+    dependency_sha = binding.get("compiler_dependencies_sha256")
+    if not isinstance(root_value, str) or not _is_sha256(dependency_sha):
+        raise StageGateError("baseline emission cache binding is incomplete")
+    root = Path(root_value)
+    if not root.is_absolute() or str(root.resolve()) != str(root):
+        raise StageGateError("baseline emission cache root must be an absolute resolved path")
+    if root.exists() and (root.is_symlink() or not root.is_dir()):
+        raise StageGateError("baseline emission cache root is not a real directory")
+    return root
+
+
+def load_baseline_emission_cache(binding: Mapping[str, Any],
+                                 identity: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Load exact cached emitted bytes, refusing any present but inconsistent entry."""
+    root = _baseline_emission_cache_root(binding)
+    key = _document_sha256(identity)
+    entry = root / key
+    if not entry.exists():
+        return None
+    if entry.is_symlink() or not entry.is_dir():
+        raise StageGateError("baseline emission cache entry is not a real directory")
+    paths = {name: entry / filename for name, filename in {
+        "receipt": "receipt.json", "lowered": "lowered.mlir",
+        "command_buffer": "command_buffer.json"}.items()}
+    if any(path.is_symlink() or not path.is_file() for path in paths.values()):
+        raise StageGateError("baseline emission cache entry is incomplete or linked")
+    try:
+        receipt = json.loads(paths["receipt"].read_text(encoding="utf-8"))
+        lowered = paths["lowered"].read_text(encoding="utf-8")
+        command_buffer = paths["command_buffer"].read_text(encoding="utf-8")
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise StageGateError(f"baseline emission cache entry is unreadable: {exc}") from exc
+    observed_analysis_status = receipt.get("observed_analysis_status")
+    if (receipt.get("schema") != "baseline_emission_cache_entry_v1"
+            or receipt.get("key") != key or receipt.get("identity") != dict(identity)
+            or receipt.get("lowered_sha256") != _sha256(lowered.encode("utf-8"))
+            or receipt.get("command_buffer_sha256") != _sha256(command_buffer.encode("utf-8"))
+            or not isinstance(receipt.get("emission_wall_seconds"), (int, float))
+            or isinstance(receipt.get("emission_wall_seconds"), bool)
+            or not math.isfinite(receipt["emission_wall_seconds"])
+            or receipt["emission_wall_seconds"] < 0
+            or observed_analysis_status not in (None, "completed", "timeout")):
+        raise StageGateError("baseline emission cache identity or artifact digest changed")
+    observed_analysis = receipt.get("observed_analysis_wall_seconds")
+    if (observed_analysis is not None and (
+            isinstance(observed_analysis, bool)
+            or not isinstance(observed_analysis, (int, float))
+            or not math.isfinite(observed_analysis) or observed_analysis < 0)):
+        raise StageGateError("baseline emission cache analysis-cost observation is malformed")
+    return {"identity": dict(identity), "key": key, "lowered_text": lowered,
+            "command_buffer_text": command_buffer,
+            "lowered_sha256": receipt["lowered_sha256"],
+            "command_buffer_sha256": receipt["command_buffer_sha256"],
+            "emission_wall_seconds": float(receipt["emission_wall_seconds"]),
+            "observed_analysis_wall_seconds": (
+                float(observed_analysis) if observed_analysis is not None else None),
+            "observed_analysis_status": observed_analysis_status,
+            "source": "host_persistent_exact_emission_cache"}
+
+
+def baseline_emission_cache_observation(binding: Mapping[str, Any],
+                                        identity: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Read bounded allocation metadata; emitted bytes are rehashed before actual reuse."""
+    root = _baseline_emission_cache_root(binding)
+    key = _document_sha256(identity)
+    entry = root / key
+    if not entry.exists():
+        return None
+    receipt_path = entry / "receipt.json"
+    artifact_paths = (entry / "lowered.mlir", entry / "command_buffer.json")
+    if (entry.is_symlink() or not entry.is_dir() or receipt_path.is_symlink()
+            or not receipt_path.is_file()
+            or any(path.is_symlink() or not path.is_file() for path in artifact_paths)):
+        raise StageGateError("baseline emission cache observation is incomplete or linked")
+    receipt = _mapping_file(receipt_path)
+    emission = receipt.get("emission_wall_seconds")
+    analysis = receipt.get("observed_analysis_wall_seconds")
+    analysis_status = receipt.get("observed_analysis_status")
+    if (receipt.get("schema") != "baseline_emission_cache_entry_v1"
+            or receipt.get("key") != key or receipt.get("identity") != dict(identity)
+            or not _is_sha256(receipt.get("lowered_sha256"))
+            or not _is_sha256(receipt.get("command_buffer_sha256"))
+            or isinstance(emission, bool) or not isinstance(emission, (int, float))
+            or not math.isfinite(emission) or emission < 0
+            or analysis_status not in (None, "completed", "timeout")
+            or (analysis is not None and (isinstance(analysis, bool)
+                or not isinstance(analysis, (int, float))
+                or not math.isfinite(analysis) or analysis < 0))):
+        raise StageGateError("baseline emission cache observation identity changed")
+    return {"key": key, "identity": dict(identity),
+            "emission_wall_seconds": float(emission),
+            "observed_analysis_wall_seconds": (
+                float(analysis) if analysis is not None else None),
+            "observed_analysis_status": analysis_status}
+
+
+def store_baseline_emission_cache(binding: Mapping[str, Any], identity: Mapping[str, Any], *,
+                                  lowered_text: str, command_buffer_text: str,
+                                  emission_wall_seconds: float,
+                                  observed_analysis_wall_seconds: float | None = None,
+                                  observed_analysis_status: str | None = None) -> dict[str, Any]:
+    """Atomically retain one exact baseline emission for future launches."""
+    if (not isinstance(emission_wall_seconds, (int, float))
+            or isinstance(emission_wall_seconds, bool)
+            or not math.isfinite(emission_wall_seconds) or emission_wall_seconds < 0):
+        raise ValueError("baseline emission wall time must be finite and nonnegative")
+    if (observed_analysis_wall_seconds is not None and (
+            isinstance(observed_analysis_wall_seconds, bool)
+            or not isinstance(observed_analysis_wall_seconds, (int, float))
+            or not math.isfinite(observed_analysis_wall_seconds)
+            or observed_analysis_wall_seconds < 0)):
+        raise ValueError("baseline analysis wall time must be finite and nonnegative")
+    if observed_analysis_status not in (None, "completed", "timeout"):
+        raise ValueError("baseline analysis status is invalid")
+    if (observed_analysis_wall_seconds is None) != (observed_analysis_status is None):
+        raise ValueError("baseline analysis observation requires both wall time and status")
+    root = _baseline_emission_cache_root(binding)
+    root.mkdir(parents=True, exist_ok=True)
+    if root.is_symlink() or not root.is_dir():
+        raise StageGateError("baseline emission cache root changed during creation")
+    key = _document_sha256(identity)
+    existing = load_baseline_emission_cache(binding, identity)
+    if existing is not None:
+        if (existing["lowered_sha256"] != _sha256(lowered_text.encode("utf-8"))
+                or existing["command_buffer_sha256"]
+                != _sha256(command_buffer_text.encode("utf-8"))):
+            raise StageGateError("same baseline emission cache identity produced different bytes")
+        return existing
+    temporary = Path(tempfile.mkdtemp(prefix=f".{key}.", dir=root))
+    try:
+        lowered_sha = _sha256(lowered_text.encode("utf-8"))
+        buffer_sha = _sha256(command_buffer_text.encode("utf-8"))
+        (temporary / "lowered.mlir").write_text(lowered_text, encoding="utf-8")
+        (temporary / "command_buffer.json").write_text(command_buffer_text, encoding="utf-8")
+        _write_json(temporary / "receipt.json", {
+            "schema": "baseline_emission_cache_entry_v1", "key": key,
+            "identity": dict(identity), "lowered_sha256": lowered_sha,
+            "command_buffer_sha256": buffer_sha,
+            "emission_wall_seconds": float(emission_wall_seconds),
+            "observed_analysis_wall_seconds": (
+                float(observed_analysis_wall_seconds)
+                if observed_analysis_wall_seconds is not None else None),
+            "observed_analysis_status": observed_analysis_status,
+            "scope": "compiler emission only; host verification is rerun under the current policy",
+        })
+        for path in temporary.iterdir():
+            path.chmod(0o444)
+        temporary.chmod(0o555)
+        try:
+            temporary.rename(root / key)
+        except OSError:
+            # POSIX may report EEXIST or ENOTEMPTY when another writer won the
+            # atomic directory rename.  Only accept that race after reloading
+            # and comparing the complete exact entry.
+            cached = load_baseline_emission_cache(binding, identity)
+            if cached is None or (cached["lowered_sha256"] != lowered_sha
+                                  or cached["command_buffer_sha256"] != buffer_sha):
+                raise StageGateError("concurrent baseline emission cache entry disagrees")
+            return cached
+        return load_baseline_emission_cache(binding, identity) or {}
+    finally:
+        if temporary.exists():
+            temporary.chmod(0o700)
+            shutil.rmtree(temporary)
+
+
 def analyze_whole_model_emission(
         baseline: Path, candidate: Path, sentinel: StageE2ESentinel, *, timeout_s: int,
         peak_macs_per_cycle: int | None, achievable_macs_per_cycle: float | None,
@@ -2759,6 +2957,7 @@ def analyze_whole_model_emission(
         machine_build_policy_identity: Mapping[str, Any] | None = None,
         host_verifier_policy_sha256: str | None = None,
         compiler_api_schema: Mapping[str, Any] | None = None,
+        baseline_emission_cache: Mapping[str, Any] | None = None,
         ) -> dict[str, Any]:
     """Emit and compare the fixed complete-model sentinel without running a simulator.
 
@@ -2790,10 +2989,22 @@ def analyze_whole_model_emission(
     identical_compilers = candidate_before == baseline_sha256
     baseline_package = OR.load_package(Path(baseline))
     candidate_package = OR.load_package(Path(candidate))
+    baseline_cache_identity = None
+    cached_baseline_emission = None
+    if baseline_emission_cache is not None and baseline_artifacts is None:
+        baseline_cache_identity = baseline_emission_cache_identity(
+            baseline_sha256=baseline_sha256, capsule_sha256=sentinel.capsule_sha256,
+            source_sha256=_sha256(source_text.encode("utf-8")), target=target,
+            compiler_dependencies_sha256=str(
+                baseline_emission_cache.get("compiler_dependencies_sha256", "")),
+            compiler_api_schema=compiler_api_schema,
+            entrypoints=OR.analysis_emission_entrypoints(baseline_package))
+        cached_baseline_emission = load_baseline_emission_cache(
+            baseline_emission_cache, baseline_cache_identity)
     # Divide the bounded analysis budget by the subprocesses we will actually launch.  An
     # optional one-pass bundle counts once; a legacy pair counts twice; a retained baseline
     # counts zero; and an exact candidate/optimization-baseline seed reuses the baseline arm.
-    baseline_entrypoints = (0 if baseline_artifacts is not None else
+    baseline_entrypoints = (0 if baseline_artifacts is not None or cached_baseline_emission is not None else
                             len(OR.analysis_emission_entrypoints(baseline_package)))
     candidate_entrypoints = (0 if identical_compilers else
                              len(OR.analysis_emission_entrypoints(candidate_package)))
@@ -2828,10 +3039,21 @@ def analyze_whole_model_emission(
             base_rc = 0
             base_llvm, base_buffer = (baseline_artifacts["lowered_text"],
                                       baseline_artifacts["command_buffer_text"])
+            baseline_emission_source = "retained_verified_baseline_artifacts"
+            baseline_emission_wall_seconds = None
+        elif cached_baseline_emission is not None:
+            base_rc = 0
+            base_llvm = cached_baseline_emission["lowered_text"]
+            base_buffer = cached_baseline_emission["command_buffer_text"]
+            baseline_emission_source = cached_baseline_emission["source"]
+            baseline_emission_wall_seconds = cached_baseline_emission["emission_wall_seconds"]
         else:
+            emission_started = time.monotonic()
             base_rc, base_llvm, base_buffer = emit_pair(
                 baseline_package, interface, scratch, "baseline",
                 per_entrypoint_timeout)
+            baseline_emission_wall_seconds = time.monotonic() - emission_started
+            baseline_emission_source = "compiler_executed"
         if base_rc != 0 or not base_buffer:
             detail_path = scratch / "emission_baseline.json"
             details = json.loads(detail_path.read_text(encoding="utf-8")) if detail_path.is_file() else {}
@@ -2841,6 +3063,12 @@ def analyze_whole_model_emission(
                 + json.dumps(details, sort_keys=True))
         if base_rc == 0 and base_buffer:
             require_not_declined(base_buffer, "baseline")
+            if (baseline_emission_cache is not None and baseline_cache_identity is not None
+                    and cached_baseline_emission is None and baseline_artifacts is None):
+                cached_baseline_emission = store_baseline_emission_cache(
+                    baseline_emission_cache, baseline_cache_identity,
+                    lowered_text=base_llvm, command_buffer_text=base_buffer,
+                    emission_wall_seconds=float(baseline_emission_wall_seconds))
         baseline_plan_binding = {
             "schema": "baseline_global_plan_evidence_binding_v1",
             "source_sha256": _sha256(source_text.encode("utf-8")),
@@ -2904,6 +3132,11 @@ def analyze_whole_model_emission(
             "candidate_entrypoints": candidate_entrypoints,
             "per_entrypoint_timeout_seconds": per_entrypoint_timeout,
             "analysis_budget_seconds": analysis_budget,
+            "baseline_emission_source": baseline_emission_source,
+            "baseline_emission_cache_key": (
+                cached_baseline_emission.get("key")
+                if cached_baseline_emission is not None else None),
+            "baseline_emission_measured_wall_seconds": baseline_emission_wall_seconds,
         }
         baseline_buffer = json.loads(base_buffer)
         candidate_buffer = json.loads(cand_buffer)
@@ -4663,6 +4896,7 @@ class _Broker:
     def __init__(self, policy: AgentSandboxPolicy, target_experiment: TargetExperiment,
                  candidate: Path, actions: Sequence[BrokerAction], receipt_path: Path, *,
                  deadline: float, max_calls: int, max_tool_seconds: int,
+                 mandatory_analysis_reserve_seconds: float = 0.0,
                  feedback_evaluator: DevelopmentGsimFeedback | None = None,
                  feedback_round: int | None = None,
                  functional_base: Path | None = None,
@@ -4677,6 +4911,14 @@ class _Broker:
         self.target_experiment = target_experiment
         self.candidate = candidate
         self.deadline = deadline
+        if (isinstance(mandatory_analysis_reserve_seconds, bool)
+                or not isinstance(mandatory_analysis_reserve_seconds, (int, float))
+                or not math.isfinite(mandatory_analysis_reserve_seconds)
+                or mandatory_analysis_reserve_seconds < 0):
+            raise StageGateError("mandatory analysis reserve must be finite and nonnegative")
+        self.mandatory_analysis_reserve_seconds = float(
+            mandatory_analysis_reserve_seconds)
+        self.non_analysis_deadline = deadline - self.mandatory_analysis_reserve_seconds
         self.max_calls = max_calls
         self.max_tool_seconds = max_tool_seconds
         self.actions = {action.name: action for action in actions}
@@ -4801,15 +5043,22 @@ class _Broker:
                     "tuning query for the exact bytes you seal")
                 call_index, timeout_s = -1, 0
             else:
-                remaining = int(self.deadline - time.monotonic())
+                action_deadline = (self.deadline if action_name == E2E_ANALYSIS_ACTION
+                                   else self.non_analysis_deadline)
+                remaining = int(action_deadline - time.monotonic())
                 requested = request.get("timeout_s", self.max_tool_seconds)
                 if isinstance(requested, bool) or not isinstance(requested, int):
                     raise StageGateError("broker timeout must be an integer")
                 timeout_s = min(requested, self.max_tool_seconds, remaining)
                 if timeout_s <= 0:
+                    reason = ("performance stage wall-clock budget is reserved for mandatory "
+                              "whole-model analysis"
+                              if action_name != E2E_ANALYSIS_ACTION
+                              and self.mandatory_analysis_reserve_seconds > 0
+                              and self.deadline - time.monotonic() > 0 else
+                              "performance stage wall-clock budget is exhausted")
                     budget_error = self._record_refusal_locked(
-                        action_name, rendered,
-                        "performance stage wall-clock budget is exhausted")
+                        action_name, rendered, reason)
                     call_index, timeout_s = -1, 0
                 else:
                     call_index = len(self.calls)

@@ -289,12 +289,17 @@ def test_whole_model_analysis_reuses_exact_seed_and_cached_baseline(tmp_path, mo
         machine_build_policy_identity=policy, host_verifier_policy_sha256="d" * 64)
     assert emitted == [("baseline", 100)]
     assert len(parse_calls) == len(decode_calls) == len(verifier_calls) == len(machine_calls) == 1
-    assert first["diagnostics"]["emission_execution"] == {
+    emission_execution = first["diagnostics"]["emission_execution"]
+    measured_emission_wall = emission_execution.pop("baseline_emission_measured_wall_seconds")
+    assert measured_emission_wall >= 0
+    assert emission_execution == {
         "schema": "whole_model_emission_execution_v1",
         "identical_compiler_trees": True, "retained_baseline_reused": False,
         "candidate_reused_baseline_artifacts": True, "launched_entrypoint_count": 1,
         "baseline_entrypoints": 1, "candidate_entrypoints": 0,
         "per_entrypoint_timeout_seconds": 100, "analysis_budget_seconds": 100,
+        "baseline_emission_source": "compiler_executed",
+        "baseline_emission_cache_key": None,
     }
 
     # A changed candidate with the retained baseline must launch/analyse only the candidate.

@@ -10,8 +10,10 @@ from __future__ import annotations
 import argparse
 import ast
 import copy
+import concurrent.futures
 import hashlib
 import json
+import math
 import shutil
 import threading
 import time
@@ -24,6 +26,10 @@ import perf_agent_stage as PAS
 from merlin.benchharness import hash_tree
 from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.perf.mechanism_probe import ProbeBinding, ProbeObservation, require_probe_admission
+
+
+_GIB = 1024 ** 3
+_PORTFOLIO_WORKER_HEADROOM_BYTES = 16 * _GIB
 
 
 @dataclass(frozen=True)
@@ -82,13 +88,15 @@ def sentinel_identity(sentinel: PAS.StageE2ESentinel, *, role: str) -> dict[str,
 
 def portfolio_member_analysis_allocation(
         remaining_seconds: float,
-        remaining_sentinels: Sequence[PAS.StageE2ESentinel]) -> dict[str, Any]:
+        remaining_sentinels: Sequence[PAS.StageE2ESentinel], *,
+        emission_seconds_by_capsule_sha256: Mapping[str, float] | None = None) -> dict[str, Any]:
     """Allocate one member's bounded analysis time from generic frozen-source complexity.
 
-    Half of the remaining budget is shared equally so every graph gets a chance. Half is
-    proportional to the host-pinned interface byte size so large generated programs are not forced
-    through the same compiler timeout as small ones. Recomputing this for each member rolls unused
-    wall time forward while preserving declared portfolio order and the outer iteration deadline.
+    Every remaining graph receives an equal chance floor capped at 60 seconds. Remaining time is
+    weighted by exact prior baseline-emission measurements when available. Missing measurements are
+    projected from frozen interface bytes and the median observed seconds/byte; an entirely cold
+    cache uses interface bytes directly. Recomputing after actual elapsed time rolls surplus forward
+    while preserving declared portfolio order and the outer iteration deadline.
     """
     if not remaining_sentinels:
         raise ValueError("portfolio allocation requires at least one remaining member")
@@ -104,19 +112,201 @@ def portfolio_member_analysis_allocation(
         interface_sizes.append(max(1, interface.stat().st_size))
 
     members = len(remaining_sentinels)
-    equal_share = remaining_seconds / members
-    weighted_share = remaining_seconds * interface_sizes[0] / sum(interface_sizes)
+    measurements = dict(emission_seconds_by_capsule_sha256 or {})
+    for digest, seconds in measurements.items():
+        if (not PAS._is_sha256(digest) or isinstance(seconds, bool)
+                or not isinstance(seconds, (int, float))
+                or not math.isfinite(seconds) or seconds < 0):
+            raise ValueError("portfolio emission-cost measurement is malformed")
+    known_rates = sorted(
+        measurements[sentinel.capsule_sha256] / size
+        for sentinel, size in zip(remaining_sentinels, interface_sizes, strict=True)
+        if sentinel.capsule_sha256 in measurements)
+    median_rate = (None if not known_rates else
+                   known_rates[len(known_rates) // 2] if len(known_rates) % 2 else
+                   0.5 * (known_rates[len(known_rates) // 2 - 1]
+                          + known_rates[len(known_rates) // 2]))
+    estimates = [
+        measurements.get(sentinel.capsule_sha256,
+                         size * median_rate if median_rate is not None else float(size))
+        for sentinel, size in zip(remaining_sentinels, interface_sizes, strict=True)]
+    weights = [max(float(value), 1e-9) for value in estimates]
+    chance_floor = (remaining_seconds if members == 1 else
+                    min(60.0, remaining_seconds / (2 * members)))
+    weighted_budget = max(0.0, remaining_seconds - chance_floor * members)
     allocated = (remaining_seconds if members == 1 else
-                 0.5 * equal_share + 0.5 * weighted_share)
+                 chance_floor + weighted_budget * weights[0] / sum(weights))
+    first_digest = remaining_sentinels[0].capsule_sha256
     return {
         "schema": "portfolio_analysis_allocation_v1",
-        "policy": "half_equal_floor_plus_half_frozen_interface_bytes_with_rolling_surplus",
+        "policy": "bounded_equal_chance_floor_plus_measured_emission_cost_with_rolling_surplus",
         "allocated_seconds": allocated,
         "remaining_seconds": remaining_seconds,
         "remaining_members": members,
         "interface_bytes": interface_sizes[0],
         "remaining_interface_bytes": sum(interface_sizes),
+        "chance_floor_seconds": chance_floor,
+        "estimated_emission_seconds": estimates[0],
+        "emission_cost_basis": ("exact_cached_baseline_emission"
+                                if first_digest in measurements else
+                                "interface_bytes_scaled_by_measured_median"
+                                if median_rate is not None else "frozen_interface_bytes_proxy"),
+        "known_emission_measurements": len(known_rates),
     }
+
+
+def portfolio_analysis_concurrency(*, requested_workers: int, members: int,
+                                   memory_available_bytes: int,
+                                   minimum_memory_available_bytes: int) -> dict[str, Any]:
+    """Admit bounded member parallelism from current host headroom above the launch guard."""
+    if min(requested_workers, members) < 1 or min(
+            memory_available_bytes, minimum_memory_available_bytes) < 0:
+        raise ValueError("portfolio concurrency inputs are invalid")
+    headroom = memory_available_bytes - minimum_memory_available_bytes
+    if headroom < 0:
+        raise TimeoutError("host memory is below the portfolio analysis admission floor")
+    memory_workers = max(1, headroom // _PORTFOLIO_WORKER_HEADROOM_BYTES)
+    admitted = min(requested_workers, members, memory_workers)
+    return {
+        "schema": "portfolio_analysis_concurrency_v1",
+        "requested_workers": requested_workers,
+        "admitted_workers": admitted,
+        "members": members,
+        "memory_available_bytes": memory_available_bytes,
+        "minimum_memory_available_bytes": minimum_memory_available_bytes,
+        "per_worker_headroom_bytes": _PORTFOLIO_WORKER_HEADROOM_BYTES,
+        "policy": "host_memory_headroom_bounded_concurrent_member_analysis",
+    }
+
+
+def portfolio_concurrent_schedule(cost_seconds: Sequence[float], workers: int) -> dict[str, Any]:
+    """Longest-estimated members first; retain declared order as the tie breaker and output order."""
+    if workers < 1 or not cost_seconds:
+        raise ValueError("portfolio concurrent schedule requires workers and member costs")
+    costs = [float(value) for value in cost_seconds]
+    if any(not math.isfinite(value) or value < 0 for value in costs):
+        raise ValueError("portfolio concurrent schedule cost is malformed")
+    admitted = min(workers, len(costs))
+    order = sorted(range(len(costs)), key=lambda index: (-costs[index], index))
+    loads = [0.0] * admitted
+    assignments = []
+    for index in order:
+        worker = min(range(admitted), key=lambda item: (loads[item], item))
+        assignments.append({"member_index": index, "worker": worker,
+                            "estimated_seconds": costs[index]})
+        loads[worker] += costs[index]
+    return {"schema": "portfolio_concurrent_schedule_v1", "submission_order": order,
+            "workers": admitted, "worker_estimated_seconds": loads,
+            "projected_wall_seconds": max(loads), "policy": "longest_estimated_member_first"}
+
+
+def _host_memory_available_bytes() -> int:
+    for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+        if line.startswith("MemAvailable:"):
+            return int(line.split()[1]) * 1024
+    raise ValueError("host MemAvailable is unavailable")
+
+
+def compiler_dependency_content_sha256(record: Mapping[str, Any]) -> str:
+    """Portable identity for compiler-affecting dependency bytes, excluding snapshot paths."""
+    required = ("candidate_sha256", "shared_sources", "selected_lazy_exports")
+    if any(name not in record for name in required) or not PAS._is_sha256(record["candidate_sha256"]):
+        raise ValueError("compiler dependency record is incomplete")
+    return PAS._document_sha256({name: record[name] for name in required})
+
+
+def seed_baseline_emission_cache_from_run(*, cache_binding: Mapping[str, Any],
+                                          seed_run: Path, baseline: Path,
+                                          sentinels: Sequence[PAS.StageE2ESentinel],
+                                          target: str,
+                                          compiler_api_schema: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Import only exact successful baseline-emission bytes from a prior host-owned run."""
+    from merlin.targetgen import oot_runner as OR
+
+    seed_run = Path(seed_run).resolve()
+    if seed_run.is_symlink() or not seed_run.is_dir():
+        raise ValueError("baseline emission seed run is absent or linked")
+    experiment = PAS._mapping_file(seed_run / "global_iterations/experiment.json")
+    dependencies = (experiment.get("optimization_baseline") or {}).get("compiler_dependencies")
+    baseline_sha256 = hash_tree(baseline)["sha256"]
+    if (experiment.get("target") != target
+            or experiment.get("optimization_baseline_sha256") != baseline_sha256
+            or not isinstance(dependencies, Mapping)
+            or compiler_dependency_content_sha256(dependencies)
+            != cache_binding.get("compiler_dependencies_sha256")):
+        raise ValueError("baseline emission seed run compiler, target or dependencies differ")
+    by_capsule = {sentinel.capsule_sha256: sentinel for sentinel in sentinels}
+    if len(by_capsule) != len(sentinels):
+        raise ValueError("baseline emission seed portfolio identities are not unique")
+    package = OR.load_package(baseline)
+    entrypoints = OR.analysis_emission_entrypoints(package)
+    imported: dict[str, dict[str, Any]] = {}
+    workers = seed_run / "host_analysis_workers"
+    for worker in sorted(workers.iterdir()) if workers.is_dir() else ():
+        required = [worker / name for name in (
+            "request.json", "baseline_emission.json", "baseline_lowered.mlir")]
+        command_buffer_path = worker / "compiler_scratch/baseline/command_buffer.json"
+        if any(path.is_symlink() or not path.is_file() for path in (*required, command_buffer_path)):
+            continue
+        request = PAS._mapping_file(required[0])
+        sentinel_record = request.get("sentinel") or {}
+        capsule_sha256 = sentinel_record.get("capsule_sha256")
+        sentinel = by_capsule.get(capsule_sha256)
+        if sentinel is None or capsule_sha256 in imported:
+            continue
+        baseline_value = request.get("baseline")
+        worker_baseline = Path(baseline_value) if isinstance(baseline_value, str) else None
+        if (request.get("kwargs", {}).get("target") != target
+                or worker_baseline is None or not worker_baseline.is_absolute()
+                or worker_baseline.is_symlink() or not worker_baseline.is_dir()
+                or hash_tree(worker_baseline)["sha256"] != baseline_sha256):
+            raise ValueError("baseline emission seed worker changed compiler or target")
+        source_root = Path(sentinel.frozen_source_path)
+        descriptor = PAS._mapping_file(source_root / "capsule.yaml", yaml_file=True)
+        interface = source_root / str(descriptor.get("interface_mlir") or "capsule.interface.mlir")
+        copied_interface = worker / "compiler_scratch/baseline/interface.mlir"
+        if (copied_interface.is_symlink() or not copied_interface.is_file()
+                or copied_interface.read_bytes() != interface.read_bytes()):
+            raise ValueError("baseline emission seed worker source bytes differ")
+        emission = PAS._mapping_file(required[1])
+        rows = emission.get("entrypoints")
+        if (emission.get("schema") != "compiler_emission_diagnostics_v1"
+                or not isinstance(rows, list)
+                or [row.get("command") for row in rows] != list(entrypoints)
+                or any(row.get("returncode") != 0 for row in rows)):
+            raise ValueError("baseline emission seed worker did not complete exact entrypoints")
+        lowered_text = required[2].read_text(encoding="utf-8")
+        command_buffer_text = command_buffer_path.read_text(encoding="utf-8")
+        command_buffer = json.loads(command_buffer_text)
+        if not isinstance(command_buffer, Mapping) or command_buffer.get("declined") is not None:
+            raise ValueError("baseline emission seed worker produced no admitted command buffer")
+        PAS.validate_whole_program_schema(command_buffer, compiler_api_schema, arm="seed")
+        identity = PAS.baseline_emission_cache_identity(
+            baseline_sha256=baseline_sha256, capsule_sha256=capsule_sha256,
+            source_sha256=PAS._sha256(interface.read_bytes()), target=target,
+            compiler_dependencies_sha256=str(cache_binding["compiler_dependencies_sha256"]),
+            compiler_api_schema=compiler_api_schema, entrypoints=entrypoints)
+        elapsed = required[2].stat().st_mtime - required[0].stat().st_mtime
+        worker_receipt = (PAS._mapping_file(worker / "receipt.json")
+                          if (worker / "receipt.json").is_file() else {})
+        analysis_status = worker_receipt.get("status")
+        analysis_wall = (worker_receipt.get("wall_seconds")
+                         if analysis_status in ("completed", "timeout") else None)
+        imported[capsule_sha256] = PAS.store_baseline_emission_cache(
+            cache_binding, identity, lowered_text=lowered_text,
+            command_buffer_text=command_buffer_text, emission_wall_seconds=max(0.0, elapsed),
+            observed_analysis_wall_seconds=(
+                float(analysis_wall) if isinstance(analysis_wall, (int, float))
+                and not isinstance(analysis_wall, bool) and math.isfinite(analysis_wall)
+                and analysis_wall >= 0 else None),
+            observed_analysis_status=(analysis_status if isinstance(analysis_wall, (int, float))
+                                      and not isinstance(analysis_wall, bool)
+                                      and math.isfinite(analysis_wall)
+                                      and analysis_wall >= 0 else None))
+    missing = sorted(set(by_capsule) - imported.keys())
+    if missing:
+        raise ValueError(f"baseline emission seed run lacks portfolio members: {missing}")
+    return [imported[sentinel.capsule_sha256] for sentinel in sentinels]
 
 
 def host_verification_policy_record() -> dict[str, Any]:
@@ -519,6 +709,88 @@ def agent_analysis_view(record: Mapping[str, Any], *, complete_evidence: str,
     return view
 
 
+def portfolio_action_digest(record: Mapping[str, Any], *, complete_evidence: str,
+                            edit_contract: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Resolve every portfolio member to one compact, action-oriented host view.
+
+    The iteration record intentionally stores the primary analysis by JSON reference while
+    secondary members are inline.  That is efficient archival structure but a poor navigation
+    surface for an authoring agent.  Resolve the reference here and expose only bounded totals and
+    edit surfaces that exactly occur in the host-frozen authority.
+    """
+    portfolio = record.get("portfolio") or {}
+    members = portfolio.get("members") or ()
+    authorized = {
+        (row.get("surface_id"), row.get("path"), row.get("symbol"))
+        for row in ((edit_contract or {}).get("existing_symbols") or ())
+        if isinstance(row, Mapping)
+    }
+    rows = []
+    for index, member in enumerate(members):
+        analysis = record.get("analysis") if index == 0 else member.get("analysis")
+        if not isinstance(analysis, Mapping):
+            analysis = {}
+        diagnostics = analysis.get("diagnostics") or {}
+        arm = (diagnostics.get("arms") or {}).get("candidate") or {}
+        representation = arm.get("representation_activity") or {}
+        movement = arm.get("movement") or {}
+        plan = diagnostics.get("verified_global_plan_emission") or {}
+        host = plan.get("host_activity") or {}
+        placement = (diagnostics.get("model_contraction_placement") or {}).get("candidate") or {}
+        task_kinds: dict[str, int] = {}
+        for kind in (plan.get("declared_task_kinds") or {}).values():
+            task_kinds[str(kind)] = task_kinds.get(str(kind), 0) + 1
+        actions = []
+        for action in ((analysis.get("optimization_brief") or {}).get("ranked_actions") or ())[:4]:
+            surfaces = []
+            for surface in action.get("edit_surfaces") or ():
+                key = (surface.get("id"), surface.get("path"), surface.get("symbol"))
+                if key not in authorized:
+                    continue
+                surfaces.append({key_name: copy.deepcopy(surface.get(key_name)) for key_name in (
+                    "id", "path", "symbol", "scope", "effects")})
+                surfaces[-1]["authority"] = "exact_host_frozen_existing_symbol"
+            actions.append({key_name: copy.deepcopy(action.get(key_name)) for key_name in (
+                "rank", "kind", "status", "detail", "evidence", "required_effects")})
+            actions[-1]["authorized_edit_surfaces"] = surfaces
+        rows.append({
+            "identity": copy.deepcopy(member.get("identity")),
+            "readiness": copy.deepcopy(member.get("readiness")),
+            "totals": {
+                "logical_graph_status": (diagnostics.get("captured_logical_graph") or {}).get("status"),
+                "logical_dispatches": (diagnostics.get("captured_logical_graph") or {}).get("dispatches"),
+                "accelerator_macs": arm.get("macs"),
+                "accelerator_work_exact": arm.get("exact"),
+                "movement_known_bytes": movement.get("known_bytes"),
+                "movement_known_bytes_in": movement.get("known_bytes_in"),
+                "movement_known_bytes_out": movement.get("known_bytes_out"),
+                "command_counts": copy.deepcopy(representation.get("command_counts")),
+                "task_kind_counts": task_kinds,
+                "lane_counts": copy.deepcopy((representation.get("placement") or {}).get("lane_counts")),
+                "lane_transitions": (representation.get("placement") or {}).get(
+                    "adjacent_lane_transitions"),
+                "contraction_count": placement.get("contraction_count"),
+                "contraction_macs_by_lane": copy.deepcopy(placement.get("macs_by_lane")),
+                "host_dynamic_operations": copy.deepcopy(host.get("dynamic_operations")),
+                "host_load_payload_bytes": host.get("load_payload_bytes"),
+                "host_store_payload_bytes": host.get("store_payload_bytes"),
+                "host_static_allocation_payload_bytes": host.get("static_allocation_payload_bytes"),
+            },
+            "top_ranked_actions": actions,
+            "complete_unpruned_evidence": {
+                "path": complete_evidence,
+                "json_pointer": "/analysis" if index == 0 else
+                                f"/portfolio/members/{index}/analysis",
+            },
+        })
+    return {"schema": "portfolio_action_digest_v1",
+            "portfolio_sha256": portfolio.get("portfolio_sha256"),
+            "candidate_sha256": record.get("candidate_sha256"),
+            "members": rows,
+            "selection": "per-model Pareto evidence; totals are never summed across models",
+            "timing_status": "UNMEASURED_FULL_MODEL"}
+
+
 def compiler_dependency_record(candidate: Path, *, shared_source_root: Path | None = None) -> dict[str, Any]:
     """Hash candidate code plus its statically resolved trusted Merlin import closure.
 
@@ -644,6 +916,10 @@ class GlobalPerfExperiment:
                  historical_reference_path: Path | None = None,
                  historical_reference_sha256: str | None = None,
                  compiler_shared_source_root: Path | None = None,
+                 baseline_emission_cache: Path | None = None,
+                 baseline_emission_seed_runs: Sequence[Path] = (),
+                 portfolio_analysis_workers: int = 1,
+                 minimum_memory_available_bytes: int = 0,
                  analyzer: Callable[..., Mapping[str, Any]] = PAS.analyze_whole_model_emission,
                  plan_verifier: Callable[..., Mapping[str, Any]] | None = None):
         if not 0 < timeout_s <= ITERATION_MAX_SECONDS:
@@ -688,6 +964,10 @@ class GlobalPerfExperiment:
         if target_descriptor is not None and PAS._sha256_file(target_descriptor) != target_sha256:
             raise ValueError("target descriptor digest mismatch")
         self.output, self.timeout_s = output, timeout_s
+        if portfolio_analysis_workers < 1 or minimum_memory_available_bytes < 0:
+            raise ValueError("portfolio concurrency policy is invalid")
+        self.portfolio_analysis_workers = portfolio_analysis_workers
+        self.minimum_memory_available_bytes = minimum_memory_available_bytes
         self.analyzer, self.plan_verifier = analyzer, plan_verifier
         self.phase1 = phase1
         self.phase1_binding = phase1.verify(baseline) if phase1 is not None else None
@@ -740,10 +1020,39 @@ class GlobalPerfExperiment:
         self.portfolio_identity = {"schema": "full_model_optimization_portfolio_v1",
             "members": portfolio_identity,
             "selection": "multi_model_pareto_without_invented_static_cycle_total",
-            "execution": "sequential_under_one_iteration_budget",
+            "execution": "bounded_host_admitted_analysis_with_deterministic_record_order",
             "holdout_policy": "separate_post_authoring_evaluation",
             "micro_graphs": "smoke_and_mechanism_calibration_only"}
         self.portfolio_identity_sha256 = PAS._document_sha256(self.portfolio_identity)
+        self.baseline_emission_cache_binding = None
+        self.baseline_emission_cache_seeds: list[dict[str, Any]] = []
+        if baseline_emission_cache is not None:
+            cache_root = Path(baseline_emission_cache).resolve()
+            if (cache_root.is_relative_to(self.baseline.resolve())
+                    or cache_root.is_relative_to(self.optimization_baseline.resolve())):
+                raise ValueError("baseline emission cache cannot be inside a compiler tree")
+            self.baseline_emission_cache_binding = {
+                "schema": "baseline_emission_cache_binding_v1",
+                "root": str(cache_root),
+                "compiler_dependencies_sha256": compiler_dependency_content_sha256(
+                    self.optimization_baseline_binding["compiler_dependencies"]),
+            }
+            schema = PAS.whole_program_schema_record()
+            for seed_run in baseline_emission_seed_runs:
+                entries = seed_baseline_emission_cache_from_run(
+                    cache_binding=self.baseline_emission_cache_binding,
+                    seed_run=seed_run, baseline=self.optimization_baseline,
+                    sentinels=self.portfolio_sentinels, target=self.target,
+                    compiler_api_schema=schema)
+                self.baseline_emission_cache_seeds.append({
+                    "run": str(Path(seed_run).resolve()),
+                    "entries": [{"key": row["key"],
+                                 "capsule_sha256": row["identity"]["capsule_sha256"],
+                                 "emission_wall_seconds": row["emission_wall_seconds"]}
+                                for row in entries],
+                })
+        elif baseline_emission_seed_runs:
+            raise ValueError("baseline emission seed runs require a cache root")
         self._write("experiment.json", {
             "schema": "global_perf_experiment_v1", "objective": "full_model_graph_and_global_plan",
             "historical_reference": self.historical_reference,
@@ -756,6 +1065,10 @@ class GlobalPerfExperiment:
             "capsule_sha256": sentinel.capsule_sha256,
             "portfolio": self.portfolio_identity,
             "portfolio_sha256": self.portfolio_identity_sha256,
+            "baseline_emission_cache": self.baseline_emission_cache_binding,
+            "baseline_emission_cache_seeds": self.baseline_emission_cache_seeds,
+            "portfolio_analysis_workers": self.portfolio_analysis_workers,
+            "minimum_memory_available_bytes": self.minimum_memory_available_bytes,
             "maximum_iteration_seconds": timeout_s,
             "full_model_simulation_allowed": False, "probe_measurements_required": False,
             "firesim_stage": "optional_post_freeze_validation",
@@ -763,6 +1076,97 @@ class GlobalPerfExperiment:
             "launch_scope": "qualified_macro_experiment" if self.phase1_binding else "development_readiness_only",
             "phase1_qualification": self.phase1_binding, "host_verification_policy": self.host_policy,
         })
+
+    def _baseline_emission_observations(self) -> dict[str, dict[str, Any]]:
+        """Read bounded exact cache receipts without loading large emitted artifacts."""
+        if self.baseline_emission_cache_binding is None:
+            return {}
+        from merlin.targetgen import oot_runner as OR
+
+        package = OR.load_package(self.optimization_baseline)
+        entrypoints = OR.analysis_emission_entrypoints(package)
+        schema = PAS.whole_program_schema_record()
+        observations: dict[str, dict[str, Any]] = {}
+        for sentinel in self.portfolio_sentinels:
+            source = Path(sentinel.frozen_source_path)
+            descriptor = PAS._mapping_file(source / "capsule.yaml", yaml_file=True)
+            interface = source / str(descriptor.get("interface_mlir") or "capsule.interface.mlir")
+            identity = PAS.baseline_emission_cache_identity(
+                baseline_sha256=self.optimization_baseline_sha256,
+                capsule_sha256=sentinel.capsule_sha256,
+                source_sha256=PAS._sha256(interface.read_bytes()), target=self.target,
+                compiler_dependencies_sha256=self.baseline_emission_cache_binding[
+                    "compiler_dependencies_sha256"],
+                compiler_api_schema=schema, entrypoints=entrypoints)
+            cached = PAS.baseline_emission_cache_observation(
+                self.baseline_emission_cache_binding, identity)
+            if cached is not None:
+                observations[sentinel.capsule_sha256] = cached
+        return observations
+
+    def _baseline_emission_costs(self) -> dict[str, float]:
+        return {digest: row["emission_wall_seconds"]
+                for digest, row in self._baseline_emission_observations().items()}
+
+    def _portfolio_analysis_cost_estimates(self) -> list[float]:
+        """Estimate changed-candidate member wall from exact prior receipts, without model constants."""
+        observations = self._baseline_emission_observations()
+        interface_sizes = []
+        for sentinel in self.portfolio_sentinels:
+            source = Path(sentinel.frozen_source_path)
+            descriptor = PAS._mapping_file(source / "capsule.yaml", yaml_file=True)
+            interface = source / str(descriptor.get("interface_mlir") or "capsule.interface.mlir")
+            interface_sizes.append(max(1, interface.stat().st_size))
+        measured = []
+        for sentinel in self.portfolio_sentinels:
+            row = observations.get(sentinel.capsule_sha256)
+            if row is None:
+                measured.append(None)
+            elif row.get("observed_analysis_wall_seconds") is not None:
+                measured.append(float(row["observed_analysis_wall_seconds"]))
+            else:
+                # A changed candidate replaces the cached baseline emission with one candidate
+                # emission and reruns both host audits.  Two emission durations plus a fixed
+                # generic audit allowance is deliberately conservative until a completed receipt
+                # provides the exact whole-member wall observation.
+                measured.append(float(row["emission_wall_seconds"]) * 2.0 + 60.0)
+        known_rates = sorted(
+            value / size for value, size in zip(measured, interface_sizes, strict=True)
+            if value is not None)
+        median_rate = (None if not known_rates else known_rates[len(known_rates) // 2]
+                       if len(known_rates) % 2 else
+                       0.5 * (known_rates[len(known_rates) // 2 - 1]
+                              + known_rates[len(known_rates) // 2]))
+        return [float(value if value is not None else
+                      size * median_rate if median_rate is not None else size)
+                for value, size in zip(measured, interface_sizes, strict=True)]
+
+    def mandatory_analysis_reserve_seconds(self, maximum_seconds: float) -> dict[str, Any]:
+        """Reserve a measured, generic concurrent-validation window before round finalization."""
+        observations = self._baseline_emission_observations()
+        if observations:
+            concurrency = portfolio_analysis_concurrency(
+                requested_workers=self.portfolio_analysis_workers,
+                members=len(self.portfolio_sentinels),
+                memory_available_bytes=_host_memory_available_bytes(),
+                minimum_memory_available_bytes=self.minimum_memory_available_bytes)
+            schedule = portfolio_concurrent_schedule(
+                self._portfolio_analysis_cost_estimates(), concurrency["admitted_workers"])
+            estimate = schedule["projected_wall_seconds"]
+            basis = "resource_admitted_schedule_of_exact_or_conservative_member_receipts"
+        else:
+            estimate = min(float(self.timeout_s), max(60.0, maximum_seconds * 0.5))
+            basis = "cold_cache_half_tool_window"
+            concurrency = None
+            schedule = None
+        reserve = min(float(maximum_seconds), math.ceil(estimate * 1.05 + 5.0))
+        return {"schema": "mandatory_portfolio_analysis_reserve_v1",
+                "seconds": reserve, "estimated_member_wall_seconds": estimate,
+                "basis": basis, "observed_members": len(observations),
+                "analysis_concurrency": concurrency,
+                "analysis_schedule": schedule,
+                "execution": "concurrent_shared_deadline",
+                "scope": "host tool-window admission; not a performance estimate"}
 
     def _write(self, name: str, record: Mapping[str, Any]) -> Path:
         path = self.output / name
@@ -923,12 +1327,14 @@ class GlobalPerfExperiment:
 
     def _analyze_portfolio_member(self, submitted: Path, *, candidate_sha256: str,
                                   sentinel: PAS.StageE2ESentinel, timeout_s: float,
-                                  scope: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Compile one secondary full graph without changing primary probe/artifact ownership."""
+                                  scope: Mapping[str, Any], primary: bool = False,
+                                  analyzer_override: Callable[..., Mapping[str, Any]] | None = None,
+                                  ) -> tuple[dict[str, Any], dict[str, Any], Mapping[str, Any] | None]:
+        """Compile one full graph with member-local artifacts and analyzer state."""
         from merlin.perf.analysis_worker import IsolatedAnalysisWorker
 
         retained: dict[str, Any] = {}
-        analyzer = self.analyzer
+        analyzer = analyzer_override or self.analyzer
         kwargs: dict[str, Any] = {
             "timeout_s": timeout_s, "target": self.target,
             "peak_macs_per_cycle": None, "achievable_macs_per_cycle": None,
@@ -939,8 +1345,10 @@ class GlobalPerfExperiment:
         if analyzer is PAS.analyze_whole_model_emission or isinstance(analyzer, IsolatedAnalysisWorker):
             kwargs["compiler_api_schema"] = PAS.whole_program_schema_record()
             kwargs["artifact_sink"] = retained.update
-            kwargs["baseline_artifacts"] = self._portfolio_baseline_artifacts.get(
-                sentinel.capsule_sha256)
+            kwargs["baseline_artifacts"] = (
+                self._baseline_artifacts if primary else
+                self._portfolio_baseline_artifacts.get(sentinel.capsule_sha256))
+            kwargs["baseline_emission_cache"] = self.baseline_emission_cache_binding
         try:
             if timeout_s <= 0:
                 raise TimeoutError("portfolio member has no remaining iteration budget")
@@ -951,6 +1359,17 @@ class GlobalPerfExperiment:
                 from merlin.perf.agent_guidance import guidance_for_emission_analysis
                 analysis["optimization_brief"] = guidance_for_emission_analysis(
                     analysis["diagnostics"], self.edit_guidance_inventory)
+                if primary:
+                    analysis["optimization_brief"]["compiler_edit_contract_template"] = copy.deepcopy(
+                        self.edit_contract)
+                    analysis["optimization_brief"]["host_guidance_binding"] = {
+                        "inventory_sha256": self.edit_scope_binding["guidance_inventory_sha256"],
+                        "initial_candidate_sha256": self.edit_scope_binding["initial_candidate_sha256"],
+                        "contract_document_sha256": self.edit_scope_binding["contract_document_sha256"],
+                        "permission_scope": "unchanged host-frozen edit contract",
+                        "mapping_scope": ("host-declared semantics; AST/component ownership checked on "
+                                          "frozen seed; not proof of emitted effect"),
+                    }
         except Exception as exc:
             analysis = {
                 "schema": "host_owned_whole_model_emission_failure_v1",
@@ -965,7 +1384,17 @@ class GlobalPerfExperiment:
             raise ValueError(f"portfolio analysis is not bound to candidate bytes: {sentinel.capsule}")
         if analysis.get("workload", {}).get("capsule_sha256") != sentinel.capsule_sha256:
             raise ValueError(f"portfolio analysis substituted its objective: {sentinel.capsule}")
-        return analysis, retained
+        return analysis, retained, copy.deepcopy(getattr(analyzer, "completed_sandboxes", None))
+
+    def _member_analyzer(self) -> Callable[..., Mapping[str, Any]]:
+        """Give concurrent isolated members independent mutable worker bookkeeping."""
+        from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+        if isinstance(self.analyzer, IsolatedAnalysisWorker):
+            return IsolatedAnalysisWorker(
+                stage_path=self.analyzer.stage_path,
+                sandbox_factory=self.analyzer.sandbox_factory,
+                output=self.analyzer.output)
+        return self.analyzer
 
     def _analyze_locked(self, candidate: Path, *, hypothesis: str,
                         timeout_s: float | None = None) -> dict[str, Any]:
@@ -997,62 +1426,88 @@ class GlobalPerfExperiment:
             if not path.is_symlink():
                 path.chmod(path.stat().st_mode & ~0o222)
         submitted.chmod(0o555)
-        kwargs: dict[str, Any] = {
-            "timeout_s": budget_seconds, "target": self.target,
-            "peak_macs_per_cycle": None, "achievable_macs_per_cycle": None,
-            "host_verifier_policy_sha256": self.host_policy["sha256"],
-        }
-        if self.plan_verifier is not None:
-            kwargs["global_plan_verifier"] = self.plan_verifier
-        retained: dict[str, Any] = {}
-        from merlin.perf.analysis_worker import IsolatedAnalysisWorker
-        if self.analyzer is PAS.analyze_whole_model_emission or isinstance(self.analyzer, IsolatedAnalysisWorker):
-            kwargs["compiler_api_schema"] = PAS.whole_program_schema_record()
-            kwargs["artifact_sink"] = retained.update
-            kwargs["baseline_artifacts"] = self._baseline_artifacts
         scope = self.validate_candidate_scope(submitted)
-        primary_allocation: dict[str, Any] = {
-            "schema": "portfolio_analysis_allocation_v1",
-            "policy": "half_equal_floor_plus_half_frozen_interface_bytes_with_rolling_surplus",
-            "allocated_seconds": 0.0,
-            "remaining_seconds": 0.0,
-            "remaining_members": len(self.portfolio_sentinels),
-            "status": "not_allocated",
-        }
-        try:
-            remaining = budget_seconds - (time.monotonic() - started)
-            if remaining <= 0:
-                raise TimeoutError("global input verification and snapshot exhausted the iteration budget")
-            primary_allocation = portfolio_member_analysis_allocation(
-                remaining, self.portfolio_sentinels)
-            kwargs["timeout_s"] = primary_allocation["allocated_seconds"]
-            analysis = dict(self.analyzer(self.optimization_baseline, submitted, self.sentinel, **kwargs))
-            analysis["compiler_edit_scope"] = scope
-            if self.edit_guidance_inventory is not None:
-                from merlin.perf.agent_guidance import guidance_for_emission_analysis
-                analysis["optimization_brief"] = guidance_for_emission_analysis(
-                    analysis["diagnostics"], self.edit_guidance_inventory)
-                analysis["optimization_brief"]["compiler_edit_contract_template"] = copy.deepcopy(self.edit_contract)
-                analysis["optimization_brief"]["host_guidance_binding"] = {
-                    "inventory_sha256": self.edit_scope_binding["guidance_inventory_sha256"],
-                    "initial_candidate_sha256": self.edit_scope_binding["initial_candidate_sha256"],
-                    "contract_document_sha256": self.edit_scope_binding["contract_document_sha256"],
-                    "permission_scope": "unchanged host-frozen edit contract",
-                    "mapping_scope": "host-declared semantics; AST/component ownership checked on frozen seed; not proof of emitted effect"}
-        except Exception as exc:
-            # Failed compiler iterations are useful search evidence. Retain the host's concise
-            # compiler diagnostics rather than losing the failure with a temporary directory.
-            analysis = {
-                "schema": "host_owned_whole_model_emission_failure_v1",
-                "candidate_sha256": before,
-                "workload": {"capsule_sha256": self.sentinel.capsule_sha256},
-                "diagnostics": {"arms": {"candidate": {"status": "emission_failed"}}},
-                "failure": {"type": type(exc).__name__, "reason": str(exc)[:20000]},
-                "timing_status": "UNMEASURED",
-            }
+        remaining = budget_seconds - (time.monotonic() - started)
+        if remaining <= 0:
+            raise TimeoutError("global input verification and snapshot exhausted the iteration budget")
+        after = hash_tree(submitted)["sha256"]
+        costs = self._baseline_emission_costs()
+        concurrency = portfolio_analysis_concurrency(
+            requested_workers=self.portfolio_analysis_workers,
+            members=len(self.portfolio_sentinels),
+            memory_available_bytes=_host_memory_available_bytes(),
+            minimum_memory_available_bytes=self.minimum_memory_available_bytes)
+        member_results: list[tuple[dict[str, Any], dict[str, Any], Mapping[str, Any] | None,
+                                   dict[str, Any], float] | None] = [
+            None for _ in self.portfolio_sentinels]
+        if concurrency["admitted_workers"] > 1:
+            # All workers receive the same outer deadline. Their budgets overlap in wall time but
+            # remain individually bounded; deterministic portfolio order is restored on collection.
+            planning = [portfolio_member_analysis_allocation(
+                remaining, self.portfolio_sentinels[index:],
+                emission_seconds_by_capsule_sha256=costs)
+                for index in range(len(self.portfolio_sentinels))]
+            allocations = [{**row,
+                "planning_allocated_seconds": row["allocated_seconds"],
+                "allocated_seconds": remaining,
+                "policy": "concurrent_shared_deadline_with_measured_cost_admission"}
+                for row in planning]
+            deadline = time.monotonic() + remaining
+            cost_estimates = self._portfolio_analysis_cost_estimates()
+            schedule = portfolio_concurrent_schedule(
+                cost_estimates, concurrency["admitted_workers"])
+            concurrency["schedule"] = schedule
+            concurrency["submission_order_capsule_sha256"] = [
+                self.portfolio_sentinels[index].capsule_sha256
+                for index in schedule["submission_order"]]
+
+            def analyze_index(index: int):
+                member_started = time.monotonic()
+                timeout = deadline - member_started
+                result = self._analyze_portfolio_member(
+                    submitted, candidate_sha256=after,
+                    sentinel=self.portfolio_sentinels[index], timeout_s=timeout,
+                    scope=scope, primary=index == 0,
+                    analyzer_override=self._member_analyzer())
+                return (*result, allocations[index], time.monotonic() - member_started)
+
+            executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=concurrency["admitted_workers"],
+                thread_name_prefix="phase2-model")
+            futures = {index: executor.submit(analyze_index, index)
+                       for index in schedule["submission_order"]}
+            try:
+                for index in range(len(self.portfolio_sentinels)):
+                    future = futures[index]
+                    wait = max(0.01, deadline - time.monotonic() + 1.0)
+                    member_results[index] = future.result(timeout=wait)
+            except Exception:
+                for future in futures.values():
+                    future.cancel()
+                raise
+            finally:
+                executor.shutdown(wait=True, cancel_futures=True)
+        else:
+            allocations = []
+            for index, sentinel in enumerate(self.portfolio_sentinels):
+                member_started = time.monotonic()
+                remaining = budget_seconds - (member_started - started)
+                allocation = portfolio_member_analysis_allocation(
+                    remaining, self.portfolio_sentinels[index:],
+                    emission_seconds_by_capsule_sha256=self._baseline_emission_costs())
+                result = self._analyze_portfolio_member(
+                    submitted, candidate_sha256=after, sentinel=sentinel,
+                    timeout_s=allocation["allocated_seconds"], scope=scope,
+                    primary=index == 0, analyzer_override=self._member_analyzer())
+                member_results[index] = (*result, allocation, time.monotonic() - member_started)
+                allocations.append(allocation)
+        if any(row is None for row in member_results):
+            raise RuntimeError("portfolio analysis did not return every deterministic member result")
+        primary = member_results[0]
+        assert primary is not None
+        analysis, retained, completed_sandboxes, primary_allocation, primary_elapsed = primary
         self._check_inputs()
         analysis["optimization_baseline"] = copy.deepcopy(self.optimization_baseline_binding)
-        after = hash_tree(submitted)["sha256"]
         dependencies_after = self._compiler_dependencies(submitted)
         if dependencies_before != dependencies_after:
             raise ValueError("compiler implementation dependencies changed during full-model analysis")
@@ -1061,8 +1516,6 @@ class GlobalPerfExperiment:
         if analysis.get("workload", {}).get("capsule_sha256") != self.sentinel.capsule_sha256:
             raise ValueError("analysis substituted the frozen complete-model objective")
         primary_readiness = PAS.global_iteration_readiness(analysis)
-        primary_elapsed = time.monotonic() - started
-        completed_sandboxes = getattr(self.analyzer, "completed_sandboxes", None)
         if (isinstance(completed_sandboxes, Mapping)
                 and Path(completed_sandboxes["candidate"]["package_path"]).resolve() == submitted.resolve()):
             self._compiler_sandboxes[len(self.iterations)] = copy.deepcopy(completed_sandboxes)
@@ -1080,15 +1533,10 @@ class GlobalPerfExperiment:
             for member in ((self.iterations[-1].get("portfolio") or {}).get("members") or ())
         } if self.iterations else {}
         portfolio_rows: list[dict[str, Any]] = []
-        secondary_sentinels = self.portfolio_sentinels[1:]
-        for index, sentinel in enumerate(secondary_sentinels):
-            member_started = time.monotonic()
-            remaining = budget_seconds - (member_started - started)
-            member_allocation = portfolio_member_analysis_allocation(
-                remaining, secondary_sentinels[index:])
-            member_analysis, member_artifacts = self._analyze_portfolio_member(
-                submitted, candidate_sha256=after, sentinel=sentinel,
-                timeout_s=member_allocation["allocated_seconds"], scope=scope)
+        for index, sentinel in enumerate(self.portfolio_sentinels[1:], start=1):
+            member_result = member_results[index]
+            assert member_result is not None
+            member_analysis, member_artifacts, _, member_allocation, member_elapsed = member_result
             member_readiness = PAS.global_iteration_readiness(member_analysis)
             previous_member = previous_members.get(sentinel.capsule_sha256)
             member_comparison = self._compare_analyses(
@@ -1102,7 +1550,7 @@ class GlobalPerfExperiment:
                 "analysis": member_analysis, "readiness": member_readiness,
                 "static_comparison": member_comparison,
                 "analysis_allocation": member_allocation,
-                "elapsed_seconds": time.monotonic() - member_started,
+                "elapsed_seconds": member_elapsed,
                 "timing_status": "UNMEASURED_FULL_MODEL",
             })
             baseline_artifacts = member_artifacts.pop("baseline_artifacts", None)
@@ -1174,7 +1622,10 @@ class GlobalPerfExperiment:
             "members_total": readiness["portfolio_members_total"],
             "selection": readiness["selection"],
             "analysis_allocation_policy": (
-                "half_equal_floor_plus_half_frozen_interface_bytes_with_rolling_surplus"),
+                "concurrent_shared_deadline_with_measured_cost_admission"
+                if concurrency["admitted_workers"] > 1 else
+                "bounded_equal_chance_floor_plus_measured_emission_cost_with_rolling_surplus"),
+            "analysis_concurrency": concurrency,
             "full_model_simulation_allowed": False,
         }
         self._write(f"iteration_{record['iteration']:04d}.json", record)
@@ -3041,6 +3492,9 @@ def run_global_agent_round(
     initial = experiment.analyze(candidate, hypothesis="Inspect the current complete-model global plan")
     finalization_reserve_s = _agent_finalization_reserve_seconds(round_timeout_s)
     broker_window_s = round_timeout_s - finalization_reserve_s
+    mandatory_analysis_reserve = experiment.mandatory_analysis_reserve_seconds(broker_window_s)
+    mandatory_analysis_reserve_s = mandatory_analysis_reserve["seconds"]
+    authoring_tool_window_s = max(0.0, broker_window_s - mandatory_analysis_reserve_s)
     prior_round_context = _prior_round_context(stage_root, round_index)
     portfolio_names = ", ".join(member.capsule for member in experiment.portfolio_sentinels)
     text = (
@@ -3048,6 +3502,8 @@ def run_global_agent_round(
         f"The training portfolio is: {portfolio_names}. Read STAGE_CONTEXT.json. "
         "It contains a concise initial view; INITIAL_FULL_MODEL_EVIDENCE.json contains the complete "
         "unpruned graph and immutable analysis copy when a transformation needs those details. "
+        "Start with portfolio_action_digest: it resolves the primary and secondary member records "
+        "into one per-model readiness, work, movement, dispatch, placement and authorized-action view. "
         "The initial exact analysis is already available there; unchanged reanalysis reuses it. "
         "For continuation rounds, prior_round_context in STAGE_CONTEXT.json contains earlier agents' "
         "own untrusted summaries plus host refusal status. Use it as search memory and do not repeat "
@@ -3107,7 +3563,11 @@ def run_global_agent_round(
         "frozen 92/96 Phase-1 baseline and its waivers; do not run Phase 1 again. Do not modify "
         "harnesses or evaluators. Reuse generalized compiler algorithms and target-derived facts. "
         f"Execute compiler/tools only through python3 {PAS.BROKER_NAME} ACTION [NAME=VALUE ...]. "
+        "Do not run Python directly against any path in the candidate workspace, even for "
+        "read-only parsing, imports, AST checks or manifest inspection; use jq, sed or rg for "
+        "read-only inspection and use the declared broker action for compiler execution. "
         "Broker commands must stand alone: do not pipe them to jq, redirect, or chain them. "
+        "Do not place shell or Python commands before or after a broker call in the same command. "
         "analyze-whole-model, qualify-changed-region, inspect-optimization-surfaces and "
         "profile-reduced-global-witness, profile-controlled-context and compare-controlled-context "
         "accept NO NAME=VALUE bindings; do not add HYPOTHESIS=. "
@@ -3116,7 +3576,10 @@ def run_global_agent_round(
         "compile action; individual candidate entrypoint smoke commands are optional in macro mode. "
         "At round end state the full-graph transformation, structural evidence, unknown costs, "
         "and remaining semantic/promotion blockers; do not claim measured full-model speedup. "
-        f"The tool broker closes after {broker_window_s} seconds, leaving "
+        f"The host reserves the final {mandatory_analysis_reserve_s:g} seconds of the "
+        "tool window for analyze-whole-model. Other broker actions are refused once the preceding "
+        f"{authoring_tool_window_s:g}-second authoring/tool window closes. The complete broker "
+        f"closes after {broker_window_s} seconds, leaving "
         f"{finalization_reserve_s} seconds for the final response. Finish the final full-model "
         "analysis before that tool deadline, then emit the final response before the round "
         "deadline; a valid intermediate edit does not make a timed-out round complete.\n")
@@ -3148,8 +3611,12 @@ def run_global_agent_round(
     PAS._write_json(workspace / "INITIAL_FULL_MODEL_EVIDENCE.json", initial)
     initial_view = agent_analysis_view(initial, complete_evidence="INITIAL_FULL_MODEL_EVIDENCE.json",
                                       context_provider_installed=global_context_provider is not None)
+    action_digest = portfolio_action_digest(
+        initial, complete_evidence="INITIAL_FULL_MODEL_EVIDENCE.json",
+        edit_contract=experiment.edit_contract)
     PAS._write_json(workspace / "STAGE_CONTEXT.json", {
         "mode": "global_perf_experiment_v1", "initial_whole_model_analysis": initial_view,
+        "portfolio_action_digest": action_digest,
         "prior_round_context": prior_round_context,
         "host_frozen_edit_authority": experiment.edit_scope_binding if experiment.edit_contract is not None else None,
         "automatic_optimization_inventory": PAS.inspect_compiler_package(candidate).to_dict(),
@@ -3168,6 +3635,8 @@ def run_global_agent_round(
         "maximum_iteration_seconds": experiment.timeout_s,
         "maximum_round_seconds": round_timeout_s,
         "maximum_tool_window_seconds": broker_window_s,
+        "maximum_non_analysis_tool_window_seconds": authoring_tool_window_s,
+        "mandatory_analysis_reserve": mandatory_analysis_reserve,
         "finalization_reserve_seconds": finalization_reserve_s,
         "probes_available": global_probe_provider is not None,
         "changed_region_qualification_available": global_semantic_provider is not None,
@@ -3185,6 +3654,7 @@ def run_global_agent_round(
         inner, target_experiment, candidate, actions, receipts,
         deadline=time.monotonic() + broker_window_s, max_calls=max_tool_calls,
         max_tool_seconds=experiment.timeout_s, global_experiment=experiment,
+        mandatory_analysis_reserve_seconds=mandatory_analysis_reserve_s,
         global_probe_provider=global_probe_provider, global_semantic_provider=global_semantic_provider,
         global_context_provider=global_context_provider,
         global_paired_context_provider=global_paired_context_provider,

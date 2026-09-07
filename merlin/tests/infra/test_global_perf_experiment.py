@@ -214,6 +214,214 @@ def test_portfolio_budget_is_size_weighted_order_preserving_and_rolls_surplus(
     assert record["elapsed_seconds"] == 40.0
 
 
+def test_measured_portfolio_allocation_preserves_floors_and_rolls_surplus(tmp_path):
+    sentinels = [
+        _portfolio_sentinel(tmp_path, "small", interface_bytes=100),
+        _portfolio_sentinel(tmp_path, "large", interface_bytes=1000),
+        _portfolio_sentinel(tmp_path, "middle", interface_bytes=500),
+    ]
+    measurements = {
+        sentinels[0].capsule_sha256: 10.0,
+        sentinels[1].capsule_sha256: 200.0,
+        sentinels[2].capsule_sha256: 50.0,
+    }
+    first = G.portfolio_member_analysis_allocation(
+        300.0, sentinels, emission_seconds_by_capsule_sha256=measurements)
+    assert first["chance_floor_seconds"] == 50.0
+    assert 50.0 <= first["allocated_seconds"] <= 200.0
+    # Finishing the first arm early makes its unused time available to the exact
+    # remaining members; the final member receives the entire remaining deadline.
+    second = G.portfolio_member_analysis_allocation(
+        280.0, sentinels[1:], emission_seconds_by_capsule_sha256=measurements)
+    last = G.portfolio_member_analysis_allocation(
+        190.0, sentinels[2:], emission_seconds_by_capsule_sha256=measurements)
+    assert second["allocated_seconds"] <= 280.0 - second["chance_floor_seconds"]
+    assert last["allocated_seconds"] == 190.0
+    assert all(row["policy"] ==
+               "bounded_equal_chance_floor_plus_measured_emission_cost_with_rolling_surplus"
+               for row in (first, second, last))
+
+
+def test_portfolio_concurrency_is_memory_admitted_and_refuses_pressure():
+    admitted = G.portfolio_analysis_concurrency(
+        requested_workers=4, members=4, memory_available_bytes=112 * G._GIB,
+        minimum_memory_available_bytes=48 * G._GIB)
+    assert admitted["admitted_workers"] == 4
+    bounded = G.portfolio_analysis_concurrency(
+        requested_workers=4, members=4, memory_available_bytes=80 * G._GIB,
+        minimum_memory_available_bytes=48 * G._GIB)
+    assert bounded["admitted_workers"] == 2
+    with pytest.raises(TimeoutError, match="below the portfolio analysis admission floor"):
+        G.portfolio_analysis_concurrency(
+            requested_workers=4, members=4, memory_available_bytes=47 * G._GIB,
+            minimum_memory_available_bytes=48 * G._GIB)
+
+
+def test_lpt_portfolio_schedule_is_deterministic_and_projects_two_safe_workers():
+    schedule = G.portfolio_concurrent_schedule([64.9, 213.5, 30.5, 241.7], workers=2)
+    assert schedule["submission_order"] == [3, 1, 0, 2]
+    assert schedule["worker_estimated_seconds"] == pytest.approx([272.2, 278.4])
+    assert schedule["projected_wall_seconds"] == pytest.approx(278.4)
+    assert sum(schedule["worker_estimated_seconds"]) == pytest.approx(
+        sum([64.9, 213.5, 30.5, 241.7]))
+
+
+def test_mandatory_reserve_uses_resource_admitted_lpt_makespan(tmp_path, monkeypatch):
+    extras = [_portfolio_sentinel(tmp_path, name) for name in ("second", "third", "fourth")]
+    experiment, _, _ = setup_experiment(
+        tmp_path, portfolio_sentinels=extras, portfolio_analysis_workers=4,
+        minimum_memory_available_bytes=64 * G._GIB)
+    observations = {sentinel.capsule_sha256: {
+        "emission_wall_seconds": 1.0, "observed_analysis_wall_seconds": seconds}
+        for sentinel, seconds in zip(
+            experiment.portfolio_sentinels, [64.9, 213.5, 30.5, 241.7], strict=True)}
+    monkeypatch.setattr(experiment, "_baseline_emission_observations", lambda: observations)
+    monkeypatch.setattr(experiment, "_portfolio_analysis_cost_estimates",
+                        lambda: [64.9, 213.5, 30.5, 241.7])
+    monkeypatch.setattr(G, "_host_memory_available_bytes", lambda: 96 * G._GIB)
+    reserve = experiment.mandatory_analysis_reserve_seconds(420)
+    assert reserve["analysis_concurrency"]["admitted_workers"] == 2
+    assert reserve["analysis_schedule"]["projected_wall_seconds"] == pytest.approx(278.4)
+    assert reserve["seconds"] == 298
+
+
+def test_concurrent_portfolio_restores_declared_result_order(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    extras = [_portfolio_sentinel(tmp_path, name) for name in ("second", "third", "fourth")]
+    experiment, candidate, _ = setup_experiment(
+        tmp_path, portfolio_sentinels=extras, portfolio_analysis_workers=4,
+        minimum_memory_available_bytes=16 * G._GIB)
+    delegate = experiment.analyzer
+    barrier = threading.Barrier(4)
+    completed = []
+    delays = {"real-model": 0.06, "second": 0.04, "third": 0.02, "fourth": 0.0}
+
+    def analyzer(base, current, objective, **kwargs):
+        barrier.wait(timeout=2)
+        time.sleep(delays[objective.capsule])
+        result = delegate(base, current, objective, **kwargs)
+        completed.append(objective.capsule)
+        return result
+
+    experiment.analyzer = analyzer
+    monkeypatch.setattr(G, "_host_memory_available_bytes", lambda: 80 * G._GIB)
+    record = experiment.analyze(candidate, hypothesis="bounded concurrent portfolio")
+    declared = [row["identity"]["capsule"] for row in record["portfolio"]["members"]]
+    assert declared == ["real-model", "second", "third", "fourth"]
+    assert completed == ["fourth", "third", "second", "real-model"]
+    assert record["portfolio"]["analysis_concurrency"]["admitted_workers"] == 4
+    assert record["portfolio"]["analysis_allocation_policy"] == \
+        "concurrent_shared_deadline_with_measured_cost_admission"
+
+
+def test_exact_baseline_emission_cache_reuses_identity_and_refuses_corruption(tmp_path):
+    binding = {"root": str((tmp_path / "cache").resolve()),
+               "compiler_dependencies_sha256": SHA["plan"]}
+    identity = PAS.baseline_emission_cache_identity(
+        baseline_sha256=SHA["graph"], capsule_sha256=SHA["buffer"],
+        source_sha256=SHA["llvm"], target="test", compiler_dependencies_sha256=SHA["plan"],
+        compiler_api_schema={"path": "/compiler-api/schema.json", "sha256": SHA["target"]},
+        entrypoints=("emit_analysis_bundle",))
+    assert PAS.load_baseline_emission_cache(binding, identity) is None
+    cold = PAS.store_baseline_emission_cache(
+        binding, identity, lowered_text="module {}\n", command_buffer_text='{"commands": []}\n',
+        emission_wall_seconds=12.5)
+    warm = PAS.load_baseline_emission_cache(binding, identity)
+    assert warm is not None and warm["key"] == cold["key"]
+    assert warm["lowered_text"] == "module {}\n"
+    changed = dict(identity)
+    changed["source_sha256"] = SHA["target"]
+    assert PAS.load_baseline_emission_cache(binding, changed) is None
+    lowered = Path(binding["root"]) / warm["key"] / "lowered.mlir"
+    lowered.chmod(0o644)
+    lowered.write_text("module { func.func @tampered() }\n")
+    with pytest.raises(PAS.StageGateError, match="artifact digest changed"):
+        PAS.load_baseline_emission_cache(binding, identity)
+
+
+def test_timed_out_worker_can_seed_only_its_completed_baseline_emission(
+        tmp_path, monkeypatch):
+    from merlin.targetgen import oot_runner as OR
+
+    baseline = tmp_path / "baseline"
+    baseline.mkdir()
+    (baseline / "compiler.py").write_text("VALUE = 1\n")
+    sentinel = _portfolio_sentinel(tmp_path, "tiny-timeout")
+    dependencies = {"candidate_sha256": hash_tree(baseline)["sha256"],
+                    "shared_sources": {}, "selected_lazy_exports": {}}
+    dependency_sha = G.compiler_dependency_content_sha256(dependencies)
+    cache_binding = {"root": str((tmp_path / "cache").resolve()),
+                     "compiler_dependencies_sha256": dependency_sha}
+    seed = tmp_path / "seed"
+    worker = seed / "host_analysis_workers" / "analysis_timeout"
+    scratch = worker / "compiler_scratch" / "baseline"
+    scratch.mkdir(parents=True)
+    (seed / "global_iterations").mkdir()
+    (seed / "global_iterations" / "experiment.json").write_text(json.dumps({
+        "target": "test-target", "optimization_baseline_sha256": hash_tree(baseline)["sha256"],
+        "optimization_baseline": {"compiler_dependencies": dependencies},
+    }))
+    interface = Path(sentinel.frozen_source_path) / "capsule.interface.mlir"
+    (scratch / "interface.mlir").write_bytes(interface.read_bytes())
+    (scratch / "command_buffer.json").write_text('{"commands": [], "tensors": {}}')
+    (worker / "baseline_lowered.mlir").write_text("module {}\n")
+    (worker / "baseline_emission.json").write_text(json.dumps({
+        "schema": "compiler_emission_diagnostics_v1", "arm": "baseline",
+        "entrypoints": [{"command": "emit_analysis_bundle", "returncode": 0}],
+    }))
+    (worker / "request.json").write_text(json.dumps({
+        "baseline": str(baseline.resolve()), "kwargs": {"target": "test-target"},
+        "sentinel": {"capsule_sha256": sentinel.capsule_sha256},
+    }))
+    (worker / "receipt.json").write_text(json.dumps({
+        "schema": "bounded_host_analysis_worker_v1", "status": "timeout",
+        "wall_seconds": 215.74,
+    }))
+    monkeypatch.setattr(OR, "load_package", lambda _path: object())
+    monkeypatch.setattr(OR, "analysis_emission_entrypoints",
+                        lambda _package: ("emit_analysis_bundle",))
+    monkeypatch.setattr(PAS, "validate_whole_program_schema", lambda *_args, **_kwargs: None)
+    schema = {"path": "/compiler-api/command_buffer.schema.json", "sha256": SHA["target"]}
+    imported = G.seed_baseline_emission_cache_from_run(
+        cache_binding=cache_binding, seed_run=seed, baseline=baseline,
+        sentinels=(sentinel,), target="test-target", compiler_api_schema=schema)
+    assert len(imported) == 1
+    assert imported[0]["observed_analysis_wall_seconds"] == 215.74
+    assert imported[0]["observed_analysis_status"] == "timeout"
+    assert imported[0]["lowered_text"] == "module {}\n"
+
+
+def test_portfolio_action_digest_resolves_primary_and_filters_exact_authority(tmp_path):
+    extra = _portfolio_sentinel(tmp_path, "second")
+    experiment, candidate, _ = setup_experiment(tmp_path, portfolio_sentinels=[extra])
+    record = experiment.analyze(candidate, hypothesis="inspect every member")
+    surface = {"id": "global", "path": "compiler.py", "symbol": "Planner.run",
+               "scope": "pass", "effects": ["movement"]}
+    action = {"rank": 1, "kind": "movement", "status": "actionable",
+              "detail": "delete materialization", "evidence": {"bytes": 128},
+              "required_effects": ["movement"], "edit_surfaces": [surface,
+                  {**surface, "id": "unapproved", "symbol": "Other.run"}]}
+    record["analysis"]["optimization_brief"] = {"ranked_actions": [action]}
+    record["analysis"]["diagnostics"]["arms"]["candidate"].update({
+        "macs": 8192, "movement": {"known_bytes": 128},
+        "representation_activity": {"command_counts": {"MATMUL": 2},
+                                    "placement": {"lane_counts": {"on_mesh": 2}}},
+    })
+    digest = G.portfolio_action_digest(
+        record, complete_evidence="INITIAL_FULL_MODEL_EVIDENCE.json",
+        edit_contract={"existing_symbols": [{"surface_id": "global", "path": "compiler.py",
+                                              "symbol": "Planner.run"}]})
+    assert [row["identity"]["capsule"] for row in digest["members"]] == [
+        "real-model", "second"]
+    primary = digest["members"][0]
+    assert primary["complete_unpruned_evidence"]["json_pointer"] == "/analysis"
+    assert primary["totals"]["movement_known_bytes"] == 128
+    assert primary["top_ranked_actions"][0]["authorized_edit_surfaces"] == [{
+        **surface, "authority": "exact_host_frozen_existing_symbol"}]
+
+
 def test_portfolio_member_failure_blocks_current_revision_and_seal(tmp_path):
     extra = _portfolio_sentinel(tmp_path, "large-transformer")
     experiment, candidate, _ = setup_experiment(tmp_path, portfolio_sentinels=[extra])
@@ -1734,6 +1942,27 @@ def test_macro_broker_refuses_unrelated_micro_sweep_without_running_evaluator(tm
     assert broker.stop_verdict is None
 
 
+def test_macro_broker_reserves_deadline_for_required_whole_model_analysis(tmp_path):
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    inspect = PAS.BrokerAction("inspect", ("unused",), (), "inspect", False)
+    analysis = PAS.BrokerAction(
+        PAS.E2E_ANALYSIS_ACTION, (PAS._HOST_E2E_ANALYSIS_SENTINEL,), (), "analysis", True)
+    broker = PAS._Broker(
+        PAS.AgentSandboxPolicy(("bwrap",), (), "available_not_an_isolation_claim", True, True, True),
+        SimpleNamespace(), candidate, (inspect, analysis), tmp_path / "broker" / "receipts.jsonl",
+        deadline=PAS.time.monotonic() + 30, max_calls=2, max_tool_seconds=30,
+        mandatory_analysis_reserve_seconds=30)
+    with pytest.raises(PAS.StageGateError, match="reserved for mandatory whole-model analysis"):
+        broker.execute({"action": "inspect", "bindings": {}})
+    # The required action still reaches its host handler during the same reserved
+    # interval.  This fixture has no global objective, so the handler refuses with
+    # returncode 125 after admission rather than executing a compiler.
+    assert broker.execute({"action": PAS.E2E_ANALYSIS_ACTION, "bindings": {}})["returncode"] == 125
+    rows = [json.loads(line) for line in (tmp_path / "broker" / "receipts.jsonl").read_text().splitlines()]
+    assert [row["state"] for row in rows] == ["rejected", "complete"]
+
+
 def test_macro_handoff_detects_post_seal_candidate_edit(tmp_path):
     experiment, candidate, _ = setup_experiment(tmp_path)
     experiment.analyze(candidate, hypothesis="Global plan revision")
@@ -1894,6 +2123,12 @@ def test_real_macro_round_transport_compiles_each_revision_without_micro_feedbac
     assert len(calls) == 2 and calls[0] != calls[1]
     assert result["broker_evidence"]["successful_actions"] == [PAS.E2E_ANALYSIS_ACTION]
     assert brokers[0].stop_verdict is None
+    task = (tmp_path / "TASK.md").read_text()
+    context = json.loads((tmp_path / "STAGE_CONTEXT.json").read_text())
+    assert "Do not run Python directly against any path in the candidate workspace" in task
+    assert "Do not place shell or Python commands before or after a broker call" in task
+    assert context["portfolio_action_digest"]["members"][0]["identity"]["capsule"] == "real-model"
+    assert "mandatory_analysis_reserve" in context
 
 
 def test_cached_policy_rebind_preserves_masks_and_rejects_identity_drift(tmp_path):

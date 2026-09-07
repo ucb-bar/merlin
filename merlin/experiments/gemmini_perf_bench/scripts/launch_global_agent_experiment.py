@@ -229,6 +229,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--optimization-baseline-reason",
                         default="host-selected immutable optimization comparison seed")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--baseline-emission-cache", type=Path,
+                        help="persistent host-owned exact baseline-emission cache; defaults beside output")
+    parser.add_argument("--baseline-emission-cache-seed-run", type=Path, action="append", default=[],
+                        help="prior run whose exact successful baseline emissions seed the cache")
+    parser.add_argument("--portfolio-analysis-workers", type=int, default=4,
+                        help="maximum host-admitted concurrent full-model analysis workers")
     parser.add_argument("--historical-reference", type=Path,
                         help="explicit public historical reference bundle; not target timing calibration")
     parser.add_argument("--historical-reference-sha256",
@@ -283,7 +289,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--resource-trip-samples", type=int, default=2,
                         help="consecutive pressured samples required while a run is active")
     args = parser.parse_args(argv)
+    if args.baseline_emission_cache is None:
+        args.baseline_emission_cache = (
+            args.output.resolve().parent / "_global_phase2_baseline_emission_cache_v1")
+    else:
+        args.baseline_emission_cache = args.baseline_emission_cache.resolve()
+    if any(path.is_symlink() or not path.is_dir()
+           for path in args.baseline_emission_cache_seed_run):
+        parser.error("baseline-emission-cache-seed-run must name a real prior run directory")
     if (min(args.min_memory_available_gib, args.max_swap_used_gib) < 0
+            or args.portfolio_analysis_workers < 1
             or args.resource_trip_samples < 1 or not math.isfinite(args.resource_sample_seconds)
             or not 0.25 <= args.resource_sample_seconds <= 30.0):
         parser.error("host resource limits/sample interval are invalid")
@@ -362,6 +377,10 @@ def main(argv: list[str] | None = None) -> int:
                        "--candidate", str(args.candidate.resolve()), "--output", str(args.output.resolve()),
                        "--round-seconds", str(args.round_seconds), "--iteration-seconds", str(args.iteration_seconds),
                        "--max-tool-calls", str(args.max_tool_calls), "--source-worker"]
+            command.extend(("--baseline-emission-cache", str(args.baseline_emission_cache)))
+            command.extend(("--portfolio-analysis-workers", str(args.portfolio_analysis_workers)))
+            for seed_run in args.baseline_emission_cache_seed_run:
+                command.extend(("--baseline-emission-cache-seed-run", str(seed_run.resolve())))
             command.extend(("--max-rounds", str(args.max_rounds),
                             "--on-round-failure", args.on_round_failure,
                             "--min-memory-available-gib", str(args.min_memory_available_gib),
@@ -504,6 +523,10 @@ def main(argv: list[str] | None = None) -> int:
         optimization_baseline_reason=args.optimization_baseline_reason,
         historical_reference_path=args.historical_reference,
         historical_reference_sha256=args.historical_reference_sha256,
+        baseline_emission_cache=args.baseline_emission_cache,
+        baseline_emission_seed_runs=tuple(args.baseline_emission_cache_seed_run),
+        portfolio_analysis_workers=args.portfolio_analysis_workers,
+        minimum_memory_available_bytes=resource_policy.minimum_memory_available_bytes,
         output=stage_root / "global_iterations", timeout_s=args.iteration_seconds)
     if args.analysis_only:
         PAS._write_json(stage_root / "launch.json", {
@@ -520,6 +543,8 @@ def main(argv: list[str] | None = None) -> int:
             "objective": sentinel.capsule, "capsule_sha256": sentinel.capsule_sha256,
             "portfolio": experiment.portfolio_identity,
             "portfolio_sha256": experiment.portfolio_identity_sha256,
+            "baseline_emission_cache": experiment.baseline_emission_cache_binding,
+            "baseline_emission_cache_seeds": experiment.baseline_emission_cache_seeds,
             "external_objective": primary_external.record() if primary_external is not None else None,
             "external_objectives": [external.record() for external in external_objectives],
             "external_objective_spec_sha256": args.external_objective_sha256,
@@ -612,6 +637,8 @@ def main(argv: list[str] | None = None) -> int:
         "objective": sentinel.capsule, "model": resolved_model,
         "portfolio": experiment.portfolio_identity,
         "portfolio_sha256": experiment.portfolio_identity_sha256,
+        "baseline_emission_cache": experiment.baseline_emission_cache_binding,
+        "baseline_emission_cache_seeds": experiment.baseline_emission_cache_seeds,
         "requested_objective_capsule": args.objective_capsule,
         "requested_portfolio_capsules": args.portfolio_capsule,
         "external_objective": primary_external.record() if primary_external is not None else None,
