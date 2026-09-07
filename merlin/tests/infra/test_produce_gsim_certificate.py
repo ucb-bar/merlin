@@ -327,7 +327,7 @@ def test_integer_whole_program_uses_materialized_inputs_and_complete_capsule_gol
     }
 
 
-def test_model_whole_program_binds_validated_inputs_and_weights_in_kernel_abi_order(
+def test_model_whole_program_binds_returned_input_by_global_plan_position(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     capsule = tmp_path / "capsule.yaml"
     capsule.write_text(yaml.safe_dump({
@@ -340,7 +340,6 @@ def test_model_whole_program_binds_validated_inputs_and_weights_in_kernel_abi_or
     command_buffer = {
         "tensors": {
             "arg0": {"role": "weight", "shape": [2], "dtype": "i8"},
-            "arg1": {"role": "input", "shape": [2], "dtype": "f32"},
             "Y0": {"role": "output", "shape": [2], "dtype": "f32"},
             "tmp": {"role": "intermediate", "shape": [2], "dtype": "f32"},
         },
@@ -349,12 +348,15 @@ def test_model_whole_program_binds_validated_inputs_and_weights_in_kernel_abi_or
             "kind": "whole_program",
             "args": [
                 {"tensor": "arg0", "access": "read"},
-                {"tensor": "arg1", "access": "read"},
-                {"tensor": "Y0", "access": "write"},
+                {"tensor": "Y0", "access": "readwrite"},
                 {"tensor": "tmp", "access": "write"},
             ],
             "outputs": ["Y0"],
         },
+        "params": {"global_program_plan": {
+            "entry_bindings": ["arg0", "Y0"],
+            "output_bindings": ["Y0"],
+        }},
     }
 
     import contextlib
@@ -390,7 +392,7 @@ def test_model_whole_program_binds_validated_inputs_and_weights_in_kernel_abi_or
 
     bound = {
         "arg0": {"shape": [2], "values": [-1, 1]},
-        "arg1": {"shape": [2], "values": [0.5, -0.25]},
+        "Y0": {"shape": [2], "values": [0.5, -0.25]},
     }
     assert normalized["canonical_inputs"] == bound
     assert expected == {"Y0": [1.0, 2.0]}

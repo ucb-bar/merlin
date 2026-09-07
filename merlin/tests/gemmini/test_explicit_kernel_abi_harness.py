@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from merlin.runtime.backends import base as bk
-from merlin.runtime.commandbuffer import validate_command_buffer
+from merlin.runtime.commandbuffer import validate_command_buffer, whole_program_entry_bindings
 from merlin.targetgen.contract import schemas
 
 
@@ -89,6 +89,26 @@ def test_whole_program_abi_schema_refuses_an_undefined_access_mode():
 
     with pytest.raises(schemas.ContractViolation, match="kernel_abi/args/0/access"):
         schemas.validate_command_buffer(cb)
+
+
+def test_global_plan_entry_bindings_preserve_source_position_and_output_alias():
+    cb = _whole_program_cb()
+    cb["kernel_abi"]["args"][-1]["access"] = "readwrite"
+    cb["params"] = {"global_program_plan": {"entry_bindings": ["W0", "Y0"]}}
+
+    assert whole_program_entry_bindings(cb) == ["W0", "Y0"]
+
+
+def test_global_plan_entry_binding_refuses_a_write_only_output_alias():
+    cb = _whole_program_cb()
+    cb["params"] = {"global_program_plan": {"entry_bindings": ["Y0"]}}
+
+    with pytest.raises(ValueError, match="Y0.*read or readwrite"):
+        whole_program_entry_bindings(cb)
+
+
+def test_whole_program_without_global_plan_keeps_legacy_binding_available():
+    assert whole_program_entry_bindings(_whole_program_cb()) is None
 
 
 def test_contract_gate_refuses_a_whole_program_with_an_unbound_external_tensor():

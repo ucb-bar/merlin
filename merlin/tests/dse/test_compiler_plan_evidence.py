@@ -88,6 +88,20 @@ def test_unowned_nonconstant_cannot_hide_in_shared_constant_exception():
     assert _verify(lowered=LOWERED.replace("{merlin.global_task = 0 : i64}", ""))["status"] == "refused"
 
 
+def test_materialized_orphan_cannot_hide_as_an_unused_kernel_argument():
+    buffer = deepcopy(_buffer())
+    buffer["tensors"]["orphan"] = {"shape": [2], "dtype": "i32", "role": "input"}
+    buffer["kernel_abi"]["args"].insert(0, {"tensor": "orphan"})
+    lowered = LOWERED.replace("@kernel(%0: !llvm.ptr)",
+                              "@kernel(%orphan: !llvm.ptr, %0: !llvm.ptr)")
+
+    result = _verify(buffer, lowered)
+
+    assert result["status"] == "refused"
+    assert "materialized tensors lack complete source or compiler-temporary provenance" in result[
+        "problems"]
+
+
 def test_missing_protocol_is_unknown():
     assert _verify({})["status"] == "UNKNOWN"
 

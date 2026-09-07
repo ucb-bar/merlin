@@ -496,6 +496,7 @@ def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) 
     semantic evidence already present in the capsule/command-buffer contracts.
     """
     from merlin.runtime.reference import outputs_match, reference_outputs
+    from merlin.runtime.commandbuffer import whole_program_entry_bindings
     from merlin.targetgen import capsule_golden as golden
 
     capsule = dict(_load_mapping(capsule_manifest, yaml_input=True))
@@ -530,13 +531,15 @@ def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) 
             verify_unchanged()
         abi = cb.get("kernel_abi") or {}
         tensors = cb.get("tensors") or {}
-        leaf_args = [
-            str(arg.get("tensor"))
-            for arg in (abi.get("args") or [])
-            if isinstance(arg, Mapping)
-            and isinstance(tensors.get(str(arg.get("tensor"))), Mapping)
-            and tensors[str(arg.get("tensor"))].get("role") in ("input", "weight", "bias")
-        ]
+        leaf_args = whole_program_entry_bindings(cb)
+        if leaf_args is None:
+            leaf_args = [
+                str(arg.get("tensor"))
+                for arg in (abi.get("args") or [])
+                if isinstance(arg, Mapping)
+                and isinstance(tensors.get(str(arg.get("tensor"))), Mapping)
+                and tensors[str(arg.get("tensor"))].get("role") in ("input", "weight", "bias")
+            ]
         if len(leaf_args) != len(set(leaf_args)):
             raise ProducerError("complete-model kernel ABI repeats a read-only leaf pointer")
         if len(leaf_args) != len(arrays):
@@ -564,8 +567,10 @@ def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) 
     tensors = cb.get("tensors")
     if not isinstance(tensors, Mapping):
         raise ProducerError("complete-kernel command buffer has no tensor declarations")
-    leaves = [str(name) for name, spec in tensors.items()
-              if isinstance(spec, Mapping) and spec.get("role") in ("input", "weight", "bias")]
+    leaves = whole_program_entry_bindings(cb)
+    if leaves is None:
+        leaves = [str(name) for name, spec in tensors.items()
+                  if isinstance(spec, Mapping) and spec.get("role") in ("input", "weight", "bias")]
     overlap = set(canonical) & set(tensors)
     if set(leaves) <= set(canonical):
         bound = {name: canonical[name] for name in leaves}

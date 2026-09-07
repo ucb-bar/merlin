@@ -8,6 +8,7 @@ explicit inputs mapping can override them.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -130,6 +131,64 @@ REQUIRED_KEYS = ("abi_version", "target", "commands")
 #: that set by ``merlin/tests/ir/test_readout_dtype_divergence.py`` so the list cannot drift away from
 #: the engines it describes.
 NARROWING_OPCODES = frozenset({"COMMIT", "CONV2D", "BIAS_ADD", "ATTENTION_QK", "ATTENTION_PV"})
+
+
+def whole_program_entry_bindings(cb: Mapping[str, Any]) -> list[str] | None:
+    """Return the source entry operands in their declared positional ABI order.
+
+    A whole-program lowering may deliberately alias an entry argument with a result buffer.  In that
+    case the physical tensor has an ``output`` role but still needs the source stimulus, so tensor roles
+    cannot define the input boundary.  ``global_program_plan.entry_bindings`` is the compiler's explicit
+    source-argument-to-buffer mapping and is therefore authoritative when present.
+
+    ``None`` means the command buffer has no such mapping and a legacy caller may use its old role-based
+    convention.  A present but malformed mapping fails closed: silently falling back would run the right
+    kernel on operands assigned to the wrong pointer slots.
+    """
+    abi = cb.get("kernel_abi")
+    if not isinstance(abi, Mapping) or abi.get("kind") != "whole_program":
+        return None
+    params = cb.get("params")
+    plan = params.get("global_program_plan") if isinstance(params, Mapping) else None
+    if not isinstance(plan, Mapping):
+        return None
+    bindings = plan.get("entry_bindings")
+    if not isinstance(bindings, list) or any(not isinstance(name, str) or not name
+                                             for name in bindings):
+        raise ValueError(
+            "whole-program global_program_plan.entry_bindings must be a list of non-empty tensor "
+            "names in source entry-argument order")
+    duplicates = sorted({name for name in bindings if bindings.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            "whole-program global_program_plan.entry_bindings repeats physical buffer(s) "
+            f"{duplicates}; distinct source operands cannot be initialized through one pointer")
+    tensors = cb.get("tensors")
+    if not isinstance(tensors, Mapping):
+        raise ValueError(
+            "whole-program global_program_plan.entry_bindings is present but tensors is not a mapping")
+    args = abi.get("args")
+    if not isinstance(args, list):
+        raise ValueError(
+            "whole-program global_program_plan.entry_bindings is present but kernel_abi.args is not a "
+            "list")
+    access_by_name: dict[str, list[Any]] = {}
+    for arg in args:
+        if isinstance(arg, Mapping) and isinstance(arg.get("tensor"), str):
+            access_by_name.setdefault(str(arg["tensor"]), []).append(arg.get("access"))
+    for name in bindings:
+        if name not in tensors:
+            raise ValueError(
+                f"whole-program entry binding {name!r} has no declared tensor buffer")
+        accesses = access_by_name.get(name, [])
+        if len(accesses) != 1:
+            raise ValueError(
+                f"whole-program entry binding {name!r} must occupy exactly one kernel_abi.args slot")
+        if accesses[0] not in ("read", "readwrite"):
+            raise ValueError(
+                f"whole-program entry binding {name!r} must have read or readwrite ABI access, got "
+                f"{accesses[0]!r}")
+    return list(bindings)
 
 
 def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
