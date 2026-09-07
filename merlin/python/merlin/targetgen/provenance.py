@@ -299,12 +299,27 @@ def declared_pins(target: str | None) -> tuple[str, ...]:
     """
     if not target:
         return ()
+    names: list[str] = []
     try:
         from .target_registry import resolve
         contract = resolve(target).load_contract() or {}
-    except Exception:                       # noqa: BLE001 -- an unresolvable target has no declaration
-        return ()
-    return tuple(str(name) for name in (contract.get(PINS_CONTRACT_KEY) or ()))
+        names.extend(str(n) for n in (contract.get(PINS_CONTRACT_KEY) or ()))
+    except Exception:                       # noqa: BLE001 -- an unresolvable target contract states nothing
+        pass
+    # THE REGISTRY IS THE DURABLE HALF. A target contract is the natural place to declare a dependency,
+    # but only one target's contract is a tracked source file -- the others are GENERATED under `out/`,
+    # so a declaration added there is lost on the next regeneration. Measured before this: three of four
+    # targets declared no pins at all, so `toolchain_shas` returned merlin's own commit and nothing else,
+    # and every hardware-tier verdict they produced was recorded against no RTL revision. The pin
+    # registry is tracked and reviewed, so a pin naming its targets there cannot be regenerated away.
+    try:
+        from merlin.common.provenance import load_pins
+        for name, pin in load_pins().items():
+            if target in pin.targets and name not in names:
+                names.append(str(name))
+    except Exception:                       # noqa: BLE001 -- an unreadable registry adds nothing
+        pass
+    return tuple(names)
 
 
 def toolchain_shas(target: str | None = None) -> dict[str, str]:

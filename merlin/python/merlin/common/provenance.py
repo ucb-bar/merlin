@@ -87,6 +87,11 @@ class Pin:
     description: str = ""
     notes: str = ""
     used_by: tuple[str, ...] = ()
+    #: Targets whose results depend on this revision. MACHINE-READABLE, unlike ``used_by``, which is
+    #: prose about which code paths read the checkout. A verdict claiming a hardware tier must record
+    #: the revision it came from, and this is what lets a target be ASKED which revisions those are --
+    #: see :func:`merlin.targetgen.provenance.declared_pins`.
+    targets: tuple[str, ...] = ()
     repo_observed_note: str = ""
     #: Files this checkout is KNOWN to carry uncommitted, as ``(repo-relative path, sha256)`` pairs.
     #:
@@ -478,6 +483,7 @@ def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
             forbids_paths=tuple(body.get("forbids_paths") or ()),
             description=str(body.get("description") or ""), notes=str(body.get("notes") or ""),
             used_by=tuple(body.get("used_by") or ()),
+            targets=_targets(p, name, body.get("targets")),
             repo_observed_note=str(body.get("repo_observed_note") or ""),
             local_edits=_local_edits(p, name, body.get("local_edits")),
             nested_in=str(body.get("nested_in") or ""),
@@ -488,6 +494,25 @@ def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
     if memo_key is not None:
         _PINS_MEMO[memo_key] = dict(out)
     return out
+
+
+def _targets(src: Path, name: str, raw: Any) -> tuple[str, ...]:
+    """The targets a pin is declared for, validated. Absent means "not stated", which is not an error.
+
+    A malformed entry RAISES rather than being dropped. A pin silently declared for no target is a pin
+    whose revision never reaches a run record, and the failure is invisible: the verdict simply carries
+    no hardware attribution, which reads exactly like a target that has no hardware dependency.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, (list, tuple)) or not raw:
+        raise PinsError(f"{src}: pin {name!r} targets must be a non-empty list, got {type(raw).__name__}")
+    out = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise PinsError(f"{src}: pin {name!r} has a target that is not a non-empty string: {item!r}")
+        out.append(item.strip())
+    return tuple(out)
 
 
 def _tri(src: Path, name: str, field_name: str, raw: Any) -> bool | None:

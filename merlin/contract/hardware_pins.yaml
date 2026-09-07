@@ -53,6 +53,7 @@ pins:
       The opu-int8 branch lives on the fork https://github.com/miles-rusch-berkeley/saturn-vectors.git,
       not on ucb-bar. Recorded rather than silently tolerated: anyone reproducing this needs the fork.
     commit: ea373800169ce7bbb9ca27ececf74101a7caf9d5
+    targets: [saturn_opu]
     branch: opu-int8
     root_env: MERLIN_CHIPYARD
     path: generators/saturn
@@ -147,6 +148,7 @@ pins:
       this tree's Scala, so a different revision can silently change either.
     repo_canonical: https://github.com/ucb-bar/chipyard.git
     commit: "6a9b4cd95081100dc932e422cc52777bc9a98b2d"
+    targets: [radiance]
     branch: graphics
     root_env: MERLIN_CHIPYARD
     path: generators/radiance
@@ -171,6 +173,7 @@ pins:
       emitted scaffold has to agree with.
     repo_canonical: https://github.com/ucb-bar/radiance-kernels.git
     commit: "399757f6da3b2c75980821b2479e9f1ca732e8ea"
+    targets: [radiance]
     branch: main
     root_env: MERLIN_RADIANCE_KERNELS
     path: ""
@@ -208,6 +211,7 @@ pins:
       No upstream is known for this repository; the personal remote above is its only recorded home.
       Written down rather than left implicit, so nobody reproducing this looks for one that does not exist.
     commit: "add52b0a7c96d72e0079b7938e07ca5080871e82"
+    targets: [radiance]
     branch: feature/discover-datapaths
     root_env: MERLIN_MLC_DIR
     path: ""
@@ -262,6 +266,7 @@ pins:
       versa, so recording only one of the two leaves the result ambiguous.
     repo_canonical: https://github.com/ucb-bar/gemmini
     commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    targets: [gemmini]
     branch: HEAD
     root_env: MERLIN_CHIPYARD
     path: generators/gemmini
@@ -367,6 +372,7 @@ pins:
            read path's bytes against that path at 7c540b3a out of the object store.
     repo_canonical: https://github.com/ucb-bar/gemmini-rocc-tests.git
     commit: "7c540b3adf1b86ad93d07f893abe3a73489b568e"
+    targets: [gemmini]
     branch: null                      # a submodule sits at a sha, not on a branch; the gitlink is the fact
     root_env: MERLIN_CHIPYARD
     path: generators/gemmini/software/gemmini-rocc-tests
@@ -465,6 +471,7 @@ pins:
       are elaborated from. A different revision can change a verdict without anything in merlin moving.
     repo_canonical: https://github.com/ucb-bar/atlas-npu
     commit: "569b7c317889a93427e9d27dff266f7cfd57b787"
+    targets: [atlas]
     branch: master
     root_env: MERLIN_EXT_ATLAS_NPU
     requires_paths:
@@ -506,6 +513,7 @@ pins:
       header states the contract outright ("Clean ML contract: no NaN, Inf, subnormals").
     repo_canonical: git@github.com:ucb-ee194-tapeout/sp26-fp-units.git
     commit: "9a0cc09c41ab918a3548580185f39cca8d559e0d"
+    targets: [atlas]
     branch: HEAD
     root_env: MERLIN_EXT_ATLAS_NPU
     path: dependencies/sp26-fp-units
@@ -534,6 +542,7 @@ pins:
       are read out of this tree.
     repo_canonical: git@github.com:ucb-ee194-tapeout/npu_model.git
     commit: "11598ece27a4eed6638d74c5f212694bd8f45cab"
+    targets: [atlas]
     branch: HEAD
     root_env: MERLIN_EXT_NPU_MODEL
     requires_paths:
