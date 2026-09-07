@@ -2425,6 +2425,7 @@ def qa_grade(ws: Path, run_dir: Path, rnd: int, no_oracle: bool, timeout: int,
                             previous_artifact_key=previous_scratch_key)
         _attach_shape_generalization(verdict, cand, run_dir, rnd, timeout=timeout,
                                      artifact_key=scratch_key)
+        _record_plateau(run_dir)      # operator-side; deliberately not in the agent's verdict
     # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
     # verdict the agent ASKED for -- and a converged agent stops asking. Measured on the run that
     # motivated this: 24 self-checks in round 0, then ZERO in rounds 1 and 2 once it reached the corpus
@@ -2563,6 +2564,7 @@ def _fast_loop_verdict(ws: Path, run_dir: Path, tick: int, timeout: int) -> dict
     verdict = _write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
     _write_verdict(ws / "qa" / "verdict.json", verdict)
+    _record_plateau(run_dir)          # operator-side; deliberately not in the agent's verdict
     return verdict
 
 
@@ -2720,6 +2722,46 @@ def _write_verdict(path: Path, verdict: dict) -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(verdict, indent=2))
     return verdict
+
+
+def _record_plateau(run_dir: Path) -> None:
+    """Assess this run's progress across GRADES and record it OPERATOR-SIDE. Never raises.
+
+    OUT OF BAND, for the same reason `_write_stage_ledger` is: telling the agent it has plateaued, or
+    naming the capsules that have never passed, is FEEDBACK -- and feedback defines an arm. Handing it
+    over would change the treatment and make the run incomparable with every earlier one. This is for
+    whoever decides whether to keep paying for the run.
+
+    It exists because the detector that was here could not fire. `--plateau-rounds` counts consecutive
+    ROUNDS with no progress, and the default schedule is `continuous` -- one long session, so exactly
+    one round. Its threshold was unreachable in the mode every real run uses, and opt-in besides.
+    Measured on merlincirct_g4p1_biasabi_20260906: 92/96 reached at 2.19 h, then 3.91 h more -- 64% of
+    the run -- with the score never moving and nothing saying so. A grade is the unit the continuous
+    schedule actually produces, so that is the unit here.
+    """
+    try:
+        from merlin.targetgen import plateau as _PL
+        hist = sorted((run_dir / "qa_history").glob("verdict_*.json"),
+                      key=lambda q: q.stat().st_mtime)
+        grades = []
+        for q in hist:
+            try:
+                grades.append(json.loads(q.read_text()))
+            except Exception:  # noqa: BLE001 -- one unreadable grade must not blind the assessment
+                continue
+        got = _PL.assess(grades)
+        doc = {"stuck": got.stuck, "reason": got.reason, "stalled_grades": got.stalled_grades,
+               "n_grades": got.n_grades, "best_passed": got.best_passed,
+               "latest_passed": got.latest_passed, "n_capsules": got.n_capsules,
+               "never_passed": list(got.never_passed), "regressed": list(got.regressed),
+               "sentence": got.sentence(),
+               "note": ("operator-side only: this is never handed to the agent, because new feedback "
+                        "would change the arm's treatment")}
+        (run_dir / "plateau.json").write_text(json.dumps(doc, indent=2))
+        if got.stuck or got.regressed:
+            print(f"[plateau] {got.sentence()}", flush=True)
+    except Exception:  # noqa: BLE001 -- diagnostics may never fail a grade
+        return
 
 
 def _write_stage_ledger(run_dir, rnd: int, cand, runs_root, verdict, *,
