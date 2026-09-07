@@ -81,7 +81,7 @@ REQUIRED_SCHEMAS = [
     "rvv_package_manifest", "rvv_result",
     # Frozen-compiler paper methodology (study input + one matrix-cell result).
     "paper_study", "paper_run_result", "session_contract", "compiler_freeze",
-    "cpu_host_experiment",
+    "cpu_host_experiment", "deployment_profile",
     # Quantization-format registry entry schema (merlin.common.quant_formats).
     "quant_format",
 ]

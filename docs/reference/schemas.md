@@ -13,6 +13,7 @@ The schemas are the cross-workstream coordination contract (see [Contracts](cont
 | `compiler_freeze` | Holdout-Safe Compiler Freeze | Immutable record of a compiler-improvement campaign trained on generic capsules. Records the partition policy, excluded paper models, accepted generic levers… |
 | `cpu_coupling` | CPU Coupling Measurements | Measured host/runtime coupling overhead for a workload, under different dispatch regimes (op-level vs batched command buffer). Consumed by merlin-dse-guidanc… |
 | `cpu_host_experiment` | CPU Host Compiler Agentic Experiment | Versioned four-arm protocol for generating and improving a reusable scalar/RVV CPU-host compiler, with fixed generic development data, holdout isolation, AET… |
+| `deployment_profile` | Deployment Profile | Pins the exact target contract, hardware configuration, runtime interface header, and deployable image used for final deployment qualification, and declares… |
 | `design_pressure` | Design Pressure Report | Per-workload measurable pressures extracted at one or more compiler cut points (reuse, lifetimes, layout conversions, dispatch counts, intermediate bytes). O… |
 | `dialect_plan` | Dialect Plan | A plan for a target dialect derived from a target_contract: which ops and types to expose, how they lower, and what tests to generate. Owned by TargetGen. |
 | `dialect_requirement` | Dialect Requirement | What a *validated interface candidate* requires from a target dialect (L6): the ops, types and verifier conditions a target must provide to implement the abs… |
