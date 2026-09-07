@@ -99,6 +99,55 @@ def _public_capsules() -> Path:
 PUBLIC_CAPSULES = _public_capsules()
 
 
+def _suite_size() -> int:
+    """How many public capsules exist, so a partial check can say what it did NOT check."""
+    try:
+        return sum(1 for d in PUBLIC_CAPSULES.iterdir() if (d / "capsule.yaml").is_file())
+    except OSError:
+        return 0
+
+
+def _previously_failing() -> tuple:
+    """``(set of capsule names that did not pass last time, why not)`` for ``--capsules failing``.
+
+    THE CHEAP LOOP SHOULD BE THE EASY ONE. Re-checking only what is still broken was always possible
+    -- the docstring above spells the comma-separated form -- but it required the agent to read a
+    verdict, extract the names and paste them, so the reflex was `--capsules all`. Measured on one
+    6.1 h run: 25 full sweeps, ~6 min each, while a typical edit leaves 82% of emitted programs
+    byte-identical.
+
+    Read from the LAST SELF-CHECK's own output, not from the harness verdict: this is the agent's own
+    loop, the file is one it already owns, and taking the harness's grade would make a self-check
+    depend on a grade that may be many minutes stale.
+
+    Never guesses. If no previous self-check is on disk, the answer is empty with a reason -- returning
+    "nothing is failing" would silently grade zero capsules and report success.
+    """
+    out = Path("selfcheck_out")
+    latest, newest = None, -1.0
+    try:
+        for cand in list(out.glob("*.json")) + [Path("selfcheck.json")]:
+            if cand.is_file() and cand.stat().st_mtime > newest:
+                latest, newest = cand, cand.stat().st_mtime
+    except OSError:
+        pass
+    if latest is None:
+        return set(), "no previous self-check output was found on disk"
+    try:
+        doc = json.loads(latest.read_text())
+    except (OSError, ValueError) as exc:
+        return set(), f"the previous self-check output could not be read ({type(exc).__name__})"
+    rows = doc.get("per_capsule")
+    if not isinstance(rows, list) or not rows:
+        return set(), f"{latest} records no per-capsule rows"
+    names = {r.get("capsule") for r in rows
+             if isinstance(r, dict) and not r.get("pass") and r.get("capsule")}
+    if not names:
+        return set(), (f"every capsule in {latest} passed, so there is nothing to re-check; "
+                       "use --capsules all to confirm the whole suite")
+    return names, ""
+
+
 def _target_sim_via() -> tuple[str, str | None]:
     """The (target, sim_via) being self-checked, from the descriptor (so CG.grade builds ITS RunnerConfig
     — e.g. an external_backend target — not a hardcoded default, and the oracle tiers resolve from the
@@ -262,7 +311,9 @@ def main(argv=None):
     # explicitly is a legitimate fast screen, but it CANNOT certify: the mandatory cert tier
     # reports unavailable and the capsule is not a pass.
     ap.add_argument("--sim", choices=["spike", "verilator", "gsim", "vcs"], default=_default_sim())
-    ap.add_argument("--capsules", default="all", help="'all' or comma-separated capsule names")
+    ap.add_argument("--capsules", default="all",
+                    help="'all', 'failing' (only what did not pass last time — fast iteration), or "
+                         "comma-separated capsule names")
     # 0 = derive from this host (see capsule_grade.default_grade_workers): the per-capsule builds and
     # sims are independent, and a literal 8 left most of a 48-core machine idle through every sweep.
     ap.add_argument("--workers", type=int, default=0,
@@ -340,7 +391,15 @@ def main(argv=None):
     # single contract-derived tier (atlas -> L3 program oracle), so read it from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"
     # subset selection (operator-side capsule dirs)
-    want = None if a.capsules == "all" else set(s.strip() for s in a.capsules.split(",") if s.strip())
+    if a.capsules.strip().lower() == "failing":
+        want, _why_failing = _previously_failing()
+        if not want:
+            print(json.dumps({"error": "--capsules failing: " + _why_failing,
+                              "hint": "run once with --capsules all to establish what is failing"},
+                             indent=2))
+            return 2
+    else:
+        want = None if a.capsules == "all" else set(s.strip() for s in a.capsules.split(",") if s.strip())
     import tempfile
     runs_root = Path(tempfile.mkdtemp(prefix="selfcheck_"))
 
@@ -560,14 +619,31 @@ def main(argv=None):
     _unreached = sorted({(r.get("failure") or {}).get("tier") for r in rows
                          if (r.get("failure") or {}).get("category") == "NOT_RUN_IS_NOT_PASS"
                          and (r.get("failure") or {}).get("tier_status") == "unavailable"} - {None})
+    # WHAT A PARTIAL CHECK MAY MEAN. `all_pass` reads on the capsules that were CHECKED, and for a
+    # subset that is not the question the agent is asking. Checking two capsules of ninety-six and
+    # passing both reported `all_pass: true` with `n_capsules: 2`, beside a note whose first sentence
+    # defines "done" -- the same shape as every other defect in this harness: a partial result wearing
+    # a complete one's clothes. `scope`, `suite_size` and `certified_complete` say it outright, and
+    # `all_pass` is left alone so nothing that already reads it changes meaning.
+    suite_size = _suite_size()
+    scope = "all" if want is None else "subset"
     out = {"sim": sim, "barrier_tier": barrier_tier, "n_passed": npass, "n_capsules": n,
+           "scope": scope, "suite_size": suite_size,
+           "n_unchecked": (max(0, suite_size - n) if suite_size else None),
+           "certified_complete": bool(scope == "all" and ncert == n and n > 0),
            # `n_passed` is what this oracle selection could measure; `n_certified` is what cleared every
            # mandatory tier. They differ exactly when the selection cannot reach a required tier, and
            # `all_pass` keys on the second: a screen may eliminate, it may never certify.
            "n_certified": ncert, "n_screened_only": nscreened,
            "all_pass": ncert == n and n > 0, "per_capsule": rows,
            "n_declined": n_declined,
-           "note": f"Self-check on {sim} ({barrier_tier}). You see EVERYTHING your dialect produced — "
+           "note": ((f"⚠ PARTIAL: you checked {n} of {suite_size} public capsule(s); "
+                      f"{max(0, suite_size - n)} were NOT checked and their status here is UNKNOWN, not "
+                      f"passing. `all_pass` below covers only what you asked for — `certified_complete` "
+                      f"is the one that means done. A fix can also BREAK a capsule you did not check, so "
+                      f"re-run with --capsules all before believing you are finished. "
+                      if scope == "subset" and suite_size else "")
+                    + f"Self-check on {sim} ({barrier_tier}). You see EVERYTHING your dialect produced — "
                    "command buffer, decoded trace + instruction counts, sim console, and your artifacts "
                    "copied to ./selfcheck_out/. The diff stats (mismatch_count, magnitudes) are YOUR "
                    "output measured against the operation's own definition, which you can reproduce from "
@@ -583,7 +659,7 @@ def main(argv=None):
                       f"n_certified, and they are not failures — the tier could not run here, which is a "
                       f"property of the sim you selected, not of your backend. Re-run without --sim (the "
                       f"default certifies) to convert them; all_pass requires certification."
-                      if _unreached else "")}
+                      if _unreached else ""))}
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:
