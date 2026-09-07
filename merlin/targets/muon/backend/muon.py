@@ -700,6 +700,31 @@ def _kernel_symbol_from_mlir(mlir_text: str) -> str:
     return name
 
 
+def _build_cache_key(kind: str, target: str, inputs: dict) -> "str | None":
+    """Content key for one of this backend's builds, or ``None`` to build normally.
+
+    This target brings its OWN compiler, so it cannot key on the shared harness recipe that
+    ``merlin.targetgen.build_cache.build_identity`` covers -- but its builds are pure functions of the
+    same shape: the emitted artifact, the target, the toolchain that would run today, and the bytes of
+    the code that drives it (this backend package plus the shared MLIR->LLVM front it calls). Measured
+    across this target's runs on disk: 1,757 s of screen-tier build against 3,160 s of screen-tier
+    simulation, re-derived every grade for artifacts that had not changed.
+    """
+    try:
+        from merlin.common.paths import repo_root
+        from merlin.targetgen import build_cache as _bc
+        from merlin.targetgen.contract.toolchain import mlir_bin
+        here = Path(__file__).resolve().parent
+        sources = [q for q in here.rglob("*.py") if "__pycache__" not in q.parts]
+        front = Path(repo_root()) / "merlin" / "python" / "merlin" / "llvmlower"
+        sources += [q for q in front.rglob("*.py") if "__pycache__" not in q.parts]
+        return _bc.artifact_identity(kind=kind, target=target, inputs=inputs,
+                                     source_files=sorted(sources),
+                                     toolchain=_bc.toolchain_token(str(mlir_bin("clang"))))
+    except Exception:                     # noqa: BLE001 -- an unkeyable build is an ordinary build
+        return None
+
+
 def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
                           *, target: str = "radiance", num_warps: int = 1) -> Path:
     """FORK-FREE build from the agent's LLVM-dialect MLIR 4th artifact (the thesis path — the agent emits a
@@ -715,8 +740,14 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     from merlin.targetgen.contract.toolchain import mlir_bin
     from . import muon_bsp, muon_link, muon_harness
 
+    from merlin.targetgen import build_cache as _bc
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
+    _key = _build_cache_key("muon-mlir-forkfree", target,
+                            {"mlir": lowered_mlir_text, "cb": cb, "num_warps": num_warps})
+    _hit = _bc.reuse(work, _key)
+    if _hit is not None:
+        return _hit
     clang = mlir_bin("clang")
     if not clang.is_file():
         raise MuonUnavailable(f"stock LLVM tool absent: {clang} (set MERLIN_MLIR_INSTALL)")
@@ -789,6 +820,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     muon_link.link_fork_free([*[str(o) for o in bsp_objs], str(mobj), str(kobj),
                               *[str(b) for b in blobs_t]],
                              str(lib_dir() / "linker/mu_link.ld"), str(elf), target=target)
+    if _key is not None:
+        _bc.store(_key, work, elf.name)
     return elf
 
 
@@ -802,17 +835,37 @@ def compile_for_oracle(kernel_src: str, workdir: str | Path, *, target: str = "r
     (how many capsules the thesis path grades on its own). Set ``MERLIN_MUON_FORKFREE_ONLY=1`` for a pure
     thesis run: the fork is refused and a kernel the fork-free path can't yet build (e.g. a multi-warp
     ``mu_schedule`` kernel, until the multi-thread transcode lands) fails closed rather than borrowing it."""
+    from merlin.targetgen import build_cache as _bc
+    # A CACHED BUILD MUST CARRY ITS STAMP OR NOT BE USED. Which toolchain produced the graded ELF is
+    # the measurement this function exists to make -- the fork is never a silent fallback -- so the
+    # stamp is stored beside the files and a hit that cannot produce one falls through and rebuilds.
+    # That is the only direction this may fail in: an unstamped result would be the one case where the
+    # fork went unrecorded, which is precisely what the stamp is for.
+    _key = _build_cache_key("muon-oracle", target, {"kernel_src": kernel_src})
+    if _key is not None:
+        _hit = _bc.reuse(workdir, _key)
+        _meta = _bc.metadata_for(_key) or {}
+        _stamp = str(_meta.get("toolchain") or "")
+        if _hit is not None and _stamp:
+            return _hit, _stamp
+
     forkfree_only = _env("MERLIN_MUON_FORKFREE_ONLY", "") not in ("", "0", "false", "False")
     ff_err: Exception | None = None
     try:
-        return compile_kernel_forkfree(kernel_src, workdir, target=target), "fork-free"
+        _elf = compile_kernel_forkfree(kernel_src, workdir, target=target)
+        if _key is not None:
+            _bc.store(_key, workdir, Path(_elf).name, metadata={"toolchain": "fork-free"})
+        return _elf, "fork-free"
     except (MuonError, MuonUnavailable) as e:
         ff_err = e
     if forkfree_only:
         raise MuonError(f"MERLIN_MUON_FORKFREE_ONLY set but the fork-free build could not produce this "
                         f"kernel (no fork fallback): {ff_err}")
     # eval-only reference: the vendor fork. Stamped, never hidden.
-    return compile_kernel(kernel_src, workdir), "clang-muon-fork"
+    _elf = compile_kernel(kernel_src, workdir)
+    if _key is not None:
+        _bc.store(_key, workdir, Path(_elf).name, metadata={"toolchain": "clang-muon-fork"})
+    return _elf, "clang-muon-fork"
 
 
 # --- run ------------------------------------------------------------------------------------------

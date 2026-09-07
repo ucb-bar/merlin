@@ -76,7 +76,8 @@ from typing import Any, Mapping
 
 __all__ = ["BUILD_IDENTITY_VERSION", "RECORD_VERSION", "KEY_MARKER", "DEFAULT_MAX_ENTRIES",
            "disabled", "cache_root", "build_path", "recipe_token", "toolchain_token",
-           "build_identity", "contents", "reuse", "store", "forget"]
+           "build_identity", "artifact_identity", "contents", "reuse", "store",
+           "metadata_for", "forget"]
 
 #: Version of the payload :func:`build_identity` hashes. Bumping it invalidates every stored build,
 #: which is the correct effect of changing what "the same inputs" means.
@@ -280,6 +281,40 @@ def _build_path_digest(files) -> str:
     return _BUILD_PATH_MEMO[memo_key]
 
 
+def artifact_identity(*, kind: str, target: str, inputs: "Mapping", source_files,
+                      toolchain: "str | None") -> "str | None":
+    """Content identity for a build that does NOT go through a declared harness recipe.
+
+    :func:`build_identity` covers the shared operator build path, whose inputs are a recipe and a
+    command buffer. A target may bring its own compiler instead -- one that takes the agent's emitted
+    artifact and produces its own set of objects -- and such a build is just as much a pure function of
+    its inputs, but has no recipe to key on. ``kind`` separates the namespaces so two different builders
+    can never collide on one key.
+
+    Same discipline as the recipe path: every component must resolve or there is no key, and no key
+    means an ordinary build.
+    """
+    if disabled() or not isinstance(target, str) or not target.strip() or not kind:
+        return None
+    if not toolchain:
+        return None
+    files = tuple(Path(f) for f in (source_files or ()))
+    if not files or not all(f.is_file() for f in files):
+        return None
+    try:
+        payload = {
+            "version": BUILD_IDENTITY_VERSION,
+            "kind": str(kind),
+            "target": target,
+            "inputs": {str(k): _digest_of(v) for k, v in dict(inputs or {}).items()},
+            "toolchain": toolchain,
+            "build_path": _build_path_digest(files),
+        }
+        return _digest_of(payload)
+    except Exception:                    # noqa: BLE001 -- an unhashable input is not a key
+        return None
+
+
 def build_identity(*, target: str, lowered_mlir_text: str, cb: Mapping,
                    inputs: "Mapping | None", recipe: Any) -> "str | None":
     """Content identity for exactly what one compile would produce, or ``None`` to build normally.
@@ -364,7 +399,7 @@ def _already_there(dst: Path, meta: Mapping) -> bool:
     return _file_sha(dst) == meta.get("sha256")
 
 
-def reuse(workdir: "str | Path", key: "str | None", elf_name: str) -> "Path | None":
+def reuse(workdir: "str | Path", key: "str | None", elf_name: "str | None" = None) -> "Path | None":
     """The executable for ``key`` already present or restorable into ``workdir``, or ``None``.
 
     Two hits, narrowest first. The MARKER path costs nothing and covers the second tier of one ladder,
@@ -375,13 +410,17 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: str) -> "Path | No
     if not key:
         return None
     work = Path(workdir)
-    elf = work / elf_name
     marker = work / KEY_MARKER
-    try:
-        if elf.is_file() and marker.is_file() and marker.read_text(encoding="utf-8").strip() == key:
-            return elf
-    except OSError:
-        pass
+    if elf_name:
+        # Fast path only when the caller already knows the name; a builder whose output name varies
+        # asks the record instead (below), which is the whole reason elf_name is optional.
+        try:
+            elf = work / elf_name
+            if elf.is_file() and marker.is_file() \
+                    and marker.read_text(encoding="utf-8").strip() == key:
+                return elf
+        except OSError:
+            pass
     root = cache_root()
     if root is None:
         return None
@@ -395,6 +434,8 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: str) -> "Path | No
     files = record.get("files")
     if not isinstance(files, dict) or record.get("elf") not in files:
         return None
+    if elf_name and record.get("elf") != elf_name:
+        return None                  # a record for a different primary output is not this build
     staged = []
     for rel, meta in files.items():
         src = entry / "files" / rel
@@ -426,7 +467,8 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: str) -> "Path | No
     return work / record["elf"]
 
 
-def store(key: "str | None", workdir: "str | Path", elf_name: str) -> None:
+def store(key: "str | None", workdir: "str | Path", elf_name: str,
+          metadata: "Mapping | None" = None) -> None:
     """Keep every file this build created or changed, under ``key``. Never raises.
 
     The entry is assembled in a temporary directory and moved into place, so a concurrent worker
@@ -471,8 +513,12 @@ def store(key: "str | None", workdir: "str | Path", elf_name: str) -> None:
                           "size": dst.stat().st_size}
         if elf_name not in files:
             raise OSError("the executable did not survive staging")
+        # METADATA IS PART OF THE BUILD'S RESULT, not decoration. One target stamps WHICH toolchain
+        # produced the graded executable, precisely so a fallback can never be silent; restoring the
+        # files without that stamp would make a cached build the one case where the stamp went missing.
         (tmp / "record.json").write_text(json.dumps(
-            {"version": RECORD_VERSION, "key": key, "elf": elf_name, "files": files},
+            {"version": RECORD_VERSION, "key": key, "elf": elf_name, "files": files,
+             "metadata": {str(k): v for k, v in dict(metadata or {}).items()}},
             sort_keys=True, indent=1), encoding="utf-8")
         try:
             os.rename(tmp, entry)
@@ -486,6 +532,28 @@ def store(key: "str | None", workdir: "str | Path", elf_name: str) -> None:
     finally:
         if tmp is not None:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+def metadata_for(key: "str | None") -> "dict | None":
+    """The metadata stored beside a build, or ``None``.
+
+    Read separately from :func:`reuse` so a caller that needs no metadata pays nothing, and so a
+    caller that DOES need it fails closed: ``None`` here means the stamp is unavailable, which must
+    make the caller rebuild rather than proceed with an unstamped result.
+    """
+    if not key:
+        return None
+    root = cache_root()
+    if root is None:
+        return None
+    try:
+        record = json.loads((_entry(root, key) / "record.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if record.get("version") != RECORD_VERSION or record.get("key") != key:
+        return None
+    meta = record.get("metadata")
+    return dict(meta) if isinstance(meta, dict) else {}
 
 
 def forget(workdir: "str | Path") -> None:
