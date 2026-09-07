@@ -112,7 +112,8 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
     # hardcoded literal in a vendored file.
     from ..runtime_build import derived_link_script
     link_ld = derived_link_script(recipe.load_address, recipe.link_script, Path(workdir))
-    elf = workdir / "package_kernel.elf"
+    from ..elf_lanes import PACKAGE_ELF_NAME
+    elf = workdir / PACKAGE_ELF_NAME
     # REPRODUCIBLE BUILD, in two phases. A single compile+link invocation lets the driver name its
     # intermediate objects `ccXXXXXX.o`, and those random names are recorded in the ELF as STT_FILE
     # symbols -- so two builds of byte-identical sources differ (measured: 6 bytes) while producing
@@ -147,10 +148,39 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
 def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
                            workdir: str | Path | None = None, *, target: str,
                            inputs: dict | None = None) -> Path:
-    """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link)."""
+    """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link).
+
+    The result is a pure function of its inputs, so an unchanged capsule is not recompiled: see
+    :mod:`merlin.targetgen.build_cache` for the key, and for why reusing a BUILD carries none of the
+    risk of reusing a verdict. A restored build reproduces the whole generated directory, not only the
+    executable, because the agent reads what is in it. Every failure to establish a key -- an
+    unresolvable recipe, a toolchain that will not answer, an unreadable source -- falls through to an
+    ordinary build, which is also what ``MERLIN_ELF_BUILD_CACHE=0`` does.
+
+    Measured before this existed: the screen tier spent 4.06 s building per capsule against 0.153 s
+    simulating, and re-paid it on every capsule of every grade.
+    """
+    from merlin.runtime.backends import base as _backends
+    from .. import build_cache as _bc
+    from ..elf_lanes import PACKAGE_ELF_NAME
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_compile_"))
+    # Coalesced ONCE. The harness embeds these operands, so a key computed from the caller's argument
+    # while the build used the recorded ones would key two different executables the same way.
+    inputs = inputs or _recorded_operands(cb) or None
+    try:
+        key = _bc.build_identity(target=target, lowered_mlir_text=lowered_mlir_text, cb=cb,
+                                 inputs=inputs,
+                                 recipe=_backends.harness_build_recipe(target))
+    except Exception:                    # noqa: BLE001 -- an unkeyable build is an ordinary build
+        key = None
+    cached = _bc.reuse(work, key, PACKAGE_ELF_NAME)
+    if cached is not None:
+        return cached
+    before = _bc.snapshot(work) if key else {}
     obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
-    return link_elf(cb, obj, work, target=target, inputs=inputs)
+    elf = link_elf(cb, obj, work, target=target, inputs=inputs)
+    _bc.store(key, work, before, PACKAGE_ELF_NAME)
+    return elf
 
 
 def simulator_provenance(backend, simulator: str) -> dict[str, Any] | None:

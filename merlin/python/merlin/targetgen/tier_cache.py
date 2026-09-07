@@ -59,6 +59,20 @@ priced ones so the ladder always learns a price); on a calibrated target it is t
 exactly where this wants it: the cheap tier is re-executed against the bytes on disk every time, and the
 expensive one is what gets carried.
 
+**"The cheap tier is cheap" was true of its SIMULATION and false of its cost.** The 94.7% above is an
+adapter-wall figure measured while the cert tier was still being re-bought; once certificates carry, what
+remains is a screen whose price is almost entirely its ELF build. Measured on
+``merlincirct_g4p1_biasabi_20260906``, 819 screen executions: build 4.06 s median against 0.153 s of
+spike -- 27x more compiling than simulating, 3,981 s of build in one run. So the rule above was, for a
+converged submission, a rule that re-paid the expensive half of every grade.
+
+The answer is NOT to relax it. Carrying a screen would save 0.153 s and put a verdict on bytes this run
+never executed, which is the one direction this module refuses in. The build is what was redundant, and
+:mod:`merlin.targetgen.build_cache` makes it free -- a BUILD cache, whose worst failure is running the
+wrong program rather than asserting an unearned verdict, and whose restored executable is still executed
+and still judged here. With it in place the paid first tier costs a cache lookup and a spike run, and
+this rule costs nothing worth removing.
+
 Tier semantics are untouched by any of this. A carried L3 is an L3 verdict earned by these exact bytes
 on this exact instrument -- never a cheaper tier speaking for a tier it did not run. A screen may
 eliminate; it still may never certify, because a carry copies a tier's verdict onto the SAME tier and

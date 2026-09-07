@@ -80,6 +80,11 @@ def git_provenance(root: str | Path) -> dict[str, Any]:
     uncommitted changes is not reproducible from its sha, and saying so is cheaper than discovering
     it later.
     """
+    from ..common import provenance as PROV
+    return PROV.scoped_observation(f"git_provenance:{Path(root)}", lambda: _git_provenance_now(root))
+
+
+def _git_provenance_now(root: str | Path) -> dict[str, Any]:
     p = Path(root)
     if not p.is_dir():
         return {"available": False, "reason": f"not a directory: {p}"}

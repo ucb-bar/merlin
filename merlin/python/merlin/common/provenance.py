@@ -45,6 +45,7 @@ identifiable afterwards rather than indistinguishable.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -426,13 +427,31 @@ def verify_artifact(name: str, *, path: "str | Path | None" = None) -> ArtifactC
                          matches=(got == a.digest), gaps=tuple(gaps))
 
 
+#: Parsed registries, keyed by (resolved path, mtime_ns, size). The stamp is part of the KEY, not a
+#: timestamp checked against a stored one, so an edited registry simply misses -- there is no window in
+#: which a stale parse can be returned. Reparsing was not free: one 2-capsule grade parsed this file
+#: 162 times for 6.6 s, because every `verify()` goes through `pin()` and every `pin()` reloaded it.
+_PINS_MEMO: dict = {}
+
+
 def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
-    """Every declared pin. Raises on a malformed file rather than returning a partial registry."""
+    """Every declared pin. Raises on a malformed file rather than returning a partial registry.
+
+    Parsed at most once per (file, mtime, size): the registry is read once per pin lookup and a grade
+    performs thousands, while the file itself changes only when a human edits it.
+    """
     import yaml
 
     p = Path(path) if path is not None else pins_path()
     if not p.is_file():
         raise PinsError(f"no pin registry at {p}; hardware provenance cannot be verified without one")
+    try:
+        st = p.stat()
+        memo_key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
+    except OSError:                  # unstattable: parse it, and do not remember what we cannot key
+        memo_key = None
+    if memo_key is not None and memo_key in _PINS_MEMO:
+        return dict(_PINS_MEMO[memo_key])
     raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     entries = raw.get("pins") or {}
     if not isinstance(entries, dict):
@@ -466,6 +485,8 @@ def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
             covers=tuple(str(c) for c in (body.get("covers") or ())),
             content_check=_tri(p, name, "content_check", body.get("content_check")))
     _check_references(p, out)
+    if memo_key is not None:
+        _PINS_MEMO[memo_key] = dict(out)
     return out
 
 
@@ -544,8 +565,58 @@ def _git(repo: Path, *args: str) -> str | None:
     return got.stdout.strip() if got.returncode == 0 else None
 
 
+#: Open observation scope, or ``None``. See :func:`observation_scope`.
+_OBSERVATION_SCOPE: "dict | None" = None
+
+
+@contextlib.contextmanager
+def observation_scope():
+    """Read each checkout's revision ONCE for the duration of one measurement.
+
+    This is a correctness property before it is a speed one. A grade is a single measurement event, and
+    every capsule in it must be attributed to the same hardware revisions -- two capsules in one grade
+    disagreeing about which commit the RTL was on is a defect, not a refresh. Scoping the observation
+    makes that guarantee explicit instead of hoping no one commits mid-grade.
+
+    It is also where the time went. Observing a checkout runs four ``git`` subprocesses, one of them
+    ``status --porcelain`` over a working tree with a large ignored output directory; a 2-capsule grade
+    spent 3.9 s in ``git`` alone, and a 93-capsule one repeats that per capsule.
+
+    The scope is opened by the caller that owns the measurement (the suite runner), never by a library
+    function, so nothing is cached for longer than the event it describes. Nesting reuses the outer
+    scope. Outside a scope, behaviour is exactly as before: every call observes afresh.
+    """
+    global _OBSERVATION_SCOPE
+    if _OBSERVATION_SCOPE is not None:
+        yield _OBSERVATION_SCOPE          # already inside one; a nested scope must not shorten it
+        return
+    _OBSERVATION_SCOPE = {}
+    try:
+        yield _OBSERVATION_SCOPE
+    finally:
+        _OBSERVATION_SCOPE = None
+
+
+def scoped_observation(key: str, compute):
+    """``compute()``, memoized for the open :func:`observation_scope` (or called straight through).
+
+    Shared with :mod:`merlin.targetgen.provenance`, which reads the same checkouts through its own git
+    helper: one scope, so the two cannot answer differently within one measurement.
+    """
+    scope = _OBSERVATION_SCOPE
+    if scope is None:
+        return compute()
+    if key not in scope:
+        scope[key] = compute()
+    return scope[key]
+
+
 def observe(checkout: "str | Path") -> Observation:
     """Read a checkout's actual revision. Absent or non-git paths come back with UNKNOWN, not guesses."""
+    return scoped_observation(f"observe:{Path(checkout)}", lambda: _observe_now(checkout))
+
+
+def _observe_now(checkout: "str | Path") -> Observation:
     p = Path(checkout)
     if not p.is_dir():
         return Observation(path=str(p), present=False)

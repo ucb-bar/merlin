@@ -430,16 +430,74 @@ def cycles_by_tier(tiers: dict | None, *, ladder: list[str] | tuple[str, ...] = 
     return ordered
 
 
+#: Peak RSS of the heaviest per-capsule worker, MEASURED rather than assumed, and the only reason to
+#: run fewer workers than the host has cores. Both phases were measured on one capsule each
+#: (``/usr/bin/time -v``, 2026-09-06): the build peaks at 224 MB on the largest emitted program in the
+#: corpus (2.9 MB of LLVM IR) and 102 MB on a typical one, while the simulators are far smaller --
+#: spike 7.7 MB, GSIM 10.4 MB, Verilator 18.8 MB. The build is what sizes a worker, and 256 MB covers
+#: one measured with headroom. Override with ``MERLIN_GRADE_WORKER_BYTES`` if a corpus outgrows it.
+GRADE_WORKER_BYTES = 256 * 1024 * 1024
+
+#: Fraction of the visible CPUs a grade may occupy. A POLICY about sharing, not a fact about the
+#: hardware: the agent session being graded runs on this same host, as does other people's work, and a
+#: grade that took every core would starve both. Named here so it is arguable rather than buried.
+GRADE_HOST_SHARE = 0.75
+
+
+def _available_memory_bytes() -> "int | None":
+    """What the kernel says is actually available, or ``None`` where it does not say.
+
+    ``MemAvailable`` is the kernel's own estimate of what a new workload can claim without swapping,
+    which is the question here; ``MemFree`` is not, because page cache is reclaimable. A host that does
+    not publish it leaves this bound unknown, and an unknown bound must not silently become a small one.
+    """
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            field, _, rest = line.partition(":")
+            if field.strip() != "MemAvailable":
+                continue
+            value, _, unit = rest.strip().partition(" ")
+            return int(value) * (1024 if unit.strip().lower() == "kb" else 1)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def default_grade_workers(n_capsules: int | None = None) -> int:
-    """How many per-capsule oracle instances (verilator/VCS/cyclotron) to fan out in parallel — the
-    per-capsule sim runs are independent, so grading N capsules serially wastes wall-clock. Derived from
-    the host (leave 2 cores headroom, cap at 16), never more than the number of capsules; overridable via
-    ``MERLIN_GRADE_WORKERS``. Applies to every arm's grade (the shared suite grader)."""
+    """How many per-capsule workers to fan out — the per-capsule build+sim runs are independent, so
+    grading N capsules serially wastes wall-clock.
+
+    Bounded by three things, the tightest winning. Never more than the number of capsules, and always
+    overridable via ``MERLIN_GRADE_WORKERS``.
+
+    * **CPUs this process may actually run on** — affinity, not the machine's core count, so a
+      cgroup-limited container is bounded by what it was given rather than by what it can see.
+    * **Memory**, at the MEASURED per-worker footprint above. A real bound on a small host; not one
+      here, where 125 GB would carry hundreds of workers.
+    * **A share of the host left free** (:data:`GRADE_HOST_SHARE`). This one is a POLICY, not a
+      measurement, and is written as such: a grade runs underneath a live agent session that is
+      compiling and running its own tools on the same machine, and that machine is shared with other
+      people's work. Taking every core would starve both.
+
+    The former cap of 16 was a literal with no derivation behind it, and on the 48-core host these
+    experiments run on it left 30 cores idle through every grade — measured mid-run at a load average
+    of 14.9 against 48 cores, with 16 workers. Memory never justified it: 16 workers of the heaviest
+    kind reach ~3.5 GB. Applies to every arm's grade (the shared suite grader).
+    """
     env = os.environ.get("MERLIN_GRADE_WORKERS")
     if env and env.isdigit() and int(env) > 0:
         w = int(env)
     else:
-        w = max(1, min((os.cpu_count() or 4) - 2, 16))
+        try:
+            cpus = len(os.sched_getaffinity(0))
+        except AttributeError:           # not every platform exposes affinity; the count is the bound
+            cpus = os.cpu_count() or 4
+        w = max(1, min(cpus - 2, int(cpus * GRADE_HOST_SHARE)))
+        available = _available_memory_bytes()
+        if available is not None:
+            raw = os.environ.get("MERLIN_GRADE_WORKER_BYTES", "")
+            footprint = int(raw) if raw.isdigit() and int(raw) > 0 else GRADE_WORKER_BYTES
+            w = max(1, min(w, available // footprint))
     return max(1, min(w, n_capsules)) if n_capsules else w
 
 

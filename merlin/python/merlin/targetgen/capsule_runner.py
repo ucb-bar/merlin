@@ -467,11 +467,18 @@ def _clear_stale_executable(generated) -> None:
     answers all of them with the wrong program. Removing it costs nothing: the adapter that needs one
     rebuilds it, deterministically, from this run's own lowering.
     """
+    from . import build_cache as _BC
     from . import elf_lanes as _EL
     try:
         (Path(generated) / _EL.PACKAGE_ELF_NAME).unlink()
     except OSError:                      # absent (the normal case) or not removable: nothing to reuse
         pass
+    # The build cache's key marker asserts "this directory holds the build for that key". A directory
+    # whose executable has just been deleted asserts nothing, so the marker goes with it -- otherwise a
+    # reused run directory could answer THIS grade's first compile out of a PREVIOUS grade's leftovers
+    # without the store ever being consulted. Rebuilding from the store is still free when the bytes
+    # match; what must not survive is the claim.
+    _BC.forget(generated)
 
 
 def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool):
@@ -4232,7 +4239,23 @@ def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
 
 
 
-def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
+def run_suite(*args, **kwargs) -> list[dict]:
+    """One grade, one set of hardware revisions — then :func:`_run_suite`.
+
+    A grade is a single measurement event, so every capsule in it must be attributed to the same
+    checkout revisions; observing them per capsule allows two capsules in one grade to disagree, and
+    costs four ``git`` subprocesses each (one of them ``status --porcelain`` over a tree with a large
+    ignored output directory). Measured on a 2-capsule grade before this: 3.9 s in ``git`` and 6.6 s
+    re-parsing the pin registry, out of 20.6 s total. The suite runner owns the measurement, so it is
+    the right place to open the scope — a library function opening one would cache beyond the event it
+    describes.
+    """
+    from ..common import provenance as PROV
+    with PROV.observation_scope():
+        return _run_suite(*args, **kwargs)
+
+
+def _run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
               contract: str | Path | None = None,
               oracle_adapters: dict[str, Callable] | None = None,
               timeout: int = 600, max_workers: int = 1,

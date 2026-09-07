@@ -263,7 +263,10 @@ def main(argv=None):
     # reports unavailable and the capsule is not a pass.
     ap.add_argument("--sim", choices=["spike", "verilator", "gsim", "vcs"], default=_default_sim())
     ap.add_argument("--capsules", default="all", help="'all' or comma-separated capsule names")
-    ap.add_argument("--workers", type=int, default=8, help="parallel sim workers (verilator/vcs)")
+    # 0 = derive from this host (see capsule_grade.default_grade_workers): the per-capsule builds and
+    # sims are independent, and a literal 8 left most of a 48-core machine idle through every sweep.
+    ap.add_argument("--workers", type=int, default=0,
+                    help="parallel per-capsule workers; 0 (default) sizes them to this host")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="", help="optional: also write the redacted JSON here")
     # THE FLAG select_tiers WAS WRITTEN FOR. It existed as a function with six tests pinning it and no
