@@ -73,6 +73,49 @@ def test_gate_accepts_bit_identical_quantized_weights(tool):
     assert report["n_mismatched"] == 0
 
 
+def test_gate_refuses_partial_quantization_coverage_even_when_shared_weight_matches(tool):
+    """One matching FC must not certify a CNN whose 53 convolution weights stayed FP32."""
+    a = {"model.fc.weight.int_data": np.arange(-8, 8, dtype=np.int8)}
+    b = {"model.fc.weight.int_data": np.arange(-8, 8, dtype=np.int8)}
+    report = tool.quantized_weight_diff(a, b, expected_quantized=54)
+    assert report["ok"] is False
+    assert report["n_quantized"] == 1
+    assert report["expected_quantized"] == 54
+    assert report["coverage_complete"] is False
+
+
+def test_gate_accepts_complete_quantization_coverage(tool):
+    tensors = {f"layer{i}.weight.int_data": np.array([i], dtype=np.int8)
+               for i in range(3)}
+    report = tool.quantized_weight_diff(tensors, dict(tensors), expected_quantized=3)
+    assert report["ok"] is True
+    assert report["coverage_complete"] is True
+
+
+def test_quantizable_inventory_counts_tied_weights_once(tool):
+    class _Weight:
+        pass
+
+    class _Linear:
+        def __init__(self, weight):
+            self.weight = weight
+
+    class _Other:
+        weight = _Weight()
+
+    shared = _Weight()
+
+    class _Model:
+        def named_modules(self):
+            yield "first", _Linear(shared)
+            yield "tied", _Linear(shared)
+            yield "second", _Linear(_Weight())
+            yield "normalization", _Other()
+
+    assert tool.quantizable_weight_inventory(_Model(), (_Linear,)) == [
+        "first.weight", "second.weight"]
+
+
 def test_gate_refuses_when_one_quantized_element_differs(tool):
     a = {"w.int_data": np.arange(-8, 8, dtype=np.int8)}
     flipped = np.arange(-8, 8, dtype=np.int8)

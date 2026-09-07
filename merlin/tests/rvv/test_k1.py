@@ -67,6 +67,53 @@ def test_dispatch_timing_default_off_is_byte_identical():
     assert "extern unsigned long long merlin_matmul_ticks(void);" in on
 
 
+def test_persistent_openmp_harness_is_default_off_and_reports_worker_cpus():
+    off = k1.main_linux_c()
+    on = k1.main_linux_c(persistent_openmp_pool=8)
+    for token in ("libomp_pthread.h", "merlin_omp_init_from_env", "omp_worker_cpus"):
+        assert token not in off
+        assert token in on
+    assert "merlin_omp_init_from_env(8)" in on
+
+
+def test_persistent_openmp_selection_materializes_host_policy_effects():
+    from merlin.mining.host_actions import resolve_host_policy
+
+    effects = resolve_host_policy([
+        "deterministic_static_partition", "persistent_worker_pool",
+    ], precision="int8_w8a8", worker_count=4).lowering_effects()
+    selection = k1._resolve_openmp_selection(
+        parallel=False, parallel_harts=None, host_effects=effects)
+    assert selection.parallel_harts == 4
+    assert selection.provider == "merlin_pthread_pool"
+    assert selection.worker_pool_size == 4
+
+
+def test_persistent_openmp_selection_rejects_conflicting_parallel_width():
+    from merlin.mining.host_actions import resolve_host_policy
+
+    effects = resolve_host_policy([
+        "deterministic_static_partition", "persistent_worker_pool",
+    ], precision="int8_w8a8", worker_count=4).lowering_effects()
+    with pytest.raises(k1.K1Error, match="conflicts"):
+        k1._resolve_openmp_selection(
+            parallel=False, parallel_harts=8, host_effects=effects)
+
+
+def test_worker_census_requires_exact_distinct_team():
+    assert k1._require_worker_census({
+        "omp_threads": 4, "omp_worker_cpus": "0 1 2 3",
+    }, requested=4) == (0, 1, 2, 3)
+    with pytest.raises(k1.K1Error, match="duplicate"):
+        k1._require_worker_census({
+            "omp_threads": 4, "omp_worker_cpus": "0 1 1 3",
+        }, requested=4)
+    with pytest.raises(k1.K1Error, match="requested 4"):
+        k1._require_worker_census({
+            "omp_threads": 3, "omp_worker_cpus": "0 1 2",
+        }, requested=4)
+
+
 def test_dispatch_timing_requires_routed_backend():
     # The matmul-bucket timer lives in the routed GEMM shim, so dispatch_timing without a
     # kernel_backend must fail loud (never silently no-op into a bucket that is always zero).
@@ -80,6 +127,36 @@ class _DummyPkg:
     is_int8 = False
     schedule_text = ""
     compiler_features = ()
+    cflags = ()
+
+
+def test_model_compile_flags_honor_package_optimizations_but_keep_target_identity():
+    pkg = type("Package", (), {
+        "cflags": ["-march=rv64gcv", "-mabi=lp64d", "-O3",
+                   "-fno-vectorize", "-fno-slp-vectorize"],
+    })()
+    flags = k1._model_compile_flags(pkg, frozenset(), ["-O2"])
+
+    assert flags[0] == f"-march={k1.codegen_march()}"
+    assert flags[1] == f"-mabi={k1.K1_MABI}"
+    assert "-march=rv64gcv" not in flags
+    assert flags[-3:] == ["-O3", "-fno-vectorize", "-fno-slp-vectorize"]
+
+
+def test_model_compile_flags_leave_a_flagless_package_byte_compatible():
+    assert k1._model_compile_flags(_DummyPkg(), frozenset(), ["-O2"]) == [
+        f"-march={k1.codegen_march()}", f"-mabi={k1.K1_MABI}", "-O2",
+        "-Wno-override-module",
+    ]
+
+
+def test_session_models_share_the_primary_model_flag_composer():
+    """Every stage is a model object too; omitting package flags there silently changes compiler."""
+    from merlin.common.paths import merlin_dir
+
+    src = (merlin_dir() / "python" / "merlin" / "mining" / "k1.py").read_text(encoding="utf-8")
+    session = src[src.index("def build_k1_session_binary"):]
+    assert "_model_compile_flags(pkg, features, model_opt)" in session
 
 
 def test_main_linux_is_glibc_hosted():
@@ -222,7 +299,9 @@ def test_real_k1_matmul_end_to_end(tmp_path):
     assert m.get("cycles") and m["cycles"] > 0
     assert m.get("time_ticks") and m["time_ticks"] > 0
     assert m.get("wall_ns") and m["wall_ns"] > 0
-    assert m.get("affinity_cpus") == 1
+    # Serial is intentionally unpinned: one calling thread may migrate over the board's CPUs.
+    assert m.get("affinity_cpus") and m["affinity_cpus"] >= 1
+    assert res["affinity_available_cpus"] == m["affinity_cpus"]
     assert res["core_count"] == res["requested_core_count"] == 1
     assert res["affinity_source"] == "sched_getaffinity"
     assert res["vlen"] == 256  # X60 VLEN=256 bits (vlenb=32)

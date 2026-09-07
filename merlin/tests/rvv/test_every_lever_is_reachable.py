@@ -55,7 +55,12 @@ def _registrar_modules() -> set[str]:
 #: One name from each name-derived lever family, and the module that owns it. These cannot be
 #: registered by import (the point IS the name), so what has to hold is that a proposer-only process
 #: resolves them from the string alone -- the same property the import gives the fixed levers.
-_NAME_DERIVED_LEVERS = [("parallel_grain", "parallel_grain_10000")]
+_NAME_DERIVED_LEVERS = [
+    ("parallel_grain", "parallel_grain_10000"),
+    ("parallel_team", "parallel_team_cost_10000"),
+    ("residual_parallel", "parallelize_residual_loops_10000"),
+    ("residual_parallel_all", "parallelize_residual_loops_0"),
+]
 
 
 def test_every_name_derived_lever_family_resolves_from_its_name_alone():

@@ -50,7 +50,8 @@ def _erase_self_copies(module):
     return n
 
 
-def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
+def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
+                pre_generalize=()):
     """Run `pipeline`; when `erase` (or any `mid` rewrite is requested), split it after the
     post-bufferization canonicalize/cse and run the rewrites in between. Splitting on
     buffer-loop-hoisting (not a fixed index) so the hook stays put if the pass list moves.
@@ -65,6 +66,11 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
     separate list rather than more `mid` entries because at the `mid` point no `scf.parallel` exists
     yet -- a grain decision made there would price loops that have not been formed. Empty `late`
     (the default) leaves the pass string split exactly as before, so the lowering is byte-identical.
+
+    `post_openmp` runs immediately AFTER `convert-scf-to-openmp`.  It exists for structural edits
+    that need to reason about `scf.parallel` before conversion and then annotate the corresponding
+    `omp.parallel` afterwards.  When empty, conversion and its following passes stay in the same
+    PassManager invocation as before.
     """
     from torch_mlir.passmanager import PassManager
 
@@ -74,7 +80,7 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
 
     def _late_split(sub):
         """Run `sub`, pausing before `convert-scf-to-openmp` to run the `late` rewrites."""
-        if not late:
+        if not late and not post_openmp:
             _run(sub)
             return
         j = next((i for i, p in enumerate(sub) if 'convert-scf-to-openmp' in p), -1)
@@ -84,15 +90,34 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
             _run(sub)
             for label, fn in late:
                 print('OK ' + label, fn(ctx, module))
+            for label, fn in post_openmp:
+                print('OK ' + label, fn(ctx, module))
             return
         _run(sub[:j])
         for label, fn in late:
             print('OK ' + label, fn(ctx, module))
-        _run(sub[j:])
+        if not post_openmp:
+            _run(sub[j:])
+            return
+        _run(sub[j:j + 1])
+        for label, fn in post_openmp:
+            print('OK ' + label, fn(ctx, module))
+        _run(sub[j + 1:])
 
     passes = [p for p in pipeline.split(',') if p]
     if not passes:
         return
+    if pre_generalize:
+        marker = '__merlin_targeted_named_broadcast_fold__'
+        mark = next((i for i, p in enumerate(passes) if p == marker), -1)
+        if mark < 0:
+            raise RuntimeError('pre-generalize rewrite requested but its pipeline marker is absent')
+        _run(passes[:mark])
+        for label, fn in pre_generalize:
+            print('OK ' + label, fn(ctx, module))
+        passes = passes[mark + 1:]
+    elif '__merlin_targeted_named_broadcast_fold__' in passes:
+        raise RuntimeError('pre-generalize pipeline marker present without a requested rewrite')
     want_split = bool(erase) or bool(mid)
     k = next((i for i, p in enumerate(passes) if 'buffer-loop-hoisting' in p), -1) if want_split else -1
     if k < 0:

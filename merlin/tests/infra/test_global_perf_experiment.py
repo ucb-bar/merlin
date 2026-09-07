@@ -198,6 +198,99 @@ def test_portfolio_member_failure_blocks_current_revision_and_seal(tmp_path):
         experiment.seal(candidate)
 
 
+def test_blocked_portfolio_has_exact_non_promotable_authoring_checkpoint(tmp_path):
+    extra = _portfolio_sentinel(tmp_path, "large-transformer")
+    experiment, candidate, _ = setup_experiment(tmp_path, portfolio_sentinels=[extra])
+    primary_analyzer = experiment.analyzer
+
+    def analyzer(base, current, objective, **kwargs):
+        if objective.capsule == "large-transformer":
+            return {"candidate_sha256": hash_tree(current)["sha256"],
+                    "workload": {"capsule_sha256": objective.capsule_sha256},
+                    "diagnostics": {"arms": {"candidate": {"status": "emission_failed"}}},
+                    "timing_status": "UNMEASURED"}
+        return primary_analyzer(base, current, objective, **kwargs)
+
+    experiment.analyzer = analyzer
+    record = experiment.analyze(candidate, hypothesis="repair unsupported portfolio member")
+    assert record["readiness"]["status"] == "blocked"
+
+    checkpoint = experiment.checkpoint_authoring(candidate, name="blocked_seed")
+    consumed = G.consume_authoring_checkpoint(checkpoint)
+    assert consumed["schema"] == "global_authoring_checkpoint_v1"
+    assert consumed["candidate_sha256"] == record["candidate_sha256"]
+    assert consumed["portfolio_members_ready"] == 1
+    assert consumed["portfolio_members_total"] == 2
+    assert consumed["promotion_status"] == "blocked_authoring_checkpoint"
+    assert consumed["global_speedup_proven"] is False
+    with pytest.raises(ValueError, match="invalid global candidate receipt"):
+        G.consume_global_candidate(checkpoint)
+
+
+def test_sustained_sequence_can_repair_blocked_initial_portfolio(tmp_path):
+    extra = _portfolio_sentinel(tmp_path, "large-transformer")
+    experiment, candidate, _ = setup_experiment(tmp_path, portfolio_sentinels=[extra])
+    primary_analyzer = experiment.analyzer
+
+    def analyzer(base, current, objective, **kwargs):
+        if (objective.capsule == "large-transformer"
+                and (current / "source.txt").read_text() != "portfolio repaired"):
+            return {"candidate_sha256": hash_tree(current)["sha256"],
+                    "workload": {"capsule_sha256": objective.capsule_sha256},
+                    "diagnostics": {"arms": {"candidate": {"status": "emission_failed"}}},
+                    "timing_status": "UNMEASURED"}
+        return primary_analyzer(base, current, objective, **kwargs)
+
+    experiment.analyzer = analyzer
+    inherited = []
+
+    def author(current, *, round_index, round_timeout_s):
+        inherited.append((round_index, (current / "source.txt").read_text()))
+        (current / "source.txt").write_text("portfolio repaired")
+        repaired = experiment.analyze(current, hypothesis="implement missing model support")
+        assert repaired["readiness"]["status"] == "ready_for_probe_admission"
+        return {"status": "authored"}
+
+    result = G.run_global_agent_sequence(
+        experiment, candidate, run_round=author, stage_root=tmp_path / "stage",
+        max_rounds=1, total_authoring_seconds=30, round_seconds=30,
+        on_round_failure="resume-last-checkpoint")
+    assert inherited == [(0, "candidate")]
+    assert result["checkpoints"][0]["role"] == "initial_blocked_authoring_seed"
+    assert G.consume_authoring_checkpoint(
+        Path(result["checkpoints"][0]["path"]))["portfolio_members_ready"] == 1
+    assert G.consume_global_candidate(
+        Path(result["last_good_checkpoint"]["path"]))["portfolio"]["members"]
+
+
+def test_sustained_sequence_refuses_regression_of_ready_portfolio_member(tmp_path):
+    extra = _portfolio_sentinel(tmp_path, "large-transformer")
+    experiment, candidate, _ = setup_experiment(tmp_path, portfolio_sentinels=[extra])
+    primary_analyzer = experiment.analyzer
+
+    def analyzer(base, current, objective, **kwargs):
+        if (objective.capsule == "real-model"
+                and (current / "source.txt").read_text() == "regress primary"):
+            return {"candidate_sha256": hash_tree(current)["sha256"],
+                    "workload": {"capsule_sha256": objective.capsule_sha256},
+                    "diagnostics": {"arms": {"candidate": {"status": "emission_failed"}}},
+                    "timing_status": "UNMEASURED"}
+        return primary_analyzer(base, current, objective, **kwargs)
+
+    experiment.analyzer = analyzer
+
+    def author(current, *, round_index, round_timeout_s):
+        (current / "source.txt").write_text("regress primary")
+        experiment.analyze(current, hypothesis="bad trade between model families")
+        return {"status": "authored"}
+
+    with pytest.raises(ValueError, match="regressed previously verified portfolio members"):
+        G.run_global_agent_sequence(
+            experiment, candidate, run_round=author, stage_root=tmp_path / "stage",
+            max_rounds=1, total_authoring_seconds=30, round_seconds=30,
+            on_round_failure="stop")
+
+
 def test_agent_view_compacts_secondary_portfolio_analysis(tmp_path):
     extra = _portfolio_sentinel(tmp_path, "large-transformer")
     experiment, candidate, _ = setup_experiment(tmp_path, portfolio_sentinels=[extra])

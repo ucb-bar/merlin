@@ -282,7 +282,8 @@ def _signature_key(shape) -> tuple[int, ...]:
 
 def rewrite_contractions_to_opu(module, *,
                                select: Callable[[Any], bool] | None = None,
-                               tile_edge: int | None = None) -> OpuRewrite:
+                               tile_edge: int | None = None,
+                               symbol_prefix: str = SYMBOL_PREFIX) -> OpuRewrite:
     """Replace each selected int8 contraction with a call to the matrix-unit kernel.
 
     Mutates ``module`` in place and returns what it did. ``select`` receives the
@@ -313,7 +314,7 @@ def rewrite_contractions_to_opu(module, *,
         key = _signature_key(shape)
         sym = symbols.get(key)
         if sym is None:
-            sym = f"{SYMBOL_PREFIX}_{len(symbols)}"
+            sym = f"{symbol_prefix}_{len(symbols)}"
             symbols[key] = sym
 
         operands = list(op.operands)
@@ -448,7 +449,9 @@ def tile_filling_selector(tile_edge: int) -> Callable[[Any], bool]:
 
 def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
                          select: Callable[[Any], bool] | None,
-                         tile_edge: int | None = None) -> OpuRewrite:
+                         tile_edge: int | None = None,
+                         symbol_prefix: str = SYMBOL_PREFIX,
+                         sidecar_name: str = SIDECAR_NAME) -> OpuRewrite:
     """Rewrite a prepared module ON DISK in place and record what it minted.
 
     This is the seam a whole-model build uses: it reads the module the preparation passes produced,
@@ -465,7 +468,8 @@ def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
 
     prepared, work = Path(prepared), Path(work)
     module = parse_mlir_file(prepared)
-    rewrite = rewrite_contractions_to_opu(module, select=select, tile_edge=tile_edge)
+    rewrite = rewrite_contractions_to_opu(
+        module, select=select, tile_edge=tile_edge, symbol_prefix=symbol_prefix)
     if rewrite.count:
         text = patch_declaration_arg_attrs(to_text(module), rewrite)
         missing = unpatched_declarations(text, rewrite)
@@ -476,25 +480,25 @@ def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
                 "refusing to write the module")
         prepared.write_text(text, encoding="utf-8")
     work.mkdir(parents=True, exist_ok=True)
-    (work / SIDECAR_NAME).write_text(json.dumps(rewrite.to_dict(), indent=2), encoding="utf-8")
+    (work / sidecar_name).write_text(json.dumps(rewrite.to_dict(), indent=2), encoding="utf-8")
     return rewrite
 
 
-def load_sidecar(work: "str | Path") -> dict[str, tuple[int, int, int]]:
+def load_sidecar(work: "str | Path", sidecar_name: str = SIDECAR_NAME) -> dict[str, tuple[int, ...]]:
     """``{symbol: (m, n, k)}`` as recorded beside a prepared module, or ``{}`` when nothing was routed.
 
     An absent sidecar means the rewrite never ran, which is the same thing as nothing routed as far as
     the build is concerned — but a MALFORMED one is an error, because it means the rewrite ran and the
     build would otherwise emit a translation unit missing the symbols the module calls.
     """
-    path = Path(work) / SIDECAR_NAME
+    path = Path(work) / sidecar_name
     if not path.is_file():
         return {}
     payload = json.loads(path.read_text(encoding="utf-8"))
     sigs = payload.get("signatures", {})
     if not isinstance(sigs, dict):
         raise ValueError(f"{path} records no usable `signatures` map")
-    out: dict[str, tuple[int, int, int]] = {}
+    out: dict[str, tuple[int, ...]] = {}
     for sym, extents in sigs.items():
         if not isinstance(extents, (list, tuple)) or len(extents) not in (3, 4):
             raise ValueError(f"{path}: signature {sym!r} is not an (m, n, k) triple or a "

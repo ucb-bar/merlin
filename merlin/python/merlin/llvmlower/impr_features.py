@@ -179,6 +179,24 @@ def _try_lazy_register(name: str) -> bool:
         except ValueError:
             return False
         return name in _REGISTRY
+    # Per-region OpenMP team policy is another name-derived continuous family.  Resolve it here so
+    # a package and the lowering subprocess do not depend on the proposer having imported it first.
+    from .parallel_team import FEATURE_PREFIX as _PT_PREFIX
+    if name.startswith(_PT_PREFIX):
+        from .parallel_team import ensure_registered as _pt_ensure
+        try:
+            _pt_ensure(int(name[len(_PT_PREFIX):]))
+        except ValueError:
+            return False
+        return name in _REGISTRY
+    from .residual_parallel import FEATURE_PREFIX as _RP_PREFIX
+    if name.startswith(_RP_PREFIX):
+        from .residual_parallel import ensure_registered as _rp_ensure
+        try:
+            _rp_ensure(int(name[len(_RP_PREFIX):]))
+        except ValueError:
+            return False
+        return name in _REGISTRY
     point = _vec_noncontraction_point(name)
     if point is not None:
         # The non-contraction family's points are DERIVABLE FROM THE NAME (lanes and max rank), so
@@ -2753,6 +2771,48 @@ register(ImprFeature(
 #: :data:`PEROP_BLOCK_NAME` except that it pins the cap ``block_table`` derives blocks under, instead
 #: of reading the ambient ``MERLIN_PEROP_MR_CAP``.
 PEROP_MR_SENTINEL_PREFIX = f"{PEROP_BLOCK_NAME}_mr"
+
+#: Sentinel family that names the per-op NR cap. This is the N-axis counterpart of
+#: :data:`PEROP_MR_SENTINEL_PREFIX`: it makes the cap part of the candidate identity instead of an
+#: ambient source constant, so model-specific register-pressure/locality tradeoffs can be measured
+#: by the search and reproduced later.
+PEROP_NR_SENTINEL_PREFIX = f"{PEROP_BLOCK_NAME}_nr"
+
+
+def parse_perop_nr_sentinel(name: str) -> int | None:
+    """The NR cap named by ``perop_register_block_nr<N>``, or ``None`` for another feature."""
+    if not name.startswith(PEROP_NR_SENTINEL_PREFIX):
+        return None
+    suffix = name[len(PEROP_NR_SENTINEL_PREFIX):]
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
+
+
+def perop_nr_sentinel(nr_cap: int) -> str:
+    """Register a preparation-time request that pins the per-op N-tile cap."""
+    n = int(nr_cap)
+    if n <= 0:
+        raise ValueError(f"{PEROP_BLOCK_NAME}: NR cap must be positive, got {nr_cap!r}")
+    name = f"{PEROP_NR_SENTINEL_PREFIX}{n}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"request PER-CONTRACTION register blocking with the NR cap pinned to {n}. "
+                     f"Identical to {PEROP_BLOCK_NAME} except the N cap is named and therefore "
+                     "searchable and reproducible. This exposes the model-specific tradeoff "
+                     "between wider panels and i32 accumulator register pressure. A sentinel "
+                     "resolved by prepare_for_lowering; default-off and baseline byte-identical."),
+        edit_pipeline=_perop_sentinel_unresolved,
+        schedule_replace=True,
+    ))
+    return name
+
+
+# The default cap is 16, represented by the plain PEROP_BLOCK_NAME request. These rungs bracket it.
+PEROP_NR_LADDER: tuple[str, ...] = tuple(perop_nr_sentinel(_n) for _n in (2, 4, 8, 32))
 
 
 def parse_perop_mr_sentinel(name: str) -> int | None:

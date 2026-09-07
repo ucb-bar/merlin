@@ -118,6 +118,9 @@ _REGISTRY: dict[str, BackendInfo] = {
                                   "merlin.runtime.backends.openblas_board"),
     "ours_board":     BackendInfo("ours_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
                                   "merlin.runtime.backends.ours_board"),
+    "outlined_int8_board": BackendInfo(
+        "outlined_int8_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
+        "merlin.runtime.backends.outlined_int8_board"),
     "xnnpack_host":   BackendInfo("xnnpack_host", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
                                   "merlin.runtime.backends.xnnpack_host"),
 }

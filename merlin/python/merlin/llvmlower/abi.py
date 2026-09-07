@@ -83,9 +83,10 @@ class HostModel:
     @classmethod
     def load(cls, so_path: str, name: str = "forward",
              n_args: int | None = None, rtld_global: bool | None = None) -> "HostModel":
-        # The trampoline receives this library's entry address, not a process-global symbol.
-        # Keep even many-argument models LOCAL: their shared forward/memrefCopy names can
-        # otherwise bind a later A/B variant to the first model's implementation.
+        # Give the trampoline this library's exact entry address instead of asking the dynamic
+        # loader to resolve a process-global symbol. Keep even many-argument models LOCAL: their
+        # shared forward/memrefCopy names could otherwise bind a later A/B variant to the first
+        # model's implementation.
         if rtld_global is None:
             rtld_global = False
         mode = ctypes.RTLD_GLOBAL if rtld_global else ctypes.RTLD_LOCAL
@@ -93,8 +94,7 @@ class HostModel:
         fn = getattr(lib, f"_mlir_ciface_{name}", None)
         if fn is None:
             raise ValueError(f"{so_path}: missing _mlir_ciface_{name}")
-        if fn is not None:
-            fn.restype = None
+        fn.restype = None
         model = cls(lib, fn)
         if n_args is not None:
             model._build_trampoline(so_path, name, n_args)

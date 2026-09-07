@@ -1,0 +1,36 @@
+% Status figure; diagnostic numbers, not the final certification table.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/k1_executorch_status.pdf}
+  \caption{SpaceMiT K1 performance status; lower latency is better. (a) Historical FP32 bitVLA
+  experiment using the same Merlin graph/runtime, with only 15 FP32 matmuls routed to the named
+  kernel backend. Points are three independent launches and horizontal marks are minima. Merlin's
+  148.3 ms was 11.4\% lower latency than the XNNPACK-kernel hybrid in this restricted experiment;
+  this was not a full ExecuTorch comparison. (b) Diagnostic one- and eight-core full-flow latency
+  ratio $T_{\mathrm{ET}}/T_{\mathrm{Merlin}}$ for W8A8/qd8; values below 1 mean Merlin is slower.
+  These are best valid diagnostic walls, not a paired uniform certification set. The smolVLA
+  one-core triangle is an upper bound because Merlin did not complete within 120 s; its ExecuTorch
+  reference is a seeded-random recomputation rather than Merlin's captured weights. smolVLA has no
+  matched eight-core measurement. ResNet-50 passes the diagnostic absolute W8A8 bar but lacks an
+  independent FP32 golden. (c)
+  Complete-output TinyLlama diagnostic points at one and eight cores, grouped by compiler
+  configuration rather than splicing the best point from different binaries into one curve. The
+  MR4/NR32 model-vectorizer-enabled pair uses the exact same ELF and has three-launch median latency
+  1244.6 ms at one core and 402.1 ms at eight cores, only 1.05$\times$/1.08$\times$ the fresh
+  ExecuTorch warm slopes. Its same-session MR4/NR16 control is 1583.5/474.8 ms. The interleaved
+  MR8/NR16 candidate regresses to 2175.7/458.6 ms because wider accumulator residency increases
+  scalar operand-feed pressure. Both ExecuTorch points are fresh N=1/N=4 warm slopes. The validated Merlin configurations produced
+  the reported 256k-output SHA and pass the shared accuracy bar. SHA agreement establishes repeatability, not
+  reference correctness. Governor was performance at 1.6 GHz for the current INT8 measurements;
+  core counts were matched and multicore affinity was bounded to the requested cores. No
+  across-model INT8 performance win is currently certified. (d) Full-output, correctness-gated
+  LSTMNetVIT scaling. Replacing four grouped-im2col paths with direct grouped convolution and
+  suppressing OpenMP regions below 10k static work units, prequantizing all 17 structurally eligible
+  constant contraction weights AOT, and folding 39 residual broadcast-to-add/mul chains reduces
+  Merlin from 433.0 to a 130.9 ms launch median at one core and from 86.9 to 49.6 ms at eight cores.
+  Three feature-on launch means from an off/on/on/off/off/on full-output A/B are shown per current
+  Merlin point; each launch contains five timed iterations after two warmups. The distinct medians
+  across all 15 raw iterations are 131.1/49.5 ms. Merlin remains 2.52$\times$ and 3.23$\times$ slower
+  than ExecuTorch at one and eight cores, respectively.}
+  \label{fig:k1-executorch-status}
+\end{figure*}

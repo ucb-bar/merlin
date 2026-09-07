@@ -1177,7 +1177,13 @@ class GlobalPerfExperiment:
             "licence": "structural accounting only; fewer dispatches do not prove fewer cycles",
         }
 
-    def _current(self, candidate: Path) -> dict[str, Any]:
+    def _matching_current(self, candidate: Path, *, require_ready: bool) -> dict[str, Any]:
+        """Return the exact analyzed revision, optionally requiring promotion readiness.
+
+        A blocked analysis is still valuable authoring evidence: it binds the candidate bytes to
+        every portfolio member and tells the next compiler round what remains unsupported.  It is
+        never sufficient for probes, execution, or the promotable global-candidate seal.
+        """
         self._check_inputs()
         self.validate_candidate_scope(candidate)
         if not self.iterations:
@@ -1192,9 +1198,12 @@ class GlobalPerfExperiment:
                     if item["compiler_dependencies"] == dependencies), None)
         if row is None:
             raise ValueError("shared compiler dependencies changed: recompile the full graph and plan")
-        if row["readiness"]["status"] != "ready_for_probe_admission":
+        if require_ready and row["readiness"]["status"] != "ready_for_probe_admission":
             raise ValueError("global iteration is not ready: " + ", ".join(row["readiness"]["blockers"]))
         return row
+
+    def _current(self, candidate: Path) -> dict[str, Any]:
+        return self._matching_current(candidate, require_ready=True)
 
     def current_artifacts(self, candidate: Path) -> Mapping[str, Any]:
         """Host-only artifacts retained from exactly the current full-model invocation."""
@@ -2031,6 +2040,59 @@ class GlobalPerfExperiment:
             "consumer": "global_plan_review_and_optional_post_freeze_validation",
         })
 
+    def checkpoint_authoring(self, candidate: Path, *, name: str) -> Path:
+        """Preserve an exact blocked portfolio revision for the next authoring round only.
+
+        This deliberately has a different schema and consumer from :meth:`seal`.  It cannot be
+        used for probes, promotion, or any performance claim; its only purpose is to let a bounded
+        sequence repair a compiler that does not yet lower every training model.
+        """
+        row = self._matching_current(candidate, require_ready=False)
+        if row["readiness"]["status"] != "blocked":
+            raise ValueError("authoring checkpoints are only for blocked portfolio revisions")
+        if not name or Path(name).name != name or name in (".", ".."):
+            raise ValueError("checkpoint name must be one safe path component")
+        snapshot = self.output / (name + "_submission")
+        submitted = Path(row["submitted_snapshot"])
+        PAS.assert_candidate_sealable(submitted)
+        if hash_tree(submitted)["sha256"] != row["candidate_sha256"]:
+            raise ValueError("analyzed authoring submission changed before checkpointing")
+        shutil.copytree(submitted, snapshot)
+        if hash_tree(snapshot)["sha256"] != row["candidate_sha256"]:
+            raise ValueError("authoring candidate changed while making its checkpoint")
+        for item in sorted(snapshot.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+            item.chmod(item.stat().st_mode & ~0o222)
+        snapshot.chmod(snapshot.stat().st_mode & ~0o222)
+        iteration_path = self.output / f"iteration_{row['iteration']:04d}.json"
+        return self._write(name + ".json", {
+            "schema": "global_authoring_checkpoint_v1",
+            "candidate_sha256": row["candidate_sha256"],
+            "candidate_path": str(snapshot.resolve()), "candidate_read_only": True,
+            "iteration": row["iteration"], "readiness": copy.deepcopy(row["readiness"]),
+            "portfolio_members_ready": row["portfolio"]["members_ready"],
+            "portfolio_members_total": row["portfolio"]["members_total"],
+            "historical_reference": copy.deepcopy(self.historical_reference),
+            "phase1_qualification": self.phase1_binding,
+            "host_verification_policy": self.host_policy,
+            "compiler_edit_authority": self.edit_scope_binding if self.edit_contract is not None else None,
+            "compiler_dependencies": row["compiler_dependencies"],
+            "analysis_sha256": PAS._document_sha256(row["analysis"]),
+            "iteration_record": str(iteration_path.resolve()),
+            "iteration_record_sha256": PAS._sha256_file(iteration_path),
+            "baseline_sha256": self.baseline_sha256, "target_sha256": self.target_sha256,
+            "optimization_baseline_sha256": self.optimization_baseline_sha256,
+            "optimization_baseline": self.optimization_baseline_binding,
+            "capsule_sha256": self.sentinel.capsule_sha256,
+            "portfolio": copy.deepcopy(self.portfolio_identity),
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "portfolio_iteration_sha256": PAS._document_sha256(row["portfolio"]),
+            "full_model_timing_status": "UNMEASURED", "full_model_cycles": None,
+            "global_speedup_proven": False,
+            "promotion_status": "blocked_authoring_checkpoint",
+            "promotion_blockers": row["readiness"]["blockers"],
+            "consumer": "next_bounded_global_authoring_round_only",
+        })
+
     def run(self, propose: Callable[[Sequence[Mapping[str, Any]]], tuple[Path, str] | None],
             *, iterations: int) -> tuple[dict[str, Any], ...]:
         """Drive repeated agent proposals through the mandatory full-model compilation boundary."""
@@ -2043,6 +2105,102 @@ class GlobalPerfExperiment:
             candidate, hypothesis = proposal
             self.analyze(candidate, hypothesis=hypothesis)
         return copy.deepcopy(tuple(self.iterations))
+
+
+def consume_authoring_checkpoint(path: Path) -> dict[str, Any]:
+    """Verify a blocked, exact portfolio checkpoint without granting promotion authority."""
+    document = PAS._mapping_file(path)
+    if (document.get("schema") != "global_authoring_checkpoint_v1"
+            or document.get("promotion_status") != "blocked_authoring_checkpoint"
+            or document.get("consumer") != "next_bounded_global_authoring_round_only"
+            or document.get("full_model_timing_status") != "UNMEASURED"
+            or document.get("full_model_cycles") is not None
+            or document.get("global_speedup_proven") is not False):
+        raise ValueError("invalid global authoring checkpoint or unsupported performance claim")
+    if host_verification_policy_record() != document.get("host_verification_policy"):
+        raise ValueError("authoring checkpoint host verification policy changed")
+    experiment_record = PAS._mapping_file(path.parent / "experiment.json")
+    if any(document.get(field) != experiment_record.get(field) for field in (
+            "baseline_sha256", "target_sha256", "optimization_baseline_sha256",
+            "optimization_baseline", "phase1_qualification", "portfolio", "portfolio_sha256")):
+        raise ValueError("authoring checkpoint experiment binding changed")
+    historical = document.get("historical_reference")
+    if historical != experiment_record.get("historical_reference"):
+        raise ValueError("authoring checkpoint historical reference changed")
+    if historical is not None:
+        _, summary = load_historical_reference(Path(historical["path"]), historical["sha256"])
+        if summary != historical.get("summary"):
+            raise ValueError("authoring checkpoint historical reference summary changed")
+    authority = document.get("compiler_edit_authority")
+    if authority is not None:
+        from merlin.perf.compiler_edit_scope import inspect_compiler_edits, validate_edit_contract
+        initial = path.parent / "edit_scope_seed"
+        if (PAS._mapping_file(path.parent / "compiler_edit_authority.json") != authority
+                or Path(authority["seed_path"]).resolve() != initial.resolve()
+                or initial.is_symlink()
+                or hash_tree(initial)["sha256"] != authority["initial_candidate_sha256"]
+                or PAS._document_sha256(authority["contract"])
+                    != authority["contract_document_sha256"]):
+            raise ValueError("authoring checkpoint edit authority changed")
+        validate_edit_contract(authority["contract"], initial)
+        if inspect_compiler_edits(
+                initial, Path(document["candidate_path"]), authority["contract"])["status"] != "allowed":
+            raise ValueError("authoring checkpoint exceeds its host-frozen edit authority")
+    candidate = Path(document["candidate_path"])
+    if (candidate.is_symlink() or candidate.parent.resolve() != path.parent.resolve()
+            or document.get("candidate_read_only") is not True
+            or hash_tree(candidate)["sha256"] != document.get("candidate_sha256")):
+        raise ValueError("authoring checkpoint candidate bytes changed")
+    if compiler_dependency_record(candidate) != document.get("compiler_dependencies"):
+        raise ValueError("authoring checkpoint compiler dependencies changed")
+    iteration_path = Path(document["iteration_record"])
+    if (iteration_path.is_symlink() or iteration_path.parent.resolve() != path.parent.resolve()
+            or PAS._sha256_file(iteration_path) != document.get("iteration_record_sha256")):
+        raise ValueError("authoring checkpoint iteration receipt changed")
+    iteration = PAS._mapping_file(iteration_path)
+    analysis = iteration.get("analysis") or {}
+    readiness = iteration.get("readiness") or {}
+    portfolio = iteration.get("portfolio") or {}
+    portfolio_identity = document.get("portfolio") or {}
+    members, identities = portfolio.get("members"), portfolio_identity.get("members")
+    if (iteration.get("candidate_sha256") != document.get("candidate_sha256")
+            or iteration.get("compiler_dependencies") != document.get("compiler_dependencies")
+            or PAS._document_sha256(analysis) != document.get("analysis_sha256")
+            or readiness != document.get("readiness") or readiness.get("status") != "blocked"
+            or PAS._document_sha256(portfolio_identity) != document.get("portfolio_sha256")
+            or portfolio.get("portfolio_sha256") != document.get("portfolio_sha256")
+            or PAS._document_sha256(portfolio) != document.get("portfolio_iteration_sha256")
+            or portfolio.get("candidate_sha256") != document.get("candidate_sha256")
+            or not isinstance(members, list) or not isinstance(identities, list)
+            or not members or len(members) != len(identities)
+            or portfolio.get("members_total") != len(members)
+            or portfolio.get("members_ready") != document.get("portfolio_members_ready")
+            or document.get("portfolio_members_total") != len(members)
+            or not 0 <= document.get("portfolio_members_ready", -1) < len(members)
+            or portfolio.get("full_model_simulation_allowed") is not False):
+        raise ValueError("authoring checkpoint portfolio binding or blocked readiness changed")
+    for index, (identity, member) in enumerate(zip(identities, members, strict=True)):
+        if member.get("identity") != identity:
+            raise ValueError("authoring checkpoint portfolio identity changed")
+        member_analysis = analysis if index == 0 else member.get("analysis") or {}
+        if index == 0 and (member.get("analysis_ref") != "/analysis"
+                or member.get("static_comparison_ref") != "/static_comparison"):
+            raise ValueError("authoring checkpoint primary portfolio aliases changed")
+        if (member_analysis.get("candidate_sha256") != document.get("candidate_sha256")
+                or member_analysis.get("workload", {}).get("capsule_sha256")
+                    != identity.get("capsule_sha256")
+                or PAS.global_iteration_readiness(member_analysis) != member.get("readiness")):
+            raise ValueError("authoring checkpoint lacks exact member analysis evidence")
+    return document
+
+
+def _consume_round_checkpoint(path: Path) -> dict[str, Any]:
+    schema = PAS._mapping_file(path).get("schema")
+    if schema == "global_perf_candidate_v1":
+        return consume_global_candidate(path)
+    if schema == "global_authoring_checkpoint_v1":
+        return consume_authoring_checkpoint(path)
+    raise ValueError("unsupported global round checkpoint schema")
 
 
 def consume_global_candidate(path: Path) -> dict[str, Any]:
@@ -2635,6 +2793,16 @@ def _retryable_unchanged_round_failure(terminal: Mapping[str, Any], *,
             and broker_failure_is_bounded)
 
 
+def _ready_portfolio_members(row: Mapping[str, Any]) -> frozenset[str]:
+    """Exact objective identities whose current candidate analysis is promotion-ready."""
+    members = (row.get("portfolio") or {}).get("members") or ()
+    return frozenset(
+        str((member.get("identity") or {}).get("capsule_sha256"))
+        for member in members
+        if (member.get("readiness") or {}).get("status") == "ready_for_probe_admission"
+    )
+
+
 def _prior_round_context(stage_root: Path, round_index: int) -> dict[str, Any]:
     """Expose prior agents' own bounded summaries without treating them as host evidence."""
     rows = []
@@ -2693,12 +2861,19 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
     experiment._check_inputs()
     policy = copy.deepcopy(experiment.host_policy)
     experiment.analyze(candidate, hypothesis="Bind initial seed for safe checkpoint continuation")
-    initial_seal = experiment.seal(candidate, name="initial_seed_candidate")
-    initial = consume_global_candidate(initial_seal)
+    initial_row = experiment._matching_current(candidate, require_ready=False)
+    initial_ready = initial_row["readiness"]["status"] == "ready_for_probe_admission"
+    initial_seal = (experiment.seal(candidate, name="initial_seed_candidate") if initial_ready
+                    else experiment.checkpoint_authoring(candidate, name="initial_seed_authoring"))
+    initial = _consume_round_checkpoint(initial_seal)
     spent, failures = 0, []
-    checkpoints = [{"round": -1, "role": "initial_verified_seed_not_an_authored_result",
+    checkpoints = [{"round": -1, "role": (
+                        "initial_verified_seed_not_an_authored_result" if initial_ready
+                        else "initial_blocked_authoring_seed"),
                     "path": str(initial_seal), "sha256": PAS._sha256_file(initial_seal),
-                    "candidate_sha256": initial["candidate_sha256"]}]
+                    "candidate_sha256": initial["candidate_sha256"],
+                    "checkpoint_schema": initial["schema"],
+                    "promotion_ready": initial_ready}]
     current = candidate
     for index in range(max_rounds):
         budget = min(round_seconds, total_authoring_seconds - spent)
@@ -2708,23 +2883,34 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
         if experiment.host_policy != policy:
             raise ValueError("sustained segment source policy changed")
         if index > 0:
-            checkpoint = consume_global_candidate(Path(checkpoints[-1]["path"]))
+            checkpoint = _consume_round_checkpoint(Path(checkpoints[-1]["path"]))
             current = PAS.fresh_round_workspace(Path(checkpoint["candidate_path"]),
                 stage_root / "agent_workspaces" / f"round_{index:02d}", checkpoint["candidate_sha256"])
+        ready_before = _ready_portfolio_members(
+            experiment._matching_current(current, require_ready=False))
         spent += budget
         try:
             authored = run_round(current, round_index=index, round_timeout_s=budget)
             if authored.get("status") != "authored":
                 raise ValueError("round callback did not return an authored audited checkpoint")
-            sealed = experiment.seal(current, name=f"round_{index:04d}_candidate")
-            consumed = consume_global_candidate(sealed)
+            row = experiment._matching_current(current, require_ready=False)
+            lost = sorted(ready_before - _ready_portfolio_members(row))
+            if lost:
+                raise ValueError(
+                    "round regressed previously verified portfolio members: " + ", ".join(lost))
+            ready = row["readiness"]["status"] == "ready_for_probe_admission"
+            sealed = (experiment.seal(current, name=f"round_{index:04d}_candidate") if ready
+                      else experiment.checkpoint_authoring(
+                          current, name=f"round_{index:04d}_authoring"))
+            consumed = _consume_round_checkpoint(sealed)
             checkpoint = {"round": index, "path": str(sealed), "sha256": PAS._sha256_file(sealed),
-                          "candidate_sha256": consumed["candidate_sha256"]}
+                          "candidate_sha256": consumed["candidate_sha256"],
+                          "checkpoint_schema": consumed["schema"], "promotion_ready": ready}
             checkpoints.append(checkpoint)
             experiment._write(f"continuation_{index:04d}.json", {
                 "schema": "global_round_continuation_v1", "status": "checkpoint_consumed",
                 "checkpoint": checkpoint, "authoring_seconds_reserved": spent,
-                "global_speedup_proven": False})
+                "promotion_ready": ready, "global_speedup_proven": False})
         except Exception as exc:
             failure = {"round": index, "exception": type(exc).__name__, "reason": str(exc),
                        "draft_path": str(current), "draft_sha256": hash_tree(current)["sha256"],
@@ -2748,7 +2934,7 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
             try:
                 experiment._check_inputs()
                 if checkpoints:
-                    consume_global_candidate(Path(checkpoints[-1]["path"]))
+                    _consume_round_checkpoint(Path(checkpoints[-1]["path"]))
             except Exception:
                 recoverable = False
             failure["recovery"] = "next_budgeted_round_from_consumed_checkpoint" if recoverable else "stop"
@@ -2760,6 +2946,7 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
               "authoring_seconds_reserved": spent, "maximum_rounds": max_rounds,
               "on_round_failure": on_round_failure, "checkpoints": checkpoints, "failures": failures,
               "candidate": str(current), "last_good_checkpoint": checkpoints[-1] if checkpoints else None,
+              "promotion_ready": bool(checkpoints and checkpoints[-1]["promotion_ready"]),
               "host_verification_policy": policy, "global_speedup_proven": False}
     experiment._write("agent_sequence.json", result)
     return result
@@ -2825,7 +3012,9 @@ def run_global_agent_round(
         "plan digest, hypothesis, expected emitted delta, semantic obligations, cheap validation "
         "and stop/revert condition. Recompile the entire model portfolio with "
         "analyze-whole-model after each proposed transformation and before finalizing. "
-        "A candidate must retain verified emission for every member. Prefer transformations that "
+        "Preserve verified emission for every member that is already ready and repair explicitly "
+        "blocked members; every member must be verified before promotion or measurement. Prefer "
+        "transformations that "
         "improve several model families or remove a shared global bottleneck; do not specialize a "
         "compiler rule to any capsule or model name. Compare each model only with its own prior "
         "revision and use a Pareto decision; never sum unlike models into a fabricated cycle score. "
@@ -2972,7 +3161,7 @@ def run_global_agent_round(
         evidence = {"status": "refused", "reason": str(exc)}
         refusals.append(str(exc))
     try:
-        current = experiment._current(candidate)
+        current = experiment._matching_current(candidate, require_ready=False)
     except ValueError as exc:
         current = {"candidate_sha256": hash_tree(candidate)["sha256"]}
         refusals.append(str(exc))
@@ -2984,6 +3173,9 @@ def run_global_agent_round(
     record = {"schema": "global_agent_round_v1", "round": round_index,
               "candidate_sha256": current["candidate_sha256"], "agent_exit_code": rc,
               "audit": audit, "broker_evidence": evidence, "telemetry": telemetry,
+              "authoring_readiness": copy.deepcopy(current.get("readiness")),
+              "promotion_ready": (current.get("readiness", {}).get("status")
+                                  == "ready_for_probe_admission"),
               "status": "authored" if rc == 0 and audit.get("clean") and not refusals else "refused",
               "refusal_reasons": refusals,
               "global_speedup_proven": False}

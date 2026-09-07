@@ -323,7 +323,8 @@ def test_the_vector_length_reaches_the_block_table():
     from merlin.runtime.backends import zephyr_model as zm
 
     prep = inspect.getsource(zm.prepare_for_lowering)
-    assert "nr_cap=perop_nr_cap(vlen)" in prep, "the cap must be derived from the board's vlen"
+    assert "nr_cap = _nr_named[0] if _nr_named else perop_nr_cap(vlen)" in prep
+    assert "nr_cap=nr_cap" in prep, "the resolved cap must reach the block table"
     assert "vlen: int | None" in prep, "prepare_for_lowering must accept it"
     build = inspect.getsource(zm.build_app)
     assert "vlen=vlen" in build, "build_app must pass it down"
@@ -506,6 +507,41 @@ def test_an_unnamed_cap_still_reads_the_env_default():
     from merlin.runtime.backends import zephyr_model as zm
 
     assert zm.perop_mr_cap() == zm._PEROP_MR_CAP
+
+
+def test_the_named_nr_cap_reaches_both_block_tables():
+    """The historical LSTM result used a narrower N cap; the choice must be a named candidate.
+
+    Both ordinary contractions and direct-convolution arms consume the same resolved cap. Leaving
+    either call on the ambient default would make one feature name describe two schedules.
+    """
+    from merlin.llvmlower import impr_features as F
+    from merlin.runtime.backends import zephyr_model as zm
+
+    name = F.perop_nr_sentinel(8)
+    assert F.parse_perop_nr_sentinel(name) == 8
+    assert F.parse_perop_nr_sentinel("perop_register_block_14b_128_deadbeef") is None
+    assert name in F.known()
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    assert "nr_cap = _nr_named[0] if _nr_named else perop_nr_cap(vlen)" in prep
+    assert prep.count("nr_cap=nr_cap") >= 2
+    assert "parse_perop_nr_sentinel(f) is None" in prep
+
+
+def test_two_named_nr_caps_are_refused_rather_than_picked_by_sort_order():
+    from merlin.runtime.backends import zephyr_model as zm
+
+    prep = inspect.getsource(zm.prepare_for_lowering)
+    assert "conflicting per-op NR caps" in prep
+    assert "PEROP_NR_SENTINEL_PREFIX" in prep
+
+
+def test_the_nr_ladder_brackets_the_plain_cap_without_duplicating_it():
+    from merlin.llvmlower import impr_features as F
+
+    caps = {F.parse_perop_nr_sentinel(name) for name in F.PEROP_NR_LADDER}
+    assert caps == {2, 4, 8, 32}
+    assert 16 not in caps                 # plain perop_register_block already means the default 16
 
 
 # ---------------------------------------------------------------------------------------------------

@@ -533,6 +533,10 @@ telemetry = [
 triton = [
     { name = "triton" },
 ]
+verify = [
+    { name = "xdsl" },
+    { name = "z3-solver" },
+]
 xdsl = [
     { name = "xdsl" },
 ]
@@ -554,9 +558,11 @@ requires-dist = [
     { name = "tree-sitter", marker = "extra == 'kernels-ast'" },
     { name = "tree-sitter-c", marker = "extra == 'kernels-ast'" },
     { name = "triton", marker = "extra == 'triton'", specifier = "==3.7.1" },
+    { name = "xdsl", marker = "extra == 'verify'", specifier = ">=0.68" },
     { name = "xdsl", marker = "extra == 'xdsl'", specifier = ">=0.68" },
+    { name = "z3-solver", marker = "extra == 'verify'" },
 ]
-provides-extras = ["dev", "xdsl", "targetgen", "board", "kernels-ast", "kernels-exo", "kernels-parquet", "kernels-plots", "telemetry", "triton"]
+provides-extras = ["dev", "xdsl", "verify", "targetgen", "board", "kernels-ast", "kernels-exo", "kernels-parquet", "kernels-plots", "telemetry", "triton"]
 
 [[package]]
 name = "numpy"

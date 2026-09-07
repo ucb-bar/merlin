@@ -58,6 +58,13 @@ def test_et_venv_available_uses_identity_gate(monkeypatch):
     assert not et.et_venv_available()
 
 
+def test_executorch_source_can_be_shared_with_an_isolated_worktree(monkeypatch, tmp_path):
+    source = tmp_path / "executorch"
+    source.mkdir()
+    monkeypatch.setenv("MERLIN_ET_SOURCE", str(source))
+    assert et.et_source_dir() == source
+
+
 @pytest.mark.parametrize("quantize", [False, True], ids=["fp32", "w8a8"])
 def test_export_and_runtime_build_entrypoints_reject_mismatch(
         monkeypatch, tmp_path, quantize):

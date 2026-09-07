@@ -115,12 +115,14 @@ def read_safetensors(path: Path) -> SafeTensors:
     return SafeTensors(path)
 
 
-def quantized_weight_diff(bundle_weights, fresh_weights) -> dict:
+def quantized_weight_diff(bundle_weights, fresh_weights,
+                          *, expected_quantized: int | None = None) -> dict:
     """Compare the INTEGER weight tensors of two captures of the same model.
 
-    Returns a report; ``report["ok"]`` is true only when at least one integer tensor is shared
-    and every shared integer tensor is bit-for-bit equal. Both halves matter: an empty
-    intersection is not agreement, it is an unmeasured comparison, and it must not pass.
+    Returns a report; ``report["ok"]`` is true only when at least one integer tensor is shared,
+    every shared integer tensor is bit-for-bit equal, and (when supplied) the number shared
+    covers every quantizable weight in the source model. All three parts matter: one matching
+    final FC does not certify a CNN whose convolution weights silently remained floating point.
     """
     shared = sorted(set(bundle_weights) & set(fresh_weights))
     integer = [k for k in shared
@@ -130,6 +132,8 @@ def quantized_weight_diff(bundle_weights, fresh_weights) -> dict:
                   if bundle_weights[k].shape != fresh_weights[k].shape
                   or not np.array_equal(bundle_weights[k], fresh_weights[k])]
     missing = sorted(k for k in bundle_weights if k not in fresh_weights)
+    coverage_complete = (expected_quantized is None
+                         or (expected_quantized > 0 and len(integer) >= expected_quantized))
     return {
         "n_bundle": len(bundle_weights),
         "n_fresh": len(fresh_weights),
@@ -139,8 +143,29 @@ def quantized_weight_diff(bundle_weights, fresh_weights) -> dict:
         "mismatched_examples": mismatched[:5],
         "missing_from_fresh": missing[:5],
         "n_missing_from_fresh": len(missing),
-        "ok": bool(integer) and not mismatched,
+        "expected_quantized": expected_quantized,
+        "coverage_complete": coverage_complete,
+        "ok": bool(integer) and not mismatched and coverage_complete,
     }
+
+
+def quantizable_weight_inventory(model, module_types: tuple[type, ...]) -> list[str]:
+    """Names of unique Conv/Linear weights the requested W8A8 scheme must quantize.
+
+    Weight identity, rather than module count, handles tied parameters without requiring two
+    independently stored integer tensors for the same underlying weight.
+    """
+    names: list[str] = []
+    seen: set[int] = set()
+    for name, module in model.named_modules():
+        if not isinstance(module, module_types):
+            continue
+        weight = getattr(module, "weight", None)
+        if weight is None or id(weight) in seen:
+            continue
+        seen.add(id(weight))
+        names.append(f"{name}.weight" if name else "weight")
+    return names
 
 
 def flatten_quantized_parameters(model) -> dict[str, np.ndarray]:
@@ -359,6 +384,9 @@ def _inner(bundle: Path, model: str, root: Path, out_name: str, scheme: str) -> 
                 if float(parameter.detach().abs().max()) == 0.0:
                     parameter.copy_(torch.randn_like(parameter) * 0.02)
 
+    quantizable_weights = quantizable_weight_inventory(
+        mdl, (torch.nn.Linear, torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d))
+
     # Use the BUNDLE's own recorded inputs; a re-seeded input is only equal by luck.
     recorded = load_bundle_inputs(bundle)
     seeded = [t.detach().cpu().numpy() for t in seeded_inputs]
@@ -385,26 +413,35 @@ def _inner(bundle: Path, model: str, root: Path, out_name: str, scheme: str) -> 
 
         # ---- CONSISTENCY GATE. No write unless the quantized instance carries the same quantized
         # weights the bundle ships. See the module docstring: this refusal is the artifact.
-        report = quantized_weight_diff(read_safetensors(bundle / "weights.safetensors"),
-                                       read_safetensors(Path(weights_path)))
+        report = quantized_weight_diff(
+            read_safetensors(bundle / "weights.safetensors"),
+            read_safetensors(Path(weights_path)),
+            expected_quantized=len(quantizable_weights))
         report["source"] = "weights.safetensors"
+        report["quantizable_weight_examples"] = quantizable_weights[:5]
         if not report["n_quantized"]:
             # The safetensors carry no integer tensor to compare: this capture externalized the
             # integer data as qinner:: in extra.npz instead. Compare THAT container rather than
             # reporting an empty intersection, which would be an unmeasured comparison. Read only
             # in this branch — extra.npz is a gigabyte on the LLM bundles, which do carry their
             # integer weights in the safetensors.
-            report = quantized_weight_diff(bundle_quantized_parameters(bundle),
-                                           flatten_quantized_parameters(mdl))
+            report = quantized_weight_diff(
+                bundle_quantized_parameters(bundle), flatten_quantized_parameters(mdl),
+                expected_quantized=len(quantizable_weights))
             report["source"] = "extra.npz qinner::"
+            report["quantizable_weight_examples"] = quantizable_weights[:5]
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if not report["ok"]:
         emit({"ok": False, "weights": report,
               "reason": ("no integer weight tensor is shared with the bundle (unmeasured, not "
                          "agreement)" if not report["n_quantized"]
-                         else f"{report['n_mismatched']} quantized weight tensor(s) differ "
-                              f"from the bundle's")})
+                         else (f"quantization coverage is partial: shared "
+                               f"{report['n_quantized']} integer weight tensor(s), expected at "
+                               f"least {report['expected_quantized']} Conv/Linear weights"
+                               if not report["coverage_complete"]
+                               else f"{report['n_mismatched']} quantized weight tensor(s) differ "
+                                    f"from the bundle's"))})
         return 3
 
     with torch.no_grad():

@@ -709,8 +709,12 @@ def main(argv: list[str] | None = None) -> int:
             total_authoring_seconds=total_authoring, round_seconds=args.round_seconds,
             on_round_failure=args.on_round_failure))
     try:
-        sealed = (Path(sequence["last_good_checkpoint"]["path"]) if sequence["failures"]
-                  else experiment.seal(Path(sequence["candidate"])))
+        # A bounded sequence may end with an exact blocked authoring checkpoint.  Preserve that
+        # evidence for a follow-on segment, but never relabel it as the promotable global seal.
+        # Ready, failure-free sequences still receive the conventional final review artifact.
+        sealed = (experiment.seal(Path(sequence["candidate"]))
+                  if not sequence["failures"] and sequence.get("promotion_ready") is True
+                  else Path(sequence["last_good_checkpoint"]["path"]))
     except Exception as exc:
         PAS._write_json(stage_root / "terminal_failure.json", {
             "schema": "global_launch_terminal_failure_v1", "stage": "seal",
@@ -719,7 +723,9 @@ def main(argv: list[str] | None = None) -> int:
             "promotion_status": "unqualified", "global_speedup_proven": False})
         raise
     print(json.dumps({"authoring": sequence["status"], "candidate": str(sealed),
-                      "promotion": "unqualified", "full_model_timing": "UNMEASURED"}, indent=2))
+                      "promotion": ("unqualified" if sequence.get("promotion_ready") is True
+                                    else "blocked_authoring_checkpoint"),
+                      "full_model_timing": "UNMEASURED"}, indent=2))
     return 0
 
 

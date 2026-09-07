@@ -22,6 +22,7 @@ Why these three concerns and not the exporter itself:
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -74,6 +75,28 @@ def _workload(root, model: str, capture_toml: str):
     d.mkdir(parents=True, exist_ok=True)
     (d / "capture.toml").write_text(capture_toml)
     return d
+
+
+def test_export_cache_reuses_only_the_exact_recorded_artifact(tmp_path):
+    pte = tmp_path / "model.pte"
+    golden = tmp_path / "golden.npy"
+    inputs = tmp_path / "input-0.bin"
+    for path, contents in ((pte, b"program"), (golden, b"golden"), (inputs, b"input")):
+        path.write_bytes(contents)
+    key = {"recipe": "qd8", "identity": "pinned"}
+    cache = tmp_path / "export_result.json"
+    cache.write_text(json.dumps({
+        "key": key, "pte": et._file_identity(pte), "ptd_files": [],
+        "input_files": [str(inputs)], "golden": str(golden),
+        "delegated_nodes": 3, "total_call_nodes": 4, "summary": {"cached": True},
+    }))
+
+    result = et._read_export_cache(cache, key)
+    assert result is not None and result.pte == pte
+    assert result.summary == {"cached": True}
+
+    pte.write_bytes(b"different program")
+    assert et._read_export_cache(cache, key) is None
 
 
 # ------------------------------------------------------------------- loader environment derivation

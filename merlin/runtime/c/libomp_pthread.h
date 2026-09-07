@@ -19,7 +19,11 @@ extern "C" {
 /* Idempotently create a process-local team of n_threads including the caller/master.
  * A later request cannot resize an already active pool.  Returns the available team size. */
 int merlin_omp_init(int n_threads);
+/* Initialize from OMP_NUM_THREADS, or fallback_threads when it is unset. */
+int merlin_omp_init_from_env(int fallback_threads);
 int merlin_omp_num_threads(void);
+/* CPU observed for the master (tid 0) or helper.  Returns -1 for an invalid tid. */
+int merlin_omp_worker_cpu(int tid);
 
 #ifdef __cplusplus
 }

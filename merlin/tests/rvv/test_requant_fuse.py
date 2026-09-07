@@ -162,6 +162,33 @@ def test_pair_table_reaches_the_schedule():
     assert "transform.apply_patterns.tensor.fold_tensor_empty" in text
 
 
+def test_parallel_pair_keeps_the_exact_outer_shard_around_the_fused_tile():
+    """Fusion must not buy traversal removal by silently serializing the contraction."""
+    text = RF.fused_arms([[0, 4, 8, 2, 0, 8]])
+    assert "tile_using_forall %q0r tile_sizes [0, 8]" in text
+    assert "tile_using_for %q0p tile_sizes [4, 8]" in text
+    assert text.index("tile_using_forall") < text.index("fuse_into_containing_op")
+
+
+@pytest.mark.skipif(not _toolchain_available(), reason="m2m venv / clang not configured")
+def test_pairing_removes_the_generic_parallel_tag_from_its_contraction(tmp_path):
+    """The fused arm owns the same shard, so the generic arm must not also claim it."""
+    src = tmp_path / "model.mlir"
+    aliases, function = _TRIPLE.split("func.func", 1)
+    src.write_text(aliases + "builtin.module {\n  func.func" + function + "\n}\n",
+                   encoding="utf-8")
+    pairs = []
+    tagged = PB.tag_prepared_mlir(
+        src, _TABLE, work=tmp_path,
+        par_table={"linalg.matmul:8x32:64": (0, 8)},
+        pair_fuse=True, pairs_out=pairs)
+    text = tagged.read_text(encoding="utf-8")
+    contraction = next(line for line in text.splitlines()
+                       if RF.tag_for(0, RF.ROLE_CONTRACTION) in line)
+    assert PB.PAR_TAG_PREFIX not in contraction, contraction
+    assert pairs == [[0, 4, 8, 2, 0, 8]], pairs
+
+
 def test_tiling_is_derived_from_the_parallel_rank_and_refuses_anything_else():
     assert RF._tile_spec(2, 4, 8)[0] == "[4, 8]"
     assert RF._tile_spec(3, 4, 8)[0] == "[1, 4, 8]"
@@ -321,6 +348,17 @@ def test_the_accumulator_is_tile_sized_and_the_epilogue_is_in_the_tile_loop(tmp_
     # the contraction is vectorized either way; only the epilogue's own shape follows the knob
     assert "vector<4x8xi32>" in text
     assert ("vector<4x8xf32>" in text) is vec
+
+
+@pytest.mark.skipif(not _mlir_opt().is_file(), reason="standalone mlir-opt not present")
+def test_parallel_fused_arm_has_forall_outside_the_serial_register_tile(tmp_path):
+    text = _run_sched(tmp_path, RF.fused_arms([[0, 4, 8, 2, 0, 8]]), "parallel_fused")
+    assert "scf.forall" in text
+    forall = text.index("scf.forall")
+    inner = text.index("scf.for", forall + len("scf.forall"))
+    assert forall < inner
+    assert "tensor<8x32xi32>" not in text
+    assert "tensor<4x8xi32>" in text
 
 
 @pytest.mark.skipif(not _mlir_opt().is_file(), reason="standalone mlir-opt not present")

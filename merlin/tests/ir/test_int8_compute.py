@@ -212,6 +212,31 @@ _CONV_MOD = (
     "-> tensor<1x{oc}x4x4xf32> func.return %y : tensor<1x{oc}x4x4xf32> }} }}")
 
 
+# Grouped direct conv keeps G and F/G separate in the contraction result.  The weight's output
+# channel index is consequently compound (g*FG+fg), which must also index its rank-1 scale during
+# requantization.  This is the shape used by LSTMNetVIT's two dominant grouped 3x3 convolutions.
+_GROUPED_CONV_MOD = (
+    "builtin.module { func.func @forward(%x: tensor<1x256x17x25xf32>, "
+    "%w: tensor<256x8x3x3xf32>) -> tensor<1x32x8x15x23xf32> { "
+    "%e = tensor.empty() : tensor<1x32x8x15x23xf32> "
+    "%c0 = arith.constant 0.0 : f32 "
+    "%f = linalg.fill ins(%c0 : f32) outs(%e : tensor<1x32x8x15x23xf32>) "
+    "-> tensor<1x32x8x15x23xf32> "
+    "%y = linalg.generic {indexing_maps = ["
+    "affine_map<(d0,d1,d2,d3,d4,d5,d6,d7)->(d0,d1*8+d5,d3+d6,d4+d7)>, "
+    "affine_map<(d0,d1,d2,d3,d4,d5,d6,d7)->(d1*8+d2,d5,d6,d7)>, "
+    "affine_map<(d0,d1,d2,d3,d4,d5,d6,d7)->(d0,d1,d2,d3,d4)>], "
+    'iterator_types = ["parallel","parallel","parallel","parallel","parallel",'
+    '"reduction","reduction","reduction"], prov.op = "conv2d", '
+    'prov.conv_path = "direct_contraction"} '
+    "ins(%x, %w : tensor<1x256x17x25xf32>, tensor<256x8x3x3xf32>) "
+    "outs(%f : tensor<1x32x8x15x23xf32>) { "
+    "^bb(%a: f32, %b: f32, %o: f32): %m = arith.mulf %a, %b : f32 "
+    "%s = arith.addf %o, %m : f32 linalg.yield %s : f32 } "
+    "-> tensor<1x32x8x15x23xf32> "
+    "func.return %y : tensor<1x32x8x15x23xf32> } }")
+
+
 def test_lower_conv_int8_makes_integer_conv(tmp_path):
     """``lower_conv_int8`` turns an f32 conv generic into an i8×i8→i32 contraction, dynamically
     quantizing both operands and keeping the EXACT stride-affine maps (so the conv structure —
@@ -334,6 +359,44 @@ def test_dynamic_gelu_scale_defines_zero_without_changing_its_nonzero_floor(tmp_
     report: dict = {}
     assert fuse_round_clamp_convert(module, report_out=report) == 1
     assert report.get("refused_clamp_not_two_sided") == 2, report
+
+def test_lower_grouped_conv_int8_preserves_compound_channel_scale_map(tmp_path):
+    """The grouped-direct form reaches W8A8 instead of crashing on ``g*FG+fg``.
+
+    The resulting requant must use that same expression to read the original rank-1 per-output-
+    channel weight scale; flattening it to either G or FG would silently apply the wrong scale.
+    """
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_conv_int8
+
+    src = tmp_path / "grouped_conv.mlir"
+    src.write_text(_GROUPED_CONV_MOD, encoding="utf-8")
+    module = parse_mlir_file(src)
+    assert lower_conv_int8(module) == 1
+    module.verify()
+
+    def _ibits(t):
+        return getattr(getattr(t.element_type, "width", None), "data", None)
+
+    contractions = [
+        op for op in module.walk()
+        if op.name == "linalg.generic" and len(op.inputs) == 2
+        and op.indexing_maps.data[0].data.num_dims == 8
+        and all(_ibits(i.type) == 8 for i in op.inputs)
+        and _ibits(op.results[0].type) == 32
+    ]
+    assert len(contractions) == 1
+    requants = [
+        op for op in module.walk()
+        if op.name == "linalg.generic"
+        and getattr(op.attributes.get("prov.role"), "data", "") == "requant"
+    ]
+    assert len(requants) == 1
+    scale_map = requants[0].indexing_maps.data[2].data
+    from merlin.llvmlower.passes_quant_int import _affine_terms
+    assert scale_map.num_dims == 5 and len(scale_map.results) == 1
+    terms, const = _affine_terms(scale_map.results[0])
+    assert sorted(terms or ()) == [(1, 8), (2, 1)] and const == 0, scale_map
 
 # softmax-shaped: a (S - rowmax) subtraction feeding the exp (the signature lower_softmax_int
 # requires). %m is the per-row max (pass zeros in the numeric test so sub == x).

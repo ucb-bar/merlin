@@ -3,7 +3,7 @@ title: Runtime
 kind: reference
 status: current
 owner: runtime
-last_verified: 2026-07-14
+last_verified: 2026-09-07
 related: [zephyr]
 code_refs: [merlin/python/merlin/runtime, merlin/runtime]
 ---
@@ -119,17 +119,41 @@ lives inside `saturn_vec` and `muon`.)
 ### Design references (CompGen / ModelBlaster)
 
 Studied as runtime-design inspiration (`/path/to/CompGen`,
-`/path/to/ModelBlaster`); lessons adopted or queued:
+`/path/to/ModelBlaster`). The ModelBlaster audit was refreshed against upstream `main` commit
+`b01cd312480e11ad75d950b2fd94a90e9b712df2` on 2026-09-07; lessons adopted or queued:
+
+- **Comparison scope**: the public 21x linear and 4.22x whole-model numbers use ModelBlaster's
+  scalar Spike reference, not a matched K1 ExecuTorch/XNNPACK full-flow baseline. Its 25.243 ms K1
+  headline omits YOLO from the compared workload; the matched one-YOLO/two-DroNet/four-MLP run is
+  84.093 ms versus the quoted 75.71 ms reference and also records an MLP correctness failure. The
+  repository therefore does not establish a same-four-model win over the baselines in this study.
+- **Kernel audit**: public plain-RVV `linear_s8` uses an e32m4 K reduction
+  (`vwmul` + `vwadd` + `vredsum`) with a scalar N loop and scalar fused requantization. The
+  `outerprod_with_in_register_elu` path is custom OPU code, not standard K1 RVV, and drains its
+  accumulators to a stack array before the scalar epilogue. There is no hidden plain-RVV kernel here
+  that supersedes Merlin's packed MR4/NR32 scalar-fed `vwmacc.vx` form; the transferable mechanisms
+  are unit-stride panel packing, fusion, and low-overhead direct dispatch.
 
 - **Adopted now**: declarative backend/toolchain resolution (env-var roots, one place —
   ModelBlaster's `pipeline/backends.py` registry pattern); static per-model buffers and
   embedded golden data instead of malloc on bare metal; one-line verify summaries over
   full dumps (FireSim-safe); `rdcycle`/`mcycle` bracketing per region.
+- **Measured, not promoted**: Merlin's OpenMP-ABI-compatible persistent pthread provider uses the
+  same long-lived-worker/semaphore idea as `modelblaster_pool`, but it regressed LSTMNetVIT from
+  about 87 ms to 195 ms at eight harts. ModelBlaster's reported ~20k-cycle dispatch is a direct
+  `parallelize_1d(fn, ctx, range)` ABI, whereas Merlin still translates the complete `__kmpc_*`
+  protocol. A useful port therefore needs a compiler lowering directly to that narrow ABI; changing
+  only the provider has already been refuted.
 - **Queued for the Zephyr/C runtime**: CompGen's HAL device vtable
   (`runtime/include/compgen/hal.h`) as the shape of the Merlin C ABI's backend layer;
   CompGen's O(1)-reset bump arena (`arena.h`) for activation memory; compile-time-gated
-  trace ring buffer (`trace.h`) for `trace.schema.yaml` events; ModelBlaster's
-  `modelblaster_pool` k_sem rendezvous (~20k-cycle parallel-for) for Zephyr SMP.
+  trace ring buffer (`trace.h`) for `trace.schema.yaml` events; a direct, coarsened
+  `modelblaster_pool`-style parallel-for lowering for Zephyr/Linux SMP.
+- **Optional hardware path, not an RVV result**: current ModelBlaster also dispatches selected INT8
+  shapes to K1's undocumented `smt.vmadot` matrix engine. That instruction executes only on harts
+  0--3 and traps on harts 4--7. Its measured wins (up to 2.30x over RVV matmul and a 20.6% aggregate
+  convolution-cycle reduction on YOLO) motivate a capability-gated Merlin backend, but must not be
+  reported as an RVV-kernel win or silently scheduled on all eight harts.
 - **Avoid**: single-successor task DAGs (fan-in needs wrapper NOPs — CompGen `task.h`);
   schedule tables keyed by table position instead of dispatch id; per-backend weight
   layouts baked into kernels (keep the canonical layout in the command buffer; pack at

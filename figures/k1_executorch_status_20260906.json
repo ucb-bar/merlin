@@ -1,0 +1,201 @@
+{
+  "generated": "2026-09-07",
+  "status": "diagnostic; no across-model performance win is certified",
+  "historical_fp32_bitvla": {
+    "scope": "same Merlin graph/runtime; 15 f32 matmuls routed to the named kernel backend; not full ExecuTorch",
+    "source": "out/artifacts/kernel-mining/rvv/bench/k1_e2e_fair_bitvla.json",
+    "n_launches": 3,
+    "selection": "minimum wall time; every launch shown in the figure",
+    "latency_ms": {
+      "Merlin": 148.290003,
+      "XNNPACK kernels": 167.285549,
+      "OpenBLAS kernels": 180.545541
+    },
+    "launches_ms": {
+      "Merlin": [148.906745, 148.290003, 151.136658],
+      "XNNPACK kernels": [172.562394, 169.511386, 167.285549],
+      "OpenBLAS kernels": [181.033738, 180.545541, 180.775221]
+    }
+  },
+  "int8_one_core": {
+    "scope": "intended full-model W8A8/qd8, one core; best diagnostic walls, not a paired certification set; ResNet is explicitly excluded from a matched-W8A8 claim pending the oracle/delegation repairs recorded in its note",
+    "models": [
+      {
+        "model": "LSTMNetVIT",
+        "merlin_ms": 130.879523,
+        "executorch_ms": 51.943386333333336,
+        "source": "Merlin: out/artifacts/measurements/k1_spacemit/lstmnetvit_int8_command_grouped_direct_consistent_pretransposed/targeted_named_broadcast_fold_interleaved_c1_c8.json; ExecuTorch N=1/N=4: ../oscar-merlin/out/artifacts/measurements/k1_spacemit/lstmnetvit/cross_framework_v1_20260907T065942Z_dbf785f and cross_framework_v1_20260907T070021Z_dbf785f",
+        "note": "accepted LSTM champion: grouped-direct, AOT prequantization of all 17 eligible constant contraction weights, and targeted folding of 39 residual broadcast-to-add/mul chains; 130.879523 ms is the median of three feature-on launch means in a six-launch interleaved full-output A/B (the separate median of all 15 raw timed iterations is 131.070373 ms); ExecuTorch is the fresh N=1/N=4 warm slope from identity-matched 7fc34bf source/exporter"
+      },
+      {
+        "model": "ResNet-50",
+        "merlin_ms": 2253.148694,
+        "executorch_ms": 884.7737303333334,
+        "source": "../oscar-merlin/out/build/codex_candidates/resnet_im2col_tail_outer8/same_elf_core_scaling.json (Merlin); out/artifacts/compare/v1/compare_v1_20260905T185714Z_011d952/cells/resnet50_v1_5.json (ExecuTorch)",
+        "note": "50/50 eligible im2col contractions packed; two full-output launches; byte-identical to the host Merlin all-conv-W8A8 replay, but not independently certified: the current strict full-output gate rejects significant-element max-relative error 4.52, while the bundle's independently labelled W8A8 reference is byte-identical to FP32 and its provenance quantizes only FC. ExecuTorch's qd8 receipt likewise reports only 1/2 XNNPACK-delegated nodes, so this is not yet a matched all-convolution W8A8 cell"
+      },
+      {
+        "model": "TinyLlama",
+        "merlin_ms": 1235.398572,
+        "executorch_ms": 1179.5629746666668,
+        "source": "Merlin: out/artifacts/measurements/k1_spacemit/tiny_llama_int8_consistent/mr4_nr16_nr32_interleaved_c1_c8.json; ExecuTorch: ../oscar-merlin/out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260907T075354Z_dbf785f and cross_framework_v1_20260907T075645Z_dbf785f",
+        "note": "MR4/NR32; best of three interleaved full-output launches; fresh identity-matched ExecuTorch N=1/N=4 warm slope; both reference runs pass"
+      },
+      {
+        "model": "smolVLA",
+        "merlin_ms": null,
+        "merlin_lower_bound_ms": 120000.0,
+        "executorch_ms": 42309.59772433333,
+        "source": "../oscar-merlin/out/build/fair_compare/smolvla_int8_consistent/61e7e94b79/bounded_single_inference.json and fair_compare.json",
+        "note": "both arms explicitly one core; Merlin exceeded a 120 s single-inference deadline; ExecuTorch is the N=1/N=4 warm slope and uses a recomputed seeded-random fp32 reference"
+      }
+    ]
+  },
+  "int8_eight_core": {
+    "scope": "intended full-model W8A8/qd8, eight requested cores; best diagnostic walls, not a paired certification set; ResNet is explicitly excluded from a matched-W8A8 claim pending the oracle/delegation repairs recorded in its note",
+    "models": [
+      {
+        "model": "LSTMNetVIT",
+        "merlin_ms": 49.640220,
+        "executorch_ms": 15.344847666666666,
+        "source": "Merlin: out/artifacts/measurements/k1_spacemit/lstmnetvit_int8_command_grouped_direct_consistent_pretransposed/targeted_named_broadcast_fold_interleaved_c1_c8.json; ExecuTorch N=1/N=4: ../oscar-merlin/out/artifacts/measurements/k1_spacemit/lstmnetvit/cross_framework_v1_20260907T070102Z_dbf785f and cross_framework_v1_20260907T070142Z_dbf785f",
+        "note": "accepted LSTM champion: grouped-direct, 10k OpenMP grain, AOT prequantization of all 17 eligible constant contraction weights, and targeted folding of 39 residual broadcast-to-add/mul chains; 49.640220 ms is the median of three feature-on launch means in a six-launch interleaved full-output A/B (the separate median of all 15 raw timed iterations is 49.540044 ms); ExecuTorch is the fresh N=1/N=4 warm slope from identity-matched 7fc34bf source/exporter"
+      },
+      {
+        "model": "ResNet-50",
+        "merlin_ms": 1251.291016,
+        "executorch_ms": 235.2818788,
+        "source": "../oscar-merlin/out/build/codex_candidates/resnet_im2col_tail_outer8/same_elf_core_scaling.json and et_resnet50_qd8_8core/runs.json",
+        "note": "50/50 eligible im2col contractions packed; two full-output launches; tied within noise with the old 27/50 packing path at eight cores; compiler replay is byte-identical, but the independent all-convolution W8A8 semantic gate and a fully delegated ExecuTorch W8A8 comparand are both still missing"
+      },
+      {
+        "model": "TinyLlama",
+        "merlin_ms": 399.828514,
+        "executorch_ms": 370.868138,
+        "source": "Merlin: out/artifacts/measurements/k1_spacemit/tiny_llama_int8_consistent/mr4_nr16_nr32_interleaved_c1_c8.json; ExecuTorch: ../oscar-merlin/out/artifacts/measurements/k1_spacemit/tiny_llama/cross_framework_v1_20260907T073727Z_dbf785f and cross_framework_v1_20260907T074018Z_dbf785f",
+        "note": "MR4/NR32; best of three interleaved full-output launches; fresh identity-matched ExecuTorch N=1/N=4 warm slope; both reference runs pass"
+      },
+      {
+        "model": "smolVLA",
+        "merlin_ms": null,
+        "executorch_ms": null,
+        "source": "no matched eight-core Merlin/ExecuTorch cell",
+        "note": "not measured; the prior figure incorrectly placed an explicitly one-core Merlin timeout in this column"
+      }
+    ]
+  },
+  "lstmnetvit_core_scaling": {
+    "scope": "full-model W8A8; matched compute features at both core counts (OpenMP-only features absent at one core); complete 3-element output",
+    "measurement_protocol": "off/on/on/off/off/on: six full-output correctness-gated launches per core count, three per arm; two warmups and five timed inferences per launch; headline values are medians of the three launch means, not medians of the 15 raw iterations; eight-core affinity bounded to CPUs 0-7; performance governor at 1.6 GHz",
+    "cores": [1, 8],
+    "grouped_direct_sessions_ms": {
+      "1": [129.309428, 130.879523, 131.221412],
+      "8": [49.737162, 49.548235, 49.640220]
+    },
+    "grouped_direct_sources": {
+      "1": "out/artifacts/measurements/k1_spacemit/lstmnetvit_int8_command_grouped_direct_consistent_pretransposed/targeted_named_broadcast_fold_interleaved_c1_c8.json",
+      "8": "out/artifacts/measurements/k1_spacemit/lstmnetvit_int8_command_grouped_direct_consistent_pretransposed/targeted_named_broadcast_fold_interleaved_c1_c8.json"
+    },
+    "grouped_direct_raw_iteration_median_ms": {
+      "1": 131.070373,
+      "8": 49.540044
+    },
+    "champion_feature_envelope": {
+      "common": ["perop_register_block", "promote_buffers_to_stack", "expand_memref_copy", "cse_through_provenance", "fuse_elementwise_post_contraction", "quantize_before_gather", "vectorize_scalar_residue", "conv_register_block", "prequantize_constant_weights", "targeted_named_broadcast_fold"],
+      "eight_core_only": ["parallelize_residual_loops_0", "coarsen_openmp_regions", "parallel_grain_10000"],
+      "prequantized_constant_weights": 17,
+      "targeted_named_broadcast_fold_receipt": {"add": 31, "mul": 8, "folded": 39},
+      "input_candidate_census": {"add": 52, "mul": 10},
+      "correctness_sha256": "adf8308a7d398cb1767b6655c5fa6e2816563628af70afe8bac7140e5b51a154"
+    },
+    "merlin_coarsened_sessions_ms": {
+      "1": [439.147630, 439.897052, 439.404008, 439.813469, 439.046840],
+      "8": [87.197583, 86.403788, 86.384620, 85.732409, 86.719039,
+            87.389672, 96.575759, 86.349709, 86.859670, 86.405709,
+            87.145006, 87.138672, 87.062006, 87.119589, 86.168335]
+    },
+    "stock_residual_sessions_ms": {
+      "1": [432.869514, 433.015973, 436.749043, 433.082941, 433.025867],
+      "8": [87.674122, 87.917205, 86.863250, 87.406500, 89.788032,
+            87.613131, 87.265420, 88.164967, 87.738340, 87.929090,
+            89.049432, 88.409262, 89.532350, 88.533554, 88.930306]
+    },
+    "executorch_ms": [51.943386333333336, 15.344847666666666],
+    "executorch_protocol": "fresh 2026-09-07 N=1/N=4 warm slopes; full correctness passed; exporter and runtime source both 7fc34bf6f53d2098e3e16c1fa71c23222f607330",
+    "executorch_sources": {
+      "1": ["../oscar-merlin/out/artifacts/measurements/k1_spacemit/lstmnetvit/cross_framework_v1_20260907T065942Z_dbf785f/baseline_result.json", "../oscar-merlin/out/artifacts/measurements/k1_spacemit/lstmnetvit/cross_framework_v1_20260907T070021Z_dbf785f/baseline_result.json"],
+      "8": ["../oscar-merlin/out/artifacts/measurements/k1_spacemit/lstmnetvit/cross_framework_v1_20260907T070102Z_dbf785f/baseline_result.json", "../oscar-merlin/out/artifacts/measurements/k1_spacemit/lstmnetvit/cross_framework_v1_20260907T070142Z_dbf785f/baseline_result.json"]
+    },
+    "rejected_persistent_pool_sessions_ms": {
+      "1": [455.661827, 458.430067, 455.541837, 455.608755, 456.210469],
+      "8": [195.460323, 195.357492, 195.248535, 195.880031, 195.156994]
+    },
+    "controlled_runtime_ab": {
+      "llvm_ir_sha256": "42886d675c571c50ef5f3a9eda0958bac0df780dc33f586d07f82c97fbeb666a",
+      "model_object_sha256": "501b78d10ff97fa7d3c02f350dcca52aaf0b4edea4c3667b06392e1dfede58d1",
+      "named_feature_elf_sha256": "988b292aad388f03083a79c5865972d3741b472af737bdec4611c4a90351b8b6",
+      "only_link_runtime_changed_for_persistent_pool": true,
+      "coarsening_prepared_mlir_matches_stock": true,
+      "stock_static_openmp_regions": 780,
+      "coarsened_static_openmp_regions": 361,
+      "coarsened_output_prefix": [0.5527423620, -0.5736637712, 0.5453649759]
+    },
+    "eight_core_profile": {
+      "source": "out/artifacts/measurements/k1_spacemit/lstmnetvit_int8_residual_all_8core_op_profile.json",
+      "profiled_wall_ms": 89.277627,
+      "unprofiled_wall_ms": 87.779155,
+      "instrumentation_delta_percent": 1.707,
+      "coverage": 0.9856,
+      "w8a8_gate_passed": true,
+      "scalar_non_contraction_ms": 80.6,
+      "scalar_non_contraction_share_of_runtime": 0.902,
+      "contraction_ms": 7.4378,
+      "grouped_im2col_top_four_ms": 27.6078,
+      "quantization_chain_ms": 21.8616
+    },
+    "finding": "Replacing the four dominant grouped-im2col paths with direct grouped convolution, sharding their group dimension, serializing OpenMP regions below 10k static work units, prequantizing all 17 structurally eligible constant contraction weights AOT, and folding the 39 broadcast-to-named-add/mul chains that survive ordinary fusion cuts Merlin from 433.03 to a 130.880 ms launch median at one core and from 86.86 to 49.640 ms at eight cores. The targeted fold alone is 1.033x/1.027x in interleaved one/eight-core A/B. The distinct raw-iteration medians are 131.070 and 49.540 ms. Merlin remains 2.52x behind the fresh identity-matched ExecuTorch warm slope at one core and 3.23x behind at eight cores. The current arm scales 2.64x versus ExecuTorch's 3.39x, so both serial residual work and multicore efficiency remain open gaps."
+  },
+  "tinyllama_core_scaling": {
+    "scope": "full-model W8A8/qd8; complete output; diagnostic walls grouped by compiler configuration",
+    "measurement_protocol": "three fresh process launches per MR4/NR16 arm, interleaved enabled/disabled/disabled/enabled/enabled/disabled; OMP_NUM_THREADS=1 or 8, OMP_PROC_BIND=spread, eight-core runs taskset to CPUs 0-7; performance governor at 1.6 GHz",
+    "cores": [1, 8],
+    "merlin_configs": [
+      {
+        "label": "MR4/NR32, model vec. enabled",
+        "sessions_ms": {
+          "1": [1235.398572, 1245.101803, 1244.613599],
+          "8": [409.146880, 402.106764, 399.828514]
+        },
+        "note": "same ELF at both core counts; three interleaved launches; medians 1244.6 and 402.1 ms; e32,m4 packed workers"
+      },
+      {
+        "label": "MR4/NR16, same-session control",
+        "sessions_ms": {
+          "1": [1583.485297, 1581.380341, 1585.911888],
+          "8": [474.830056, 472.048112, 479.514428]
+        },
+        "note": "MR4/NR16 control interleaved with NR32; medians 1583.5 and 474.8 ms"
+      },
+      {
+        "label": "MR8/NR16, refuted",
+        "sessions_ms": {
+          "1": [2170.866491, 2181.425043, 2175.658638],
+          "8": [460.174419, 458.580546, 457.959914]
+        },
+        "note": "wider accumulator block regresses scalar operand feed; three interleaved launches"
+      }
+    ],
+    "executorch_ms": [1179.5629746666668, 370.868138],
+    "executorch_statistic": "fresh 2026-09-07 identity-matched N=1/N=4 warm slopes; both runs pass at each core count",
+    "controlled_ab": {
+      "only_difference": "model.o compiled from identical LLVM IR with -fno-vectorize and -fno-slp-vectorize retained versus removed",
+      "llvm_ir_sha256": "84a206459d90c627057105d8157373d366782c5bbf34ed08acb7addc45ac460e",
+      "weights_sha256": "f397babd5c3b80ed4086ee04a0411c7717110616676b6d9bab6d3f831be4dceb",
+      "model_object_vectorizers_disabled_sha256": "285e9aa666500fec3847bf5bc52990d27fb333927a3ee63591da964e72dbbd05",
+      "model_object_vectorizers_enabled_sha256": "aeaa42c53e9401c4a5783c2fa48315ea3b8bfc614c5b6906c466bacd7fa01995"
+    },
+    "output_sha256": "9f0749c3282be030c36fcc8d0bcf42719f55e40aa154ac5a424fbcb9b5fe1575",
+    "source": "out/artifacts/measurements/k1_spacemit/tiny_llama_int8_consistent/mr4_nr16_nr32_interleaved_c1_c8.json and mr4_mr8_interleaved_c1_c8.json",
+    "shared_accuracy_bar": "passes at both core counts; full 256000-element output"
+  }
+}

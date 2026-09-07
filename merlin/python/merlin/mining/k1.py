@@ -22,12 +22,14 @@ import hashlib
 import json
 import math
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
 import time
 from contextvars import ContextVar
 from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from merlin.common.paths import env, repo_root, runtime_dir
@@ -234,7 +236,8 @@ def available(*, deadline_ns: int | None = None) -> bool:
 # ---- generated Linux harness --------------------------------------------------------
 
 def main_linux_c(dump_cap: int | None = 4096, mmap_weights: bool = False,
-                 dispatch_timing: bool = False, op_profile: bool = False) -> str:
+                 dispatch_timing: bool = False, op_profile: bool = False,
+                 persistent_openmp_pool: int | None = None) -> str:
     """Generate the K1 Linux ``main()``: build the memref descriptors from the generated arg
     table, call ``merlin_run`` once, time it with the ``rdcycle`` CSR, and print the SAME
     OUT/ARGMAX/SUM/METRIC/DONE markers the spike harness uses so ``zephyr_model._parse_console``
@@ -294,6 +297,17 @@ def main_linux_c(dump_cap: int | None = 4096, mmap_weights: bool = False,
     # op_profile=False the harness is byte-identical to the un-instrumented path.
     oprof_decl = "extern void merlin_prof_dump(void);\n" if op_profile else ""
     oprof_print = "  merlin_prof_dump();\n" if op_profile else ""
+    if persistent_openmp_pool is not None and int(persistent_openmp_pool) < 1:
+        raise ValueError("persistent_openmp_pool must be positive when provided")
+    openmp_include = ('#include "libomp_pthread.h"\n'
+                      if persistent_openmp_pool is not None else "")
+    openmp_census = (f'''  int omp_threads = merlin_omp_init_from_env({int(persistent_openmp_pool)});
+  printf("METRIC omp_threads %d\\n", omp_threads);
+  printf("METRIC omp_worker_cpus");
+  for (int tid = 0; tid < omp_threads; ++tid)
+    printf(" %d", merlin_omp_worker_cpu(tid));
+  printf("\\n");
+''' if persistent_openmp_pool is not None else "")
     # The cap is a TOKEN, not a number: `None` renders the model's own generated element count, so
     # "print everything" is derived from the target's header instead of a host-side guess that a
     # bigger model would silently outgrow. A non-positive cap would print an empty OUT line that
@@ -318,6 +332,7 @@ def main_linux_c(dump_cap: int | None = 4096, mmap_weights: bool = False,
 #include "merlin_model.h"
 #include "model_gen.h"
 #include "model_io.h"
+{openmp_include}
 
 {weights_decl}
 {dtiming_decl}{oprof_decl}#define MERLIN_DUMP_CAP {dump_cap_token}
@@ -376,6 +391,7 @@ static void *worker(void *arg) {{
     fprintf(stderr, "FAIL sched_getaffinity\\n"); return NULL;
   }}
   printf("METRIC affinity_cpus %d\\n", CPU_COUNT(&allowed));
+{openmp_census}
 
   /* Diagnostic sustained mode uses MERLIN_WARMUP + MERLIN_ITERS for individual transitions.
    * Paper mode uses MERLIN_SESSION_WARMUPS + MERLIN_SESSION_REPEATS: every timing sample then
@@ -477,15 +493,28 @@ static void *worker(void *arg) {{
 
 session_complete: ;
   int k = MERLIN_OUT_ELEMS < MERLIN_DUMP_CAP ? MERLIN_OUT_ELEMS : MERLIN_DUMP_CAP;
-  printf("OUT %d", k);
-  for (int i = 0; i < k; i++) {{
-    uint32_t bits;
-    memcpy(&bits, &((float*)MERLIN_OUTPUT_PTR[0])[i], 4);
-    printf(" %u", (unsigned)bits);
+  const char *output_path = getenv("MERLIN_OUTPUT_FILE");
+  if (output_path && *output_path) {{
+    FILE *output_file = fopen(output_path, "wb");
+    if (!output_file) {{ fprintf(stderr, "FAIL open output file %s\\n", output_path); return NULL; }}
+    size_t written = fwrite(MERLIN_OUTPUT_PTR[0], sizeof(float), MERLIN_OUT_ELEMS, output_file);
+    if (fclose(output_file) != 0 || written != MERLIN_OUT_ELEMS) {{
+      fprintf(stderr, "FAIL write output file %s\\n", output_path); return NULL;
+    }}
+    /* Preserve the parser framing without streaming a multi-megabyte line through SSH. */
+    printf("OUT 0\\n");
+    printf("METRIC output_file_elems %d\\n", MERLIN_OUT_ELEMS);
+  }} else {{
+    printf("OUT %d", k);
+    for (int i = 0; i < k; i++) {{
+      uint32_t bits;
+      memcpy(&bits, &((float*)MERLIN_OUTPUT_PTR[0])[i], 4);
+      printf(" %u", (unsigned)bits);
+    }}
+    printf("\\n");
   }}
-  printf("\\n");
 
-  if (MERLIN_OUT_ELEMS > MERLIN_DUMP_CAP) {{
+  if ((!output_path || !*output_path) && MERLIN_OUT_ELEMS > MERLIN_DUMP_CAP) {{
     int rows = MERLIN_OUT_ELEMS / MERLIN_OUT_LASTDIM;
     printf("ARGMAX %d", rows);
     for (int r = 0; r < rows; r++) {{
@@ -556,7 +585,8 @@ int main(int argc, char **argv) {{
 """
 
 
-def main_linux_session_c(dump_cap: int | None = 4096) -> str:
+def main_linux_session_c(dump_cap: int | None = 4096,
+                         persistent_openmp_pool: int | None = None) -> str:
     """K1 harness for a generated multi-program session scheduler.
 
     Every ``iter_wall_ns`` sample covers the full ordered stage graph from reset state. Per-stage
@@ -574,6 +604,17 @@ def main_linux_session_c(dump_cap: int | None = 4096) -> str:
             raise ValueError("dump_cap must be positive, or None for the full session output")
         cap_define = f"#define MERLIN_DUMP_CAP {int(dump_cap)}\n"
         k_expr = "elems < MERLIN_DUMP_CAP ? (int)elems : MERLIN_DUMP_CAP"
+    if persistent_openmp_pool is not None and int(persistent_openmp_pool) < 1:
+        raise ValueError("persistent_openmp_pool must be positive when provided")
+    openmp_include = ('#include "libomp_pthread.h"\n'
+                      if persistent_openmp_pool is not None else "")
+    openmp_census = (f'''  int omp_threads = merlin_omp_init_from_env({int(persistent_openmp_pool)});
+  printf("METRIC omp_threads %d\\n", omp_threads);
+  printf("METRIC omp_worker_cpus");
+  for (int tid = 0; tid < omp_threads; ++tid)
+    printf(" %d", merlin_omp_worker_cpu(tid));
+  printf("\\n");
+''' if persistent_openmp_pool is not None else "")
     return f'''/* Generated K1 multi-program continuous-session harness. */
 #define _GNU_SOURCE
 #include <fcntl.h>
@@ -589,6 +630,7 @@ def main_linux_session_c(dump_cap: int | None = 4096) -> str:
 #include <time.h>
 #include <unistd.h>
 #include "merlin_session.h"
+{openmp_include}
 {cap_define}#define MERLIN_TIMEBASE_HZ {K1_TIMEBASE_HZ}ULL
 #define MERLIN_CPU_HZ {K1_CPU_HZ}ULL
 static const void *WEIGHTS[MERLIN_SESSION_N_PROGRAMS];
@@ -619,6 +661,7 @@ static void *worker(void *unused) {{
     fprintf(stderr, "FAIL sched_getaffinity\\n"); return 0;
   }}
   printf("METRIC affinity_cpus %d\\n", CPU_COUNT(&allowed));
+{openmp_census}
   long repeats = 1, warmups = 0; int validate = 0;
   const char *e = getenv("MERLIN_SESSION_REPEATS");
   if (e && *e) {{ repeats = strtol(e, 0, 10); if (repeats < 1) repeats = 1; }}
@@ -744,8 +787,92 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return proc
 
 
+def _model_compile_flags(pkg, features, model_opt: list[str], *,
+                         honor_pkg_cflags: bool = True) -> list[str]:
+    """Compose package tuning flags under the board adapter's non-negotiable target identity.
+
+    Packages commonly carry a generic ``-march=rv64gcv`` for portable runners.  The K1 model
+    object needs the adapter's verified VLEN and half-precision extensions, so package march/ABI
+    declarations are superseded while every actual optimization flag is preserved.  This makes
+    flags such as ``-fno-vectorize`` reach the compiler without allowing a package to erase the
+    target contract.
+    """
+    base = [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt,
+            "-Wno-override-module"]
+    if honor_pkg_cflags:
+        base = merge_package_cflags(base, getattr(pkg, "cflags", ()))
+    from ..llvmlower.impr_features import apply_cflags
+    return apply_cflags(base, features or frozenset())
+
+
 class K1Error(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class _OpenMPSelection:
+    parallel_harts: int | None
+    provider: str | None
+    worker_pool_size: int | None
+
+
+def _resolve_openmp_selection(*, parallel: bool, parallel_harts: int | None,
+                              host_effects=None) -> _OpenMPSelection:
+    """Resolve the lowering width and the ABI provider materialized by K1."""
+    if parallel_harts is not None and int(parallel_harts) < 1:
+        raise ValueError("parallel_harts must be positive when provided")
+    if host_effects is None:
+        active = bool(parallel or parallel_harts)
+        return _OpenMPSelection(
+            int(parallel_harts) if parallel_harts is not None else None,
+            "llvm" if active else None,
+            None,
+        )
+
+    from ..llvmlower.host_policy import HostLoweringEffects
+    if not isinstance(host_effects, HostLoweringEffects):
+        raise TypeError("host_effects must be HostLoweringEffects or None")
+    policy_harts = host_effects.parallel_harts
+    if parallel_harts is not None and policy_harts != int(parallel_harts):
+        raise K1Error(
+            f"explicit parallel_harts={parallel_harts} conflicts with host-policy "
+            f"parallel_harts={policy_harts}")
+    if parallel and policy_harts is not None:
+        raise K1Error(
+            "legacy scalar parallel=True conflicts with a host-policy RVV parallel lowering")
+    harts = int(parallel_harts) if parallel_harts is not None else policy_harts
+    provider = host_effects.openmp_runtime
+    if harts is not None and provider is None:
+        provider = "llvm"
+    return _OpenMPSelection(harts, provider, host_effects.worker_pool_size)
+
+
+def _require_worker_census(metrics: dict[str, Any], *, requested: int) -> tuple[int, ...]:
+    """Fail closed unless the persistent pool observed the exact requested team."""
+    observed_threads = int(metrics.get("omp_threads") or 0)
+    if observed_threads != int(requested):
+        raise K1Error(
+            f"persistent OpenMP census observed {observed_threads} threads; "
+            f"requested {requested}")
+    raw = metrics.get("omp_worker_cpus")
+    if isinstance(raw, int):
+        cpus = (raw,)
+    elif isinstance(raw, str):
+        try:
+            cpus = tuple(int(value) for value in raw.split())
+        except ValueError as exc:
+            raise K1Error(f"invalid persistent OpenMP worker CPU census: {raw!r}") from exc
+    else:
+        cpus = ()
+    if len(cpus) != observed_threads:
+        raise K1Error(
+            f"persistent OpenMP worker CPU census has {len(cpus)} entries; "
+            f"expected {observed_threads}")
+    if any(cpu < 0 for cpu in cpus):
+        raise K1Error(f"persistent OpenMP worker CPU census contains invalid CPU: {cpus}")
+    if len(set(cpus)) != len(cpus):
+        raise K1Error(f"persistent OpenMP worker CPU census contains duplicate CPUs: {cpus}")
+    return cpus
 
 
 # Weight blobs at/above this size are mmap'd (file, demand-paged) instead of embedded in the
@@ -797,6 +924,7 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                     force_scalar: bool | None = None,
                     parallel: bool = False,
                     parallel_harts: int | None = None,
+                    host_effects=None,
                     fallback_policy: str = "allow",
                     mmap_weights: bool | None = None,
                     kernel_backend: str | None = None,
@@ -827,6 +955,11 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     binary is byte-for-byte the existing path."""
     if fallback_policy not in ("allow", "forbid"):
         raise ValueError("fallback_policy must be 'allow' or 'forbid'")
+    if kernel_backend not in {None, "xnnpack", "openblas", "ours", "qd8", "outlined_int8"}:
+        raise K1Error(f"unknown K1 kernel backend {kernel_backend!r}")
+    openmp = _resolve_openmp_selection(
+        parallel=parallel, parallel_harts=parallel_harts, host_effects=host_effects)
+    parallel_harts = openmp.parallel_harts
     # Per-dispatch matmul-bucket timing (default-OFF) is only meaningful with a routed
     # kernel_backend (the timed region lives in the GEMM shim). Guard FIRST so it fails loud
     # before any toolchain/model work, and never silently no-op's into an always-zero bucket.
@@ -860,6 +993,23 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
               f"{_prepack.get('transposes_removed')} transposes removed, "
               f"{_prepack.get('mib_moved_per_inference_before')} MiB/inference no longer moved "
               f"(cached={_prepack.get('cached')})")
+    # AOT CONSTANT-WEIGHT QUANTIZATION (`prequantize_constant_weights`, default-off). This is the
+    # same kind of ABI-bearing bundle rewrite as prepacking above: the prepared compiler input and
+    # c_runtime's argument table must both see the rewritten signature + payload. Apply it after
+    # layout prepacking so two requested bundle transforms form one explicit provenance chain.
+    from ..llvmlower import weight_prequant as _wq
+    _wq.ensure_registered()
+    if _wq.FEATURE in (getattr(pkg, "compiler_features", None) or ()):
+        if not pkg.is_int8:
+            raise K1Error(f"{_wq.FEATURE} requires an INT8 package")
+        try:
+            model_dir, _prequant = _wq.prequantized_bundle(model_dir)
+        except _wq.PrequantizeRefused as exc:
+            raise K1Error(f"{_wq.FEATURE}: {exc}") from exc
+        (work / "PREQUANTIZED_BUNDLE").write_text(str(model_dir))
+        print(f"[prequant] {model_dir.name}: "
+              f"{_prequant.get('weights_prequantized')} constant matrices stored as i8+scale "
+              f"(cached={_prequant.get('cached')})")
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     cc = toolchain_cc()
     if cc is None:
@@ -890,8 +1040,30 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     feats_in = frozenset(getattr(pkg, "compiler_features", []) or []) or None
     prepared, feats = zm.prepare_for_lowering(
         model_dir / "model.mlir", work, int8_compute=pkg.is_int8, features=feats_in,
-        harts=(int(parallel_harts) if parallel_harts else 1), vlen=VLEN)
+        harts=(int(parallel_harts) if parallel_harts else 1), vlen=VLEN,
+        outline_int8=kernel_backend == "outlined_int8")
     feats = feats or None
+    # OUTLINED W8A8 backend (default-off): the preparation seam above replaces each legal rank-2
+    # i8xi8->i32 contraction with a call before panel/block expansion. One small MR4/NR32 RVV body
+    # is compiled here and linked below; batched attention contractions continue through Merlin.
+    outlined_int8_obj = None
+    n_outlined_int8_routed = 0
+    if kernel_backend == "outlined_int8":
+        from ..runtime.backends import outlined_int8_board as oi
+
+        if not pkg.is_int8:
+            raise K1Error("kernel_backend='outlined_int8' requires an INT8 package")
+        if not oi.is_available():
+            raise K1Error("kernel_backend='outlined_int8' but its RVV shim is unavailable")
+        signatures = oi.load_signatures(work)
+        if not signatures:
+            raise K1Error("outlined INT8 preparation routed no signatures")
+        n_outlined_int8_routed = sum(
+            1 for record in json.loads((work / oi.SIDECAR_NAME).read_text()).get("routed", ()))
+        outlined_int8_obj = oi.build_object(
+            cc, ["--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}",
+                 f"-mabi={K1_MABI}", "-O3", "-DNDEBUG"],
+            signatures, work / "outlined_int8", parallel=bool(parallel_harts))
     # XNNPACK kernel-backend (default-off, additive): rewrite the routable f32 linalg.matmul ops
     # in the PREPARED MLIR to external calls (@merlin_xnn_gemm_f32). Everything else lowers
     # unchanged. n_xnn_routed records the count; the shim .o is built + linked below.
@@ -1082,16 +1254,10 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # and is never handed to the compiler emits byte-identical code while reporting as applied --
     # the inert-lever failure this file's own comments warn about. Only the model object gets these;
     # the harness and runtime stay on fixed flags so a measurement changes one thing.
-    from ..llvmlower.impr_features import apply_cflags as _apply_cflags
-    _base_flags = [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt,
-                   "-Wno-override-module"]
-    # PACKAGE-DECLARED cflags (default OFF -> `_base_flags` unchanged -> byte-identical object, the
-    # same frozen-baseline invariant `apply_cflags` carries). `rvv/hand_v0_int8` declares
-    # `-fno-vectorize -fno-slp-vectorize`; with this off, clang's loop and SLP vectorizers run on
-    # our emitted `model.ll` and part of the binary's vector code is THEIRS, not the schedule's.
-    if honor_pkg_cflags:
-        _base_flags = merge_package_cflags(_base_flags, getattr(pkg, "cflags", ()))
-    _model_flags = _apply_cflags(_base_flags, feats or frozenset())
+    # ``honor_pkg_cflags=False`` is retained for the explicit A/B diagnostic. Production builds
+    # honor package optimization flags while the helper keeps target-owned march/ABI facts pinned.
+    _model_flags = _model_compile_flags(
+        pkg, feats, model_opt, honor_pkg_cflags=honor_pkg_cflags)
     _run([clang23, "--target=riscv64-unknown-linux-gnu", *_model_flags,
           "-c", res.ll_path, "-o", model_o])
     # 2b. POST-CODEGEN CENSUS: is the model still IN the object? A backend that deletes reachable
@@ -1101,8 +1267,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # it. The bound is derived from the prepared IR (one instruction per structured op that reaches
     # an output) and carries no constant; it raises, so an erased model cannot be timed.
     from ..llvmlower.codegen_census import require_commensurate as _census_require
-    _census = _census_require(prepared, model_o, "forward")
-    print(f"[census] {_census.as_dict()}", flush=True)
+    _object_census = _census_require(prepared, model_o, "forward")
+    print(f"[census gate object] {_object_census.as_dict()}", flush=True)
 
     # 3. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).
     cgen = work / "cgen"
@@ -1144,7 +1310,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # 5. the Linux harness.
     main_c = work / "main_linux.c"
     main_c.write_text(main_linux_c(dump_cap=dump_cap, mmap_weights=mmap_weights,
-                                   dispatch_timing=dispatch_timing, op_profile=op_profile))
+                                   dispatch_timing=dispatch_timing, op_profile=op_profile,
+                                   persistent_openmp_pool=openmp.worker_pool_size))
 
     # 6. link the final binary. Reuse the repo's portable C runtime + generated ciface. Prefer a
     #    static binary (no glibc-version coupling to the board); fall back to dynamic, which is
@@ -1165,6 +1332,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     model_call_c = cgen / "model_call.c"
     sysroot = root / "sysroot"
     other_c = [main_c, rt / "merlin_model.c", abi / "mlir_runtime.c"]
+    if openmp.provider == "merlin_pthread_pool":
+        other_c = other_c + [rt / "libomp_pthread.c"]
     if op_profile:                      # per-op tick accumulator the instrumented IR calls
         other_c = other_c + [rt / "merlin_op_prof.c"]
     # MEASUREMENT PROXY for the lean runtime's static arena (env MERLIN_BUMP_MALLOC, default OFF):
@@ -1192,9 +1361,11 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         base += [str(ours_obj)]
     if qd8_obj is not None:                        # qd8 dynamic-int8 RVV GEMM ukernel shim
         base += [str(qd8_obj)]
+    if outlined_int8_obj is not None:              # reusable W8A8 RVV GEMM body
+        base += [str(outlined_int8_obj)]
     if not mmap_weights:
         base += [str(weights_o)]
-    if parallel or parallel_harts:
+    if (parallel or parallel_harts) and openmp.provider == "llvm":
         # Resolve the cross-built __kmpc_* symbols against the static libomp; its LLVM runtime
         # needs the C++/dl deps (see the libomp build note). Order matters: libomp before its deps.
         libomp = K1_OPENMP_DIR / "libomp.a"
@@ -1208,6 +1379,18 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         _run(base)
     if not binary.is_file():
         raise K1Error(f"K1 cross-compile produced no binary at {binary}")
+    # The object census above is the strong erasure gate because its whole-object count cannot be
+    # inflated by libc/runtime code.  It is NOT the delivered-code measurement: unresolved local
+    # calls are only attributed to ``forward`` after relocation (122x difference on tiny_llama).
+    # Record both roles explicitly and make the linked ELF the only headline census we print.
+    _linked_census = _census_require(prepared, binary, "forward")
+    _census_report = {
+        "gate_object": _object_census.as_dict(),
+        "linked_elf": _linked_census.as_dict(),
+    }
+    (work / "codegen_census.json").write_text(
+        json.dumps(_census_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"[census linked ELF] {_linked_census.as_dict()}", flush=True)
     if kernel_backend == "xnnpack":
         (work / "N_XNN_ROUTED").write_text(str(n_xnn_routed))
         (work / "N_XNN_ELIGIBLE").write_text(str(n_xnn_eligible))
@@ -1218,11 +1401,14 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
         (work / "N_OPENBLAS_CANDIDATES").write_text(str(n_openblas_candidates))
     if kernel_backend == "ours":
         (work / "N_OURS_ROUTED").write_text(str(n_ours_routed))
+    if kernel_backend == "outlined_int8":
+        (work / "N_OUTLINED_INT8_ROUTED").write_text(str(n_outlined_int8_routed))
     return binary
 
 
 def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
                             force_scalar: bool = False, parallel_harts: int | None = None,
+                            host_effects=None,
                             fallback_policy: str = "forbid",
                             kernel_backend: str | None = None,
                             dump_cap: int | None = 4096) -> Path:
@@ -1234,6 +1420,9 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
     """
     if fallback_policy not in {"allow", "forbid"}:
         raise ValueError("fallback_policy must be 'allow' or 'forbid'")
+    openmp = _resolve_openmp_selection(
+        parallel=False, parallel_harts=parallel_harts, host_effects=host_effects)
+    parallel_harts = openmp.parallel_harts
     if kernel_backend not in {None, "xnnpack", "openblas"}:
         raise K1Error(f"multi-program kernel backend {kernel_backend!r} is not supported")
     if kernel_backend is not None and pkg.is_int8:
@@ -1264,6 +1453,7 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
     eligible_total = 0
     candidate_total = 0
     signature_total = 0
+    stage_censuses: list[tuple[Path, str, dict[str, Any]]] = []
     backend_module = None
     backend_symbol = ""
     if kernel_backend == "xnnpack":
@@ -1321,10 +1511,7 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
         model_object = stage_work / "model.o"
         # Same cflags-class features as the primary site; a staged sibling that skipped them would
         # measure a different compiler than the one the feature set names.
-        from ..llvmlower.impr_features import apply_cflags as _apply_cflags_stage
-        _stage_flags = _apply_cflags_stage(
-            [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt, "-Wno-override-module"],
-            features or frozenset())
+        _stage_flags = _model_compile_flags(pkg, features, model_opt)
         _run([clang23, "--target=riscv64-unknown-linux-gnu", *_stage_flags,
               "-c", lowered.ll_path, "-o", model_object])
         # Same post-codegen census as the primary site (see there): a staged sibling that skipped it
@@ -1332,7 +1519,8 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
         from ..llvmlower.codegen_census import require_commensurate as _census_require_stage
         _stage_census = _census_require_stage(prepared, model_object,
                                               str(record["entrypoint"]))
-        print(f"[census] stage {name!r} {_stage_census.as_dict()}", flush=True)
+        print(f"[census gate object] stage {name!r} {_stage_census.as_dict()}", flush=True)
+        stage_censuses.append((prepared, str(record["entrypoint"]), _stage_census.as_dict()))
         model_object = _namespace_stage_object(
             model_object, stage_work / "model.namespaced.o", index=index,
             entrypoint=str(record["entrypoint"]))
@@ -1378,13 +1566,16 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
     marker = work / "USE_MMAP_WEIGHTS.json"
     marker.write_text(json.dumps(weights, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     main_c = work / "main_session.c"
-    main_c.write_text(main_linux_session_c(dump_cap), encoding="utf-8")
+    main_c.write_text(main_linux_session_c(
+        dump_cap, persistent_openmp_pool=openmp.worker_pool_size), encoding="utf-8")
     binary = work / "merlin_k1_session"
     base = [cc, "--target=riscv64-unknown-linux-gnu", f"-march={K1_MARCH}",
             f"-mabi={K1_MABI}", k1_opt, f"-I{rt}", f"-I{generated}", main_c,
             generated / "merlin_session.c", rt / "merlin_model.c", abi / "mlir_runtime.c",
             *objects]
-    if parallel_harts:
+    if openmp.provider == "merlin_pthread_pool":
+        base += [rt / "libomp_pthread.c"]
+    if parallel_harts and openmp.provider == "llvm":
         libomp = K1_OPENMP_DIR / "libomp.a"
         if not libomp.is_file():
             raise K1Error(f"parallel session build needs {libomp}")
@@ -1396,6 +1587,18 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
         _run(base)
     if not binary.is_file():
         raise K1Error(f"K1 session cross-compile produced no binary at {binary}")
+    # As in the single-program path, retain the object census as the erasure gate and report each
+    # preserved stage entry from the linked artifact that actually runs.
+    from ..llvmlower.codegen_census import require_commensurate as _census_require_linked
+    linked_stages = []
+    for prepared, entrypoint, object_census in stage_censuses:
+        linked = _census_require_linked(prepared, binary, entrypoint)
+        linked_stages.append({"entrypoint": entrypoint, "gate_object": object_census,
+                              "linked_elf": linked.as_dict()})
+        print(f"[census linked ELF] stage {entrypoint!r} {linked.as_dict()}", flush=True)
+    (work / "codegen_census.json").write_text(
+        json.dumps({"stages": linked_stages}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
     (work / "HAS_SESSION_QUALITY").write_text("1", encoding="utf-8")
     return binary
 
@@ -1455,6 +1658,21 @@ def _ssh(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:
         ["ssh", "-i", K1_SSH_KEY, *_SSH_PORT_OPTS, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
          "-o", "StrictHostKeyChecking=no", K1_HOST, *args],
         capture_output=True, text=True, timeout=_bounded_timeout(timeout))
+
+
+def _remote_bounded(command: str, timeout: int) -> str:
+    """Make the board own the deadline so a lost SSH client cannot orphan an inference.
+
+    A host-side ``subprocess.run(timeout=...)`` kills only the local ssh process.  The remote child
+    keeps running after that connection disappears (observed: two smolVLA runs consumed board CPU
+    for more than a day after their cells timed out).  GNU timeout is present in the K1 image; put
+    the measured command under it and quote the complete shell fragment as one argument.
+    """
+    seconds = int(timeout)
+    if seconds < 1:
+        raise ValueError("remote timeout must be positive")
+    return (f"timeout --signal=TERM --kill-after=5s {seconds}s "
+            f"sh -c {shlex.quote(command)}")
 
 
 def board_vlenb() -> int | None:
@@ -1574,8 +1792,44 @@ def _remote_binary_path(binary: str | Path, name: str) -> str:
     return f"{K1_REMOTE_DIR}/{name}" if big else f"/tmp/{name}"
 
 
+def _pull_full_output(remote_out: str, bwork: Path, result: dict[str, Any]) -> None:
+    """Replace the empty console output with the complete binary tensor from the board.
+
+    The generated harness deliberately leaves an ``OUT 0`` framing record in stdout so the
+    existing parser still proves that the process reached ``DONE``.  The element count printed
+    beside the file is the independent completeness witness: a short or missing transfer fails
+    before any accuracy gate can mistake it for the model's answer.
+    """
+    local_out = bwork / "board_output.bin"
+    command = ["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+               "-o", "StrictHostKeyChecking=no", f"{K1_HOST}:{remote_out}", local_out]
+    # The inference and its output file already exist on the board.  A transient WiFi/SSH close
+    # while pulling that file must retry BEFORE run_binary_on_k1's finally block deletes it; otherwise
+    # a multi-minute, correct run is irretrievably discarded for a transport failure unrelated to
+    # the model.  Three immediate attempts are bounded and preserve the original exception if all
+    # fail.  The element-count check below still rejects partial transfers.
+    for attempt in range(3):
+        try:
+            _run(command)
+            break
+        except K1Error:
+            local_out.unlink(missing_ok=True)
+            if attempt == 2:
+                raise
+    import numpy as _np
+    output = _np.fromfile(local_out, dtype=_np.float32)
+    expected = int(result.get("metrics", {}).get("output_file_elems") or 0)
+    if not expected or len(output) != expected:
+        raise K1Error(f"board output file has {len(output)} elements; expected {expected}")
+    result["outputs"] = output
+    result["prefix"] = output
+    result["output_complete"] = True
+
+
 def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str | Path, *,
-                     env: dict[str, str] | None = None, timeout: int = 600) -> dict[str, Any]:
+                     env: dict[str, str] | None = None, timeout: int = 600,
+                     capture_full_output: bool = False,
+                     parallel_harts: int | None = None) -> dict[str, Any]:
     """Deploy and run an ALREADY-BUILT K1 binary, with an explicit environment.
 
     Split out of :func:`run_on_k1`'s build+run ladder so a measurement can run the SAME binary
@@ -1590,30 +1844,75 @@ def run_binary_on_k1(model_dir: str | Path, bwork: str | Path, pkg, binary: str 
 
     if not K1_HOST:
         raise K1Error("MERLIN_K1_HOST unset — board unreachable")
+    if parallel_harts is not None and int(parallel_harts) < 1:
+        raise ValueError("parallel_harts must be positive when provided")
     bwork = Path(bwork)
     remote = _remote_binary_path(binary, f"{Path(model_dir).name}_{pkg.run_id}_envrun_merlin_k1")
+    remote_out = f"{K1_REMOTE_DIR}/{Path(remote).name}.output.bin" if capture_full_output else None
     with board_lock():
-        if remote.startswith(K1_REMOTE_DIR):
+        if remote.startswith(K1_REMOTE_DIR) or remote_out:
             _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
         _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
               "-o", "StrictHostKeyChecking=no", str(binary), f"{K1_HOST}:{remote}"])
         marker = bwork / "USE_MMAP_WEIGHTS"
+        multi_marker = bwork / "USE_MMAP_WEIGHTS.json"
         wenv, remote_w = "", None
-        if marker.is_file():
+        remote_weights: list[str] = []
+        if multi_marker.is_file():
+            _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
+            by_digest: dict[str, str] = {}
+            for item in json.loads(multi_marker.read_text(encoding="utf-8")):
+                digest, program = str(item["sha256"]), int(item["program"])
+                remote_stage = by_digest.get(digest)
+                if remote_stage is None:
+                    remote_stage = f"{K1_REMOTE_DIR}/{Path(remote).name}.weights.{digest[:16]}.bin"
+                    _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
+                          "-o", "StrictHostKeyChecking=no", str(item["path"]),
+                          f"{K1_HOST}:{remote_stage}"])
+                    by_digest[digest] = remote_stage
+                    remote_weights.append(remote_stage)
+                wenv += f"MERLIN_WEIGHTS_{program}={remote_stage} "
+        elif marker.is_file():
             _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
             remote_w = f"{K1_REMOTE_DIR}/{Path(remote).name}.weights.bin"
             _run(["scp", "-i", K1_SSH_KEY, *_SCP_PORT_OPTS, "-o", "BatchMode=yes",
                   "-o", "StrictHostKeyChecking=no", marker.read_text().strip(),
                   f"{K1_HOST}:{remote_w}"])
             wenv = f"MERLIN_WEIGHTS={remote_w} "
-        envs = "".join(f"{k}={v} " for k, v in (env or {}).items())
+        output_env = f"MERLIN_OUTPUT_FILE={remote_out} " if remote_out else ""
+        run_env = dict(env or {})
+        if parallel_harts is not None:
+            run_env["OMP_NUM_THREADS"] = str(int(parallel_harts))
+            run_env["OMP_PROC_BIND"] = "spread"
+        envs = "".join(f"{k}={v} " for k, v in run_env.items())
+        affinity_list = (f"0-{int(parallel_harts) - 1}"
+                         if parallel_harts is not None and int(parallel_harts) > 1 else None)
+        taskset = f"taskset -c {affinity_list} " if affinity_list else ""
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
-            proc = _ssh(f"{wenv}{envs}{remote}", timeout=timeout)
-            return zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+            conditions_before = board_conditions()
+            command = f"{wenv}{output_env}{envs}{taskset}{remote}"
+            proc = _ssh(_remote_bounded(command, timeout), timeout=timeout + 15)
+            result = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+            if remote_out:
+                _pull_full_output(remote_out, bwork, result)
+            result["board_conditions"] = {
+                "before": conditions_before, "after": board_conditions()}
+            result["affinity_mask"] = affinity_list
+            result["requested_core_count"] = int(parallel_harts or 1)
+            result["core_count"] = int(parallel_harts or 1)
+            result["affinity_available_cpus"] = int(
+                result.get("metrics", {}).get("affinity_cpus") or 0)
+            return result
         finally:
             try:
-                _ssh(f"rm -f {remote}" + (f" {remote_w}" if remote_w else ""), timeout=30)
+                cleanup = [remote]
+                if remote_w:
+                    cleanup.append(remote_w)
+                cleanup.extend(remote_weights)
+                if remote_out:
+                    cleanup.append(remote_out)
+                _ssh("rm -f " + " ".join(cleanup), timeout=30)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -1640,6 +1939,7 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
               kernel_backend: str | None = None, dispatch_timing: bool = False,
               op_profile: bool = False, force_scalar: bool = False,
               parallel_harts: int | None = None, fallback_policy: str = "allow",
+              host_effects=None,
               require_csr_vlen: bool = False,
               iters: int = 1, warmup: int = 0,
               session_repeats: int | None = None,
@@ -1670,8 +1970,11 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
 
     if fallback_policy not in ("allow", "forbid"):
         raise ValueError("fallback_policy must be 'allow' or 'forbid'")
-    if parallel_harts is not None and int(parallel_harts) < 1:
-        raise ValueError("parallel_harts must be positive when provided")
+    openmp = _resolve_openmp_selection(
+        parallel=False, parallel_harts=parallel_harts, host_effects=host_effects)
+    parallel_harts = openmp.parallel_harts
+    if force_scalar and host_effects is not None:
+        raise K1Error("force_scalar=True conflicts with host-policy parallel lowering effects")
 
     if not K1_HOST:
         raise K1Error("MERLIN_K1_HOST unset — board unreachable")
@@ -1709,12 +2012,14 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             binary = build_k1_session_binary(
                 model_dir, bwork, pkg, force_scalar=(mode == "scalar"),
                 parallel_harts=(parallel_harts if mode == "rvv_openmp" else None),
+                host_effects=(host_effects if mode == "rvv_openmp" else None),
                 fallback_policy=fallback_policy, kernel_backend=kernel_backend,
                 dump_cap=dump_cap)
         else:
             binary = build_k1_binary(
                 model_dir, bwork, pkg, force_scalar=(mode == "scalar"), parallel=(mode == "omp"),
                 parallel_harts=(parallel_harts if mode == "rvv_openmp" else None),
+                host_effects=(host_effects if mode == "rvv_openmp" else None),
                 fallback_policy=fallback_policy, kernel_backend=kernel_backend,
                 dispatch_timing=dispatch_timing, op_profile=op_profile, dump_cap=dump_cap,
                 max_session_steps=max_session_steps,
@@ -1737,12 +2042,27 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         result["fallback_used"] = mode != requested_mode
         requested_cores = (int(parallel_harts) if mode == "rvv_openmp" else
                            K1_OMP_THREADS if mode == "omp" else 1)
-        # Do not infer the paper core count from OMP_NUM_THREADS. The generated harness reads the
-        # process affinity mask on silicon, and the deploy command pins that mask explicitly.
-        # A missing/incorrect observation therefore fails the paper cell instead of echoing intent.
+        # A serial image has exactly one calling thread but deliberately remains unpinned, so its
+        # affinity mask may contain every CPU. A parallel image is taskset-bounded and must observe
+        # exactly the requested mask; fail closed instead of publishing a mislabeled paper cell.
         result["requested_core_count"] = requested_cores
-        result["core_count"] = int(result.get("metrics", {}).get("affinity_cpus") or 0)
+        affinity_cpus = int(result.get("metrics", {}).get("affinity_cpus") or 0)
+        result["affinity_available_cpus"] = affinity_cpus
+        if mode in ("omp", "rvv_openmp"):
+            if affinity_cpus != requested_cores:
+                raise K1Error(
+                    f"requested {requested_cores} cores but sched_getaffinity exposed "
+                    f"{affinity_cpus}")
+            result["core_count"] = affinity_cpus
+        else:
+            result["core_count"] = 1
         result["affinity_source"] = "sched_getaffinity"
+        if mode == "rvv_openmp" and openmp.provider == "merlin_pthread_pool":
+            worker_cpus = _require_worker_census(
+                result.get("metrics", {}), requested=int(parallel_harts))
+            result["openmp_runtime"] = openmp.provider
+            result["worker_cpus"] = list(worker_cpus)
+            result["worker_affinity_ok"] = True
         return result
 
     def _deploy_run(mode: str, tag: str, bwork: Path, binary) -> dict:
@@ -1809,11 +2129,19 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
                     f"MERLIN_SESSION_WARMUPS={int(warmup)} ")
         elif int(iters) > 1 or int(warmup) > 0:
             env += f"MERLIN_ITERS={int(iters)} MERLIN_WARMUP={int(warmup)} "
+        remote_out = (f"{K1_REMOTE_DIR}/{Path(remote).name}.output.bin"
+                      if dump_cap is None else None)
+        output_env = f"MERLIN_OUTPUT_FILE={remote_out} " if remote_out else ""
+        if remote_out:
+            _ssh(f"mkdir -p {K1_REMOTE_DIR}", timeout=30)
         try:
             _ssh(f"chmod +x {remote}", timeout=30)
             conditions_before = board_conditions()
-            proc = _ssh(f"{wenv}{env}{taskset}{remote}", timeout=timeout)
+            command = f"{wenv}{output_env}{env}{taskset}{remote}"
+            proc = _ssh(_remote_bounded(command, timeout), timeout=timeout + 15)
             r = zm._parse_console(proc.stdout + proc.stderr, proc.returncode)
+            if remote_out:
+                _pull_full_output(remote_out, bwork, r)
             conditions_after = board_conditions()
             r["board_conditions"] = {"before": conditions_before, "after": conditions_after}
             # The mask this wall was produced under. Recorded even when absent (None = unpinned),
@@ -1823,9 +2151,8 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             if (bwork / "HAS_SESSION_QUALITY").is_file():
                 quality_env = ("MERLIN_VALIDATE_SESSION=1 MERLIN_SESSION_REPEATS=1 "
                                "MERLIN_SESSION_WARMUPS=0 ")
-                qproc = _ssh(
-                    f"{wenv}{env}{quality_env}{taskset}{remote}",
-                    timeout=timeout)
+                quality_command = f"{wenv}{env}{quality_env}{taskset}{remote}"
+                qproc = _ssh(_remote_bounded(quality_command, timeout), timeout=timeout + 15)
                 qres = zm._parse_console(qproc.stdout + qproc.stderr, qproc.returncode)
                 qm = qres.get("metrics", {})
                 steps = int(qm.get("trajectory_steps") or 0)
@@ -1869,6 +2196,9 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
             nu = bwork / "N_OURS_ROUTED"
             if nu.is_file():
                 r["n_ours_routed"] = int(nu.read_text().strip())
+            ni = bwork / "N_OUTLINED_INT8_ROUTED"
+            if ni.is_file():
+                r["n_outlined_int8_routed"] = int(ni.read_text().strip())
             # Per-op profile: join the board's `PROF <id> <ticks> <hits>` lines against the
             # id->op table the build emitted. Absent (or empty) unless op_profile=True.
             tbl = bwork / "opprof_table.json"
@@ -1886,6 +2216,8 @@ def run_on_k1(model_dir: str | Path, work: str | Path, pkg, *, timeout: int = 60
         finally:
             try:
                 cleanup = ([remote_w] if remote_w else []) + remote_weights
+                if remote_out:
+                    cleanup.append(remote_out)
                 _ssh(f"rm -f {remote}" + (" " + " ".join(cleanup) if cleanup else ""), timeout=30)
             except Exception:  # noqa: BLE001
                 pass

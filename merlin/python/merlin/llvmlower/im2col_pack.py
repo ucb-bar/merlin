@@ -62,6 +62,14 @@ The matching schedule arm tiles ``[MR, 1, 0, 0]`` then ``[0, 0, 0, 1]`` and vect
 ``[MR, 1, NR, 1]``: the same MR x NR register block over the same K-by-1 reduction as the matmul arm,
 just with the panel index as its own loop. See ``perop_blocks.schedule_text``.
 
+When ``Ow`` is not divisible by ``NR``, complete panels keep that same path.  A second direct gather
+and ordinary matmul cover the row remainder at its true width, and both loops insert directly into
+the original ``[F, M]`` accumulator.  There is no padded activation, padded whole-result copy, or
+out-of-bounds masked load.  The only new index cost is quotient/remainder once per complete panel;
+it is outside the gather element loop and contraction K loop.  This is deliberately a narrow tail
+rather than padded compute: ResNet-50's 23 formerly refused sites have tails 8 or 12 at NR=16, so
+padding them would execute 2x or 1.33x as many tail MACs for values that are immediately discarded.
+
 WHERE NR COMES FROM
 -------------------
 NR is NOT chosen here and is never a literal. The caller passes the per-op block table
@@ -80,8 +88,8 @@ WHAT IT REFUSES TO DO (fail closed, and every refusal is counted)
 * a gather whose input map is not ``(n, c, sh*oh + dh*kh, sw*ow + dw*kw)`` with non-negative integer
   coefficients, read STRUCTURALLY off the affine expressions (``refused_unreadable_gather_map``);
 * a geometry with no entry in the block table (``refused_unpriced``);
-* ``NR`` that does not divide ``Ow`` -- the split would need a mod/floordiv in the gather's map and a
-  masked panel in the schedule (``refused_nr_does_not_divide_ow``);
+* a chosen panel width below two, which cannot improve contiguity
+  (``refused_panel_width_too_narrow``);
 * an accumulator that is not a ``linalg.fill`` result (``refused_accumulator_not_filled``);
 * the grouped (rank-7) im2col form (``refused_not_im2col`` -- its contraction is 4-dim already).
 
@@ -121,7 +129,8 @@ class PackReport:
     """What the pass did, and what it refused. Every refusal is named and counted."""
 
     packed: int = 0
-    #: ``[(shape_key, MR, NR)]`` for each contraction rewritten -- the caller's block-table entries.
+    #: ``[(shape_key, MR, NR)]`` for the ordinary contractions produced. A row-tail rewrite produces
+    #: one full-panel entry and one narrow-tail entry.
     entries: list[tuple[str, int, int]] = field(default_factory=list)
     refusals: dict[str, int] = field(default_factory=dict)
 
@@ -374,10 +383,10 @@ def _dyn_slice_props(rank: int, dyn_dim: int, sizes: "list[int]"):
             "static_strides": DenseArrayBase.from_list(i64, [1] * rank)}
 
 
-def _rewrite_one(mt: _Match, nr: int) -> None:
+def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
     """Replace the matched chain in place with the panel-packed one."""
     from xdsl.dialects.arith import ConstantOp
-    from xdsl.dialects.builtin import (AffineMapAttr, IndexType, IntegerAttr, TensorType, i64)
+    from xdsl.dialects.builtin import AffineMapAttr, IndexType, IntegerAttr, TensorType, i64
     from xdsl.dialects.linalg.ops import (GenericOp, IteratorType, IteratorTypeAttr, YieldOp)
     from xdsl.dialects.scf import ForOp, YieldOp as ScfYieldOp
     from xdsl.dialects.tensor import (CollapseShapeOp, EmptyOp, ExpandShapeOp, ExtractSliceOp,
@@ -455,7 +464,9 @@ def _rewrite_one(mt: _Match, nr: int) -> None:
     put = InsertSliceOp.build(
         operands=[inner.results[0], carried, [ivar], [], []], result_types=[acc_t],
         properties=_dyn_slice_props(3, 1, [mt.f, 1, nr]))
-    body.add_ops([panel, tile, inner, put, ScfYieldOp(put.results[0])])
+    from .panel_parallel import marker_ops
+    markers = marker_ops(parallel_panels, mo)
+    body.add_ops([*markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
     loop = ForOp(lb.results[0], ub.results[0], step.results[0], [acc.results[0]], Region(body))
 
     out = CollapseShapeOp(
@@ -469,7 +480,170 @@ def _rewrite_one(mt: _Match, nr: int) -> None:
         Rewriter.erase_op(dead)
 
 
-def rewrite_module(module, table: "dict[str, tuple[int, int]]") -> PackReport:
+def _spatial_panel_gather(mt: _Match, panel_count: int, width: int, first_ow: int):
+    """Build a direct gather for ``panel_count`` panels of ``width`` columns in every output row.
+
+    ``first_ow`` is the first output column covered.  Keeping the output-row dimensions explicit is
+    important: it avoids a floordiv/mod pair for every im2col element.  Tail support pays index
+    arithmetic once per contraction panel instead (in :func:`_spatial_panel_loop`).
+    """
+    from xdsl.dialects.builtin import AffineMapAttr, IntegerAttr, TensorType, i64
+    from xdsl.dialects.linalg.ops import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+    from xdsl.dialects.tensor import CollapseShapeOp, EmptyOp
+    from xdsl.ir import Block, Region
+    from xdsl.ir.affine import AffineExpr, AffineMap
+
+    par = IteratorTypeAttr(IteratorType.PARALLEL)
+    d = AffineExpr.dimension
+    col_elem = mt.contraction.inputs[1].type.get_element_type()
+    # dims: n=0, oh=1, panel=2, c=3, kh=4, kw=5, wi=6
+    shape = [mt.n, mt.oh, panel_count, mt.channels, mt.kh, mt.kw, width]
+    gather_t = TensorType(col_elem, shape)
+    empty = EmptyOp([], gather_t)
+    block = Block(arg_types=[col_elem, col_elem])
+    block.add_op(YieldOp(block.args[0]))
+    in_map = AffineMap(7, 0, (
+        d(0),
+        d(3),
+        d(1) * mt.sh + d(4) * mt.dh,
+        (first_ow + d(2) * width + d(6)) * mt.sw + d(5) * mt.dw,
+    ))
+    gather = GenericOp(
+        inputs=[mt.gather.inputs[0]], outputs=[empty.results[0]], body=Region(block),
+        indexing_maps=[AffineMapAttr(in_map),
+                       AffineMapAttr(AffineMap(7, 0, tuple(d(i) for i in range(7))))],
+        iterator_types=[par] * 7, result_types=[gather_t])
+    for key, val in mt.gather.attributes.items():
+        gather.attributes[key] = val
+    gather.attributes[PANEL_ATTR] = IntegerAttr(width, i64)
+    panels = mt.n * mt.oh * panel_count
+    collapsed = CollapseShapeOp(
+        operands=[gather.results[0]],
+        result_types=[TensorType(col_elem, [panels, mt.k, width])],
+        properties={"reassociation": _reassoc([[0, 1, 2], [3, 4, 5], [6]])})
+    return [empty, gather, collapsed], collapsed.results[0]
+
+
+def _spatial_panel_loop(mt: _Match, packed, initial_acc, *, panels: int,
+                        panels_per_row: int, width: int, first_ow: int,
+                        parallel_panels: bool):
+    """Contract packed panels into their unpadded positions in the original ``[F, M]`` result.
+
+    The quotient/remainder is evaluated once per panel, never in the K loop or the gather element
+    loop.  Consequently a non-divisible output width retains the full-width kernel for its complete
+    panels and uses one narrower kernel only for each row's remainder.
+    """
+    from xdsl.dialects.arith import (AddiOp, ConstantOp, DivUIOp, MuliOp, RemUIOp)
+    from xdsl.dialects.builtin import AffineMapAttr, IndexType, IntegerAttr, TensorType, i64
+    from xdsl.dialects.linalg.ops import GenericOp, IteratorType, IteratorTypeAttr
+    from xdsl.dialects.scf import ForOp, YieldOp as ScfYieldOp
+    from xdsl.dialects.tensor import ExtractSliceOp, InsertSliceOp
+    from xdsl.ir import Block, Region
+
+    par = IteratorTypeAttr(IteratorType.PARALLEL)
+    red = IteratorTypeAttr(IteratorType.REDUCTION)
+    idx = IndexType()
+    col_elem = mt.contraction.inputs[1].type.get_element_type()
+    acc_elem = mt.contraction.outputs[0].type.get_element_type()
+    acc_t = TensorType(acc_elem, [mt.f, mt.m])
+    lb = ConstantOp.from_int_and_width(0, idx)
+    ub = ConstantOp.from_int_and_width(panels, idx)
+    step = ConstantOp.from_int_and_width(1, idx)
+
+    body = Block(arg_types=[idx, acc_t])
+    ivar, carried = body.args
+    offset_ops = []
+    if panels_per_row == 1:
+        row = ivar
+        panel_col = None
+    else:
+        per_row = ConstantOp.from_int_and_width(panels_per_row, idx)
+        row_op = DivUIOp(ivar, per_row)
+        panel_op = RemUIOp(ivar, per_row)
+        offset_ops.extend([per_row, row_op, panel_op])
+        row, panel_col = row_op.results[0], panel_op.results[0]
+    ow = ConstantOp.from_int_and_width(mt.ow, idx)
+    row_base = MuliOp(row, ow)
+    offset_ops.extend([ow, row_base])
+    offset = row_base.results[0]
+    if panel_col is not None:
+        panel_width = ConstantOp.from_int_and_width(width, idx)
+        panel_base = MuliOp(panel_col, panel_width)
+        add_panel = AddiOp(offset, panel_base)
+        offset_ops.extend([panel_width, panel_base, add_panel])
+        offset = add_panel.results[0]
+    if first_ow:
+        first = ConstantOp.from_int_and_width(first_ow, idx)
+        add_first = AddiOp(offset, first)
+        offset_ops.extend([first, add_first])
+        offset = add_first.results[0]
+
+    panel_t = TensorType(col_elem, [mt.k, width])
+    tile_t = TensorType(acc_elem, [mt.f, width])
+    panel = ExtractSliceOp.build(
+        operands=[packed, [ivar], [], []], result_types=[panel_t],
+        properties=_dyn_slice_props(3, 0, [1, mt.k, width]))
+    tile = ExtractSliceOp.build(
+        operands=[carried, [offset], [], []], result_types=[tile_t],
+        properties=_dyn_slice_props(2, 1, [mt.f, width]))
+    inner = GenericOp(
+        inputs=[mt.contraction.inputs[0], panel.results[0]], outputs=[tile.results[0]],
+        body=mt.contraction.body.clone(),
+        indexing_maps=[AffineMapAttr(mp) for mp in _matmul_maps()],
+        iterator_types=[par, par, red], result_types=[tile_t])
+    for key, val in mt.contraction.attributes.items():
+        inner.attributes[key] = val
+    inner.attributes[PANEL_ATTR] = IntegerAttr(width, i64)
+    put = InsertSliceOp.build(
+        operands=[inner.results[0], carried, [offset], [], []], result_types=[acc_t],
+        properties=_dyn_slice_props(2, 1, [mt.f, width]))
+    from .panel_parallel import marker_ops
+    markers = marker_ops(parallel_panels, panels)
+    body.add_ops([*offset_ops, *markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
+    loop = ForOp(lb.results[0], ub.results[0], step.results[0], [initial_acc], Region(body))
+    return [lb, ub, step, loop], loop.results[0]
+
+
+def _rewrite_one_with_tail(mt: _Match, nr: int, *, parallel_panels: bool = False) -> int:
+    """Pack full-width panels and a row tail without padding or copying the whole activation/result.
+
+    Returns the tail width, which is also the N extent of the second ordinary contraction geometry.
+    """
+    from xdsl.rewriter import InsertPoint, Rewriter
+
+    full = mt.ow // nr
+    tail = mt.ow % nr
+    assert tail and nr >= 2
+
+    tail_ops, tail_value = _spatial_panel_gather(mt, 1, tail, full * nr)
+    full_value = None
+    gather_ops = []
+    if full:
+        full_ops, full_value = _spatial_panel_gather(mt, full, nr, 0)
+        gather_ops.extend(full_ops)
+    gather_ops.extend(tail_ops)
+    Rewriter.insert_op(gather_ops, InsertPoint.before(mt.gather))
+
+    acc = mt.contraction.outputs[0]
+    if full:
+        assert full_value is not None
+        loop_ops, acc = _spatial_panel_loop(
+            mt, full_value, acc, panels=mt.n * mt.oh * full, panels_per_row=full,
+            width=nr, first_ow=0, parallel_panels=parallel_panels)
+        Rewriter.insert_op(loop_ops, InsertPoint.before(mt.contraction))
+    tail_loop_ops, acc = _spatial_panel_loop(
+        mt, tail_value, acc, panels=mt.n * mt.oh, panels_per_row=1,
+        width=tail, first_ow=full * nr, parallel_panels=parallel_panels)
+    Rewriter.insert_op(tail_loop_ops, InsertPoint.before(mt.contraction))
+
+    mt.contraction.results[0].replace_all_uses_with(acc)
+    for dead in (mt.contraction, mt.expand, mt.collapse, mt.gather):
+        Rewriter.erase_op(dead)
+    return tail
+
+
+def rewrite_module(module, table: "dict[str, tuple[int, int]]", *,
+                   parallel_panels: bool = False) -> PackReport:
     """Pack every eligible im2col contraction in ``module`` (mutated in place).
 
     ``table`` is the per-op block table already derived for THIS model
@@ -492,20 +666,33 @@ def rewrite_module(module, table: "dict[str, tuple[int, int]]") -> PackReport:
             report.refuse("refused_unpriced")
             continue
         mr, nr = int(blk[0]), int(blk[1])
-        if nr < 2 or mt.ow % nr:
-            report.refuse("refused_nr_does_not_divide_ow")
+        if nr < 2:
+            report.refuse("refused_panel_width_too_narrow")
             continue
         if not _accumulator_is_filled(mt.contraction):
             report.refuse("refused_accumulator_not_filled")
             continue
-        _rewrite_one(mt, nr)
+        tail = mt.ow % nr
+        if tail:
+            _rewrite_one_with_tail(mt, nr, parallel_panels=parallel_panels)
+        else:
+            _rewrite_one(mt, nr, parallel_panels=parallel_panels)
         report.packed += 1
         # The geometry the panel loop leaves behind: an ORDINARY [F, NR] x K contraction, which the
         # caller's SECOND block_table pass observes, prices and tags with no packed-specific
         # machinery. Recorded so a caller can check that the block it gets is the one that was packed
         # for -- a panel packed at NR whose contraction is then tiled at a narrower N would be a
         # silent half-application.
-        report.entries.append((shape_key("linalg.matmul", (mt.f, nr), (mt.k,)), mr, nr))
+        if not tail or mt.ow // nr:
+            report.entries.append((shape_key("linalg.matmul", (mt.f, nr), (mt.k,)), mr, nr))
+        if tail:
+            # The remainder is a separate ordinary matmul at its true width.  Recording it is what
+            # makes the caller's second block-table/tagging pass prove that this arm is schedulable.
+            report.entries.append((shape_key("linalg.matmul", (mt.f, tail), (mt.k,)),
+                                   mr, tail))
+    if parallel_panels and report.packed:
+        from .panel_parallel import ensure_marker_declaration
+        ensure_marker_declaration(module)
     return report
 
 
@@ -522,7 +709,8 @@ def _accumulator_is_filled(op) -> bool:
 
 
 def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, int]]",
-                          work: "str | Path | None" = None) -> "tuple[Path, PackReport]":
+                          work: "str | Path | None" = None, *,
+                          parallel_panels: bool = False) -> "tuple[Path, PackReport]":
     """Pack ``prepared`` and write ``model.bpacked.mlir``; returns ``(path, report)``.
 
     Runs in merlin's own interpreter over xDSL -- the same library that BUILT these ops in
@@ -535,7 +723,7 @@ def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, i
 
     prepared = Path(prepared)
     module = mq.parse(prepared.read_text(encoding="utf-8"))
-    report = rewrite_module(module, table)
+    report = rewrite_module(module, table, parallel_panels=parallel_panels)
     if not report.packed:
         return prepared, report
     out = Path(work) / "model.bpacked.mlir" if work is not None else \
@@ -570,8 +758,10 @@ def ensure_registered() -> str:
         action_class="PASS",
         description=(
             "Emit the im2col column matrix panel-packed as [M/NR][K][NR] instead of [K][M], and "
-            "contract it with a 4-dim (f, mo, mi, k) generic whose schedule arm tiles [MR,1,0,0] + "
-            "K-by-1 and vectorizes [MR,1,NR,1]. Today the column matrix is [K][M] and K is the "
+            "contract each panel with an ordinary [F,NR]xK matmul inside a panel loop. Non-divisible "
+            "output rows retain full NR panels and use one ordinary narrow matmul for the remainder, "
+            "inserting both directly into [F,M] without padding/copying the whole result. Today the "
+            "column matrix is [K][M] and K is the "
             "innermost loop, so the B-operand pointer advances by M bytes per K step: measured on the "
             "LINKED ELF (deepjscc int8, five K loops) the advances are exactly M bytes, so each 64-byte "
             "line delivers NR=16 used bytes -- 4.0x cache-line amplification on the streamed operand. "

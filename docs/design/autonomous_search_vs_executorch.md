@@ -3,7 +3,7 @@ title: "Design note: can the search beat ExecuTorch on its own? (int8, K1, from 
 kind: design
 status: current
 owner: rvvgen
-last_verified: 2026-09-03
+last_verified: 2026-09-07
 related: [beam_cca_architecture, codegen_vs_handc_wholemodel, expert_gap_attribution]
 code_refs: [merlin/python/merlin/mining/beam.py, merlin/python/merlin/mining/select.py, merlin/python/merlin/mining/runner.py, merlin/python/merlin/mining/wholemodel_proposer.py, merlin/python/merlin/llvmlower/impr_features.py, merlin/python/merlin/runtime/backends/zephyr_model.py, merlin/python/merlin/baselines/executorch.py, merlin/python/merlin/kernels/action_catalog.py]
 ---
@@ -200,6 +200,148 @@ whole effort is trying to make impossible:
 - ExecuTorch sustained walls for spectformer and lstmnetvit, so their beams can report attainment on
   the same basis.
 - Deeper/wider re-run once the two environment knobs above are searchable.
+
+## 2026-09-06 whole-model K1 update: grouped direct convolution and fork grain
+
+The original LSTMNetVIT entry above is historical: its bad W8A8 result was traced to the capture, and
+the corrected full-output capture now passes both its independently recomputed W8A8 reference and the
+fp32 tier. Two compiler changes then moved the measured wall materially:
+
+| full-model LSTMNetVIT W8A8 | 1 hart | 8 harts |
+|---|---:|---:|
+| previous best grouped-im2col path | 433.026 ms | 86.860 ms |
+| grouped-direct convolution | **147.059 ms** | 66.280 ms |
+| grouped-direct + `parallel_grain_10000` | — | **57.184 ms** |
+| + AOT prequantization of six recurrent weights, launch median | **141.088 ms** | **55.071 ms** |
+| + AOT prequantization of all 17 eligible weights, launch median | **133.275 ms** | **50.965 ms** |
+| + targeted residual broadcast fold, accepted launch median | **130.880 ms** | **49.640 ms** |
+| ExecuTorch qd8 reference | 51.943 ms | 15.345 ms |
+
+The accepted final row is the median of three feature-on launch means from an
+off/on/on/off/off/on experiment; each launch contains two warmups and five timed inferences. Its
+separate median across all 15 raw iterations is 131.070 ms at one hart and 49.540 ms at eight. All
+launches pulled the complete output and produced SHA-256 `adf8308a...`. Consequently this is a real
+compiler/runtime improvement, but **not a win**: the remaining gaps are 2.52x at one hart and 3.23x
+at eight harts. Merlin scales 2.64x across the matched builds, versus 3.39x for ExecuTorch. The
+reference was refreshed on 2026-09-07 from N=1/N=4 warm slopes after
+matching the exporter and runtime source at ExecuTorch commit `7fc34bf6f53d2098e3e16c1fa71c23222f607330`;
+all four reference runs passed the full correctness gate.
+
+The threshold sweep also closes a prior open question. `parallel_grain_10000` is the measured winner;
+30,000 did not beat it and had 3.74% session drift, while 100,000 regressed to about 69.8 ms. Dynamic
+per-operation team widths were refuted at about 124--127 ms. Requant/contraction pairing is correct
+after removing the paired contractions' parallel tag, but serialising those matmuls regressed the
+eight-hart wall to about 69.6--71.0 ms, so it is not part of the current champion.
+
+The post-all17 eight-hart profiler initially appeared to rank contractions at 14.85 ms, quantization
+at 8.72 ms, layout copies at 8.06 ms, broadcasts at 5.61 ms, and adds at 4.39 ms. Two independent
+guards reject that as an optimizer-selection breakdown. First, instrumentation moves the matched wall
+by 2.70%, above the 1.9% acceptance limit. More importantly, a candidate that explicitly folded the
+161 profiled sole-use broadcasts produced a byte-identical `model.ll` and `model.o`: the ordinary
+uninstrumented lowering already folds them, while the profiling calls pin the intermediates and make
+them materialize. Thus at least 4.86 ms of the apparent broadcast class is profiler-induced rather
+than residual release-binary work. The raw profile remains useful for diagnosing the instrumented
+IR only; the next ranking must intersect its rows with operations proven to survive uninstrumented
+lowering, and every performance verdict still requires the uninstrumented bracketed protocol.
+
+That first ranked lever is now built and measured. `prequantize_constant_weights` stores the six
+recurrent matrices and their scales in the bundle, removing their runtime scale search and
+round/clamp/cast chains. A three-by-three interleaved A/B measured 149.575 -> 141.088 ms median at one
+hart (1.060x) and 58.284 -> 55.071 ms at eight harts (1.058x). All twelve launches produced the same
+full-output digest and passed both correctness tiers.
+
+The rewrite is now name-independent and recognizes every structurally eligible constant F32
+contraction weight, including output-channel-preserving collapse/expand chains and direct-convolution
+weights. It prequantizes 17 weights in this capture: the original six recurrent matrices plus 11
+convolution weights. Against the six-weight arm, a second three-by-three interleaved A/B measured
+139.856 -> 133.275 ms median at one hart (1.049x) and 55.207 -> 50.965 ms at eight harts (1.083x).
+Every launch retained the exact three-element output digest. The pass still refuses aliases,
+multiple readers, unsupported layout chains, non-finite scales, and reshapes that merge the scale
+axis.
+
+The next uninstrumented survivor census found 52 sole-use broadcasts feeding `linalg.add` and 10
+feeding `linalg.mul` in the tagged all17 input. Existing post-contraction fusion removes 23 before
+the pre-generalization hook, leaving an explicit pass receipt of 31 adds plus 8 multiplies. The
+default-off `targeted_named_broadcast_fold` composes only those marked generalized-broadcast source
+maps into their all-parallel consumers; it refuses shared uses and never touches a contraction or
+reduction. Unlike the earlier 161-broadcast diagnostic negative, its final `model.ll` and `model.o`
+both differ from control and the object contains 2,479 fewer emitted instructions. The controlled
+board A/B measured launch medians of 135.208 -> 130.880 ms at one hart (1.033x) and 51.005 -> 49.640
+ms at eight harts (1.027x). The raw-iteration medians, kept distinct, were 134.700 -> 131.070 and
+50.912 -> 49.540 ms. All 12 complete-output launches were byte-identical and passed both W8A8 and
+fp32 correctness tiers. This feature is therefore part of the current LSTMNetVIT champion envelope.
+
+## 2026-09-07 TinyLlama: within 5--8% after restoring the wide vector axis
+
+Panel packing had already removed the measured 8x cache-line amplification, but the emitted
+MR4/NR16 workers still used `e32,m2`: only 16 of K1's 32 available int32 vector lanes. The MR4/NR32
+candidate makes that axis explicit and emits `e32,m4` workers. All 177 wide MAC workers use the
+32-lane form, with no vector spills or reloads, and all 155 weights remain packed and parallelized.
+
+| full-model TinyLlama W8A8 | 1 hart | 8 harts |
+|---|---:|---:|
+| MR4/NR16 same-session control, median | 1,583.485 ms | 474.830 ms |
+| MR4/NR32, median | **1,244.614 ms** | **402.107 ms** |
+| MR4/NR32, best valid launch | **1,235.399 ms** | **399.829 ms** |
+| ExecuTorch qd8 warm slope | 1,179.563 ms | 370.868 ms |
+
+The width change is a controlled 1.272x/1.181x median improvement. Every launch produced the same
+complete 256,000-element output digest. Merlin is now 1.047x slower at one hart and 1.078x slower at
+eight harts on the best valid launches: close, but not yet a certified win. The fresh ExecuTorch
+numbers are N=1/N=4 warm slopes from the same identity-matched `7fc34bf6...` exporter and runtime;
+both reference runs pass at each core count.
+
+Increasing MR instead was the wrong lever. MR8/NR16 regressed by 1.430x at one hart and 1.068x at
+eight because register pressure changed four scalar A loads into VL=1 vector loads/extracts. This
+refutation is retained so the search does not retry it.
+
+## 2026-09-07 ResNet-50: tail panels fix one-core traffic, not multicore scaling
+
+The im2col packer formerly accepted only 27 of 50 eligible contractions. Masked/narrow tail-panel
+support now packs all 50 and rewrites all 73 panel regions. The new full-model binary preserves the
+complete output digest and passes the shared W8A8 bar. In a same-session board comparison its best
+one-hart wall fell from 2,654.273 to **2,253.149 ms** (1.178x), while the eight-hart result was noise-
+equivalent to the old path at **1,251.291 ms**. ExecuTorch remains at 884.774 and 235.282 ms,
+respectively. This separates two effects: tail packing repairs serial memory/codegen waste, but the
+large eight-hart gap is still a parallel scheduling problem. An independent fp32 golden is still
+missing, so this row remains diagnostic rather than certifiable.
+
+## 2026-09-07 smolVLA: correct scope and current blocker
+
+The previous `>120 s` Merlin result was explicitly a **one-hart** bounded launch, not an eight-hart
+measurement. The fair ExecuTorch one-hart warm slope is 42,309.598 ms, so the only valid statement is
+that Merlin's attainment was below 0.353. The captured workload is also a vision/language prefix plus
+one flow step, not a complete ten-step action session.
+
+The first eight-hart candidate completed in 146,455.732 ms but failed correctness: its 1,600 outputs
+were 50 repeated copies of the final bias, meaning the learned contribution vanished. This wall is
+therefore rejected. A 384-boundary trace localized the first divergence to the serial W8-to-BF16
+conversion immediately before the first BF16 projection: Merlin's locally defined `__truncsfbf2`
+used an integer-class return on RISC-V while clang 23's caller expected the BF16 value in `fa0`.
+The initial smoke test accidentally resolved libgcc's correct helper and was therefore vacuous; a
+second reproducer linked the exact Merlin runtime object and failed as the full model did.
+
+With the ABI corrected, both the fully traced model and the uninstrumented model are byte-identical
+to the host golden. The latter runs in **150,255.120 ms** on eight harts and uses 3.26 GiB RSS. This
+is a correctness milestone, not an INT8 performance row: the candidate stores 303 weights as i8 but
+dequantizes them to f32/BF16, and its contractions use f32/BF16 activations and dequantized weights
+with f32 accumulation. The matched 23.10 s ExecuTorch qd8 reference instead dynamically quantizes
+activations and invokes XNNPACK i8 microkernels. The current Merlin diagnostic is therefore about
+6.50x slower, and the next required build is Merlin's actual W8A8 path; relabelling the mixed path as
+INT8 would violate the requested comparison contract.
+
+The newer v2 capture supplies that contract directly: its flow stage has 140 explicit
+i8-by-i8-to-i32 contractions and no BF16 matmuls. Its first session build also exposed why the old
+monolithic path could not be repaired merely by turning on `int8_compute`: that path converted only
+95 of 298 contractions, leaving 203 BF16 sites and dequantizing 253,870,080 i8 weights into
+507,740,160 BF16 bytes at runtime. The v2 build now passes preparation, but LLVM translation stops
+fail-closed on 30 residual `vector.mask { vector.contract }` attention tails. They are 15 INT8 score
+BMMs and 15 BF16 softmax-by-V BMMs at sequence length 113; MR=4 and NR=8 both leave tails. The next
+compiler fix must peel or pad those tails while retaining the full-tile MR4/NR8 kernel. Globally
+falling back to MR=NR=1 would compile by destroying the optimization under evaluation and is
+rejected. This build also proves a session-specific scheduling gap: the session builder bypasses
+`prepare_for_lowering`, so it does not currently derive the per-operation block and parallel-arm
+tables used by the monolithic whole-model path.
 
 ## Reproducing this
 

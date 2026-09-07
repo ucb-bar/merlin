@@ -80,11 +80,13 @@ EXECUTED ones, and they match the static prediction exactly:
 At 10,000 the nested-fork count goes 14,340 -> 280 on lstmnetvit, i.e. most of what disappears is
 the class of region that could never have run in parallel in the first place.
 
-NOT MEASURED ON HARDWARE. The fork/join cost of this board's libomp is not known to this module, so
-which threshold (if any) wins is an open question a board run has to answer. Nothing here claims a
-speedup. What IS verified off-board, by executing the emitted program at 1 and 8 threads, repeated:
-the output is bit-identical with the feature on and off, and identical to the serial (single-hart)
-build's output.
+HARDWARE RESULT (2026-09-06). On the full-output-gated LSTMNetVIT W8A8 grouped-direct build, eight
+K1 harts, the 10,000 point reduced the best sustained wall from 66.280 ms without grain control to
+57.184 ms (1.159x). A second three-launch bracket reached 56.879 ms and session drift was 0.54%, well
+inside the board's 2.6% noise band. The 30,000 point did not beat 10,000 and drifted 3.74%; 100,000
+regressed to about 69.8 ms. This is model-specific evidence, not a default: the threshold remains a
+searchable knob because serialising useful work has model-dependent cost. Full-output W8A8 and fp32
+tiers passed for every reported 10,000-point launch.
 
 RACE ANALYSIS
 -------------
@@ -152,7 +154,9 @@ def ensure_registered(threshold: int) -> str:
             f"(deepjscc) parallel regions per inference, of which 97%/79% carry 2.6%/1.6% of the "
             f"work. Only ever removes concurrency, so it introduces no write-sharing. Requires the "
             f"multicore lowering (parallel_harts); with a serial pipeline there is no `scf.parallel` "
-            f"and it reports 0. NOT MEASURED ON HARDWARE."),
+            f"and it reports 0. On full-output-gated LSTMNetVIT W8A8 on eight K1 harts, threshold "
+            f"10,000 improved 66.280 ms to 57.184 ms (1.159x); 100,000 regressed to about 69.8 ms, "
+            f"so this remains model-searchable rather than a default."),
     ))
     return name
 

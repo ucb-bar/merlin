@@ -947,8 +947,17 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         pre = []
 
         # --- weight -> i8 + per-output-channel scale s_w ---
-        wt_dims = [rr.position for rr in maps[1].data.results]   # iterator dim per weight axis
-        wt_keep = [ax for ax, d in enumerate(wt_dims) if not red_flags[d]]   # parallel (out-ch) axes
+        wt_exprs = list(maps[1].data.results)  # iterator expression per weight axis
+        # A grouped direct conv indexes weight axis 0 as ``g * (F/G) + fg``.  That compound
+        # expression is still entirely parallel and therefore still a per-output-channel axis;
+        # requiring a bare AffineDimExpr here made the integer rewrite crash precisely on the
+        # grouped-direct form that removes im2col.  Classify an axis by every dimension it uses.
+        wt_keep = []
+        for ax, expr in enumerate(wt_exprs):
+            terms, _const = _affine_terms(expr)
+            if terms and all(0 <= d < len(red_flags) and not red_flags[d]
+                             for d, _coeff in terms):
+                wt_keep.append(ax)
         if _is_dequant(wt.owner):
             deq = wt.owner
             wt_i8, s_w = deq.operands[0], deq.operands[1]        # already i8 + per-channel scale
@@ -1037,7 +1046,6 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
                             result_types=(i8_t,))
             pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a, q_e, c127n, q]
             q_value, s_a_value = q.results[0], s_a.results[0]
-
         # --- i8×i8→i32 conv: EXACT original maps + iterators preserved ---
         acc_t = TensorType(i32, list(out_t.get_shape()))
         acc_e = tensor.EmptyOp((), acc_t); zi = arith.ConstantOp.from_int_and_width(0, 32)
@@ -1055,9 +1063,14 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         out_dims = [rr.position for rr in maps[-1].data.results]
         P = len(out_dims); d_par = AffineMap.identity(P).results
         # weight's (single) parallel iterator dim -> output channel position
-        wt_dims = [rr.position for rr in maps[1].data.results]
-        wt_par = [d for d in wt_dims if not red_flags[d]]
-        wpos = out_dims.index(wt_par[0])
+        scale_exprs = [wt_exprs[ax] for ax in wt_keep]
+        if not scale_exprs:
+            continue
+        # The output map is an identity projection of the parallel iterator prefix for every
+        # admitted direct conv. Reusing the weight's parallel expression therefore maps a rank-1
+        # scale as ``d1`` for ordinary conv and ``d1 * (F/G) + d2`` for grouped conv.
+        if out_dims != list(range(P)):
+            continue
         out_e = tensor.EmptyOp((), out_t)
         wb = Block(arg_types=[i32, f32, f32, f32]); accv, sav, swv, _ = wb.args
         cur = arith.SIToFPOp(accv, f32); m1 = arith.MulfOp(cur.result, sav)
@@ -1066,7 +1079,7 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         requant = L.GenericOp(inputs=(i8cv.results[0], s_a_value, s_w),
                               outputs=(out_e.results[0],), body=Region(wb),
                               indexing_maps=ArrayAttr([amap(P, d_par), amap(P, []),
-                                                       amap(P, [d_par[wpos]]), amap(P, d_par)]),
+                                                       amap(P, scale_exprs), amap(P, d_par)]),
                               iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * P),
                               result_types=(out_t,))
         _carry_prov(op, contraction=i8cv, requant=requant)

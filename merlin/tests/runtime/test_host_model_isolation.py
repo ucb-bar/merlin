@@ -1,4 +1,5 @@
 """Two whole-model libraries must execute their own entry points, including the large ABI."""
+
 import ctypes
 import shutil
 import subprocess
@@ -20,9 +21,11 @@ def test_trampolines_bind_the_loaded_model_not_the_first_global_symbol(tmp_path,
         src.write_text(
             "typedef struct { void *allocated; long *aligned; long offset; } Desc;\n"
             f"void forward(void *p) {{ Desc *d = p; d->aligned[d->offset] = {value}; }}\n"
-            f"void _mlir_ciface_forward({params}) {{ forward(p0); }}\n")
+            f"void _mlir_ciface_forward({params}) {{ forward(p0); }}\n"
+        )
         subprocess.run(["cc", "-fPIC", "-shared", str(src), "-o", str(lib)], check=True)
         models.append(HostModel.load(str(lib), n_args=n_args))
+
     # Keep both libraries alive, alternate calls, and traverse the actual memref/trampoline seam.
     output = ctypes.c_long()
     buffers = [(ctypes.addressof(output), [])] * n_args

@@ -57,6 +57,10 @@ from ..llvmlower.perop_blocks import ensure_registered as _register_conv_registe
 from ..llvmlower.im2col_pack import ensure_registered as _register_im2col_panel_pack
 from ..llvmlower.quant_round import ensure_registered as _register_fuse_quantize_round_convert
 from ..llvmlower.requant_fuse import ensure_registered as _register_fuse_requant_into_contraction
+from ..llvmlower.residual_autovec import ensure_registered as _register_vectorize_scalar_residue
+from ..llvmlower.residual_parallel import ensure_registered as _register_residual_parallel
+from ..llvmlower.parallel_coarsen import FEATURE as _COARSEN_OPENMP_FEATURE
+from ..llvmlower.parallel_coarsen import ensure_registered as _register_coarsen_openmp
 
 _register_fold_weight_transpose()
 _register_prepack_weight_layout()
@@ -83,6 +87,10 @@ _register_fuse_quantize_round_convert()
 # proposer at all, and the lowering subprocess re-imports `impr_features` fresh, so neither sees a
 # registration this module made.
 _register_fuse_requant_into_contraction()
+_register_vectorize_scalar_residue()
+_register_residual_parallel(10_000)
+_register_residual_parallel(0)
+_register_coarsen_openmp()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
@@ -90,7 +98,28 @@ _register_fuse_requant_into_contraction()
 # facet field — plus the additive passes as a teacher-idle fallback. The teacher (engine 1) supplies
 # the rest from real divergences.
 RANKED_LEVERS: list[tuple[str, bool]] = [
-    # FIRST, because it is the largest whole-model effect measured on this repo's silicon oracle, and
+    # FIRST on the current LSTMNetVIT W8A8 evidence because this is the largest measured end-to-end
+    # recovery, and because a package-plumbing fix made it newly necessary.  RVV packages carry
+    # `-fno-vectorize -fno-slp-vectorize` to keep explicitly scheduled kernel experiments honest;
+    # applying those flags to the WHOLE model also disables vectorization of every activation,
+    # layout, copy, and quantization loop that the explicit contraction schedule did not claim.
+    # Same schedule, runtime, board, and output: 284.8 ms -> 120.3 ms at eight harts (2.37x) when
+    # only those two global disables are removed.  The independent panel-packed TinyLlama A/B
+    # reaches the same conclusion while holding the LLVM IR and packed weights byte-identical:
+    # median-of-three 749.4 ms -> 496.4 ms at eight harts (1.51x), with the same complete-output
+    # SHA in every arm.  It remains a search lever rather than a default:
+    # the explicitly scheduled RVV contractions are unchanged, but correctness and the sign of
+    # residual-loop vectorization still have to pass each model's normal INT8 board gate.
+    ("vectorize_scalar_residue", False),
+    # LSTMNetVIT's contractions account for only about 14% of attributed profile time after the
+    # scalar-residue vectorizer is enabled. The remainder is dominated by im2col/quant generics,
+    # broadcasts, and transposes. Dependence-aware residual-loop lowering plus a 10,000-work grain
+    # cutoff is correct and improves the same eight-hart ELF from 115.8 ms to 103.9 ms. Keep this a
+    # model-selected lever: its outlined loops make that ELF much slower on one hart, and the sign
+    # must be established independently for every INT8 model.
+    ("parallelize_residual_loops_10000", False),
+    ("parallelize_residual_loops_0", False),
+    # NEXT, because it is the largest measured whole-model effect among the remaining layout levers,
     # because it is the only lever here that changes what the BUNDLE stores rather than what the
     # compiler emits. Interleaved in one K1 session, alternating bundles, three rounds each, both arms
     # gating ok=True: 3,548,286/3,574,361/3,561,602 ns stock vs 2,125,388/2,086,712/2,127,671 ns
@@ -519,6 +548,20 @@ def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
     out: list[ForkProposal] = []
     have = set(parent_feats)
 
+    # Coarsening refines the measured full-residual OpenMP topology; it is not a generation-1
+    # standalone guess. Requiring that parent keeps serial searches from naming an OpenMP-only
+    # lever and ensures the board prices the same conjunction that reduced LSTMNetVIT's static
+    # regions from 780 to 361.
+    if "parallelize_residual_loops_0" in have and _COARSEN_OPENMP_FEATURE not in have:
+        fp = _feature_fork(
+            _COARSEN_OPENMP_FEATURE, parent_feats,
+            targets=f"wholemodel:{_COARSEN_OPENMP_FEATURE}",
+            evidence=["measured:k1-lstmnetvit-w8a8", "refine:parallelize_residual_loops_0"],
+            note=("coarsen adjacent OpenMP worksharing regions while preserving their barriers; "
+                  "measured 780->361 static regions and ~1.5% eight-core latency reduction"))
+        if fp is not None:
+            out.append(fp)
+
     # -- stack promotion: retune the per-buffer cap the parent is already promoting under.
     if I.PROMOTE_STACK_NAME in have or any(
             f.startswith(f"{I.PROMOTE_STACK_NAME}_") for f in have):
@@ -555,6 +598,25 @@ def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
                     forkable=True,
                     note=f"retune the per-op register-block MR cap to {mr}"))
 
+    # -- per-op blocking: independently retune the N cap. The plain request means NR=16 on K1;
+    # named rungs expose the register-pressure/locality tradeoff without changing a source constant.
+    if I.PEROP_BLOCK_NAME in have or any(
+            I.parse_perop_nr_sentinel(f) is not None for f in have):
+        base = [f for f in parent_feats
+                if f != I.PEROP_BLOCK_NAME and I.parse_perop_nr_sentinel(f) is None]
+        for name in I.PEROP_NR_LADDER:
+            if name in have:
+                continue
+            nr = I.parse_perop_nr_sentinel(name)
+            merged = base + [name]
+            if _composes(merged):
+                out.append(ForkProposal(
+                    overrides={"compiler_features": merged}, lever="knob",
+                    targets=f"wholemodel:{I.PEROP_BLOCK_NAME}:nr_cap",
+                    evidence=["census:register-pressure", f"refine:{I.PEROP_BLOCK_NAME}"],
+                    forkable=True,
+                    note=f"retune the per-op register-block NR cap to {nr}"))
+
     # -- named-op M-pad register block: retune the TILE on the int8 datapath.
     # This lever only exists once the contraction keeps its named form: the int8 quant pass rewrites
     # every linalg.matmul into a linalg.generic, and a transform schedule matching on the op NAME
@@ -570,13 +632,15 @@ def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
     enabler = I.NAMED_INT8_CONTRACTION_NAME
     if tiles and (I.PEROP_BLOCK_NAME in have
                   or any(I.parse_perop_mr_sentinel(f) is not None for f in have)
+                  or any(I.parse_perop_nr_sentinel(f) is not None for f in have)
                   or enabler in have):
         # The tile REPLACES whatever register block the parent carries -- both emit a complete
         # transform schedule, and two of those cannot compose (the feature layer refuses the pair
         # outright). Stacking them produced a CompositionError and no measurement at all.
         base = [f for f in parent_feats
                 if f not in set(tiles) and f != enabler and f != I.PEROP_BLOCK_NAME
-                and I.parse_perop_mr_sentinel(f) is None]
+                and I.parse_perop_mr_sentinel(f) is None
+                and I.parse_perop_nr_sentinel(f) is None]
         for name in tiles:
             if name in have:
                 continue
