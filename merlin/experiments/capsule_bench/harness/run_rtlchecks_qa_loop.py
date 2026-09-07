@@ -24,6 +24,8 @@ import os
 import sys
 from pathlib import Path
 
+import yaml
+
 
 def _descriptor_for_invocation(argv0: str) -> Path | None:
     """Return the descriptor adjacent to a target-local launcher alias, if one exists.
@@ -55,6 +57,7 @@ import run_agent_experiment as RX               # noqa: E402
 RX.ARM_BUNDLE["merlin_assisted"] = "merlin_assisted_rtlchecks_public_v0"
 
 import run_baseline_qa_loop as L                # noqa: E402  (imported AFTER the swaps above)
+import _common as C                             # noqa: E402
 
 _RTLCHECKS_BUNDLE = "merlin_assisted_rtlchecks_public_v0"
 
@@ -73,9 +76,24 @@ def _option_values(argv: list[str], option: str) -> list[str | None]:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     requested_bundles = _option_values(argv, "--bundle")
-    if any(value != _RTLCHECKS_BUNDLE for value in requested_bundles):
-        print(f"REFUSING: the Arm-4 RTL-checks track serves only {_RTLCHECKS_BUNDLE!r}; "
-              f"received --bundle {requested_bundles!r}", file=sys.stderr)
+    if (len(requested_bundles) > 1 or any(value is None for value in requested_bundles)):
+        print(f"REFUSING: Arm-4 requires at most one well-formed --bundle; "
+              f"received {requested_bundles!r}", file=sys.stderr)
+        return 4
+    selected_bundle = requested_bundles[0] if requested_bundles else _RTLCHECKS_BUNDLE
+    if (not selected_bundle or Path(selected_bundle).name != selected_bundle
+            or not selected_bundle.startswith("merlin_assisted_rtlchecks_")):
+        print(f"REFUSING: invalid Arm-4 bundle identity {selected_bundle!r}", file=sys.stderr)
+        return 4
+    manifest_path = C.BUNDLES / selected_bundle / "input_bundle_manifest.yaml"
+    try:
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # noqa: BLE001 — an unreadable treatment must fail before authoring
+        print(f"REFUSING: cannot read Arm-4 bundle manifest {manifest_path}: {exc}", file=sys.stderr)
+        return 4
+    if (manifest.get("bundle_id") != selected_bundle
+            or manifest.get("arm") != "merlin_rtlchecks"):
+        print(f"REFUSING: {selected_bundle!r} is not a generated merlin_rtlchecks bundle", file=sys.stderr)
         return 4
     requested_arms = _option_values(argv, "--arm")
     if any(value != "merlin_assisted" for value in requested_arms):
@@ -86,8 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     # Reassert immediately before the baseline parser applies an allowed, identical --bundle.  This
     # makes an earlier in-process mutation fail closed too, while still permitting launchers to pin the
     # canonical bundle explicitly in their auditable command line.
-    RX.ARM_BUNDLE["merlin_assisted"] = _RTLCHECKS_BUNDLE
-    assert RX.ARM_BUNDLE["merlin_assisted"] == _RTLCHECKS_BUNDLE, "bundle swap did not take"
+    RX.ARM_BUNDLE["merlin_assisted"] = selected_bundle
+    assert RX.ARM_BUNDLE["merlin_assisted"] == selected_bundle, "bundle swap did not take"
     assert sys.modules.get("qa_check") is qa_check_rtlchecks, "qa_check injection did not take"
     return L.main(argv)
 

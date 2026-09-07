@@ -2,8 +2,11 @@
 # Do not hand-edit: regenerate from target_experiment.yaml (the 4-arm ladder is a fixed
 # methodology; the target/experiment-specific paths come from the descriptor).
 bundle_id: raw_baseline_hwbringup_v0
+variant: hwbringup_v0
 arm: raw_baseline
 task: radiance-mlir-oot-capsule
+condition: kernels
+source_pins: []
 description: raw_baseline arm for the radiance target (generated from target_experiment.yaml)
 allowed:
 - path: merlin/contract/
@@ -12,6 +15,8 @@ allowed:
 - path: merlin/contract/capsules/radiance/isa/
   mode: ro
   note: capsule corpus
+- path: merlin/contract/capsules/radiance/layers/
+  mode: ro
 - path: merlin/contract/capsules/radiance/model/
   mode: ro
 - path: merlin/contract/capsules/radiance/model_slices/
@@ -50,4 +55,5 @@ denied:
   reason: prior submissions
 - path: merlin/python/merlin/llvmlower/
   reason: 'frozen host lane: the experiment measures the target lane, not a second CPU backend'
+tools: []
 integrity_required: true

@@ -58,9 +58,12 @@ def _materialized_cohort_admission(capsules_root, discovered: list[dict], *,
     if any(not isinstance(record.get(k), int) or isinstance(record.get(k), bool)
            or record[k] < 0 for k in ints):
         raise ValueError("materialized cohort admission has malformed counts")
+    search_excluded = record.get("n_search_excluded", 0)
+    if not isinstance(search_excluded, int) or isinstance(search_excluded, bool) or search_excluded < 0:
+        raise ValueError("materialized cohort admission has malformed search count")
     if record["n_source_capsules"] != (record["n_admitted_capsules"]
                                         + record["n_capability_excluded"]
-                                        + record["n_resource_excluded"]):
+                                        + record["n_resource_excluded"] + search_excluded):
         raise ValueError("materialized cohort admission arithmetic is inconsistent")
     names = [str(cap.get("name")) for cap in discovered]
     if record["n_admitted_capsules"] != len(names):
@@ -84,6 +87,12 @@ def _materialized_cohort_admission(capsules_root, discovered: list[dict], *,
             raise ValueError("materialized cohort does not name its required admitted model capstones")
         if not set(str(x) for x in required).issubset(names):
             raise ValueError("materialized cohort is missing a required admitted model capstone")
+    if record.get("policy") == "descriptor_search_cohort_v1":
+        if not isinstance(record.get("search_policy"), str) or not record["search_policy"]:
+            raise ValueError("materialized search cohort does not name its selection policy")
+        digest = record.get("included_name_set_sha256")
+        if not isinstance(digest, str) or len(digest) != 64:
+            raise ValueError("materialized search cohort has malformed included-name digest")
     return record
 
 

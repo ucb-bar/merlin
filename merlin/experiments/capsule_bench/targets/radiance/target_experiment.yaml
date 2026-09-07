@@ -37,6 +37,7 @@ backend_package_dir: merlin/targets/muon
 # target's Chisel decode patterns) and by the provenance recorder.
 hardware_pins:
   - radiance_muon_rtl
+  - radiance_kernels
 
 rtl:
   via: mlc            # facts via muon_introspect (RadianceMuonConfig RTL); arc-matmul discovery is N/A (SIMT)
@@ -49,6 +50,27 @@ hardware_spec:
   isa_headers:
     - experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/isa_include/isa_definition.py
   hwbringup_set: experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0
+
+# Three explicit information treatments. A deeper denial makes the no-kernel cell genuinely omit the
+# example kernel even though its parent bring-up directory remains visible. The library cell receives a
+# byte-pinned, read-only export of the target authors' PR#1 kernel families; it is authoring evidence,
+# never a link-time dependency of a submitted compiler.
+information_sets:
+  hwbringup_v0:
+    condition: kernels
+  hwbringup_nokernel_v0:
+    condition: no-kernels
+    denied:
+      - path: experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/example_kernel/
+        reason: no-kernel information treatment
+  hwbringup_kernellibrary_v0:
+    condition: kernel-library
+    allowed:
+      - path: out/artifacts/targets/radiance/kernel_library_pr1_v1/
+        as: radiance-kernels-pr1
+        mode: ro
+        note: exact pinned PR#1 kernel-library snapshot for schedule and compiler-rule mining
+    source_pins: [radiance_kernels]
 
 # Radiance's OWN corpus root (mirrors atlas's per-target subtree) — SIMT fp32/fp16/bf16 GEMM + a norm +
 # an attention tile (PR#1 op shapes) composed with the contained MX tensor path (simt_cluster contains
@@ -86,11 +108,47 @@ toolchain:
 # demonstrated in BOTH directions (v20 gated it out at 54%; v21 earned it), so the capability is evidenced.
 # It goes back in the loop once warp utilization makes it affordable -- that is the fix, not a smaller model.
 grading:
-  exclude_capsules:
-    - M0_small_llama_fp32
-    - M1_lstmnetvit_fp32
-    - M2_tiny_llama_fp32
-    - M3_spectformer_fp32
+  # Repeated search is deliberately a compact, identical cohort for every information arm. The full
+  # 166-member public corpus is retained for frozen-candidate validation; hidden (12), performance (4),
+  # and whole-model capstones run at their separate stages. Historical L2 timing puts the 24 measured
+  # members below 2.5 minutes serial; the five synthesized witnesses are small. In particular this keeps
+  # the two known-incomplete attention kernels and all eight multi-invocation model capsules out of an
+  # otherwise runaway per-round loop.
+  expected_cohort:
+    source_capsules: 166
+    admitted_capsules: 29
+  search_cohort:
+    policy: radiance_pr1_representative_search_v1
+    include_capsules:
+      - R0_gemm_fp32
+      - R1_gemm_fp16
+      - R2_gemm_bf16
+      - R4_rmsnorm_fp32
+      - R5_mx_tile_mxfp8
+      - R6_mx_tile_mxfp6
+      - R7_mx_tile_mxfp4
+      - R8_flash_attention_mx
+      - R9_flash_attn_mx_gqa
+      - R11_gemv_batched_mx
+      - R13_flash_attn_mx_fp4
+      - RF0_rmsnorm_qkv_fp16
+      - RF1_rope_qkv_bf16
+      - RP4_softmax_fp32_pt
+      - RP5_layernorm_fp32_pt
+      - RP6_geglu_bf16_pt
+      - RP7_attn_full_fp16_pt
+      - RP11_logit_softcap_fp32_pt
+      - RP12_embed_scale_fp32_pt
+      - RP13_gemma_4norm_bf16_pt
+      - RP14_patch_embed_bf16_pt
+      - RP15_fused_matmul_bias_bf16_pt
+      - RP16_bias_add_fp32_pt
+      - RP17_k_chain_fp16_pt
+      - SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l3
+      - SY_conv_k3x3_s2x2_d1x1_pad1x1
+      - SY_contraction_i8_sub_tile
+      - SY_movement_bf16_sub_tile
+      - SY_reduction_bf16_sub_tile
 
 answer_surfaces:
   # Both of these are WORKING radiance compilers sitting in out/artifacts/targets/radiance/, which is

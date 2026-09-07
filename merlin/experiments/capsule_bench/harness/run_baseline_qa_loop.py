@@ -1904,7 +1904,7 @@ def _task_runtime_scope(te, sandbox: str) -> dict:
 
     contract = C.REPO / "merlin" / "contract"
     public = discover_capsules(te.graded_roots(), labels={"public", "dev"}, contract=contract)
-    excluded = set(getattr(te, "graded_exclude", ()) or ())
+    excluded = set(te.effective_exclusions(cap.get("name") for cap in public))
     public = [cap for cap in public if cap.get("name") not in excluded]
     hidden = discover_capsules(te.hidden_roots(), labels={"hidden"}, contract=contract)
     if not public:
@@ -1916,7 +1916,7 @@ def _task_runtime_scope(te, sandbox: str) -> dict:
         "required_public_dev_capsules": len(public),
         "held_out_capsules": len(hidden),
         "sandbox": sandbox,
-        "scope_source": "TargetExperiment.graded_roots + labels public,dev + graded_exclude",
+        "scope_source": "TargetExperiment.graded_roots + labels public,dev + formal cohort policy",
     }
 
 
@@ -3372,6 +3372,7 @@ def main(argv: list[str] | None = None) -> int:
         _identity = {
             "run_id": a.run_id, "arm": arm, "sandbox": a.sandbox,
             "bundle_id": bundle["bundle_id"],
+            "condition": bundle.get("condition", "legacy"),
         }
         _expected_hidden_dir = (_hidden_snapshot_dir(_snapshot_root, _te(), C.REPO)
                                 if a.sandbox == "bwrap" else None)
@@ -3410,6 +3411,7 @@ def main(argv: list[str] | None = None) -> int:
             "hidden_capsule_snapshot": _hidden_snapshot_record,
             "model_host_lane_snapshot": _model_host_lane_snapshot,
             "repo_sha": C.repo_sha(), "bundle_id": bundle["bundle_id"],
+            "condition": bundle.get("condition", "legacy"),
             # The explicit list remains convenient for analysis; treatment_snapshot binds it to the
             # source declarations and to the exact task/docs that instructed the agent.
             "resolved_tools": list(_resolved_tool_ids),
@@ -4267,7 +4269,8 @@ def main(argv: list[str] | None = None) -> int:
             _official_hidden_dir = _verify_persisted_run_inputs(
                 _environment_record,
                 identity={"run_id": a.run_id, "arm": arm, "sandbox": a.sandbox,
-                          "bundle_id": bundle["bundle_id"]},
+                          "bundle_id": bundle["bundle_id"],
+                          "condition": bundle.get("condition", "legacy")},
                 task_scope=_current_scope, ws=ws, run_dir=run_dir,
                 bundle_dir=bundle_dir, resolved_tools=_resolved_tools(),
                 expected_hidden_dir=_expected_hidden_dir)

@@ -87,6 +87,24 @@ def test_target_specific_paths_come_from_descriptor():
     assert te.rtl_facts_pin in rtl_d and f"merlin/targets/{te.target}/" in te.rtl_facts_pin
 
 
+def test_radiance_information_treatments_are_structurally_distinct():
+    te = load_target_experiment(
+        repo_root() / "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml")
+    example = ("experiments/capsule_bench/targets/radiance/contracts/"
+               "hwbringup_radiance_v0/example_kernel/")
+    library = "out/artifacts/targets/radiance/kernel_library_pr1_v1/"
+    kernels = next(iter(generate_bundles(te, variant="hwbringup_v0").values()))
+    none = next(iter(generate_bundles(te, variant="hwbringup_nokernel_v0").values()))
+    full = next(iter(generate_bundles(te, variant="hwbringup_kernellibrary_v0").values()))
+
+    assert (kernels["condition"], none["condition"], full["condition"]) == (
+        "kernels", "no-kernels", "kernel-library")
+    assert example not in _sets(kernels)[1] and example in _sets(none)[1]
+    assert library not in _sets(kernels)[0] and library in _sets(full)[0]
+    assert full["source_pins"] == ["radiance_kernels"]
+    assert full["variant"] == "hwbringup_kernellibrary_v0"
+
+
 def test_assisted_tool_doc_is_regenerated_from_manifest_without_static_sandbox_claim(tmp_path):
     manifest = {
         "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",

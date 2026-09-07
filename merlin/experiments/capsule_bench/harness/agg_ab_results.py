@@ -7,8 +7,8 @@ n<2 print mean only (std undefined) and are flagged.
 
 Two axes:
   • arm        — baseline (C++) · merlin (xDSL) · merlin_rtlchecks (xDSL+CIRCT)
-  • condition  — kernels (hwbringup + example kernels) vs no-kernels (RTL+ISA+README only); the run-id
-                 carries `_nk` for the no-kernels cell (set by launch_ab_batch --condition).
+  • condition  — kernels, no-kernels, or kernel-library; the archived bundle manifest is authoritative
+                 and `_nk`/`_kl` run-id suffixes remain a compatibility fallback.
 
 Reuses agg_agentic_results.load_run (cost/tokens/rounds/fullsuite) and additionally reads, per run:
   • timing_detailed.json  -> think+gen vs tool/wait split, CIRCT sims_skipped/sims_run
@@ -37,12 +37,22 @@ REPORTS = C.REPORTS
 ARM_ORDER = ["baseline", "merlin", "merlin_rtlchecks"]
 ARM_LABEL = {"baseline": "baseline (C++)", "merlin": "merlin (xDSL)",
              "merlin_rtlchecks": "merlin+CIRCT"}
-COND_ORDER = ["kernels", "no-kernels"]
+COND_ORDER = ["kernels", "no-kernels", "kernel-library"]
 
 
-def _condition_of(run_id: str) -> str:
-    # launch_ab_batch tags the no-kernels cell with `_nk` (e.g. merlincirct_abc5_nk_r2)
-    return "no-kernels" if "_nk" in run_id else "kernels"
+def _condition_of(run_dir: Path) -> str:
+    manifest = run_dir / "input_bundle_manifest.yaml"
+    if manifest.is_file():
+        try:
+            condition = str((yaml.safe_load(manifest.read_text()) or {}).get("condition") or "")
+            if condition in COND_ORDER:
+                return condition
+        except Exception:
+            pass
+    # Compatibility with runs created before manifests recorded the condition.
+    if "_kl" in run_dir.name:
+        return "kernel-library"
+    return "no-kernels" if "_nk" in run_dir.name else "kernels"
 
 
 def _timing(d: Path) -> dict:
@@ -101,7 +111,7 @@ def collect(tag: str | None) -> dict:
             r = AAR.load_run(d, audit)
             if not r:
                 continue
-            cond = _condition_of(d.name)
+            cond = _condition_of(d)
             r["_timing"] = _timing(d)
             cells[(arm, cond)].append(r)
     return cells

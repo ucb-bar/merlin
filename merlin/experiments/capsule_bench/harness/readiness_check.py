@@ -349,7 +349,8 @@ def test_graded_path_is_the_declared_one():
     try:
         source_caps = CR.discover_capsules(pub_roots, labels={"public", "dev"}, contract=contract)
         source_by_name = {str(c.get("name")): c for c in source_caps}
-        excluded = set(getattr(_TE, "graded_exclude", ()) or ())
+        search_include = set(getattr(_TE, "graded_include", ()) or ())
+        excluded = set(_TE.effective_exclusions(source_by_name))
         unknown_exclusions = sorted(excluded - set(source_by_name))
 
         # An experiment may move a capsule out of its formal denominator only at this declared boundary,
@@ -359,17 +360,19 @@ def test_graded_path_is_the_declared_one():
         op_source = [c for c in source_caps if c.get("kind") != "model"]
         _eligible, hardware_ineligible = CR._split_ineligible(op_source, TARGET)
         proven_excluded = {str(r.get("capsule")) for r in hardware_ineligible}
+        invalid_search_includes = sorted(search_include & proven_excluded)
         declared_capability = set(getattr(_TE, "graded_capability_exclude", ()) or ())
         declared_resource = set(getattr(_TE, "graded_resource_exclude", ()) or ())
         explicit_split = bool(declared_capability or declared_resource)
-        missing_capability_exclusions = sorted(proven_excluded - (
-            declared_capability if explicit_split else excluded))
-        extra_capability_exclusions = sorted((declared_capability - proven_excluded)
-                                             if explicit_split else set())
-        resource_excluded = declared_resource if explicit_split else (excluded - proven_excluded)
-        invalid_resource_exclusions = sorted(
+        missing_capability_exclusions = ([] if search_include else sorted(proven_excluded - (
+            declared_capability if explicit_split else excluded)))
+        extra_capability_exclusions = ([] if search_include else sorted(
+            (declared_capability - proven_excluded) if explicit_split else set()))
+        resource_excluded = (set() if search_include else
+                             declared_resource if explicit_split else (excluded - proven_excluded))
+        invalid_resource_exclusions = ([] if search_include else sorted(
             name for name in resource_excluded
-            if (source_by_name.get(name) or {}).get("kind") != "model")
+            if (source_by_name.get(name) or {}).get("kind") != "model"))
         admitted_models = sorted(
             name for name, cap in source_by_name.items()
             if cap.get("kind") == "model" and name not in excluded)
@@ -379,6 +382,9 @@ def test_graded_path_is_the_declared_one():
             resource_policy == "representative_l3_capstones_v1"
             and set(admitted_models) == required_models
             and bool(required_models)))
+        search_policy_ok = (not search_include or (
+            bool(getattr(_TE, "graded_cohort_policy", None))
+            and search_include == (set(source_by_name) - excluded)))
 
         # THE PHASE PARTITION, RE-DERIVED HERE rather than taken from the descriptor's word. A
         # capsule-bench run serves ONE phase, and `phase_policy.phase_of` decides which phase a member
@@ -450,19 +456,25 @@ def test_graded_path_is_the_declared_one():
             f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]} "
             f"(roots={[str(r) for r in pub_roots]})")
         return
-    _ok("formal exclusions are known, exactly hardware-proven, or policy-bound model resources",
+    _ok("formal cohort is known and bound to its declared capability/resource/search policy",
         (not unknown_exclusions and not missing_capability_exclusions
          and not extra_capability_exclusions and not invalid_resource_exclusions
-         and bool(admitted_models) and resource_policy_ok),
+         and not invalid_search_includes
+         and (bool(admitted_models) or bool(search_include)) and resource_policy_ok
+         and search_policy_ok),
         f"source_pool={len(source_caps)}, admitted={n_pub}, declared_excluded={len(excluded)}, "
         f"hardware_proven_ineligible={len(proven_excluded)}, "
         f"resource_bounded_models={len(resource_excluded)}, admitted_models={admitted_models}, "
-        f"resource_policy={resource_policy}, required_models={sorted(required_models)}"
+        f"resource_policy={resource_policy}, required_models={sorted(required_models)}, "
+        f"search_policy={getattr(_TE, 'graded_cohort_policy', None)}, "
+        f"search_members={len(search_include)}"
         + (f", unknown={unknown_exclusions}, missing_hardware={missing_capability_exclusions}, "
              f"extra_hardware={extra_capability_exclusions}, "
-             f"invalid_resource={invalid_resource_exclusions}" if
+             f"invalid_resource={invalid_resource_exclusions}, "
+             f"hardware_ineligible_search_members={invalid_search_includes}" if
            unknown_exclusions or missing_capability_exclusions or extra_capability_exclusions
-           or invalid_resource_exclusions or not resource_policy_ok else ""))
+           or invalid_resource_exclusions or invalid_search_includes
+           or not resource_policy_ok else ""))
     _ok("the recorded phase partition is exactly what the phase verdict derives at the declared budget",
         (phase_declared_ok and not missing_phase2 and not extra_phase2 and not phase_undetermined),
         (f"phase={phase_number}, budget={phase_budget}s, policy={phase_policy_name}, "
@@ -627,7 +639,10 @@ def test_isa_encoding_agrees_with_rtl():
     if bad:
         from merlin.targetgen.isa_model import isa_model_for_target
         from merlin.targetgen import isa_lint
-        model = isa_model_for_target(TARGET)
+        # Exercise the stale SHIPPED definition, not the production model after reviewed errata have
+        # already corrected it.  The latter must be clean by construction; only the former proves that
+        # the linter warns an agent that hand-emits the contradicted bits.
+        model = isa_model_for_target(TARGET, apply_corrections=False)
         mnem = next((m for m in bad if m in (model.by_mnemonic or {})), None)
         if mnem is None:
             _na("the linter warns a backend off a contradicted encoding",

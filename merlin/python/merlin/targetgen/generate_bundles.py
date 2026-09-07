@@ -13,6 +13,7 @@ allow/deny path SETS match, and verify_no_cheat + the sandbox stay green).
 """
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from pathlib import Path
@@ -106,7 +107,7 @@ def _host_lane_grants(te: TargetExperiment) -> tuple[list[dict], list[dict]]:
     return allow, denied
 
 
-def _shared_allow(te: TargetExperiment) -> list[dict]:
+def _shared_allow(te: TargetExperiment, variant: str) -> list[dict]:
     """The target/experiment-parameterized allow block present in EVERY arm."""
     exp = te.exp_name
     out = [{"path": "merlin/contract/", "mode": "ro", "note": "frozen ABI v0.1"},
@@ -121,10 +122,11 @@ def _shared_allow(te: TargetExperiment) -> list[dict]:
     out.append({"path": f"experiments/{exp}/scripts/agent_selfcheck.py", "as": "agent_selfcheck.py",
                 "mode": "ro", "note": "redacted self-check"})
     out += _host_lane_grants(te)[0]
+    out += copy.deepcopy(te.information_set(variant).get("allowed") or [])
     return out
 
 
-def _shared_deny(te: TargetExperiment) -> list[dict]:
+def _shared_deny(te: TargetExperiment, variant: str) -> list[dict]:
     """The target/experiment-parameterized deny block present in EVERY arm (answer surfaces)."""
     exp = te.exp_name
     # answer surfaces live under the out/ generated root (the hand-authored bundles used a stale prefix
@@ -136,10 +138,12 @@ def _shared_deny(te: TargetExperiment) -> list[dict]:
     out += [{"path": f"experiments/{exp}/input_bundles/grader_private_v0/", "reason": "grader-private"},
             {"path": f"experiments/{exp}/runs/", "reason": "prior submissions"}]
     out += _host_lane_grants(te)[1]
+    out += copy.deepcopy(te.information_set(variant).get("denied") or [])
     return out
 
 
 def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str, *,
+                  variant: str = "hwbringup_v0",
                   add_tools: tuple[str, ...] = (), drop_tools: tuple[str, ...] = ()) -> dict[str, Any]:
     """Assemble one arm's manifest = shared target/exp block + the tools its rung carries.
 
@@ -151,8 +155,9 @@ def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str, *,
     still reaches the tool it claims to have removed is a silently void measurement.
     """
     tools = TR.arm_tools(arm, add=add_tools, drop=drop_tools)
-    allow = _shared_allow(te)
-    deny = _shared_deny(te)
+    info = te.information_set(variant)
+    allow = _shared_allow(te, variant)
+    deny = _shared_deny(te, variant)
     allow += _tool_allow(te, tools)
     if arm == "raw_baseline":
         deny = [{"path": "merlin/", "reason": "Merlin internals (no tools for the raw arm)"}] + deny
@@ -176,7 +181,10 @@ def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str, *,
         raise ValueError(f"unknown arm {arm!r}")
     if add_tools or drop_tools:
         allow, deny = _apply_ablation(te, allow, deny, add_tools, drop_tools)
-    return {"bundle_id": bundle_id, "arm": arm, "task": f"{te.target}-mlir-oot-capsule",
+    return {"bundle_id": bundle_id, "variant": variant, "arm": arm,
+            "task": f"{te.target}-mlir-oot-capsule",
+            "condition": info.get("condition", variant),
+            "source_pins": list(info.get("source_pins") or ()),
             "description": f"{arm} arm for the {te.target} target (generated from target_experiment.yaml)",
             "allowed": allow, "denied": deny, "tools": list(tools), "integrity_required": True}
 
@@ -241,7 +249,8 @@ def generate_bundles(te: TargetExperiment, *, variant: str = "hwbringup_v0",
     out = {}
     for arm in wanted:
         bid = f"{_ALL_ARMS[arm]}_{variant}{suffix}"
-        out[bid] = _arm_manifest(te, arm, bid, add_tools=add_tools, drop_tools=drop_tools)
+        out[bid] = _arm_manifest(te, arm, bid, variant=variant,
+                                 add_tools=add_tools, drop_tools=drop_tools)
     return out
 
 
@@ -391,7 +400,26 @@ def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, v
         # tool the cell deliberately withheld, which is the one thing a cell must never do.
         granted = {e["path"] for e in (manifest.get("allowed") or [])
                    if isinstance(e, dict) and str(e.get("path", "")).startswith(("merlin/", "experiments/"))}
-        _w_if_absent("STARTER_PROMPT.md", render_prompt(te, cap, experiment, stem, granted_tools=granted))
+        prompt = render_prompt(te, cap, experiment, stem, granted_tools=granted)
+        if manifest.get("condition") == "kernel-library":
+            library_alias = next(
+                (str(entry.get("as")) for entry in manifest.get("allowed", ())
+                 if isinstance(entry, dict) and entry.get("as") and "kernel" in str(entry.get("as"))),
+                "kernel-library",
+            )
+            prompt += f"""
+
+## Kernel-library information treatment
+
+This condition grants a read-only snapshot of the target authors' kernel library at
+`{library_alias}/`. Read its `selection.yaml` and `manifest.yaml` before authoring. Mine reusable
+compiler rules from its schedules, tiling, residency, precision dispatch, and fusion boundaries. The
+submitted package must still generate self-contained code: do not copy kernel bodies verbatim, link or
+call the reference library, or dispatch on capsule names. Report each adopted pattern as
+`reference pattern -> generalized compiler rule`. Entries marked experimental are diagnostic evidence,
+not correctness-qualified implementations and must not be promoted without an independent gate.
+"""
+        _w_if_absent("STARTER_PROMPT.md", prompt)
     _w_always("allowed_files.txt", _grant_txt(manifest, "allowed"))
     _w_always("denied_files.txt", _grant_txt(manifest, "denied"))
     if manifest.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify"}:

@@ -133,19 +133,22 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
     else:
         policy = admission.get("policy")
         if policy not in {"all_discovered", "frozen_target_capability_operand_dtype",
-                          "descriptor_capability_and_resource_v1"}:
+                          "descriptor_capability_and_resource_v1", "descriptor_search_cohort_v1"}:
             reasons.append("cohort_admission_policy_invalid")
         source_n = admission.get("n_source_capsules")
         admitted_n = admission.get("n_admitted_capsules")
         capability_excluded_n = admission.get("n_capability_excluded")
         resource_excluded_n = admission.get("n_resource_excluded")
+        search_excluded_n = admission.get("n_search_excluded", 0)
         if any(not isinstance(v, int) or isinstance(v, bool) or v < 0
-               for v in (source_n, admitted_n, capability_excluded_n, resource_excluded_n)):
+               for v in (source_n, admitted_n, capability_excluded_n, resource_excluded_n,
+                         search_excluded_n)):
             reasons.append("cohort_admission_counts_malformed")
         else:
             if source_n <= 0 or admitted_n <= 0:
                 reasons.append("cohort_admission_vacuous")
-            if source_n != admitted_n + capability_excluded_n + resource_excluded_n:
+            if source_n != (admitted_n + capability_excluded_n + resource_excluded_n
+                            + search_excluded_n):
                 reasons.append("cohort_admission_arithmetic_invalid")
             if isinstance(n_capsules, int) and not isinstance(n_capsules, bool) \
                     and admitted_n != n_capsules:
@@ -161,6 +164,13 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
             required_models = admission.get("required_admitted_models")
             if not isinstance(required_models, list) or not required_models:
                 reasons.append("cohort_admission_required_models_missing")
+        if policy == "descriptor_search_cohort_v1":
+            if not isinstance(admission.get("search_policy"), str) or not admission["search_policy"]:
+                reasons.append("cohort_admission_search_policy_missing")
+            digest = admission.get("included_name_set_sha256")
+            if (not isinstance(digest, str) or len(digest) != 64
+                    or any(ch not in "0123456789abcdef" for ch in digest)):
+                reasons.append("cohort_admission_included_name_set_sha256_invalid")
 
     # The diagnostic score denominator deliberately excludes work that was never measured. Formal
     # completion must not inherit that smaller denominator: otherwise a screen budget, model timeout,

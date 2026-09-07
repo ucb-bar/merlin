@@ -790,8 +790,12 @@ def _cert_cover(ws) -> set | None:
         # Exclusions travel WITH the roots. A capsule the descriptor withholds from the paid loop cannot
         # stand for its cell, because promotion only enqueues capsules in the cover — picking one that
         # never runs retires the cell for a certificate nobody will produce.
+        from merlin.targetgen.capsule_common import discover_capsules
+        _source = discover_capsules(te.graded_roots(), labels={"public", "dev"},
+                                    contract=_C.REPO / "merlin/contract")
+        _excluded = set(te.effective_exclusions(cap.get("name") for cap in _source))
         return set(cert_capsule_cover(te.graded_roots(), tile_dim=_td,
-                                      exclude=set(getattr(te, "graded_exclude", ()) or ()))["capsules"])
+                                      exclude=_excluded)["capsules"])
     except Exception:  # noqa: BLE001 -- no resolvable corpus: stay permissive, never silently empty
         return None
 

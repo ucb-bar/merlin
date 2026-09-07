@@ -1,0 +1,47 @@
+schema: radiance_kernel_library_selection_v1
+name: radiance_pr1_model_kernel_library
+source_pin: radiance_kernels
+source_commit: 399757f6da3b2c75980821b2479e9f1ca732e8ea
+source_pr: https://github.com/ucb-bar/radiance-kernels/pull/1
+package: out/artifacts/targets/radiance/kernel_library_pr1_v1
+purpose: read-only authoring evidence; submitted packages may not copy, link, or call it
+
+shared_paths:
+  - kernels/common.mk
+  - lib/include
+  - lib/mxgemm
+  - lib/golden
+
+qualified_families:
+  - kernels/gemm_mxgemmini
+  - kernels/gemm_mxgemmini_ws
+  - kernels/gemm_mxgemmini_ws_downproj_fp4
+  - kernels/gemm_mxgemmini_ws_restream
+  - kernels/gemv_batched_fp8_m32
+  - kernels/gemv_batched_fp8_m64
+  - kernels/gemv_batched_fp8_m128
+  - kernels/gemv_batched_fp4_m128
+  - kernels/flash_attention_mx_gqa
+  - kernels/rmsnorm_qkv_fused
+  - kernels/rope_qkv_fused
+  - kernels/simt_quant
+  - kernels/qkv_bias
+  - kernels/geglu
+  - kernels/logit_softcap
+  - kernels/rmsnorm_gemma
+  - kernels/embed_scale
+  - kernels/gemma_4norm
+  - kernels/layernorm
+  - kernels/patch_embed
+  - kernels/bias_add
+
+experimental_families:
+  - path: kernels/flash_attention_mx_gemma
+    reason: mesh-written output lacks reliable numeric readback
+  - path: kernels/flash_attention_mx_fp6
+    reason: final-tile store stalls and does not complete RTL simulation
+
+prohibited_uses:
+  - copying kernel bodies into a submission
+  - linking or calling the reference library from a submission
+  - capsule-name or expected-output dispatch

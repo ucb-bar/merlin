@@ -333,7 +333,7 @@ def test_launcher_independently_rejects_a_hidden_unmeasured_capsule(tmp_path):
     ["--bundle=raw_baseline_public_v0"],
     ["--bundle", "merlin_assisted_rtlchecks_public_v0", "--bundle", "other"],
 ])
-def test_arm4_wrapper_rejects_every_noncanonical_bundle_override(monkeypatch, override):
+def test_arm4_wrapper_rejects_non_rtlcheck_or_ambiguous_bundle_override(monkeypatch, override):
     wrapper = _mod("run_rtlchecks_qa_loop")
     called = []
     monkeypatch.setattr(wrapper.L, "main", lambda argv: called.append(argv) or 0)
@@ -349,6 +349,15 @@ def test_arm4_wrapper_allows_an_explicit_identical_bundle_pin(monkeypatch):
     assert wrapper.main(["--run-id", "test", "--bundle", bundle]) == 0
     assert called and called[0][called[0].index("--bundle") + 1] == bundle
     assert called[0][called[0].index("--arm") + 1] == "merlin_assisted"
+
+
+def test_arm4_wrapper_allows_a_generated_realistic_rtlcheck_bundle(monkeypatch):
+    wrapper = _mod("run_rtlchecks_qa_loop")
+    called = []
+    monkeypatch.setattr(wrapper.L, "main", lambda argv: called.append(argv) or 0)
+    bundle = "merlin_assisted_rtlchecks_hwbringup_v0"
+    assert wrapper.main(["--run-id", "test", "--bundle", bundle]) == 0
+    assert wrapper.RX.ARM_BUNDLE["merlin_assisted"] == bundle
 
 
 def test_arm4_target_local_alias_derives_its_adjacent_descriptor():

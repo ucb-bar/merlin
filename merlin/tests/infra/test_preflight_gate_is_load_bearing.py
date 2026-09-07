@@ -65,6 +65,7 @@ def test_realistic_rtlchecks_commands_pin_each_condition_bundle():
     expected = {
         "kernels": "merlin_assisted_rtlchecks_hwbringup_v0",
         "no-kernels": "merlin_assisted_rtlchecks_hwbringup_nokernel_v0",
+        "kernel-library": "merlin_assisted_rtlchecks_hwbringup_kernellibrary_v0",
     }
     for condition, bundle_id in expected.items():
         command = launcher._arm_cmd(

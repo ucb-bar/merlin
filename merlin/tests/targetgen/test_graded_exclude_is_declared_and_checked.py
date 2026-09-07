@@ -99,15 +99,16 @@ def test_targets_that_declare_nothing_are_unaffected():
     assert seen, "no descriptor without a grading block — this test would be vacuous"
 
 
-def test_the_radiance_declaration_keeps_exactly_one_model_capsule():
-    """The experiment CHOICE this landed for: keep the model capsule that proves whole-model mesh
-    execution, drop the three that re-ask the same question at 6-20x the oracle cost."""
+def test_the_radiance_search_cohort_is_the_declared_29_member_set():
+    """Repeated kernel-library search is bounded explicitly; models remain separate capstones."""
     desc = EXP / "radiance/target_experiment.yaml"
     if not desc.is_file():
         pytest.skip("radiance descriptor absent in this checkout")
     te = load_target_experiment(desc)
     roots = [te.capsule_corpus] + [repo_root() / s for s in te.corpus_siblings()]
-    models = {d.name for r in roots for d in r.glob("*")
-              if (d / "capsule.yaml").is_file() and d.name.startswith("M")}
-    kept = models - set(te.graded_exclude)
-    assert len(kept) == 1, f"expected one model capsule in the loop, got {sorted(kept)}"
+    present = {d.name for r in roots for d in r.glob("*") if (d / "capsule.yaml").is_file()}
+    assert len(te.graded_include) == 29
+    assert set(te.graded_include) <= present
+    assert not any(name.startswith(("M", "MX", "SY_model", "SY_micro_model"))
+                   for name in te.graded_include)
+    assert len(te.effective_exclusions(present)) == len(present) - 29

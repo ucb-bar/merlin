@@ -2,8 +2,11 @@
 # Do not hand-edit: regenerate from target_experiment.yaml (the 4-arm ladder is a fixed
 # methodology; the target/experiment-specific paths come from the descriptor).
 bundle_id: merlin_assisted_eqsat_hwbringup_v0
+variant: hwbringup_v0
 arm: merlin_eqsat
 task: radiance-mlir-oot-capsule
+condition: kernels
+source_pins: []
 description: merlin_eqsat arm for the radiance target (generated from target_experiment.yaml)
 allowed:
 - path: merlin/contract/
@@ -12,6 +15,8 @@ allowed:
 - path: merlin/contract/capsules/radiance/isa/
   mode: ro
   note: capsule corpus
+- path: merlin/contract/capsules/radiance/layers/
+  mode: ro
 - path: merlin/contract/capsules/radiance/model/
   mode: ro
 - path: merlin/contract/capsules/radiance/model_slices/
@@ -112,6 +117,10 @@ denied:
   reason: CIRCT RTL generators (CIRCT arm only)
 - path: merlin/targets/muon/contracts/rtl_facts/
   reason: RTL facts (CIRCT arm only)
+- path: merlin/python/merlin/verify/
+  reason: compiler-verification seam (verify arm only)
+- path: merlin/python/merlin/xdsl_dialects/opt.py
+  reason: compiler-verification seam (verify arm only)
 - path: merlin/python/merlin/runtime/reference.py
   reason: oracle-callable route
 - path: merlin/python/merlin/runtime/simulator.py
@@ -132,4 +141,11 @@ denied:
   reason: prior submissions
 - path: merlin/python/merlin/llvmlower/
   reason: 'frozen host lane: the experiment measures the target lane, not a second CPU backend'
+tools:
+- merlin_infra
+- xdsl_kit
+- cca_spine
+- isa_tools
+- cca_tools
+- eqsat_seam
 integrity_required: true

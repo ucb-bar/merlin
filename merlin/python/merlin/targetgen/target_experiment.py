@@ -389,6 +389,10 @@ class TargetExperiment:
     # failed to render. Kept as a declaration, deliberately NOT as an override: see
     # :func:`declared_vs_resolved_contract`.
     declared_contract: str | None = None
+    # Optional per-bundle information treatments. Keys are exact bundle variant suffixes
+    # (``hwbringup_v0``, ``hwbringup_nokernel_v0``, ...); values carry extra read-only grants,
+    # deeper denials, a stable condition label, and source pins. Empty preserves legacy descriptors.
+    information_sets: dict[str, dict[str, Any]] | None = None
     # OPTIONAL: capsule DIRECTORY NAMES this experiment withholds from the PUBLIC graded set. An
     # experiment CHOICE about scope (which capsules a paid agentic loop is scored on), so declared per
     # target, never inferred — the library reads it as data and knows nothing about any target's corpus.
@@ -402,6 +406,12 @@ class TargetExperiment:
     # :func:`~merlin.targetgen.contract.materialize.materialize_public_capsules`, which refuses an
     # exclusion that matches no capsule so a typo cannot quietly widen the set back open.
     graded_exclude: tuple[str, ...] = ()
+    # Optional explicit public search cohort. Unlike an exclusion list, this remains reviewable when a
+    # generated corpus grows: a new capsule does not silently enter an expensive repeated search. The
+    # full source corpus, hidden set, performance set, and separately scheduled model capstones remain
+    # available; this field controls only the public/dev denominator of the agentic search campaign.
+    graded_include: tuple[str, ...] = ()
+    graded_cohort_policy: str | None = None
     # Optional decomposition of ``graded_exclude`` for formal cohort provenance.  Capability exclusions
     # must be independently proven by the frozen hardware predicate; resource exclusions must be an
     # explicit model-only allowlist under a named policy, with the retained representative models named.
@@ -619,6 +629,21 @@ class TargetExperiment:
         h = self.hidden_corpus()
         return [repo_root() / h] if h else []
 
+    def information_set(self, variant: str) -> dict[str, Any]:
+        """A defensive copy of the treatment declared for ``variant`` (or an empty mapping)."""
+        return copy.deepcopy((self.information_sets or {}).get(variant) or {})
+
+    def effective_exclusions(self, source_names) -> tuple[str, ...]:
+        """Resolve the descriptor's exclusion or inclusion policy against a concrete source set."""
+        source = {str(name) for name in source_names}
+        if self.graded_include:
+            include = set(self.graded_include)
+            unknown = sorted(include - source)
+            if unknown:
+                raise ValueError(f"graded_include names capsules absent from the source corpus: {unknown}")
+            return tuple(sorted(source - include))
+        return tuple(sorted(self.graded_exclude))
+
 
 #: The descriptor's file NAME is the invariant; which tree it hangs off is not. Globbing for it (rather
 #: than typing one experiment layout) keeps this resolver working for a target whose descriptor lives
@@ -691,10 +716,12 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     phase_bound = grading.get("phase_bound") or {}
     expected_cohort = grading.get("expected_cohort") or {}
     hidden_admission = grading.get("hidden_capability_admission") or {}
+    search_cohort = grading.get("search_cohort") or {}
     for field, value in (("grading.resource_bound", resource_bound),
                          ("grading.phase_bound", phase_bound),
                          ("grading.expected_cohort", expected_cohort),
-                         ("grading.hidden_capability_admission", hidden_admission)):
+                         ("grading.hidden_capability_admission", hidden_admission),
+                         ("grading.search_cohort", search_cohort)):
         if not isinstance(value, dict):
             raise ValueError(f"{p}: {field} must be a mapping")
 
@@ -715,6 +742,41 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ValueError(f"{p}: {field}.{key} must be a non-negative integer")
         return value
+
+    raw_information_sets = doc.get("information_sets") or {}
+    if not isinstance(raw_information_sets, dict):
+        raise ValueError(f"{p}: information_sets must be a mapping keyed by bundle variant")
+    information_sets: dict[str, dict[str, Any]] = {}
+    for variant, body in raw_information_sets.items():
+        field = f"information_sets.{variant}"
+        if (not isinstance(variant, str) or not variant.startswith("hwbringup_")
+                or Path(variant).name != variant):
+            raise ValueError(f"{p}: information-set key {variant!r} must be an hwbringup_* variant")
+        if not isinstance(body, dict):
+            raise ValueError(f"{p}: {field} must be a mapping")
+        condition = body.get("condition")
+        if not isinstance(condition, str) or not condition.strip():
+            raise ValueError(f"{p}: {field}.condition must be a non-empty string")
+        normalized: dict[str, Any] = {"condition": condition.strip()}
+        for key in ("allowed", "denied"):
+            rows = body.get(key) or []
+            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                raise ValueError(f"{p}: {field}.{key} must be a list of mappings")
+            clean = []
+            for index, row in enumerate(rows):
+                value = row.get("path")
+                if not isinstance(value, str) or not value:
+                    raise ValueError(f"{p}: {field}.{key}[{index}].path must be non-empty")
+                _safe_relative(value, field=f"{field}.{key}[{index}].path")
+                clean.append(copy.deepcopy(row))
+            normalized[key] = clean
+        pins = body.get("source_pins") or []
+        if (not isinstance(pins, list)
+                or any(not isinstance(pin, str) or not pin for pin in pins)
+                or len(set(pins)) != len(pins)):
+            raise ValueError(f"{p}: {field}.source_pins must be a list of unique pin names")
+        normalized["source_pins"] = list(pins)
+        information_sets[variant] = normalized
 
     performance = doc.get("performance") or {}
     if not isinstance(performance, dict):
@@ -745,6 +807,11 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         raise ValueError(f"{p}: preflight.capability_probes contains duplicate capability names")
 
     legacy_exclude = names(grading.get("exclude_capsules"), field="grading.exclude_capsules")
+    search_include = names(search_cohort.get("include_capsules"),
+                           field="grading.search_cohort.include_capsules")
+    search_policy = search_cohort.get("policy")
+    if search_include and (not isinstance(search_policy, str) or not search_policy.strip()):
+        raise ValueError(f"{p}: grading.search_cohort requires a non-empty policy")
     capability_exclude = names(grading.get("capability_exclude_capsules"),
                                field="grading.capability_exclude_capsules")
     resource_exclude = names(resource_bound.get("exclude_capsules"),
@@ -761,6 +828,8 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
             f"{p}: grading.phase_bound.exclude_capsules names {outside}, which the recorded phase-2-only "
             "set does not contain; a row may not be dropped for failing a verdict it did not fail")
     split_exclude = capability_exclude + resource_exclude + phase_exclude
+    if search_include and (legacy_exclude or split_exclude):
+        raise ValueError(f"{p}: grading.search_cohort cannot be combined with exclusion policies")
     if legacy_exclude and split_exclude:
         raise ValueError(f"{p}: grading may use legacy exclude_capsules or the explicit capability/"
                          "resource split, not both")
@@ -795,7 +864,11 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     expected_admitted = count(expected_cohort, "admitted_capsules", field="grading.expected_cohort")
     if (expected_source is None) != (expected_admitted is None):
         raise ValueError(f"{p}: grading.expected_cohort must declare both source and admitted counts")
-    if expected_source is not None and expected_source != expected_admitted + len(split_exclude):
+    if (expected_source is not None and search_include
+            and expected_admitted != len(search_include)):
+        raise ValueError(f"{p}: grading.expected_cohort admitted count must equal search_cohort size")
+    if (expected_source is not None and not search_include
+            and expected_source != expected_admitted + len(split_exclude)):
         raise ValueError(
             f"{p}: grading.expected_cohort arithmetic does not match the declared exclusions")
     hidden_source = count(hidden_admission, "source_capsules",
@@ -823,12 +896,15 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         preflight_smoke_program=(lambda s: str(s) if s else None)(preflight.get("smoke_program")),
         preflight_capability_probes=capability_probes,
         declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
+        information_sets=information_sets,
         backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
         # Cohort admission (which capsules are graded, and why one is not) alongside the host-lane
         # MATRIX. `host_lane` is no longer a constructor field: a target declares a lane per dtype and
         # the singular `.host_lane` property returns the default, so every existing caller still reads
         # one lane while a capsule compiled at another dtype resolves its own.
         graded_exclude=legacy_exclude or split_exclude,
+        graded_include=search_include,
+        graded_cohort_policy=(search_policy.strip() if isinstance(search_policy, str) else None),
         graded_capability_exclude=capability_exclude,
         graded_resource_exclude=resource_exclude,
         graded_resource_policy=(lambda s: str(s) if s else None)(resource_bound.get("policy")),
@@ -883,12 +959,17 @@ def declared_vs_resolved_contract(te: TargetExperiment) -> tuple[Path | None, Pa
     return None, None, "none"
 
 
-def shared_spec_paths(te: TargetExperiment) -> set[str]:
+def shared_spec_paths(te: TargetExperiment, variant: str | None = None) -> set[str]:
     """The shared hardware-spec path strings the descriptor makes authoritative — the ISA headers + the
     hwbringup set EVERY arm's bundle must grant (a constant input, not assistance)."""
     paths = set(te.isa_headers)
     if te.hwbringup_set:
         paths.add(te.hwbringup_set)
+    if variant:
+        paths.update(
+            entry["path"] for entry in te.information_set(variant).get("allowed", ())
+            if isinstance(entry, dict) and entry.get("path")
+        )
     return paths
 
 
@@ -896,14 +977,35 @@ def bundles_match_descriptor(te: TargetExperiment, manifest_paths) -> list[str]:
     """Governance: the descriptor is the single source of truth for the shared hardware spec. Return the
     drift — for each bundle manifest, the shared-spec paths it fails to grant in ``allowed``. Empty list
     means every arm's bundle is consistent with the descriptor (so a run for this target is honest)."""
-    required = shared_spec_paths(te)
     drift: list[str] = []
     for mp in manifest_paths:
         doc = yaml.safe_load(Path(mp).read_text())
+        variant = str(doc.get("variant") or "")
+        info = te.information_set(variant) if variant else {}
+        required = shared_spec_paths(te, variant or None)
         allowed = {e.get("path") for e in (doc.get("allowed") or []) if isinstance(e, dict)}
+        denied = {e.get("path") for e in (doc.get("denied") or []) if isinstance(e, dict)}
         missing = required - allowed
         if missing:
             drift.append(f"{Path(mp).parent.name}: missing shared-spec {sorted(missing)}")
+        expected_denied = {
+            entry["path"] for entry in info.get("denied", ())
+            if isinstance(entry, dict) and entry.get("path")
+        }
+        if expected_denied - denied:
+            drift.append(
+                f"{Path(mp).parent.name}: missing information-set denial "
+                f"{sorted(expected_denied - denied)}")
+        expected_condition = info.get("condition")
+        if expected_condition and doc.get("condition") != expected_condition:
+            drift.append(
+                f"{Path(mp).parent.name}: condition {doc.get('condition')!r} != "
+                f"{expected_condition!r}")
+        expected_pins = list(info.get("source_pins") or ())
+        if list(doc.get("source_pins") or ()) != expected_pins:
+            drift.append(
+                f"{Path(mp).parent.name}: source_pins {doc.get('source_pins')!r} != "
+                f"{expected_pins!r}")
     return drift
 
 

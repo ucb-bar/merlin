@@ -69,12 +69,18 @@ def _run_dir(arm: str, run_id: str) -> Path:
 
 def _bundle_for(arm: str, cond: str, experiment: str) -> str:
     if experiment == "full":
+        if cond != "kernels":
+            raise ValueError("information-set conditions require --experiment realistic")
         return ARMS[arm][5]
     if experiment != "realistic":
         raise ValueError(f"unknown experiment {experiment!r}")
     b = ARMS[arm][4]                                   # *_hwbringup_v0 (kernels condition)
     if cond == "no-kernels":
         b = b.replace("_hwbringup_v0", "_hwbringup_nokernel_v0")
+    elif cond == "kernel-library":
+        b = b.replace("_hwbringup_v0", "_hwbringup_kernellibrary_v0")
+    elif cond != "kernels":
+        raise ValueError(f"unknown information-set condition {cond!r}")
     return b
 
 
@@ -322,10 +328,11 @@ def main(argv=None):
     ap.add_argument("--repeats", type=int, default=1,
                     help="N independent repeats per arm×condition (fresh tagged run-ids; N>1 -> _r{n} suffix). "
                          "The N>1 that the magnitude claims need (error bars).")
-    ap.add_argument("--condition", choices=["kernels", "no-kernels", "both"], default="kernels",
+    ap.add_argument("--condition", choices=["kernels", "no-kernels", "kernel-library", "both", "all"],
+                    default="kernels",
                     help="info-set axis: 'kernels' (hwbringup + example kernels) vs 'no-kernels' "
-                         "(RTL+ISA+README only — tests the CIRCT-shines-without-kernels hypothesis). "
-                         "'both' expands the cross-product (run-id gets _nk for the no-kernels cell).")
+                         "(RTL+ISA+README only) vs 'kernel-library' (pinned PR#1 library). 'both' is "
+                         "the legacy first two; 'all' expands all three conditions.")
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap",
                     help="bwrap (default, now that claude 2.1.185 runs under it): true filesystem allow-list "
                          "— only granted bundle files + the legit toolchain visible, all answers masked "
@@ -349,11 +356,13 @@ def main(argv=None):
     if a.repeats < 1:
         print("--repeats must be >= 1", file=sys.stderr); return 2
 
-    conditions = ["kernels", "no-kernels"] if a.condition == "both" else [a.condition]
+    conditions = ({"both": ["kernels", "no-kernels"],
+                   "all": ["kernels", "no-kernels", "kernel-library"]}.get(
+                       a.condition, [a.condition]))
     # each (arm, condition, repeat) -> a fresh tagged run. tag encodes the cell so dirs never collide.
     cells = []  # (arm, condition, tag)
     for cond in conditions:
-        csfx = "_nk" if cond == "no-kernels" else ""
+        csfx = {"kernels": "", "no-kernels": "_nk", "kernel-library": "_kl"}[cond]
         for rep in range(1, a.repeats + 1):
             rsfx = f"_r{rep}" if a.repeats > 1 else ""
             for arm in arms:

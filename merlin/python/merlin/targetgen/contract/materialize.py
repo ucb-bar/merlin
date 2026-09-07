@@ -90,13 +90,16 @@ def validate_materialized_cohort(root: str | Path, te) -> dict:
     phase = sorted(getattr(te, "graded_phase_exclude", ()) or ())
     phase2_only = sorted(getattr(te, "graded_phase2_only", ()) or ())
     declared_phase = getattr(te, "graded_phase", None)
-    excluded = sorted(getattr(te, "graded_exclude", ()) or ())
+    source_names = sorted(p.name for p in _public_capsule_dirs_in(te.graded_roots()))
+    excluded = sorted(te.effective_exclusions(source_names))
+    search_include = sorted(getattr(te, "graded_include", ()) or ())
     explicit = bool(capability or resource or phase or declared_phase is not None)
-    expected_policy = ("descriptor_capability_resource_and_phase_v1" if declared_phase is not None else
+    expected_policy = ("descriptor_search_cohort_v1" if search_include else
+                       "descriptor_capability_resource_and_phase_v1" if declared_phase is not None else
                        "descriptor_capability_and_resource_v1" if explicit else
                        "descriptor_exclusions_legacy" if excluded else "all_discovered")
     expected_capability_n = len(capability)
-    expected_resource_n = len(resource) if explicit else len(excluded)
+    expected_resource_n = 0 if search_include else len(resource) if explicit else len(excluded)
     expected = {
         "policy": expected_policy,
         "n_admitted_capsules": len(admitted),
@@ -107,6 +110,10 @@ def validate_materialized_cohort(root: str | Path, te) -> dict:
         "resource_policy": getattr(te, "graded_resource_policy", None),
         "required_admitted_models": sorted(getattr(te, "graded_required_models", ()) or ()),
     }
+    if search_include:
+        expected["search_policy"] = getattr(te, "graded_cohort_policy", None)
+        expected["n_search_excluded"] = len(excluded)
+        expected["included_name_set_sha256"] = _name_set_sha256(search_include)
     if declared_phase is not None:
         # Only asserted when the descriptor HAS a phase class. A record written before this field
         # existed carries no `n_phase_excluded`, and demanding one would turn every pre-existing sealed
@@ -509,21 +516,24 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
     link = base / te.target
     ver = base / f".{te.target}.build.{os.getpid()}.{uuid.uuid4().hex[:8]}"
     shutil.rmtree(ver, ignore_errors=True)
+    source_names = sorted(p.name for p in _public_capsule_dirs_in(roots))
+    effective_excluded = te.effective_exclusions(source_names)
     written = materialize_public_capsules(
-        ver, tier_ceiling=tier_ceiling, corpus_roots=roots,
-        exclude=getattr(te, "graded_exclude", ()))
+        ver, tier_ceiling=tier_ceiling, corpus_roots=roots, exclude=effective_excluded)
     # Seal the descriptor's source->formal-cohort transform beside the immutable materialized root.
     # The official grader imports and validates this record instead of pretending the already-filtered
     # cache was the source pool (which reported 34/34 and erased 14 declared exclusions).
-    source_names = sorted(p.name for p in _public_capsule_dirs_in(roots))
     admitted_names = sorted(written)
     capability_excluded = sorted(getattr(te, "graded_capability_exclude", ()) or ())
     resource_excluded = sorted(getattr(te, "graded_resource_exclude", ()) or ())
     phase_excluded = sorted(getattr(te, "graded_phase_exclude", ()) or ())
     phase2_only = sorted(getattr(te, "graded_phase2_only", ()) or ())
     declared_phase = getattr(te, "graded_phase", None)
-    declared_excluded = sorted(getattr(te, "graded_exclude", ()) or ())
-    if capability_excluded or resource_excluded or phase_excluded or declared_phase is not None:
+    declared_excluded = sorted(effective_excluded)
+    search_include = sorted(getattr(te, "graded_include", ()) or ())
+    if search_include:
+        policy = "descriptor_search_cohort_v1"
+    elif capability_excluded or resource_excluded or phase_excluded or declared_phase is not None:
         # The policy NAME says which classes the record can account for. A cohort sealed with a phase
         # partition read back under the two-class name would have that partition silently dropped, and
         # the reader could no longer tell a screened member from a certified one.
@@ -563,6 +573,12 @@ def public_capsules_for(te, *, tier_ceiling: str | None = None) -> Path:
         "required_admitted_models": sorted(getattr(te, "graded_required_models", ()) or ()),
         "descriptor_sha256": descriptor_sha,
     }
+    if search_include:
+        cohort_record.update({
+            "search_policy": getattr(te, "graded_cohort_policy", None),
+            "n_search_excluded": len(declared_excluded),
+            "included_name_set_sha256": _name_set_sha256(search_include),
+        })
     if declared_phase is not None:
         # The partition itself, added only when a descriptor declares one, so a cohort sealed before
         # this existed keeps the exact record it had. A digest, not the names, for the same reason the
