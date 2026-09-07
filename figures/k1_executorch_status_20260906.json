@@ -75,9 +75,10 @@
       {
         "model": "smolVLA",
         "merlin_ms": null,
-        "executorch_ms": null,
-        "source": null,
-        "note": "pending clean bounded rerun"
+        "merlin_lower_bound_ms": 120000.0,
+        "executorch_ms": 22988.768863,
+        "source": "out/build/fair_compare/smolvla_int8_consistent/61e7e94b79/bounded_single_inference.json and out/build/codex_candidates/et_smolvla_qd8_8core_upcast_retry",
+        "note": "Merlin timed out under a remote 120 s deadline; ExecuTorch reference is recomputed seeded-random fp32, not the captured Merlin weights"
       }
     ]
   },

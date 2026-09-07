@@ -9,8 +9,10 @@
   this was not a full ExecuTorch comparison. (b) Diagnostic one- and eight-core full-flow latency
   ratio $T_{\mathrm{ET}}/T_{\mathrm{Merlin}}$ for W8A8/qd8; values below 1 mean Merlin is slower.
   These are best valid diagnostic walls, not a paired uniform certification set, and smolVLA is not
-  yet measured. ResNet-50 passes the diagnostic absolute W8A8 bar but lacks an independent FP32
-  golden. (c)
+  measured at one core. The smolVLA eight-core triangle is an upper bound because Merlin did not
+  complete within 120 s; its ExecuTorch reference is a seeded-random recomputation rather than
+  Merlin's captured weights. ResNet-50 passes the diagnostic absolute W8A8 bar but lacks an
+  independent FP32 golden. (c)
   Complete-output TinyLlama diagnostic points at one and eight cores, grouped by compiler
   configuration rather than splicing the best point from different binaries into one curve. The
   MR1/NR32 pair uses the exact same ELF and scales from 2398.4 to 644.5 ms; the latter is still

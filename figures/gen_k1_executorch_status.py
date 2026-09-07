@@ -42,8 +42,9 @@ model_names = [row["model"] for row in rows]
 ratios = [(row["executorch_ms"] / row["merlin_ms"]
            if row["executorch_ms"] is not None and row["merlin_ms"] is not None else np.nan)
           for row in rows]
-ratios8 = [(row["executorch_ms"] / row["merlin_ms"]
-            if row["executorch_ms"] is not None and row["merlin_ms"] is not None else np.nan)
+ratios8 = [(row["executorch_ms"] / (row["merlin_ms"] or row.get("merlin_lower_bound_ms"))
+            if row["executorch_ms"] is not None
+            and (row["merlin_ms"] is not None or row.get("merlin_lower_bound_ms")) else np.nan)
            for row in rows8]
 y = np.arange(len(rows))
 axes[1].axvline(1.0, color="black", linestyle="--", linewidth=1)
@@ -56,10 +57,12 @@ for label, values, offset, marker, color in (
         ("8 cores", ratios8, 0.10, "s", COLORS["xnnpack"])):
     for y0, value in zip(y, values):
         if not np.isnan(value):
-            axes[1].scatter([value], [y0 + offset], marker=marker, color=color,
+            is_bound = label == "8 cores" and rows8[y0].get("merlin_lower_bound_ms") is not None
+            point_marker = "<" if is_bound else marker
+            axes[1].scatter([value], [y0 + offset], marker=point_marker, color=color,
                             edgecolor="black", linewidth=0.45, s=38, zorder=3,
                             label=label if y0 == 0 else None)
-            axes[1].text(value + 0.025, y0 + offset, f"{value:.2f}",
+            axes[1].text(value + 0.025, y0 + offset, f"{'<' if is_bound else ''}{value:.2f}",
                          ha="left", va="center", fontsize=8.0)
 if np.isnan(ratios[-1]) and np.isnan(ratios8[-1]):
     axes[1].scatter([0.03], [y[-1]], marker="x", color=COLORS["pending"], s=32)
