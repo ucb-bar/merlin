@@ -39,6 +39,15 @@ def test_gemmini_prompt_has_shared_blocks_and_its_slots():
     assert "Target ISA facts: gemmini" in p
 
 
+def test_verification_contract_is_narrow_then_full_and_session_neutral():
+    p, _ = _render("gemmini", _GEM)
+    assert "check ONLY the capsule" in p
+    assert "full set once before you declare done" in p
+    assert "After EVERY build" not in p
+    assert "each round is a FRESH session" not in p
+    assert "--capsules <changed-capsule-or-subset>" in p
+
+
 def test_radiance_prompt_has_radiance_slots_and_no_gemmini_leakage(monkeypatch):
     try:
         p, s = _render("radiance", _RAD, monkeypatch)

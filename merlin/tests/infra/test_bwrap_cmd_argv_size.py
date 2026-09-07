@@ -27,6 +27,9 @@ from __future__ import annotations
 
 import os
 import sys
+import shlex
+import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -94,3 +97,59 @@ def test_composer_keeps_a_corpus_scale_mask_set_under_the_execve_limit(tmp_path)
     assert len(composed.encode("utf-8")) <= MAX_ARG_BYTES, (
         f"composed command is {len(composed.encode('utf-8'))} B, over the {MAX_ARG_BYTES} B execve "
         f"per-argument limit; bash will refuse it with E2BIG")
+
+
+def test_inline_composer_preserves_literal_arguments(tmp_path):
+    from merlin.targetgen.sandbox import bwrap as BW
+
+    value = "a path with spaces ' and $(false)"
+    command = BW.compose_command(["printf", "%s", value], "", tmp_path / "ws")
+    result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=True)
+    assert result.stdout == value
+
+
+def test_resume_rewrites_the_sealed_sandbox_turn_script(tmp_path):
+    """Round-zero resume reuses the same filename after the first launch sealed it mode 0500."""
+    import codex_agent
+
+    first = codex_agent._sandbox_script(tmp_path, 0, 0, "first")
+    assert first[1] == str(tmp_path / "round_00.sandbox.turn00.sh")
+    assert (tmp_path / "round_00.sandbox.turn00.sh").read_text() == "first"
+
+    second = codex_agent._sandbox_script(tmp_path, 0, 0, "resumed")
+    assert second == first
+    assert (tmp_path / "round_00.sandbox.turn00.sh").read_text() == "resumed"
+    assert (tmp_path / "round_00.sandbox.turn00.sh").stat().st_mode & 0o777 == 0o500
+
+
+def test_perf_codex_round_composes_large_policy_through_args_file(tmp_path, monkeypatch):
+    scripts = merlin_dir() / "experiments/gemmini_perf_bench/scripts"
+    monkeypatch.syspath_prepend(str(scripts))
+    import perf_agent_stage as stage
+
+    argv = ["bwrap", "--clearenv"]
+    for index in range(1500):
+        argv += ["--ro-bind", "/dev/null", f"/masked/space and 'quote'/{index}/" + "x" * 110]
+    assert len(shlex.join(argv).encode()) > 178_303
+    policy = SimpleNamespace(argv=tuple(argv))
+    monkeypatch.setattr(stage, "outer_codex_policy", lambda *args, **kwargs: policy)
+    loop = SimpleNamespace(bwrap_cmd=None)
+    transcript = tmp_path / "transcript.jsonl"
+
+    def run_round(ws, *args, **kwargs):
+        command = loop.bwrap_cmd("printf '%s' 'payload'", ws, {})
+        assert len(command.encode()) < MAX_ARG_BYTES
+        assert "--args" in command
+        payloads = list(tmp_path.glob(".workspace.bwrap-args.*"))
+        assert len(payloads) == 1
+        assert payloads[0].read_bytes().split(b"\0")[:-1] == [s.encode() for s in argv[1:]]
+        assert command.endswith(" bash -c 'printf '\\''%s'\\'' '\\''payload'\\'''")
+        return 0, transcript
+
+    monkeypatch.setattr(stage, "_import_codex_driver", lambda: (SimpleNamespace(run_round=run_round), loop))
+    result = stage._codex_round(
+        tmp_path / "workspace", tmp_path, SimpleNamespace(text="prompt"), None,
+        None, None, None, None, None, model="test", resolved_model="test", effort="high",
+        round_index=0, timeout_s=1, codex_binary=tmp_path / "codex")
+    assert result == (0, transcript, policy)
+    assert loop.bwrap_cmd is None

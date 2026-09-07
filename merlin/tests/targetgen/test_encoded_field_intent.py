@@ -81,6 +81,20 @@ def _cb_whole_op(m=_EDGE, n=_EDGE, d=_EDGE):
                           "attributes": {"epilogue": [], "output_dtype": "i32"}}]}
 
 
+def _cb_whole_program():
+    cb = _cb_resident()
+    cb["kernel_abi"] = {
+        "kind": "whole_program",
+        "args": [
+            {"tensor": "A0", "access": "read"},
+            {"tensor": "W", "access": "read"},
+            {"tensor": "Y0", "access": "write"},
+        ],
+        "outputs": ["Y0"],
+    }
+    return cb
+
+
 def _trace(*, loads=None, stores=None, ld_pitch=_EDGE, st_pitch=_EDGE * 4,
            relu=False, acc_scale=1.0, readout="i32"):
     """A well-formed stream. ``loads`` / ``stores`` are ``(arg_index, byte_offset, rows, cols)``."""
@@ -134,6 +148,12 @@ def test_a_whole_op_buffer_resolves_to_the_declaration_order_instead():
     names, shape, why = RC.resolve_kernel_arg_order(_cb_whole_op())
     assert why == "" and shape == "native_whole_op"
     assert names == ["Q", "K", "Y0"]
+
+
+def test_an_explicit_whole_program_boundary_takes_precedence_over_command_inference():
+    names, shape, why = RC.resolve_kernel_arg_order(_cb_whole_program())
+    assert why == "" and shape == "whole_program"
+    assert names == ["A0", "W", "Y0"]
 
 
 def test_a_movement_buffer_resolves_to_its_own_two_pointer_order():

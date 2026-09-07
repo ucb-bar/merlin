@@ -64,10 +64,10 @@ def assemble_line(model: IsaModel, mnemonic: str, operands: dict[str, int]) -> i
     return word & 0xFFFFFFFF
 
 
-def _parse_operands(rest: str) -> dict[str, int]:
+def _parse_operands(rest: str) -> dict[str, int | str]:
     """Parse ``rd=1, rs1=2, imm=0x10`` → {rd:1, rs1:2, imm:16}. Structured splitting only (no regex);
     values accept 0x/0b/decimal via ``int(x, 0)``."""
-    ops: dict[str, int] = {}
+    ops: dict[str, int | str] = {}
     for tok in rest.replace(",", " ").split():
         if "=" not in tok:
             raise AssembleError(f"operand '{tok}' must be name=value")
@@ -75,8 +75,47 @@ def _parse_operands(rest: str) -> dict[str, int]:
         try:
             ops[k.strip()] = int(v.strip(), 0)
         except ValueError:
-            raise AssembleError(f"operand '{k.strip()}' has non-integer value '{v.strip()}'")
+            ops[k.strip()] = v.strip()
     return ops
+
+
+def _resolve_symbolic_operands(model: IsaModel, mnemonic: str, operands: dict[str, int | str],
+                               *, instruction_index: int, labels: dict[str, int],
+                               schedule_contract: dict | None) -> dict[str, int]:
+    """Resolve branch labels from a target-declared PC/immediate-unit contract.
+
+    The derived field map knows where an immediate's bits live, but it cannot know whether one decoded
+    unit means a byte, halfword, instruction word, or something target-specific.  That conversion stays
+    in target data.  Non-symbolic operands take the existing path unchanged.
+    """
+    resolved: dict[str, int] = {}
+    rules = (((schedule_contract or {}).get("control_flow") or {}).get("relative_branches") or [])
+    for attr, value in operands.items():
+        if isinstance(value, int):
+            resolved[attr] = value
+            continue
+        if value not in labels:
+            raise AssembleError(f"operand '{attr}' references unknown label '{value}'")
+        matching = [rule for rule in rules if isinstance(rule, dict)
+                    and mnemonic in {str(x) for x in (rule.get("mnemonics") or [])}
+                    and str(rule.get("immediate_operand") or "") == attr]
+        if len(matching) != 1:
+            raise AssembleError(
+                f"symbolic operand '{attr}={value}' needs exactly one target-declared relative-branch "
+                f"rule for '{mnemonic}' (found {len(matching)})")
+        rule = matching[0]
+        bits = rule.get("immediate_bits")
+        units = rule.get("decoded_immediate_units_per_instruction")
+        if (not isinstance(bits, int) or bits <= 0 or not isinstance(units, int) or units <= 0):
+            raise AssembleError(f"relative-branch rule for '{mnemonic}' has invalid immediate units/width")
+        displacement = (labels[value] - instruction_index) * units
+        lo, hi = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+        if not lo <= displacement <= hi:
+            raise AssembleError(
+                f"branch from instruction {instruction_index} to label '{value}' needs displacement "
+                f"{displacement}, outside the declared signed {bits}-bit range [{lo}, {hi}]")
+        resolved[attr] = displacement & ((1 << bits) - 1)
+    return resolved
 
 
 def _assemble_one(model: IsaModel, mnemonic: str, operands: dict[str, int]) -> int:
@@ -94,24 +133,43 @@ def _assemble_one(model: IsaModel, mnemonic: str, operands: dict[str, int]) -> i
     return assemble_line(model, mnemonic, operands)
 
 
-def assemble_text(model: IsaModel, text: str) -> list[int]:
+def assemble_text(model: IsaModel, text: str, *, schedule_contract: dict | None = None) -> list[int]:
     """Assemble a small mnemonic listing → the list of 32-bit words. One instruction per line:
     ``MNEMONIC field=value, field=value``. Also accepts ``.word 0x..`` / ``.word 123`` literal passthrough
     (for encodings the agent wants to hand-place) and skips blank lines and ``#`` / ``//`` / ``;`` comments.
     Raises :class:`AssembleError` (with the 1-based line number) on any line it cannot encode faithfully."""
     if model.is_empty() and not model.is_fixed_format():
         raise AssembleError("this target ships no ISA definition; the derived assembler is unavailable")
-    words: list[int] = []
+    labels: dict[str, int] = {}
+    instructions: list[tuple[int, str]] = []
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.split("#", 1)[0].split("//", 1)[0].split(";", 1)[0].strip()
         if not line:
             continue
+        if ":" in line:
+            label, _, line = line.partition(":")
+            label = label.strip()
+            if not label or any(ch.isspace() for ch in label) or "=" in label:
+                raise AssembleError(f"line {lineno}: invalid label '{label}'")
+            if label in labels:
+                raise AssembleError(f"line {lineno}: duplicate label '{label}'")
+            labels[label] = len(instructions)
+            line = line.strip()
+            if not line:
+                continue
+        instructions.append((lineno, line))
+
+    words: list[int] = []
+    for instruction_index, (lineno, line) in enumerate(instructions):
         head, _, rest = line.partition(" ")
         try:
             if head == ".word":
                 words.append(int(rest.strip(), 0) & 0xFFFFFFFF)
             else:
-                words.append(_assemble_one(model, head, _parse_operands(rest)))
+                operands = _resolve_symbolic_operands(
+                    model, head, _parse_operands(rest), instruction_index=instruction_index,
+                    labels=labels, schedule_contract=schedule_contract)
+                words.append(_assemble_one(model, head, operands))
         except AssembleError as e:
             raise AssembleError(f"line {lineno}: {e}") from None
     return words

@@ -20,6 +20,7 @@ import dataclasses
 import datetime as _dt
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from enum import Enum
@@ -489,7 +490,15 @@ def run_entrypoint(pkg: Package, name: str, input_mlir: Path,
     # every relative argv token resolved against the grader's process CWD (the repo root). A package that
     # declared its entrypoints package-relative -- exactly what the contract describes -- failed every
     # capsule at `parse` with "no such file", naming a file that was present in the submission.
-    return subprocess.run(argv, cwd=str(pkg.directory), capture_output=True, text=True, timeout=timeout)
+    env = dict(os.environ)
+    if "PYTHONPATH" in env:
+        # Imported compiler helpers belong to the caller's declared environment. Preserve their
+        # meaning when the entrypoint moves into its package; relative import roots otherwise
+        # silently rebase and a development-successful compiler fails in the production runner.
+        env["PYTHONPATH"] = os.pathsep.join(
+            str(Path(value or ".").resolve()) for value in env["PYTHONPATH"].split(os.pathsep))
+    return subprocess.run(argv, cwd=str(pkg.directory), env=env,
+                          capture_output=True, text=True, timeout=timeout)
 
 
 # --------------------------------------------------------------------------- certification

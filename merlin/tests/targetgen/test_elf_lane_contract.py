@@ -25,6 +25,7 @@ A REQUIRED lane is never credited here: an instruction present in a binary is no
 """
 from __future__ import annotations
 
+import json
 import struct
 
 import pytest
@@ -111,7 +112,8 @@ def test_the_scanned_file_is_the_one_the_compile_step_links():
     is an UNMEASURED verdict -- which is quiet. Pin the name against the compile step that produces it."""
     from merlin.common.paths import merlin_dir
     src = (merlin_dir() / "python/merlin/targetgen/contract/compile.py").read_text(encoding="utf-8")
-    assert f'"{EL.PACKAGE_ELF_NAME}"' in src, (
+    assert "from ..elf_lanes import PACKAGE_ELF_NAME" in src
+    assert "elf = workdir / PACKAGE_ELF_NAME" in src, (
         f"the compile step no longer links {EL.PACKAGE_ELF_NAME}; the lane scan would silently find "
         f"nothing to read and report every forbidden lane as unmeasured")
 
@@ -248,12 +250,68 @@ def test_a_required_lane_is_never_credited_by_a_static_scan(derivable, tmp_path)
     assert EL.unjudged_lanes(rep, lanes) == ["scalar_rvv_lane"]
 
 
+def _declared_program(tmp_path, words=(1, 2, 3)):
+    path = tmp_path / "oracle.program"
+    path.write_text(json.dumps({"words": list(words), "inputs": []}), encoding="utf-8")
+    return path
+
+
+def _program_decode(monkeypatch, records):
+    from merlin.targetgen import isa_disasm, isa_model
+    monkeypatch.setattr(isa_model, "isa_model_for_target", lambda _target: object())
+    monkeypatch.setattr(isa_disasm, "disassemble", lambda _model, _words: records)
+
+
+def test_declared_self_hosted_program_can_prove_negative_mesh_lane(tmp_path, monkeypatch):
+    _program_decode(monkeypatch, [
+        {"index": 0, "word": "0x1", "isa_mnemonic": "ADDI", "role": "scalar"},
+        {"index": 1, "word": "0x2", "isa_mnemonic": "VADD", "role": "vector"},
+        {"index": 2, "word": "0x3", "isa_mnemonic": "ECALL", "role": "scalar"},
+    ])
+    rep = EL.lane_report_from_declared_program(
+        _forbidding(), _declared_program(tmp_path), target="self-hosted")
+    assert rep["violated"] == []
+    assert rep["evidence"][R._ACCELERATOR_LANE] == EL.DECLARED_PROGRAM_EVIDENCE
+    assert EL.unjudged_lanes(rep, _forbidding()["lanes"]) == []
+
+
+def test_declared_program_mesh_role_disproves_forbidden_lane(tmp_path, monkeypatch):
+    _program_decode(monkeypatch, [
+        {"index": 0, "word": "0x1", "isa_mnemonic": "MATMUL", "role": "matmul"},
+    ])
+    rep = EL.lane_report_from_declared_program(
+        _forbidding(), _declared_program(tmp_path, (1,)), target="self-hosted")
+    assert rep["violated"] == [R._ACCELERATOR_LANE]
+    assert rep["program_scan"]["n_hits"] == 1
+
+
+def test_undecodable_declared_program_is_unmeasured_not_clean(tmp_path, monkeypatch):
+    _program_decode(monkeypatch, [{"index": 0, "word": "0x1", "illegal": True}])
+    rep = EL.lane_report_from_declared_program(
+        _forbidding(), _declared_program(tmp_path, (1,)), target="self-hosted")
+    assert rep["program_scan"]["status"] == "unmeasured"
+    assert EL.unjudged_lanes(rep, _forbidding()["lanes"]) == [R._ACCELERATOR_LANE]
+
+
+def test_declared_program_scan_never_credits_a_required_lane(tmp_path, monkeypatch):
+    _program_decode(monkeypatch, [
+        {"index": 0, "word": "0x1", "isa_mnemonic": "MATMUL", "role": "matmul"},
+    ])
+    capsule = {"lanes": {"require": [R._ACCELERATOR_LANE]}}
+    rep = EL.lane_report_from_declared_program(
+        capsule, _declared_program(tmp_path, (1,)), target="self-hosted")
+    assert rep["observed"] == []
+    assert EL.unjudged_lanes(rep, capsule["lanes"]) == [R._ACCELERATOR_LANE]
+
+
 def test_the_evidence_rung_is_not_folded_into_the_executed_vocabulary():
     """``EXECUTED_LANE_EVIDENCE`` means "something RAN". A static scan did not run anything, so folding
     this rung in would let a required lane be credited by mere presence -- at BOTH ends, since
     ``capsule_grade`` reads that same tuple. It is admissible for the negative direction only."""
     assert EL.LINKED_ELF_EVIDENCE not in R.EXECUTED_LANE_EVIDENCE
+    assert EL.DECLARED_PROGRAM_EVIDENCE not in R.EXECUTED_LANE_EVIDENCE
     assert EL.LINKED_ELF_EVIDENCE in EL.negative_lane_evidence()
+    assert EL.DECLARED_PROGRAM_EVIDENCE in EL.negative_lane_evidence()
     assert set(R.EXECUTED_LANE_EVIDENCE) < set(EL.negative_lane_evidence())
 
 
@@ -339,6 +397,29 @@ def test_a_missing_elf_stays_unmeasured(derivable, paths):
                             "lanes": {"forbid": [R._ACCELERATOR_LANE]}}, target=target)
     assert row["status"] == "incomplete"
     assert row["status"] in R.NOT_MEASURED_STATUSES or row["status"] != "pass"
+
+
+def test_self_hosted_declared_program_fallback_reaches_pass(derivable, paths, monkeypatch):
+    """The finalizer uses the self-hosted executable stream when there is no linked host ELF.
+
+    Testing the scanner alone is insufficient: this pins the integration that changes a numerically
+    passing capsule from ``incomplete`` to ``pass`` while preserving the negative-only evidence rung.
+    """
+    target, _op = derivable
+    paths.generated.mkdir(parents=True, exist_ok=True)
+    program = paths.generated / f"oracle{R.PROGRAM_ARTIFACT_SUFFIX}"
+    program.write_text(json.dumps({"words": [1, 2], "inputs": []}), encoding="utf-8")
+    _program_decode(monkeypatch, [
+        {"index": 0, "word": "0x1", "isa_mnemonic": "ADDI", "role": "scalar"},
+        {"index": 1, "word": "0x2", "isa_mnemonic": "ECALL", "role": "scalar"},
+    ])
+
+    row = _finalize(paths, {"name": "cap", "kind": "model_slice", "label": "public",
+                            "lanes": {"forbid": [R._ACCELERATOR_LANE]}}, target=target)
+
+    assert row["status"] == "pass", row.get("failure")
+    assert row["lane_report"]["judged_by"] == EL.DECLARED_PROGRAM_EVIDENCE
+    assert row["lane_report"]["program_scan"]["n_instruction_words"] == 2
 
 
 def test_a_required_lane_keeps_the_capsule_incomplete(derivable, paths):

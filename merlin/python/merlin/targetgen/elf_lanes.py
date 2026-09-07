@@ -1,4 +1,4 @@
-"""Prove a capsule's NEGATIVE lane contract from the one artifact the operator path already produces.
+"""Prove a capsule's NEGATIVE lane contract from the executable artifact the path already produces.
 
 A capsule that declares ``lanes.forbid: [<accelerator lane>]`` asserts that the compiler left this
 family on the host. Until now only the WHOLE-MODEL path could answer a lane question at all, because
@@ -6,14 +6,14 @@ only it owns a routing plan and a dynamic dispatch ledger; an operator/model-sli
 declared the assertion had it silently ignored (``LANE_CONTRACT_NOT_EVALUATED``), so the capsule
 written to catch a compiler that accelerates an inadmissible family could never catch one.
 
-**Why an ELF scan is sound here, and only here.** The assertion is a NEGATIVE, and absence is exactly
-what a complete instruction stream can establish. The linked ELF is that stream: every instruction the
-program can execute is in it, whatever spelling the backend used to emit it. That closes the hole the
-IR-level decoder leaves open — :func:`merlin.targetgen.capsule_runner.accelerator_lane_violated` reads
-the emitted ``llvm.inline_asm`` ops, so an accelerator instruction emitted as a raw ``.word``/``.insn``
-datum decodes as silence, and silence read as "the host carried it" is a free pass. Bytes have no
-spelling. This is therefore a STRENGTHENING of that gate, not a way around it: it can only see MORE
-instructions than the IR decoder, never fewer.
+**Why a complete-program scan is sound here, and only here.** The assertion is a NEGATIVE, and absence
+is exactly what a complete instruction stream can establish. For host-issued targets the linked ELF is
+that stream; for self-hosted targets it is the oracle-declared ``.program`` word stream. The ELF scan
+closes the hole the IR-level decoder leaves open —
+:func:`merlin.targetgen.capsule_runner.accelerator_lane_violated` reads emitted
+``llvm.inline_asm`` ops, so an accelerator instruction emitted as a raw ``.word``/``.insn`` datum
+decodes as silence. The declared-program scan instead uses the target's discovered ISA roles, without
+guessing another target's host opcode. Both are STRENGTHENINGS of the gate, not ways around it.
 
 **What it still cannot prove, and does not claim.** Presence of an instruction in the binary is not
 proof it EXECUTED, so this evidence can never credit a REQUIRED lane — a required lane judged only from
@@ -37,6 +37,7 @@ one would decode another device's ISA and report a clean, wrong result.
 """
 from __future__ import annotations
 
+import json
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,8 +49,13 @@ PACKAGE_ELF_NAME = "package_kernel.elf"
 #: is stronger than ``routing_plan`` (which records intent) and admissible for a FORBIDDEN lane only.
 LINKED_ELF_EVIDENCE = "linked_elf_scan"
 
-#: The rung for "nobody could tell" -- an unreadable ELF, or a target whose accelerator opcode is not
-#: derivable. Reported so an unmeasured lane is visible rather than absent.
+#: Negative evidence from the exact word stream a self-hosted target oracle declared and executed.
+#: Like the ELF rung, it proves absence but never credits a required lane merely from presence.
+DECLARED_PROGRAM_EVIDENCE = "declared_program_scan"
+
+#: The rung for "nobody could tell" -- an unreadable executable artifact, an undecodable declared
+#: program, or a target whose accelerator opcode is not derivable. Reported so an unmeasured lane is
+#: visible rather than absent.
 NO_EVIDENCE = "unmeasured"
 
 #: Fail-closed sentinel for a fact that could not be derived, spelled as the rest of the repo spells it.
@@ -70,10 +76,10 @@ class ElfUnreadable(Exception):
 
 def negative_lane_evidence() -> tuple[str, ...]:
     """Rungs on which a FORBIDDEN lane may be judged: anything that proves execution, plus this
-    module's static scan of the complete instruction stream. Derived from the runner's exported
+    module's static scans of complete instruction streams. Derived from the runner's exported
     vocabulary rather than restating it, so the two cannot drift."""
     from .capsule_runner import EXECUTED_LANE_EVIDENCE
-    return (*EXECUTED_LANE_EVIDENCE, LINKED_ELF_EVIDENCE)
+    return (*EXECUTED_LANE_EVIDENCE, LINKED_ELF_EVIDENCE, DECLARED_PROGRAM_EVIDENCE)
 
 
 # --- opcode derivation ------------------------------------------------------------------------
@@ -227,6 +233,79 @@ class ElfScan:
         return d
 
 
+@dataclass(frozen=True)
+class ProgramScan:
+    """Accelerator-role census of an oracle-declared self-hosted instruction stream."""
+
+    status: str
+    detail: str
+    program: str | None = None
+    n_instruction_words: int = 0
+    hits: tuple[dict, ...] = field(default_factory=tuple)
+
+    @property
+    def n_hits(self) -> int:
+        return len(self.hits)
+
+    def to_dict(self) -> dict:
+        out = {"status": self.status, "detail": self.detail, "program": self.program,
+               "n_instruction_words": self.n_instruction_words, "n_hits": self.n_hits}
+        if self.hits:
+            out["hits"] = [dict(hit) for hit in self.hits[:8]]
+        return out
+
+
+def scan_declared_program_for_accelerator(program_path, target: str,
+                                          *, max_hits: int = 64) -> ProgramScan:
+    """Scan the exact word stream declared by a self-hosted oracle for mesh-compute roles.
+
+    Unlike a host ELF, this stream needs no guessed custom opcode: the target's discovered ISA model
+    decodes every word and supplies semantic roles. Any illegal or ambiguous word makes the negative
+    claim unmeasured, because an unknown instruction could be accelerator work.
+    """
+    path = Path(program_path)
+    if not path.is_file():
+        return ProgramScan("unmeasured", f"no declared program at {path}", str(path))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        words = payload.get("words") if isinstance(payload, dict) else None
+        if (not isinstance(words, list) or not words
+                or any(isinstance(word, bool) or not isinstance(word, int) for word in words)):
+            raise ValueError("declared program requires a non-empty integer words list")
+        from .isa_disasm import disassemble
+        from .isa_model import isa_model_for_target
+        model = isa_model_for_target(target)
+        records = disassemble(model, words)
+    except Exception as exc:  # noqa: BLE001 -- inability to decode is unmeasured, never clean
+        return ProgramScan("unmeasured",
+                           f"declared program could not be decoded ({type(exc).__name__}: {exc})",
+                           str(path))
+    # An overlap is safe for this narrow negative question only when every matching mnemonic has a
+    # known non-mesh role. (Some discovered ISAs conservatively overlap terminator signatures.)
+    def _could_be_mesh(record: dict) -> bool:
+        names = [record.get("isa_mnemonic"), *(record.get("ambiguous_mnemonics") or [])]
+        entries = getattr(model, "by_mnemonic", {})
+        return any((entries.get(str(name)) or {}).get("role") == "matmul"
+                   for name in names if name)
+
+    undecodable = [record for record in records
+                   if record.get("illegal") or (record.get("ambiguous") and _could_be_mesh(record))]
+    if undecodable:
+        return ProgramScan(
+            "unmeasured",
+            f"{len(undecodable)} instruction word(s) are illegal or ambiguously decoded",
+            str(path), len(words))
+    hits = tuple({"index": int(record["index"]), "word": record.get("word"),
+                  "mnemonic": record.get("isa_mnemonic") or record.get("mnemonic"),
+                  "role": record.get("role")}
+                 for record in records
+                 if record.get("role") == "matmul" or _could_be_mesh(record))[:max_hits]
+    return ProgramScan(
+        "measured",
+        f"decoded {len(words)} instruction word(s); {len(hits)} carry the mesh-compute role",
+        str(path), len(words), hits)
+
+
 def scan_elf_for_accelerator(elf_path, target: str, *, max_hits: int = 64) -> ElfScan:
     """Scan a linked ELF's executable sections for ``target``'s accelerator major opcode.
 
@@ -332,13 +411,64 @@ def lane_report_from_elf(capsule: dict, elf_path, *, target: str) -> dict | None
     return out
 
 
+def lane_report_from_declared_program(capsule: dict, program_path, *, target: str) -> dict | None:
+    """Judge a negative accelerator-lane assertion from an exact self-hosted program stream.
+
+    This is the non-ELF sibling of :func:`lane_report_from_elf`. The oracle creates the ``.program``
+    declaration from the words it is about to execute, so a complete successful decode can prove that
+    no mesh-compute instruction exists. Presence still cannot credit a required lane.
+    """
+    from .capsule_runner import _ACCELERATOR_LANE
+
+    decl = capsule.get("lanes") or {}
+    req = [str(x) for x in (decl.get("require") or [])]
+    forbid = [str(x) for x in (decl.get("forbid") or [])]
+    if not req and not forbid:
+        return None
+    both = sorted(set(req) & set(forbid))
+    if both:
+        raise ValueError(f"capsule lanes {both} are both required and forbidden; one of the two "
+                         "assertions can never hold")
+
+    scan = (scan_declared_program_for_accelerator(program_path, target)
+            if _ACCELERATOR_LANE in forbid else None)
+    evidence = {lane: NO_EVIDENCE for lane in (*req, *forbid)}
+    violated: list[str] = []
+    if scan is not None and scan.status == "measured":
+        evidence[_ACCELERATOR_LANE] = DECLARED_PROGRAM_EVIDENCE
+        if scan.n_hits:
+            violated.append(_ACCELERATOR_LANE)
+    out: dict = {
+        "required": req,
+        "observed": [],
+        "unexercised": list(req),
+        "evidence": evidence,
+        "host_contractions_ran": None,
+        "judged_by": DECLARED_PROGRAM_EVIDENCE,
+    }
+    if scan is not None:
+        out["program_scan"] = scan.to_dict()
+    if forbid:
+        out["forbidden"] = forbid
+        out["violated"] = violated
+        unmeasured = [lane for lane in forbid if evidence.get(lane) not in negative_lane_evidence()]
+        if unmeasured:
+            out["unmeasured_forbidden"] = unmeasured
+    if req:
+        out["caveat"] = (
+            f"lanes {req} are REQUIRED, and a declared-program scan cannot credit them: an instruction "
+            "present in the stream is not proof that it executed. They stay unmeasured on this path.")
+        out["unmeasured_required"] = list(req)
+    return out
+
+
 def unjudged_lanes(report: dict | None, lanes_decl: dict | None) -> list[str]:
     """Declared lanes that ``report`` does not actually settle -- the capsule must not pass while any remain.
 
     A required lane needs evidence that something RAN (``EXECUTED_LANE_EVIDENCE``); a forbidden lane may
-    additionally rest on a linked-ELF scan, which for a negative assertion reads the complete instruction
-    stream. Anything else -- a routing plan, an unreadable ELF, an underivable opcode, no report at all --
-    is unmeasured, and an unmeasured assertion is not a satisfied one.
+    additionally rest on a complete linked-ELF or oracle-declared-program scan. Anything else -- a
+    routing plan, an unreadable artifact, an underivable opcode, no report at all -- is unmeasured, and
+    an unmeasured assertion is not a satisfied one.
     """
     from .capsule_runner import EXECUTED_LANE_EVIDENCE
 

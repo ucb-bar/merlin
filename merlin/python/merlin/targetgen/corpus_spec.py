@@ -1368,6 +1368,152 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     return cap, "\n".join(L) + "\n"
 
 
+def build_host_island_seam(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """Two identical contractions with an optional, explicit host-only map between them.
+
+    This is a standard linalg-on-tensors program, not a target command dialect.  The first contraction
+    widens into the declared accumulator type, an identical saturating narrow is tagged as an
+    accelerator epilogue in both members, and only the ``island`` member applies a scalar XOR before
+    the second contraction.  Consequently the pair has identical external operands, contraction work,
+    and requantization; its sole semantic difference is the host region whose placement it measures.
+
+    The builder is integer-datapath specific but target-neutral.  Eligibility for actually running the
+    mixed program is a separate backend execution-capability gate in the shared performance profile.
+    """
+    role = str(entry.get("comparison_role") or "")
+    transform = str(entry.get("host_transform") or "")
+    expected_transform = {"island": "xor_low_bit", "no_island": "none"}
+    if role not in expected_transform or transform != expected_transform[role]:
+        raise ValueError(
+            f"{entry.get('name', 'host_island_seam')}: comparison_role/host_transform must be one of "
+            f"{expected_transform}, got {role!r}/{transform!r}")
+    idt = binding.cap_dtype(binding.operand_dtype)
+    midt = binding.mlir_dtype(binding.operand_dtype)
+    adt = binding.cap_dtype(binding.accum_dtype)
+    madt = binding.mlir_dtype(binding.accum_dtype)
+    if midt != "i8" or madt != "i32":
+        raise ValueError(
+            f"host_island_seam currently defines exact signed i8->i32 arithmetic; binding declares "
+            f"{binding.operand_dtype!r}->{binding.accum_dtype!r}. A different integer format needs "
+            f"its own format-generic transform semantics, not a target-name exception")
+
+    M, K = int(entry.get("M", binding.tile_dim)), int(entry.get("K", 2 * binding.tile_dim))
+    H, N = int(entry.get("H", binding.tile_dim)), int(entry.get("N", binding.tile_dim))
+    if min(M, K, H, N) < 1:
+        raise ValueError(f"host_island_seam dimensions must be positive, got M={M} K={K} H={H} N={N}")
+    mask = int(entry.get("xor_mask", 1))
+    if not (0 < mask < 128):
+        raise ValueError(f"host_island_seam xor_mask must be in [1,127], got {mask}")
+    a, w0, w1, out = (entry.get("lhs", "A0"), entry.get("weight0", "W0"),
+                      entry.get("weight1", "W1"), entry.get("out", "Y0"))
+    attrs = {
+        "lhs": a, "weight0": w0, "weight1": w1, "out": out,
+        "M": M, "K": K, "H": H, "N": N,
+        "comparison_role": role, "host_transform": transform, "xor_mask": mask,
+        "accelerator_contractions": 2,
+        "shared_accelerator_epilogue": "saturating_i32_to_i8",
+    }
+    cap = {
+        "name": entry["name"], "kind": entry["kind"], "source_role": entry["source_role"],
+        "source_reference": entry["source_reference"], "label": entry.get("label", "dev"),
+        "interface_mlir": "capsule.interface.mlir", "linalg_mlir": "capsule.interface.mlir",
+        "inputs": [
+            {"name": a, "role": "input", "shape": [M, K], "dtype": idt},
+            {"name": w0, "role": "weight", "shape": [K, H], "dtype": idt},
+            {"name": w1, "role": "weight", "shape": [H, N], "dtype": idt},
+        ],
+        "operation": {"op": "host_island_seam", "attributes": attrs},
+        "numeric_policy": _numeric_policy(binding, binding.accum_dtype, entry.get("acc_scale")),
+        "expected": {
+            "instruction_classes": binding.classes_for(
+                op="matmul", output_dtype=adt, epilogue=[], movement=False),
+            "modes": {"matmul": True, "mixed_lane_whole_program": role == "island"},
+        },
+        "required_oracle_tiers": list(binding.tiers), "vcs": "optional", "firesim": "optional",
+    }
+
+    # Standard MLIR only.  The provenance attributes describe placement obligations to any backend;
+    # they do not encode a target command or target name.
+    lines = [
+        'builtin.module attributes {prov.level = "linalg-on-tensors"} {',
+        f'  func.func @forward(%{a}: tensor<{M}x{K}x{midt}>, '
+        f'%{w0}: tensor<{K}x{H}x{midt}>, %{w1}: tensor<{H}x{N}x{midt}>) '
+        f'-> tensor<{M}x{N}x{madt}> {{',
+        f'    %acc0_empty = tensor.empty() : tensor<{M}x{H}x{madt}>',
+        f'    %zero_acc0 = arith.constant 0 : {madt}',
+        f'    %acc0_init = linalg.fill {{prov.op = "fill", prov.family = "fill"}} '
+        f'ins(%zero_acc0 : {madt}) outs(%acc0_empty : tensor<{M}x{H}x{madt}>) '
+        f'-> tensor<{M}x{H}x{madt}>',
+        f'    %acc0 = linalg.generic {{indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, '
+        f'affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>], '
+        f'iterator_types = ["parallel", "parallel", "reduction"]}} '
+        f'ins(%{a}, %{w0} : tensor<{M}x{K}x{midt}>, tensor<{K}x{H}x{midt}>) '
+        f'outs(%acc0_init : tensor<{M}x{H}x{madt}>) attrs = '
+        f'{{prov.region_id = "contraction_0", prov.op = "matmul", prov.family = "contraction"}} {{',
+        f'    ^bb_acc0(%lhs: {midt}, %rhs: {midt}, %acc: {madt}):',
+        f'      %lhs_wide = arith.extsi %lhs : {midt} to {madt}',
+        f'      %rhs_wide = arith.extsi %rhs : {midt} to {madt}',
+        f'      %product = arith.muli %lhs_wide, %rhs_wide : {madt}',
+        f'      %sum = arith.addi %acc, %product : {madt}',
+        f'      linalg.yield %sum : {madt}',
+        f'    }} -> tensor<{M}x{H}x{madt}>',
+        f'    %narrow_empty = tensor.empty() : tensor<{M}x{H}x{midt}>',
+        f'    %lo = arith.constant -128 : {madt}',
+        f'    %hi = arith.constant 127 : {madt}',
+        f'    %narrow = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, '
+        f'affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]}} '
+        f'ins(%acc0 : tensor<{M}x{H}x{madt}>) outs(%narrow_empty : tensor<{M}x{H}x{midt}>) '
+        f'attrs = {{prov.region_id = "requant_0", prov.op = "requant", '
+        f'prov.family = "elementwise_map", prov.placement = "accelerator_epilogue"}} {{',
+        f'    ^bb0(%x: {madt}, %unused: {midt}):',
+        f'      %clamp_lo = arith.maxsi %x, %lo : {madt}',
+        f'      %clamp_hi = arith.minsi %clamp_lo, %hi : {madt}',
+        f'      %narrowed = arith.trunci %clamp_hi : {madt} to {midt}',
+        f'      linalg.yield %narrowed : {midt}',
+        f'    }} -> tensor<{M}x{H}x{midt}>',
+    ]
+    middle = "%narrow"
+    if role == "island":
+        lines += [
+            f'    %host_empty = tensor.empty() : tensor<{M}x{H}x{midt}>',
+            f'    %xor_mask = arith.constant {mask} : {midt}',
+            f'    %host = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, '
+            f'affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]}} '
+            f'ins(%narrow : tensor<{M}x{H}x{midt}>) outs(%host_empty : tensor<{M}x{H}x{midt}>) '
+            f'attrs = {{prov.region_id = "host_island_0", prov.op = "xor_low_bit", '
+            f'prov.family = "host_scalar", prov.placement = "host_required"}} {{',
+            f'    ^bb1(%x: {midt}, %unused: {midt}):',
+            f'      %mapped = arith.xori %x, %xor_mask : {midt}',
+            f'      linalg.yield %mapped : {midt}',
+            f'    }} -> tensor<{M}x{H}x{midt}>',
+        ]
+        middle = "%host"
+    lines += [
+        f'    %acc1_empty = tensor.empty() : tensor<{M}x{N}x{madt}>',
+        f'    %zero_acc1 = arith.constant 0 : {madt}',
+        f'    %acc1_init = linalg.fill {{prov.op = "fill", prov.family = "fill"}} '
+        f'ins(%zero_acc1 : {madt}) outs(%acc1_empty : tensor<{M}x{N}x{madt}>) '
+        f'-> tensor<{M}x{N}x{madt}>',
+        f'    %result = linalg.generic {{indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, '
+        f'affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>], '
+        f'iterator_types = ["parallel", "parallel", "reduction"]}} '
+        f'ins({middle}, %{w1} : tensor<{M}x{H}x{midt}>, tensor<{H}x{N}x{midt}>) '
+        f'outs(%acc1_init : tensor<{M}x{N}x{madt}>) attrs = '
+        f'{{prov.region_id = "contraction_1", prov.op = "matmul", prov.family = "contraction"}} {{',
+        f'    ^bb_acc1(%lhs: {midt}, %rhs: {midt}, %acc: {madt}):',
+        f'      %lhs_wide = arith.extsi %lhs : {midt} to {madt}',
+        f'      %rhs_wide = arith.extsi %rhs : {midt} to {madt}',
+        f'      %product = arith.muli %lhs_wide, %rhs_wide : {madt}',
+        f'      %sum = arith.addi %acc, %product : {madt}',
+        f'      linalg.yield %sum : {madt}',
+        f'    }} -> tensor<{M}x{N}x{madt}>',
+        f'    func.return %result : tensor<{M}x{N}x{madt}>',
+        '  }',
+        '}',
+    ]
+    return cap, "\n".join(lines) + "\n"
+
+
 # op -> builder, for the driver to dispatch on the entry's declared op.
 BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     "matmul": build_matmul, "linear": build_matmul, "fused_matmul_bias": build_matmul,
@@ -1376,6 +1522,7 @@ BUILDERS: dict[str, Callable[[dict, CorpusBinding], tuple[dict, str]]] = {
     "attention_qk": build_attention_qk, "rmsnorm": build_rmsnorm, "conv2d": build_conv2d,
     "attention_mx": build_attention_mx, "rmsnorm_qkv": build_rmsnorm_qkv, "rope_qkv": build_rope_qkv,
     "gemv_batched": build_gemv_batched,
+    "host_island_seam": build_host_island_seam,
 }
 
 

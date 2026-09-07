@@ -1,0 +1,157 @@
+"""Search stays bounded; citable full models stay queue-owned and warm."""
+import pytest
+
+from merlin.perf.execution_policy import (
+    QueuedFireSimReceipt,
+    SimulationBudget,
+    WarmComputeReceipt,
+    WarmProfileContract,
+    admit_reduced_witness,
+    occupancy_from_warm_receipt,
+    require_probe_execution,
+)
+
+
+def _warm() -> WarmComputeReceipt:
+    return WarmComputeReceipt(
+        "whole_model", 1234,
+        WarmProfileContract(captured_metrics=frozenset({
+            "total_compute_cycles", "resource_busy_cycles", "movement_bytes"})),
+        "same-process post-warm counter",
+        resource_busy_cycles=(("array", 1000), ("dma", 300)),
+        movement_bytes=4096,
+    )
+
+
+def test_rejects_the_old_seven_hour_reference_timeout() -> None:
+    with pytest.raises(ValueError, match="600"):
+        SimulationBudget(timeout_seconds=600, reference_timeout_seconds=25200)
+
+
+def test_reduced_witness_is_admitted_from_measured_simulator_throughput() -> None:
+    admission = admit_reduced_witness(
+        estimated_cycles=50_000, measured_cycles_per_second=193,
+        startup_seconds=4, budget=SimulationBudget(600, 600))
+
+    assert admission.admitted
+    assert admission.estimated_seconds == pytest.approx(263.0673575)
+
+
+def test_full_layer_is_refused_from_inner_loop_when_it_would_take_hours() -> None:
+    admission = admit_reduced_witness(
+        estimated_cycles=2_900_000, measured_cycles_per_second=193,
+        budget=SimulationBudget(600, 600))
+
+    assert not admission.admitted
+    assert admission.estimated_seconds > 4 * 60 * 60
+    assert "reduce the witness shape" in admission.reason
+
+
+@pytest.mark.parametrize("descriptor", [
+    {"kind": "model"}, {"operation": {"op": "model"}},
+    {"performance": {"global_objective": True}},
+    {"performance": {"measurement_scope": "full_layer"}},
+    {"semantic": {"generalization_axis": "model"}},
+])
+def test_model_search_objective_is_never_admitted_as_a_fast_probe(descriptor) -> None:
+    with pytest.raises(ValueError, match="compile-only search objective"):
+        require_probe_execution(descriptor)
+
+
+def test_small_mechanism_probe_can_pass_model_execution_exclusion() -> None:
+    require_probe_execution({"kind": "layer", "operation": {"op": "matmul"},
+                             "performance": {"measurement_scope": "mechanism_probe"}})
+
+
+def test_unknown_throughput_never_reads_as_fast_enough() -> None:
+    admission = admit_reduced_witness(
+        estimated_cycles=1, measured_cycles_per_second=None,
+        budget=SimulationBudget(600, 600))
+
+    assert not admission.admitted
+    assert admission.estimated_seconds is None
+    assert "UNKNOWN" in admission.reason
+
+
+def test_profile_is_warm_and_rejects_counters_outside_the_minimal_contract() -> None:
+    with pytest.raises(ValueError, match="warm run"):
+        WarmProfileContract(warmup_runs=0)
+    with pytest.raises(ValueError, match="non-minimal"):
+        WarmProfileContract(captured_metrics=frozenset({
+            "total_compute_cycles", "wall_time", "every_pc_sample"}))
+
+
+def test_firesim_receipt_requires_queue_and_exact_lifecycle_order() -> None:
+    receipt = QueuedFireSimReceipt(
+        "request-1", True,
+        (("firesim", "kill"), ("firesim", "infrasetup"),
+         ("firesim", "runworkload", "--workload", "model.json"),
+         ("firesim", "kill")),
+        _warm())
+    assert receipt.queue_owned
+
+    with pytest.raises(ValueError, match="exactly"):
+        QueuedFireSimReceipt(
+            "request-2", True,
+            (("firesim", "infrasetup"), ("firesim", "kill"),
+             ("firesim", "runworkload"), ("firesim", "kill")),
+            _warm())
+
+
+def test_warm_profile_becomes_target_neutral_occupancy_without_guessing_roles() -> None:
+    receipt = WarmComputeReceipt(
+        "reduced_complete_model", 100,
+        WarmProfileContract(captured_metrics=frozenset({
+            "total_compute_cycles", "resource_busy_cycles", "movement_bytes",
+            "movement_commands", "encoding_transitions",
+            "movement_compute_overlap_cycles", "overlap_available_cycles", "idle_cycles",
+            "critical_path_cycles"})),
+        "same-window hardware counters",
+        resource_busy_cycles=(("engine_a", 80), ("engine_b", 40)),
+        movement_bytes=1024, movement_commands=4, encoding_transitions=1,
+        movement_compute_overlap_cycles=30, overlap_available_cycles=40,
+        idle_cycles=10, critical_path_cycles=90)
+
+    occupancy = occupancy_from_warm_receipt(
+        receipt, {"engine_a": "compute", "engine_b": "movement"})
+
+    assert occupancy.compute_utilization == pytest.approx(0.8)
+    assert occupancy.latency_hiding_efficiency == pytest.approx(0.75)
+    assert occupancy.movement_bytes == 1024
+    assert occupancy.encoding_transitions == 1
+    assert occupancy.missing == ()
+
+
+def test_partial_warm_profile_keeps_latency_hiding_unknown() -> None:
+    occupancy = occupancy_from_warm_receipt(
+        _warm(), {"array": "compute", "dma": "movement"})
+
+    assert occupancy.compute_utilization == pytest.approx(1000 / 1234)
+    assert occupancy.latency_hiding_efficiency is None
+    assert occupancy.encoding_transitions is None
+    assert "movement/compute overlap cycles" in occupancy.missing
+    with pytest.raises(ValueError, match="owned by the FireSim queue"):
+        QueuedFireSimReceipt(
+            "request-3", False,
+            (("firesim", "kill"), ("firesim", "infrasetup"),
+             ("firesim", "runworkload"), ("firesim", "kill")),
+            _warm())
+
+
+def test_warm_conversion_preserves_declared_but_unobserved_engine():
+    occupancy = occupancy_from_warm_receipt(
+        _warm(), {"array": "compute", "dma": "movement", "second_engine": "compute"})
+    assert occupancy.compute_resources == ("array", "second_engine")
+    assert occupancy.compute_busy_cycles is None
+    assert occupancy.compute_utilization is None
+    assert occupancy.busy == {"array": 1000, "dma": 300}
+    assert "busy cycles for declared resource second_engine" in occupancy.missing
+
+
+def test_warm_conversion_preserves_missing_movement_counter_without_guessing_zero():
+    occupancy = occupancy_from_warm_receipt(
+        _warm(), {"array": "compute", "dma": "movement", "store_engine": "movement"})
+    assert occupancy.movement_resources == ("dma", "store_engine")
+    assert "store_engine" not in occupancy.busy
+    assert "busy cycles for declared resource store_engine" in occupancy.missing
+    assert occupancy.compute_utilization == pytest.approx(1000 / 1234)

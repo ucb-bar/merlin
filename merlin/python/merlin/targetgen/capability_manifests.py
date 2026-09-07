@@ -611,6 +611,20 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
         manifest["compute_units"] = list(manifest.get("compute_units") or []) + _synth
         manifest["derived_compute_units"] = [u["name"] for u in _synth]
 
+    # --- operation contract: one identity envelope across dialect IR and machine instructions ---
+    # ``dialect_plan_from_manifest`` is already the canonical compute-unit -> target-dialect
+    # projection.  The ISA taxonomy is independently discovered from the target's own instruction
+    # definition.  Joining both here gives prompt/preflight consumers one domain/dialect/operation
+    # registry instead of parallel scalar-, vector-, or target-specific capability tables.
+    #
+    # A declaration starts UNKNOWN: decoding an instruction is not proof that its architectural effect
+    # works.  Optional residual observations are merged last and therefore refine the declaration to
+    # SUPPORTED/UNSUPPORTED only when their exact operation identity exists.  A stale or misspelled
+    # observation fails closed rather than manufacturing a capability.
+    from .operation_capabilities import operation_contract_for_target
+
+    manifest["operation_capabilities"] = operation_contract_for_target(name, manifest)
+
     # --- semantic capability: derived from this target's OWN evidence, every run ---
     # The ARR denominator is a claim about hardware, and a claim nothing checks is an assertion. So the
     # facts are produced HERE, while the contract is being derived, and recorded beside the declaration

@@ -14,9 +14,11 @@ from pathlib import Path
 
 # Self-contained bootstrap (runs before merlin is importable).
 _HERE = Path(__file__).resolve()
-_git = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent),
-                      capture_output=True, text=True).stdout.strip()
-REPO = Path(_git) if _git else _HERE.parents[4]
+_root = os.environ.get("MERLIN_REPO_ROOT", "").strip()
+if not _root:
+    _root = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent),
+                           capture_output=True, text=True).stdout.strip()
+REPO = Path(_root).expanduser().resolve() if _root else _HERE.parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
 from merlin.benchharness import sh, hash_tree, repo_sha, runs_root, reports_root  # noqa: E402

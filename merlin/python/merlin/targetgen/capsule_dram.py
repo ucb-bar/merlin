@@ -45,20 +45,8 @@ def dtype_bits(dtype: str) -> int:
     needs to place scales must size them from that target's facts. Sizing them in here would bake one
     target's layout into a module whose whole contract is to be target-agnostic.
     """
-    from merlin.common import quant_formats as qf
-    key = str(dtype)
-    if key.startswith("torch."):          # torch spellings reach us via model-slice interfaces
-        key = key[len("torch."):]
-    if qf.has(key):
-        fmt = qf.get(key)
-        return int(fmt.pack_bits or fmt.element_bits)
-    bits = qf.machine_bits(key)
-    if bits is None:
-        raise KeyError(
-            f"capsule_dram: cannot size dtype {dtype!r} — it is neither a format registered in "
-            f"merlin/schemas/quant_formats.registry.yaml ({qf.names()}) nor a machine width; "
-            f"register the format rather than assuming a width")
-    return bits
+    from merlin.common.quant_formats import storage_bits
+    return storage_bits(dtype)
 
 
 def dtype_bytes(dtype: str) -> int:

@@ -72,4 +72,5 @@ def test_non_mapping_evidence_is_malformed():
 def test_vocabulary_is_shared_with_the_producer():
     """One exported vocabulary, so the two ends cannot drift apart again."""
     assert "routing_plan" not in CR.EXECUTED_LANE_EVIDENCE
-    assert set(CR.EXECUTED_LANE_EVIDENCE) == {"dynamic_dispatch_ledger", "execution"}
+    assert set(CR.EXECUTED_LANE_EVIDENCE) == {
+        "dynamic_dispatch_ledger", "execution", CR.WHOLE_PROGRAM_COMPLETION_EVIDENCE}

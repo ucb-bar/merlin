@@ -44,7 +44,7 @@ def test_every_harness_shape_matches_the_contract():
 def test_contract_documents_one_row_per_dispatched_command_shape():
     abi = (yaml.safe_load(CONTRACT.read_text(encoding="utf-8")) or {})["kernel_abi"]
     shapes = [row["shape"] for row in abi["arg_order_by_command_shape"]]
-    assert shapes == ["movement", "native_whole_op", "resident_matmul"], (
+    assert shapes == ["whole_program", "movement", "native_whole_op", "resident_matmul"], (
         "the rows are tried top-down and the first match decides the ABI, so their ORDER is part of "
         f"the contract; got {shapes}")
     for row in abi["arg_order_by_command_shape"]:
@@ -93,6 +93,13 @@ def test_whole_op_order_follows_declaration_order_not_role_order():
         ["W", "IFM", "Y0"]
 
 
+def test_whole_program_order_follows_its_explicit_pointer_boundary():
+    gate = _gate()
+    cb = gate._probe_whole_program()
+    assert gate.resolve_token("declared_whole_program_args", cb) == \
+        ["scale", "W", "A0", "mid", "Y0"]
+
+
 def test_gate_catches_a_harness_that_reorders_to_weight_first():
     """DRIFT PROOF. A renderer that emits the weight first on the whole-op shape — the exact mistake
     the four conv failures were — must be reported, not passed."""
@@ -112,6 +119,22 @@ def test_gate_catches_a_harness_that_reorders_to_weight_first():
     gate._renderers = monkey
     problems = gate.check()
     assert any("t/native_whole_op" in p and "harness passes" in p for p in problems), problems
+
+
+def test_gate_catches_a_harness_that_reorders_a_declared_whole_program_boundary():
+    gate = _gate()
+    target, owner, real_render = gate._renderers()[0]
+
+    def render(cb, *, target):
+        if (cb.get("kernel_abi") or {}).get("kind") != "whole_program":
+            return real_render(cb, target=target)
+        names = [arg["tensor"] for arg in cb["kernel_abi"]["args"]][::-1]
+        args = ", ".join(f"(void*)T_{name}" for name in names)
+        return f"int main() {{\n  {target}_kernel({args});\n  return 0;\n}}\n"
+
+    gate._renderers = lambda: [(target, owner, render)]
+    problems = gate.check()
+    assert any(f"{target}/whole_program" in p and "harness passes" in p for p in problems), problems
 
 
 def test_gate_fails_closed_on_an_unreadable_contract(tmp_path):

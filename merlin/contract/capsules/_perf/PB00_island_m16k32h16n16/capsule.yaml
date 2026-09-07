@@ -1,0 +1,165 @@
+name: PB00_island_m16k32h16n16
+kind: model_slice
+source_role: derived_sweep
+source_reference: 'shared host-island differential: the same two integer contractions
+  and saturating requant epilogue, with one explicit scalar XOR map present only in
+  the island member. Both execute as one submitted whole-program kernel after one
+  unmeasured warm call; only the next complete call is measured. (tile=16; H=16, K=32,
+  M=16, N=16; comparison_role=island, host_transform=xor_low_bit)'
+label: dev
+interface_mlir: capsule.interface.mlir
+linalg_mlir: capsule.interface.mlir
+inputs:
+- name: A0
+  role: input
+  shape:
+  - 16
+  - 32
+  dtype: i8
+- name: W0
+  role: weight
+  shape:
+  - 32
+  - 16
+  dtype: i8
+- name: W1
+  role: weight
+  shape:
+  - 16
+  - 16
+  dtype: i8
+operation:
+  op: host_island_seam
+  attributes:
+    lhs: A0
+    weight0: W0
+    weight1: W1
+    out: Y0
+    M: 16
+    K: 32
+    H: 16
+    N: 16
+    comparison_role: island
+    host_transform: xor_low_bit
+    xor_mask: 1
+    accelerator_contractions: 2
+    shared_accelerator_epilogue: saturating_i32_to_i8
+numeric_policy:
+  compare: exact_int
+  dtype: i32
+expected:
+  instruction_classes:
+  - FLUSH
+  - CONFIG_EX
+  - CONFIG_LD
+  - MVIN
+  - CONFIG_ST
+  - PRELOAD
+  - COMPUTE_PRELOADED
+  - MVOUT
+  modes:
+    matmul: true
+    mixed_lane_whole_program: true
+required_oracle_tiers:
+- L0
+- L1
+- L2
+- L3
+vcs: optional
+firesim: optional
+semantic:
+  generalization_axis: composition
+  must_accelerate: true
+  eligible: auto
+performance:
+  level: L4_boundary
+  family: PB
+  lever: host_island_placement
+  member_class: OBJECTIVE
+  claim: DIFFERENTIAL
+  comparand:
+    kind: comparison_group
+    against: the_same_two_contractions_without_the_host_required_map
+    cancels:
+    - operation_shape
+    - external_operands
+    - contraction_count
+    - saturating_requant_epilogue
+    - numeric_policy
+    demand_equal:
+    - M
+    - N
+    - K
+    - H
+    - operand_dtype
+    - accum_dtype
+  falsifier:
+    observation: island_cycles_minus_no_island_cycles
+    fires_when: the_host_required_map_costs_no_more_than_the_matched_no_island_program
+    negative_control: no_island_member_with_the_same_two_contractions
+  gate:
+    traits:
+    - structural_pipeline_depth
+    execution_capabilities:
+    - whole_program_kernel_abi
+    - warm_single_counter_region_cycles
+    instrument: whole_program_cycle_count
+    capacity: both_execution_lanes_inside_one_warm_target_counter_window
+    on_missing: skip_with_evidence
+  regime:
+    separation: one_identical_shape_per_comparison_group
+    layout: members_share_all_extents_and_external_tensors_and_differ_only_in_host_scalar_map
+  emitter:
+    status: existing
+    entry: merlin.targetgen.corpus_spec.build
+    knobs:
+      surface: linalg-on-tensors
+      operation: host_island_seam
+      accelerator_regions: 2
+      shared_epilogue: saturating_i32_to_i8
+    resolved:
+      source: direct
+      operand_dtype: int8
+      accum_dtype: i32
+      datatype_basis: corpus_binding
+      builder: merlin.targetgen.corpus_spec.build
+  cost:
+    tier: 2
+    runs: two_members_by_two_replicates_per_shape
+    projected_cycles: derived_at_preflight
+    basis: one_island_member_and_one_matched_no_island_member_under_the_same_counter
+  acceptance:
+    schema_version: 1
+    analyzer: merlin.perf.comparison_group_claim.analyze_comparison_group_claim/v1
+    program_arm: candidate
+    roles:
+    - island
+    - no_island
+    expected_faster: no_island
+    group_field: comparison_group
+    allowed_attribute_differences:
+    - comparison_role
+    - host_transform
+    replicates:
+      exact_count: 2
+      identities:
+      - r000
+      - r001
+    band:
+      kind: measured_replicate_dispersion
+      declared_constant: null
+    evidence:
+      correctness_simulator: spike
+      correctness_tier: L2
+      timing_simulator: gsim
+      timing_tier: L3
+      resolved_from:
+        correctness_simulator: $target_oracle:L2
+        timing_simulator: $target_oracle:L3
+comparison_group:
+  name: host_island_m16k32h16n16
+  role: island
+lanes:
+  require:
+  - on_mesh
+  - scalar_rvv_lane

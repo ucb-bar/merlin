@@ -981,7 +981,8 @@ def _no_narrower_cause(execution_digest, comps) -> str | None:
     return "; ".join(why)
 
 
-def record_cert(ws, verdict, cert_tier, log=None, identity=None) -> list[str]:
+def record_cert(ws, verdict, cert_tier, log=None, identity=None,
+                source_identity_verified: bool = False) -> list[str]:
     """Write a COMPLETED promotion's result into the tier state, against the bytes that earned it.
 
     `promote()` marks a capsule `pending` when it enqueues the cert job, and the broker's reap skips
@@ -1008,8 +1009,12 @@ def record_cert(ws, verdict, cert_tier, log=None, identity=None) -> list[str]:
     ``identity`` is the ledger key the ENQUEUER wrote onto the request, forwarded by the reap. It is what
     lets a result whose reader produced no artifact identity still be attributed exactly, instead of
     falling back to "the one outstanding record" (which cannot be used at all once two are outstanding).
-    A result that DOES carry an artifact identity always decides for itself: the job may have launched
-    after an edit, and then only the identity it actually ran may be credited.
+    A result that DOES carry an artifact identity normally decides for itself: the job may have launched
+    after an edit, and then only the identity it actually ran may be credited. The sole exception is a
+    broad ``submission:...`` pending record whose broker copied and verified the enqueue-time source
+    before launch (``source_identity_verified``). That result may resolve the broad record because the
+    verified snapshot proves which source bytes produced the reported executable; an exact-identity
+    mismatch is never relaxed.
     """
     rows = (verdict or {}).get("per_capsule") or []
     if not rows:
@@ -1028,10 +1033,22 @@ def record_cert(ws, verdict, cert_tier, log=None, identity=None) -> list[str]:
             key = str(completed)
             entry = slots.get(key)
             if not isinstance(entry, dict) or entry.get("status") != "pending":
-                if log is not None:
-                    print(f"[promote] {name} {cert_tier} result not recorded: no outstanding record "
-                          f"for the execution identity this job ran", file=log, flush=True)
-                continue
+                requested = slots.get(str(identity)) if identity is not None else None
+                if (source_identity_verified and str(identity or "").startswith("submission:")
+                        and isinstance(requested, dict) and requested.get("status") == "pending"):
+                    # The broker made an isolated copy and verified its source digest against this broad
+                    # request identity before executing it. Preserve the actual program identity as
+                    # evidence without changing ``record_identity(entry)``: this ledger slot remains an
+                    # assertion about the verified source bytes, while the exact program keeps its own
+                    # independently keyed certificate.
+                    key, entry = str(identity), requested
+                    entry = dict(entry)
+                    entry["certified_execution_digest"] = str(completed)
+                else:
+                    if log is not None:
+                        print(f"[promote] {name} {cert_tier} result not recorded: no outstanding record "
+                              f"for the execution identity this job ran", file=log, flush=True)
+                    continue
         elif identity is not None:
             # The enqueuer stated which record this job was launched for. That is a fact about the
             # request, not a guess about the result, so it attributes exactly -- including when several
@@ -1180,7 +1197,7 @@ def affordable_cert_items(want, *, cert_tier, log):
     return kept, declined
 
 
-def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
+def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log, *, source_ws=None):
     """Record what the loop tier just learned, and enqueue cert jobs for what it unlocked.
 
     Returns the capsule names promoted. Enqueues by writing a `simreq_` the broker's own queue picks up --
@@ -1191,8 +1208,12 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
     from merlin.targetgen.oracle_schedule import (WHOLE_SUBMISSION, CapsuleState, Verdict, schedule,
                                                   valid_execution_digest)
 
-    digest, comps, rejected = submission_digests(ws)
-    d = decomposition(ws)
+    # A driver grade runs a frozen ``cand_*/submission`` rather than the moving workspace. Attribute
+    # its verdict to that source tree; the broker will run only if it can reproduce this digest in an
+    # isolated copy. Broker-produced verdicts omit ``source_ws`` because they already grade ``ws``.
+    source_ws = Path(source_ws) if source_ws is not None else Path(ws)
+    digest, comps, rejected = submission_digests(source_ws)
+    d = decomposition(source_ws)
     st = _tier_state(ws)
     if rejected:
         # Loud, not silent: a rejected name owns no bytes, so the component it was meant to be never
@@ -1339,7 +1360,8 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log):
             # identity is unattributable as soon as a second record is outstanding -- and the certificate
             # the RTL just paid for is dropped.
             {"sim": _sim, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
-             "promoted": True, "identity": key, "submitted_at": time.time()}))
+             "promoted": True, "identity": key, "submission_digest": digest,
+             "submitted_at": time.time()}))
         # Mark pending only once the request is actually on the queue.
         pending = {"status": "pending", "digest": digest, "components": dict(comps)}
         if execution_digest is not None:

@@ -50,6 +50,32 @@ def test_schema_accepts_abi_native_attention_pv():
     ))
 
 
+def test_schema_accepts_composed_matmul_chain_from_linalg_frontends():
+    """A two-matmul graph is one public whole-op contract, not a target-private opcode."""
+    schemas.validate_command_buffer(_cb(
+        {"opcode": "K_CHAIN",
+         "operands": {"src": "X", "weight": "W1", "weight2": "W2", "dst": "Y0"},
+         "attributes": {"output_dtype": "bf16"}},
+        {"X": _tensor([16, 16], dtype="bf16"),
+         "W1": _tensor([16, 16], role="weight", dtype="bf16"),
+         "W2": _tensor([16, 16], role="weight", dtype="bf16"),
+         "Y0": _tensor([16, 16], role="output", dtype="bf16")},
+    ))
+
+
+def test_schema_accepts_depthwise_conv2d_from_linalg_frontends():
+    """Depthwise convolution is shared model vocabulary even when a target lowers it to a host lane."""
+    schemas.validate_command_buffer(_cb(
+        {"opcode": "DEPTHWISE_CONV2D",
+         "operands": {"src": "X", "weight": "W", "dst": "Y0"},
+         "attributes": {"kernel": [2, 2], "padding": [1, 1, 1, 1],
+                        "stride": [1, 1], "output_dtype": "f32"}},
+        {"X": _tensor([1, 1, 8, 8], dtype="bf16"),
+         "W": _tensor([1, 1, 2, 2], role="weight", dtype="bf16"),
+         "Y0": _tensor([1, 1, 9, 9], role="output", dtype="bf16")},
+    ))
+
+
 def test_schema_remains_closed_to_undeclared_opcodes():
     with pytest.raises(schemas.ContractViolation, match="FROBNICATE.*is not one of"):
         schemas.validate_command_buffer(_cb(

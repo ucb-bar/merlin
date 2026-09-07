@@ -41,6 +41,8 @@ sys.path.insert(0, str(_MERLIN_DIR / "python"))
 from merlin.common.paths import _dotenv, repo_root        # noqa: E402
 from merlin.perf import workload_gen as WG                   # noqa: E402
 from merlin.perf.profile import TRAITS, derive_profile       # noqa: E402
+from merlin.runtime.backends.base import (                   # noqa: E402
+    EXECUTION_CAPABILITIES, execution_capability_facts)
 from merlin.targetgen import capsule_golden as CG            # noqa: E402
 from merlin.targetgen import corpus_spec as CS               # noqa: E402
 from merlin.targetgen import numeric_falsifiability as NF    # noqa: E402
@@ -168,6 +170,20 @@ def _validate_performance_block(block, *, owner: str) -> dict:
     if unknown:
         raise ValueError(
             f"{owner}: unknown performance trait(s) {unknown}; canonical traits are {list(TRAITS)}")
+    execution_names = gate.get("execution_capabilities", [])
+    if (not isinstance(execution_names, list)
+            or any(not isinstance(name, str) or not name for name in execution_names)):
+        raise ValueError(
+            f"{owner}: performance.gate.execution_capabilities must be a list of names")
+    if len(set(execution_names)) != len(execution_names):
+        raise ValueError(
+            f"{owner}: performance.gate.execution_capabilities contains duplicate names "
+            f"{execution_names}")
+    unknown_execution = sorted(set(execution_names) - set(EXECUTION_CAPABILITIES))
+    if unknown_execution:
+        raise ValueError(
+            f"{owner}: unknown execution capability(s) {unknown_execution}; canonical capabilities "
+            f"are {list(EXECUTION_CAPABILITIES)}")
     if gate["on_missing"] != "skip_with_evidence":
         raise ValueError(
             f"{owner}: performance.gate.on_missing must be 'skip_with_evidence'")
@@ -2305,17 +2321,22 @@ def _resolve_derived_axis(spec: dict, *, owner: str, axis: str, target: str, til
 
 
 def _performance_facts(target: str) -> dict:
-    """Canonical tri-state performance facts, derived once for this target."""
-    document = derive_profile(target).to_dict()
+    """Canonical hardware-trait and backend-execution facts, derived once for this target."""
+    profile = derive_profile(target).to_dict()
+    execution = execution_capability_facts(target)
+    document = {"target_profile": profile, "execution_capabilities": execution}
     return {
         "target": target,
-        "traits": document["traits"],
+        "traits": profile["traits"],
+        "execution_capabilities": execution,
+        "target_profile_sha256": _document_digest(profile),
+        "execution_capabilities_sha256": _document_digest(execution),
         "sha256": _document_digest(document),
     }
 
 
 def evaluate_gate(gate: dict, trait_facts: "dict | None") -> tuple[bool, dict]:
-    """Require every canonical trait to be exactly ``True`` and retain evidence.
+    """Require every hardware trait and software execution capability to be true with evidence.
 
     The structured decision deliberately carries False and None separately. A
     refuted capability makes a family inapplicable; an unestablished one means
@@ -2333,6 +2354,15 @@ def evaluate_gate(gate: dict, trait_facts: "dict | None") -> tuple[bool, dict]:
     unknown = sorted(set(names) - set(TRAITS))
     if unknown:
         raise ValueError(f"unknown performance trait(s) {unknown}; canonical traits are {list(TRAITS)}")
+    execution_names = gate.get("execution_capabilities", [])
+    if (not isinstance(execution_names, list)
+            or any(not isinstance(name, str) or not name for name in execution_names)):
+        raise ValueError("performance gate.execution_capabilities must be a list")
+    unknown_execution = sorted(set(execution_names) - set(EXECUTION_CAPABILITIES))
+    if unknown_execution:
+        raise ValueError(
+            f"unknown execution capability(s) {unknown_execution}; canonical capabilities are "
+            f"{list(EXECUTION_CAPABILITIES)}")
     facts = (trait_facts or {}).get("traits", trait_facts or {})
     selected: dict[str, dict] = {}
     for name in names:
@@ -2353,7 +2383,32 @@ def evaluate_gate(gate: dict, trait_facts: "dict | None") -> tuple[bool, dict]:
     refuted = [name for name, fact in selected.items() if fact["satisfied"] is False]
     unestablished = [name for name, fact in selected.items() if fact["satisfied"] is None]
     satisfied = [name for name, fact in selected.items() if fact["satisfied"] is True]
-    outcome = "refuted" if refuted else ("unestablished" if unestablished else "satisfied")
+    execution_source = (trait_facts or {}).get("execution_capabilities", {})
+    selected_execution: dict[str, dict] = {}
+    for name in execution_names:
+        raw = execution_source.get(name) if isinstance(execution_source, dict) else None
+        if not isinstance(raw, dict):
+            raw = {
+                "satisfied": None,
+                "tier": "not_established",
+                "evidence": "canonical execution capability fact was not supplied",
+                "missing": ["execution_capability_facts(target) result for this capability"],
+            }
+        selected_execution[name] = {
+            "satisfied": raw.get("satisfied") if raw.get("satisfied") in (True, False) else None,
+            "tier": raw.get("tier") or "not_established",
+            "evidence": raw.get("evidence") or "no evidence recorded",
+            "missing": list(raw.get("missing") or []),
+        }
+    execution_refuted = [name for name, fact in selected_execution.items()
+                         if fact["satisfied"] is False]
+    execution_unestablished = [name for name, fact in selected_execution.items()
+                               if fact["satisfied"] is None]
+    execution_satisfied = [name for name, fact in selected_execution.items()
+                           if fact["satisfied"] is True]
+    any_refuted = bool(refuted or execution_refuted)
+    any_unknown = bool(unestablished or execution_unestablished)
+    outcome = "refuted" if any_refuted else ("unestablished" if any_unknown else "satisfied")
     decision = {
         "outcome": outcome,
         "required_traits": list(names),
@@ -2361,6 +2416,11 @@ def evaluate_gate(gate: dict, trait_facts: "dict | None") -> tuple[bool, dict]:
         "refuted": refuted,
         "unestablished": unestablished,
         "facts": selected,
+        "required_execution_capabilities": list(execution_names),
+        "satisfied_execution_capabilities": execution_satisfied,
+        "refuted_execution_capabilities": execution_refuted,
+        "unestablished_execution_capabilities": execution_unestablished,
+        "execution_capability_facts": selected_execution,
     }
     return outcome == "satisfied", decision
 
@@ -2398,6 +2458,53 @@ def _accum_for_encoding(target: str, operand: str, fallback: "str | None") -> st
         f"no unit of {target!r} declares an accumulate rule for operand {operand!r}, and no corpus "
         f"binding accumulator is available; an encoding member cannot be built without knowing which "
         f"datapath it accumulates in")
+
+
+def _resolve_target_oracle_evidence(performance: dict, target: str) -> dict:
+    """Resolve ``$target_oracle:<tier>`` evidence placeholders from the target's own oracle route.
+
+    The shared profile must not name one target's simulator binary.  At generation time the target is
+    known, so its contract supplies ordinary tiers and its RTL-engine policy supplies the concrete L3
+    implementation selected for an elaborated-RTL fidelity.  The resolved names are frozen into the
+    capsule acceptance contract together with the placeholders they came from.
+    """
+    acceptance = performance.get("acceptance")
+    evidence = acceptance.get("evidence") if isinstance(acceptance, dict) else None
+    if not isinstance(evidence, dict):
+        return performance
+    prefix = "$target_oracle:"
+    pending = {key: value for key, value in evidence.items()
+               if isinstance(value, str) and value.startswith(prefix)}
+    if not pending:
+        return performance
+    from merlin.targetgen.target_experiment import load_capability_manifest
+
+    contract = load_capability_manifest(target).contract
+    declared = (contract.get("runner") or {}).get("tier_sim") or {}
+    resolved_from: dict[str, str] = {}
+    for key, placeholder in pending.items():
+        tier = placeholder[len(prefix):]
+        if not tier:
+            raise ValueError(f"{target}: empty tier in performance evidence placeholder {placeholder!r}")
+        concrete = None
+        if tier == "L3":
+            # L3 is a fidelity and may have several implementations. Resolve it through the same
+            # target-neutral policy grading uses, so a faster available engine changes the frozen
+            # evidence by derivation rather than by editing the shared profile.
+            from merlin.targetgen.capsule_runner import describe_l3_engine
+            selection = describe_l3_engine(target)
+            if selection.get("available") and selection.get("engine"):
+                concrete = str(selection["engine"])
+        if concrete is None and declared.get(tier):
+            concrete = str(declared[tier])
+        if not concrete or concrete == "elaborated_rtl":
+            raise ValueError(
+                f"{target}: target oracle route does not resolve {tier} to a concrete simulator "
+                f"(declared={declared.get(tier)!r})")
+        evidence[key] = concrete
+        resolved_from[key] = placeholder
+    evidence["resolved_from"] = resolved_from
+    return performance
 
 
 def _materialize_performance_entry(entry: dict, binding) -> dict:
@@ -2444,6 +2551,7 @@ def _materialize_performance_entry(entry: dict, binding) -> dict:
     entry["source"] = "direct"
     entry["operand_dtype"] = operand_dtype
     performance = copy.deepcopy(entry["performance"])
+    performance = _resolve_target_oracle_evidence(performance, target)
     performance["emitter"] = copy.deepcopy(performance["emitter"])
     performance["emitter"]["resolved"] = {
         "source": "direct",

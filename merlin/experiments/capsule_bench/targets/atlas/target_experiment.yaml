@@ -74,6 +74,44 @@ toolchain:
 # exercises is still DERIVED from the RTL by mlc.
 preflight:
   smoke_program: MatmulProgram
+  capability_probes:
+    # Exercise a definitely-taken backward branch on the same cycle-accurate backend used for grading.
+    # A straight-line smoke cannot expose disagreement between an assembler's byte displacement and a
+    # target whose internal PC uses another address unit.  The fixture deliberately makes an incorrect
+    # target restart the loop, so both halt and the observable trip count are checked.
+    - capability: control_flow.relative_branch
+      adapter: merlin.targetgen.inline_assembly_probe:run_capability_probe
+      fixture:
+        kind: inline_assembly_memory
+        source: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/taken_backward_branch.S
+        assembler: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/adapter.py:assemble
+        runner: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/adapter.py:run
+        assembler_root: atlas_npu
+        assembler_path: baremetal/assembler.py
+        assembler_callable: assemble
+        max_cycles: 1000
+      requirements:
+        operations:
+          - {domain: instruction, dialect: atlas, operation: BNE}
+    - capability: scalar_memory.load_store_roundtrip
+      adapter: merlin.targetgen.inline_assembly_probe:run_capability_probe
+      fixture:
+        kind: inline_assembly_memory
+        source: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/scalar_memory_nonzero.S
+        assembler: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/adapter.py:assemble
+        runner: experiments/capsule_bench/targets/atlas/contracts/hwbringup_atlas_v0/preflight/adapter.py:run
+        assembler_root: atlas_npu
+        assembler_path: baremetal/assembler.py
+        assembler_callable: assemble
+        max_cycles: 10000
+      requirements:
+        operations:
+          - {domain: instruction, dialect: atlas, operation: LW}
+          - {domain: instruction, dialect: atlas, operation: SW}
+          - {domain: instruction, dialect: atlas, operation: LBU}
+          - {domain: instruction, dialect: atlas, operation: SB}
+          - {domain: instruction, dialect: atlas, operation: LHU}
+          - {domain: instruction, dialect: atlas, operation: SH}
 
 answer_surfaces:
   # The reference backend is a WORKING atlas compiler, so it is an answer key: an agent that reads it is

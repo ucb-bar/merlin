@@ -2633,12 +2633,19 @@ def _start_in_turn_grader(ws: Path, run_dir: Path, a, *, interval_grades: bool,
 
 
 def _stop_in_turn_grader(handle) -> None:
-    """Stop the in-turn grader before the post-turn authoritative grade runs."""
+    """Stop the in-turn grader before the post-turn authoritative grade runs.
+
+    ``Thread.join(timeout=...)`` is not cancellation.  If the thread is already inside ``qa_grade``, a
+    timed join merely returns with that full-suite grade still running and the caller immediately starts
+    a second, authoritative full-suite grade.  Apart from racing the verdict files, two Atlas grades were
+    observed contending across 67 threads for hours.  Set the interruptible interval event, then perform
+    the single-flight hand-off: the authoritative grade may start only after the in-turn grade exits.
+    """
     if not handle:
         return
     th, stop = handle
     stop.set()
-    th.join(timeout=60)
+    th.join()
 
 
 # The public suite is the set of shapes an agent can see, so a backend that keys on those shapes passes
@@ -3635,7 +3642,10 @@ def main(argv: list[str] | None = None) -> int:
             rc, tpath = 124, run_dir / "rounds" / "round_00.transcript.jsonl"
             print("[continuous] agent session TIMEOUT (the session bound, not a round)")
         stop.set()
-        gt.join(timeout=60)
+        # A timed join is not cancellation: if the grader is already in qa_grade it remains live and
+        # races the authoritative grade below.  Preserve the same single-flight invariant as the
+        # certified continuous path.
+        gt.join()
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = qa_grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)

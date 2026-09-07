@@ -32,6 +32,23 @@ C_OF = {"f32": "float", "f64": "double", "i64": "long", "i32": "int", "i8": "sig
         "i1": "signed char", "bf16": "unsigned short", "f16": "unsigned short"}
 
 
+def manifest_requires_weight_blob(manifest: dict) -> bool:
+    """Whether any forward argument reads bytes from ``weights.safetensors``.
+
+    Stub parameters receive a generated zero region and runtime inputs are embedded separately, so
+    neither requires a source blob. Externalized buffers do: they name a ``weight`` entry just like
+    an ordinary parameter.
+    """
+    for meta in manifest.values():
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("kind") == "param" and not meta.get("stub"):
+            return True
+        if meta.get("kind") == "buffer" and meta.get("weight"):
+            return True
+    return False
+
+
 def _out_specs(mlir_path: str | Path) -> list[tuple[list[int], str]]:
     from ..common.mlir_query import forward_signature
 
@@ -94,7 +111,19 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     out_dir.mkdir(parents=True, exist_ok=True)
     sig = parse_forward_signature(model_dir / "model.mlir")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
-    hdr, payload_off = load_safetensors_header(model_dir / "weights.safetensors")
+    weights_path = model_dir / "weights.safetensors"
+    if manifest_requires_weight_blob(man):
+        if not weights_path.is_file():
+            raise FileNotFoundError(
+                f"manifest declares stored parameters but the weight blob is absent: {weights_path}")
+        hdr, payload_off = load_safetensors_header(weights_path)
+        blob = weights_path.read_bytes()[payload_off:]
+    else:
+        # A compiled ABI-only stage can be a pure identity/view with no parameters. Captures still
+        # carry the argument manifest, but emitting a dummy safetensors container is neither part of
+        # the model contract nor necessary for the runtime: qinner/stub bytes, if any, are appended
+        # below exactly as for an ordinary blob.
+        hdr, payload_off, blob = {}, 0, b""
     inputs = np.load(inputs_npz)
     extra_path = extra_npz or (model_dir / "extra.npz")
     extra = np.load(extra_path) if Path(extra_path).is_file() else {}
@@ -112,7 +141,6 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     # quantized-subclass inner tensors, the zero region a stubbed argument's dead descriptor points
     # at -- is APPENDED here and addressed by its offset past the payload, so it costs no C literals
     # and rides the same mmap/embed path the weights already use.
-    blob = (model_dir / "weights.safetensors").read_bytes()[payload_off:]
     appended = bytearray()
 
     def _append_blob(data: bytes) -> int:

@@ -413,6 +413,9 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
                         named_contraction: bool = False,
                         prequant_gather: bool = False,
                         fuse_quant_round: bool = False,
+                        vectorize_amax_reduction: bool = False,
+                        hoist_weight_invariant_quantize: bool = False,
+                        bundle_dir: "Path | None" = None,
                         op_counts_out: "dict[str, int] | None" = None,
                         vec_lanes: int = _VEC_RANK_LANES,
                         vec_max_rank: int = _VEC_RANK_MAX_RANK) -> Path:
@@ -486,12 +489,61 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
     # same composition `vectorized_transcendental_activation` uses for math.exp/erf/tanh.
     # Reported, not silent: a pass that rewrote nothing and a pass that could not reach anything both
     # return 0, and only the counters separate them.
+    # HOIST WEIGHT-INVARIANT QUANTIZATION (default OFF -> baseline byte-identical). Placed BEFORE
+    # `fuse_quant_round` and `reduce_vec` deliberately: it DELETES whole quantize chains, and a chain
+    # that is gone does not need its `roundeven` fused or its `absf` vectorized. Running it after
+    # would mean those two report work they did on ops this pass then erased.
+    #
+    # WHAT IT REMOVES. `apply_quant` above quantizes BOTH operands of every contraction at run time.
+    # For the activation that is unavoidable; for the WEIGHT it recomputes, on every inference, a
+    # value that is a function of the weight alone. MEASURED on the prepared int8 modules (activation
+    # arguments taken from the manifest's own `kind` field -- see `quant_hoist.activation_arg_indices`
+    # for why a positional guess inverts this): resnet50_v1_5 53 chains, 23,454,912 `absf` +
+    # 23,454,912 `roundeven` elements per inference = 51.8% of all `math.*` traffic; lstmnetvit 19
+    # chains, 991,096 each = 22.4%.
+    #
+    # It needs the WEIGHT BYTES, so it only runs when the caller passes the bundle directory; asked
+    # for without one it RAISES rather than silently doing nothing, since a lever that quietly
+    # no-ops is measured as though it had been applied.
+    if hoist_weight_invariant_quantize:
+        import json as _json
+        import math as _math
+        from ...llvmlower import quant_hoist as _qh
+        if bundle_dir is None:
+            raise ValueError("hoist_weight_invariant_quantize needs bundle_dir (the weight bytes "
+                             "are recomputed from the bundle's safetensors)")
+        _bd = Path(bundle_dir)
+        _man = _json.loads((_bd / "weights.safetensors.manifest.json").read_text())
+        _hargs, _hvals, _nch = _qh.apply(module, _qh.activation_arg_indices(_man),
+                                         _qh.weight_loader(_bd, _man))
+        _qh.write_plan(work, _hargs)
+        _qh.write_values(work, _hvals)
+        print(f"[quant_hoist] hoist_weight_invariant_quantize: chains={_nch} "
+              f"args={len(_hargs)} elements={sum(_math.prod(a.shape) for a in _hargs):,}")
     if fuse_quant_round:
         from ...llvmlower.quant_round import fuse_round_clamp_convert
         _rrep: dict = {}
         fuse_round_clamp_convert(module, report_out=_rrep)
         print("[quant_round] fuse_quantize_round_convert: "
               + " ".join(f"{k}={v}" for k, v in sorted(_rrep.items())))
+    # VECTORIZE THE AMAX REDUCTION (default OFF -> baseline byte-identical). Placed HERE, in the same
+    # slot and for the same reason as `fuse_quant_round` above: it rewrites `math.absf` to a bit-exact
+    # sign-mask form BEFORE the tagging below reads the body. The two passes are the two halves of one
+    # construct -- dynamic activation quantization emits an amax REDUCE (`math.absf` + `arith.maximumf`)
+    # to compute the scale and a `roundeven -> clamp -> fptosi` QUANTIZE to apply it, and MEASURED on
+    # the prepared int8 modules those two carry ~50/50 of all `math.*` element traffic (resnet50_v1_5:
+    # 45.3M elements each per inference; lstmnetvit: 4.4M each), against 0 and 0.02% for exp/erf/tanh.
+    # Removing the `math.absf` here also un-refuses any ALL-PARALLEL generic that carried one, so the
+    # per-rank arms below can claim those too -- the same composition `fuse_quantize_round_convert` and
+    # `vectorized_transcendental_activation` use. Reported, not silent: a pass that rewrote nothing and
+    # a pass that could not reach anything both return 0, and only the counters separate them.
+    if vectorize_amax_reduction:
+        from ...llvmlower import reduce_vec as _reduce_vec
+        _vrep: dict = {}
+        _reduce_vec.apply(module, lanes=vec_lanes, min_rank=_VEC_RANK_MIN_RANK,
+                          max_rank=vec_max_rank, report_out=_vrep)
+        print("[reduce_vec] vectorize_amax_reduction: "
+              + " ".join(f"{k}={v}" for k, v in sorted(_vrep.items())))
     # PER-RANK VECTORIZE TAGGING (default OFF -> baseline byte-identical): tag each all-parallel
     # (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
     # BOUNDED-vectorize the scalar non-matmul ops by rank (the win lever for openvla — ~900ms of scalar
@@ -622,6 +674,49 @@ class MatrixRouting:
         return self.select if self.select is not None else tile_filling_selector(self.tile_edge())
 
 
+#: Where :func:`prepare_for_lowering` records the multicore split it derived, and where the build
+#: sites read it back. A FILE rather than a third return value because the two ends are already
+#: separated by the prepared-module handoff every backend does, and because the record is then
+#: readable after the fact -- "which contractions did this image actually split, and into how many
+#: pieces" is the first question any multicore number raises, and it must not have to be re-derived.
+PARALLEL_ARMS_FILE = "perop_parallel_arms.json"
+
+
+def _write_parallel_arms(work: Path, harts: int, table: dict, par_table: dict) -> None:
+    """Record the derived split next to the build. Written on EVERY per-op-blocked prepare."""
+    import json
+
+    from ...llvmlower.perop_blocks import distinct_parallel_arms
+
+    arms = distinct_parallel_arms(par_table)
+    (Path(work) / PARALLEL_ARMS_FILE).write_text(json.dumps(
+        {"harts": int(harts),
+         "priced_contractions": len(table),
+         "split_contractions": len(par_table),
+         # The residue, NAMED. A contraction with no split runs on one core; a count of them that
+         # nobody can turn back into shapes is not evidence about anything.
+         "serial_contractions": sorted(set(table) - set(par_table)),
+         "arms": [[op, list(tiles)] for op, tiles in arms],
+         "per_contraction": {k: list(v) for k, v in sorted(par_table.items())}},
+        indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def parallel_arms(work: Path) -> "list | None":
+    """The ``[(op class, tiles)]`` :func:`prepare_for_lowering` derived for ``work``, or None.
+
+    None means "this prepare derived no per-op block table", which is the packages whose block lives
+    in their schedule text -- there the multicore split stays the legacy class-wide one. An EMPTY
+    list is a different statement: a table existed and nothing in it could be split.
+    """
+    import json
+
+    path = Path(work) / PARALLEL_ARMS_FILE
+    if not path.is_file():
+        return None
+    rec = json.loads(path.read_text(encoding="utf-8"))
+    return [(op, tuple(int(t) for t in tiles)) for op, tiles in rec.get("arms", ())]
+
+
 def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = False,
                          features: "frozenset[str] | None" = None,
                          blocking: bool = True, harts: int = 1,
@@ -663,12 +758,14 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     from ...llvmlower.impr_features import (NAMED_INT8_CONTRACTION_NAME,
                                             QUANTIZE_BEFORE_GATHER_NAME)
     from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
+    from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
     _op_counts: dict[str, int] = {}
     prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    named_contraction=NAMED_INT8_CONTRACTION_NAME in features,
                                    prequant_gather=QUANTIZE_BEFORE_GATHER_NAME in features,
                                    fuse_quant_round=_FUSE_QUANT_ROUND in features,
+                                   vectorize_amax_reduction=_VEC_AMAX_REDUCTION in features,
                                    op_counts_out=_op_counts,
                                    vec_lanes=_lanes or _VEC_RANK_LANES,
                                    vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK)
@@ -773,6 +870,16 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                   "compiler's default in place")
 
     if not blocking:
+        # The fused-epilogue request cannot be honoured on a path that does no tagging at all, and
+        # an inert lever that still reports as applied is the failure this file keeps re-finding.
+        from ...llvmlower.requant_fuse import FEATURE as _RF_NAME
+        from ...llvmlower.requant_fuse import VEC_FEATURE as _RF_VEC_NAME
+        if features & {_RF_NAME, _RF_VEC_NAME}:
+            raise ValueError(
+                f"{sorted(features & {_RF_NAME, _RF_VEC_NAME})} was requested but this preparation "
+                f"runs with blocking disabled, so "
+                f"no contraction is tagged and no pair can be formed; the lever would build the "
+                f"baseline and report as applied")
         _judge_levers_on(prepared)
         return _strip_provenance(prepared, work, features), features
     from ...llvmlower import im2col_pack as _ip
@@ -788,6 +895,21 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # instead. It is not expressed as an `implies` because `perop_register_block` is a sentinel THIS
     # function consumes, and re-materializing it at `normalize` time inside the lowering trips the
     # unresolved-sentinel guard.
+    from ...llvmlower import requant_fuse as _rf
+    _rf_named = sorted(features & {_rf.FEATURE, _rf.VEC_FEATURE})
+    if _rf_named and PEROP_BLOCK_NAME not in features:
+        raise ValueError(
+            f"{_rf_named} requires {PEROP_BLOCK_NAME!r} in the same feature set: the "
+            f"(contraction, fill, requant) tags it fuses on are applied by that request's tagger, "
+            f"and only its schedule carries the fused arms. Named alone it would tag nothing, build "
+            f"the baseline, and report as applied. Name both.")
+    from ...llvmlower import weight_panel as _wpan
+    if _wpan.FEATURE in features and PEROP_BLOCK_NAME not in features:
+        raise ValueError(
+            f"{_wpan.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel "
+            f"width IS the N tile that request's block table derives, and only its schedule arm can "
+            f"tile the packed contraction. Named alone it would repack every weight and leave every "
+            f"packed contraction to convert-linalg-to-loops. Name both.")
     if _ip.FEATURE in features and PEROP_BLOCK_NAME not in features:
         raise ValueError(
             f"{_ip.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel width "
@@ -801,6 +923,22 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # Passing vlen here is the ONLY thing that turns it on, so the default path is byte-identical.
     nr_fill_vlen = vlen if PEROP_NR_FILL_NAME in features else None
     features = features - {PEROP_NR_FILL_NAME}
+    # The fused-epilogue REQUEST is consumed here for the same reason the fill knobs are: its effect
+    # arrives as part of the concrete `perop_register_block_*` schedule feature below, and a request
+    # that survived into the lowering would be an unregistered name in a subprocess that re-imports
+    # `impr_features` fresh.
+    # Two points, one pairing. The plain one only REMOVES A TRAVERSAL (the epilogue keeps its loop
+    # form and clang vectorizes it); the `_vec` one additionally reshapes that loop into a fixed
+    # MR x NR vector tile. They are separate names because the reshape is the half this repo has
+    # measured going the wrong way -- see llvmlower/requant_fuse.VEC_FEATURE.
+    _rf_requested = bool(features & {_rf.FEATURE, _rf.VEC_FEATURE})
+    _rf_vec = _rf.VEC_FEATURE in features
+    if _rf_vec and _rf.FEATURE in features:
+        raise ValueError(
+            f"{_rf.FEATURE!r} and {_rf.VEC_FEATURE!r} are two spellings of the same fusion that "
+            f"differ only in whether the epilogue tile is pre-vectorized; naming both describes two "
+            f"builds and there is no correct way to pick one. Name exactly one.")
+    features = features - {_rf.FEATURE, _rf.VEC_FEATURE}
     # A `perop_register_block_mr<N>` sentinel is the same REQUEST with the MR cap named, so the beam
     # can search a cap that was otherwise reachable only through MERLIN_PEROP_MR_CAP -- and no fork can
     # vary an environment variable. Resolve it to the plain sentinel plus an explicit cap; the named
@@ -838,7 +976,13 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # each contraction's N cap is widened for ITS OWN narrowest element width; measured effect on
         # the block tables of the models on disk is MAC-weighted NR 16.00 -> 32.00 on every int8 model
         # and UNCHANGED on fp32 -- see perop_blocks.nr_cap_for_dtypes.
-        _blk = dict(mr_cap=mr_cap, nr_cap=perop_nr_cap(vlen), harts=harts,
+        # NO `harts` HERE, deliberately. The block used to be priced against `ceil(dim / harts)`,
+        # which made the emitted kernel a function of the hart count -- the 8-hart and 1-hart images
+        # were different compilers' output, so nothing measured across them was a thread effect
+        # (lstmnetvit int8 at 8 harts: 5 matmuls dropped out of the table to scalar loops, 9 narrowed,
+        # +63.5% instructions and -63% vector ops in the LINKED ELF, before any thread existed). The
+        # split is now derived FROM this block instead -- see `_pb.parallel_chunk_table` below.
+        _blk = dict(mr_cap=mr_cap, nr_cap=perop_nr_cap(vlen),
                     vlen=nr_fill_vlen, mr_vlen=mr_fill_vlen)
         # PANEL-PACKED im2col, default-off (`im2col_pack.FEATURE`). It has to run HERE, between the
         # table that gives it its NR and the table the tagger/schedule are built from: the panel width
@@ -847,13 +991,35 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # matmul it replaced -- a priced-but-absent geometry is exactly what `BlockAgreementError`
         # fails the build over. Returns {} and the SAME path when the feature is absent or every
         # candidate is refused, so the table, the tags, the schedule and the .ll stay byte-identical.
-        packed_entries: dict[str, tuple[int, int]] = {}
+        packed_entries: dict[str, tuple[str, int, int]] = {}
         if _ip.FEATURE in features:
             prepared, _pack = _ip.rewrite_prepared_file(
                 prepared, _pb.block_table(_cshapes(prepared), **_blk), work)
-            packed_entries = {k: (mr, nr) for k, mr, nr in _pack.entries}
+            packed_entries = {k: (_ip.FEATURE, mr, nr) for k, mr, nr in _pack.entries}
             print(f"[im2col_pack] packed={_pack.packed} "
                   + " ".join(f"{k}={v}" for k, v in sorted(_pack.refusals.items())))
+        # PANEL-PACKED WEIGHTS, default-off (`weight_panel.FEATURE`), and here for the same reason the
+        # im2col pack is: between the table that gives it its NR and the table the tagger is built
+        # from. It differs in ONE way that matters -- it retypes `@forward` arguments, so the weight
+        # BLOB and the ABI table have to be repacked to match. That half is materialized by
+        # `weight_panel.abi_bundle` from the plan left here; a caller that lowers this module and
+        # hands `c_runtime.generate` the STOCK bundle would build an object indexing a packed weight
+        # against unpacked bytes, which is why the plan is written where that caller must look.
+        if _wpan.FEATURE in features:
+            prepared, _wpk = _wpan.rewrite_prepared_file(
+                prepared, _pb.block_table(_cshapes(prepared), **_blk), work,
+                bundle=Path(mlir_path).resolve().parent)
+            print(f"[weight_panel] packed={_wpk.packed} dead_ops_erased={_wpk.dead_ops_erased} "
+                  + " ".join(f"{k}={v}" for k, v in sorted(_wpk.refusals.items())))
+            if not _wpk.packed:
+                # FAIL CLOSED. Building the baseline while the feature set says the lever is on is the
+                # inert-lever failure, and it would be measured as if the pack had happened.
+                raise ValueError(
+                    f"{_wpan.FEATURE}: no weight could be panel-packed in this module "
+                    f"({dict(sorted(_wpk.refusals.items())) or 'no contraction reached a weight'}); "
+                    f"refusing to build the baseline under the lever's name")
+            _wpan.write_plan(work, _wpk, prepared)
+            packed_entries.update({k: (_wpan.FEATURE, mr, nr) for k, mr, nr in _wpk.entries})
         table = _pb.block_table(_cshapes(prepared), **_blk)
         # DIRECT CONVOLUTIONS, priced into the SAME table (so the tagger, the priced-vs-tagged
         # agreement check and the schedule are one code path, not two). `contraction_shapes` cannot
@@ -871,15 +1037,33 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # ranked as if it were the whole thing, which is the failure mode this repo keeps re-finding.
         for _k, _want in sorted(packed_entries.items()):
             _got = table.get(_k)
-            if _got is None or int(_got[1]) != int(_want[1]):
+            if _got is None or int(_got[1]) != int(_want[2]):
                 raise ValueError(
-                    f"{_ip.FEATURE}: packed {_k} to a panel of {_want[1]} columns, but the block "
+                    f"{_want[0]}: packed {_k} to a panel of {_want[2]} columns, but the block "
                     f"policy prices that contraction at {_got}. The panel width and the N tile must "
                     f"agree or the packed layout is only half used; refusing to build a lever that "
                     f"would measure as itself and be something else.")
         if table:
-            prepared = _pb.tag_prepared_mlir(prepared, table, work=work)
-            features = (features - {PEROP_BLOCK_NAME}) | {ensure_perop_block(table, _PEROP_KC)}
+            # THE MULTICORE SPLIT, derived from the block rather than the block from the split. One
+            # entry per contraction that has a parallel dim dividing into `k <= harts` EQUAL pieces
+            # the block still lowers on; everything else stays serial with its 1-hart kernel intact.
+            # `harts <= 1` -> empty -> the tagged module and every schedule are byte-identical to the
+            # single-core build, which is what makes the two arms comparable.
+            par_table = _pb.parallel_chunk_table(_cshapes(prepared), table, harts)
+            # THE FUSED REQUANT EPILOGUE (`fuse_requant_into_contraction`, default-off). The
+            # pairing is done by the SAME tagger pass as the block tags -- it has to be, because a
+            # pair's three ops are matched by 1:1 attributes and the numbering must come from the
+            # one step that has actually seen them. Absent from the feature set, `pair_fuse` is
+            # False, nothing is paired, the tagged module and the schedule text are byte-identical,
+            # and so is the emitted .ll.
+            _pairs: list = []
+            _fuse_rq = _rf_requested
+            prepared = _pb.tag_prepared_mlir(prepared, table, work=work, par_table=par_table,
+                                             pair_fuse=_fuse_rq,
+                                             pairs_out=_pairs if _fuse_rq else None)
+            _write_parallel_arms(work, harts, table, par_table)
+            features = (features - {PEROP_BLOCK_NAME}) | {
+                ensure_perop_block(table, _PEROP_KC, _pairs, _rf_vec)}
         else:
             features = features - {PEROP_BLOCK_NAME}
     _judge_levers_on(prepared)
@@ -1731,6 +1915,8 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
     """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
+    from ...llvmlower.weight_prepack import prepare_build_bundle
+    model_dir = prepare_build_bundle(model_dir, work, features)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     if not available():
         raise ZephyrModelError("Zephyr/spike toolchain unavailable (see env in module doc)")
@@ -1817,7 +2003,11 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
                                features=features,
                                parallel=(backend != "rvv" and n_harts > 1),
                                parallel_harts=(n_harts if n_harts > 1
-                                               and backend == "rvv" else None))
+                                               and backend == "rvv" else None),
+                               # The block-preserving split `prepare_for_lowering` above derived and
+                               # tagged this IR with; None for a package with no per-op block table,
+                               # which keeps the legacy class-wide split.
+                               parallel_chunks=parallel_arms(work))
     # What this lowering will ask the heap for, read off the IR that is about to be compiled. Measured
     # here rather than estimated later: the file exists for exactly this build, and the number decides the
     # region size below.

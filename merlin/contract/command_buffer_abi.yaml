@@ -5,9 +5,9 @@ version: "0.1"
 schema: schemas/command_buffer.schema.json
 top_level:
   required: [abi_version, target, commands]
-  optional: [backend, tensors, params, metrics_requested, resources]
+  optional: [backend, tensors, kernel_abi, params, metrics_requested, resources]
 tensors:
-  description: "name -> {shape:[..], dtype: i8|i16|i32|f16|f32|bf16|fp8_e4m3|fp8_e5m2, role: input|weight|bias|output, base?: int}"
+  description: "name -> {shape:[..], dtype: i8|i16|i32|f16|f32|bf16|fp8_e4m3|fp8_e5m2, role: input|weight|bias|output|scale|intermediate, base?: int}"
   note: >
     Declare EVERY tensor your kernel touches — inputs/weights AND the output. For an external_backend
     (self-hosted-ISA) target graded on the program oracle, add `base` (the DRAM byte address your kernel
@@ -15,6 +15,21 @@ tensors:
     at exactly these addresses, so they must match your kernel's loads/stores. `base` is optional (if you
     omit it the harness assigns a canonical layout), but the OUTPUT tensor must be declared so its result
     can be captured. For a command_buffer (ISA-less) target the leaf inputs alone still suffice.
+kernel_abi:
+  description: >-
+    Optional explicit pointer boundary for one submitted whole-program kernel. This is the admissible
+    form for a program whose submitted ELF contains more work than the accelerator-only `commands`
+    stream can represent, such as mesh -> scalar-host -> mesh. It is an allocation/call contract, not
+    permission for the harness to implement an operation.
+  kind: whole_program
+  args: "ordered [{tensor: declared_tensor_name, access: read|write|readwrite}, ...]"
+  outputs: "non-empty [tensor_name, ...], exactly the tensors whose declared role is output"
+  invariants: >-
+    Every tensor declared in `tensors` appears in args exactly once and every arg names a declared
+    tensor. input/weight/bias/scale roles have read access; output/intermediate roles have write access.
+    The runner allocates/materializes those buffers, performs one unmeasured warm kernel call, measures
+    exactly one complete kernel call, and prints only outputs. It does not reconstruct scalar regions,
+    add/remove work, or infer a candidate-specific pointer order.
 opcodes:
   RES_PACK:
     operands: {src: leaf_or_handle, dst: handle}
@@ -141,6 +156,31 @@ opcodes:
       epilogue (the op carries no bias operand), and a non-integer output_dtype. Each is REJECTED by
       name rather than ignored -- an ignored conv parameter is exactly the silent wrong answer this
       opcode was added to stop.
+  K_CHAIN:
+    operands: {src: tensor, weight: tensor, weight2: tensor, dst: output_tensor}
+    attributes:
+      output_dtype: "the accumulator/output dtype of both contractions"
+    semantics: >-
+      dst = (src @ weight) @ weight2. This is the canonical whole-op representation for a composed
+      two-matmul linalg graph when the frontend has not decomposed it into residency commands. The
+      intermediate result is not externally observable; a target may fuse the chain or lower it into
+      two ordinary tiled contractions. Shapes must satisfy src[M,K], weight[K,N], weight2[N,P], and
+      dst[M,P]. This opcode is target-independent model vocabulary, not permission to dispatch on one
+      corpus shape.
+  DEPTHWISE_CONV2D:
+    operands: {src: tensor, weight: tensor, dst: output_tensor}
+    attributes:
+      kernel: "[kh, kw]; must match weight's trailing dimensions"
+      stride: "[stride_h, stride_w]; default [1, 1]"
+      padding: "[top, left, bottom, right]; default [0, 0, 0, 0]"
+      dilation: "[dilation_h, dilation_w]; default [1, 1]"
+      output_dtype: "logical output dtype"
+    semantics: >-
+      NCHW depthwise convolution with groups equal to the input channel count: weight has shape
+      [C, 1, Kh, Kw], each output channel consumes only the corresponding input channel, and output
+      geometry follows the ordinary convolution stride/padding/dilation rule. A target may lower the
+      window formation through generated im2col linalg, scalar/vector lanes, or a native convolution
+      instruction; the command does not prescribe a target or a capsule shape.
 correctness_gate: >-
   Integer workloads => exact equality (==), never a tolerance. reference_outputs(cb) and
   simulate(cb)["outputs"] MUST be equal (L0), and equal to the oracle output (L1/L2).

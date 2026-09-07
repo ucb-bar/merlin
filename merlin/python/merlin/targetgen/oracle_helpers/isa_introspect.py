@@ -23,10 +23,12 @@ Merlin holds no opcode table — everything here comes from the model's own ISA 
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import inspect
 import json
 import sys
+import textwrap
 
 
 def _load_module(path: str):
@@ -84,7 +86,8 @@ def _base_word(cls) -> int | None:
         return None
 
 
-def _operand_fields(cls, base: int) -> dict[str, list[int | None]]:
+def _operand_fields(cls, base: int, operand_attrs: set[str] | None = None
+                    ) -> tuple[dict[str, list[int | None]], int]:
     """Per-operand-bit → word-bit map for every operand attribute the format actually uses, derived from
     the ISA def's OWN encoder — no field-position assumptions, works for any instruction format (contiguous,
     shifted, or permuted fields alike). For each candidate attr we PER-BIT probe: set operand bit ``i`` only
@@ -94,6 +97,11 @@ def _operand_fields(cls, base: int) -> dict[str, list[int | None]]:
     that move at least one bit (i.e. are used by this format). This is the substrate the merlin-side
     assembler/disassembler pack/unpack against — the model's encoder stays the source of truth.
 
+    ``operand_attrs`` is the semantic pattern's assembler-visible operand set when available. This keeps
+    concrete class constants in the decode identity: a nullary instruction may use an immediate-format
+    encoder and pin ``imm=0``/``imm=1`` (ECALL/EBREAK), but that Python attribute is not an operand an
+    assembler may vary. ``None`` retains structural probing for definitions without pattern metadata.
+
     Also returns ``touched`` — the union of EVERY word bit that ANY operand bit moves, including aliased bits
     (one operand bit that lands in more than one word bit, e.g. an encoder that mirrors an immediate into a
     second slot). The per-bit ``fields`` map keeps only LINEAR placements (``-1`` for aliased, so the packing
@@ -102,6 +110,8 @@ def _operand_fields(cls, base: int) -> dict[str, list[int | None]]:
     fields: dict[str, list[int | None]] = {}
     touched = 0
     for attr in _OPERAND_ATTRS:
+        if operand_attrs is not None and attr not in operand_attrs:
+            continue
         # cheap use-check first: a wide all-ones pattern; if nothing moves, the format ignores this attr.
         # Probe on a ZEROED instance (all other free operands set) so the op is encodable even when it needs
         # several operands — a bare instance would raise on the unset ones and hide every real field.
@@ -161,7 +171,8 @@ def _canonical_placements(entries: list[dict]) -> dict:
     return {a: list(v.pop()) for a, v in seen.items() if len(v) == 1}
 
 
-def _repair_dropped_operands(entries: list[dict], classes: dict) -> list[dict]:
+def _repair_dropped_operands(entries: list[dict], classes: dict,
+                             operand_attrs: dict[str, set[str]] | None = None) -> list[dict]:
     """Restore an operand its shipped encoder DECLARES but never packs, and report what was restored.
 
     A shipped encoder can carry a field-packing bug: the atlas ``IType.to_bytecode`` assigns ``rd`` and
@@ -184,10 +195,12 @@ def _repair_dropped_operands(entries: list[dict], classes: dict) -> list[dict]:
         cls = classes.get(e["mnemonic"])
         if cls is None:
             continue
-        dropped = sorted(a for a in _declared_operands(cls) - set(e.get("fields") or {})
+        repair_expected = _declared_operands(cls)
+        exposed = ((operand_attrs or {}).get(e["mnemonic"])
+                   if operand_attrs is not None else repair_expected)
+        exposed = exposed if exposed is not None else repair_expected
+        dropped = sorted(a for a in repair_expected - set(e.get("fields") or {})
                          if canon.get(a))
-        if not dropped:
-            continue
         orig = cls.to_bytecode
         placements = {a: canon[a] for a in dropped}
 
@@ -207,11 +220,14 @@ def _repair_dropped_operands(entries: list[dict], classes: dict) -> list[dict]:
             base = _base_word(cls)
             if base is None:
                 continue
-            fields, touched = _operand_fields(cls, base)
+            fields, touched = _operand_fields(cls, base, exposed)
             e["fixed_mask"], e["fixed_value"] = _fixed_signature_from_touched(base, touched)
             if fields:
                 e["fields"] = fields
-            e["repaired"] = dropped
+            else:
+                e.pop("fields", None)
+            if dropped:
+                e["repaired"] = dropped
         finally:
             cls.to_bytecode = orig                     # never leave the shared ISA module mutated
     return entries
@@ -312,6 +328,207 @@ def _role_for_pattern(sem_cls) -> str:
         # tensor->tensor: one source == unary (a relu-style epilogue), two+ == binary
         return "tensor_compute_unary" if len(srcs) == 1 else "tensor_compute_binary"
     return "scalar"
+
+
+# Scalar memory is an instruction-level capability, not a semantic-family capability.  Discover it
+# from the operation's own semantic implementation: the state method names the storage it touches and
+# the typed operands distinguish scalar traffic from a tensor/DMA move.  This intentionally records no
+# mnemonic table and assumes no target register field.  The base/offset operands are the ones the
+# semantic method actually passes to memory, traced back through local assignments.
+_MEMORY_METHOD_PREFIXES = (("read_", "load"), ("load_", "load"),
+                           ("write_", "store"), ("store_", "store"))
+_MEMORY_SPACE_WORDS = ("mem", "memory", "dram", "sram", "scratchpad")
+
+
+def _function_tree(fn) -> ast.AST | None:
+    try:
+        return ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    except (OSError, TypeError, SyntaxError):
+        return None
+
+
+def _self_attributes(node: ast.AST, aliases: dict[str, tuple[str, ...]]) -> tuple[str, ...]:
+    """Operand attributes feeding ``node``, including a local alias established earlier."""
+    out: list[str] = []
+    for part in ast.walk(node):
+        if isinstance(part, ast.Attribute) and isinstance(part.value, ast.Name) \
+                and part.value.id == "self" and part.attr not in out:
+            out.append(part.attr)
+        elif isinstance(part, ast.Name):
+            for attr in aliases.get(part.id, ()):
+                if attr not in out:
+                    out.append(attr)
+    return tuple(out)
+
+
+def _local_operand_aliases(tree: ast.AST) -> dict[str, tuple[str, ...]]:
+    aliases: dict[str, tuple[str, ...]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        value = node.value
+        if value is None:
+            continue
+        attrs = _self_attributes(value, aliases)
+        for target in targets:
+            if isinstance(target, ast.Name) and attrs:
+                aliases[target.id] = attrs
+    return aliases
+
+
+def _storage_call(tree: ast.AST, state_name: str) -> tuple[ast.Call, str, str, str] | None:
+    """The one direct ``state.<read/write>_<space>`` effect in a scalar memory semantic."""
+    found: list[tuple[ast.Call, str, str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if not isinstance(node.func.value, ast.Name) or node.func.value.id != state_name:
+            continue
+        method = node.func.attr
+        for prefix, direction in _MEMORY_METHOD_PREFIXES:
+            if not method.startswith(prefix):
+                continue
+            space = method[len(prefix):]
+            if space and any(word in space.lower() for word in _MEMORY_SPACE_WORDS):
+                found.append((node, method, direction, space))
+            break
+    return found[0] if len(found) == 1 else None
+
+
+def _positive_int(node: ast.AST | None) -> int | None:
+    return (int(node.value) if isinstance(node, ast.Constant)
+            and isinstance(node.value, int) and not isinstance(node.value, bool) and node.value > 0
+            else None)
+
+
+def _access_width(call: ast.Call, direction: str) -> int | None:
+    """Width explicitly carried by the semantic call; absent when the implementation does not say."""
+    if not call.args:
+        return None
+    if direction == "load":
+        return _positive_int(call.args[-1])
+    data = call.args[-1]
+    # A store commonly constructs its byte payload in a nested helper whose final operand is width.
+    # Read that literal structurally.  If the semantic uses a typed value instead, no width is claimed.
+    if isinstance(data, ast.Call) and data.args:
+        return _positive_int(data.args[-1])
+    return None
+
+
+def _signed_operand(tree: ast.AST, operand: str, aliases: dict[str, tuple[str, ...]]) -> tuple[bool, int | None]:
+    """Whether an operand flows through the semantic implementation's own sign-extension call."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = (node.func.attr if isinstance(node.func, ast.Attribute)
+                else node.func.id if isinstance(node.func, ast.Name) else "")
+        if "sign_extend" not in name.lower() or not node.args:
+            continue
+        if operand in _self_attributes(node.args[0], aliases):
+            width = _positive_int(node.args[1]) if len(node.args) > 1 else None
+            return True, width
+    return False, None
+
+
+def _offset_scale(tree: ast.AST, operand: str,
+                  aliases: dict[str, tuple[str, ...]]) -> int:
+    """Address-unit scale applied to an offset operand by the instruction semantic.
+
+    An unscaled immediate advances by one address unit.  A left shift or multiplication by a positive
+    literal records a wider immediate stride without conflating it with the machine's base-address unit.
+    Ambiguous or dynamic scales fall back to one rather than inventing a value.
+    """
+    scales: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.BinOp):
+            continue
+        if isinstance(node.op, ast.LShift) and operand in _self_attributes(node.left, aliases):
+            shift = node.right.value if isinstance(node.right, ast.Constant) else None
+            if isinstance(shift, int) and not isinstance(shift, bool) and shift >= 0:
+                scales.add(1 << shift)
+        elif isinstance(node.op, ast.Mult):
+            pairs = ((node.left, node.right), (node.right, node.left))
+            for value, factor in pairs:
+                if operand not in _self_attributes(value, aliases):
+                    continue
+                scale = _positive_int(factor)
+                if scale is not None:
+                    scales.add(scale)
+    return next(iter(scales)) if len(scales) == 1 else 1
+
+
+def scalar_memory_semantics(op_cls, sem_cls, fields: dict) -> dict | None:
+    """Derive one scalar memory operation's effect, or ``None`` when it is not one.
+
+    This is a narrow adapter into the generic operation-capability model.  It observes the semantic
+    implementation rather than interpreting the operation's name: a strangely named load/store still
+    resolves, while a tensor register in the typed operand set excludes a tensor-memory instruction.
+    """
+    kinds = _operand_kinds(sem_cls)
+    if not kinds or "scalar" not in kinds or any(
+            kind in ("tensor", "weight", "accumulator", "exponent") for kind in kinds):
+        return None
+    method_name = _sem_method(op_cls)
+    if method_name is None:
+        return None
+    fn = getattr(op_cls, method_name)
+    tree = _function_tree(fn)
+    if tree is None:
+        return None
+    # Read parameter names from the already-parsed syntax.  ``inspect.signature`` evaluates deferred
+    # annotations on Python 3.14 and can fail when a curated ISA document uses a type (such as its model
+    # state) available only under TYPE_CHECKING.  Parameter identity needs no annotation evaluation.
+    function = next((node for node in ast.walk(tree)
+                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))), None)
+    params = [arg.arg for arg in function.args.args] if function is not None else []
+    if len(params) < 2:
+        return None
+    hit = _storage_call(tree, params[1])
+    if hit is None:
+        return None
+    call, effect_method, direction, address_space = hit
+    aliases = _local_operand_aliases(tree)
+    # The last load argument is its explicit width; the last store argument is its data payload.  The
+    # preceding arguments are therefore exactly the address expression the semantic method consumes.
+    address_args = call.args[:-1]
+    address_operands: list[str] = []
+    for arg in address_args:
+        for operand in _self_attributes(arg, aliases):
+            if operand in fields and operand not in address_operands:
+                address_operands.append(operand)
+
+    addressing: dict[str, object] = {"mode": "explicit_operands",
+                                     "operands": address_operands}
+    if len(address_operands) == 2:
+        base, offset = address_operands
+        signed, signed_width = _signed_operand(tree, offset, aliases)
+        addressing = {"mode": "base_plus_immediate", "base_operand": base,
+                      "offset_operand": offset}
+        bits = signed_width
+        if bits is None:
+            encoded = [bit for bit in (fields.get(offset) or ())
+                       if isinstance(bit, int) and bit >= 0]
+            bits = len(encoded) or None
+        if bits is not None:
+            addressing["offset_bits"] = bits
+        if signed:
+            addressing["offset_signed"] = True
+        addressing["offset_scale"] = _offset_scale(tree, offset, aliases)
+
+    result: dict[str, object] = {
+        "direction": direction,
+        "address_space": address_space,
+        # Scalar load/store base addresses and offsets are byte-addressed.  A scaled immediate remains
+        # separately represented in ``addressing.offset_scale``; it never changes the base address unit.
+        "address_unit_bytes": 1,
+        "addressing": addressing,
+        "effect_method": effect_method,
+    }
+    width = _access_width(call, direction)
+    if width is not None:
+        result["width_bytes"] = width
+    return result
 
 
 # The instruction the machine model treats as a PROGRAM TERMINATOR is derived BEHAVIORALLY, from the op's
@@ -461,6 +678,7 @@ def main() -> int:
     by_mnem: dict[str, dict] = {}
     asm_from_classes: dict[str, str] = {}          # asm-syntax token -> class name, from each op's own ClassVar
     op_classes: dict = {}                          # mnemonic -> op class, for the dropped-operand repair pass
+    operand_attrs: dict[str, set[str]] = {}        # mnemonic -> assembler-visible semantic operands
     for name, obj in vars(mod).items():
         if name.startswith("_") or not inspect.isclass(obj) or not hasattr(obj, "opcode"):
             continue
@@ -481,15 +699,20 @@ def main() -> int:
         #    the exact bits the model's encoder uses (and the disassembler can unpack it) without any
         #    hand-authored field table. Non-linear operand bits are marked -1 so the assembler refuses them
         #    rather than emit a silently-wrong word.
+        fields: dict[str, list[int | None]] = {}
         base = _base_word(obj)
         if base is not None:
             fields, touched = _operand_fields(obj, base)
             entry["fixed_mask"], entry["fixed_value"] = _fixed_signature_from_touched(base, touched)
             if fields:
                 entry["fields"] = fields
+        scalar_memory = scalar_memory_semantics(obj, sem_cls, fields)
+        if scalar_memory is not None:
+            entry["scalar_memory"] = scalar_memory
         by_class.setdefault(sem, []).append(entry)
         by_mnem[name] = {"class": sem, **entry}
         op_classes[name] = obj
+        operand_attrs[name] = _declared_operands(sem_cls)
         am = _asm_mnemonic_of(obj)                   # the op's OWN assembler syntax (e.g. vmatmul.mxu0)
         if am:
             asm_from_classes[am] = name
@@ -498,7 +721,7 @@ def main() -> int:
     # would otherwise reach merlin as 'this instruction has no such operand'). Runs over ALL entries at
     # once because the repair's evidence is cross-format: where the rest of the ISA puts that operand.
     # ``by_mnem`` is rebuilt afterwards since its entries are copies made before this pass.
-    _repair_dropped_operands([e for ents in by_class.values() for e in ents], op_classes)
+    _repair_dropped_operands([e for ents in by_class.values() for e in ents], op_classes, operand_attrs)
     for sem, ents in by_class.items():
         for e in ents:
             by_mnem[e["mnemonic"]] = {"class": sem, **e}

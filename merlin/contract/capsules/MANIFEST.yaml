@@ -13,6 +13,10 @@
 # This file is rewritten by generate_corpus.py; do not hand-edit. See AGENT.md.
 generated_by: merlin/contract/capsules/generate_corpus.py
 generated:
+- _perf/PB00_island_m16k32h16n16
+- _perf/PB01_no_island_m16k32h16n16
+- _perf/PB02_island_m16k64h16n16
+- _perf/PB03_no_island_m16k64h16n16
 - _perf/PC00_k64
 - _perf/PC01_k128
 - _perf/PF00_fused_matmul_bias_m16k16n16
@@ -136,6 +140,7 @@ generated:
 - layers/SY_epilogue_bias_add
 - layers/SY_epilogue_maxpool
 - layers/SY_epilogue_relu
+- layers/SY_epilogue_requant
 - layers/SY_kdepth_fits_double
 - layers/SY_kdepth_fits_single
 - layers/SY_kdepth_spills
@@ -145,6 +150,7 @@ generated:
 - model/M2_microvit_gemmini
 - model/M3_host_island_seam_gemmini
 - model/SY_micro_model
+- model/SY_model_resnet50
 - model/SY_model_tiny_llama
 - model_slices/C0_mlp_linear1
 - model_slices/C1_mlp_activation_linear2
@@ -181,16 +187,16 @@ hand_authored:
 - layers/B3_conv2d_im2col_i8
 - layers/B4_conv2d_relu_i8
 held_out:
-  n_generated: 0
-  n_hand_authored: 15
+  n_generated: 10
+  n_hand_authored: 5
 performance_generation:
   gemmini:
     shared_template:
       path: merlin/contract/capsules/profiles/_perf.yaml
-      sha256: bdd97dfb4eb5ac4faa6b5d181488cc5a0b8738a83074a291c8ccc22bf34d8697
+      sha256: d2c8d6b1662201e31714c8af48cdbb79fce5a40455eb0255e93360d1904fd3c9
     facts:
       target: gemmini
-      sha256: 5f892671d3dc46fe5ad03460fce6bc7b040439da7216906f521aa7339ff390b9
+      sha256: 8fc000afce215987631ae6ca00c6d80496b74ee88764c493f26c50b3803b73c5
     phase:
       category: _perf
       label: dev
@@ -284,8 +290,8 @@ performance_generation:
       - measurement
     counts:
       declared_families: 12
-      generated_families: 8
-      generated_members: 55
+      generated_families: 9
+      generated_members: 59
       by_family:
         PK:
           admitted_members: 4
@@ -318,8 +324,8 @@ performance_generation:
           admitted_members: 4
           written_members: 4
         PB:
-          admitted_members: 0
-          written_members: 0
+          admitted_members: 4
+          written_members: 4
         PT:
           admitted_members: 0
           written_members: 0
@@ -352,6 +358,11 @@ performance_generation:
               from the .fir the facts name, so it describes what this configuration
               emitted rather than what the generator can emit
             missing: []
+        required_execution_capabilities: []
+        satisfied_execution_capabilities: []
+        refuted_execution_capabilities: []
+        unestablished_execution_capabilities: []
+        execution_capability_facts: {}
       fit_axes:
       - K
       comparison_roles:
@@ -376,29 +387,17 @@ performance_generation:
               with fewer than two there is no encoding to choose, so an encoding lever
               cannot be exercised here
             missing: []
+        required_execution_capabilities: []
+        satisfied_execution_capabilities: []
+        refuted_execution_capabilities: []
+        unestablished_execution_capabilities: []
+        execution_capability_facts: {}
       fit_axes:
       - K
       comparison_roles:
       - encoding_a
       - encoding_b
     blocked_unimplemented:
-    - family: PB
-      status: blocked_unimplemented
-      reason: 'per-lane cycle accounting does not exist: the capsule path runs the
-        accelerator on the target''s oracle and the host lane in-process on the development
-        machine, so a seam differential would price this workstation rather than the
-        SoC'
-      emitter:
-        status: blocked
-        entry: new:host_seam_differential
-        knobs:
-          needs: per_lane_cycle_accounting
-          unblocked_by: fused_single_elf
-      fit_axes:
-      - K
-      comparison_roles:
-      - island
-      - no_island
     - family: PT
       status: blocked_unimplemented
       reason: the cohort's starting depth is a MEASURED property of the target --
@@ -425,7 +424,7 @@ performance_generation:
   atlas:
     shared_template:
       path: merlin/contract/capsules/profiles/_perf.yaml
-      sha256: bdd97dfb4eb5ac4faa6b5d181488cc5a0b8738a83074a291c8ccc22bf34d8697
+      sha256: 0cb381234f3481a335f727e688542f61cda2f9bd0437f0ae53ebfa540a47b2c1
     facts:
       target: atlas
       sha256: d168f3d71a0c30b5637ab47d09b07d3b7fb1ad5c12d7cb102e8361e5ffe7617c
@@ -522,12 +521,12 @@ performance_generation:
       - measurement
     counts:
       declared_families: 12
-      generated_families: 7
-      generated_members: 47
+      generated_families: 0
+      generated_members: 0
       by_family:
         PK:
           admitted_members: 4
-          written_members: 4
+          written_members: 0
         PS:
           admitted_members: 0
           written_members: 0
@@ -536,25 +535,25 @@ performance_generation:
           written_members: 0
         PF:
           admitted_members: 6
-          written_members: 6
+          written_members: 0
         PL:
           admitted_members: 4
-          written_members: 4
+          written_members: 0
         PG:
           admitted_members: 4
-          written_members: 4
+          written_members: 0
         PR:
           admitted_members: 9
-          written_members: 9
+          written_members: 0
         PQ:
           admitted_members: 0
           written_members: 0
         PM:
           admitted_members: 16
-          written_members: 16
+          written_members: 0
         PV:
           admitted_members: 4
-          written_members: 4
+          written_members: 0
         PB:
           admitted_members: 0
           written_members: 0
@@ -701,7 +700,242 @@ performance_generation:
       comparison_roles:
       - prediction
       - measurement
-    errors: []
+    errors:
+    - family: PK
+      member: PK00_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PK
+      member: PK01_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PK
+      member: PK02_k128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PK
+      member: PK03_k256
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF00_fused_matmul_bias_m32k32n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF01_matmul_m32k32n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF02_bias_add_m32k32n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF03_fused_matmul_bias_m32k64n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF04_matmul_m32k64n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PF
+      member: PF05_bias_add_m32k64n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PL
+      member: PL00_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PL
+      member: PL01_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PL
+      member: PL02_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PL
+      member: PL03_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PG
+      member: PG00_encoding0_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PG
+      member: PG01_encoding1_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PG
+      member: PG02_encoding0_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PG
+      member: PG03_encoding1_k64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR00_fits_double_k32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR01_fits_double_k6144
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR02_fits_double_k12288
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR03_fits_single_k12320
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR04_fits_single_k18432
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR05_fits_single_k24576
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR06_spills_k24608
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR07_spills_k45056
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PR
+      member: PR08_spills_k65536
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM00_m32n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM01_m32n64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM02_m32n96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM03_m32n128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM04_m64n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM05_m64n64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM06_m64n96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM07_m64n128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM08_m96n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM09_m96n64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM10_m96n96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM11_m96n128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM12_m128n32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM13_m128n64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM14_m128n96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PM
+      member: PM15_m128n128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PV
+      member: PV00_c32
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PV
+      member: PV01_c64
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PV
+      member: PV02_c96
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
+    - family: PV
+      member: PV03_c128
+      status: error
+      error_type: NameError
+      detail: name 'facts_sha' is not defined
   mx_gemmini:
     shared_template:
       path: merlin/contract/capsules/profiles/_perf.yaml
@@ -2346,9 +2580,8 @@ roster_generation:
       operand_dtype: fp8_e4m3
       quant_scheme: float8_dyn_act_float8_weight
       status: not_built
-      reason: 'M2MUnavailable: RuntimeError: paper capture requires M2M_RESNET_INPUT_NPZ
-        with preprocessed ImageNet images; set M2M_RESNET_RANDOM=1 only for compiler
-        smoke tests'
+      reason: 'M2MUnavailable: AssertionError: Float8 dynamic activation quantization
+        is only supported on CUDA>=8.9 and MI300+'
     - capsule: SY_model_lstmnetvit
       model: lstmnetvit
       operand_dtype: fp8_e4m3
@@ -2361,7 +2594,8 @@ roster_generation:
       operand_dtype: fp8_e4m3
       quant_scheme: float8_dyn_act_float8_weight
       status: not_built
-      reason: 'M2MUnavailable: ModuleNotFoundError: No module named ''lerobot'''
+      reason: 'M2MUnavailable: AssertionError: Float8 dynamic activation quantization
+        is only supported on CUDA>=8.9 and MI300+'
     - capsule: SY_model_tiny_llama
       model: tiny_llama
       operand_dtype: fp8_e4m3

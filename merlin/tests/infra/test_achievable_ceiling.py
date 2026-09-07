@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from merlin.common.paths import merlin_dir
 
@@ -90,6 +91,42 @@ def test_a_faster_baseline_raises_the_ceiling_and_says_where_it_came_from(tmp_pa
     assert "baseline arms only" in basis, (
         "the basis must let a reader rule out circularity without reading the code")
     assert "no candidate measurement contributes" in basis
+
+
+def _matmul_descriptor(*, m: int, k: int, n: int) -> dict:
+    return {
+        "operation": {"op": "matmul", "attributes": {"lhs": "A", "weight": "W"}},
+        "inputs": [{"name": "A", "shape": [m, k]},
+                   {"name": "W", "shape": [k, n]}],
+    }
+
+
+def test_a_member_is_not_scored_against_an_unrelated_deep_k_rate(tmp_path):
+    """The live PM defect: k=16 was judged against a deep-k ceiling it cannot amortise to."""
+    import perf_model as PM
+
+    evaluator = _evaluator(tmp_path, 256.0)
+    evaluator._achievable_points = (
+        PM.MeasuredPoint("shallow", 4096, 256, "host", (16,)),
+        PM.MeasuredPoint("shallow-wide", 8192, 400, "host", (16,)),
+        PM.MeasuredPoint("deep", 65536, 256, "host", (256,)),
+    )
+    member = SimpleNamespace(descriptor=_matmul_descriptor(m=16, k=16, n=16))
+    rate, basis, dispersion = evaluator._matched_achievable(member)
+    assert rate == 20.48, "the faster deep-k point must not become the shallow member's target"
+    assert "[16]" in basis and "2 host-owned" in basis
+    assert dispersion is not None, "the matching cohort's spread should be measured"
+
+
+def test_harvested_points_keep_the_reduction_depth_that_established_their_rate(tmp_path):
+    import perf_model as PM
+
+    work = tmp_path / "work"
+    _plant(work, call=1, arm="baseline", capsule="K16", macs=16, cycles=4)
+    [point] = PAS.harvest_baseline_points(work)
+    assert point.reduction_depths == (16,)
+    assert not PM.achievable_ceiling([point], provenance="test").known, (
+        "one point preserves its signature but cannot separate rate from fixed intercept")
 
 
 # ---------------------------------------------------------------------------------------------------

@@ -144,7 +144,10 @@ def test_sync_broker_forwards_gsim_to_the_real_selfcheck_boundary(tmp_path, monk
         _wait(ch / "done_good")
         response = json.loads((ch / "resp_good.json").read_text())
         forwarded = json.loads(record.read_text())
-        assert response == {"all_pass": True, "sim": "gsim"}
+        assert response["all_pass"] is True
+        assert response["sim"] == "gsim"
+        assert response["selfcheck_protocol"] == broker.PROTOCOL_VERSION
+        assert response["selfcheck_request_id"] == "good"
         assert forwarded[forwarded.index("--sim") + 1] == "gsim"
     finally:
         (ch / "STOP").write_text("stop")

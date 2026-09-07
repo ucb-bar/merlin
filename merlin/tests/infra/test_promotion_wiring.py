@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -80,6 +81,7 @@ def test_a_passing_capsule_produces_a_cert_job(tmp_path):
     assert len(reqs) == 1
     r = json.loads(reqs[0].read_text())
     assert r["capsules"] == "A" and r["tiers"] == "L3" and r["promoted"] is True
+    assert r["submission_digest"] == B._submission_digest(ws)
 
 
 def test_a_failing_capsule_buys_no_cert_time(tmp_path):
@@ -509,7 +511,45 @@ def test_a_cert_for_different_execution_bytes_does_not_resolve_pending(tmp_path)
     ws = _ws(tmp_path)
     ch = ws / ".qa_channel"
     B.promote(ws, ch, _execution_verdict([("A", True, "a")]), "L2", "L3", None, sys.stderr)
-    resolved = B.record_cert(ws, _execution_verdict([("A", True, "b")]), "L3", sys.stderr)
+    resolved = B.record_cert(ws, _execution_verdict([("A", True, "b")]), "L3", sys.stderr,
+                             identity="a" * 64, source_identity_verified=True)
+    assert resolved == []
+    assert B._tier_state(ws)["A"]["L3"]["status"] == "pending"
+
+
+def test_verified_source_snapshot_resolves_a_broad_pending_record(tmp_path):
+    """A round-grade row may lack an executable digest, but its verified source still owns the result.
+
+    The old recorder looked only at the result's narrower executable identity, found no pending slot at
+    that key, and discarded the certificate while leaving the broad source record pending forever.
+    """
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    assert B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr) == ["A"]
+    request = json.loads(next(ch.glob("simreq_*.json")).read_text())
+
+    resolved = B.record_cert(
+        ws, _execution_verdict([("A", True, "a")]), "L3", sys.stderr,
+        identity=request["identity"], source_identity_verified=True)
+
+    assert resolved == ["A=pass"]
+    cert = B._tier_state(ws)["A"]["L3"]
+    assert cert["status"] == "pass"
+    assert cert["certified_execution_digest"] == "a" * 64
+
+
+def test_unverified_source_cannot_resolve_a_broad_pending_record(tmp_path):
+    """The request's claimed identity alone is not proof that live bytes produced the result."""
+    B = _broker()
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+    B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr)
+    request = json.loads(next(ch.glob("simreq_*.json")).read_text())
+
+    resolved = B.record_cert(ws, _execution_verdict([("A", True, "a")]), "L3", sys.stderr,
+                             identity=request["identity"])
+
     assert resolved == []
     assert B._tier_state(ws)["A"]["L3"]["status"] == "pending"
 
@@ -672,3 +712,39 @@ def test_a_promoted_cert_job_keeps_the_harness_interpreter_ahead_of_the_sim_tool
     assert parts.index(own) < min(sim_entries), (
         "the sim toolchain's python3 shadows the harness interpreter, so a submission entrypoint runs "
         "under an interpreter that does not have the compiler's dependencies")
+
+
+def test_a_promoted_job_runs_from_a_verified_source_snapshot(tmp_path):
+    """Edits after enqueue cannot change the source tree the cert job compiles."""
+    S = _harness_module("simjob_broker")
+    ws = _ws(tmp_path, files=(("submission/manifest.yaml", "x: 1"),
+                              ("submission/build/input.txt", "digest-covered")))
+    expected = S._TP._submission_digest(ws)
+
+    submission, root, error = S._promotion_snapshot(ws, expected, f"submission:{expected}")
+    assert error is None and submission is not None and root is not None
+    try:
+        (ws / "submission" / "manifest.yaml").write_text("x: 2")
+        assert (submission / "manifest.yaml").read_text() == "x: 1"
+        assert (submission / "build" / "input.txt").read_text() == "digest-covered"
+        assert S._TP._submission_digest(root) == expected
+    finally:
+        shutil.rmtree(root)
+
+    missing, missing_root, reason = S._promotion_snapshot(
+        ws, expected, f"submission:{expected}")
+    assert missing is None and missing_root is None
+    assert "source moved before launch" in reason
+
+
+def test_a_broad_promotion_identity_must_name_the_verified_source_digest(tmp_path):
+    """An agent-authored request cannot use current bytes to resolve an older broad ledger slot."""
+    S = _harness_module("simjob_broker")
+    ws = _ws(tmp_path)
+    expected = S._TP._submission_digest(ws)
+
+    submission, root, reason = S._promotion_snapshot(
+        ws, expected, "submission:0000000000000000")
+
+    assert submission is None and root is None
+    assert "does not match its submission digest" in reason

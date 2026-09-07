@@ -451,6 +451,40 @@ def test_gate_requires_and_unknown_trait_vocabularies_are_refused() -> None:
         GC._validate_performance_block(block, owner="fixture")
 
 
+def test_execution_capability_is_a_separate_evidence_bearing_gate() -> None:
+    """Backend/tooling support must not be laundered into the hardware-trait vocabulary."""
+    prof = _gated_profile(["explicit_dma"])
+    gate = prof["sweeps"][0]["base"]["performance"]["gate"]
+    gate["execution_capabilities"] = ["whole_program_kernel_abi"]
+    facts = _trait_facts(explicit_dma=True)
+    facts["execution_capabilities"] = {
+        "whole_program_kernel_abi": {
+            "satisfied": True, "tier": "backend_declared",
+            "evidence": "fixture backend declares the generic whole-program ABI", "missing": []}}
+
+    skips = []
+    entries = GC.expand_sweeps(prof, _binding(), trait_facts=facts, skipped=skips)
+    assert len(entries) == 2 and skips == []
+    ok, decision = GC.evaluate_gate(gate, facts)
+    assert ok is True
+    assert decision["required_execution_capabilities"] == ["whole_program_kernel_abi"]
+    assert decision["execution_capability_facts"]["whole_program_kernel_abi"]["satisfied"] is True
+
+    facts["execution_capabilities"]["whole_program_kernel_abi"]["satisfied"] = False
+    skipped = []
+    assert GC.expand_sweeps(prof, _binding(), trait_facts=facts, skipped=skipped) == []
+    assert skipped[0]["gate"]["outcome"] == "refuted"
+    assert skipped[0]["gate"]["refuted_execution_capabilities"] == [
+        "whole_program_kernel_abi"]
+
+
+def test_unknown_execution_capability_is_refused_at_profile_load() -> None:
+    block = _performance_block()
+    block["gate"]["execution_capabilities"] = ["target_named_magic"]
+    with pytest.raises(ValueError, match="unknown execution capability"):
+        GC._validate_performance_block(block, owner="fixture")
+
+
 def test_a_true_gate_with_an_unimplemented_emitter_is_blocked_not_generated() -> None:
     blocked = []
     entries = GC.expand_sweeps(
@@ -508,6 +542,45 @@ def test_performance_facts_are_the_canonical_derived_profile_with_a_digest() -> 
     for fact in facts["traits"].values():
         assert fact["satisfied"] in (True, False, None)
         assert fact["tier"] and fact["evidence"]
+
+
+def test_pb_materializes_from_generic_execution_capabilities_and_skips_without_them() -> None:
+    profile = yaml.safe_load(
+        (GC.PROFILES / "_perf.yaml").read_text(encoding="utf-8"))
+    sweep = next(row for row in profile["sweeps"] if row["id"] == "PB")
+    experiment = GC.load_target_experiment(GC._descriptor_for("gemmini"))
+    binding = GC.CS.derive_binding(experiment, profile.get("datapath") or {})
+    facts = GC._performance_facts("gemmini")
+    entries = GC.expand_sweeps(
+        {"sweeps": [sweep]}, binding, trait_facts=facts,
+        skipped=[], blocked_unimplemented=[], errors=[])
+
+    assert len(entries) == 4
+    assert {entry["comparison_role"] for entry in entries} == {"island", "no_island"}
+    assert all(entry["op"] == "host_island_seam" for entry in entries)
+    assert all(entry["performance"]["emitter"]["resolved"]["source"] == "direct"
+               for entry in entries)
+    acceptance = entries[0]["performance"]["acceptance"]
+    assert acceptance["evidence"]["correctness_simulator"] == "spike"
+    assert acceptance["evidence"]["timing_simulator"] == "gsim"
+    assert acceptance["evidence"]["resolved_from"] == {
+        "correctness_simulator": "$target_oracle:L2",
+        "timing_simulator": "$target_oracle:L3",
+    }
+
+    denied = {**facts, "execution_capabilities": {
+        **facts["execution_capabilities"],
+        "whole_program_kernel_abi": {
+            "satisfied": False, "tier": "backend_declared",
+            "evidence": "fixture backend omits the generic whole-program ABI",
+            "missing": ["whole-program renderer"],
+        },
+    }}
+    skipped: list[dict] = []
+    assert GC.expand_sweeps(
+        {"sweeps": [sweep]}, binding, trait_facts=denied, skipped=skipped) == []
+    assert skipped[0]["gate"]["refuted_execution_capabilities"] == [
+        "whole_program_kernel_abi"]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -782,7 +855,7 @@ def test_generate_target_persists_family_and_member_counts(tmp_path, monkeypatch
         GC, "_performance_facts",
         lambda _target: {**_trait_facts(explicit_dma=True), "target": "fixture", "sha256": "b" * 64})
 
-    def write(entry, _binding, out_root):
+    def write(entry, _binding, out_root, _facts_sha256):
         destination = out_root / entry["cat"] / entry["name"]
         destination.mkdir(parents=True)
         return destination

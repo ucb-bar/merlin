@@ -181,6 +181,29 @@ def _default_cache_root() -> Path:
     return cache_dir("weight_prepack")
 
 
+def prepare_build_bundle(src: Path | str, work: Path | str,
+                         features: frozenset[str] | None) -> Path:
+    """Select ONE bundle for both lowering and runtime ABI generation.
+
+    Backends call this before reading model.mlir or selecting default inputs. No feature means no
+    parsing, copying or receipt. The receipt records the deletion, not a predicted speedup.
+    """
+    from .impr_features import normalize
+    ensure_registered()
+    src = Path(src).resolve()
+    if FEATURE not in normalize(features or ()):
+        return src
+    destination, effect = prepacked_bundle(src)
+    work = Path(work)
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "bundle_preparation.json").write_text(json.dumps({
+        "schema": "merlin.bundle-preparation.v1", "feature": FEATURE,
+        "source_bundle": str(src), "prepared_bundle": str(destination), "effect": effect,
+        "consumers": ["model_lowering", "runtime_abi_and_weights"],
+    }, sort_keys=True, indent=2) + "\n")
+    return destination
+
+
 def _feature():
     from .impr_features import ImprFeature
     return ImprFeature(

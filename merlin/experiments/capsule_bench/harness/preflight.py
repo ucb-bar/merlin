@@ -575,9 +575,14 @@ def check_oracle_available() -> dict:
     prog_smoke = _program_oracle_smoke(sim_okay=ok and csmoke_ok and cg_ok is not False, desc=desc)
     if prog_smoke.get("ok") is False:
         reason = f"grading oracle pieces present but the end-to-end smoke failed: {prog_smoke.get('reason')}"
-    return {"available": ok and csmoke_ok and cg_ok is not False and prog_smoke["ok"], "reason": reason,
+    capability_smokes = _capability_smokes(desc=desc)
+    if capability_smokes.get("ok") is False:
+        reason = f"grading oracle ready but a declared capability smoke failed: {capability_smokes.get('reason')}"
+    return {"available": (ok and csmoke_ok and cg_ok is not False and prog_smoke["ok"]
+                          and capability_smokes["ok"]), "reason": reason,
             "sim_via": sim_via, "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why},
-            "codegen_smoke": {"ok": cg_ok, "reason": cg_why}, "program_smoke": prog_smoke}
+            "codegen_smoke": {"ok": cg_ok, "reason": cg_why}, "program_smoke": prog_smoke,
+            "capability_smokes": capability_smokes}
 
 
 def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
@@ -631,6 +636,16 @@ def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
                 "reason": f"end-to-end oracle smoke could not run (infra absent): {e}"}
 
 
+def _capability_smokes(*, desc: Path) -> dict:
+    """Run all descriptor-declared probes through the layer-neutral adapter protocol."""
+    from merlin.targetgen import preflight_probes as PP
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    te = load_target_experiment(desc)
+    with tempfile.TemporaryDirectory(prefix="capability_smokes_") as td:
+        return PP.run_declared_capability_probes(te, workdir=Path(td), timeout=600)
+
+
 def main() -> int:
     R = {}
     R["canary"] = check_canary_isolation()
@@ -677,6 +692,9 @@ def main() -> int:
         (f"known-good program grades bit-exact end-to-end through the oracle "
          f"({R['oracle'].get('program_smoke', {}).get('reason')})",
          R["oracle"].get("program_smoke", {}).get("ok", True)),
+        (f"descriptor-declared capability probes are operation-grounded and behaviorally verified "
+         f"({R['oracle'].get('capability_smokes', {}).get('reason')})",
+         R["oracle"].get("capability_smokes", {}).get("ok", True)),
         ("bareMetalC corroboration table with golden hashes; conv externally-deferred noted", True),
         ("VCS/FireSim remain unavailable, never counted as pass", True),
     ]
@@ -733,6 +751,17 @@ def main() -> int:
     for r in R["baremetalc"]:
         L.append(f"| {r['anchor']} | {r['capsule']} | {r['feature']} | {r['source']} | "
                  f"{r['golden_sha256']} | {r['spike']} | {r['verilator']} |")
+    L += ["", "## G. Descriptor-declared capability probes", "",
+          "| capability | adapter | fixture | supported operations | reason |",
+          "|---|---|---|---|---|"]
+    capability_rows = R["oracle"].get("capability_smokes", {}).get("probes", [])
+    if not capability_rows:
+        L.append("| — | — | — | — | no capability probes declared |")
+    for row in capability_rows:
+        supported = [f"{o.get('dialect')}.{o.get('operation')}"
+                     for o in row.get("observations", []) if o.get("status") == "supported"]
+        L.append(f"| {row.get('capability')} | {row.get('adapter')} | {row.get('fixture')} | "
+                 f"{supported} | {row.get('reason', '')} |")
     L += ["", "- **conv2d is NOT externally corroborated** against bareMetalC (spike ISS skips conv); "
           "conv passes our compiler + RTL path only. Kept in a separate category, not claimed as "
           "bareMetalC-corroborated.",
@@ -740,7 +769,7 @@ def main() -> int:
           "≥0 and relu is a numerical no-op here (its golden hash equals the no-relu matmul). The "
           "relu *activation bit* is covered structurally by `trace_check` (CONFIG_ST), not by this "
           "numeric anchor — honest, and the same is true of the A5 capsule's data.", "",
-          "## G. Scope reminders (unchanged, honest)", "",
+          "## H. Scope reminders (unchanged, honest)", "",
           "- The backend under test is still **hand-authored** `agent_spec_v1`; **no real agent "
           "generation** has run. This pre-flight validates the harness, not a generated result.",
           "- VCS/FireSim remain **unavailable** and are never counted as pass.", "",

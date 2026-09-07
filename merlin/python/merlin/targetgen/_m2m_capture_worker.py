@@ -202,7 +202,38 @@ def main(argv=None) -> int:
 
     weights_path = str(out / "weights.safetensors")
     q = _quant_for(a.dtype, a.scheme or None)
+    quant_stats = None
+    if q is not None:
+        # Apply quantization explicitly so both conversion and the golden run consume
+        # the SAME returned module.  Most TorchAO quantize_ schemes mutate in place,
+        # which hid the bug here; PT2E correctly returns a new GraphModule, so running
+        # the old ``mdl`` would compare compiled W8A8 against an fp32 reference.
+        from m2m.capture.torchao_pipeline import apply_quantization
+
+        calibration_inputs = None
+        if q.scheme == "int8_static_act_int8_weight":
+            # A loader may keep the benchmark input separate from calibration data.
+            # This is important for honest benchmark capture: calibrating on the one
+            # measured sample is accidental input specialization.  The hook is
+            # model/target agnostic and returns the same positional-input tuples
+            # accepted by m2m.convert/apply_quantization.  Older loaders retain the
+            # session-stream fallback.
+            calibration_hook = getattr(loader, "get_calibration_inputs", None)
+            if callable(calibration_hook):
+                calibration_inputs = calibration_hook(mdl, tuple(inputs))
+            else:
+                stream = getattr(mdl, "session_images", None)
+                if isinstance(stream, torch.Tensor) and stream.shape[0] > 0:
+                    calibration_inputs = ((stream[i],) for i in range(int(stream.shape[0])))
+        mdl = apply_quantization(
+            mdl,
+            q,
+            example_inputs=tuple(inputs),
+            calibration_inputs=calibration_inputs,
+        )
+        quant_stats = getattr(mdl, "_m2m_quantization_stats", None)
     res = m2m.convert(mdl, inputs, backend="fx_importer", quantization=q,
+                      quantization_preapplied=(q is not None),
                       level="linalg-on-tensors", func_name=a.func_name, weights_path=weights_path)
     opaque = opaque_report(res.mlir_text)
     n_opaque = sum(opaque.values())
@@ -223,6 +254,7 @@ def main(argv=None) -> int:
         # WHICH quantization actually produced this program. Without it a weight-only capture and a
         # W8A8 one are indistinguishable after the fact, and they are different arithmetic.
         "scheme": a.scheme or _SCHEME.get(a.dtype, (None, None))[0],
+        "quantization_stats": quant_stats,
         "path_taken": getattr(res, "path_taken", None), "dtype": a.dtype,
         "linalg_ops": res.mlir_text.count("linalg."), "func_name": a.func_name,
         "weights": weights_path,

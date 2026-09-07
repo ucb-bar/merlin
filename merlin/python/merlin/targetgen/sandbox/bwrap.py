@@ -583,42 +583,61 @@ def _is_under(path: Path, base: str) -> bool:
     return path == b or b in path.parents
 
 
+class _MountVisibility:
+    """One-call lexical mount index; never caches filesystem visibility or mutable argv.
+
+    Path-equivalent destinations share a slot, but precedence still uses the
+    original destination STRING length and ordered mount index, not path depth.
+    """
+
+    def __init__(self, argv: list[str]):
+        self._destinations: dict[Path, tuple[int, int, str, str, str]] = {}
+        self._next_index = 0
+        for state, src, dest in _mounts(argv):
+            self.append(state, src, dest)
+
+    def append(self, state: str, src: str, dest: str) -> None:
+        record = (len(dest), self._next_index, state, src, dest)
+        self._next_index += 1
+        key = Path(dest)
+        previous = self._destinations.get(key)
+        if previous is None or record[:2] >= previous[:2]:
+            self._destinations[key] = record
+
+    def is_exposed(self, path: Path) -> bool:
+        best = None
+        # Build each ancestor once per query, rather than once per mount.
+        for ancestor in (path, *path.parents):
+            record = self._destinations.get(ancestor)
+            if record is not None and (best is None or record[:2] >= best[:2]):
+                best = record
+        if best is None or best[2] == "hide":
+            return False
+        _, _, _, src, dest = best
+        # A frozen snapshot may be mounted over a live tree. Test the actual
+        # source bytes, not the destination's host contents; do not cache stats.
+        mapped = Path(src) / path.relative_to(dest) if str(path) != dest else Path(src)
+        try:
+            return mapped.exists()
+        except PermissionError:
+            return True           # locked-but-present still exposes content
+        except OSError:
+            return False
+
+
 def is_exposed(argv: list[str], path: Path) -> bool:
-    """True iff ``path`` is reachable (readable host content) inside the sandbox described by ``argv``.
-    Replays the ordered mount table: the controlling mount is the one whose dest is ``path`` or an
-    ancestor of it, most-specific (longest dest) wins, ties broken by LATEST op (bwrap applies in order).
-    Exposed iff that controlling mount is an 'expose' AND the mapped host source still contains the path."""
-    ops = _mounts(argv)
-    best = None  # (dest_len, index, state, src, dest)
-    for idx, (state, src, dest) in enumerate(ops):
-        if _is_under(path, dest):
-            key = (len(dest), idx)
-            if best is None or key >= (best[0], best[1]):
-                best = (len(dest), idx, state, src, dest)
-    if best is None:
-        return False              # no mount covers it -> not present
-    _, _, state, src, dest = best
-    if state == "hide":
-        return False
-    # expose: the controlling bind serves host ``src`` AT ``dest``, and src is NOT always dest. The
-    # frozen-input harnesses bind an immutable SNAPSHOT of a tree over that tree's own live path, so a
-    # file created in the live tree after the freeze has no counterpart inside the sandbox at all.
-    # Ask the question about the bytes actually served: map the sub-path through the bind and test THAT.
-    # Answering it about the live path instead both over-reports the gap and (via apply_answer_masks)
-    # emits a mask for a destination whose parent does not exist in the bound tree, which bwrap refuses
-    # with "Can't mkdir parents for <path>: Read-only file system" — killing every launch.
-    mapped = Path(src) / path.relative_to(dest) if str(path) != dest else Path(src)
-    try:
-        return mapped.exists()
-    except PermissionError:
-        return True               # a locked-but-present surface is still exposed content-wise
-    except OSError:
-        return False
+    """Whether the longest raw-destination mount (latest on ties) exposes ``path``.
+
+    The controlling source must still contain the mapped path. Each call uses
+    fresh argv and filesystem state; batched callers share only a lexical index.
+    """
+    return _MountVisibility(argv).is_exposed(path)
 
 
 def coverage_gap(argv: list[str], surfaces: list[AnswerSurface]) -> list[AnswerSurface]:
     """The answer surfaces STILL reachable under ``argv`` — the drift/cheat guard. Empty == full mask."""
-    return [s for s in surfaces if is_exposed(argv, s.path)]
+    visibility = _MountVisibility(argv)
+    return [s for s in surfaces if visibility.is_exposed(s.path)]
 
 
 def apply_answer_masks(argv: list[str], surfaces: list[AnswerSurface]) -> list[str]:
@@ -626,13 +645,15 @@ def apply_answer_masks(argv: list[str], surfaces: list[AnswerSurface]) -> list[s
     by deny-by-default is skipped (no redundant overlay, and no mount whose parent tmpfs would fail).
     File surfaces are /dev/null-overlaid; dir surfaces are tmpfs'd. Masks go LAST so they win."""
     out = list(argv)
+    visibility = _MountVisibility(out)
     for s in surfaces:
-        if not is_exposed(out, s.path):
+        if not visibility.is_exposed(s.path):
             continue
         if s.kind == "file":
             out += ["--ro-bind", _DEVNULL, str(s.path)]
         else:
             out += ["--tmpfs", str(s.path)]
+        visibility.append("hide", "", str(s.path))
     return out
 
 
@@ -658,18 +679,10 @@ def full_argv(te: TargetExperiment, ws: Path, bundle: dict | None = None,
 #: is E2BIG, and the caller sees "Argument list too long" naming `bash` rather than naming the string.
 #: The margin is deliberate: the caller appends its own text to what `wrap` returns.
 #:
-#: LOWERED FROM 96 KiB after a measured failure this threshold did not catch. On 2026-09-06 all three
-#: perf-campaign trials died with `OSError: [Errno 7] Argument list too long: 'bash'` at codex spawn
-#: while NO args file had been written -- so the composed string was already under 96 KiB and execve
-#: refused it anyway. MAX_ARG_STRLEN is not the only ceiling: the total of argv plus the environment
-#: is bounded by ARG_MAX, which the kernel derives from the STACK rlimit (a quarter of it), and these
-#: stages run as children of a CHIA/Ray worker whose rlimits this process does not control and cannot
-#: read back after the fact. The exact worker limit was never pinned, which is the point: a threshold
-#: tuned to one assumed ceiling has now been wrong twice in this file's history.
-#:
-#: 32 KiB is not a tuned number either -- it is small enough that the file-descriptor path, which has
-#: no argument-size ceiling at all, is what runs for every realistic bundle. The inline form is kept
-#: only for genuinely small argvs, where it stays readable in a trace.
+#: The perf-stage failure at 178 KB was a BYPASS, not evidence that this threshold failed:
+#: perf_agent_stage._codex_round supplied its own bwrap callback with an unbounded join. That
+#: callback now uses this composer too. Keep the conservative 32 KiB threshold; the command-file
+#: transport in the agent driver additionally protects large payloads after the bind list.
 _MAX_ARG_BYTES = 32 * 1024
 
 
@@ -702,7 +715,9 @@ def compose_command(argv: list[str], tail: str, ws: Path) -> str:
     dying with E2BIG on launch while the isolation suite passed. ``tail`` is appended verbatim so each
     caller keeps its own payload quoting.
     """
-    inline = " ".join(argv) + tail
+    import shlex
+
+    inline = shlex.join(argv) + tail
     if len(inline.encode("utf-8")) <= _MAX_ARG_BYTES:
         return inline
     return _wrap_via_args_fd(argv, tail, ws)

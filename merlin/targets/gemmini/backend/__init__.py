@@ -38,4 +38,6 @@ def __getattr__(name: str):
     on first access — exactly when they already need the toolchain anyway."""
     if name in ("gemmini_codegen", "gemmini_codegen_mlir"):
         return importlib.import_module(f"{__name__}.{name}")
+    if name in ("analyze_machine_artifact", "machine_artifact_policy_identity"):
+        return getattr(importlib.import_module(f"{__name__}.gemmini_machine_audit"), name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -21,8 +21,10 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -131,6 +133,40 @@ def _strip_golden(obj):
     if isinstance(obj, list):
         return [_strip_golden(x) for x in obj]
     return obj
+
+
+def _promotion_snapshot(ws: Path, expected_digest: str, identity: str | None = None):
+    """Copy the source a promoted job will grade and verify its enqueue-time identity.
+
+    Promotion is asynchronous: compiling directly from ``ws/submission`` lets an agent edit the tree
+    after enqueue but before the child copies it. The resulting executable then cannot resolve the
+    pending record (correctly) and the paid-for certificate is discarded. Return
+    ``(submission, root, None)`` only for an isolated copy whose digest is exactly the one carried by the
+    request; otherwise return ``(None, None, reason)`` and run nothing.
+    """
+    if not isinstance(expected_digest, str) or not expected_digest:
+        return None, None, "promotion request has no enqueue-time submission digest"
+    if (isinstance(identity, str) and identity.startswith("submission:")
+            and identity != f"submission:{expected_digest}"):
+        return None, None, (f"promotion request source identity {identity} does not match its "
+                            f"submission digest {expected_digest}")
+    root = Path(tempfile.mkdtemp(prefix="merlin_promotion_"))
+    try:
+        submission = root / "submission"
+        shutil.copytree(Path(ws) / "submission", submission,
+                        # Match ``submission_digests`` exactly: only Python bytecode caches are outside
+                        # the source identity. A build/ or .git/ path below submission is unusual, but
+                        # silently dropping it here would make the verified copy a different tree.
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        actual = _TP._submission_digest(root)
+        if actual != expected_digest:
+            shutil.rmtree(root)
+            return None, None, (f"promotion source moved before launch: requested {expected_digest}, "
+                                f"available {actual}")
+        return submission, root, None
+    except Exception:
+        shutil.rmtree(root, ignore_errors=True)
+        raise
 
 
 class VerilSlotsUnusable(RuntimeError):
@@ -316,7 +352,9 @@ def main(argv=None):
                     # exact record it belongs to even when the verdict reader produced no per-capsule
                     # artifact identity. Absent (a request written before this field existed) it is
                     # None, and the recorder keeps its previous attribution rule.
-                    _TP.record_cert(ws, out, _CERT_TIER, sys.stderr, identity=j.get("identity"))
+                    _TP.record_cert(
+                        ws, out, _CERT_TIER, sys.stderr, identity=j.get("identity"),
+                        source_identity_verified=bool(j.get("source_identity_verified")))
                 except Exception as _re:  # noqa: BLE001 -- recording must never gate a run either
                     print(f"[promote] record skipped: {type(_re).__name__}: {_re}",
                           file=sys.stderr, flush=True)
@@ -327,6 +365,8 @@ def main(argv=None):
                     pass
             if j["slot"]:
                 j["slot"].unlink(missing_ok=True)
+            if j.get("snapshot_root"):
+                shutil.rmtree(j["snapshot_root"], ignore_errors=True)
             running.pop(jid)
         # launch queued (respect local + global caps)
         if len(running) < a.max_jobs:
@@ -368,12 +408,30 @@ def main(argv=None):
                     slot = _veril_acquire(a.veril_slots)
                     if slot is None:
                         continue                            # global verilator budget full; try later
+                submission = Path(ws) / "submission"
+                snapshot_root = None
+                source_identity_verified = False
+                if bool(r.get("promoted")):
+                    submission, snapshot_root, snapshot_error = _promotion_snapshot(
+                        Path(ws), r.get("submission_digest"), r.get("identity"))
+                    if snapshot_error:
+                        if slot:
+                            slot.unlink(missing_ok=True)
+                        (ch / f"simresp_{jid}.json").write_text(json.dumps(
+                            {"error": snapshot_error, "all_pass": False,
+                             "promotion_source_verified": False}, indent=2))
+                        (ch / f"simerr_{jid}").write_text("source identity mismatch")
+                        print(f"[promote] {jid} not launched: {snapshot_error}",
+                              file=sys.stderr, flush=True)
+                        claimed.add(jid)
+                        continue
+                    source_identity_verified = True
                 workers = max(1, min(int(r.get("workers", 1)), 2 if sim == "verilator" else 8))
                 capspec = "all" if caps == ["all"] else ",".join(caps)
                 ncaps = len(_valid_capsules("all") or []) if caps == ["all"] else len(caps)
                 to = (vpc * ncaps) if sim == "verilator" else 900
                 resp_tmp = ch / f"simtmp_{jid}.json"
-                argv2 = [PY, str(SELFCHECK), "--submission", str(ws / "submission"),
+                argv2 = [PY, str(SELFCHECK), "--submission", str(submission),
                          "--capsules", capspec, "--workers", str(workers),
                          "--timeout", str(to), "--out", str(resp_tmp)]
                 if sim != _NEUTRAL_SIM:      # --sim is meaningless where the contract picks the tier
@@ -389,12 +447,23 @@ def main(argv=None):
                 # answered "no verdict produced" with no diagnostic anywhere on disk. The log is
                 # per-job, beside the response, so a failure can be read after the fact.
                 job_log = (ch / f"simlog_{jid}.txt").open("wb")
-                proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
-                                        env=_sim_env(), stdout=job_log, stderr=subprocess.STDOUT)
+                try:
+                    proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
+                                            env=_sim_env(), stdout=job_log,
+                                            stderr=subprocess.STDOUT)
+                except Exception:
+                    job_log.close()
+                    if slot:
+                        slot.unlink(missing_ok=True)
+                    if snapshot_root:
+                        shutil.rmtree(snapshot_root, ignore_errors=True)
+                    raise
                 running[jid] = {"proc": proc, "slot": slot, "resp_tmp": str(resp_tmp), "sim": sim,
                                 "promoted": bool(r.get("promoted")), "log": job_log,
                                 # which tier-state record this promotion was launched for (see the reap)
-                                "identity": r.get("identity")}
+                                "identity": r.get("identity"),
+                                "source_identity_verified": source_identity_verified,
+                                "snapshot_root": snapshot_root}
                 claimed.add(jid)
         time.sleep(a.poll)
     # drain on STOP
@@ -402,6 +471,8 @@ def main(argv=None):
         j["proc"].kill()
         if j["slot"]:
             j["slot"].unlink(missing_ok=True)
+        if j.get("snapshot_root"):
+            shutil.rmtree(j["snapshot_root"], ignore_errors=True)
 
 
 if __name__ == "__main__":

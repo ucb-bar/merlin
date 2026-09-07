@@ -198,13 +198,23 @@ def _splice(passes: list[str]) -> str:
     return ",".join(out)
 
 
-def _upstream_pipeline() -> str:
-    """The scalar whole-module pipeline. A function, not a constant, so ``MERLIN_NO_DEALLOC``
-    is read per build rather than frozen at import."""
-    return _splice(_UPSTREAM_PASSES)
+def _upstream_pipeline(features: "frozenset[str] | None" = None) -> str:
+    """The scalar whole-module pipeline, including requested pipeline-edit features.
+
+    A function, not a constant, so ``MERLIN_NO_DEALLOC`` is read per build rather than frozen at
+    import. Applying features here is load-bearing: the RVV builder has always called
+    :func:`impr_features.apply_pipeline`, but the scalar selection used to normalize and report its
+    feature set without ever applying the corresponding pass-list edits. Such an arm compiled the
+    baseline while claiming the feature was enabled.
+    """
+    passes = list(_UPSTREAM_PASSES)
+    if features:
+        from .impr_features import apply_pipeline, normalize
+        passes = apply_pipeline(passes, normalize(features))
+    return _splice(passes)
 
 
-def _parallel_pipeline() -> str:
+def _parallel_pipeline(features: "frozenset[str] | None" = None) -> str:
     """The scalar pipeline, re-targeted for **multicore** via OpenMP.
 
     Identical to :data:`UPSTREAM_PIPELINE` except the loop-generation stage: parallel
@@ -218,7 +228,7 @@ def _parallel_pipeline() -> str:
     This is the K1 big-model path: the diffusion-transformer / large VLAs that run on the
     *scalar* fallback (no fixed-width vectorize) otherwise execute on one core and time out.
     Gated — never on the default flow (``UPSTREAM_PIPELINE`` is untouched)."""
-    return _splice([
+    passes = [
         "canonicalize", "cse",
         "func.func(linalg-fuse-elementwise-ops)",
         "func.func(linalg-generalize-named-ops)",
@@ -243,7 +253,11 @@ def _parallel_pipeline() -> str:
         "convert-cf-to-llvm",
         "reconcile-unrealized-casts",
         "canonicalize", "cse", "symbol-dce",
-    ])
+    ]
+    if features:
+        from .impr_features import apply_pipeline, normalize
+        passes = apply_pipeline(passes, normalize(features))
+    return _splice(passes)
 
 
 # --- Native RVV (fixed-width) vectorization path --------------------------------------
@@ -414,7 +428,8 @@ _PARALLEL_DIM_NUM_THREADS = {
 
 def parallel_transform_schedule(n_harts: int, *, matmul_dim: str = "n",
                                 batch_matmul_dim: str = "b",
-                                chunks: "list | None" = None) -> str:
+                                chunks: "list | None" = None,
+                                tile_aligned: bool = False) -> str:
     """Transform schedule that wraps each contraction in an `scf.forall` over ``n_harts``.
 
     Runs BEFORE the package's own schedule (separate entry point, see above), so the inner
@@ -440,6 +455,17 @@ def parallel_transform_schedule(n_harts: int, *, matmul_dim: str = "n",
         raise ValueError(f"parallel schedule needs n_harts >= 2, got {n_harts}")
     if chunks is not None:
         return _perop_parallel_schedule(chunks)
+    if tile_aligned:
+        body = [
+            '    %matmul = transform.structured.match ops{["linalg.matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op\n'
+            '    %matmul_loop, %matmul_tiled = transform.structured.tile_using_forall %matmul tile_sizes [0, 16] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)',
+            '    %batch_matmul = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op\n'
+            '    %batch_matmul_loop, %batch_matmul_tiled = transform.structured.tile_using_forall %batch_matmul tile_sizes [1, 0, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)',
+        ]
+        return ("module attributes {transform.with_named_sequence} {\n"
+                f"  transform.named_sequence @{PARALLEL_ENTRY}"
+                "(%arg0: !transform.any_op {transform.readonly}) {\n"
+                + "\n".join(body) + "\n    transform.yield\n  }\n}\n")
     body = []
     for op, dim in (("linalg.matmul", matmul_dim), ("linalg.batch_matmul", batch_matmul_dim)):
         choices = _PARALLEL_DIM_NUM_THREADS[op]
@@ -626,7 +652,6 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
     brop = ("buffer-results-to-out-params{modify-public-functions hoist-static-allocs}"
             if hoist_static_allocs
             else "buffer-results-to-out-params{modify-public-functions}")
-    late_hoist: list[str] = []
     # Multicore: preload the parallel library ALONGSIDE the package schedule (the option is a
     # list) and run its entry point first, so each contraction is already wrapped in an
     # `scf.forall` when the package's `__transform_main` matches and vectorizes it.
@@ -689,6 +714,15 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         "func.func(lower-vector-multi-reduction)",
         "func.func(lower-vector-mask)",
         "convert-vector-to-scf",
+        # ``convert-vector-to-scf`` materializes fixed-size ``memref.alloca`` scratch for
+        # multi-dimensional vector transfers.  The first hoisting stage above cannot see those
+        # allocations because they do not exist yet.  Left in a contraction body, LLVM lowers an
+        # alloca on every reduction-loop iteration and the stack grows until ``forward`` returns
+        # (observed on a 1x2048 by 2048x1000 int8 contraction: an 8 MiB host stack faults even
+        # though the static frame is only a few KiB).  Hoist the newly-created scratch while the
+        # loop structure is still SCF; this reuses one scratch object across sequential iterations
+        # and does not alter the transform schedule or vector shape.
+        "func.func(buffer-hoisting,buffer-loop-hoisting)",
         # Deallocation goes HERE, not straight after bufferization as in the scalar pipelines.
         # `ownership-based-buffer-deallocation` materializes an i1 ownership constant next to each
         # buffer use, and it walks into `vector.mask` regions -- which accept exactly one masked
@@ -725,7 +759,6 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
            "convert-scf-to-openmp", "canonicalize"]
           if par else
           ["func.func(convert-linalg-to-loops)"]),   # fallback: any op the vectorizer skipped
-        *late_hoist,                            # K1: hoist loop-body alloca temps out of loops
         "convert-scf-to-cf",
         "expand-strided-metadata",
         "lower-affine",
@@ -990,6 +1023,24 @@ from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
 ''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _MID_STAGE_SRC + _PARALLEL_GRAIN_LATE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
+
+def _residual_vector_ops(module):
+    """Return vector-dialect op names still present at the LLVM translation edge."""
+    found = []
+
+    def visit(op):
+        name = op.operation.name
+        if name.startswith('vector.'):
+            found.append(name)
+        for region in op.regions:
+            for block in region.blocks:
+                for child in block.operations:
+                    visit(child)
+
+    for top in module.body.operations:
+        visit(top)
+    return sorted(set(found))
+
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -1018,6 +1069,10 @@ if _CONCAT_DPS:
         print("OK concat_dps", _cd_kind, _cd_detail)
     print("OK concat_dps rewrote", _cd_n)
 _run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES)
+_vector_residue = _residual_vector_ops(module)
+if _vector_residue:
+    raise RuntimeError(
+        'vector dialect survived the LLVM lowering edge: ' + ', '.join(_vector_residue))
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
 print("OK")
@@ -1129,12 +1184,62 @@ def _select_runner(pipeline: str, feats: "frozenset[str]", *, emit: str) -> str:
         return _activation_poly_runner(emit)
     if _needs_scalarize_runner(pipeline, feats):
         from .accum_microkernel import run_source
-        return run_source().replace("__MERLIN_EMIT__", emit)
+        from .bmm_tail_pad import FEATURE as _BMM_TAIL_PAD_FEATURE
+        return run_source(tag_bmm_tails=_BMM_TAIL_PAD_FEATURE in feats).replace(
+            "__MERLIN_EMIT__", emit)
     return _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
 
 
 class PipelineError(RuntimeError):
     pass
+
+
+#: Lexical pieces of an MLIR operation name, for the textual census below. Op names are ASCII
+#: by construction; the left-hand guard uses the wider identifier test so a non-ASCII letter
+#: abutting the prefix still reads as "this continues a word", not as a name boundary.
+_VECTOR_OP_PREFIX = "vector."
+_OP_NAME_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+
+def _continues_identifier(ch: str) -> bool:
+    """True when ``ch`` would make the following character part of the same word."""
+    return ch.isalnum() or ch == "_"
+
+
+def _residual_vector_dialect_ops(path: Path) -> tuple[str, ...]:
+    """Return vector-dialect operation names left at the translation boundary.
+
+    The OpenMP route writes LLVM-dialect MLIR and invokes ``mlir-translate`` in a
+    second process.  A masked contraction that escaped the lowering pipeline used
+    to fail there with a generic translation error, after an expensive whole-model
+    compile.  Read the actual boundary artifact and fail closed with the operation
+    names instead.  This is deliberately a textual census: the producer already
+    succeeded, while parsing the mixed LLVM/OpenMP dialect in the host process is
+    the transport hazard this route exists to avoid.
+
+    The census is scanned structurally, not matched with a pattern (repo rule: no
+    regex in library code).  A name is a ``vector.`` occurrence that does not
+    continue an identifier to its left and carries at least one identifier
+    character to its right, and occurrences do not overlap -- so ``%vector.mask``
+    and ``llvm.vector.reduce`` are names, ``myvector.mask`` and a bare ``vector.``
+    are not, and ``vector.vector.x`` reads as the one name it spells.
+    """
+    text = path.read_text(encoding="utf-8")
+    found: set[str] = set()
+    at = text.find(_VECTOR_OP_PREFIX)
+    while at >= 0:
+        resume = at + 1
+        tail = at + len(_VECTOR_OP_PREFIX)
+        if at == 0 or not _continues_identifier(text[at - 1]):
+            end = tail
+            while end < len(text) and text[end] in _OP_NAME_CHARS:
+                end += 1
+            if end > tail:
+                found.add(text[at:end])
+                resume = end
+        at = text.find(_VECTOR_OP_PREFIX, resume)
+    return tuple(sorted(found))
 
 
 def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
@@ -1184,6 +1289,10 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # preparation step, and by lowering time the name only records that the arm was asked for.
     from .im2col_pack import ensure_registered as _register_im2col_panel_pack
     _register_im2col_panel_pack()
+    # This feature edits the pass list itself and lives outside impr_features. Direct callers of
+    # this module therefore need the same registration that lower.py performs before normalization.
+    from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
+    _register_epilogue_fusion()
     feats = normalize(features)
     if parallel_harts is not None and not vectorize:
         raise PipelineError(
@@ -1197,10 +1306,16 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             sched_text = apply_schedule(transform_schedule or RVV_TRANSFORM_SCHEDULE, feats)
             sched.write_text(sched_text, encoding="utf-8")
             par_sched = None
+            _tile_aligned_parallel = False
             if parallel_harts is not None:
                 par_sched = work / "rvv_parallel_schedule.mlir"
+                from .bmm_tail_pad import FEATURE as _BMM_TAIL_PAD_FEATURE
+                _tile_aligned_parallel = _BMM_TAIL_PAD_FEATURE in feats
                 par_sched.write_text(
-                    parallel_transform_schedule(parallel_harts, chunks=parallel_chunks),
+                    parallel_transform_schedule(
+                        parallel_harts,
+                        chunks=parallel_chunks,
+                        tile_aligned=_tile_aligned_parallel),
                     encoding="utf-8")
                 if parallel_chunks is not None and not parallel_chunks:
                     import sys as _sys
@@ -1223,11 +1338,12 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs,
                                           features=feats, par_sched_path=par_sched,
                                           vec_sched_path=vec_sched,
-                                          perop_parallel=parallel_chunks is not None)
+                                          perop_parallel=(parallel_chunks is not None
+                                                          or _tile_aligned_parallel))
         elif parallel:
-            pipeline = _parallel_pipeline()   # multicore (OpenMP) scalar path — K1 big models
+            pipeline = _parallel_pipeline(feats)   # multicore (OpenMP) scalar path — K1 big models
         else:
-            pipeline = _upstream_pipeline()
+            pipeline = _upstream_pipeline(feats)
     src = work / "model.mlir"
     out = work / "model.ll"
     runner = work / "run_lowering.py"
@@ -1302,6 +1418,12 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             "bypasses `_run_stages`; do not combine MERLIN_SINK_DEALLOCS with it until the check "
             f"is wired there too.\n{proc.stdout}")
     if omp:
+        residual_vector_ops = _residual_vector_dialect_ops(stage_out)
+        if residual_vector_ops:
+            raise PipelineError(
+                "vector dialect survived the lowering pipeline before mlir-translate: "
+                + ", ".join(residual_vector_ops)
+                + f"\nLLVM-dialect artifact: {stage_out}")
         from .toolchain import mlir_translate
         tproc = subprocess.run(
             [str(mlir_translate()), "--mlir-to-llvmir", str(stage_out), "-o", str(out)],

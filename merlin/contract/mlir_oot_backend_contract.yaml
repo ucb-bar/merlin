@@ -71,6 +71,16 @@ kernel_abi:
   # real harness for a probe buffer of every shape and fails if the emitted call disagrees with the
   # tokens, so this document cannot drift from the code again.
   arg_order_by_command_shape:
+    - shape: whole_program
+      when: "the buffer explicitly declares kernel_abi.kind = whole_program; this row is first, so an
+             explicit whole-program pointer boundary takes precedence over inference from its accelerator
+             command subset"
+      kernel_abi_kind: whole_program
+      signature: "void {target}_kernel(ptr arg_0 .. ptr arg_{N-1})"
+      order: [declared_whole_program_args]
+      prose: "kernel_abi.args[].tensor in declaration order. Every declared tensor buffer appears exactly
+              once; access declares allocation/materialization only, and outputs must exactly equal the
+              tensors whose role is output. The runner performs no model operation."
     - shape: movement
       when: "the buffer has NO RES_PACK command and at least one MOVEMENT (or an identity-combine VECTOR_MAP)"
       signature: "void {target}_kernel(ptr src, ptr dst)"
@@ -102,6 +112,9 @@ kernel_abi:
   # The token vocabulary the `order` lists are written in. One token, one resolution rule, resolved
   # against the command buffer; a token nobody can resolve is a REFUSAL, never a guessed position.
   arg_order_tokens:
+    declared_whole_program_args: "kernel_abi.args[].tensor in array order, only when kernel_abi.kind is
+      whole_program; each arg also declares read|write|readwrite access, every tensors entry appears
+      exactly once, and kernel_abi.outputs equals exactly the role=output tensors"
     movement_src: "the MOVEMENT/identity-VECTOR_MAP command's `src` (or `lhs`) operand"
     movement_dst: "that command's `dst` operand"
     interface_external_tensors_in_declaration_order: "every tensor in `tensors` whose role is input,
@@ -124,3 +137,40 @@ build:
   optional: true
   purpose: "C++ packages declare a build block; the runner builds before first use"
   fields: {configure: "[argv]", command: "[argv]", tool_output: "relative path to built tool"}
+
+# The ADMISSION PARTITION. A package handed a program must land in exactly ONE route and must SAY
+# which; the routes are disjoint and together they cover every well-formed input. Enforced by
+# `build_tools/scripts/check_route_partition.py` over `merlin.runtime.route_partition`.
+#
+# This section exists because its absence was load-bearing. Nothing here required a decline, and
+# `validate_command_buffer` only ever read `declined` as an EXCUSE (it lets such a buffer skip the
+# operands-reference-a-tensor check). So a package that emitted nothing and said nothing was
+# contract-conformant, and no grader could tell it apart from one that correctly declined. Measured
+# 2026-09-07 across `out/runs`: 244 buffers empty with no decline, and 30 that decline an opcode and
+# then emit it anyway. Three cases were reproduced from a spec in one command each -- an `rmsnorm`,
+# a forbidden direct-scratchpad op and a stateful random op -- each exiting 0 with empty stderr and
+# the program's declared OUTPUT TENSOR silently absent from the buffer.
+admission:
+  routes:
+    A: "accepted -- the buffer emits target work for the admitted region"
+    H: "an explicit host or composed route; the seam is declared and checked separately"
+    D: "an explicit decline -- no target command, no target-visible effect, and a stated reason"
+  obligations:
+    exactly_one_route: "every well-formed input lands in exactly one of A, H, D"
+    disjoint: "a buffer may not both decline and emit. A consumer reading `declined` excuses the case
+      while a consumer reading `commands` executes it, so a buffer doing both simultaneously grades as
+      declined AND runs"
+    decline_is_explicit: "an empty `commands` list plus a zero exit code is NOT a decline. A decline
+      declares a `declined` object; absent that, an empty buffer is indistinguishable from a program
+      dropped on the floor and reported as success"
+    decline_states_a_reason: "`declined.reason` is required and must be readable by whoever has to act
+      on it. `declined.op` names the operation that was not lowered, when one operation is responsible"
+    no_silent_host_loss: "a decline may not drop a declared output. If the interface program commits an
+      output, declining means saying so -- never omitting the tensor and exiting 0"
+    unsupported_is_not_a_fourth_route: "a checker's or compiler's own out-of-model disposition must
+      resolve to H or D. It may never resolve to A, and it may never be left unstated"
+  declined:
+    purpose: "route D, stated in the command buffer itself so every consumer reads the same verdict"
+    required: [reason]
+    optional: [op]
+    example: {op: "rmsnorm", reason: "no lowering for this operation on this target yet"}

@@ -99,6 +99,9 @@ def test_it_prices_two_buffers_against_the_derived_ceilings(tmp_path):
         assert arm["ideal_cycles_at_peak"] > 0
         assert arm["ideal_cycles_at_achievable"] > arm["ideal_cycles_at_peak"], \
             "the achievable ceiling must imply MORE cycles than the structural peak"
+        assert arm["movement"]["known_bytes"] > 0
+        assert arm["representation_activity"]["representation_directive_count"] == 2
+        assert arm["representation_activity"]["occupancy"]["status"] == "UNKNOWN"
     # Different work volumes must be called out: a cycle delta there is not a schedule comparison.
     assert "work_delta" in out and out["work_delta"]["candidate_over_baseline"] == pytest.approx(2.0)
 
@@ -143,6 +146,31 @@ def test_an_unreadable_buffer_refuses_rather_than_crashing(tmp_path):
     with pytest.raises(Exception):
         stage.analyze_command_buffers(missing, good, peak_macs_per_cycle=256,
                                       achievable_macs_per_cycle=80.0)
+
+
+def test_declined_whole_model_is_unknown_work_not_a_zero_cost_success(tmp_path):
+    stage = _stage()
+    declined = tmp_path / "declined.json"
+    declined.write_text(json.dumps({
+        "tensors": {"input": {"shape": [16], "dtype": "i8", "role": "input"}},
+        "commands": [],
+        "declined": {"op": "host_lane", "reason": "whole-model straight-line budget exceeded"},
+        "params": {"lane_placement": [
+            {"region": "m", "family": "contraction", "lane": "array"},
+            {"region": "e", "family": "elementwise", "lane": "host"},
+        ]},
+    }), encoding="utf-8")
+
+    out = stage.analyze_command_buffers(declined, declined, peak_macs_per_cycle=256,
+                                        achievable_macs_per_cycle=80.0)
+
+    arm = out["arms"]["candidate"]
+    assert arm["status"] == "declined"
+    assert arm["macs"] is None
+    assert arm["movement"]["known_bytes"] is None
+    assert arm["exact"] is False
+    assert out["lower_bound"]["candidate"]["status"] == "unavailable"
+    assert arm["representation_activity"]["placement"]["adjacent_lane_transitions"] == 1
 
 
 # --------------------------------------------------------------------------------------

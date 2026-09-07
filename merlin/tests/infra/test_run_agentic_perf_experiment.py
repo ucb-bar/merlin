@@ -54,8 +54,8 @@ def _mock_preflight_dependencies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(ORCH, "load_target_experiment",
                         lambda _path: SimpleNamespace(target="gemmini"))
     monkeypatch.setattr(
-        ORCH, "_functional_grade_cohort",
-        lambda _target: ORCH.FunctionalGradeCohort((), (), 1, 1))
+        ORCH, "_functional_grade_cohort_from_run",
+        lambda _target, _functional: ORCH.FunctionalGradeCohort((), (), 1, 1))
     monkeypatch.setattr(ORCH.PAS, "inspect_stage_functional_run",
                         lambda *_args, **_kwargs: SimpleNamespace(
                             run_id="functional", digest="a" * 64))
@@ -64,6 +64,9 @@ def _mock_preflight_dependencies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
                         lambda *_args: {"public_descriptors": 1, "hidden_descriptors": 1})
     monkeypatch.setattr(ORCH, "_verify_functional_certificate_provenance",
                         lambda *_args: {"declaration_sha256": "7" * 64})
+    monkeypatch.setattr(ORCH, "_functional_qualification_descriptor",
+                        lambda *_args: (tmp_path / "frozen-target.yaml",
+                                       {"sha256": "8" * 64}))
     monkeypatch.setattr(ORCH, "_verify_tuning_certificate",
                         lambda *_args: {"members": 1, "workload_sha256": ["e" * 64]})
     monkeypatch.setattr(ORCH.HOLDOUT, "derive_domain",
@@ -332,7 +335,7 @@ def _functional_qualification_fixture(tmp_path: Path, *, baseline_sha256: str):
     certificate_path.write_bytes(certificate_payload)
     certificate = SimpleNamespace(
         path=certificate_path, sha256=certificate_sha, target="gemmini", pins=pins,
-        members={workload: {}})
+        members={workload: {}}, document={})
     descriptor_path = tmp_path / "target.yaml"
     descriptor_path.write_text("target: gemmini\n", encoding="utf-8")
     declaration = {
@@ -408,6 +411,7 @@ def test_child_environment_uses_certificate_pin_and_not_ambient_selection(
     environment = ORCH.child_environment(_config(tmp_path), certificate)
     assert environment["MERLIN_GEMMINI_GSIM_EMU"] == certificate.pins["gsim_binary"]["path"]
     assert environment["MERLIN_REQUIRED_RTL_ENGINE"] == "gsim"
+    assert environment["MERLIN_CACHE_STATE"] == "warm"
     assert environment["MERLIN_GEMMINI_GSIM_MAXCYCLES"] == "9000"
     no_cap = ORCH.child_environment(_config(tmp_path, max_cycles=None), certificate)
     assert "MERLIN_GEMMINI_GSIM_MAXCYCLES" not in no_cap
@@ -615,7 +619,7 @@ def _certificate(members: dict[str, dict], *, changed_pin: str | None = None):
             for index, name in enumerate(sorted(ORCH.GATE.REQUIRED_PINS), start=1)}
     if changed_pin is not None:
         pins[changed_pin] = {**pins[changed_pin], "sha256": "f" * 64}
-    return SimpleNamespace(pins=pins, members=members)
+    return SimpleNamespace(pins=pins, members=members, document={})
 
 
 def _revealed_corpus(root: Path, points: list[tuple[str, int]]) -> tuple[Path, list[Path]]:
@@ -674,15 +678,93 @@ def test_real_functional_cohort_matches_canonical_descriptor_admission() -> None
     gsim_cases = ORCH._functional_gsim_cases(cohort)
     certificate_identities = {capsule.workload_sha256 for capsule in gsim_cases}
 
-    assert cohort.public_source_count == 48
-    assert len(cohort.public) == 34
-    assert cohort.hidden_source_count == 11
-    assert len(cohort.hidden) == 10
-    assert len(full_identities) == 33
-    assert len(gsim_cases) == 42
-    assert len(certificate_identities) == 31
-    assert sum(capsule.kind == "model" for capsule in (*cohort.public, *cohort.hidden)) == 2
+    # The descriptor was re-sealed after corpus expansion. Test its authoritative counts,
+    # not a historical denominator that predates the frozen functional submission.
+    assert cohort.public_source_count == target.graded_expected_source_capsules
+    assert len(cohort.public) == target.graded_expected_admitted_capsules
+    assert cohort.hidden_source_count == target.hidden_expected_source_capsules
+    assert len(cohort.hidden) == target.hidden_expected_admitted_capsules
+    assert len(full_identities) >= len(certificate_identities) > 0
+    models = [capsule for capsule in (*cohort.public, *cohort.hidden) if capsule.kind == "model"]
+    assert models
+    assert len(gsim_cases) + len(models) == len(cohort.public) + len(cohort.hidden)
+    assert not ({capsule.name for capsule in models} & {capsule.name for capsule in gsim_cases})
     assert not ({capsule.name for capsule in cohort.public} & set(target.graded_exclude))
+
+
+def test_frozen_functional_cohort_ignores_later_live_corpus_growth(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    live_repo = tmp_path / "live"
+    snapshot = tmp_path / "phase1-inputs"
+    frozen_parent = snapshot / "repo/merlin/contract/capsules"
+    live_parent = live_repo / "merlin/contract/capsules"
+    for parent in (frozen_parent, live_parent):
+        (parent / "isa").mkdir(parents=True)
+        (parent / "hidden").mkdir()
+    public = _capsule(frozen_parent / "isa", "p0", k=17)
+    hidden = _capsule(frozen_parent / "hidden", "h0", k=31)
+    excluded = _capsule(frozen_parent / "hidden", "hx", k=47)
+    _capsule(live_parent / "isa", "p0", k=17)
+    _capsule(live_parent / "isa", "added_after_phase1", k=63)
+    _capsule(live_parent / "hidden", "h0", k=31)
+    for path, label in ((public, "public"), (hidden, "hidden"), (excluded, "hidden")):
+        document = yaml.safe_load(path.read_text())
+        document.update({"label": label, "kind": "op"})
+        path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    def discover(roots, *, labels=None, contract=None):
+        roots = [roots] if isinstance(roots, (str, Path)) else roots
+        found = []
+        for root in roots:
+            for manifest in sorted(Path(root).rglob("capsule.yaml")):
+                document = yaml.safe_load(manifest.read_text())
+                document["__dir__"] = str(manifest.parent)
+                if labels is None or document.get("label") in labels:
+                    found.append(document)
+        return found
+
+    monkeypatch.setattr(ORCH.PB, "REPO", live_repo)
+    monkeypatch.setattr(ORCH, "discover_capsules", discover)
+    descriptor_sha = "d" * 64
+    public_admission = {
+        "n_source_capsules": 1, "n_admitted_capsules": 1,
+        "n_capability_excluded": 0, "n_resource_excluded": 0,
+        "admitted_name_set_sha256": ORCH._name_set_sha256(("p0",)),
+        "excluded_name_set_sha256": ORCH._name_set_sha256(()),
+        "descriptor_sha256": descriptor_sha,
+    }
+    hidden_admission = {
+        "n_source_capsules": 2, "n_admitted_capsules": 1,
+        "n_capability_excluded": 1, "n_resource_excluded": 0,
+        "admitted_name_set_sha256": ORCH._name_set_sha256(("h0",)),
+        "excluded_name_set_sha256": ORCH._name_set_sha256(("hx",)),
+    }
+    functional = SimpleNamespace(
+        bundle_input_snapshot={"path": str(snapshot)}, public_capsules=1, hidden_capsules=1,
+        public_score={"n_capsules": 1, "per_capsule": [{"capsule": "p0"}],
+                      "cohort_admission": public_admission},
+        hidden_score={"n_capsules": 1, "per_capsule": [{"capsule": "h0"}],
+                      "cohort_admission": hidden_admission})
+    target = SimpleNamespace(
+        target="gemmini", capsule_corpus=live_parent / "isa")
+
+    cohort = ORCH._functional_grade_cohort_from_run(target, functional)
+
+    assert [capsule.name for capsule in cohort.public] == ["p0"]
+    assert [capsule.name for capsule in cohort.hidden] == ["h0"]
+    assert (cohort.public_source_count, cohort.hidden_source_count) == (1, 2)
+    assert "added_after_phase1" not in {capsule.name for capsule in cohort.public}
+    assert all(capsule.manifest.is_relative_to(snapshot) for capsule in (
+        *cohort.public, *cohort.hidden))
+
+    public_spec, hidden_spec, contract = ORCH._frozen_functional_regrade_inputs(
+        tmp_path / "phase2", cohort)
+    assert str(live_repo) not in public_spec + hidden_spec
+    assert {Path(path).name for path in hidden_spec.split(",")} == {"h0", "hx"}
+    assert contract == (snapshot / "repo/merlin/contract").resolve()
+    admission = json.loads((tmp_path / "phase2/functional_regrade_inputs/public_admission/"
+                            ".cohort_admission.json").read_text())
+    assert admission == public_admission
 
 
 def test_regrade_inputs_are_the_same_canonical_admitted_cohort() -> None:

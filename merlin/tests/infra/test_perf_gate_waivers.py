@@ -45,6 +45,17 @@ def _drop_a_tier(run: Path) -> None:
     path.write_text(json.dumps(score))
 
 
+def _operator_seal(run: Path) -> None:
+    summary = yaml.safe_load((run / "qa_loop_summary.yaml").read_text())
+    summary["operator_seal"] = {
+        "version": 1,
+        "requested": True,
+        "last_completed_round": 3,
+        "checkpoint_submission_sha256": "d" * 64,
+    }
+    (run / "qa_loop_summary.yaml").write_text(yaml.safe_dump(summary))
+
+
 def test_the_gate_still_refuses_by_default(tmp_path: Path) -> None:
     run, digest = _functional_run(tmp_path)
     _break_convergence(run)
@@ -86,6 +97,41 @@ def test_a_clean_run_reports_gate_clean(tmp_path: Path) -> None:
     run, digest = _functional_run(tmp_path)
     record = PC.inspect_functional_run(tmp_path, run.name, digest)
     assert record.gate_clean is True and record.deviations == ()
+
+
+def test_an_operator_seal_is_a_named_recorded_completeness_deviation(tmp_path: Path) -> None:
+    run, digest = _functional_run(tmp_path)
+    _operator_seal(run)
+    with pytest.raises(PC.CampaignGateError, match="operator_sealed_before_convergence"):
+        PC.inspect_functional_run(tmp_path, run.name, digest)
+
+    record = PC.inspect_functional_run(
+        tmp_path, run.name, digest, waive={"operator_sealed_before_convergence"})
+    assert record.gate_clean is False
+    assert [deviation.predicate for deviation in record.deviations] == [
+        "operator_sealed_before_convergence"]
+    assert "completed round 3" in record.deviations[0].detail
+
+
+def test_manifest_gradeability_is_waivable_but_manifest_integrity_is_not(tmp_path: Path) -> None:
+    run, digest = _functional_run(tmp_path)
+    path = run / "run_manifest.yaml"
+    manifest = yaml.safe_load(path.read_text())
+    manifest["gradeable"] = False
+    path.write_text(yaml.safe_dump(manifest))
+
+    with pytest.raises(PC.CampaignGateError, match="manifest_not_gradeable"):
+        PC.inspect_functional_run(tmp_path, run.name, digest)
+    record = PC.inspect_functional_run(
+        tmp_path, run.name, digest, waive={"manifest_not_gradeable"})
+    assert [deviation.predicate for deviation in record.deviations] == [
+        "manifest_not_gradeable"]
+
+    manifest["integrity_status"] = "failed"
+    path.write_text(yaml.safe_dump(manifest))
+    with pytest.raises(PC.CampaignGateError, match="manifest_integrity_gate_failed"):
+        PC.inspect_functional_run(
+            tmp_path, run.name, digest, waive={"manifest_not_gradeable"})
 
 
 def test_a_partial_waiver_still_refuses_the_rest(tmp_path: Path) -> None:

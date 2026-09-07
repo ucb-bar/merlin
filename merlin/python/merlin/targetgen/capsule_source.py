@@ -559,6 +559,42 @@ class PytorchRefSource:
             raise M2MUnavailable(f"m2m capture failed for op {op!r}/{dtype}: {why} "
                                  f"(rc={proc.returncode})\n{_stderr_cause(proc.stderr)}")
         meta = json.loads(meta_p.read_text())
+        # The capture worker reports the RAW importer program.  Before enforcing zero opaque calls,
+        # pass that program through the same target-neutral semantic normalization every whole-model
+        # backend already needs.  This is deliberately here, at the shared capture boundary: putting
+        # it in one backend makes corpus validity target-dependent, while teaching the torch-only
+        # worker about Merlin's compiler silently forks the canonical lowering.
+        #
+        # The normalizer cross-checks the worker's census against a structural parse, records both
+        # program digests and the raw census, and leaves any unknown call in the remaining census.
+        # Therefore this cannot turn an unrecognized opaque op into a clean capsule.
+        if meta.get("opaque"):
+            from merlin.frontends.capture_normalization import (
+                CaptureNormalizationError,
+                normalize_capture_mlir,
+            )
+
+            linalg_p = workdir / "linalg.mlir"
+            if linalg_p.is_file():
+                try:
+                    normalized, normalization = normalize_capture_mlir(
+                        linalg_p.read_text(encoding="utf-8"),
+                        reported_opaque=meta.get("opaque_detail") or {},
+                    )
+                except CaptureNormalizationError as exc:
+                    raise M2MUnavailable(
+                        f"m2m capture normalization failed for op {op!r}/{dtype}: {exc}"
+                    ) from exc
+                linalg_p.write_text(normalized, encoding="utf-8")
+                meta["capture_normalization"] = normalization
+                meta["raw_linalg_ops"] = meta.get("linalg_ops")
+                meta["linalg_ops"] = normalized.count("linalg.")
+                remaining = normalization["remaining_opaque_detail"]
+                meta["opaque_detail"] = remaining
+                meta["opaque"] = sum(remaining.values())
+                # Meta is written last.  An interruption before this point leaves the slot marked
+                # non-clean and forces a fresh capture rather than serving half-normalized bytes.
+                meta_p.write_text(json.dumps(meta), encoding="utf-8")
         if not meta.get("ok") or meta.get("opaque", -1) != 0:
             # Name WHICH ops are opaque: "opaque=44" says a capsule cannot use this program, and the
             # detail says what to go and inline. The scheme is included because the same model is

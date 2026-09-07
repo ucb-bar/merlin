@@ -71,10 +71,15 @@ def _sign_extend(value: int, length: int):
 
 
 def _int_to_le_bytes(data: int, length: int) -> torch.Tensor:
-    type_map = {1: torch.uint8, 2: torch.int16, 4: torch.int32}
-    if length not in type_map:
+    if length not in (1, 2, 4):
         raise ValueError("Length must be 1, 2, or 4 bytes.")
-    return torch.tensor([data], dtype=type_map[length]).view(torch.uint8).clone()
+    # Store instructions preserve the low N bits.  Constructing an int16/int32 tensor first rejects
+    # perfectly valid unsigned bit patterns with the high bit set, before the view can reinterpret
+    # them.  Materialize the little-endian bytes directly so all architectural bit patterns work.
+    return torch.tensor(
+        [(data >> (8 * index)) & 0xFF for index in range(length)],
+        dtype=torch.uint8,
+    )
 
 
 def _le_bytes_to_int(tensor: torch.Tensor) -> int:

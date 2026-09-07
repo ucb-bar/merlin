@@ -354,7 +354,10 @@ def main(argv=None):
                  "--timeout", str(to),
                  # The real self-check writes --out directly.  Point it at a private name and publish
                  # by rename only after it exits, so the shim can never read a half-written verdict.
-                 "--out", str(ch / f".resp_{rid}.{os.getpid()}.tmp")]
+                 "--out", str(ch / f".resp_{rid}.{os.getpid()}.tmp"),
+                 # Progress is explicitly NOT a verdict. It is safe to publish while the final response
+                 # stays hidden because it contains only public capsule names and completed statuses.
+                 "--progress-out", str(ch / f"progress_{rid}.json")]
         # forward the shape-coverage request through the sandbox shim (the agent cannot reach the
         # oracle itself, so a flag it sets here is the only way the check runs at all)
         if r.get("shape_coverage"):
@@ -431,6 +434,11 @@ def main(argv=None):
         health["processed"] = int(health.get("processed", 0)) + 1
         health["last_completed_at_unix_ns"] = time.time_ns()
         _atomic_write(health_path, json.dumps(health, sort_keys=True))
+
+        # The caller may stop the run immediately after observing ``done``. Re-check before starting
+        # optional promotion: promotion is not part of the request and must not delay broker shutdown.
+        if _should_stop(ch, orig_ppid):
+            continue
 
         # PROMOTE off the SYNCHRONOUS path too. Promotion was first hooked into the async oracle alone,
         # and a live run then showed the agent using THIS path seven times to the async path's two -- so

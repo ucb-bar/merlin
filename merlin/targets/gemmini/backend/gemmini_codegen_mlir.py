@@ -484,15 +484,24 @@ def _parse_groups(cb: dict):
             output_rows = pool.out_rows * pool.out_cols
         jobs_by_res[res].append(Job(lhs, commit["operands"]["dst"], tuple(epi), m,
                                      output_rows, out_dtype, scale, pool, bias))
+    bias_sources = {job.bias for jobs in jobs_by_res.values() for job in jobs
+                    if job.bias is not None}
     groups = []
     for res in order:
         weight = res_to_weight[res]
+        if not jobs_by_res[res]:
+            # An OOT compiler may explicitly pack a COMMIT bias. It remains in the trailing
+            # bias ABI block, never the matrix-weight block (even when its shape is [1, N]).
+            if weight in bias_sources:
+                continue
+            raise CodegenError(f"resident pack {res!r} has no matrix or bias consumer")
         k, n = tensors[weight]["shape"]
         groups.append((weight, k, n, jobs_by_res[res]))
     return groups
 
 
-def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
+def emit_kernel_mlir(cb: dict, *, native_conv_contract=None,
+                     native_conv_selection_receipt: dict | None = None) -> tuple[str, list[str]]:
     """Return (mlir_text, arg_order) for the command buffer.
 
     arg_order is the func's pointer-arg order: [weights] + [matmul activations] + [outputs].
@@ -500,6 +509,20 @@ def emit_kernel_mlir(cb: dict) -> tuple[str, list[str]]:
     resident weights — each weight group is mvin'd, matmul'd, and mvout in turn, reusing the scratchpad,
     so a whole multi-layer model lowers to ONE co-scheduled kernel.
     """
+    if native_conv_contract is not None:
+        from .gemmini_loop_conv import UnsupportedNativeConv
+        from .gemmini_native_conv_codegen import emit_selected_native_conv
+        try:
+            text, arguments, selection = emit_selected_native_conv(cb, contract=native_conv_contract)
+        except UnsupportedNativeConv as exc:
+            if native_conv_selection_receipt is not None:
+                native_conv_selection_receipt.update({"selection": "refused_native_fallback_unchanged",
+                    "reason": str(exc), "default_enabled": False,
+                    "numerical_runtime_qualification": "UNPROVEN"})
+        else:
+            if native_conv_selection_receipt is not None:
+                native_conv_selection_receipt.update(selection)
+            return text, arguments
     cb = _normalize_command_buffer(cb)
     if _structurally_empty(cb):
         # This is still compiled and called by the production harness.  It executes no accelerator
@@ -813,15 +836,10 @@ def _measurement_c_fragments(warmup_work: str) -> dict[str, str]:
             include = '#include "include/gemmini_counter.h"\n'
         except Exception as exc:                    # noqa: BLE001 — normalize requested-instrumentation failure
             raise CodegenError(f"requested counter instrumentation unavailable: {exc}") from exc
-    warmup = ""
-    if _cache_state_requested() == "warm":
-        warmup = warmup_work.rstrip() + "\n  // merlin: warmup completed outside the measured/counter window.\n"
-    requested = _cache_state_requested()
-    return {"include": include, "prologue": cpro, "epilogue": cepi, "warmup": warmup,
-            "cache_state": "unknown", "cache_state_observed": False,
-            "cache_protocol": ("one_unmeasured_predecessor" if requested == "warm"
-                               else "fresh_elf_process"),
-            "requested_cache_condition": requested}
+    from .gemmini_codegen import _build_support
+    return _build_support.assemble_measurement_fragments(
+        warmup_work, requested=_cache_state_requested(), include=include,
+        prologue=cpro, epilogue=cepi)
 
 
 #: Element count at or above which a CONSTANT operand is linked in as a binary blob instead of being
@@ -840,74 +858,11 @@ _BLOB_MIN_ELEMS = 1024
 #: The element type of this accelerator's operand storage, and the header typedef that names it. An
 #: i8 buffer IS an operand-typed buffer here, and the header's ``row_align`` macro derives its
 #: alignment from ``sizeof(elem_t)``, so the two travel together.
-OPERAND_DTYPE, OPERAND_CTYPE = "i8", "elem_t"
-
-
-@dataclass(frozen=True)
-class Container:
-    """How one harness buffer of a declared dtype is spelled in C: storage type, row-alignment macro,
-    and how one element is printed onto the ``OUT`` line."""
-    ctype: str
-    align: str
-    cast: str
-    conv: str
-
-    def decl(self, symbol: str, elems: int, *, const: bool = False,
-             initializer: str | None = None) -> str:
-        body = f" = {{{initializer}}}" if initializer is not None else ""
-        return (f"static {'const ' if const else ''}{self.ctype} {symbol}[{elems}] "
-                f"{self.align}(1){body};")
-
-    def printf_element(self, expr: str) -> str:
-        return f'printf(" {self.conv}", ({self.cast}){expr});'
-
-
-def container_for(dtype: str) -> Container:
-    """The C container a harness buffer of ``dtype`` is allocated and printed in — DERIVED from that
-    dtype's own storage width, never tabulated per spelling.
-
-    What a buffer must get right is how many bytes one element occupies (the kernel's stores and the
-    harness's reads have to agree on the stride) and how its rows are aligned. Both follow from the
-    width, so a dtype nobody has thought about is sized correctly or REFUSED, not quietly given four
-    bytes. Sizing every non-i8 destination as ``int32_t`` was the actual defect a bf16 result hit: the
-    kernel stores 2 bytes per element and the readback walked it at 4.
-
-    A FLOAT dtype lands in the UNSIGNED integer container of its own width and is printed as its
-    stored bit PATTERN. That is what makes a float result deliverable over a console whose ``printf``
-    has no float formatting: the pattern is lossless, and the value is recovered at the readback from
-    the same declared dtype (:func:`merlin.runtime.backends.base.decode_float_readback`). Unsigned so
-    a top-bit-set pattern is printed as the pattern rather than through an implementation-defined
-    conversion.
-    """
-    from merlin.targetgen.capsule_dram import dtype_bits
-    from merlin.runtime.backends.base import float_format_of
-    if dtype == OPERAND_DTYPE:
-        return Container(OPERAND_CTYPE, "row_align", "int", "%d")
-    bits = dtype_bits(dtype)                       # fails closed on an unregistered spelling
-    if bits % 8 or bits not in (8, 16, 32, 64):
-        raise CodegenError(
-            f"a harness buffer of dtype {dtype!r} stores {bits} bits per element; this harness lays "
-            f"out whole 8/16/32/64-bit containers only, and guessing a width mis-strides the buffer")
-    if float_format_of(dtype) is not None:
-        return Container(f"uint{bits}_t", "row_align_acc",
-                         "unsigned long long" if bits > 32 else "unsigned", "%llu" if bits > 32 else "%u")
-    return Container(f"int{bits}_t", "row_align_acc",
-                     "long long" if bits > 32 else "int", "%lld" if bits > 32 else "%d")
-
-
-def container_words(values, dtype: str) -> list[int]:
-    """``values`` as the integer words a ``container_for(dtype)`` buffer holds.
-
-    An integer dtype contributes its values; a float dtype contributes its stored CODE PATTERNS, via
-    the one registry that defines the code<->value mapping — so what the harness embeds and what a
-    readback decodes are inverse by construction rather than by two hand-written conversions.
-    """
-    from merlin.runtime.backends.base import float_format_of
-    fmt = float_format_of(dtype)
-    if fmt is None:
-        return [int(v) for v in values]
-    from merlin.runtime import fp8_formats as _ff
-    return [int(c) for c in _ff.float_to_codes(list(values), fmt)]
+from .gemmini_codegen import _build_support
+OPERAND_DTYPE, OPERAND_CTYPE = _build_support.format.OPERAND_DTYPE, _build_support.format.OPERAND_CTYPE
+Container = _build_support.Container
+container_for = _build_support.container_for
+container_words = _build_support.container_words
 
 
 def _blob_asm(symbol: str, payload: Path, *, align: int, elems: int) -> str:

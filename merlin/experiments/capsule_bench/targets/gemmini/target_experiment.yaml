@@ -123,7 +123,12 @@ grading:
   # than merely tolerated. The formal model cohort is therefore three (full-model representative,
   # host/accelerator seam, composition), which is MORE model coverage than the policy declared before,
   # for +361 s.
-  # The arithmetic the descriptor parser enforces holds: 111 == 96 + 15.
+  # RE-SEALED 2026-09-06 from 111/96 to 113/97. Two generated public sources entered the pool:
+  # SY_epilogue_requant is a reduced, bounded L3 epilogue witness and is admitted; the full-size
+  # SY_model_resnet50 is retained as Phase 2's static/analytical global objective but explicitly
+  # resource-excluded from mandatory L3. This keeps the iteration loop representative without
+  # turning a multi-hour model simulation into a prerequisite. The arithmetic enforced below is
+  # 113 == 97 + 16.
   #
   # RE-SEALED 2026-09-03 from 75/61 to 87/73. The exclusion list is UNCHANGED at 14 rows -- every added
   # capsule is eligible on the frozen contract -- so the whole delta is +12 on both sides, and it is
@@ -193,8 +198,8 @@ grading:
   # `.cohort_admission.json`'s `admitted_name_set_sha256`, recomputed at materialization; read that, not
   # these integers, when the question is whether the cohort is the SAME cohort.
   expected_cohort:
-    source_capsules: 111
-    admitted_capsules: 96
+    source_capsules: 113
+    admitted_capsules: 97
   hidden_capability_admission:
     source_capsules: 15
     admitted_capsules: 14
@@ -225,6 +230,7 @@ grading:
       - GX0_interop_rvv_lane
       - M0_small_llama_gemmini
       - M1_lstmnetvit_gemmini
+      - SY_model_resnet50
       - SY_model_tiny_llama
     required_admitted_models:
       - M2_microvit_gemmini
@@ -236,6 +242,13 @@ grading:
 # Names resolve under artifacts/targets/<target>/.
 answer_surfaces:
   prior_backends: [merlin_native_v0, hand_smoke_oot, agent_spec_v0_mlir_oot, agent_spec_v1_mlir_oot]
+
+# Phase 2 must optimize an honest complete model already certified by the immutable 92/96 Phase 1
+# snapshot. M2 is that run's deliberately reduced (~4 s L3) full-model representative. This explicit
+# declaration prevents a size-based selector from substituting the smaller M3 host-island seam. A future
+# Phase 1 snapshot containing a capsule-level global objective must agree with this declaration.
+performance:
+  global_objective_capsule: M2_microvit_gemmini
 
 # How the simulator runs (correctness L2 / RTL L3). spike + verilator come from the chipyard conda env.
 toolchain:

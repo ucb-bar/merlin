@@ -34,9 +34,12 @@ def _mod(name: str):
     return mod
 
 
-def test_the_flag_exists_and_defaults_to_rounds():
-    """Default MUST stay `rounds`: every stored result was measured under it, and silently switching
-    would make new numbers incomparable with v11/v12 without anyone choosing that."""
+def test_the_flag_exists_and_defaults_to_continuous():
+    """A bare launch must select the certified, feedback-under-the-agent schedule.
+
+    Historical round-relaunch experiments remain reproducible with an explicit ``--schedule rounds``;
+    preserving an unsafe default is not a compatibility guarantee.
+    """
     loop = _mod("run_baseline_qa_loop")
     import argparse
 
@@ -52,8 +55,32 @@ def test_the_flag_exists_and_defaults_to_rounds():
     import inspect
     src = inspect.getsource(loop.main)
     assert '"--schedule"' in src
-    assert 'default="rounds"' in src, "continuous must be opt-in"
+    assert 'default="continuous"' in src, "the certified continuous schedule must be the default"
     assert '"--max-wall-s"' in src
+
+
+def test_the_batch_launcher_defaults_to_and_forwards_continuous():
+    launcher = _mod("launch_ab_batch")
+    import inspect
+
+    main_src = inspect.getsource(launcher.main)
+    arm_src = inspect.getsource(launcher._arm_cmd)
+    assert 'default="continuous"' in main_src
+    assert 'cmd += ["--schedule", getattr(a, "schedule", "continuous")]' in arm_src
+
+
+def test_effective_run_shape_and_feedback_health_are_claim_bearing():
+    loop = _mod("run_baseline_qa_loop")
+    import inspect
+
+    src = inspect.getsource(loop.main)
+    for field in ("schedule", "session_mode", "max_wall_s", "round_timeout_s",
+                  "grade_interval_s", "selfcheck_protocol", "launcher_argv"):
+        assert f'"{field}"' in src
+    assert '"run_config": _run_config' in src
+    assert 'qa_summary["feedback_health"] = feedback_health' in src
+    assert '"feedback_channel_unhealthy"' in src
+    assert 'official_grade["complete"] and feedback_health["healthy"]' in src
 
 
 def test_the_l3_barrier_still_stops_on_budget_in_rounds_mode():

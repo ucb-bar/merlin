@@ -9,6 +9,7 @@ sys.path.insert(0, str(merlin_dir() / "experiments" / "gemmini_perf_bench" / "sc
 
 import perf_affine_claim as AF  # noqa: E402
 import perf_claim_dispatch as D  # noqa: E402
+from merlin.perf import comparison_group_claim as CG  # noqa: E402
 
 
 def _descriptor(analyzer, family="PM"):
@@ -18,6 +19,10 @@ def _descriptor(analyzer, family="PM"):
 
 def test_the_affine_analyzer_is_registered_and_reachable():
     assert AF.ANALYZER in D._registry(), "PM/PV contracts would be inert without this"
+
+
+def test_the_target_neutral_comparison_group_analyzer_is_reachable():
+    assert CG.ANALYZER in D._registry()
 
 
 def test_an_unknown_analyzer_is_refused_by_name_not_skipped():

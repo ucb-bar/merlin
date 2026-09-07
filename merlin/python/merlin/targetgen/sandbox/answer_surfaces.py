@@ -63,7 +63,7 @@ GRADER_MODULES: tuple[str, ...] = (
 # transcript audit (they are excised from the workspace copy by the deny-wins sub-path logic, not a
 # separate filesystem mask). Declared here so there is ONE source of oracle identity.
 ORACLE_CALLABLE_SUBPATHS: tuple[str, ...] = (
-    "runtime_adapter", "xdsl_dialects/lowering", "lowering/pipeline")
+    "runtime_adapter", "xdsl_dialects/lowering/pipeline")
 
 
 @dataclass(frozen=True)
@@ -240,13 +240,14 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
 # ADVISORY -- the protection WORKED (or nothing was read at all); these are recorded for visibility:
 #   blocked_probe   the mask returned nothing / an error, so no withheld bytes reached the agent
 #   recon_probe     a path-LISTING search that surfaced no answer path (filenames, not content)
+#   owned_read      the read resolves inside this run's agent-authored submission tree
 #   granted_read    the read target is a file the arm's own bundle GRANTS
 #   pattern_mention the withheld token appeared as a search PATTERN, not as a path being read
 # VIOLATION -- withheld content reached the agent, or agent code routes to the oracle:
 #   path_read       a content read of a withheld path that returned data
 #   oracle_use      agent-authored code imports/calls a denied oracle module
 AUDIT_ADVISORY_KINDS: frozenset[str] = frozenset({
-    "blocked_probe", "recon_probe", "granted_read", "pattern_mention"})
+    "blocked_probe", "recon_probe", "owned_read", "granted_read", "pattern_mention"})
 AUDIT_VIOLATION_KINDS: frozenset[str] = frozenset({"path_read", "oracle_use"})
 
 

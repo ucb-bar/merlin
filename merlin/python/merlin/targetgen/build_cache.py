@@ -108,6 +108,7 @@ _BUILD_MODULES = (
     "merlin/python/merlin/targetgen/runtime_build.py",
     "merlin/python/merlin/targetgen/build_cache.py",
     "merlin/python/merlin/runtime/commandbuffer.py",
+    "merlin/python/merlin/runtime/fp8_formats.py",
     "merlin/python/merlin/runtime/backends/base.py",
 )
 
@@ -167,6 +168,10 @@ def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
 
     The target's backend contributes its whole package directory, DERIVED from the backend registry
     (it owns the harness renderer and the build recipe), so adding a target never means editing here.
+    An optional ``build_source_paths()`` additionally declares its complete pure build closure as
+    exact Python files inside the registered target package (including backend siblings). Invalid
+    declarations disable reuse, never silently fall back to a partial key. This grants no execution
+    or sandbox access; it only identifies code that must invalidate a cached executable.
     """
     from merlin.common.paths import repo_root
     root = Path(repo_root())
@@ -192,6 +197,34 @@ def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
         if not home.is_dir():
             return None
         files.extend(q for q in home.rglob("*.py") if "__pycache__" not in q.parts)
+        declared = getattr(mod, "build_source_paths", None)
+        if declared is not None:
+            try:
+                from merlin.targetgen import target_registry
+                info = target_registry.resolve(str(target))
+                package = Path(info.external_root or info.base).absolute()
+                module_file = Path(mod.__file__).absolute()
+                module_file.relative_to(package)
+                if not package.is_dir() or package.is_symlink():
+                    return None
+                paths = declared()
+                if not isinstance(paths, (tuple, list)) or not paths:
+                    return None
+                for raw in paths:
+                    if not isinstance(raw, (str, Path)):
+                        return None
+                    path = Path(raw)
+                    if not path.is_absolute() or ".." in path.parts or path.suffix != ".py":
+                        return None
+                    relative = path.relative_to(package)
+                    parts = [package.joinpath(*relative.parts[:end]) for end in range(len(relative.parts) + 1)]
+                    if not path.is_file() or any(part.is_symlink() for part in parts):
+                        return None
+                    files.append(path)
+            except Exception:  # noqa: BLE001 -- unestablished declared build closure disables reuse
+                # A missing/invalid declared pure build closure means no cache identity.
+                # Never silently key only the old backend subtree after a failed declaration.
+                return None
     return tuple(sorted(set(files)))
 
 

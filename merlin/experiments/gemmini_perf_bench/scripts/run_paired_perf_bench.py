@@ -321,10 +321,12 @@ def load_paired_inputs(record_path: Path, functional_run_id: str,
                        corpus_capsules_sha256: str, phase: str,
                        corpus_manifest: Path,
                        gsim_certificate: Path,
-                       gsim_certificate_sha256: str) -> PairedInputs:
+                       gsim_certificate_sha256: str,
+                       waive_functional_gate: tuple[str, ...] = ()) -> PairedInputs:
     """Load a sealed candidate plus an explicit tuning or host-only held-out corpus."""
     functional = PC.inspect_functional_run(
-        _FUNCTIONAL_RUNS, functional_run_id, functional_submission_sha256)
+        _FUNCTIONAL_RUNS, functional_run_id, functional_submission_sha256,
+        waive=frozenset(waive_functional_gate))
     try:
         handoff = PAS.verify_candidate_handoff(
             record_path, verify_authoring_tools=False, target_experiment=target_experiment)
@@ -762,12 +764,21 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
             # a lie. It is only bookkeeping for cycles -- which are concurrency-invariant -- but the
             # cheapest-first ordering prices members by WALL time, and that reader needs to know
             # which rows were measured beside others.
-            oracle_adapters=adapters, timeout=timeout, target=target, workers=int(workers or 1))
+            oracle_adapters=adapters, timeout=timeout, target=target, workers=int(workers or 1),
+            # The L3 adapter owns the certificate-bound evidence and replicate-scoped reuse.
+            # A general tier-cache hit carries a verdict but never populates that evidence.
+            adapter_managed_tiers=("L3",))
     except Exception as exc:
         result.update({"ok_build": False, "status": "error",
                        "error": f"{type(exc).__name__}: {str(exc)[:500]}",
                        "traceback": traceback.format_exc()[-1600:],
                        "gsim_execution": evidence})
+        if not evidence.get("gsim"):
+            result["execution_outcome"] = {"gsim": {
+                "status": "not_observed", "tier": "L3", "tier_outcome": None,
+                "reason": "no GSIM execution evidence was produced"}}
+            result["gsim_qualification"] = {"admitted": False, "kind": "execution_missing",
+                                             "reason": "no GSIM execution evidence was produced"}
         return result
     result["status"] = grade.get("status")
     numeric = grade.get("numeric")
@@ -785,6 +796,12 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
         expected_package_sha256=expected_package_sha256, rtl_facts_sha256=rtl_sha)
     result["measurement_identity"], result["measurement_identity_refusals"] = identity, refusals
     tiers = grade.get("tiers") or {}
+    observed = evidence.get("gsim")
+    has_execution = isinstance(observed, Mapping) and bool(observed)
+    result["execution_outcome"] = {"gsim": {
+        "status": "observed" if has_execution else "not_observed", "tier": "L3",
+        "tier_outcome": copy.deepcopy(tiers.get("L3")),
+        "reason": None if has_execution else "no GSIM execution evidence was produced"}}
     for simulator, tier in (("spike", "L2"), ("gsim", "L3")):
         tr = tiers.get(tier) or {}
         status = tr.get("status") if isinstance(tr, Mapping) else tr
@@ -819,16 +836,23 @@ def _run_arm4_engines(package: Path, kernel: dict[str, Any], kernel_dir: Path,
             "utilization": tr.get("utilization") if isinstance(tr, Mapping) else None,
         }
     qualification_error = None
-    try:
-        result["gsim_qualification"] = GATE.validate_execution(
-            certificate, decision, evidence.get("gsim", {}))
-    except Exception as exc:
-        qualification_error = f"{type(exc).__name__}: {exc}"
-        result["gsim_qualification"] = {"admitted": False, "reason": qualification_error}
+    if not has_execution:
+        qualification_error = "no GSIM execution evidence was produced"
+        result["gsim_qualification"] = {"admitted": False, "kind": "execution_missing",
+                                         "reason": qualification_error}
         result["per_sim"]["gsim"]["correct"] = False
+    else:
+        try:
+            result["gsim_qualification"] = GATE.validate_execution(certificate, decision, observed)
+        except Exception as exc:
+            qualification_error = f"{type(exc).__name__}: {exc}"
+            result["gsim_qualification"] = {"admitted": False, "kind": "certificate_rejected",
+                                             "reason": qualification_error}
+            result["per_sim"]["gsim"]["correct"] = False
     result["gsim_execution"] = evidence
     if qualification_error:
-        result["failure"] = {"plane": "gsim_qualification", "category": "infra_refusal",
+        result["failure"] = {"plane": "gsim_qualification" if has_execution else "execution",
+                             "category": "infra_refusal" if has_execution else "measurement_unavailable",
                              "detail": qualification_error}
     if grade.get("failure"):
         # `tier` and `oracle_ceiling` travel with the failure so a consumer can tell a real defect
@@ -1188,7 +1212,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--functional-run-id", required=True)
     parser.add_argument("--functional-submission-sha256", required=True)
+    parser.add_argument(
+        "--waive-functional-gate", action="append", default=[], metavar="PREDICATE",
+        help="accept an exact named functional-completeness gap (repeatable); integrity gaps "
+             "remain unwaivable")
     parser.add_argument("--candidate-record", type=Path, required=True)
+    parser.add_argument(
+        "--descriptor", type=Path, default=_DESCRIPTOR,
+        help="target descriptor to verify against the sealed candidate (defaults to this source "
+             "snapshot's descriptor)")
     parser.add_argument("--corpus-root", type=Path, required=True)
     parser.add_argument("--corpus-manifest", type=Path, required=True)
     parser.add_argument("--corpus-manifest-sha256", required=True)
@@ -1217,14 +1249,15 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = PB.RUNS / args.run_id
     if out_dir.exists() or out_dir.is_symlink():
         raise PC.CampaignGateError(f"run directory must be fresh: {out_dir}")
-    target = load_target_experiment(_DESCRIPTOR)
+    target = load_target_experiment(args.descriptor)
     inputs = load_paired_inputs(
         args.candidate_record, args.functional_run_id, args.functional_submission_sha256, target,
         corpus_root=args.corpus_root, corpus_manifest_sha256=args.corpus_manifest_sha256,
         corpus_capsules_sha256=args.corpus_capsules_sha256, phase=args.phase,
         corpus_manifest=args.corpus_manifest,
         gsim_certificate=args.gsim_certificate,
-        gsim_certificate_sha256=args.gsim_certificate_sha256)
+        gsim_certificate_sha256=args.gsim_certificate_sha256,
+        waive_functional_gate=tuple(args.waive_functional_gate or ()))
     plan = build_measurement_plan(inputs)
     fanout = schedule_fanout(args.sim_workers, plan, hardware_counters=args.hardware_counters)
     rtl = FIXED._load_rtl_identity(args.rtl_facts, PB.TARGET)

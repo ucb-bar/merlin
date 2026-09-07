@@ -7,6 +7,7 @@ Helper scripts for the generic program-oracle that run inside a TARGET MODEL's o
 ## Modules
 
 - `npu_emit.py` — ISA-side helper for the generic ``external_backend`` program-oracle — runs INSIDE the target model's
+- `program_cosim.py` — process-isolated Arc program runner; gives every self-hosted-ISA target a real wall timeout.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import copy
 import json
 import sys
 from pathlib import Path
@@ -234,6 +235,19 @@ def test_failed_attempt_is_retained_and_resume_uses_fresh_attempt(tmp_path: Path
     with pytest.raises(QUAL.FunctionalQualificationError, match="attempts were retained"):
         QUAL.produce_functional_certificate(**arguments)
 
+    declaration = json.loads(next((tmp_path / "qualification").glob(
+        "declaration.*.json")).read_text())
+    frozen_descriptor = Path(declaration["target_descriptor"]["path"])
+    frozen_manifest = Path(declaration["cases"][0]["representative_manifest"])
+    assert frozen_descriptor.is_relative_to(tmp_path / "qualification/inputs")
+    assert frozen_manifest.is_relative_to(tmp_path / "qualification/inputs/cases")
+    assert frozen_manifest.name == "capsule.yaml"
+    assert frozen_manifest.parent.name == capsule.workload_sha256
+
+    # The checkout may move between attempts.  Resume is bound to the content-addressed copies in
+    # the evidence root and must neither consult nor require the original paths.
+    descriptor.unlink()
+    member.write_text("name: mutated-after-snapshot\n", encoding="utf-8")
     certificate, digest = QUAL.produce_functional_certificate(**arguments)
 
     attempts = sorted((tmp_path / "qualification/attempts" / capsule.workload_sha256).iterdir())
@@ -241,3 +255,96 @@ def test_failed_attempt_is_retained_and_resume_uses_fresh_attempt(tmp_path: Path
     assert len(list(attempts[0].glob("failure.*.json"))) == 1
     assert QUAL.GATE.load_certificate(certificate, expected_sha256=digest).members.keys() == {
         capsule.workload_sha256}
+    assert not (tmp_path / "qualification").stat().st_mode & 0o222
+    assert not frozen_descriptor.stat().st_mode & 0o222
+    assert not frozen_manifest.stat().st_mode & 0o222
+
+
+def _sample_cohort(tmp_path):
+    paths = [_capsule(tmp_path / "capsules", name, m=16, n=16, k=k)
+             for name, k in (("small", 16), ("large", 256), ("relu", 32))]
+    relu = yaml.safe_load(paths[2].read_text())
+    relu["operation"]["attributes"]["epilogue"] = ["relu"]
+    paths[2].write_text(yaml.safe_dump(relu))
+    caps = tuple(_functional_capsule(path) for path in paths)
+    return paths, QUAL.ORCH.FunctionalGradeCohort(caps[:2], caps[2:], 2, 1)
+
+
+def test_stratified_certificate_seals_selection_before_captures_and_resumes(tmp_path):
+    paths, cohort = _sample_cohort(tmp_path)
+    foreign = _capsule(tmp_path / "capsules", "source", m=1, n=1, k=1)
+    source, source_sha = _source_certificate(tmp_path, [foreign])
+    baseline, baseline_sha = _baseline(tmp_path)
+    descriptor = _descriptor(tmp_path)
+    root = tmp_path / "sample"
+    source_record = QUAL.GATE.load_certificate(source, expected_sha256=source_sha)
+    captured = []
+
+    def lowerer(base, case, output, timeout):
+        output.mkdir()
+        return output
+
+    def capturer(**kwargs):
+        declaration = json.loads(next(root.glob("declaration.*.json")).read_text())
+        manifest = Path(kwargs["capsule_manifest"])
+        identity = _functional_capsule(manifest).workload_sha256
+        assert identity in declaration["functional_coverage"]["selected"]
+        captured.append(identity)
+        return _capture(manifest, source_record.pins)
+
+    arguments = dict(
+        descriptor=descriptor, functional_base=baseline, functional_base_sha256=baseline_sha,
+        source_certificate=source, source_certificate_sha256=source_sha, root=root,
+        coverage="stratified", target_experiment=SimpleNamespace(target="gemmini"),
+        cohort=cohort, lowerer=lowerer, capturer=capturer, backend=object())
+    path, digest = QUAL.produce_functional_certificate(**arguments)
+    record = QUAL.GATE.load_certificate(path, expected_sha256=digest)
+    expected = {_functional_capsule(p).workload_sha256 for p in (paths[0], paths[2])}
+    assert set(captured) == expected == set(record.members)
+    coverage = QUAL.ORCH._verify_functional_certificate(record, cohort)
+    assert coverage["coverage_mode"] == "stratified"
+    assert coverage["unsampled_workload_sha256"] == [_functional_capsule(paths[1]).workload_sha256]
+    QUAL.ORCH._verify_functional_certificate_provenance(record, source_record, baseline_sha)
+    assert QUAL.produce_functional_certificate(**arguments) == (path, digest)
+    assert len(captured) == 2
+    with pytest.raises(QUAL.FunctionalQualificationError, match="sealed declaration"):
+        QUAL.produce_functional_certificate(**{**arguments, "coverage": "exact"})
+
+
+@pytest.mark.parametrize("mutation", ["missing_stratum", "foreign", "selection", "stratum", "legacy"])
+def test_stratified_consumer_refuses_mutated_coverage(tmp_path, mutation):
+    paths, cohort = _sample_cohort(tmp_path)
+    cases = QUAL.derive_cases(cohort)
+    coverage = QUAL.COVERAGE.derive([(case.identity, case.manifest) for case in cases])
+    members = dict.fromkeys(coverage["selected"], {})
+    document = {"functional_coverage": copy.deepcopy(coverage)}
+    if mutation == "missing_stratum":
+        members.pop(_functional_capsule(paths[2]).workload_sha256)
+    elif mutation == "foreign":
+        members["f" * 64] = {}
+    elif mutation == "selection":
+        document["functional_coverage"]["selected"][0] = "e" * 64
+    elif mutation == "stratum":
+        document["functional_coverage"]["strata"][0]["semantics"] = {"forged": True}
+    else:
+        document.clear()  # An old certificate cannot silently gain sampled semantics.
+    record = SimpleNamespace(members=members, document=document, pins={})
+    with pytest.raises(QUAL.ORCH.ExperimentError):
+        QUAL.ORCH._verify_functional_certificate(record, cohort)
+
+
+def test_sample_cost_ranking_is_pinned_and_partial_strata_use_size(tmp_path):
+    paths, cohort = _sample_cohort(tmp_path)
+    cases = [(case.identity, case.manifest) for case in QUAL.derive_cases(cohort)]
+    small, large, relu = [_functional_capsule(p).workload_sha256 for p in paths]
+    pins = {name: {"sha256": "a" * 64} for name in QUAL.GATE.REQUIRED_PINS}
+    model = {"engine": "verilator", "pins": {k: v["sha256"] for k, v in pins.items()},
+             "seconds": {small: 20, large: 10}}
+    sample = QUAL.COVERAGE.derive(cases, reference_cost_model=model, pins=pins)
+    assert set(sample["selected"]) == {large, relu}
+    assert QUAL.COVERAGE.derive(list(reversed(cases)), reference_cost_model=model, pins=pins) == sample
+    del model["seconds"][small]
+    assert set(QUAL.COVERAGE.derive(cases, reference_cost_model=model, pins=pins)["selected"]) == {small, relu}
+    model["pins"]["gsim_binary"] = "b" * 64
+    with pytest.raises(QUAL.COVERAGE.CoverageError, match="pins differ"):
+        QUAL.COVERAGE.derive(cases, reference_cost_model=model, pins=pins)

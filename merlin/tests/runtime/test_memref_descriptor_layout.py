@@ -50,6 +50,50 @@ int main(void) {
 """
 
 
+_LARGE_SESSION_FIXTURE = r"""
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include "merlin_model.h"
+
+enum { N_ARGS = 816 };
+static merlin_arg_t ARGS[N_ARGS];
+static merlin_descriptor_t DESCS[N_ARGS];
+static int INVOKED;
+static int MALLOCS;
+static int FREES;
+static union { max_align_t align; unsigned char bytes[32768]; } HEAP_STUB;
+
+void *__wrap_malloc(size_t bytes) {
+  MALLOCS++;
+  return bytes <= sizeof(HEAP_STUB.bytes) ? HEAP_STUB.bytes : 0;
+}
+void __wrap_free(void *ptr) { (void)ptr; FREES++; }
+
+void merlin_invoke(void **descriptor_ptrs) {
+  for (int i = 0; i < N_ARGS; i++) {
+    if (descriptor_ptrs[i] != &DESCS[i]) return;
+  }
+  INVOKED++;
+}
+
+int main(void) {
+  char weights = 0;
+  merlin_run_multi(ARGS, N_ARGS, &weights, 0, 0, DESCS);
+  if (INVOKED != 1) return 1;
+  if (MALLOCS != 0 || FREES != 0) {
+    printf("allocator calls: malloc=%d free=%d\n", MALLOCS, FREES);
+    return 2;
+  }
+  /* The runtime must reject an impossible generated signature before indexing any table. */
+  merlin_run_multi(ARGS, 4097, &weights, 0, 0, DESCS);
+  if (INVOKED != 1) return 3;
+  printf("ok\n");
+  return 0;
+}
+"""
+
+
 @pytest.mark.timeout(120)
 def test_descriptors_are_packed_to_each_argument_rank(tmp_path):
     rt = repo_root() / "merlin" / "runtime" / "c"
@@ -59,6 +103,30 @@ def test_descriptors_are_packed_to_each_argument_rank(tmp_path):
     build = subprocess.run(
         ["cc", "-std=c11", "-O1", f"-I{rt}", str(src), str(rt / "merlin_model.c"), "-o", str(exe)],
         capture_output=True, text=True)
+    if build.returncode != 0 and "cc: not found" in (build.stderr or ""):
+        pytest.skip("no host C compiler")
+    assert build.returncode == 0, build.stderr
+    run = subprocess.run([str(exe)], capture_output=True, text=True)
+    assert run.returncode == 0, f"rc={run.returncode} {run.stdout}{run.stderr}"
+    assert run.stdout.strip() == "ok"
+
+
+@pytest.mark.timeout(120)
+def test_large_session_descriptor_pointer_table_does_not_use_heap(tmp_path):
+    """SmolVLA's 816 descriptors need only 6.5 KiB and must not enter malloc."""
+    rt = repo_root() / "merlin" / "runtime" / "c"
+    src = tmp_path / "large_session_fixture.c"
+    src.write_text(_LARGE_SESSION_FIXTURE, encoding="utf-8")
+    exe = tmp_path / "large_session_fixture"
+    build = subprocess.run(
+        [
+            "cc", "-std=c11", "-O1", f"-I{rt}", str(src),
+            str(rt / "merlin_model.c"), "-Wl,--wrap=malloc", "-Wl,--wrap=free",
+            "-o", str(exe),
+        ],
+        capture_output=True,
+        text=True,
+    )
     if build.returncode != 0 and "cc: not found" in (build.stderr or ""):
         pytest.skip("no host C compiler")
     assert build.returncode == 0, build.stderr

@@ -49,6 +49,10 @@ class MeasuredPoint:
     macs: int
     cycles: int
     source: str
+    # Reduction depths of the exact compute commands whose MACs were counted.  This is deliberately
+    # target-independent: it comes from operand shapes in the command-buffer ABI.  An empty tuple
+    # means the command buffer was measured before this evidence was recorded, not a depth of zero.
+    reduction_depths: tuple[int, ...] = ()
 
     @property
     def achieved_rate(self) -> float:
@@ -135,7 +139,8 @@ def harvest_measured_points(run_root: Path) -> tuple[list[MeasuredPoint], list[s
                            "command buffer, so its work cannot be priced")
             continue
         try:
-            work = work_from_command_buffer(json.loads(buffer_path.read_text(encoding="utf-8")))
+            command_buffer = json.loads(buffer_path.read_text(encoding="utf-8"))
+            work = work_from_command_buffer(command_buffer)
         except Exception as exc:  # noqa: BLE001
             skipped.append(f"{result.parent.name}: command buffer did not price ({type(exc).__name__})")
             continue
@@ -145,8 +150,76 @@ def harvest_measured_points(run_root: Path) -> tuple[list[MeasuredPoint], list[s
             continue
         points.setdefault(result.parent.name,
                           MeasuredPoint(result.parent.name, int(work.exact_macs), cycles,
-                                        str(result.parent)))
+                                        str(result.parent),
+                                        _command_reduction_depths(command_buffer)))
     return sorted(points.values(), key=lambda p: p.capsule), skipped
+
+
+def _command_reduction_depths(command_buffer: Mapping[str, Any]) -> tuple[int, ...]:
+    """Exact contraction depths from the same command buffer whose work was priced.
+
+    A rate reached at deep K is not an attainable rate for a shallow-K member on a machine whose
+    fixed issue/fill cost is amortised along K.  Keep this small piece of geometry with every point
+    so consumers can compare like with like.  Unsupported geometry returns no signature and must
+    not be guessed into a cohort.
+    """
+    tensors = command_buffer.get("tensors")
+    commands = command_buffer.get("commands")
+    if not isinstance(tensors, Mapping) or not isinstance(commands, Sequence):
+        return ()
+
+    def shape(name: Any) -> tuple[int, ...] | None:
+        spec = tensors.get(name) if isinstance(name, str) else None
+        raw = spec.get("shape") if isinstance(spec, Mapping) else None
+        if (not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or not raw
+                or any(not isinstance(v, int) or isinstance(v, bool) or v <= 0 for v in raw)):
+            return None
+        return tuple(int(v) for v in raw)
+
+    handles: dict[str, str] = {}
+    depths: list[int] = []
+    for raw in commands:
+        if not isinstance(raw, Mapping):
+            return ()
+        opcode = str(raw.get("opcode") or "")
+        operands = raw.get("operands") if isinstance(raw.get("operands"), Mapping) else {}
+        if opcode == "RES_PACK":
+            src, dst = operands.get("src"), operands.get("dst")
+            if isinstance(src, str) and isinstance(dst, str) and shape(src):
+                handles[dst] = src
+            continue
+        if opcode in ("MATMUL", "MATMUL_RESIDENT"):
+            rhs = operands.get("rhs")
+            if opcode == "MATMUL_RESIDENT":
+                rhs = handles.get(rhs) if isinstance(rhs, str) else None
+            lhs_shape, rhs_shape = shape(operands.get("lhs")), shape(rhs)
+            if not lhs_shape or not rhs_shape or len(lhs_shape) != 2 or len(rhs_shape) != 2:
+                return ()
+            depths.append(lhs_shape[1])
+        elif opcode == "BATCHED_MATMUL":
+            lhs_shape = shape(operands.get("a"))
+            if not lhs_shape or len(lhs_shape) != 3:
+                return ()
+            depths.append(lhs_shape[2])
+        elif opcode == "ATTENTION_QK":
+            lhs_shape = shape(operands.get("q"))
+            if not lhs_shape or len(lhs_shape) != 2:
+                return ()
+            depths.append(lhs_shape[1])
+        elif opcode == "ATTENTION_PV":
+            lhs_shape = shape(operands.get("p"))
+            if not lhs_shape or len(lhs_shape) != 2:
+                return ()
+            depths.append(lhs_shape[1])
+        elif opcode == "CONV2D":
+            weight = operands.get("weight")
+            if isinstance(weight, str) and weight in handles:
+                weight = handles[weight]
+            weight_shape = shape(weight)
+            if not weight_shape or len(weight_shape) != 2:
+                return ()
+            depths.append(weight_shape[0])
+    return tuple(sorted(depths))
 
 
 def achievable_ceiling(points: Sequence[MeasuredPoint], *, provenance: str) -> Peak:

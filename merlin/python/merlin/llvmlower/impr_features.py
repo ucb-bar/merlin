@@ -83,7 +83,7 @@ _LEVER_MODULES: "dict[str, str] | None" = None
 
 
 def _single_name_lever_modules() -> "dict[str, str]":
-    """``FEATURE`` name -> module basename, for every sibling module declaring ONE lever name.
+    """Lever name -> module basename, for every sibling module declaring lever names as constants.
 
     Discovered by PARSING the sibling sources rather than importing them: at this point in the
     package every lever module imports THIS one to call :func:`register`, so importing them all
@@ -93,6 +93,14 @@ def _single_name_lever_modules() -> "dict[str, str]":
 
     A module that declares no ``FEATURE`` (a family module carrying a ``FEATURE_PREFIX``, or a plain
     helper) simply does not appear, so families keep resolving through their own prefix/arity rules.
+
+    ``<X>_FEATURE`` counts too, not only the bare ``FEATURE``. A module may own more than one point --
+    ``requant_fuse`` registers the traversal removal and the variant that also reshapes the epilogue
+    loop, so the board can price the reshape separately -- and ``perop_blocks`` has always owned
+    ``CONV_ARM_FEATURE`` with no way to resolve it here. Reading every module-level string constant
+    whose name ends in ``FEATURE`` keeps the mapping DERIVED, which is the property this function
+    exists for; a name whose ``ensure_registered`` does not actually register it still falls through
+    to the family rules below, because the caller re-checks the registry.
     """
     global _LEVER_MODULES
     if _LEVER_MODULES is None:
@@ -105,17 +113,20 @@ def _single_name_lever_modules() -> "dict[str, str]":
                 tree = _ast.parse(src.read_text(encoding="utf-8"))
             except (OSError, SyntaxError):
                 continue  # unreadable/unparseable sibling is not a lever; never guess one
-            feature = None
+            features: list[str] = []
             has_ensure = False
             for node in tree.body:  # MODULE level only -- a nested FEATURE is not the lever's name
                 if isinstance(node, _ast.Assign) and isinstance(node.value, _ast.Constant) \
                         and isinstance(node.value.value, str) \
-                        and any(isinstance(t, _ast.Name) and t.id == "FEATURE" for t in node.targets):
-                    feature = node.value.value
+                        and any(isinstance(t, _ast.Name)
+                                and (t.id == "FEATURE" or t.id.endswith("_FEATURE"))
+                                for t in node.targets):
+                    features.append(node.value.value)
                 elif isinstance(node, _ast.FunctionDef) and node.name == "ensure_registered":
                     has_ensure = True
-            if feature and has_ensure:
-                found[feature] = src.stem
+            if has_ensure:
+                for feature in features:
+                    found.setdefault(feature, src.stem)
         _LEVER_MODULES = found
     return _LEVER_MODULES
 
@@ -871,6 +882,7 @@ module attributes {{transform.with_named_sequence}} {{
 #: reading the triple as an upper BOUND. On tiny_llama that derivation returns exactly (4, 16) /
 #: (4, 8), i.e. this frozen point, so the model this block was tuned on is unaffected.
 WHOLEMODEL_VF_NAME = "accumulator_resident_wholemodel_vf"
+WHOLEMODEL_VF_BMMPAD_NAME = "accumulator_resident_wholemodel_vf_bmmpad"
 WHOLEMODEL_VF_CAPS: tuple[int, int, int] = (4, 16, 16)
 WHOLEMODEL_VF_MR_MM = 1
 WHOLEMODEL_VF_NR_BMM = 8
@@ -914,7 +926,8 @@ def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
                                           NR_bmm: int | None = None,
                                           MR_mm: int | None = None,
                                           skip_mm: bool = False,
-                                          skip_bmm: bool = False) -> str:
+                                          skip_bmm: bool = False,
+                                          pad_bmm: bool = False) -> str:
     """PRE-bufferize schedule for the v3 (vfmacc.vf) micro-kernel — SAME as the v1/v2 pre-schedule
     but WITHOUT ``bufferize_to_allocation``.
 
@@ -987,20 +1000,32 @@ module attributes {{transform.with_named_sequence}} {{
     %g = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.structured.vectorize %g : !transform.any_op"""
            if __import__("os").environ.get("MERLIN_VEC_EW") else ""))
-    _mm_arm = "" if skip_mm else f"""
+    _mm_arm = f"""
     %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MM}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
     transform.structured.vectorize %t2 vector_sizes [{MM}, {NR}, 1] : !transform.any_op"""
-    _bmm_arm = "" if skip_bmm else f"""
+    if skip_mm:
+        _mm_arm = ""
+    _bmm_arm = f"""
     %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     %bm2 = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt2, %blk = transform.structured.tile_using_for %bm2 tile_sizes [0, 0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
     transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op"""
+    if skip_bmm:
+        _bmm_arm = ""
+    _pad_sequence = "" if not pad_bmm else f"""
+  transform.named_sequence @__transform_bmm_pad(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %btail = transform.structured.match attributes{{merlin.bmm_pad_tail}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bpadded, %bpad, %bcp = transform.structured.pad %btail pad_to_multiple_of [{MR}, {NB}] {{padding_dimensions = [1, 2], copy_back_op = "linalg.copy"}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    transform.yield
+  }}
+"""
     return f"""\
 module attributes {{transform.with_named_sequence}} {{
+{_pad_sequence}
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{{_mm_arm}{_bmm_arm}{_ew}
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
@@ -1114,6 +1139,23 @@ def _accumulator_resident_v3_mrpad_pipeline(passes: list[str]) -> list[str]:
     Reuses ``_packed_eliminate_empties`` (same insertion the packed feature uses). Only runs when this
     feature is enabled; baseline pipeline untouched."""
     return _packed_eliminate_empties(_accumulator_resident_v3_pipeline(passes))
+
+
+def _accumulator_resident_v3_bmmpad_pipeline(passes: list[str]) -> list[str]:
+    """Pad odd BMM extents before the parallel transform, then run v3 lowering.
+
+    Padding inside an ``scf.forall`` leaves its temporary allocation inside an
+    allocation scope that becomes multi-block during CFG lowering.  Running the
+    dedicated pad entry before ``__transform_parallel_main`` keeps the allocation
+    outside the worker region; the later main entry only tiles/vectorizes.
+    """
+    out = _accumulator_resident_v3_mrpad_pipeline(passes)
+    anchor = next(i for i, p in enumerate(out)
+                  if "transform-interpreter{entry-point=__transform_main}" in p)
+    parallel = next((i for i, p in enumerate(out)
+                     if "entry-point=__transform_parallel_main" in p), anchor)
+    out.insert(parallel, "transform-interpreter{entry-point=__transform_bmm_pad}")
+    return out
 
 
 # NOTE: distinct entry-point name (`@__transform_accum_post`) so that when BOTH the pre- and
@@ -2784,7 +2826,8 @@ def perop_mr_sentinel(mr_cap: int) -> str:
 PEROP_MR_LADDER: tuple[str, ...] = tuple(perop_mr_sentinel(_n) for _n in (1, 2, 8, 16))
 
 
-def ensure_perop_block(table, kc: int, pairs: "list | tuple" = ()) -> str:
+def ensure_perop_block(table, kc: int, pairs: "list | tuple" = (),
+                       vec_epilogue: bool = False) -> str:
     """Register (on demand) the per-op-blocked schedule for THIS model's block table.
 
     The schedule text is a function of the table (one tile+vectorize arm per distinct block), so the
@@ -2805,11 +2848,12 @@ def ensure_perop_block(table, kc: int, pairs: "list | tuple" = ()) -> str:
     # existing package names its concrete feature by that hash in `compiler_features`, and changing
     # the unfused spelling would make every one of them unresolvable.
     key = hashlib.sha1((repr(sorted(table.items())) if not pairs
-                        else repr((sorted(table.items()), pairs))).encode()).hexdigest()[:12]
+                        else repr((sorted(table.items()), pairs, vec_epilogue))
+                        ).encode()).hexdigest()[:12]
     name = f"{PEROP_BLOCK_NAME}_{len(blocks)}b_{kc}_{key}"
     if name in known():
         return name
-    text = _pb.schedule_text(table, kc, pairs)
+    text = _pb.schedule_text(table, kc, pairs, vec_epilogue)
     register(ImprFeature(
         name=name,
         action_class="PASS",
@@ -2823,7 +2867,12 @@ def ensure_perop_block(table, kc: int, pairs: "list | tuple" = ()) -> str:
                         f"(fuse_requant_into_contraction): the epilogue is tiled and the contraction "
                         f"and its accumulator fill are fused into that loop, so the i32 accumulator "
                         f"is converted and scaled in the tile that produced it and the model-sized "
-                        f"i32 tensor is never built." if pairs else "")),
+                        f"i32 tensor is never built."
+                        + (" The epilogue tile is additionally pre-vectorized at that block."
+                           if vec_epilogue
+                           else " The epilogue tile keeps its loop form and is left to clang, so "
+                                "the lever removes a traversal without reshaping a loop.")
+                        if pairs else "")),
         edit_pipeline=_accumulator_resident_v3_pipeline,
         edit_schedule=lambda _t, _text=text: _text,
         schedule_replace=True,
@@ -2924,6 +2973,31 @@ def _register_accumulator_resident_v3() -> list[str]:
         schedule_replace=True,
     ))
     names.append(WHOLEMODEL_VF_NAME)
+
+    # Odd attention extents need BOTH M and N tail handling.  smolVLA's language-side attention
+    # uses 113x113 score/value contractions, so the ordinary MR=4/NR=8 schedule produces a single
+    # multi-op vector.mask around each vector.contract.  LLVM 23 cannot lower that form.  Padding
+    # the two PARALLEL iteration dimensions to their tile multiples leaves the 4x8 main kernel
+    # unchanged, fills only zero rows/columns, and copies the original result slice back.  Omitting
+    # padding_values is intentional: transform.structured.pad infers the additive zero from each
+    # contraction's own element types, so one schedule safely handles i8*i8->i32 score BMMs and
+    # bf16*bf16->f32 softmax/value BMMs in the same graph.
+    register(ImprFeature(
+        name=WHOLEMODEL_VF_BMMPAD_NAME,
+        action_class="PASS",
+        description="Whole-model vfmacc/vwmacc accumulator-resident kernel with batch-matmul M/N "
+                    "padding. Pads attention's parallel M and N extents to MR=4/NR=8, preserving "
+                    "the full 4x8 vector tile while eliminating unlowerable vector.mask-wrapped "
+                    "contracts on odd extents such as smolVLA's 113x113 attention. Zero padding is "
+                    "inferred per operand dtype and the original result slice is copied back. "
+                    "Default-off; the published wholemodel_vf feature is unchanged.",
+        edit_pipeline=_accumulator_resident_v3_bmmpad_pipeline,
+        edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(
+            *WHOLEMODEL_VF_CAPS, NR_bmm=WHOLEMODEL_VF_NR_BMM,
+            MR_mm=WHOLEMODEL_VF_MR_MM, pad_bmm=True),
+        schedule_replace=True,
+    ))
+    names.append(WHOLEMODEL_VF_BMMPAD_NAME)
 
     # ITERATION-3 (packing/memory residual): MR>1 register-block variant of the vf kernel for
     # A-OPERAND REUSE — the OpenBLAS lever. The memory-traffic decode (output/kernels/ceiling/

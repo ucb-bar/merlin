@@ -358,13 +358,17 @@ compiler transformation, and must preserve the complete functional grade.
 
 ## What you are being asked to do
 
-**Make the emitted program execute in fewer cycles on the citable timing oracle, for identical work,
-without changing a single output byte and without losing a single functional capsule.**
+**Improve the frozen compiler's complete-model plan: delete avoidable work and movement, choose
+compatible encodings across producer/consumer boundaries, and keep the accelerator occupied by
+overlapping independent movement with compute—without changing a single output byte or losing a
+single functional capsule.**
 
-That is the objective. The declared family contract further down decides whether a *claim* can be
-promoted from your result; it is not itself your objective. Optimise for cycles; the family decides
-whether the number is allowed to mean anything. A candidate that satisfies its family while running
-SLOWER than the frozen baseline has not succeeded at this task, however well the fit reads.
+The fixed complete-model sentinel in the sealed stage supplement is the primary optimization unit.
+The generated families are reduced mechanism witnesses: use them to calibrate or refute a scheduling,
+movement, fusion, or representation hypothesis quickly, never as a weighted substitute for an E2E
+result. The declared family contract decides whether a local *claim* can be promoted; it is not itself
+the objective. A candidate that wins capsules while degrading or leaving the complete-model plan
+unchanged has not closed the global gap.
 
 Three outcomes are acceptable, and they are not equal:
 
@@ -481,6 +485,12 @@ and you should call it before spending a measurement. It returns, per arm:
 
 - `arms.<arm>.macs` and `.exact` -- the arithmetic each buffer's commands actually declare. `exact`
   is false when a command could not be priced, which makes the number a floor rather than a total.
+- `arms.<arm>.movement` -- exact declared input/output bytes where every opcode is priced, otherwise
+  a retained lower bound plus refusals. This is command-buffer intent: it cannot detect a lowering
+  that reloads a value promised resident, so verify residency against the emitted instruction trace.
+- `arms.<arm>.representation_activity` -- boundary dtype/physical declarations, layout/output-dtype/
+  epilogue directives, and command counts. Occupancy, latency hiding, and executed encoding
+  transitions remain explicitly UNKNOWN because command order alone has no resource timeline.
 - `barriers` -- how many completion points the candidate removed or added versus the baseline, or
   UNKNOWN when the stream carries no countable completion opcode. UNKNOWN is not zero.
 - `lower_bound.<arm>` -- cycles this arm cannot go below, from its declared demand against the
@@ -578,33 +588,41 @@ measurements support before choosing a lever.
 Optimisation on this machine has levels, and the corpus does not cover them evenly. Being explicit
 about that is the point: a level nothing asks you about is a level you will not look at.
 
-| rung | what lives there | measurable here |
+| rung | what lives there | evidence in this loop |
 |---|---|---|
-| `L1_tile` | tile shape, parallel extents, contraction depth | **yes** -- PK, PM |
-| `L1_separation_floor` | the irreducible separation between dependent commands | yes -- PS |
-| `L2_intra_layer` | staging, residency, spills, synchronization inside one layer | **yes** -- PL, PQ, PR |
-| `L3_inter_layer` | keeping a value on chip across dependent operations | **barely** -- PC, 2 members |
-| `L4_boundary` | what crosses the host/accelerator boundary, and when | **no capsules** |
-| `L5_fusion` | folding an elementwise stage into a producer's epilogue | **no capsules** |
-| `L6_global` | whole-program choices, e.g. operand encoding | **no capsules** -- this target declares one encoding, so there is nothing to choose |
+| `L1_tile` | tile shape, parallel extents, contraction depth | reduced family witnesses |
+| `L1_separation_floor` | irreducible separation between dependent commands | reduced family witnesses |
+| `L2_intra_layer` | staging, residency, spills, synchronization inside one layer | reduced family + trace/counter evidence |
+| `L3_inter_layer` | keeping values resident across dependent operations | E2E command buffer + reduced pipeline witness |
+| `L4_boundary` | what crosses the host/accelerator boundary, and when | exact E2E declared movement + emitted trace |
+| `L5_fusion` | folding stages into a producer or multi-op region | E2E region plan + fused/unfused reduced witness |
+| `L6_global` | whole-program placement, encoding, and overlap choices | complete-model analytical plan calibrated by warm reduced witnesses |
 
-**What this means for what you may claim.** A cycle number here only ever comes from a measured
-member, so a change aimed at an unmeasured rung has no cell to prove it and **must not be reported
-as a speedup**. That is a limit on the CLAIM, not permission to ignore the rung.
+**What this means for what you may claim.** A reduced measured member establishes the cost of a
+mechanism only within its declared validity domain. The full-model projection must retain exact event
+counts, representation transitions, moved bytes, fixed fill/drain terms, and an explicit target
+composition/overlap rule. It is a projection, not a measured E2E speedup. A citable full-size result is
+optional post-freeze validation and, if performed, is a queued milestone; it is not required for
+Phase 2. Never extend an inner-loop timeout to manufacture one.
 
-**What you should still do about the unmeasured rungs.** Three things, in order:
+**What you should do about every global rung.** Three things, in order:
 
 1. **Do not regress them.** A change that improves a measured tile-level number by introducing a
    memory round trip, re-staging a value, or splitting a fusable pair has bought a measured win with
    an unmeasured loss. The free screen reports these directly, per arm, under `structural_levels`,
    tagged with the rung they sit at -- check it before and after every change you make.
-2. **Report what you see.** Where the emitted code shows an inefficiency at a rung this corpus
-   cannot measure, say so in `iteration_notes.md` with the evidence you read it from, and say
-   plainly that it is unmeasured here. A named, unmeasured inefficiency is useful to the next run;
-   a silent one is lost.
-3. **Say what would measure it.** For each such observation, state the capsule that would settle it
-   -- the shapes, the two arms, and what would have to differ between them. That is the concrete
-   output of noticing something you cannot yet prove.
+2. **Price it globally.** Preserve the complete model's exact repetitions and dependencies while
+   calibrating stage costs on the smallest witness that keeps the same pressure signature.
+3. **Measure only what decides it.** One unmeasured warm run, then one measured run capturing compute
+   cycles and only the resource/movement counters needed to establish occupancy and overlap. Abandon
+   the lever when the emitted delta, legality check, or warm cycles falsifies its mechanism. When
+   occupancy or overlap is the deciding UNKNOWN, invoke `profile-reduced-global-witness`; the host
+   preselects its pressure-preserving witness before candidate measurement and exposes that choice in
+   `STAGE_CONTEXT.json`.
+4. **Keep full sizes out of the search loop.** Full-size FireSim is optional post-freeze validation,
+   not a Phase-2 prerequisite. If it is explicitly available and requested, submit it only through
+   the queue's atomic `runworkload-full` operation. The queue owns exactly `firesim kill` ->
+   `firesim infrasetup` -> `firesim runworkload` -> `firesim kill`, in that order.
 
 `structural_levels.<arm>.findings` is a list of structural observations, each with a `level`, a
 `kind` and the value it concerns. On the current corpus it is EMPTY for every member, because these
@@ -666,6 +684,14 @@ two packages through the declared model/compiler interface. Do not modify, vendo
 silently bypass the host lane. Do not move accelerator work onto the host merely to pass. Do not invent a
 hidden host lowering, ABI, RVV dialect, runtime, or boundary shim: use the granted package and manifest.
 
+For a member whose submitted target ELF contains mesh -> host -> mesh work, the frozen command-buffer
+contract provides the generic pointer boundary `kernel_abi.kind = whole_program`. Declare every buffer
+once in `kernel_abi.args`, mark only true interface results as role `output`, and mark cross-lane scratch
+as role `intermediate`. Host-only operands are never `RES_PACK`: residency commands describe accelerator
+state, not a way to smuggle an extra host pointer into an inferred matmul signature. The benchmark runner was frozen before your authoring began; it only allocates the declared buffers, performs one unmeasured
+warm call, measures one complete submitted-kernel call, and reads the declared outputs. You may emit a
+conformant kernel, but may not patch or replace that runner to accommodate your artifact.
+
 ## Enforced tooling
 
 {_tool_table(inputs.tools)}
@@ -713,6 +739,11 @@ mask enforcement, or its receipt channel is absent, stop with **NO-GO**. The com
 - Do not access credentials, hidden/withheld capsules or goldens, prior run outputs, other submissions,
   undeclared files, `/proc` escape surfaces, or host state outside the mounts. Network availability does
   not relax the answer/oracle mask, declared-tool boundary, or evidence requirements.
+- Keep every candidate source, executable, and scratch variant inside the Arm4 submission. Do not
+  `cp`, `install`, or `mv` candidate bytes to `/tmp` or any other path outside the submission, even
+  for a local comparison and even if you do not execute the copy: the transcript audit rejects the
+  copy-out itself. Put temporary variants under `submission/performance/` and remove them before the
+  final candidate digest is measured if they are not part of the candidate.
 - Do not loosen mounts/permissions, follow or create links across the boundary, launch a nested sandbox,
   or smuggle data through another process. Do not edit the runner, grader, oracle, corpus, result files,
   tool receipts, frozen compiler, host lane, or provenance records.
@@ -734,9 +765,11 @@ machine.
 
 ## Work loop
 
-1. Read this file, the frozen performance manifest, the Arm4 submission manifest/report, the host-lane
-   manifest, and all granted tool documentation. First write `submission/performance/PLAN.md`, covering
-   the whole corpus, derived performance levers, invariants, negative controls, and cheapest-to-L3
+1. Read this file, `STAGE_CONTEXT.json` (especially its initial complete-model analysis and automatic
+   source/surface inventory), the frozen performance manifest, the Arm4 submission manifest/report,
+   the host-lane manifest, and all granted tool documentation. First write
+   `submission/performance/PLAN.md`, covering the complete-model bottlenecks, derived performance
+   levers, invariants, negative controls, and cheapest-to-L3
    validation order. For each lever, PLAN.md must state: the change scope, the mechanism you expect
    to exploit, the emitted-code delta that would show it reached codegen, the measurement that would
    confirm or refute it, and **the observation that would make you abandon it.** A lever with no
@@ -747,12 +780,22 @@ machine.
    digest, mount, tool, host lane, family declaration, expected identity, or sandbox guarantee is absent
    or mismatched, stop and report **NO-GO**. Do not improvise around a failed prerequisite.
 3. Use required tools through their declared commands. For each lever in your PLAN, name its change
-   scope (Flag/Knob/Heuristic/Pass/Codegen), make the change, and **measure the emitted-code delta on
-   the smallest affected member before spending an oracle cell on it.** A lever you cannot show
+   scope (Flag/Knob/Heuristic/Pass/Codegen), make the change, and debug it first on the smallest
+   pressure-preserving witness. Once the related compiler edits are stable, run the fixed complete-model
+   structural analysis once to prove the global representation/activity graph changed. Then **measure the
+   emitted-code delta on the smallest pressure-preserving witness before spending an oracle cell.** A lever you cannot show
    changed the emitted code is INERT -- record it as such, with the diff you looked at, and move on.
    Iterate on the smallest affected generated member; preserve generality and re-run the relevant
    correctness screen after every compiler change. Keep the best measured candidate: if a later
    variant is slower, say so and go back to the faster one.
+   Report-only edits may cite that final structural result without rerunning it. Any compiler,
+   manifest, or other execution-relevant edit after the final structural analysis invalidates it and
+   requires one new complete-model analysis.
+   **L3 is a sparse promotion gate, not the iteration loop.** Iterate with emission, movement,
+   representation, dependency, and source-surface analysis. The broker allows at most one optional
+   reduced occupancy profile and two tuning GSIM calls per round: at most one exploratory promotion
+   check, then one reserved for the exact final bytes. Do not spend either to discover that an edit
+   was inert or added work; the free analysis already answers those questions.
 4. Before declaring ready, re-check the full functional contract, frozen-input digests, required tool
    receipts, and exact expected identity set. Summarize scope and honest limitations in
    `submission/performance/REPORT.md`. The harness then owns L2/L3 execution and final evidence.

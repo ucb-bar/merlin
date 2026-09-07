@@ -22,7 +22,7 @@ oracle. It tells you
 WHETHER and roughly WHERE you are wrong (mismatch_count, failing plane) — not the answer.
 """
 from __future__ import annotations
-import argparse, json, os, shutil, sys
+import argparse, json, os, shutil, sys, threading, time
 from pathlib import Path
 
 
@@ -97,6 +97,68 @@ def _public_capsules() -> Path:
 
 
 PUBLIC_CAPSULES = _public_capsules()
+
+
+def _atomic_json(path: Path, doc: dict) -> None:
+    """Publish an agent-visible diagnostic without exposing a half-written JSON document."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        tmp.write_text(json.dumps(doc, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _progress_snapshot(cb_root: Path, *, expected: int, started_ns: int) -> dict:
+    """A deliberately small, golden-free view of durable per-capsule results.
+
+    ``run_capsule`` writes ``capsule_result.json`` as soon as one worker finishes. A suite may still
+    spend another half hour waiting for a few cycle-cap cases, so hiding those durable results until
+    ``grade`` returns makes the compiler loop needlessly blind. This snapshot exposes only public
+    capsule names and their already-agent-visible status; numeric reference values never enter it.
+    """
+    rows: list[dict] = []
+    for result_path in sorted(Path(cb_root).glob("*/capsule_result.json")):
+        try:
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue                         # writer still publishing; the next snapshot will see it
+        rows.append({"capsule": str(result.get("capsule") or result_path.parent.name),
+                     "status": str(result.get("status") or "unknown")})
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = row["status"]
+        counts[status] = counts.get(status, 0) + 1
+    finished = len(rows)
+    return {
+        "status": "running",
+        "started_at_unix_ns": int(started_ns),
+        "updated_at_unix_ns": time.time_ns(),
+        "n_expected": int(expected),
+        "n_finished": finished,
+        "n_remaining": max(0, int(expected) - finished),
+        "counts": counts,
+        "per_capsule": rows,
+        "note": ("Incremental self-check progress from completed capsule records. This is not a final "
+                 "verdict and contains no golden/reference values."),
+    }
+
+
+def _progress_publisher(path: Path, cb_root: Path, *, expected: int, started_ns: int,
+                        stop: threading.Event, poll_s: float = 0.5) -> None:
+    """Continuously publish changing progress until the grade's final roll-up is available."""
+    last_finished = -1
+    while not stop.is_set():
+        doc = _progress_snapshot(cb_root, expected=expected, started_ns=started_ns)
+        if doc["n_finished"] != last_finished:
+            _atomic_json(path, doc)
+            last_finished = doc["n_finished"]
+        stop.wait(poll_s)
+    doc = _progress_snapshot(cb_root, expected=expected, started_ns=started_ns)
+    doc["status"] = "grading_complete"
+    _atomic_json(path, doc)
 
 
 def _suite_size() -> int:
@@ -292,7 +354,8 @@ def _shape_coverage(sub: Path, out_path: str) -> int:
         "instructions YOUR compiler emitted for it. A larger problem cannot need a smaller program, so a "
         "corner marked `collapsed` is a shape you silently refused -- at the numeric tier that arrives as "
         "an output of zeros and is indistinguishable from wrong arithmetic. `multi_tile_axes_uncovered` "
-        "names the axis your lowering does not loop over. If you truly cannot lower a shape, DECLARE it "
+        "names an axis your lowering does not loop over; `tail_axes_uncovered` and "
+        "`tail_cases_uncovered` cover sub-tile and non-multiple extents. If you truly cannot lower a shape, DECLARE it "
         "(set `declined` on the command buffer) rather than emitting a terminator.")
     txt = json.dumps(cov, indent=2)
     print(txt)
@@ -320,6 +383,7 @@ def main(argv=None):
                     help="parallel per-capsule workers; 0 (default) sizes them to this host")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="", help="optional: also write the redacted JSON here")
+    ap.add_argument("--progress-out", default="", help=argparse.SUPPRESS)
     # THE FLAG select_tiers WAS WRITTEN FOR. It existed as a function with six tests pinning it and no
     # way to reach it: argparse never accepted --tiers, so the broker's promotion jobs -- which always
     # forward `--tiers <cert_tier>` -- died on "unrecognized arguments: --tiers L3" before doing any
@@ -415,7 +479,20 @@ def main(argv=None):
         for n in sorted(want):                          # copy (not symlink): rglob won't recurse symlinked dirs
             shutil.copytree(PUBLIC_CAPSULES / n, caps_root / n)
 
-    # build + run + compare (parallel); CG.grade handles the agent's 4 entrypoints + the tier ladder
+    # build + run + compare (parallel); CG.grade handles the agent's 4 entrypoints + the tier ladder.
+    # Publish completed rows independently of the final verdict: a few cycle-cap cases must not hide all
+    # fast feedback. The final response remains a separate atomic document owned by the broker.
+    cb_root = runs_root / "runs" / CR.suite_for(_tgt)
+    _progress_stop = threading.Event()
+    _progress_thread = None
+    if a.progress_out:
+        _progress_thread = threading.Thread(
+            target=_progress_publisher,
+            args=(Path(a.progress_out), cb_root),
+            kwargs={"expected": len(want) if want else _suite_size(),
+                    "started_ns": time.time_ns(), "stop": _progress_stop},
+            name="selfcheck-progress", daemon=True)
+        _progress_thread.start()
     try:
         _score = CG.grade(str(sub), capsules_root=str(caps_root), runs_root=str(runs_root),
                           labels={"public", "dev"}, contract=str(_REPO / "merlin/contract"),
@@ -423,6 +500,10 @@ def main(argv=None):
                           target=_tgt)
     except Exception as e:
         print(json.dumps({"error": f"grade failed: {str(e)[:300]}"})); return 1
+    finally:
+        if _progress_thread is not None:
+            _progress_stop.set()
+            _progress_thread.join(timeout=2)
 
     # SURFACE a build / integrity failure that prevented ANY capsule from running. Without this the agent
     # only sees n_capsules=0 with no reason and (as happened) misreads it as a "stubbed grader". The build
@@ -456,7 +537,6 @@ def main(argv=None):
     # (e.g. atlas-capsule-bench); globbing the gemmini SUITE literal here made every non-gemmini
     # self-check return n_capsules:0 with per_capsule:[] — the agent's feedback loop went blind while
     # the driver's in-memory grade was correct (the atlas 0/11 blind-loop bug).
-    cb_root = runs_root / "runs" / CR.suite_for(_tgt)
     rows, npass, ncert, nscreened = [], 0, 0, 0
     _results = sorted(cb_root.glob("*/capsule_result.json")) if cb_root.exists() else []
     # Does the declared barrier EVER produce a verdict for this target? Two very different situations

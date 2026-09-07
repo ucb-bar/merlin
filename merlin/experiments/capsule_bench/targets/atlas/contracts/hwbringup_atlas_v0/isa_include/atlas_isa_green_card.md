@@ -26,6 +26,14 @@ for `m`, `e`, or MXU-local state; this card uses the conservative convention
 | Register | ABI Name | Description | Saver |
 |-------|---|---|---|
 | `pc`  | `pc` | Architectural program counter, stored as an instruction-word index | N/A |
+
+Relative B/J control flow follows the target assembler's **word-offset** API, not the usual
+byte-addressed RISC-V assembler convention. For a branch from instruction word `pc` to `target`, pass
+`target - pc` to `baremetal/assembler.py`; its B/J encoder places `2 * (target - pc)` in the
+RISC-V-shaped immediate, whose low bit is implicit. The scalar core decodes that immediate and divides
+it by two before adding it to the word-indexed PC. A hand encoder must therefore encode
+`2 * (target_word - current_word)`, **not** `4 * (...)`. Taken branches and jumps have one visible delay
+slot, so place one safe instruction (normally a NOP) after them.
 | `x0`  | `zero` | Constant zero | Fixed |
 | `x1`  | `ra` | Return address | Caller |
 | `x2`  | `sp` | Stack pointer | Callee |
@@ -282,6 +290,20 @@ those instruction families, but not yet on a frozen bit-exact subformat.
 
 Rows are ordered by hex value.
 
+### 3.1 VMEM address units
+
+VMEM does not have one universal software address unit. Scalar LSU operations
+(`LB/LH/LW/LBU/LHU/SB/SH/SW/SELD`) consume byte addresses. `VLOAD`/`VSTORE` and the VMEM operand of
+`DMA.LOAD`/`DMA.STORE` consume 32-bit-word addresses. Consequently scalar byte address `4 * w` and
+DMA/vector word address `w` name the same VMEM byte. Transfer lengths and DRAM addresses remain bytes.
+
+| Instruction family | Base address unit | Effective local address |
+|---|---:|---|
+| Scalar VMEM load/store | 1 byte | `x[rs1] + imm` bytes |
+| `VLOAD` / `VSTORE` | 4 bytes | `x[rs1] + imm12 * 32` words |
+| `DMA.LOAD` VMEM destination | 4 bytes | `x[rd]` words |
+| `DMA.STORE` VMEM source | 4 bytes | `x[rs1]` words |
+
 | Mnemonic                 | Fmt      | Opcode    | Funct3 or Funct2        | Funct7 or Imm    | Hex Value  | Name                              | Description (in Verilog) |
 |--------------------------|----------|-----------|-------------------------|------------------|------------|-----------------------------------|--------------------------|
 | `lb`                     | `I`      | `0000011` | `000`                   |                  | `03/0`     | Load Byte                         | `x[rd] = {{24{VMEM[x[rs1] + imm][7]}}, VMEM[x[rs1] + imm]}` |
@@ -347,16 +369,16 @@ Rows are ordered by hex value.
 | `vli.row`                | `VI`     | `1011111` | `001`                   |                  | `5F/1`     | Vector Load Immediate             | `m[vd][0, :] = imm;` |
 | `vli.col`                | `VI`     | `1011111` | `010`                   |                  | `5F/2`     | Vector Load Immediate             | `m[vd][:, 0] = imm;` |
 | `vli.one`                | `VI`     | `1011111` | `011`                   |                  | `5F/3`     | Vector Load Immediate             | `m[vd][0, 0] = imm;` |
-| `beq`                    | `B`      | `1100011` | `000`                   |                  | `63/0`     | Branch Equal                      | `if (x[rs1] == x[rs2]) pc = pc + imm after 2 delay slots` |
-| `bne`                    | `B`      | `1100011` | `001`                   |                  | `63/1`     | Branch Not Equal                  | `if (x[rs1] != x[rs2]) pc = pc + imm after 2 delay slots` |
-| `blt`                    | `B`      | `1100011` | `100`                   |                  | `63/4`     | Branch Less Than                  | `if ($signed(x[rs1]) < $signed(x[rs2])) pc = pc + imm after 2 delay slots` |
-| `bge`                    | `B`      | `1100011` | `101`                   |                  | `63/5`     | Branch Greater Or Equal           | `if ($signed(x[rs1]) >= $signed(x[rs2])) pc = pc + imm after 2 delay slots` |
-| `bltu`                   | `B`      | `1100011` | `110`                   |                  | `63/6`     | Branch Less Than Unsigned         | `if (x[rs1] < x[rs2]) pc = pc + imm after 2 delay slots` |
-| `bgeu`                   | `B`      | `1100011` | `111`                   |                  | `63/7`     | Branch Greater Or Equal Unsigned  | `if (x[rs1] >= x[rs2]) pc = pc + imm after 2 delay slots` |
-| `jalr`                   | `I`      | `1100111` | `000`                   |                  | `67/0`     | Jump And Link Register            | `next_pc = x[rs1] + imm; x[rd] = pc + 4; pc = next_pc after 2 delay slots` |
+| `beq`                    | `B`      | `1100011` | `000`                   |                  | `63/0`     | Branch Equal                      | `if (x[rs1] == x[rs2]) pc = pc + imm after 1 delay slot` |
+| `bne`                    | `B`      | `1100011` | `001`                   |                  | `63/1`     | Branch Not Equal                  | `if (x[rs1] != x[rs2]) pc = pc + imm after 1 delay slot` |
+| `blt`                    | `B`      | `1100011` | `100`                   |                  | `63/4`     | Branch Less Than                  | `if ($signed(x[rs1]) < $signed(x[rs2])) pc = pc + imm after 1 delay slot` |
+| `bge`                    | `B`      | `1100011` | `101`                   |                  | `63/5`     | Branch Greater Or Equal           | `if ($signed(x[rs1]) >= $signed(x[rs2])) pc = pc + imm after 1 delay slot` |
+| `bltu`                   | `B`      | `1100011` | `110`                   |                  | `63/6`     | Branch Less Than Unsigned         | `if (x[rs1] < x[rs2]) pc = pc + imm after 1 delay slot` |
+| `bgeu`                   | `B`      | `1100011` | `111`                   |                  | `63/7`     | Branch Greater Or Equal Unsigned  | `if (x[rs1] >= x[rs2]) pc = pc + imm after 1 delay slot` |
+| `jalr`                   | `I`      | `1100111` | `000`                   |                  | `67/0`     | Jump And Link Register            | `next_pc = x[rs1] + imm; x[rd] = pc + 4; pc = next_pc after 1 delay slot` |
 | `delay`                  | `I`      | `1100111` | `001`                   |                  | `67/1`     | Frontend Delay                    | `hold decode issue for imm cycles;` |
 | `vtrpose.xlu`            | `VR`     | `1101011` |                         | `0000000`        | `6B/00`    | Matrix Transpose                  | `m[vd] = m[vs1].T;` |
-| `jal`                    | `J`      | `1101111` |                         |                  | `6F`       | Jump And Link                     | `x[rd] = pc + 4; pc = pc + imm after 2 delay slots` |
+| `jal`                    | `J`      | `1101111` |                         |                  | `6F`       | Jump And Link                     | `x[rd] = pc + 4; pc = pc + imm after 1 delay slot` |
 | `ecall`                  | `I`      | `1110011` | `000`                   | `000000000000`   | `73/0/000` | Environment Call                  | `halt_reason = ECALL; halt = 1'b1;` |
 | `ebreak`                 | `I`      | `1110011` | `000`                   | `000000000001`   | `73/0/001` | Breakpoint                        | `halt_reason = EBREAK; halt = 1'b1;` |
 | `vmatpush.weight.mxu0`   | `VR`     | `1110111` |                         | `0000000`        | `77/00`    | Push Tensor To MXU0 Weight Slot   | `mxu0.w[vd] = m[vs];` |
@@ -425,7 +447,7 @@ model does NOT reproduce the hazard; the RTL tiers are the authority here.
 |---|---:|
 | Instruction width | `32` bits |
 | Instruction alignment | `4` bytes |
-| Control-flow delay slots | `2` |
+| Control-flow delay slots | `1` |
 | Scalar registers | `32` |
 | Tensor registers | `64` |
 | Scale registers | `32` |

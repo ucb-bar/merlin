@@ -37,6 +37,19 @@ validation_notes: >-
   When present, `merlin.targetgen.rtl.introspect.validate_against_contract` cross-checks the units'
   dtypes/accumulators against the RTL-derived `datapaths`.
 
+  OPTIONAL `operation_capabilities`: the common operation registry shared by generated target
+  dialects, RVV or other instruction sets, and target-specific machine dialects. Shape:
+  `{version: 1, operations: [{domain, dialect, operation, effects: [...], semantics: {...},
+  status: unknown|supported|unsupported, evidence: [{kind, detail}]}], observations: [...]}`.
+  `domain` identifies the lowering layer (for example `dialect` or `instruction`); `dialect` is the
+  owning namespace and uses `dialect_plan.dialect_name` for generated target operations. Operation
+  presence alone starts as `unknown`: a decoded opcode is not behavioral proof. Measured observations
+  may refine an exactly matching `{domain, dialect, operation}` to `supported` or `unsupported`; an
+  observation for an undeclared identity is invalid. Domain-specific details live under `semantics`
+  (for example `{kind: memory, scope: scalar, direction, address_space, width_bytes, addressing}`), so
+  scalar memory, vector, and future operation families extend the same registry instead of adding
+  parallel capability schemas. `effects` uses the shared Phase-2 optimization-effect vocabulary.
+
   OPTIONAL `harness_abi` (how a runner-owned harness calls into this target's kernel; parsed by
   `merlin.targetgen.contract.harness_abi`): `{entry_symbol (REQUIRED), fence_symbol, includes: [...],
   cycle_window_metric, extern_decls: [...]}`. These are conventions of the target's own bare-metal test

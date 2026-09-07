@@ -2,16 +2,17 @@
 
 Three layers, cheapest first:
 
-1. PIPELINE — the empty feature set leaves every pass list byte-identical, the stage replaces the
-   loop-generation anchor in both the scalar and the RVV pipelines, and a pipeline without that
-   anchor fails closed instead of guessing.
+1. PIPELINE — the empty feature set leaves every pass list byte-identical, the shipping scalar
+   selector applies the requested stage, the RVV selector refuses this unsafe broad fusion, and a
+   pipeline without the anchor fails closed instead of guessing.
 2. IR — on a real contraction-plus-requant pair lowered through the shipping pre-stage, the
    ``sitofp``/``mulf`` epilogue ends up in the SAME nest as the ``extsi``/``muli`` reduction, and the
    control (the same affine loop form with the fusion pass removed) leaves them in two nests. That
    control is the point: it is what makes the fused result attributable to the fusion rather than to
    the change of loop dialect.
-3. NUMERICS — the whole int8 capture, lowered both ways to a host object and run: the outputs must be
-   BIT-IDENTICAL and both must gate against the fp32 AND w8a8 goldens under their own tier keys.
+3. NUMERICS — the whole int8 capture, lowered both ways through the shipping scalar feature
+   selection to a host object and run: the outputs must be BIT-IDENTICAL and both must gate against
+   the fp32 AND w8a8 goldens under their own tier keys.
    Slow (two whole-model lowerings + two runs), so it is behind ``MERLIN_RUN_SLOW``.
 """
 from __future__ import annotations
@@ -68,24 +69,34 @@ def test_stage_replaces_the_loop_anchor():
     assert f"compute-tolerance={EF.COMPUTE_TOLERANCE}" in fuse[0]
 
 
+def test_shipping_scalar_pipeline_applies_the_requested_stage():
+    """Regression: the real scalar selector once normalized this name and compiled the baseline."""
+    from merlin.llvmlower.pipeline import _upstream_pipeline
+
+    baseline = _upstream_pipeline()
+    enabled = _upstream_pipeline(normalize([EF.FEATURE]))
+    assert "affine-loop-fusion" not in baseline
+    assert "affine-loop-fusion" in enabled
+    assert "affine-fold-memref-alias-ops" in enabled
+
+
 def test_missing_anchor_fails_closed():
     with pytest.raises(ValueError) as e:
         EF.edit_pipeline(["canonicalize", "cse"])
     assert EF.LOOP_ANCHOR in str(e.value)
 
 
-def test_stage_applies_to_the_rvv_pipeline_too(tmp_path):
-    """The board path builds its pass list with ``build_rvv_pipeline``; the anchor must be there."""
+def test_stage_refuses_the_rvv_pipeline(tmp_path):
+    """Upstream affine fusion cannot soundly analyze aliases read by vector accesses."""
     from merlin.llvmlower.pipeline import RVV_TRANSFORM_SCHEDULE, build_rvv_pipeline
 
     sched = tmp_path / "sched.mlir"
     sched.write_text(RVV_TRANSFORM_SCHEDULE, encoding="utf-8")
     plain = build_rvv_pipeline(sched)
-    feat = build_rvv_pipeline(sched, features=normalize([EF.FEATURE]))
     assert EF.LOOP_ANCHOR in plain
     assert "affine-loop-fusion" not in plain          # default-off: baseline untouched
-    assert "affine-loop-fusion" in feat
-    assert "func.func(convert-linalg-to-affine-loops)" in feat
+    with pytest.raises(ValueError, match="unsafe.*vector"):
+        build_rvv_pipeline(sched, features=normalize([EF.FEATURE]))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -214,6 +225,61 @@ def test_affine_loop_form_alone_does_not_fuse(tmp_path):
     assert ctl["epilogue_only"] == 1, ctl
 
 
+@pytest.mark.skipif(not _toolchain_available(), reason="m2m venv / clang not configured")
+@pytest.mark.parametrize("access", ["affine", "scalar"])
+def test_fusion_preserves_earlier_consumers_through_a_rank_expanding_alias(tmp_path, access):
+    """An alias consumer must not disappear from the producer's dependence graph.
+
+    The full vectorized model read an uninitialized rotary-frequency buffer: fusion moved its
+    initialization to a later direct consumer, past an earlier read through expand_shape.
+    """
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.codegen import build_host_shared
+    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+
+    source = """
+    module {
+      func.func @forward(%input: memref<8xf32>, %first: memref<8xf32>,
+                         %last: memref<8xf32>) attributes {llvm.emit_c_interface} {
+        %c0 = arith.constant 0 : index
+        %two = arith.constant 2.0 : f32
+        %buffer = memref.alloc() : memref<8xf32>
+        affine.for %i = 0 to 8 {
+          %x = affine.load %input[%i] : memref<8xf32>
+          %y = arith.mulf %x, %two : f32
+          affine.store %y, %buffer[%i] : memref<8xf32>
+        }
+        %view = memref.expand_shape %buffer [[0, 1]] output_shape [1, 8]
+            : memref<8xf32> into memref<1x8xf32>
+        affine.for %i = 0 to 8 {
+          %x = affine.load %view[0, %i] : memref<1x8xf32>
+          affine.store %x, %first[%i] : memref<8xf32>
+        }
+        affine.for %i = 0 to 8 {
+          %x = affine.load %buffer[%i] : memref<8xf32>
+          %y = arith.addf %x, %two : f32
+          affine.store %y, %last[%i] : memref<8xf32>
+        }
+        memref.dealloc %buffer : memref<8xf32>
+        return
+      }
+    }
+    """
+    if access == "scalar":
+        source = source.replace("affine.load %view[0, %i]", "memref.load %view[%c0, %i]")
+    passes = [p for p in apply_pipeline(list(_UPSTREAM_PASSES), normalize([EF.FEATURE]))
+              if p != "__DEALLOC__"]  # This fixture already owns and frees its explicit allocation.
+    llvm = tmp_path / "model.ll"
+    llvm.write_text(lower_to_llvm_ir(source, workdir=tmp_path, pipeline=_splice(passes)))
+    model = HostModel.load(str(build_host_shared(llvm, tmp_path / "model.so")), n_args=3)
+    first, last = np.zeros(8, dtype=np.float32), np.zeros(8, dtype=np.float32)
+    for step in range(3):
+        value = np.arange(1, 9, dtype=np.float32) + 100 * step
+        model([(a.ctypes.data, list(a.shape)) for a in (value, first, last)])
+        np.testing.assert_array_equal(first, value * 2)
+        np.testing.assert_array_equal(last, value * 2 + 2)
+
+
 # ---------------------------------------------------------------------------------------------
 # 3. numerics — whole model, both goldens, under their own tier keys
 # ---------------------------------------------------------------------------------------------
@@ -235,18 +301,17 @@ def test_whole_model_output_is_bit_identical_and_gates(tmp_path):
                                        features=frozenset(), blocking=False)
     upstream, _stats = preprocess_text_textual(prepared.read_text(encoding="utf-8"))
 
-    variants = {"base": list(_UPSTREAM_PASSES),
-                "fused": apply_pipeline(list(_UPSTREAM_PASSES), normalize([EF.FEATURE]))}
+    variants = {"base": frozenset(), "fused": normalize([EF.FEATURE])}
     args = resolve_forward_args(BUNDLE)
     golden = np.load(BUNDLE / "golden.npy")
     golden_w8a8 = np.load(BUNDLE / "golden_w8a8.npy")
 
     outs = {}
-    for name, passes in variants.items():
+    for name, features in variants.items():
         work = tmp_path / name
         work.mkdir(parents=True, exist_ok=True)
         ll = work / "model.ll"
-        ll.write_text(lower_to_llvm_ir(upstream, workdir=work, pipeline=_splice(passes)),
+        ll.write_text(lower_to_llvm_ir(upstream, workdir=work, features=features),
                       encoding="utf-8")
         so = build_host_shared(ll, work / "model_host.so")
         out = np.zeros(golden.shape, dtype=np.float32)

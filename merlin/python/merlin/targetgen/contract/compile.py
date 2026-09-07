@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path, *, target: str | None = None) -> Path:
+def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path, *, target: str | None = None,
+                        _build_service=None) -> Path:
     """Lower package-emitted llvm-dialect MLIR to an rv64 object (.o) for ``target``'s own ISA.
 
     THE MARCH IS THE TARGET'S, NOT A DEFAULT. This object and the runner-owned harness are linked into
@@ -34,21 +35,49 @@ def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path, *, target: str | 
 
     ``target=None`` keeps the previous default, for callers with no target in hand.
     """
-    from merlin.llvmlower.pipeline import lower_to_llvm_ir
     from merlin.llvmlower import codegen
     workdir.mkdir(parents=True, exist_ok=True)
-    ll = lower_to_llvm_ir(lowered_mlir_text, workdir=workdir)
-    (workdir / "kernel.ll").write_text(ll, encoding="utf-8")
     extra: tuple[str, ...] = ()
-    if target is not None:
-        from merlin.runtime.backends import base as _backends
-        extra = (_backends.harness_build_recipe(target).march(),)
+    if _build_service is not None:
+        from .build_service import BuildOnlyService
+        if type(_build_service) is not BuildOnlyService:
+            raise ValueError("build-only override requires an exact host service")
+        _build_service.verify(target)
+        extra = (_build_service.recipe.march(),)
+        # This opt-in service consumes finished target LLVM, not tensors or
+        # partially lowered programs. Do not invoke an unrelated model importer
+        # and its Python environment merely to translate an LLVM module.
+        from xdsl.context import Context
+        from xdsl.dialects import builtin, llvm
+        from xdsl.parser import Parser
+        from merlin.llvmlower import toolchain
+        context = Context()
+        context.load_dialect(builtin.Builtin)
+        context.load_dialect(llvm.LLVM)
+        module = Parser(context, lowered_mlir_text).parse_module()
+        module.verify()
+        if any(op.name != "builtin.module" and not op.name.startswith("llvm.") for op in module.walk()):
+            raise ValueError("build-only translation requires a complete LLVM/Builtin module")
+        source = workdir / "kernel.llvm.mlir"
+        source.write_text(lowered_mlir_text, encoding="utf-8")
+        translated = subprocess.run([str(toolchain.mlir_translate()), "--mlir-to-llvmir", str(source),
+                                     "-o", str(workdir / "kernel.ll")], capture_output=True, text=True)
+        if translated.returncode:
+            raise _build_service.recipe.error_cls("LLVM translation failed:\n" + translated.stderr[-2000:])
+        _build_service.verify(target)
+    else:
+        from merlin.llvmlower.pipeline import lower_to_llvm_ir
+        ll = lower_to_llvm_ir(lowered_mlir_text, workdir=workdir)
+        (workdir / "kernel.ll").write_text(ll, encoding="utf-8")
+        if target is not None:
+            from merlin.runtime.backends import base as _backends
+            extra = (_backends.harness_build_recipe(target).march(),)
     return Path(codegen.compile_ll(workdir / "kernel.ll", workdir / "kernel.o", "riscv",
                                    extra_flags=extra))
 
 
 def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
-    """The operands a FLOAT-graded buffer must be run on, or ``None``.
+    """The operands an independent-float or WHOLE-PROGRAM buffer must run on, or ``None``.
 
     A capsule graded under a float policy cannot have had its answer recomputed on the integer engine,
     so its golden is the INDEPENDENT one — computed off-device, on the operands the runner attached to
@@ -57,13 +86,13 @@ def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
     from its NAME and the device computed the right function of the wrong inputs — a guaranteed
     mismatch, reported as a functional failure of the submission.
 
-    THE FLOAT CONDITION IS LOAD-BEARING, not decoration. A buffer whose declared output is an INTEGER
-    is graded against a golden RECOMPUTED from the deterministic name-materialized fill, and its
-    capsule may still record different operands beside it — measured on ``GS0_matmul_spec``, whose
-    recorded ``W``/``A0`` and materialized ``W``/``A0`` are different numbers and which passes today
-    precisely because the device materializes. Embedding recorded operands unconditionally breaks
-    exactly those capsules; embedding them nowhere leaves every float capsule unwinnable. The declared
-    output dtype is what separates the two, and it is read from the buffer itself.
+    THE FLOAT CONDITION remains load-bearing for ordinary buffers. A per-op integer buffer is graded
+    against a golden recomputed from deterministic name-materialized fill, and may carry unrelated
+    historical operands (``GS0_matmul_spec`` is the guard). A WHOLE-PROGRAM buffer is different: the
+    runner has already replaced/re-keyed ``canonical_inputs`` with the exact semantic stimulus because
+    its compiler may rename leaves positionally. Discarding that table rematerializes from ``arg0``
+    instead of ``A0`` and guarantees a false mismatch. The explicit ABI discriminator separates that
+    exception without changing legacy per-op integer behavior.
     """
     from merlin.runtime.backends import base as _backends
     from merlin.runtime.commandbuffer import declared_output_dtypes
@@ -73,37 +102,86 @@ def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
         return None
     dtypes = declared_output_dtypes(cb)
     outputs = [n for n, s in tensors.items() if (s or {}).get("role") == "output"]
-    if not outputs or not all(_backends.float_format_of(dtypes.get(n, "")) for n in outputs):
+    whole_program = ((cb.get("kernel_abi") or {}).get("kind") == "whole_program")
+    if (not whole_program
+            and (not outputs
+                 or not all(_backends.float_format_of(dtypes.get(n, "")) for n in outputs))):
         return None
     return {name: spec["values"] for name, spec in recorded.items()
             if isinstance(spec, dict) and spec.get("values") is not None and name in tensors} or None
 
 
+def _explicit_prepack_inputs(inputs, authorizations) -> None:
+    """Never satisfy a host immutable-payload grant from candidate recorded operands."""
+    if authorizations is None:
+        return
+    if not isinstance(authorizations, Mapping) or not isinstance(inputs, Mapping):
+        raise ValueError("host prepack authorization requires explicit logical inputs")
+    from merlin.runtime.prepack_authority import HostPrepackAuthorization
+    if any(type(grant) is not HostPrepackAuthorization for grant in authorizations.values()):
+        raise ValueError("prepack requires an exact host authorization object")
+    if set(authorizations) - set(inputs):
+        raise ValueError("authorized prepack input is missing from explicit logical inputs")
+
+
 def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
-             inputs: dict | None = None) -> Path:
+             inputs: dict | None = None, prepack_authorizations=None, _compact_caller=None,
+             _build_service=None) -> Path:
     """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF.
 
     Orchestration only: the harness TEXT comes from ``target``'s declared harness ABI and the BUILD
     from its declared recipe, both resolved through the backend registry. This module names no target
     and imports no target's module — ``target`` is a required argument precisely so no default can
     reintroduce one.
+
+    ``prepack_authorizations`` is a trusted-host-only capability. It is not read
+    from the command buffer, and requires explicitly supplied immutable operands.
     """
-    from merlin.runtime.backends import base as _backends
-    recipe = _backends.harness_build_recipe(target)
+    if _build_service is not None:
+        from .build_service import BuildOnlyService
+        if (type(_build_service) is not BuildOnlyService or _compact_caller is not None
+                or prepack_authorizations is not None):
+            raise ValueError("build-only service cannot mix caller authority paths")
+        _build_service.verify(target)
+        recipe = _build_service.recipe
+        _render = _build_service.render
+    else:
+        from merlin.runtime.backends import base as _backends
+        recipe = _backends.harness_build_recipe(target)
+        _render = _backends.harness_renderer(target)
     # ``inputs`` INJECTS the caller's real operands into the device harness. A renderer written before
     # this parameter existed still works and still materializes from names -- but silently doing that
     # while the reference and simulator use injected data produces a guaranteed three-way mismatch that
     # reads as a functional failure of the TARGET, so an injecting caller is told instead.
-    _render = _backends.harness_renderer(target)
-    inputs = inputs or _recorded_operands(cb) or None
-    if inputs:
+    compact_object_sha = None
+    if _compact_caller is not None:
+        # Only compile_lowered_to_elf's trusted preparation path supplies this
+        # object. No serialized candidate ABI facts or fallback inputs enter it.
+        if inputs is not None or prepack_authorizations is not None:
+            raise ValueError("prepared compact caller cannot be combined with other input sources")
+        import hashlib
+        compact_object_sha = hashlib.sha256(Path(obj).read_bytes()).hexdigest()
+        harness = _render(cb, target=target, compact_caller=_compact_caller)
+    else:
+        _explicit_prepack_inputs(inputs, prepack_authorizations)
+    if _compact_caller is None and prepack_authorizations is None and _build_service is None:
+        inputs = inputs or _recorded_operands(cb) or None
+    if _compact_caller is not None:
+        pass
+    elif inputs or prepack_authorizations is not None:
         import inspect
         if "inputs" not in inspect.signature(_render).parameters:
             raise NotImplementedError(
                 f"backend for target {target!r} declares a render_harness that cannot take `inputs`, so "
                 f"the device would compute on name-materialized operands while the reference and the "
                 f"simulator use the injected ones. Add an `inputs` parameter to its render_harness.")
-        harness = _render(cb, target=target, inputs=inputs)
+        if prepack_authorizations is not None:
+            if "prepack_authorizations" not in inspect.signature(_render).parameters:
+                raise NotImplementedError("backend harness cannot consume host prepack authorization")
+            harness = _render(cb, target=target, inputs=inputs,
+                              prepack_authorizations=prepack_authorizations)
+        else:
+            harness = _render(cb, target=target, inputs=inputs)
     else:
         harness = _render(cb, target=target)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
@@ -142,12 +220,23 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise recipe.error_cls(f"link failed:\n{proc.stderr[-2000:]}")
+    if _compact_caller is not None:
+        verify = getattr(_backends.get_backend(target), "verify_compact_caller_link", None)
+        if verify is None:
+            raise NotImplementedError("target cannot verify linked compact caller allocations")
+        verify(cb, _compact_caller, object_path=obj, elf_path=elf, workdir=workdir,
+               expected_object_sha256=compact_object_sha)
+    if _build_service is not None:
+        _build_service.verify(target)
     return elf
 
 
 def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
                            workdir: str | Path | None = None, *, target: str,
-                           inputs: dict | None = None) -> Path:
+                           inputs: dict | None = None, prepack_authorizations=None,
+                           compact_contract=None, logical_payloads=None,
+                           compact_storage_limit_bytes: int = 64 * 1024,
+                           _build_service=None) -> Path:
     """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link).
 
     The result is a pure function of its inputs, so an unchanged capsule is not recompiled: see
@@ -159,11 +248,49 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
 
     Measured before this existed: the screen tier spent 4.06 s building per capsule against 0.153 s
     simulating, and re-paid it on every capsule of every grade.
+
+    The optional compact route requires both ``compact_contract`` and exact
+    ``logical_payloads`` bytes, forbids legacy/fallback ``inputs``, and bypasses
+    this cache entirely. Its target-owned preparation derives ABI facts and
+    validates storage/prepack authority; the linker checks actual arena symbols.
+    ``compact_storage_limit_bytes`` bounds host format setup, not hardware
+    capacity. A successful build is not a numerical or execution verdict.
     """
+    if _build_service is not None:
+        from .build_service import BuildOnlyService
+        if (type(_build_service) is not BuildOnlyService or inputs is None
+                or prepack_authorizations is not None or compact_contract is not None
+                or logical_payloads is not None):
+            raise ValueError("build-only service requires explicit inputs and no alternate caller authority")
+        _build_service.verify(target)
+        work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_build_only_"))
+        obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target, _build_service=_build_service)
+        return link_elf(cb, obj, work, target=target, inputs=inputs, _build_service=_build_service)
     from merlin.runtime.backends import base as _backends
     from .. import build_cache as _bc
     from ..elf_lanes import PACKAGE_ELF_NAME
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_compile_"))
+    if compact_contract is not None or logical_payloads is not None:
+        if compact_contract is None or logical_payloads is None or inputs is not None:
+            raise ValueError("compact build requires explicit contract + logical bytes, with no other inputs")
+        prepare = getattr(_backends.get_backend(target), "prepare_compact_caller", None)
+        if prepare is None:
+            raise NotImplementedError("target has no verified compact caller preparation")
+        prepared = prepare(cb, compact_contract, logical_payloads, lowered_mlir_text=lowered_mlir_text,
+            workdir=work, prepack_authorizations=prepack_authorizations,
+            max_storage_bytes=compact_storage_limit_bytes)
+        # Never reuse/publish a cached build: the ABI authority and exact logical
+        # byte/prepack grants are not part of the legacy ELF cache key.
+        obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
+        return link_elf(cb, obj, work, target=target, _compact_caller=prepared)
+    _explicit_prepack_inputs(inputs, prepack_authorizations)
+    if prepack_authorizations is not None:
+        # Cached builds skip the renderer's exact payload/binding checks. Until the
+        # authorization policy is itself part of cache admission, never reuse or
+        # publish such a build. The absent-authorization path remains unchanged.
+        obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
+        return link_elf(cb, obj, work, target=target, inputs=inputs,
+                        prepack_authorizations=prepack_authorizations)
     # Coalesced ONCE. The harness embeds these operands, so a key computed from the caller's argument
     # while the build used the recorded ones would key two different executables the same way.
     inputs = inputs or _recorded_operands(cb) or None

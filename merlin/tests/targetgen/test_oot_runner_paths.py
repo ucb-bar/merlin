@@ -73,6 +73,23 @@ def test_a_relative_input_path_still_resolves(tmp_path, monkeypatch):
     assert r.returncode == 0, r.stderr
 
 
+def test_relative_shared_compiler_import_root_survives_package_cwd(tmp_path, monkeypatch):
+    pkg = _pkg(tmp_path, '["python3", "mlir_oot/parse.py", "{input_mlir}", "{output_json}"]')
+    (tmp_path / "shared").mkdir()
+    (tmp_path / "shared" / "compiler_helper.py").write_text("VALUE = 'shared compiler helper'\n")
+    (pkg.directory / "mlir_oot" / "parse.py").write_text(
+        "import sys, pathlib\nfrom compiler_helper import VALUE\n"
+        "pathlib.Path(sys.argv[2]).write_text(VALUE)\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PYTHONPATH", "shared")
+    source = tmp_path / "input.mlir"
+    source.write_text("module {}")
+    output = tmp_path / "out.json"
+    result = run_entrypoint(pkg, "parse", source, output, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert output.read_text() == "shared compiler helper"
+
+
 def test_a_submission_prefixed_path_is_rescued(tmp_path):
     """The package root IS the submission dir, so `submission/x` is unambiguously double-rooted."""
     pkg = _pkg(tmp_path, '["python3", "./submission/mlir_oot/parse.py", "{input_mlir}", "{output_json}"]',

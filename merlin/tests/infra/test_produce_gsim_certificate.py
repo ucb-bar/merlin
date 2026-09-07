@@ -212,6 +212,197 @@ def test_offline_capture_and_producer_make_a_gate_qualifying_certificate(
     assert record.target == "test_target" and len(record.members) == 1
 
 
+def test_independent_float_host_lane_uses_canonical_inputs_and_capsule_golden(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    capsule_dir = tmp_path / "float_host_lane"
+    capsule_dir.mkdir()
+    capsule = capsule_dir / "capsule.yaml"
+    capsule.write_text(yaml.safe_dump({
+        "name": "float_host_lane",
+        "inputs": [{"name": "X", "role": "input", "shape": [1, 1, 2, 2],
+                    "dtype": "bf16"}],
+        "operation": {"op": "movement", "attributes": {
+            "src": "X", "out": "Y0", "output_dtype": "bf16"}},
+        "numeric_policy": {"compare": "tolerance_float", "dtype": "bf16",
+                           "atol": 0.01, "rtol": 0.0},
+    }, sort_keys=False), encoding="utf-8")
+    values = [0.5, -1.0, 2.0, 3.0]
+    (capsule_dir / "golden.yaml").write_text(yaml.safe_dump({
+        "golden_source": "independent_test_oracle",
+        "oracle_provenance": {"inputs": {
+            "X": {"shape": [1, 1, 2, 2], "decoded": values}}},
+        "outputs": {"Y0": [[[[0.5, -1.0], [2.0, 3.0]]]]},
+    }, sort_keys=False), encoding="utf-8")
+    artifact_dir = tmp_path / "lowered-float"
+    artifact_dir.mkdir()
+    command_buffer = {"tensors": {
+        "arg0": {"role": "input", "shape": [1, 1, 2, 2], "dtype": "bf16"},
+        "Y0": {"role": "output", "shape": [1, 1, 2, 2], "dtype": "bf16"},
+    }, "commands": []}
+    (artifact_dir / "command_buffer.json").write_text(
+        json.dumps(command_buffer), encoding="utf-8")
+    (artifact_dir / "lowered.llvm.mlir").write_text("module {}", encoding="utf-8")
+    artifacts, _receipt = _artifacts(tmp_path)
+
+    import merlin.runtime.reference as reference
+    monkeypatch.setattr(reference, "reference_outputs", lambda _cb: pytest.fail(
+        "an empty host-lane command stream is not the float program's semantic oracle"))
+
+    def build_elf(cb, llvm, destination):
+        assert llvm == "module {}"
+        assert cb["canonical_inputs"] == {
+            "arg0": {"shape": [1, 1, 2, 2], "values": values}}
+        elf = destination / "case.elf"
+        elf.write_bytes(b"one exact elf")
+        return elf
+
+    from merlin.runtime import fp8_formats
+    codes = [int(value) for value in fp8_formats.float_to_codes(values, "bf16")]
+
+    class FloatBackend(_Backend):
+        def parse_output(self, console: str):
+            return {"Y0": [codes[:2], codes[2:]]}, console
+
+    capture = PRODUCER.capture_case(
+        target="test_target", capsule_manifest=capsule, artifact_dir=artifact_dir,
+        workdir=tmp_path / "work-float", artifacts=artifacts, backend=FloatBackend(),
+        build_elf=build_elf)
+
+    assert capture["semantic_reference"] == {
+        "kind": "independent_capsule_golden",
+        "golden_source": "independent_test_oracle",
+        "numeric_policy": {"compare": "tolerance_float", "dtype": "bf16",
+                           "atol": 0.01, "rtol": 0.0},
+        "operand_binding": "linalg_positional_declaration_order",
+        "operand_source": "recorded_capsule_golden",
+        "canonical_inputs_sha256": PRODUCER._document_sha({
+            "arg0": {"shape": [1, 1, 2, 2], "values": values}}),
+    }
+    assert capture["reference"]["output_sha256"] == capture["candidate"]["output_sha256"]
+
+
+def test_integer_whole_program_uses_materialized_inputs_and_complete_capsule_golden(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A whole-program command list is an accelerator projection, not its semantic oracle."""
+    capsule = _capsule(tmp_path)
+    command_buffer = {
+        "tensors": {
+            "W": {"role": "weight", "shape": [16, 16], "dtype": "i8"},
+            "X": {"role": "input", "shape": [16, 16], "dtype": "i8"},
+            "Y0": {"role": "output", "shape": [16, 16], "dtype": "i32"},
+        },
+        # Deliberately empty: a projection cannot stand in for the submitted complete kernel.
+        "commands": [],
+        "kernel_abi": {
+            "kind": "whole_program",
+            "symbol": "test_kernel",
+            "args": [
+                {"tensor": "W", "access": "read"},
+                {"tensor": "X", "access": "read"},
+                {"tensor": "Y0", "access": "write"},
+            ],
+            "outputs": ["Y0"],
+        },
+    }
+    import merlin.runtime.reference as reference
+    monkeypatch.setattr(reference, "reference_outputs", lambda _cb: pytest.fail(
+        "a whole-program accelerator projection is not the complete kernel's semantic oracle"))
+
+    normalized, expected, matches, semantic = PRODUCER._semantic_oracle(
+        capsule, command_buffer)
+
+    from merlin.targetgen import capsule_golden as golden
+    manifest = yaml.safe_load(capsule.read_text(encoding="utf-8"))
+    canonical = golden.materialized_input_values(manifest)
+    assert normalized["canonical_inputs"] == canonical
+    assert expected == golden.golden(manifest, capsule.parent)
+    assert matches(expected)
+    assert semantic == {
+        "kind": "whole_program_capsule_golden",
+        "golden_source": "merlin_tensor_int",
+        "numeric_policy": {"compare": "exact_int", "dtype": "i32"},
+        "operand_binding": "by_name",
+        "operand_source": "recomputed_golden_materialization",
+        "canonical_inputs_sha256": PRODUCER._document_sha(canonical),
+    }
+
+
+def test_model_whole_program_binds_validated_inputs_and_weights_in_kernel_abi_order(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    capsule = tmp_path / "capsule.yaml"
+    capsule.write_text(yaml.safe_dump({
+        "name": "tiny_model", "kind": "model",
+        "inputs": [{"name": "I0", "role": "input", "shape": [2], "dtype": "f32"}],
+        "operation": {"op": "model", "attributes": {"out": "Y0"}},
+        "numeric_policy": {"compare": "tolerance_float", "dtype": "f32",
+                           "atol": 0.01, "rtol": 0.0},
+    }, sort_keys=False), encoding="utf-8")
+    command_buffer = {
+        "tensors": {
+            "arg0": {"role": "weight", "shape": [2], "dtype": "i8"},
+            "arg1": {"role": "input", "shape": [2], "dtype": "f32"},
+            "Y0": {"role": "output", "shape": [2], "dtype": "f32"},
+            "tmp": {"role": "intermediate", "shape": [2], "dtype": "f32"},
+        },
+        "commands": [],
+        "kernel_abi": {
+            "kind": "whole_program",
+            "args": [
+                {"tensor": "arg0", "access": "read"},
+                {"tensor": "arg1", "access": "read"},
+                {"tensor": "Y0", "access": "write"},
+                {"tensor": "tmp", "access": "write"},
+            ],
+            "outputs": ["Y0"],
+        },
+    }
+
+    import contextlib
+    import numpy as np
+    from merlin.targetgen import capsule_golden as golden
+    from merlin.targetgen import capsule_runner
+    from merlin.runtime import dispatch_runtime
+
+    provenance = {
+        "source": {"content_sha256": "1" * 64},
+        "bundle": {"content_sha256": "2" * 64},
+        "construction": "frozen_capsule_assets_v1",
+        "validation": {"weights_validated_exact": True, "golden_validated": True},
+    }
+
+    @contextlib.contextmanager
+    def bundle(_capsule, *, timeout):
+        assert timeout == 300
+        yield tmp_path, provenance, lambda: None
+
+    monkeypatch.setattr(capsule_runner, "_model_runtime_bundle", bundle)
+    monkeypatch.setattr(dispatch_runtime, "resolve_forward_args", lambda _bundle: [
+        np.asarray([-1, 1], dtype=np.int8),
+        np.asarray([0.5, -0.25], dtype=np.float32),
+    ])
+    monkeypatch.setattr(golden, "golden", lambda *_args: {"Y0": [1.0, 2.0]})
+    monkeypatch.setattr(golden, "golden_source", lambda *_args: "pytorch_frozen_model")
+    monkeypatch.setattr(golden, "compare", lambda expected, observed, *_args, **_kwargs: {
+        "status": "pass" if expected == observed else "fail"})
+
+    normalized, expected, matches, semantic = PRODUCER._semantic_oracle(
+        capsule, command_buffer)
+
+    bound = {
+        "arg0": {"shape": [2], "values": [-1, 1]},
+        "arg1": {"shape": [2], "values": [0.5, -0.25]},
+    }
+    assert normalized["canonical_inputs"] == bound
+    assert expected == {"Y0": [1.0, 2.0]}
+    assert matches(expected)
+    assert semantic["operand_binding"] == "by_name"
+    assert semantic["operand_source"] == "validated_frozen_model_bundle"
+    assert semantic["canonical_inputs_sha256"] == PRODUCER._document_sha(bound)
+    assert semantic["model_source_sha256"] == "1" * 64
+    assert semantic["model_bundle_sha256"] == "2" * 64
+    assert semantic["model_bundle_validation"]["weights_validated_exact"] is True
+
+
 def test_legacy_xval_cannot_be_promoted_or_fill_a_v1_capture(tmp_path: Path) -> None:
     legacy = tmp_path / "xval_bytes.json"
     legacy.write_text(json.dumps({

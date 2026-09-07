@@ -10,8 +10,9 @@ reference (`isa_include/`); where they disagree, the RTL is ground truth.
 Atlas runs its own program. It fetches 32-bit fixed-width instructions from IMEM behind an architectural
 program counter (`pc`) — IFU -> IDU -> execution units (Scalar / Matrix / DMA). This is unlike a RoCC
 co-processor: there is no host CPU issuing custom instructions. Control flow (`beq/bne/blt/.../jal/jalr`)
-takes effect **after 2 delay slots** (the ISA encodes static delays so the pipeline needs no dynamic
-dependency checking — `DELAY imm` explicitly holds decode issue).
+has **one architecturally visible delay slot**, as implemented by `rtl/atlas/scalar/PcControl.scala`.
+The separate `DELAY imm` instruction explicitly holds decode issue for data/resource scheduling because
+the pipeline does not dynamically interlock those hazards.
 
 ## 2. Register and memory state
 

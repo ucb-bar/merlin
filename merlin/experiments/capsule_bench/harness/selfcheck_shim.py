@@ -244,7 +244,21 @@ def main(argv=None):
          "sim": a.sim, "capsules": a.capsules, "workers": a.workers, "timeout": a.timeout,
          "shape_coverage": bool(a.shape_coverage)}))
     resp, done = ch / f"resp_{rid}.json", ch / f"done_{rid}"
+    progress = ch / f"progress_{rid}.json"
+    last_progress_finished = -1
     while time.time() < deadline:
+        if progress.exists():
+            try:
+                p = json.loads(progress.read_text(encoding="utf-8"))
+                finished = int(p.get("n_finished", 0))
+                if finished != last_progress_finished:
+                    # stderr keeps stdout machine-readable while making a long foreground check visibly
+                    # alive in an interactive terminal.
+                    print(f"[self-check] {finished}/{p.get('n_expected', '?')} finished; "
+                          f"counts={p.get('counts', {})}", file=sys.stderr, flush=True)
+                    last_progress_finished = finished
+            except (OSError, ValueError, TypeError):
+                pass
         if done.exists() and resp.exists():
             txt = resp.read_text()
             print(txt)

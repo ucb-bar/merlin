@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the exact prelaunch functional-suite GSIM equivalence certificate.
+"""Build a predeclared exact or sampled functional-suite GSIM equivalence certificate.
 
 This is a host-only qualification tool.  It derives the public and hidden cohort through the same
 descriptor-driven policy as the formal grader, folds duplicate semantic workloads deterministically,
@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import heldout_gsim_qualification as HQUAL
+import functional_coverage as COVERAGE
 import perf_campaign as CAMPAIGN
 import perf_gsim_gate as GATE
 import produce_gsim_certificate as PRODUCER
@@ -47,6 +48,8 @@ class WorkloadCase:
     manifest_sha256: str
     capsule_names: tuple[str, ...]
     cohorts: tuple[str, ...]
+    capsule_tree_sha256: str | None = None
+    capsule_tree_n_files: int | None = None
 
 
 def _canonical(value: object) -> bytes:
@@ -91,6 +94,160 @@ def _write_content_addressed(root: Path, stem: str, document: object) -> tuple[P
         os.fsync(stream.fileno())
     path.chmod(0o444)
     return path.resolve(), digest
+
+
+def _copy_content_addressed(root: Path, stem: str, source: Path) -> tuple[Path, str]:
+    """Copy one immutable input; a declaration must never point back into a moving checkout."""
+    source = _plain_file(source, label=f"{stem} source")
+    digest = _sha_file(source)
+    suffix = source.suffix if source.suffix else ".input"
+    path = root / f"{stem}.{digest}{suffix}"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o444)
+    try:
+        with source.open("rb") as incoming, os.fdopen(descriptor, "wb") as outgoing:
+            while chunk := incoming.read(1024 * 1024):
+                outgoing.write(chunk)
+            outgoing.flush()
+            os.fsync(outgoing.fileno())
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    if _sha_file(path) != digest or _sha_file(source) != digest:
+        raise FunctionalQualificationError(f"{stem} changed while its input snapshot was created")
+    path.chmod(0o444)
+    return path.resolve(), digest
+
+
+def _tree_record(root: Path, *, label: str) -> dict[str, Any]:
+    root = Path(root)
+    if root.is_symlink() or not root.is_dir():
+        raise FunctionalQualificationError(f"{label} is absent or linked: {root}")
+    for path in root.rglob("*"):
+        if path.is_symlink() or not (path.is_file() or path.is_dir()):
+            raise FunctionalQualificationError(f"{label} contains a linked or special entry: {path}")
+    return dict(hash_tree(root))
+
+
+def _copy_tree_snapshot(destination: Path, source: Path, *, label: str) -> dict[str, Any]:
+    """Copy the complete capsule input while preserving its conventional relative filenames."""
+    source = Path(source).resolve()
+    before = _tree_record(source, label=label)
+    destination.mkdir(mode=0o700)
+    for item in sorted(source.rglob("*")):
+        relative = item.relative_to(source)
+        target = destination / relative
+        if item.is_dir():
+            target.mkdir(mode=0o700)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(target, flags, 0o444)
+        try:
+            with item.open("rb") as incoming, os.fdopen(descriptor, "wb") as outgoing:
+                while chunk := incoming.read(1024 * 1024):
+                    outgoing.write(chunk)
+                outgoing.flush()
+                os.fsync(outgoing.fileno())
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        target.chmod(0o444)
+    after = _tree_record(source, label=label)
+    copied = _tree_record(destination, label=f"frozen {label}")
+    if before != after or copied != before:
+        raise FunctionalQualificationError(f"{label} changed while its input snapshot was created")
+    for path in sorted(destination.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    destination.chmod(0o555)
+    return copied
+
+
+def _snapshot_inputs(root: Path, descriptor: Path,
+                     cases: Sequence[WorkloadCase]) -> tuple[Path, tuple[WorkloadCase, ...]]:
+    inputs = root / "inputs"
+    manifests = inputs / "cases"
+    inputs.mkdir(mode=0o700)
+    manifests.mkdir(mode=0o700)
+    descriptor_copy, _digest = _copy_content_addressed(
+        inputs, "target-descriptor", descriptor)
+    frozen = []
+    for case in cases:
+        capsule = manifests / case.identity
+        record = _copy_tree_snapshot(
+            capsule, case.manifest.parent, label=f"{case.identity} capsule source")
+        path = capsule / "capsule.yaml"
+        if _sha_file(path) != case.manifest_sha256:
+            raise FunctionalQualificationError(
+                f"canonical descriptor changed while snapshotting {case.identity}")
+        frozen.append(_dc_replace(
+            case, manifest=path.resolve(), capsule_tree_sha256=str(record["sha256"]),
+            capsule_tree_n_files=int(record["n_files"])))
+    return descriptor_copy, tuple(frozen)
+
+
+def _load_sealed_declaration(root: Path) -> tuple[Path, str, dict[str, Any]]:
+    paths = sorted(root.glob("declaration.*.json"))
+    if len(paths) != 1:
+        raise FunctionalQualificationError("resume root has no unique qualification declaration")
+    path = _plain_file(paths[0], label="qualification declaration")
+    digest = _sha_file(path)
+    if path.name != f"declaration.{digest}.json":
+        raise FunctionalQualificationError(
+            "qualification declaration filename is not content-addressed")
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FunctionalQualificationError("qualification declaration is unreadable") from exc
+    if not isinstance(document, dict):
+        raise FunctionalQualificationError("qualification declaration is not a mapping")
+    return path, digest, document
+
+
+def _declared_cases(root: Path, declaration: Mapping[str, Any]) -> tuple[WorkloadCase, ...]:
+    rows = declaration.get("cases")
+    if not isinstance(rows, list) or not rows:
+        raise FunctionalQualificationError("qualification declaration has no frozen cases")
+    cases = []
+    identities = set()
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise FunctionalQualificationError("qualification declaration has a malformed case")
+        identity = row.get("workload_sha256")
+        manifest = _plain_file(
+            Path(str(row.get("representative_manifest") or "")),
+            label="frozen qualification descriptor")
+        try:
+            manifest.relative_to((root / "inputs/cases").resolve())
+        except ValueError as exc:
+            raise FunctionalQualificationError(
+                "frozen qualification descriptor is outside the input snapshot") from exc
+        names, cohorts = row.get("capsules"), row.get("cohorts")
+        if (not isinstance(identity, str) or len(identity) != 64 or identity in identities
+                or not isinstance(names, list) or not names
+                or not all(isinstance(name, str) and name for name in names)
+                or not isinstance(cohorts, list) or not cohorts
+                or not all(name in ("public", "hidden") for name in cohorts)
+                or _sha_file(manifest) != row.get("representative_manifest_sha256")
+                or GATE.workload_sha256(PRODUCER.derive_workload(manifest)) != identity):
+            raise FunctionalQualificationError("frozen qualification case changed after declaration")
+        identities.add(identity)
+        source_record = _tree_record(
+            manifest.parent, label=f"frozen {identity} capsule source")
+        if (source_record.get("sha256") != row.get("representative_source_sha256")
+                or source_record.get("n_files") != row.get("representative_source_n_files")):
+            raise FunctionalQualificationError("frozen qualification capsule source changed")
+        cases.append(WorkloadCase(
+            identity=identity, manifest=manifest,
+            manifest_sha256=str(row["representative_manifest_sha256"]),
+            capsule_names=tuple(names), cohorts=tuple(cohorts),
+            capsule_tree_sha256=str(source_record["sha256"]),
+            capsule_tree_n_files=int(source_record["n_files"])))
+    return tuple(cases)
 
 
 def derive_cases(cohort: ORCH.FunctionalGradeCohort) -> tuple[WorkloadCase, ...]:
@@ -178,6 +335,7 @@ def _declaration(*, target: Any, descriptor: Path, functional_base: Path,
                    "public_descriptors": len(cohort.public),
                    "hidden_source_descriptors": cohort.hidden_source_count,
                    "hidden_descriptors": len(cohort.hidden),
+                   "declined": list(cohort.declined),
                    "same_elf_certificate_descriptors": len(
                        ORCH._functional_gsim_cases(cohort)),
                    "dynamic_model_regrade_descriptors": sum(
@@ -186,6 +344,8 @@ def _declaration(*, target: Any, descriptor: Path, functional_base: Path,
         "cases": [{"workload_sha256": case.identity,
                    "representative_manifest": str(case.manifest),
                    "representative_manifest_sha256": case.manifest_sha256,
+                   "representative_source_sha256": case.capsule_tree_sha256,
+                   "representative_source_n_files": case.capsule_tree_n_files,
                    "capsules": list(case.capsule_names), "cohorts": list(case.cohorts)}
                   for case in cases],
         "execution": {"timeout_seconds": timeout,
@@ -358,6 +518,9 @@ def _completion(root: Path, declaration_sha256: str, source: GATE.CertificateRec
             "functional GSIM certificate is outside its host root") from exc
     digest = str(cert.get("sha256") or "")
     record = GATE.load_certificate(path, expected_sha256=digest)
+    declaration = json.loads((root / f"declaration.{declaration_sha256}.json").read_text())
+    if record.document.get("functional_coverage") != declaration.get("functional_coverage"):
+        raise FunctionalQualificationError("completed certificate changed its declared coverage")
     if (set(record.members) != expected
             or set(cert.get("workload_sha256") or []) != expected):
         raise FunctionalQualificationError("completed certificate is not the exact functional cohort")
@@ -365,13 +528,10 @@ def _completion(root: Path, declaration_sha256: str, source: GATE.CertificateRec
 
 
 def reusable_certificate(root: Path, source: GATE.CertificateRecord) -> tuple[Path, str] | None:
-    """A finished certificate in ``root`` that this run would only reproduce, or None.
+    """Discover a matching-engine certificate; this is NOT authorization to adopt it.
 
-    Phase 1 pays for the functional evidence once. Rebuilding it on every launch re-pays for a
-    result that cannot differ: the certificate is keyed on the frozen submission, and the only other
-    thing that can move it is the GSIM build it pins -- which the coordinator independently requires
-    to equal the tuning certificate's (`_require_same_gsim_build`). So the reuse condition is exactly
-    "would that check pass", and it is checked here rather than assumed.
+    The producer validates the complete declaration and completion before reuse, including the
+    compiler, corpus and coverage policy. Matching engine pins alone proves none of those.
 
     Fails closed in every direction: no completion receipt (an interrupted run left the root behind),
     an unreadable or digest-mismatched certificate, or ANY pin differing from the source certificate
@@ -403,13 +563,18 @@ def produce_functional_certificate(
         timeout: int = 3600, reference_timeout: int | None = None,
         declined: "Sequence[str]" = (),
         workers: int = 2, gsim_max_cycles: int | None = None,
+        coverage: str = "exact", reference_cost_model: Mapping[str, Any] | None = None,
         reuse_source_captures: bool = True, reuse_completed_certificate: bool = True,
         target_experiment: Any | None = None,
         cohort: ORCH.FunctionalGradeCohort | None = None,
         lowerer: Callable[..., Path] = HQUAL.lower_with_functional_baseline,
         capturer: Callable[..., Mapping[str, Any]] = PRODUCER.capture_case,
         backend: Any | None = None) -> tuple[Path, str]:
-    """Create or safely resume the exact public+hidden functional certificate."""
+    """Create or resume qualification, checking the full declaration before adopting completion."""
+    if coverage not in ("exact", "stratified"):
+        raise FunctionalQualificationError("coverage must be exact or stratified")
+    if reference_cost_model is not None and coverage != "stratified":
+        raise FunctionalQualificationError("a reference cost model requires stratified coverage")
     if (isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0
             or isinstance(workers, bool) or not isinstance(workers, int) or workers <= 0):
         raise FunctionalQualificationError("timeout and workers must be positive integers")
@@ -420,51 +585,120 @@ def produce_functional_certificate(
     if (gsim_max_cycles is not None and (isinstance(gsim_max_cycles, bool)
             or not isinstance(gsim_max_cycles, int) or gsim_max_cycles <= 0)):
         raise FunctionalQualificationError("GSIM max cycles must be a positive integer")
-    descriptor = _plain_file(Path(descriptor), label="target descriptor")
+    # Once a root owns a sealed input snapshot, that snapshot—not a path in the moving checkout—is
+    # the qualification input.  In particular, do not even require the original descriptor to keep
+    # existing: a resumed or completed qualification must remain independently auditable.
+    descriptor = Path(descriptor)
     functional_base = _readonly_baseline(Path(functional_base), functional_base_sha256)
     source = GATE.load_certificate(
         source_certificate, expected_sha256=source_certificate_sha256)
-    if reuse_completed_certificate:
-        existing = reusable_certificate(Path(root), source)
-        if existing is not None:
-            return existing
+    # Never adopt a completion on engine pins alone: the compiler, cohort and sampling policy
+    # must also match. _load_declaration and _completion below verify that complete identity.
     _build_receipt(source)
-    target_experiment = target_experiment or load_target_experiment(descriptor)
-    if getattr(target_experiment, "target", None) != source.target:
-        raise FunctionalQualificationError("target descriptor differs from source certificate")
-    cohort = cohort or ORCH._functional_grade_cohort(target_experiment)
-    if declined:
-        # A capsule this submission DECLINED produced no ELF, so there is nothing for the two engines
-        # to disagree about. Excluded from the envelope by the SAME function the verifier uses, so the
-        # built certificate and the checked one can never describe different case sets.
-        cohort = _dc_replace(cohort, declined=tuple(sorted({str(n) for n in declined if n})))
-    cases = derive_cases(cohort)
-    expected = {case.identity for case in cases}
-    declaration = _declaration(
-        target=target_experiment, descriptor=descriptor, functional_base=functional_base,
-        functional_base_sha256=functional_base_sha256, source=source, cohort=cohort, cases=cases,
-        timeout=timeout, workers=workers, gsim_max_cycles=gsim_max_cycles,
-        reuse_source_captures=reuse_source_captures, reference_timeout=reference_timeout)
     root = Path(root)
     if root.is_symlink():
         raise FunctionalQualificationError("qualification root may not be a symlink")
-    if root.exists():
-        if not root.is_dir():
-            raise FunctionalQualificationError("qualification root is not a directory")
-        _declaration_path, declaration_sha = _load_declaration(root, declaration)
+    if root.exists() and not root.is_dir():
+        raise FunctionalQualificationError("qualification root is not a directory")
+    snapshot_resume = root.is_dir() and (root / "inputs").is_dir()
+    normalized_declined = tuple(sorted({str(name) for name in declined if name}))
+    if snapshot_resume:
+        _declaration_path, declaration_sha, declaration = _load_sealed_declaration(root)
+        target_descriptor = declaration.get("target_descriptor") or {}
+        descriptor = _plain_file(
+            Path(str(target_descriptor.get("path") or "")), label="frozen target descriptor")
+        try:
+            descriptor.relative_to((root / "inputs").resolve())
+        except ValueError as exc:
+            raise FunctionalQualificationError(
+                "frozen target descriptor is outside the input snapshot") from exc
+        cases = _declared_cases(root, declaration)
+        coverage_document = declaration.get("functional_coverage")
+        declared_source = declaration.get("source_certificate") or {}
+        declared_base = declaration.get("functional_baseline") or {}
+        declared_execution = declaration.get("execution") or {}
+        declared_cohort = declaration.get("cohort") or {}
+        wanted_execution = {
+            "timeout_seconds": timeout, "reference_timeout_seconds": reference_timeout,
+            "workers": workers, "gsim_max_cycles": gsim_max_cycles,
+            "reuse_identical_source_captures": reuse_source_captures,
+            "same_elf_engines": [GATE.REFERENCE_ENGINE, GATE.GSIM_ENGINE],
+        }
+        expected_pins = {name: source.pins[name]["sha256"]
+                         for name in sorted(GATE.REQUIRED_PINS)}
+        if (declaration.get("schema") != SCHEMA or declaration.get("policy") != POLICY
+                or declaration.get("target") != source.target
+                or target_descriptor.get("sha256") != _sha_file(descriptor)
+                or declared_base != {"path": str(functional_base),
+                                     "sha256": functional_base_sha256}
+                or declared_source.get("sha256") != source.sha256
+                or Path(str(declared_source.get("path") or "")).resolve() != source.path.resolve()
+                or declared_source.get("pins") != expected_pins
+                or declared_execution != wanted_execution
+                or tuple(declared_cohort.get("declined") or ()) != normalized_declined
+                or (coverage_document is None) != (coverage == "exact")
+                or (coverage_document is not None
+                    and coverage_document.get("reference_cost_model") != reference_cost_model)):
+            raise FunctionalQualificationError("resume inputs differ from the sealed declaration")
+        expected = (set(coverage_document["selected"]) if coverage_document is not None
+                    else {case.identity for case in cases})
+        try:
+            COVERAGE.verify(
+                coverage_document, [(case.identity, case.manifest) for case in cases], expected,
+                pins=source.pins)
+        except COVERAGE.CoverageError as exc:
+            raise FunctionalQualificationError(str(exc)) from exc
+        target_experiment = target_experiment or load_target_experiment(descriptor)
     else:
-        root.mkdir(parents=True, mode=0o700)
-        _declaration_path, declaration_sha = _write_content_addressed(
-            root, "declaration", declaration)
+        descriptor = _plain_file(descriptor, label="target descriptor")
+        target_experiment = target_experiment or load_target_experiment(descriptor)
+        if getattr(target_experiment, "target", None) != source.target:
+            raise FunctionalQualificationError("target descriptor differs from source certificate")
+        cohort = cohort or ORCH._functional_grade_cohort(target_experiment)
+        if normalized_declined:
+            # A capsule this submission DECLINED produced no ELF, so there is nothing for the two
+            # engines to disagree about. Builder and verifier use the same exclusion.
+            cohort = _dc_replace(cohort, declined=normalized_declined)
+        cases = derive_cases(cohort)
+        if not root.exists():
+            root.mkdir(parents=True, mode=0o700)
+            descriptor, cases = _snapshot_inputs(root, descriptor, cases)
+        coverage_document = None
+        if coverage == "stratified":
+            try:
+                coverage_document = COVERAGE.derive(
+                    [(case.identity, case.manifest) for case in cases],
+                    reference_cost_model=reference_cost_model, pins=source.pins)
+            except COVERAGE.CoverageError as exc:
+                raise FunctionalQualificationError(str(exc)) from exc
+        expected = (set(coverage_document["selected"]) if coverage_document is not None
+                    else {case.identity for case in cases})
+        declaration = _declaration(
+            target=target_experiment, descriptor=descriptor, functional_base=functional_base,
+            functional_base_sha256=functional_base_sha256, source=source, cohort=cohort, cases=cases,
+            timeout=timeout, workers=workers, gsim_max_cycles=gsim_max_cycles,
+            reuse_source_captures=reuse_source_captures, reference_timeout=reference_timeout)
+        if coverage_document is not None:
+            declaration["functional_coverage"] = coverage_document
+        if (root / "inputs").is_dir():
+            _declaration_path, declaration_sha = _write_content_addressed(
+                root, "declaration", declaration)
+        else:
+            _declaration_path, declaration_sha = _load_declaration(root, declaration)
+    if getattr(target_experiment, "target", None) != source.target:
+        raise FunctionalQualificationError("target descriptor differs from source certificate")
     completed = _completion(root, declaration_sha, source, expected)
     if completed is not None:
+        if not reuse_completed_certificate:
+            raise FunctionalQualificationError("force-refresh requires a new qualification root; "
+                                               "completed evidence is immutable")
         return completed
     for directory in (root / "captures", root / "attempts"):
         directory.mkdir(exist_ok=True)
     if reuse_source_captures:
         _seed_captures(root, source, expected)
     selected = _capture_paths(root, source, expected)
-    pending = [case for case in cases if case.identity not in selected]
+    pending = [case for case in cases if case.identity in expected and case.identity not in selected]
     artifacts = _artifacts(source)
     attempts: list[tuple[WorkloadCase, Path, Path]] = []
     failures: list[tuple[str, str, str]] = []
@@ -507,6 +741,8 @@ def produce_functional_certificate(
     certificate = PRODUCER.produce_certificate(
         target=source.target, captures=[selected[key] for key in sorted(expected)],
         artifacts=artifacts, build_receipt=receipt)
+    if coverage_document is not None:
+        certificate["functional_coverage"] = coverage_document
     certificate_path, certificate_sha = _write_content_addressed(
         root, "functional-certificate", certificate)
     record = GATE.load_certificate(certificate_path, expected_sha256=certificate_sha)
@@ -542,6 +778,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-certificate-sha256", required=True)
     parser.add_argument("--root", required=True)
     parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument("--coverage", choices=("exact", "stratified"), default="exact",
+                        help="functional engine evidence policy; never changes tuning qualification")
+    parser.add_argument("--reference-cost-model", type=Path,
+                        help="JSON with reference engine, engine pins, and seconds by workload hash; "
+                             "sealed before capture. Unpriced strata use input element counts.")
     parser.add_argument("--declined", default="",
                         help="comma-separated capsule names THIS submission declined to lower. They "
                              "produced no ELF, so they carry no cross-validation and are excluded "
@@ -566,6 +807,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         source_certificate=Path(args.source_certificate),
         source_certificate_sha256=args.source_certificate_sha256, root=Path(args.root),
         timeout=args.timeout, reference_timeout=args.reference_timeout,
+        coverage=args.coverage, reference_cost_model=(
+            json.loads(args.reference_cost_model.read_text()) if args.reference_cost_model else None),
         declined=[n.strip() for n in str(args.declined or "").split(",") if n.strip()],
         workers=args.workers, gsim_max_cycles=args.gsim_max_cycles,
         reuse_source_captures=not args.no_reuse_source_captures,

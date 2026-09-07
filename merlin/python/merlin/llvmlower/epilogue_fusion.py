@@ -28,22 +28,18 @@ tolerance is what keeps it to fusions that cost no additional computation. Nothi
 requant is -- the epilogue is fused because it is a consumer whose iteration space the producer's
 slice covers exactly, which is a property every per-output epilogue of every reduction has.
 
-MEASURED (small_llama int8 capture, ``out/artifacts/recaptures/small_llama_int8_consistent``, whole
-model, host lowering + ``rv64gcv`` codegen):
+MEASURED (small_llama int8 capture, whole model, shipping scalar selection followed by
+``rv64gcv`` codegen):
 
-  * cost of the epilogue as a separate stage -- 19 requant nests over 25,856 output elements,
-    451,456 dynamic body ops = 1.21% of the model's 37,191,480; and 103,424 bytes of i32 accumulator
-    written by one nest and re-read by the next, i.e. 206,848 bytes of round-trip traffic per forward
-    that a fused epilogue never issues.
-  * with the feature on -- all 19 contraction nests carry their epilogue inline (0 unfused
-    contractions remain); the whole-model ``rv64gcv`` object goes 258,120 -> 121,680 bytes and
-    34,637 -> 16,464 decoded instructions; total dynamic body ops 37,191,480 -> 37,476,024 (+0.77%,
-    from other producers the pass also pulls in at zero tolerance).
-  * ATTRIBUTION: the affine loop form ALONE (this stage without the fusion pass) reproduces the
-    baseline object byte for byte -- 258,120 bytes, 34,637 instructions -- so the whole reduction is
-    the fusion, not the change of loop dialect.
-  * NUMERICS: the whole model's f32 output is BIT-IDENTICAL to the baseline's (max abs diff 0.0),
-    and both gate ``ok=True`` on ``tiers=['fp32', 'w8a8']``.
+  * 19 requant nests cover 25,856 output elements and materialize 103,424 bytes of i32 accumulator,
+    i.e. 206,848 bytes of write-then-read traffic per forward before any other epilogue traffic.
+  * after the scalar dispatch bug below and the alias hazard were fixed, the whole-model object goes
+    30,488 -> 26,064 decoded instructions (-14.5%) and 8,358 -> 5,232 vector instructions. Three
+    repeated host executions are finite and BIT-IDENTICAL to baseline; both arms also pass the fp32
+    and independent W8A8 golden tiers.
+  * these numbers supersede the earlier 34,637 -> 16,464 claim. That experiment manually spliced a
+    pass list the shipping scalar entry point never selected and predated the alias-safety fix, so it
+    is not valid promotion evidence.
 
 WHAT IT DOES NOT DO -- ``compute.epilogue`` DOES NOT FLIP. The CCA facet ``compute.epilogue`` reads
 ``requant_narrow`` off a NARROWING vector convert in the decoded stream. That instruction is not the
@@ -62,6 +58,22 @@ its epilogue has nothing to fuse into and this stage leaves it alone (an unrelat
 same block does NOT block the pass -- measured). On the integer datapath that is not the common case:
 the quant rewrite leaves no named contraction for the schedule to match, so the contraction reaches
 the loop stage as linalg and does fuse.
+
+ALIASES MUST BE FOLDED BEFORE DEPENDENCE ANALYSIS. A producer can have an earlier consumer through
+``memref.expand_shape`` and a later consumer through its original buffer. Without folding the view
+into the accesses, affine fusion can sink initialization past the earlier read: the full vectorized
+int8 model then reads uninitialized rotary-frequency data and emits NaNs. Both affine and general
+memref alias folding are needed, because the supported consumers include affine and scalar accesses.
+Regressions cover both with changing inputs so stale memory cannot masquerade as a result; the
+vector case is refused as described next.
+
+THE VECTORIZED PIPELINE IS REFUSED. Upstream's affine dependence graph treats ``vector.load`` as an
+affine access but its memref extractor accepts only affine/memref load/store; after alias folding the
+fusion pass aborts at ``getMemRef: unexpected op``. Without the fold it silently misses the alias and
+misorders the loops instead. Neither outcome is a compiler. The vectorized path has the targeted
+``fuse_requant_into_contraction`` feature, which pairs only the tagged contraction and requant and
+does not run broad affine producer fusion. This feature therefore rejects a pass list containing
+vector-to-LLVM conversion before changing it, rather than returning a wrong or inert build.
 
 Default OFF. With an empty feature set the pass list is returned unchanged, so the frozen baseline
 lowers byte-identically.
@@ -97,6 +109,8 @@ def fusion_stage() -> list[str]:
     """
     return [
         "func.func(convert-linalg-to-affine-loops)",
+        "affine-fold-memref-alias-ops",
+        "fold-memref-alias-ops",
         f"func.func(affine-loop-fusion{{mode=producer compute-tolerance={COMPUTE_TOLERANCE}}})",
         "lower-affine",
         LOOP_ANCHOR,
@@ -106,6 +120,10 @@ def fusion_stage() -> list[str]:
 def edit_pipeline(passes: list[str]) -> list[str]:
     """Replace the loop-generation stage with the affine loop form + producer-consumer fusion."""
     out = list(passes)
+    if any("convert-vector-to-llvm" in stage for stage in out):
+        raise ValueError(
+            f"{FEATURE}: broad affine producer fusion is unsafe in a pipeline with vector accesses; "
+            "use the targeted contraction/requant fusion for that pipeline")
     try:
         i = out.index(LOOP_ANCHOR)
     except ValueError:
@@ -127,13 +145,14 @@ def _feature():
             "compute tolerance. Aimed at the int8 datapath's requantize epilogue, which is a second "
             "all-parallel op over the contraction's output and therefore a second pass over the i32 "
             "accumulator; an expert int8 GEMM does that convert-and-scale inside its own output path. "
-            "MEASURED on the small_llama int8 capture: the epilogue is 19 separate nests, 451,456 "
-            "dynamic body ops (1.21% of the model) and 206,848 bytes of accumulator round-trip per "
-            "forward; with the feature all 19 contraction nests carry their epilogue inline, the "
-            "rv64gcv object goes 258,120 -> 121,680 bytes (34,637 -> 16,464 instructions) and the "
-            "model's output is BIT-IDENTICAL (max abs diff 0.0, both arms gate ok on fp32+w8a8). The "
-            "affine loop form WITHOUT the fusion reproduces the baseline object byte for byte, so the "
-            "reduction is the fusion. Does NOT flip the CCA compute.epilogue facet -- that reads a "
+            "MEASURED on the small_llama int8 capture through the shipping scalar selector: the "
+            "epilogue is 19 separate nests and 206,848 bytes of accumulator round-trip per forward; "
+            "the rv64gcv object goes 30,488 -> 26,064 decoded instructions (-14.5%) and 8,358 -> "
+            "5,232 vector instructions. Three repeated host executions are finite and BIT-IDENTICAL, "
+            "and both arms gate on fp32+w8a8. Supersedes an earlier manually-spliced measurement that "
+            "did not exercise shipping scalar dispatch and predated alias folding. Refuses pipelines "
+            "with vector accesses because upstream affine fusion cannot analyze them soundly. Does "
+            "NOT flip the CCA compute.epilogue facet -- that reads a "
             "narrowing convert emitted by the activation quantizer, not by the requant (measured "
             "in isolation: requant 0 narrowing converts, activation quantize 1). Runtime effect on "
             "the board is UNMEASURED. Default-off; baseline byte-identical."

@@ -50,6 +50,20 @@ _ALIASES = {
 E8M0 = {"bits": 8, "bias": (1 << (8 - 1)) - 1, "nan_code": (1 << 8) - 1}   # bias == 127
 
 
+def float_format_of(dtype: str) -> str | None:
+    """The registered FLOAT format ``dtype`` names, or ``None`` when it names an integer/unknown one.
+
+    A predicate, not a converter: it answers "is a value of this dtype a float pattern?" through the
+    one registry that defines the code<->value mapping (:mod:`merlin.runtime.fp8_formats`), so a
+    format added there is understood here without an edit. Never raises — an unknown or integer
+    spelling is simply "not a float", which is the answer a readback decoder needs.
+    """
+    try:
+        return canonical_float(str(dtype))
+    except KeyError:
+        return None
+
+
 def canonical_float(fmt: str) -> str:
     """Canonical float token for a spelling, or raise for an unknown format (fail closed)."""
     t = _ALIASES.get(fmt, fmt)

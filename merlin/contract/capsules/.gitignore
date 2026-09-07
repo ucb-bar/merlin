@@ -22,3 +22,10 @@ profiles/*.hidden.yaml
 capsule.weights.safetensors
 *.safetensors
 *.safetensors.manifest.json
+
+# Solver counterexample INPUT VALUES are an answer key in the same sense as golden.yaml: they are the
+# exact inputs on which a refuted program disagrees with its specification. The emitter that wrote
+# these into a capsule directory has been removed (values now live under out/artifacts/verification/,
+# which is already ignored), but the pattern stays as defence in depth -- this repo is public, and the
+# file was ignored by nothing at all while that emitter existed.
+counterexample_inputs.json

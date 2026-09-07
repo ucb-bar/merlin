@@ -81,6 +81,7 @@ def _mlc_importable(mlc_dir):
 
 
 _EMIT_HELPER = Path(__file__).resolve().parent / "oracle_helpers" / "npu_emit.py"
+_COSIM_HELPER = Path(__file__).resolve().parent / "oracle_helpers" / "program_cosim.py"
 
 
 def _model_venv_python(model_ext: str) -> Path:
@@ -280,6 +281,93 @@ def _bundle_preload(bundle: dict, cb: dict | None) -> list[tuple[int, bytes]]:
     return preload
 
 
+def run_raw_program(target: str, *, words: list[int], preload: list[tuple[int, bytes]],
+                    max_cycles: int = 20000):
+    """Run already-assembled words on a target's discovered program cosim.
+
+    This narrow public seam is also used by descriptor-owned assembly preflight adapters.  Assembly,
+    memory expectations, and operation identities remain outside this function; backend discovery stays
+    identical to the grading oracle and contains no target-name branch.
+    """
+    from merlin.targetgen.rtl import mlc_bridge
+    if not mlc_bridge.arc_available(target):
+        raise OracleUnavailable(f"mlc arc model unavailable for target {target!r}")
+
+    modeling = mlc_bridge.mlc_dir()
+    with mlc_bridge._mlc_cwd(), _mlc_importable(modeling):
+        try:
+            from mlc.backends.cosim_core import large_stack_call
+            from mlc.discover import fingerprint
+            arc_name = mlc_bridge._arc_target(target)
+            backend_name = fingerprint.cosim_backend(arc_name)
+            backend = importlib.import_module(f"mlc.backends.{backend_name}")
+        except Exception as exc:  # noqa: BLE001
+            raise OracleUnavailable(
+                f"mlc program-cosim import failed: {type(exc).__name__}: {exc}") from exc
+        if not hasattr(backend, "run_program"):
+            raise OracleUnavailable(
+                f"mlc backend mlc.backends.{backend_name} for target {target!r} exposes no run_program "
+                "(not a self-hosted-ISA program cosim)")
+        artifacts = fingerprint.artifact_paths(arc_name, base=modeling)
+        return large_stack_call(
+            backend.run_program,
+            str(artifacts["so"]),
+            str(artifacts["man"]),
+            words,
+            preload=preload,
+            max_cycles=max_cycles,
+        )
+
+
+def _run_raw_program_helper(target: str, *, words: list[int],
+                            preload: list[tuple[int, bytes]],
+                            reads: dict[str, tuple[int, int]], max_cycles: int,
+                            workdir: Path, timeout: float) -> dict[str, Any]:
+    """Run an Arc program in a disposable process and return JSON-safe observations.
+
+    Some Arc backends need :func:`large_stack_call`, whose implementation waits on a Python thread.
+    A thread cannot be safely cancelled when the backend wedges, so a timeout around the caller was
+    previously fictitious: the grader could remain inside ``join()`` indefinitely.  The process is the
+    cancellation boundary.  This is shared by every self-hosted-ISA target; target discovery and all ISA
+    facts remain in :func:`run_raw_program`.
+    """
+    wd = Path(workdir)
+    wd.mkdir(parents=True, exist_ok=True)
+    request = wd / "program_cosim_request.json"
+    result = wd / "program_cosim_result.json"
+    request.write_text(json.dumps({
+        "target": target,
+        "words": [int(word) for word in words],
+        "preload": [{"base": int(base), "b64": base64.b64encode(raw).decode()}
+                    for base, raw in preload],
+        "reads": [{"name": name, "base": int(base), "nbytes": int(nbytes)}
+                  for name, (base, nbytes) in reads.items()],
+        "max_cycles": int(max_cycles),
+    }))
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(_COSIM_HELPER), "--request", str(request), "--out", str(result)],
+            capture_output=True,
+            text=True,
+            timeout=max(0.001, float(timeout)),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ProgramDidNotHalt(
+            f"{target} program exceeded the {float(timeout):g}s wall timeout; "
+            "the isolated cosim worker was terminated") from exc
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "cosim worker emitted no diagnostic")[-800:]
+        raise OracleUnavailable(
+            f"{target} program-cosim worker failed rc={proc.returncode}: {detail}")
+    try:
+        payload = json.loads(result.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise OracleUnavailable(f"{target} program-cosim worker returned no valid result: {exc}") from exc
+    if not isinstance(payload, dict) or "halted" not in payload or "cycles" not in payload:
+        raise OracleUnavailable(f"{target} program-cosim worker returned an incomplete result")
+    return payload
+
+
 
 #: WHY EVERY PROGRAM-ORACLE RESULT CARRIES A ``timing`` BLOCK.
 #: ``cert_cost`` reads ``timing.sim_active_s`` to build a target's certification price sheet, and it is
@@ -303,10 +391,7 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     """Assemble (model venv) → run on the target's mlc arc cosim (``large_stack_call``) → read back.
     Returns ``{outputs, cycles, oracle}``. ``cb`` supplies the output tensor {base, shape, dtype,
     physical}; for self-contained validation ``program`` provides its own golden/output instead."""
-    from merlin.targetgen.rtl import mlc_bridge
-    if not mlc_bridge.arc_available(target):
-        raise OracleUnavailable(f"mlc arc model unavailable for target {target!r}")
-
+    deadline = time.monotonic() + float(timeout)
     bundle = emit_bundle(model_ext=model_ext, program=program, kernel_s=kernel_s, inputs=inputs,
                          fix_itype_rd=fix_itype_rd, workdir=workdir, timeout=timeout)
     words = bundle["words"]
@@ -317,40 +402,32 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     # (where its kernel reads the operand); the bytes are the ground-truth operands (see AW5).
     preload = _bundle_preload(bundle, cb)
 
-    modeling = mlc_bridge.mlc_dir()
-    # mlc.backends.__init__ eagerly loads the gemmini cache cwd-relative — run inside mlc's cwd; keep mlc
-    # importable for just this call (context-managed, never a global sys.path insert — see _mlc_importable).
-    with mlc_bridge._mlc_cwd(), _mlc_importable(modeling):
-        try:
-            from mlc.backends.cosim_core import large_stack_call
-            from mlc.discover import fingerprint
-            # The cosim backend module is DERIVED from the target by mlc's own registry (atlas ->
-            # cosim_atlas, ...), so no target-cosim literal lives in merlin. A target with no registered
-            # program cosim (or a backend that isn't a self-hosted-ISA program runner) is honestly
-            # unavailable, never a fabricated fallback.
-            arc_name = mlc_bridge._arc_target(target)   # composite target -> its mlc arc key (else identity)
-            backend_name = fingerprint.cosim_backend(arc_name)
-            backend = importlib.import_module(f"mlc.backends.{backend_name}")
-        except Exception as e:  # noqa: BLE001
-            raise OracleUnavailable(f"mlc program-cosim import failed: {type(e).__name__}: {e}")
-        if not hasattr(backend, "run_program"):
-            raise OracleUnavailable(
-                f"mlc backend mlc.backends.{backend_name} for target {target!r} exposes no run_program "
-                f"(not a self-hosted-ISA program cosim)")
-        ap = fingerprint.artifact_paths(arc_name, base=modeling)
-        _t0 = time.monotonic()
-        res = large_stack_call(backend.run_program, str(ap["so"]), str(ap["man"]),
-                               words, preload=preload, max_cycles=max_cycles)
-    if not res.halted:
+    specs = _resolve_out_specs(target, cb, bundle)
+    reads = {name: (spec["base"], _out_nbytes(spec)) for name, spec in specs.items()}
+    _t0 = time.monotonic()
+    res = _run_raw_program_helper(
+        target,
+        words=words,
+        preload=preload,
+        reads=reads,
+        max_cycles=max_cycles,
+        workdir=workdir,
+        timeout=max(0.001, deadline - time.monotonic()),
+    )
+    if not res["halted"]:
         raise ProgramDidNotHalt(f"{target} program did not halt within {max_cycles} cycles")
-    _obs, _cap = _timing_block(res)      # only if THIS oracle grows the capability; never invented
+    _obs = res.get("timing_observations")
+    _cap = res.get("timing_capability")
 
     # resolve EVERY output tensor spec from the cb (generation-declared) or the program's own golden and
     # read each one back: a module that commits twice has two results, and capturing only the first
     # grades the second as never written whatever the kernel did.
     outputs = {}
-    for name, spec in _resolve_out_specs(target, cb, bundle).items():
-        raw = bytes(res.slave.captured(spec["base"], _out_nbytes(spec)))
+    captured = res.get("captured") or {}
+    for name, spec in specs.items():
+        if name not in captured:
+            raise OracleUnavailable(f"{target} program-cosim worker did not capture output {name!r}")
+        raw = base64.b64decode(captured[name])
         outputs[name] = _decode_output(raw, spec["shape"], spec["dtype"], spec["physical"]).tolist()
     # RTL-DERIVED IS NOT RTL, AND THE TIER NAME CANNOT TELL THEM APART. This cosim runs the arc MODEL
     # elaborated from the target's RTL -- authoritative about the ISA and the datapath, but not the
@@ -358,7 +435,7 @@ def run_program_oracle(target: str, *, model_ext: str, cb: dict | None = None,
     # (gemmini) means genuinely-RTL, so classifying by tier NAME credited a model as RTL certification.
     # Declaring `derived_from_rtl` here is the seam capsule_runner already reads (it defaults to the tier
     # name only when the adapter stays silent) and the shape muon's gsim adapter already returns.
-    arc_out: dict[str, Any] = {"outputs": outputs, "cycles": int(res.cycles),
+    arc_out: dict[str, Any] = {"outputs": outputs, "cycles": int(res["cycles"]),
                                "timing": _sim_timing(time.monotonic() - _t0),
                                "oracle": {"kind": f"{target}-arc-arcilator-cosim",
                                           "derived_from_rtl": False,
@@ -413,7 +490,9 @@ def program_oracle_adapter(target: str, *, model_ext: str) -> Callable:
 
 
 def run_program_oracle_smoke(target: str, *, model_ext: str, program: str, workdir,
-                             max_cycles: int = 20000, timeout: int = 600) -> dict[str, Any]:
+                             max_cycles: int = 20000, timeout: int = 600,
+                             required_instruction_classes: tuple[str, ...] = (),
+                             isa_model=None) -> dict[str, Any]:
     """END-TO-END pre-flight oracle smoke for a self-hosted-ISA (``external_backend``) target: run a
     KNOWN-GOOD, self-contained model ``program`` (one that ships its OWN ``golden_result``) through the
     FULL grading path — assemble (the model's assembler) → arc cosim → read back the output region — and
@@ -425,7 +504,12 @@ def run_program_oracle_smoke(target: str, *, model_ext: str, program: str, workd
     caller's PARAMETER — the concrete known-good program name is a per-target SETUP fact declared in the
     descriptor, never a literal here (this module is HW-agnostic).
 
-    Returns ``{ok, program, cycles, oracle, shape, mismatches, reason}``. Raises
+    ``required_instruction_classes`` optionally binds a capability smoke to the instruction semantics it
+    claims to exercise. The words are decoded through the target's derived :class:`IsaModel`; a fixture
+    missing a required class fails before the expensive cosim. Both the class names and program come from
+    the descriptor -- this generic runner does not name an instruction or target.
+
+    Returns ``{ok, program, cycles, oracle, shape, mismatches, reason, instruction_coverage?}``. Raises
     :class:`OracleUnavailable` when the model venv / cosim is absent or the program does not halt (so the
     caller decides NO_GO vs. a clean skip — never a silent pass)."""
     import numpy as np
@@ -441,6 +525,32 @@ def run_program_oracle_smoke(target: str, *, model_ext: str, program: str, workd
         raise OracleUnavailable(
             f"{program!r}: model program ships no golden_result — cannot form a bit-exact smoke verdict")
     golden = _decode_output(base64.b64decode(g["b64"]), list(g["shape"]), str(g["dtype"]), None)
+    instruction_coverage = None
+    if required_instruction_classes:
+        if isa_model is None:
+            from .isa_model import isa_model_for_target
+            isa_model = isa_model_for_target(target)
+        from . import isa_disasm
+        records = isa_disasm.disassemble(isa_model, list(gb.get("words") or []))
+        instruction_coverage = isa_disasm.coverage(
+            isa_model, records, required=list(required_instruction_classes))
+        if instruction_coverage["missing"] or instruction_coverage["n_illegal"]:
+            problems = []
+            if instruction_coverage["missing"]:
+                problems.append(f"missing {instruction_coverage['missing']}")
+            if instruction_coverage["n_illegal"]:
+                problems.append(f"{instruction_coverage['n_illegal']} undecodable word(s)")
+            return {
+                "ok": False,
+                "program": program,
+                "cycles": 0,
+                "oracle": None,
+                "shape": list(golden.shape),
+                "mismatches": None,
+                "instruction_coverage": instruction_coverage,
+                "reason": (f"{program}: capability fixture does not exercise its descriptor-declared "
+                           f"instruction classes ({'; '.join(problems)})"),
+            }
     # 2) the FULL oracle path: assemble → arc cosim → read back the declared output region.
     res = run_program_oracle(target, model_ext=model_ext, program=program, max_cycles=max_cycles,
                              workdir=rwd, timeout=timeout)
@@ -454,8 +564,52 @@ def run_program_oracle_smoke(target: str, *, model_ext: str, program: str, workd
         reason = f"{program}: output shape {tuple(got.shape)} != golden {tuple(golden.shape)}"
     else:
         reason = f"{program}: diverged from its golden ({mism} element(s) differ) on {res.get('oracle')}"
-    return {"ok": ok, "program": program, "cycles": int(res.get("cycles") or 0),
-            "oracle": res.get("oracle"), "shape": list(got.shape), "mismatches": mism, "reason": reason}
+    result = {"ok": ok, "program": program, "cycles": int(res.get("cycles") or 0),
+              "oracle": res.get("oracle"), "shape": list(got.shape), "mismatches": mism, "reason": reason}
+    if instruction_coverage is not None:
+        result["instruction_coverage"] = instruction_coverage
+    return result
+
+
+def run_capability_probe(*, te, probe, workdir, timeout: int = 600) -> dict[str, Any]:
+    """Generic-protocol adapter for a model-owned named self-hosted-ISA program.
+
+    This is one adapter behind :mod:`preflight_probes`, not the global probe runner. Other adapters may
+    lower RVV source or target-dialect IR through the exact same interface. The descriptor supplies the
+    operation identities; this adapter accepts only instruction-domain identities and verifies each exact
+    operation mnemonic occurs in the derived disassembly before the bit-exact result counts.
+    """
+    fixture = probe.fixture
+    if fixture.get("kind") != "named_program" or not fixture.get("name"):
+        raise OracleUnavailable("program-oracle probe requires fixture {kind: named_program, name: ...}")
+    operations = list(probe.requirements.get("operations") or [])
+    if any(operation.get("domain") != "instruction" for operation in operations):
+        raise OracleUnavailable("program-oracle probe accepts instruction-domain operations only")
+    from . import capsule_runner as CR
+    endpoint_kind, model_ext = CR._endpoint_of(te.target)
+    if endpoint_kind != "external_backend" or not model_ext:
+        raise OracleUnavailable(
+            f"{te.target!r} does not expose an external_backend runner with model_ext")
+    from .isa_model import isa_model_for_target
+    result = run_program_oracle_smoke(
+        te.target,
+        model_ext=model_ext,
+        program=str(fixture["name"]),
+        workdir=workdir,
+        timeout=timeout,
+        required_instruction_classes=tuple(str(operation["operation"]) for operation in operations),
+        isa_model=isa_model_for_target(te.target),
+    )
+    status = "supported" if result["ok"] else "unsupported"
+    return {
+        "reason": result["reason"],
+        "observations": [
+            {**operation, "status": status,
+             "evidence": {"kind": "rtl_preflight", "detail": result["reason"]}}
+            for operation in operations
+        ],
+        "program_result": result,
+    }
 
 
 # --------------------------------------------------------------------------------------------------

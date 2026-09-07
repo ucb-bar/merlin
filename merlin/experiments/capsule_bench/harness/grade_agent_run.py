@@ -24,7 +24,7 @@ from merlin.targetgen import capsule_runner as CR  # noqa: E402
 import freeze_run  # noqa: E402
 
 
-# This is the certification tier for the Arm-4 Gemmini functional experiment.  A cheaper-tier pass is
+# This is the certification tier for the Arm-4 functional experiment.  A cheaper-tier pass is
 # useful iteration feedback, but is not a completed formal run.  Keep the requirement next to the
 # post-freeze grader: this is the only process allowed to read the hidden capsules.
 FORMAL_REQUIRED_TIER = "L3"
@@ -33,39 +33,30 @@ FORMAL_REQUIRED_TIER = "L3"
 def _formal_model_simulator(target: str) -> dict:
     """Resolve the concrete engine for formal whole-model certification.
 
-    A tier names fidelity, not a binary.  Chipyard operator grading already resolves its elaborated-RTL
-    engine through the availability/cost policy; whole-model grading must make the identical decision.
-    Falling back to the manifest's historical tier binding on that path silently pinned models to
-    Verilator even when GSIM was selected for every operator capsule.
+    A tier names fidelity, not a binary.  Operator grading already resolves its elaborated-RTL engine
+    through the target-routed availability/cost policy; whole-model grading must make the identical
+    decision.  A target may supply L3 through an adapter while leaving the manifest's static ``tier_sim``
+    map empty, so consulting that map here rejects a perfectly valid arc-routed target before grading.
     """
     cfg = CR._config_for_target(target, None, "i8xi8_i32")
     if FORMAL_REQUIRED_TIER not in cfg.rtl_tiers:
         raise RuntimeError(
             f"formal tier {FORMAL_REQUIRED_TIER} is not an RTL tier for target {target}"
         )
-    sim_via = CR._bespoke_sim_via(target)
-    if sim_via == "chipyard":
-        selected = dict(CR.chipyard_l3_selection(target))
-        if (not selected.get("engine")
-                or selected.get("fidelity") != "elaborated_rtl"):
-            raise RuntimeError(
-                f"formal chipyard selection for {target} did not resolve to elaborated_rtl: "
-                f"{selected!r}"
-            )
-        selected["selection"] = "chipyard_l3_policy"
-        return selected
-
-    engine = cfg.tier_sim.get(FORMAL_REQUIRED_TIER)
-    if not engine:
+    selected = dict(CR.describe_l3_engine(target))
+    if not selected.get("available"):
         raise RuntimeError(
-            f"formal tier {FORMAL_REQUIRED_TIER} has no simulator binding for target {target}"
+            f"formal tier {FORMAL_REQUIRED_TIER} has no available simulator for target {target}: "
+            f"{selected.get('reason') or selected!r}"
         )
-    return {
-        "engine": engine,
-        "fidelity": "elaborated_rtl",
-        "reason": f"target manifest binds {FORMAL_REQUIRED_TIER} through {sim_via or 'default'}",
-        "selection": "target_manifest",
-    }
+    if (not selected.get("engine")
+            or selected.get("fidelity") != "elaborated_rtl"):
+        raise RuntimeError(
+            f"formal simulator selection for {target} did not resolve to elaborated_rtl: "
+            f"{selected!r}"
+        )
+    selected["selection"] = selected.get("selection") or "target_routed_l3_policy"
+    return selected
 
 
 def _install_formal_model_simulator(target: str) -> tuple[dict, str | None]:
@@ -238,14 +229,14 @@ def _roots(spec: str) -> list[str]:
     return [s for s in (x.strip() for x in str(spec).split(",")) if s]
 
 
-def _score(pkg, capsules, runs_root, labels, no_oracle):
+def _score(pkg, capsules, runs_root, labels, no_oracle, *, contract=None):
     # Resolve the TARGET'S OWN oracle ladder from its contract (external_backend->program_oracle,
     # chipyard->spike/verilator, else arc) — never pass None here, which historically fell back to the
     # gemmini spike/verilator MLIR-lowering oracle and mis-graded atlas (torch-mlir run_lowering.py crash).
     # `{}` = honest no-oracle (L0/L1/trace only). sim_via is self-resolved from the contract.
     adapters = {} if no_oracle else CR.oracle_adapters(C.TARGET)
     return CG.grade(pkg, capsules_root=_roots(capsules), runs_root=runs_root, labels=labels,
-                    contract=str(C.REPO / "merlin/contract"),
+                    contract=str(Path(contract).resolve()) if contract else str(C.REPO / "merlin/contract"),
                     oracle_adapters=adapters, timeout=900, target=C.TARGET, no_oracle=no_oracle,
                     # The public set was materialized from the descriptor before the run.  The hidden
                     # pool cannot reveal names there, so derive its hardware-capable cohort only here,
@@ -278,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="comma-separated capsule roots for the HIDDEN phase (defaults to --capsules). "
                          "The launcher passes the target's own hidden dir so the public-only "
                          "materialized subset does not yield an empty hidden grade.")
+    ap.add_argument("--contract", default=None,
+                    help="optional frozen contract root used to resolve capsule inheritance")
     ap.add_argument("--no-oracle", action="store_true")
     ap.add_argument("--skip-hidden", action="store_true")
     a = ap.parse_args(argv)
@@ -296,7 +289,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
-    pub = _score(str(pkg), a.capsules, str(run_dir / "grading_public"), {"public", "dev"}, a.no_oracle)
+    pub = _score(str(pkg), a.capsules, str(run_dir / "grading_public"), {"public", "dev"},
+                 a.no_oracle, contract=a.contract)
     (run_dir / "grading_public" / "score_capsule.json").write_text(json.dumps(pub, indent=2))
 
     # --- iteration_000 snapshot (dummy = one-shot; a real repairing agent appends more) ---
@@ -325,7 +319,8 @@ def main(argv: list[str] | None = None) -> int:
                              f"({frozen['submission_sha256'][:12]} -> {recheck[:12]}); refusing hidden grade")
         (run_dir / "grading_hidden").mkdir(parents=True, exist_ok=True)
         hid = _score(str(pkg), (a.hidden_capsules or a.capsules),
-                     str(run_dir / "grading_hidden"), {"hidden"}, a.no_oracle)
+                     str(run_dir / "grading_hidden"), {"hidden"}, a.no_oracle,
+                     contract=a.contract)
         (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
 
     public_phase = _phase_manifest(pub, required_tier=FORMAL_REQUIRED_TIER)

@@ -50,6 +50,11 @@ HERE = Path(__file__).resolve().parent
 TRIALS = ("trial_00", "trial_01", "trial_02")
 REPLICATES = ("r000", "r001")
 SCHEMA = "merlin.agentic-performance-experiment.v1"
+# Every performance ELF executes one predecessor invocation before opening its cycle/counter
+# window.  The target harness records this as ``one_unmeasured_predecessor`` and still reports only
+# the Gemmini region.  Keep this host-owned: candidate code must not be able to choose whether it is
+# timed cold or warm, and an ambient shell variable must not decide the protocol.
+MEASUREMENT_CACHE_CONDITION = "warm"
 
 
 class ExperimentError(RuntimeError):
@@ -96,7 +101,7 @@ class Config:
     # exists: the reference leg costs ~45 min/capsule against ~10 s on GSIM, so the exact-cohort
     # certificate for an 80-workload cohort is ~6.7 engine-hours in front of a run that cannot begin.
     waive_functional_gsim_certificate: bool = False
-    heldout_qualification_timeout: int = 3600
+    heldout_qualification_timeout: int = 600
     generalization_count: int = 4
     telemetry_price_table: Path | None = None
     chia_python: Path | None = None
@@ -151,6 +156,12 @@ class FunctionalGradeCohort:
     #: the one-ELF certificate envelope, because a declined capsule produced no ELF to cross-validate.
     #: Empty when no run was consulted, which keeps the previous behaviour exactly.
     declined: tuple[str, ...] = ()
+    #: Frozen Phase-1 inputs used when this cohort came from an inspected functional run.  They are
+    #: deliberately optional so descriptor-only tooling can still derive today's live cohort.
+    frozen_contract: Path | None = None
+    frozen_hidden_source_dirs: tuple[Path, ...] = ()
+    public_admission: Mapping[str, Any] | None = None
+    admission_descriptor_sha256: str | None = None
 
 
 def _canonical(value: object) -> bytes:
@@ -399,6 +410,7 @@ def child_environment(config: Config, certificate: GATE.CertificateRecord) -> di
     """Pin GSIM selection for child stages; ambient engine paths/cycle caps never decide a run."""
     environment = {**os.environ, "MERLIN_TARGET_EXPERIMENT": str(config.descriptor.resolve()),
                    "MERLIN_GEMMINI_GSIM_EMU": certificate.pins["gsim_binary"]["path"],
+                   "MERLIN_CACHE_STATE": MEASUREMENT_CACHE_CONDITION,
                    # The binary pin alone makes GSIM available but does not force the equal-fidelity
                    # engine policy to choose it when another RTL engine is also installed. This run's
                    # certificate is specifically about the pinned GSIM build, so bind both operator L3
@@ -526,6 +538,101 @@ def _functional_grade_cohort(target: object) -> FunctionalGradeCohort:
         public_source_count=len(public_source), hidden_source_count=len(hidden_source))
 
 
+def _name_set_sha256(names: Sequence[str]) -> str:
+    return hashlib.sha256(
+        json.dumps(sorted(str(name) for name in names), separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _score_cohort_boundary(score: Mapping[str, Any], *, label: str,
+                           source_names: Sequence[str], recorded_count: int) \
+        -> tuple[tuple[str, ...], dict[str, Any]]:
+    """Verify the exact admitted names written by one frozen Phase-1 grade."""
+    rows = score.get("per_capsule")
+    if not isinstance(rows, list) or not rows:
+        raise ExperimentError(f"frozen {label} score has no per-capsule denominator")
+    admitted = tuple(str(row.get("capsule")) for row in rows if isinstance(row, Mapping))
+    if (len(admitted) != len(rows) or any(not name or name == "None" for name in admitted)
+            or len(set(admitted)) != len(admitted)
+            or score.get("n_capsules") != len(admitted)
+            or recorded_count != len(admitted)):
+        raise ExperimentError(f"frozen {label} score has an inconsistent admitted name set")
+    source = tuple(source_names)
+    if len(source) != len(set(source)) or not set(admitted).issubset(source):
+        raise ExperimentError(f"frozen {label} score is not a subset of its input snapshot")
+    admission = score.get("cohort_admission")
+    if not isinstance(admission, Mapping):
+        raise ExperimentError(f"frozen {label} score has no cohort-admission record")
+    counts = tuple(admission.get(field) for field in (
+        "n_source_capsules", "n_admitted_capsules", "n_capability_excluded",
+        "n_resource_excluded"))
+    if (any(not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in counts)
+            or counts[0] != len(source) or counts[1] != len(admitted)
+            or counts[0] != counts[1] + counts[2] + counts[3]
+            or admission.get("admitted_name_set_sha256") != _name_set_sha256(admitted)
+            or admission.get("excluded_name_set_sha256") != _name_set_sha256(
+                tuple(set(source) - set(admitted)))):
+        raise ExperimentError(f"frozen {label} cohort-admission record does not close")
+    return admitted, dict(admission)
+
+
+def _functional_grade_cohort_from_run(
+        target: object, functional: PAS.StageFunctionalRun) -> FunctionalGradeCohort:
+    """Reconstruct the scored cohort from Phase 1's immutable input snapshot and score names.
+
+    The live descriptor may legitimately acquire new capsules after Phase 1.  Such growth belongs to a
+    later functional run; it must not silently change the denominator of a performance campaign whose
+    compiler and functional verdict were frozen earlier.
+    """
+    snapshot_root = Path(functional.bundle_input_snapshot["path"])
+    snapshot_repo = (snapshot_root / "repo").resolve(strict=True)
+    live_repo = PB.REPO.resolve()
+    try:
+        primary_relative = Path(target.capsule_corpus).resolve().relative_to(live_repo)
+    except (AttributeError, ValueError) as exc:
+        raise ExperimentError("target capsule corpus cannot be mapped into the functional snapshot") \
+            from exc
+    primary = snapshot_repo / primary_relative
+    if primary.is_symlink() or not primary.is_dir():
+        raise ExperimentError("functional snapshot lacks the target's primary capsule corpus")
+    parent = primary.parent
+    public_roots = [primary, *(directory for directory in sorted(parent.iterdir())
+        if directory.is_dir() and not directory.is_symlink() and directory != primary
+        and directory.name != "hidden" and not directory.name.startswith(("_", "."))
+        and next(directory.glob("*/capsule.yaml"), None) is not None)]
+    hidden_root = parent / "hidden"
+    if hidden_root.is_symlink() or not hidden_root.is_dir():
+        raise ExperimentError("functional snapshot lacks the target's hidden capsule corpus")
+    contract = snapshot_repo / "merlin/contract"
+    public_source = discover_capsules(
+        public_roots, labels={"public", "dev"}, contract=contract)
+    hidden_source = discover_capsules(
+        [hidden_root], labels={"hidden"}, contract=contract)
+    public_index = {str(cap.get("name")): cap for cap in public_source}
+    hidden_index = {str(cap.get("name")): cap for cap in hidden_source}
+    if len(public_index) != len(public_source) or len(hidden_index) != len(hidden_source):
+        raise ExperimentError("functional snapshot contains duplicate target capsule names")
+    public_names, public_admission = _score_cohort_boundary(
+        functional.public_score, label="public", source_names=tuple(public_index),
+        recorded_count=functional.public_capsules)
+    hidden_names, _hidden_admission = _score_cohort_boundary(
+        functional.hidden_score, label="hidden", source_names=tuple(hidden_index),
+        recorded_count=functional.hidden_capsules)
+    descriptor_sha = public_admission.get("descriptor_sha256")
+    if not _is_sha(descriptor_sha):
+        raise ExperimentError("frozen public admission does not pin its target descriptor")
+    return FunctionalGradeCohort(
+        public=tuple(_functional_capsule(public_index[name]) for name in public_names),
+        hidden=tuple(_functional_capsule(hidden_index[name]) for name in hidden_names),
+        public_source_count=len(public_source), hidden_source_count=len(hidden_source),
+        frozen_contract=contract.resolve(),
+        frozen_hidden_source_dirs=tuple(
+            Path(hidden_index[name]["__dir__"]).resolve() for name in sorted(hidden_index)),
+        public_admission=public_admission,
+        admission_descriptor_sha256=str(descriptor_sha))
+
+
 def _declined_names(functional: object) -> tuple[str, ...]:
     """Capsule names this submission's own grade recorded as DECLINED, public and hidden.
 
@@ -573,23 +680,22 @@ def _functional_gsim_cases(cohort: FunctionalGradeCohort) -> tuple[FunctionalCap
 
 def _verify_functional_certificate(certificate: GATE.CertificateRecord,
                                    cohort: FunctionalGradeCohort) -> dict[str, Any]:
-    """Bind a strict same-ELF GSIM certificate to every admitted non-model descriptor."""
+    """Independently derive exact or predeclared sampled functional coverage."""
+    import functional_coverage as COVERAGE
+
     descriptors = _functional_gsim_cases(cohort)
     identities: dict[str, list[str]] = {}
     for capsule in descriptors:
         identities.setdefault(capsule.workload_sha256, []).append(str(capsule.manifest))
-    missing = sorted(set(identities) - set(certificate.members))
-    extras = sorted(set(certificate.members) - set(identities))
-    if missing or extras:
-        detail = []
-        if missing:
-            detail.append("missing=" + ", ".join(
-                f"{identities[identity]}={identity}" for identity in missing))
-        if extras:
-            detail.append("extras=" + ", ".join(extras))
-        raise ExperimentError(
-            "functional GSIM certificate is not the exact admitted public+hidden cohort ("
-            + "; ".join(detail) + ")")
+    metadata = certificate.document.get("functional_coverage")
+    if "functional_coverage" in certificate.document and metadata is None:
+        raise ExperimentError("functional coverage metadata is null rather than absent")
+    try:
+        coverage = COVERAGE.verify(
+            metadata, [(capsule.workload_sha256, capsule.manifest) for capsule in descriptors],
+            set(certificate.members), pins=certificate.pins)
+    except COVERAGE.CoverageError as exc:
+        raise ExperimentError(str(exc)) from exc
     return {
         "public_source_descriptors": cohort.public_source_count,
         "public_descriptors": len(cohort.public),
@@ -601,6 +707,9 @@ def _verify_functional_certificate(certificate: GATE.CertificateRecord,
         "same_elf_certificate_scope": "admitted_non_model_descriptors",
         "model_certificate_scope": "full_regrade_dynamic_tile_gsim_execution_ledger",
         "distinct_workload_sha256": sorted(identities),
+        "coverage_mode": coverage["mode"],
+        "independently_verified_workload_sha256": coverage["selected"],
+        "unsampled_workload_sha256": coverage["unsampled"],
     }
 
 
@@ -626,6 +735,108 @@ def _functional_regrade_inputs(target: object,
     if not hidden_roots:
         raise ExperimentError("full functional regrade needs nonempty hidden source roots")
     return str(public_root), hidden_roots
+
+
+def _functional_qualification_descriptor(
+        certificate: GATE.CertificateRecord,
+        cohort: FunctionalGradeCohort) -> tuple[Path, dict[str, Any]]:
+    """Resolve the frozen target descriptor and prove the adjacent qualification binds this cert."""
+    root = certificate.path.parent.resolve()
+    declarations = sorted(root.glob("declaration.*.json"))
+    completions = sorted(root.glob("completion.*.json"))
+    if len(declarations) != 1 or len(completions) != 1:
+        raise ExperimentError("functional certificate lacks one sealed qualification chain")
+    declaration_path, completion_path = declarations[0], completions[0]
+    declaration_sha = _sha_file(declaration_path)
+    if declaration_path.name != f"declaration.{declaration_sha}.json":
+        raise ExperimentError("functional qualification declaration is not content-addressed")
+    try:
+        declaration = json.loads(declaration_path.read_text(encoding="utf-8"))
+        completion = json.loads(completion_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ExperimentError("functional qualification chain is unreadable") from exc
+    target = declaration.get("target_descriptor") or {}
+    descriptor = Path(str(target.get("path") or ""))
+    try:
+        descriptor = descriptor.resolve(strict=True)
+        descriptor.relative_to(root / "inputs")
+    except (OSError, ValueError) as exc:
+        raise ExperimentError("functional qualification target descriptor escapes its snapshot") \
+            from exc
+    functional_record = completion.get("functional_certificate") or {}
+    declared_cohort = declaration.get("cohort") or {}
+    if (target.get("sha256") != _sha_file(descriptor)
+            or target.get("sha256") != cohort.admission_descriptor_sha256
+            or descriptor.stat().st_mode & 0o222
+            or completion.get("declaration_sha256") != declaration_sha
+            or functional_record.get("sha256") != certificate.sha256
+            or Path(str(functional_record.get("path") or "")).resolve() != certificate.path.resolve()
+            or set(functional_record.get("workload_sha256") or ()) != set(certificate.members)
+            or declaration.get("functional_coverage") != certificate.document.get(
+                "functional_coverage")
+            or declared_cohort.get("public_source_descriptors") != cohort.public_source_count
+            or declared_cohort.get("public_descriptors") != len(cohort.public)
+            or declared_cohort.get("hidden_source_descriptors") != cohort.hidden_source_count
+            or declared_cohort.get("hidden_descriptors") != len(cohort.hidden)):
+        raise ExperimentError("functional qualification chain differs from its frozen cohort")
+    return descriptor, {
+        "path": str(descriptor), "sha256": str(target["sha256"]),
+        "declaration": str(declaration_path.resolve()),
+        "declaration_sha256": declaration_sha,
+        "completion": str(completion_path.resolve()),
+        "completion_sha256": _sha_file(completion_path),
+    }
+
+
+def _frozen_functional_regrade_inputs(
+        root: Path, cohort: FunctionalGradeCohort) -> tuple[str, str, Path]:
+    """Bind the regrade CLI to the exact Phase-1 public and hidden snapshot inputs."""
+    if (cohort.frozen_contract is None or not cohort.frozen_hidden_source_dirs
+            or not isinstance(cohort.public_admission, Mapping)):
+        raise ExperimentError("functional cohort lacks its frozen regrade inputs")
+    contract = Path(cohort.frozen_contract)
+    if contract.is_symlink() or not contract.is_dir():
+        raise ExperimentError("frozen functional contract is absent or linked")
+    for capsule in (*cohort.public, *cohort.hidden):
+        if (capsule.manifest.is_symlink() or not capsule.manifest.is_file()
+                or _sha_file(capsule.manifest) != capsule.manifest_sha256
+                or GATE.workload_sha256(PAIRED.CERTPROD.derive_workload(capsule.manifest))
+                != capsule.workload_sha256):
+            raise ExperimentError(f"frozen functional capsule changed: {capsule.name}")
+    hidden = discover_capsules(
+        list(cohort.frozen_hidden_source_dirs), labels={"hidden"}, contract=contract)
+    hidden_names = tuple(str(cap.get("name")) for cap in hidden)
+    _score_cohort_boundary(
+        {"per_capsule": [{"capsule": capsule.name} for capsule in cohort.hidden],
+         "n_capsules": len(cohort.hidden),
+         "cohort_admission": {
+             "n_source_capsules": cohort.hidden_source_count,
+             "n_admitted_capsules": len(cohort.hidden),
+             "n_capability_excluded": cohort.hidden_source_count - len(cohort.hidden),
+             "n_resource_excluded": 0,
+             "admitted_name_set_sha256": _name_set_sha256(
+                 tuple(capsule.name for capsule in cohort.hidden)),
+             "excluded_name_set_sha256": _name_set_sha256(
+                 tuple(set(hidden_names) - {capsule.name for capsule in cohort.hidden})),
+         }},
+        label="hidden regrade", source_names=hidden_names, recorded_count=len(cohort.hidden))
+    admission_root = Path(root) / "functional_regrade_inputs/public_admission"
+    admission_root.mkdir(parents=True, exist_ok=True)
+    admission_path = admission_root / ".cohort_admission.json"
+    payload = _canonical(dict(cohort.public_admission))
+    if admission_path.exists():
+        if admission_path.is_symlink() or admission_path.read_bytes() != payload:
+            raise ExperimentError("functional public admission snapshot changed across resume")
+    else:
+        descriptor = os.open(admission_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+    admission_path.chmod(0o444)
+    admission_root.chmod(0o555)
+    public_roots = tuple(dict.fromkeys(
+        str(capsule.manifest.parent) for capsule in cohort.public)) + (str(admission_root),)
+    hidden_roots = tuple(dict.fromkeys(str(path) for path in cohort.frozen_hidden_source_dirs))
+    return ",".join(public_roots), ",".join(hidden_roots), contract.resolve()
 
 
 def _verify_tuning_certificate(certificate: GATE.CertificateRecord,
@@ -747,6 +958,26 @@ def _verify_functional_certificate_provenance(
     declared_workloads = ({str(row.get("workload_sha256")) for row in cases}
                           if isinstance(cases, list)
                           and all(isinstance(row, Mapping) for row in cases) else set())
+    metadata = declaration.get("functional_coverage")
+    if metadata != certificate.document.get("functional_coverage"):
+        raise ExperimentError("functional certificate coverage differs from its sealed declaration")
+    if metadata is not None:
+        import functional_coverage as COVERAGE
+
+        try:
+            if not isinstance(cases, list) or not cases:
+                raise COVERAGE.CoverageError("functional declaration has no cases")
+            declared_cases = []
+            for row in cases:
+                manifest = Path(row["representative_manifest"])
+                if manifest.is_symlink() or _sha_file(manifest) != row["representative_manifest_sha256"]:
+                    raise COVERAGE.CoverageError("functional sample descriptor changed after declaration")
+                declared_cases.append((row["workload_sha256"], manifest))
+            verified = COVERAGE.verify(metadata, declared_cases, set(certificate.members),
+                                       pins=certificate.pins)
+            declared_workloads = set(verified["selected"])
+        except (COVERAGE.CoverageError, KeyError, TypeError, OSError) as exc:
+            raise ExperimentError(f"invalid functional coverage declaration: {exc}") from exc
     if (declaration.get("schema") != "merlin.functional-gsim-qualification.v1"
             or declaration.get("policy")
             != "formal-public-plus-hidden-admission-distinct-workloads.v1"
@@ -859,6 +1090,17 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
     integers = (*integers, config.heldout_qualification_timeout, config.generalization_count)
     if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in integers):
         raise ExperimentError("all budgets/counts must be positive integers")
+    bounded_simulator_deadlines = {
+        "tool_timeout_seconds": config.tool_timeout_seconds,
+        "measurement_timeout": config.measurement_timeout,
+        "heldout_qualification_timeout": config.heldout_qualification_timeout,
+    }
+    oversized = {name: value for name, value in bounded_simulator_deadlines.items()
+                 if value > PAS.ITERATION_MAX_SECONDS}
+    if oversized:
+        raise ExperimentError(
+            f"performance-loop simulator deadlines exceed {PAS.ITERATION_MAX_SECONDS:g}s: "
+            f"{oversized}; reduce the witness shape")
     if not config.model.strip() or not config.effort.strip():
         raise ExperimentError("model and effort must be explicit")
     if (config.gsim_max_cycles is not None
@@ -867,11 +1109,11 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
                  or config.gsim_max_cycles <= 0)):
         raise ExperimentError("predeclared GSIM max cycles must be a positive integer")
     target = load_target_experiment(config.descriptor)
-    functional_cohort = _functional_grade_cohort(target)
     functional = PAS.inspect_stage_functional_run(
         runs_root(target.target, "capsule-bench"), config.functional_run_id,
         config.functional_submission_sha256,
         waive=frozenset(config.waive_functional_gate or ()))
+    functional_cohort = _functional_grade_cohort_from_run(target, functional)
     # WHAT THIS SUBMISSION DECLINED, from the grade that recorded it. The names travel on the cohort so
     # the certificate BUILDER and the certificate VERIFIER derive one case set from one function;
     # deriving them separately is how the two come to disagree about what was certified.
@@ -928,6 +1170,7 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
     functional_certificate = None
     functional_coverage = None
     functional_provenance = None
+    functional_descriptor_binding = None
     functional_certificate_waiver = None
     if (config.functional_gsim_certificate is None
             or config.functional_gsim_certificate_sha256 is None):
@@ -953,6 +1196,11 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
                                      "required no equivalence certificate"),
                 "gate_clean": False,
             }
+            if (getattr(target, "descriptor_sha256", None)
+                    != functional_cohort.admission_descriptor_sha256):
+                blockers.append(
+                    "functional certificate waiver cannot bind the changed live descriptor to the "
+                    "frozen Phase-1 cohort; supply the qualification certificate")
     else:
         functional_certificate = GATE.load_certificate(
             config.functional_gsim_certificate,
@@ -965,6 +1213,8 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
             functional_certificate, certificate, functional.digest)
         functional_coverage = _verify_functional_certificate(
             functional_certificate, functional_cohort)
+        _functional_descriptor, functional_descriptor_binding = \
+            _functional_qualification_descriptor(functional_certificate, functional_cohort)
     telemetry_sha = (_sha_bytes(_canonical(telemetry_preflight))
                      if telemetry_preflight is not None else None)
     trial_contract = {trial: {"model": config.model,
@@ -1005,6 +1255,7 @@ def preflight(config: Config, *, heldout_certificate_provider_available: bool = 
                        functional_certificate.sha256 if functional_certificate else None),
                    "functional_gsim_coverage": functional_coverage,
                    "functional_gsim_provenance": functional_provenance,
+                   "functional_descriptor_binding": functional_descriptor_binding,
                    "functional_gsim_certificate_waiver": functional_certificate_waiver,
                    "agent_telemetry": telemetry_preflight,
                    "agent_treatment": telemetry_treatment,
@@ -1499,6 +1750,7 @@ def _measure_cells(cells: Sequence[_MeasurementCell], config: Config, state: Che
             command = [sys.executable, str(HERE / "run_paired_perf_bench.py"),
                        "--functional-run-id", config.functional_run_id,
                        "--functional-submission-sha256", config.functional_submission_sha256,
+                       "--descriptor", str(config.descriptor),
                        "--candidate-record", str(cell.handoff.record_path),
                        "--corpus-root", str(cell.corpus_root),
                        "--corpus-manifest", str(cell.corpus_manifest),
@@ -1512,6 +1764,8 @@ def _measure_cells(cells: Sequence[_MeasurementCell], config: Config, state: Che
                        "--sim-workers", str(config.sim_workers),
                        "--hardware-counters" if config.hardware_counters
                        else "--no-hardware-counters"]
+            for predicate in config.waive_functional_gate or ():
+                command += ["--waive-functional-gate", predicate]
             launch = partial(_run_checked, command_runner, command,
                              environment=child_environment(config, cell.certificate))
 
@@ -1586,10 +1840,12 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
         runs_root(target.target, "capsule-bench"), config.functional_run_id,
         config.functional_submission_sha256,
         waive=frozenset(config.waive_functional_gate or ()))
+    functional_cohort = _functional_grade_cohort_from_run(target, functional)
+    functional_cohort = replace(functional_cohort, declined=_declined_names(functional))
     tuning_certificate = GATE.load_certificate(
         config.gsim_certificate, expected_sha256=config.gsim_certificate_sha256)
     functional_certificate = None
-    functional_cohort = _functional_grade_cohort(target)
+    functional_descriptor = None
     if (config.functional_gsim_certificate is not None
             and config.functional_gsim_certificate_sha256 is not None):
         functional_certificate = GATE.load_certificate(
@@ -1600,6 +1856,8 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
         _verify_functional_certificate_provenance(
             functional_certificate, tuning_certificate, functional.digest)
         _verify_functional_certificate(functional_certificate, functional_cohort)
+        functional_descriptor, _functional_descriptor_binding = \
+            _functional_qualification_descriptor(functional_certificate, functional_cohort)
     elif not config.waive_functional_gsim_certificate:
         # Unreachable through preflight, which already refuses. Kept because this function is also
         # the resume entrypoint: a resumed run must not acquire a waiver the predeclaration lacks.
@@ -1647,7 +1905,14 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
     # Passing target.graded_roots() directly would re-admit the policy-excluded descriptors. Build the
     # exact official public view and recheck the hidden selector against the certificate cohort after the
     # potentially long authoring phase.
-    public_roots, hidden_roots = _functional_regrade_inputs(target, functional_cohort)
+    if functional_descriptor is None:
+        if (getattr(target, "descriptor_sha256", None)
+                != functional_cohort.admission_descriptor_sha256):
+            raise ExperimentError(
+                "waived functional certificate cannot recover the frozen Phase-1 target descriptor")
+        functional_descriptor = Path(config.descriptor).resolve()
+    public_roots, hidden_roots, frozen_contract = _frozen_functional_regrade_inputs(
+        root, functional_cohort)
     regrades = {}
     for trial, handoff in handoffs.items():
         saved = state.evidence(f"functional_regrade:{trial}")
@@ -1662,13 +1927,14 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
                     str(PB.REPO / "merlin/experiments/capsule_bench/harness/grade_agent_run.py"),
                     "--run-dir", str(grade_dir), "--arm", "merlin_assisted",
                     "--model", config.model, "--capsules", public_roots,
-                    "--hidden-capsules", hidden_roots]
+                    "--hidden-capsules", hidden_roots, "--contract", str(frozen_contract)]
                 # The certificate is used here only to pin the GSIM build the regrade must execute on.
                 # When it is waived, the TUNING certificate pins the same build -- that equality is
                 # what `_require_same_gsim_build` asserts whenever both exist -- so the regrade runs
                 # on the identical engine either way.
                 regrade_environment = child_environment(
                     config, functional_certificate or tuning_certificate)
+                regrade_environment["MERLIN_TARGET_EXPERIMENT"] = str(functional_descriptor)
                 _run_checked(command_runner, command, environment=regrade_environment)
             saved = _verify_regrade(grade_dir, handoff)
             state.append(f"functional_regrade:{trial}", saved)
@@ -1754,7 +2020,8 @@ def run(config: Config, *, command_runner: CommandRunner = subprocess_runner,
                     corpus_manifest_sha256=corpus_args[1], corpus_capsules_sha256=corpus_args[2],
                     corpus_manifest=corpus_args[3], phase=phase,
                     gsim_certificate=certificate.path,
-                    gsim_certificate_sha256=certificate.sha256)
+                    gsim_certificate_sha256=certificate.sha256,
+                    waive_functional_gate=tuple(config.waive_functional_gate or ()))
                 plan = PAIRED.build_measurement_plan(inputs)
                 capsules.update((f"{phase}:{spec.family}", spec.capsule)
                                 for spec in plan.schedule)
@@ -1843,7 +2110,7 @@ def main(argv: list[str] | None = None) -> int:
                              "gate-clean: the functional regrade becomes GSIM-only, uncorroborated "
                              "by a second engine. Timing authority is unaffected -- it is pinned by "
                              "the tuning certificate, which is never waivable.")
-    parser.add_argument("--heldout-qualification-timeout", type=int, default=3600)
+    parser.add_argument("--heldout-qualification-timeout", type=int, default=600)
     parser.add_argument("--model", required=True)
     parser.add_argument("--effort", required=True)
     parser.add_argument("--wall-budget-seconds", type=int, required=True)
@@ -1856,7 +2123,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sim-workers", type=int, default=1, metavar="N",
                         help="executions in flight per measurement cell (default 1 = serial)")
     parser.add_argument("--generalization-count", type=int, default=4)
-    parser.add_argument("--measurement-timeout", type=int, default=3600)
+    parser.add_argument("--measurement-timeout", type=int, default=600)
     parser.add_argument("--gsim-max-cycles", type=int)
     parser.add_argument("--codex-binary", default="codex")
     parser.add_argument("--hardware-counters", action=argparse.BooleanOptionalAction, default=False)

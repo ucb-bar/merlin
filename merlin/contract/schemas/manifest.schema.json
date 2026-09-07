@@ -183,6 +183,57 @@
           "type": "string"
         }
       }
+    },
+    "optimization_surfaces": {
+      "type": "array",
+      "description": "Optional semantic edit map consumed by the performance harness. Each entry must resolve to a real Python AST symbol within a declared command component; the harness validates this rather than guessing from filenames.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "scope",
+          "path",
+          "symbol",
+          "effects",
+          "mechanism",
+          "emitted_delta",
+          "validation",
+          "abandonment"
+        ],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "scope": {
+            "type": "string",
+            "enum": ["flag", "knob", "heuristic", "pass", "codegen"]
+          },
+          "path": {"type": "string", "minLength": 1},
+          "symbol": {"type": "string", "minLength": 1},
+          "effects": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "placement", "layout", "dtype", "encoding", "quantization", "movement",
+                "residency", "fusion", "synchronization", "issue", "tiling",
+                "latency_hiding"
+              ]
+            }
+          },
+          "cca_axes": {
+            "type": "array",
+            "description": "Optional Common Compute Abstraction lever axes controlled by this exact source symbol. Axes are validated against the live CCA registry; metrics and hardware identities are not editable.",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "mechanism": {"type": "string", "minLength": 1},
+          "emitted_delta": {"type": "string", "minLength": 1},
+          "validation": {"type": "string", "minLength": 1},
+          "abandonment": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": true

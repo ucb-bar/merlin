@@ -2,10 +2,12 @@
 
 These run before the upstream pipeline:
 
-- :func:`lower_quant_ext` — rewrite model2MLIR's ``quant_ext.dequantize_per_channel``
-  (i8 weights + per-channel f32 scales + i32 zero points) into ``linalg.generic``:
-  ``out[i,j] = (sitofp(w[i,j]) - sitofp(zp[j])) * scale[j]`` (axis-broadcast). After
-  this, the module contains only upstream linalg/arith/tensor/scf/func ops.
+- :func:`lower_quant_ext` — rewrite model2MLIR's quantize/dequantize extension ops into
+  target-independent ``linalg.generic`` operations. After this, the module contains only
+  upstream linalg/arith/tensor/scf/func ops.
+- :func:`prune_dead_pure_tensor_ops` — remove dead top-level tensor-expression cones before
+  ownership/placement. This is important after integer contraction fusion, where the original
+  float dequantization path is deliberately left unused.
 - :func:`add_c_interface` — attach ``llvm.emit_c_interface`` so each public func gets
   a `_mlir_ciface_<name>` wrapper taking one pointer per memref argument.
 """
@@ -115,32 +117,43 @@ _DEQUANT_KINDS = {
     "quant_ext.dequantize_per_group": "per_group",
 }
 
+_QUANT_KINDS = {
+    "quant_ext.quantize_per_tensor": "per_tensor",
+}
+
 
 def lower_quant_ext(module) -> int:
-    """Rewrite all quant_ext.dequantize ops (per_tensor/per_channel/per_group); returns the count.
+    """Rewrite supported quant_ext quantize/dequantize ops; returns the count.
 
-    Generic dequant → f32 (or bf16) via a linalg.generic; the scale/zp indexing map is derived from
-    the granularity: scalar-broadcast (per_tensor), axis-projection (per_channel), or axis-floordiv by
-    group_size (per_group). No target-specific datapath — runs on any backend.
+    Generic dequant → f32 (or bf16) via a linalg.generic; the scale/zp indexing map is derived
+    from the granularity: scalar-broadcast (per_tensor), axis-projection (per_channel), or
+    axis-floordiv by group_size (per_group). Per-tensor activation quantization becomes the exact
+    target-neutral PT2E expression
+    ``clamp(roundeven(x * float32(1 / scale)) + zp, qmin, qmax)``.  The reciprocal-first order is
+    load-bearing: it is TorchAO's specified operation order and differs from ``x / scale`` at some
+    rounding boundaries.  The reciprocal is formed once as a rank-0 tensor rather than dividing
+    every activation element. No target datapath is named here, so scalar, RVV, and generated
+    accelerator backends see the same IR.
     """
     from xdsl.dialects import arith, tensor
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, IntegerType,
-                                       StringAttr, TensorType)
-    from xdsl.dialects.linalg import Linalg
+    from xdsl.dialects import math as mathd
+    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr, IntegerType,
+                                       TensorType)
     from xdsl.dialects.linalg import ops as linalg_ops
-    from xdsl.dialects.builtin import f32
-    from xdsl.ir import Attribute, Block, Region
-    from xdsl.utils.hints import isa
     from xdsl.ir.affine import AffineMap
+    from xdsl.ir import Block, Region
 
-    rewrites = []
+    dequant_rewrites = []
+    quant_rewrites = []
     for op in module.walk():
         # quant_ext is not a registered dialect; ops parse as builtin.unregistered.
         name = getattr(op, "op_name", None)
         if op.name == "builtin.unregistered" and name is not None and name.data in _DEQUANT_KINDS:
-            rewrites.append((op, _DEQUANT_KINDS[name.data]))
+            dequant_rewrites.append((op, _DEQUANT_KINDS[name.data]))
+        elif op.name == "builtin.unregistered" and name is not None and name.data in _QUANT_KINDS:
+            quant_rewrites.append((op, _QUANT_KINDS[name.data]))
 
-    for op, kind in rewrites:
+    for op, kind in dequant_rewrites:
         w, scale, zp = op.operands
         out_t = op.results[0].type
         rank = len(out_t.get_shape())
@@ -189,7 +202,116 @@ def lower_quant_ext(module) -> int:
         block.insert_op_before(generic, op)
         op.results[0].replace_all_uses_with(generic.results[0])
         block.detach_op(op)
-    return len(rewrites)
+
+    for op, kind in quant_rewrites:
+        if kind != "per_tensor":                         # pragma: no cover - table is exhaustive
+            continue
+        value, scale, zp = op.operands
+        out_t = op.results[0].type
+        if not isinstance(out_t, TensorType) or not isinstance(out_t.element_type, IntegerType):
+            raise ValueError("quant_ext.quantize_per_tensor must produce an integer tensor")
+        rank = len(out_t.get_shape())
+        identity = AffineMap.identity(rank)
+        scalar_map = AffineMap(rank, 0, ())
+        maps = ArrayAttr([AffineMapAttr(identity), AffineMapAttr(scalar_map),
+                          AffineMapAttr(scalar_map), AffineMapAttr(identity)])
+        iters = ArrayAttr([linalg_ops.IteratorTypeAttr(linalg_ops.IteratorType.PARALLEL)
+                           for _ in range(rank)])
+        elem = value.type.element_type
+        qelem = out_t.element_type
+        qmin_attr = op.properties.get("quant_min") or op.attributes.get("quant_min")
+        qmax_attr = op.properties.get("quant_max") or op.attributes.get("quant_max")
+        if qmin_attr is None or qmax_attr is None:
+            raise ValueError("quant_ext.quantize_per_tensor requires quant_min and quant_max")
+        qmin = int(qmin_attr.value.data)
+        qmax = int(qmax_attr.value.data)
+
+        # TorchAO quantizes with x * (1 / scale), not x / scale. Compute the f32 reciprocal once;
+        # besides preserving the exact rounding boundary, this avoids a scalar divide per element
+        # on CPU lanes and on targets which leave quantization outside their native dialect.
+        inv_t = scale.type
+        inv_empty = tensor.EmptyOp((), inv_t)
+        inv_body = Block(arg_types=[scale.type.element_type, scale.type.element_type])
+        _sv, _unused = inv_body.args
+        one = arith.ConstantOp(FloatAttr(1.0, scale.type.element_type))
+        reciprocal = arith.DivfOp(one.result, _sv)
+        inv_body.add_ops([one, reciprocal, linalg_ops.YieldOp(reciprocal.result)])
+        scalar_identity = AffineMap(0, 0, ())
+        inv_generic = linalg_ops.GenericOp(
+            inputs=(scale,), outputs=(inv_empty.tensor,), body=Region(inv_body),
+            indexing_maps=ArrayAttr([AffineMapAttr(scalar_identity),
+                                     AffineMapAttr(scalar_identity)]),
+            iterator_types=ArrayAttr([]), result_types=(inv_t,))
+        carry_provenance(inv_generic, op, "quant_reciprocal")
+
+        empty = tensor.EmptyOp((), out_t)
+        qmin_c = arith.ConstantOp(FloatAttr(float(qmin), elem))
+        qmax_c = arith.ConstantOp(FloatAttr(float(qmax), elem))
+        body = Block(arg_types=[elem, scale.type.element_type, zp.type.element_type, qelem])
+        xv, inv_sv, zv, _ = body.args
+        scaled = arith.MulfOp(xv, inv_sv)
+        rounded = mathd.RoundEvenOp(scaled.result)
+        zpf = arith.SIToFPOp(zv, elem)
+        shifted = arith.AddfOp(rounded.result, zpf.result)
+        low = arith.MaximumfOp(shifted.result, qmin_c.results[0])
+        high = arith.MinimumfOp(low.result, qmax_c.results[0])
+        converted = arith.FPToSIOp(high.result, qelem)
+        body.add_ops([scaled, rounded, zpf, shifted, low, high, converted,
+                      linalg_ops.YieldOp(converted.result)])
+        generic = linalg_ops.GenericOp(
+            inputs=(value, inv_generic.results[0], zp), outputs=(empty.tensor,), body=Region(body),
+            indexing_maps=maps, iterator_types=iters, result_types=(out_t,))
+        carry_provenance(generic, op, "quant_per_tensor")
+        block = op.parent_block()
+        for new_op in (inv_empty, inv_generic, empty, qmin_c, qmax_c, generic):
+            block.insert_op_before(new_op, op)
+        op.results[0].replace_all_uses_with(generic.results[0])
+        block.detach_op(op)
+    return len(dequant_rewrites) + len(quant_rewrites)
+
+
+_PURE_TENSOR_PREFIXES = ("arith.", "linalg.", "math.", "tensor.")
+
+
+def prune_dead_pure_tensor_ops(module) -> int:
+    """Erase dead top-level pure tensor-expression cones; return the number of erased ops.
+
+    The pass is deliberately conservative: it works within each ``func.func`` entry block and
+    only removes result-producing operations from known pure tensor/arithmetic dialects (plus
+    model2MLIR's quant extension ops). Calls, stores, terminators, and unknown dialects survive.
+    It therefore provides a common cleanup seam for scalar/RVV and generated target dialects
+    without teaching the frontend anything about a particular accelerator.
+    """
+    erased = 0
+    for func in [op for op in module.walk() if op.name == "func.func"]:
+        if not func.regions or not func.regions[0].blocks:
+            continue
+        block = func.regions[0].blocks[0]
+        live = set()
+        dead = []
+        for op in reversed(list(block.ops)):
+            if op.name == "func.return":
+                live.update(op.operands)
+                continue
+            name = getattr(getattr(op, "op_name", None), "data", op.name)
+            removable = (bool(op.results) and
+                         (op.name.startswith(_PURE_TENSOR_PREFIXES)
+                          or str(name).startswith("quant_ext.")))
+            if removable and not any(result in live for result in op.results):
+                dead.append(op)
+                continue
+            if any(result in live for result in op.results) or not removable:
+                # A structured op's scalar region may capture a top-level constant directly
+                # instead of listing it as a tensor operand. Those nested SSA edges are just as
+                # live as the op's explicit operands (quantize's qmin/qmax constants are the
+                # canonical example), so walk the owned region as part of this one top-level op.
+                for nested in op.walk():
+                    live.update(nested.operands)
+        for op in dead:
+            op.detach()
+            op.erase(safe_erase=False)
+            erased += 1
+    return erased
 
 
 def lower_bf16_matmul_f32acc(module) -> int:
@@ -415,7 +537,8 @@ def preprocess_text(mlir_text: str) -> tuple[str, dict]:
 
     module = parse_mlir_text(mlir_text)
     stats = {
-        "dequantize_lowered": lower_quant_ext(module),
+        "dead_tensor_ops_pruned": prune_dead_pure_tensor_ops(module),
+        "quant_ext_lowered": lower_quant_ext(module),
         "c_interface_funcs": add_c_interface(module),
     }
     return module_to_text(module), stats

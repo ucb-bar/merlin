@@ -51,6 +51,35 @@ def _model():
     return _MODEL
 
 
+def _read_schedule_contract(path: Path | None) -> dict:
+    """Read a target's small declarative scheduling contract.
+
+    Do not cache this document in the long-lived broker.  Compiler bring-up commonly tightens the
+    target contract while an authoring session is alive; retaining the first read makes the linter
+    silently apply stale latency facts until the whole run is restarted.  The ISA model remains cached
+    because deriving it is expensive, while this is one local YAML read per lint request.
+    """
+    if path is None or not path.is_file():
+        return {}
+    import yaml
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def _schedule_contract() -> dict:
+    """Optional explicit-latency facts shipped inside this target's frozen hardware bring-up set.
+
+    The checker is target-agnostic; a target opts in by providing ``schedule_contract.yaml`` beside its
+    RTL/ISA/examples. Missing data means "no scheduling check", never guessed latency.
+    """
+    import _common as _C
+    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.targetgen.sandbox.bwrap import resolve_grant
+    te = load_target_experiment(_C.EXP / "target_experiment.yaml")
+    root = resolve_grant(str(te.hwbringup_set), _C.REPO) if te.hwbringup_set else None
+    return _read_schedule_contract(root / "schedule_contract.yaml" if root else None)
+
+
 def _assemble(kernel_s_text: str) -> list[int]:
     """Assemble the agent's kernel.S to IMEM words with the SAME stock llvm-mc the oracle uses — so the
     disassembler/linter inspect exactly what will run."""
@@ -100,6 +129,7 @@ class BrokerCtx:
     target: str | None
     model: "Callable[[], Any]" = _model
     assemble: "Callable[[str], list[int]]" = _assemble
+    schedule_contract: "Callable[[], dict]" = _schedule_contract
 
 
 _CTX: "BrokerCtx | None" = None
@@ -203,7 +233,8 @@ def _handle(req: dict, ctx: BrokerCtx | None = None) -> dict:
 
     if cmd == "asm":
         try:
-            words = isa_asm.assemble_text(model, req.get("text", ""))
+            words = isa_asm.assemble_text(model, req.get("text", ""),
+                                          schedule_contract=ctx.schedule_contract())
         except isa_asm.AssembleError as e:
             return {"error": str(e)}
         # Rendered at the target's OWN instruction width. A 64-bit wide-word core assembled through a
@@ -226,15 +257,22 @@ def _handle(req: dict, ctx: BrokerCtx | None = None) -> dict:
         recs = isa_disasm.disassemble(model, words)
         if cmd == "disasm":
             return {"records": recs, "n": len(recs)}
+        schedule_contract = ctx.schedule_contract()
+        cycle_budget = req.get("cycle_budget")
+        cycle_budget = cycle_budget if isinstance(cycle_budget, int) else None
         findings = isa_lint.lint(model, words, op=req.get("op", "matmul"),
                                  output_dtype=req.get("output_dtype"),
                                  epilogue=tuple(req.get("epilogue") or ()),
-                                 movement=bool(req.get("movement", False)))
+                                 movement=bool(req.get("movement", False)),
+                                 schedule_contract=schedule_contract, cycle_budget=cycle_budget)
+        schedule = isa_lint.analyze_schedule(
+            model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget)
         cov = isa_disasm.coverage(model, recs, op=req.get("op", "matmul"),
                                   output_dtype=req.get("output_dtype"),
                                   epilogue=tuple(req.get("epilogue") or ()),
                                   movement=bool(req.get("movement", False)))
-        return {"findings": findings, "formatted": isa_lint.format_findings(findings), "coverage": cov}
+        return {"findings": findings, "formatted": isa_lint.format_findings(findings),
+                "coverage": cov, "schedule": {k: v for k, v in schedule.items() if k != "findings"}}
 
     if cmd == "debug":
         return _handle_debug(req)
@@ -294,6 +332,24 @@ def _handle_debug(req: dict) -> dict:
     return out
 
 
+def _completed_request_names(ch: Path) -> set[str]:
+    """Return requests that already have an atomic response/completion pair.
+
+    Channel state is durable across broker restarts.  Starting with an empty in-memory ``seen`` set
+    replays every historical request—hundreds in a long authoring run—and can make the first new request
+    time out behind obsolete disassemblies.  A response without ``done`` is deliberately not complete:
+    clients only trust the pair, so the broker must repair that request after a crash.
+    """
+    completed: set[str] = set()
+    for done in ch.glob("done_*"):
+        rid = done.name[len("done_"):]
+        req = ch / f"req_{rid}.json"
+        resp = ch / f"resp_{rid}.json"
+        if req.is_file() and resp.is_file():
+            completed.add(req.name)
+    return completed
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--ws", required=True)
@@ -301,7 +357,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     ch = Path(a.ws) / ".isa_channel"
     ch.mkdir(parents=True, exist_ok=True)
-    seen: set[str] = set()
+    seen = _completed_request_names(ch)
     # STOP alone does not bound this broker's life: the sentinel is written by the driver, so if the
     # driver dies first nobody ever writes it and the broker polls forever. Three sibling brokers were
     # found orphaned to init hours after their run ended, spawned for a round that never started. Exit

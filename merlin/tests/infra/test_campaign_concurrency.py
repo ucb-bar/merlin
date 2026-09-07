@@ -411,8 +411,13 @@ def test_concurrent_measurement_writes_the_same_record_as_the_serial_campaign(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     serial_root, concurrent_root = tmp_path / "serial", tmp_path / "concurrent"
     serial = _measure(serial_root, monkeypatch, workers=1, barrier=None)
+    # The runner deliberately lands one cell for each phase before releasing the rest of the
+    # matrix: those two baseline executions seed the content-addressed store, so the other four
+    # cells reuse the same baseline bytes instead of racing to pay for them again.  A cyclic
+    # two-party barrier proves both the lead prefix and the remaining wave actually overlap without
+    # demanding the six-way fan-out that the baseline-reuse policy intentionally removed.
     concurrent = _measure(concurrent_root, monkeypatch, workers=6,
-                          barrier=threading.Barrier(6, timeout=BARRIER_TIMEOUT))
+                          barrier=threading.Barrier(2, timeout=BARRIER_TIMEOUT))
 
     assert _normalize(serial.state.load(), serial_root) == \
         _normalize(concurrent.state.load(), concurrent_root)
@@ -426,9 +431,10 @@ def test_concurrent_measurement_writes_the_same_record_as_the_serial_campaign(
     assert [Path(path).relative_to(serial_root) for _trial, path in serial.manifests] == \
         [Path(path).relative_to(concurrent_root) for _trial, path in concurrent.manifests]
 
-    # POSITIVE CONTROL: all six cells were measured at the same time, on six distinct threads.
+    # POSITIVE CONTROL: all six cells used concurrent launch threads across the two declared waves.
     assert concurrent.runner.overlapped()
-    assert len(concurrent.runner.threads) == 6
+    assert len(concurrent.runner.threads) >= 2
+    assert threading.current_thread().name not in concurrent.runner.threads
     assert serial.runner.threads == {threading.current_thread().name}
     assert serial.runner.order == [f"exp__{trial}__{phase}"
                                    for trial in ORCH.TRIALS
@@ -439,7 +445,7 @@ def test_concurrent_measurement_writes_the_same_record_as_the_serial_campaign(
 def test_measurement_adopts_checkpointed_cells_and_relaunches_none(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     first = _measure(tmp_path / "run", monkeypatch, workers=6,
-                     barrier=threading.Barrier(6, timeout=BARRIER_TIMEOUT))
+                     barrier=threading.Barrier(2, timeout=BARRIER_TIMEOUT))
     assert len(first.runner.order) == 6
 
     resumed = _measure(tmp_path / "run", monkeypatch, workers=6, barrier=None)

@@ -60,3 +60,39 @@ def test_refuses_nonlinear_field():
 def test_empty_model_has_no_assembler():
     with pytest.raises(A.AssembleError, match="no ISA definition"):
         A.assemble_text(IsaModel(target="bare"), "MATMUL rd=1\n")
+
+
+def _branch_model() -> IsaModel:
+    fields = {"rs1": [7, 8, 9, 10, 11], "rs2": [12, 13, 14, 15, 16],
+              "imm": list(range(24, 32))}
+    by = {
+        "BNE": {"class": "Branch", "role": "scalar", "fixed_value": 0x63,
+                "fixed_mask": 0x00FE007F, "fields": fields},
+        "NOP": {"class": "Nullary", "role": "scalar", "fixed_value": 0x13,
+                "fixed_mask": 0xFFFFFFFF, "fields": {}},
+    }
+    return IsaModel(target="word-pc", by_mnemonic=by)
+
+
+_BRANCH_CONTRACT = {"control_flow": {"relative_branches": [{
+    "mnemonics": ["BNE"], "immediate_operand": "imm", "immediate_bits": 8,
+    "decoded_immediate_units_per_instruction": 2,
+}]}}
+
+
+def test_relative_label_uses_target_declared_pc_units():
+    model = _branch_model()
+    words = A.assemble_text(
+        model, "loop: NOP\nBNE rs1=1,rs2=0,imm=loop\n",
+        schedule_contract=_BRANCH_CONTRACT)
+    assert words == [A.assemble_line(model, "NOP", {}),
+                     A.assemble_line(model, "BNE", {"rs1": 1, "rs2": 0, "imm": 0xFE})]
+
+
+def test_symbolic_branch_refuses_missing_contract_and_unknown_label():
+    model = _branch_model()
+    with pytest.raises(A.AssembleError, match="unknown label"):
+        A.assemble_text(model, "BNE rs1=1,rs2=0,imm=missing\n",
+                        schedule_contract=_BRANCH_CONTRACT)
+    with pytest.raises(A.AssembleError, match="exactly one target-declared"):
+        A.assemble_text(model, "loop: NOP\nBNE rs1=1,rs2=0,imm=loop\n")

@@ -1,0 +1,9 @@
+# Functional capsule metadata remains source text; it is never reserialized.
+id: A3_k_accumulation
+operation: matmul
+shape: {M: 16, K: 32, N: 16}
+tiers: [L0, L1, L2, L3]
+expected:
+  exact_i32: true
+  compute_steps: 2
+  final_readouts: 1

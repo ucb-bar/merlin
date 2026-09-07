@@ -719,6 +719,22 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             outs[spec["out"]] = t.to_list()
         return outs
 
+    if op == "host_island_seam":
+        # Paired boundary probe: the contractions and saturating narrow are identical in both arms;
+        # only the explicitly declared host transform differs.  Keeping this definition in the shared
+        # integer oracle makes it independent of every backend implementation and target command set.
+        lhs = env[attrs["lhs"]]
+        w0 = env[attrs["weight0"]]
+        w1 = env[attrs["weight1"]]
+        middle = lhs.matmul(w0).to_i8()
+        transform = attrs.get("host_transform")
+        if transform == "xor_low_bit":
+            mask = int(attrs.get("xor_mask", 1))
+            middle = Tensor(middle.shape, [int(x) ^ mask for x in middle.data], "i8")
+        elif transform != "none":
+            raise ValueError(f"golden: unsupported host_island_seam transform {transform!r}")
+        return {out_name: middle.matmul(w1).to_list()}
+
     # --- float op family -------------------------------------------------------------------------
     # These are DEFINITIONS of the declared op, not per-capsule answers: one implementation grades
     # every capsule (present or future) that declares the op, on any target. Each composition reuses

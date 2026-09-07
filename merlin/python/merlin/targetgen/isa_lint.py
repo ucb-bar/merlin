@@ -103,6 +103,13 @@ def _encoding_errata_findings(model: IsaModel, recs: list[Finding]) -> list[Find
             row = bad.get(name)
             if not row:
                 continue
+            # The consolidated model may already carry the reviewed RTL-authoritative correction.
+            # In that case this occurrence decoded through the corrected signature and is precisely the
+            # word the diagnostic tells the author to emit. Reporting it as the stale shipped encoding is
+            # a false positive that makes a genuinely clean artifact impossible.
+            entry = model.resolve(name)
+            if entry and entry.get("errata_applied"):
+                continue
             against = ", ".join(row.get("hardware_against") or ()) or "this target's hardware"
             ev = "; ".join(f"{k}={v}" for k, v in sorted((row.get("evidence") or {}).items()))
             out.append({"rule": "encoding_contradicts_rtl", "severity": "error", "index": r["index"],
@@ -114,8 +121,238 @@ def _encoding_errata_findings(model: IsaModel, recs: list[Finding]) -> list[Find
     return out
 
 
+def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: dict | None = None,
+                     cycle_budget: int | None = None) -> dict:
+    """Analyze explicit scheduling without naming a target or guessing a latency.
+
+    Self-hosted accelerators commonly omit dynamic dependency interlocks and expose a delay
+    instruction instead. The latency/resource facts are therefore input data supplied by the target's
+    frozen hardware contract; this function is merely the reusable checker. With no contract it still
+    reports the one universally sound metric: the straight-line instruction lower bound.
+
+    ``minimum_issue_gap`` rules contain exact ISA mnemonics in ``producers``/``consumers`` and a minimum
+    cycle distance. ``register_dependency_gap`` rules additionally name decoded destination/source
+    operands, so unrelated registers may overlap while a true producer/consumer dependency must wait
+    for the target-declared result latency. ``delay_instruction`` says which mnemonic holds issue and
+    which decoded operand is the number of held cycles. Findings are diagnostic unless the target
+    explicitly chooses a severity.
+    """
+    recs = D.disassemble(model, words)
+    contract = schedule_contract if isinstance(schedule_contract, dict) else {}
+    delay = contract.get("delay_instruction") if isinstance(contract.get("delay_instruction"), dict) else {}
+    delay_mnemonic = str(delay.get("mnemonic") or "")
+    delay_operand = str(delay.get("cycles_operand") or "")
+
+    explicit_delay = 0
+    for rec in recs:
+        mnemonic = str(rec.get("isa_mnemonic") or rec.get("mnemonic") or "")
+        if mnemonic == delay_mnemonic and delay_operand:
+            value = (rec.get("operands") or {}).get(delay_operand)
+            if isinstance(value, int) and value > 0:
+                explicit_delay += value
+    # One issue cycle per encoded instruction plus cycles for which the explicit delay holds issue.
+    # Branches can only add dynamic work, so this remains a lower bound even when control flow exists.
+    lower_bound = len(words) + explicit_delay
+    findings: list[Finding] = []
+
+    # Decode target-declared relative control flow into explicit edges. The ISA model identifies the
+    # immediate bits, but only the target knows how a decoded value advances its internal PC. Keeping
+    # that unit conversion in data avoids assuming byte-addressed PCs in generic infrastructure.
+    branch_edges: list[dict] = []
+    control_flow = (contract.get("control_flow")
+                    if isinstance(contract.get("control_flow"), dict) else {})
+    relative_rules = control_flow.get("relative_branches") or []
+    if not isinstance(relative_rules, list):
+        relative_rules = []
+    for rule in (r for r in relative_rules if isinstance(r, dict)):
+        mnemonics = {str(x) for x in (rule.get("mnemonics") or [])}
+        immediate_operand = str(rule.get("immediate_operand") or "")
+        immediate_bits = rule.get("immediate_bits")
+        units_per_instruction = rule.get("decoded_immediate_units_per_instruction")
+        if (not mnemonics or not immediate_operand or not isinstance(immediate_bits, int)
+                or immediate_bits <= 0 or not isinstance(units_per_instruction, int)
+                or units_per_instruction <= 0):
+            continue
+        register_operands = [str(x) for x in (rule.get("comparison_registers") or [])]
+        destination_operand = str(rule.get("destination_operand") or "")
+        source_operands = [str(x) for x in (rule.get("source_operands") or [])]
+        zero_register = rule.get("zero_register")
+        for rec in recs:
+            mnemonic = str(rec.get("isa_mnemonic") or rec.get("mnemonic") or "")
+            if mnemonic not in mnemonics:
+                continue
+            raw = (rec.get("operands") or {}).get(immediate_operand)
+            if not isinstance(raw, int):
+                continue
+            masked = raw & ((1 << immediate_bits) - 1)
+            signed = masked - (1 << immediate_bits) if masked & (1 << (immediate_bits - 1)) else masked
+            if signed % units_per_instruction:
+                findings.append({
+                    "rule": "misaligned_relative_branch",
+                    "severity": str(rule.get("misaligned_severity") or "error"),
+                    "index": rec["index"],
+                    "detail": (f"{mnemonic} decoded displacement {signed} is not divisible by the "
+                               f"target-declared {units_per_instruction} immediate units per instruction"),
+                })
+                continue
+            target = int(rec["index"]) + signed // units_per_instruction
+            branch_edges.append({"index": int(rec["index"]), "target": target,
+                                 "mnemonic": mnemonic, "decoded_displacement": signed})
+            if target < 0 or target >= len(recs):
+                findings.append({
+                    "rule": "relative_branch_out_of_program",
+                    "severity": str(rule.get("out_of_program_severity") or "error"),
+                    "index": rec["index"],
+                    "detail": f"{mnemonic} resolves to instruction {target}, outside 0..{len(recs) - 1}",
+                })
+                continue
+            if target >= int(rec["index"]) or not destination_operand:
+                continue
+            compared = {(rec.get("operands") or {}).get(name) for name in register_operands}
+            compared.discard(None)
+            if zero_register is not None:
+                compared.discard(zero_register)
+            for register in compared:
+                for body_rec in recs[target:int(rec["index"])]:
+                    body_operands = body_rec.get("operands") or {}
+                    if body_operands.get(destination_operand) != register:
+                        continue
+                    sources = {body_operands.get(name) for name in source_operands}
+                    if register in sources:
+                        continue
+                    findings.append({
+                        "rule": "loop_comparison_register_reinitialized",
+                        "severity": str(rule.get("reinitialization_severity") or "warning"),
+                        "index": rec["index"],
+                        "target": target,
+                        "definition_index": body_rec["index"],
+                        "detail": (f"backward {mnemonic} to instruction {target} includes instruction "
+                                   f"{body_rec['index']}, which overwrites compared register {register} "
+                                   "without reading its prior value; this commonly means the branch "
+                                   "displacement used the wrong PC units and resets the loop counter"),
+                    })
+                    break
+
+    raw_rules = contract.get("minimum_issue_gap") or []
+    rules = [r for r in raw_rules if isinstance(r, dict)] if isinstance(raw_rules, list) else []
+    last_issue: list[tuple[int, str] | None] = [None for _ in rules]
+    raw_dependency_rules = contract.get("register_dependency_gap") or []
+    dependency_rules = ([r for r in raw_dependency_rules if isinstance(r, dict)]
+                        if isinstance(raw_dependency_rules, list) else [])
+    # Per rule, remember the most recent write to each physical register bank. A span is target data:
+    # e.g. one Atlas BF16 operand names a two-register pair, whereas a scalar/RVV rule can use one.
+    last_register_write: list[dict[int, tuple[int, str, int]]] = [
+        {} for _ in dependency_rules]
+
+    def _banks(value, span: int) -> set[int]:
+        if isinstance(value, bool) or not isinstance(value, int):
+            return set()
+        return set(range(value, value + span))
+
+    cycle = 0
+    for rec in recs:
+        # A fully-derived variable-format model carries the exact ISA mnemonic. Synthetic/legacy models
+        # may carry only the class; use it as the best available exact identity rather than disabling the
+        # target-supplied schedule checks entirely.
+        mnemonic = str(rec.get("isa_mnemonic") or rec.get("mnemonic") or "")
+        operands = rec.get("operands") or {}
+        for i, rule in enumerate(dependency_rules):
+            producers = {str(x) for x in (rule.get("producers") or [])}
+            consumers = {str(x) for x in (rule.get("consumers") or [])}
+            destination_operand = str(rule.get("producer_destination_operand") or "")
+            source_operands = [str(x) for x in (rule.get("consumer_source_operands") or [])]
+            span = rule.get("register_span", 1)
+            required = rule.get("cycles")
+            if (not producers or not consumers or not destination_operand or not source_operands
+                    or not isinstance(span, int) or span <= 0
+                    or not isinstance(required, int) or required < 0):
+                continue
+            if mnemonic in consumers:
+                source_banks: set[int] = set()
+                for operand in source_operands:
+                    source_banks |= _banks(operands.get(operand), span)
+                dependencies = {last_register_write[i][bank] for bank in source_banks
+                                if bank in last_register_write[i]}
+                for previous_cycle, previous_mnemonic, previous_index in sorted(dependencies):
+                    actual = cycle - previous_cycle
+                    if actual < required:
+                        findings.append({
+                            "rule": "register_dependency_gap",
+                            "schedule_rule": str(rule.get("name") or f"dependency_rule_{i}"),
+                            "severity": str(rule.get("severity") or "warning"),
+                            "index": rec["index"],
+                            "definition_index": previous_index,
+                            "producer_mnemonic": previous_mnemonic,
+                            "consumer_mnemonic": mnemonic,
+                            "actual_cycles": actual,
+                            "required_cycles": required,
+                            "missing_cycles": required - actual,
+                            "detail": (f"{mnemonic} reads a register written by {previous_mnemonic} "
+                                       f"only {actual} cycle(s) earlier, but the target's scheduling "
+                                       f"contract requires at least {required}; insert/schedule "
+                                       f"{required - actual} more cycle(s) before this dependent use"),
+                        })
+            # Consumers are checked before this update so an in-place instruction reads the previous
+            # definition, not the definition it is itself about to create.
+            if mnemonic in producers:
+                for bank in _banks(operands.get(destination_operand), span):
+                    last_register_write[i][bank] = (cycle, mnemonic, int(rec["index"]))
+        for i, rule in enumerate(rules):
+            consumers = {str(x) for x in (rule.get("consumers") or [])}
+            producers = {str(x) for x in (rule.get("producers") or [])}
+            required = rule.get("cycles")
+            if not isinstance(required, int) or required < 0:
+                continue
+            previous = last_issue[i]
+            if mnemonic in consumers and previous is not None:
+                previous_cycle, previous_mnemonic = previous
+                actual = cycle - previous_cycle
+                if actual < required:
+                    findings.append({
+                        "rule": "minimum_issue_gap",
+                        "schedule_rule": str(rule.get("name") or f"rule_{i}"),
+                        "severity": str(rule.get("severity") or "warning"),
+                        "index": rec["index"],
+                        "producer_mnemonic": previous_mnemonic,
+                        "consumer_mnemonic": mnemonic,
+                        "actual_cycles": actual,
+                        "required_cycles": required,
+                        "missing_cycles": required - actual,
+                        "detail": (f"{mnemonic} issues {actual} cycle(s) after {previous_mnemonic}, but "
+                                   f"the target's scheduling contract requires at least {required}; "
+                                   f"insert/schedule {required - actual} more cycle(s) before this use"),
+                    })
+            if mnemonic in producers:
+                last_issue[i] = (cycle, mnemonic)
+        cost = 1
+        if mnemonic == delay_mnemonic and delay_operand:
+            held = operands.get(delay_operand)
+            if isinstance(held, int) and held > 0:
+                cost += held
+        cycle += cost
+
+    if isinstance(cycle_budget, int) and cycle_budget >= 0 and lower_bound > cycle_budget:
+        findings.append({
+            "rule": "static_cycle_budget_exceeded",
+            "severity": "error",
+            "detail": (f"the straight-line program needs at least {lower_bound} cycles "
+                       f"({len(words)} issued instructions + {explicit_delay} explicit delay cycles), "
+                       f"already above the {cycle_budget}-cycle budget before any loop iteration or "
+                       "runtime stall is counted"),
+        })
+    return {
+        "straight_line_min_cycles": lower_bound,
+        "instruction_count": len(words),
+        "explicit_delay_cycles": explicit_delay,
+        "cycle_budget": cycle_budget,
+        "branch_edges": branch_edges,
+        "findings": findings,
+    }
+
+
 def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype: str | None = None,
-         epilogue: tuple[str, ...] = (), movement: bool = False) -> list[Finding]:
+         epilogue: tuple[str, ...] = (), movement: bool = False,
+         schedule_contract: dict | None = None, cycle_budget: int | None = None) -> list[Finding]:
     """Lint an assembled word stream → a list of findings, each
     ``{rule, severity, detail[, index]}`` (severity ∈ error/warning/info). Empty findings = clean by these
     checks (not a full correctness proof — that is the oracle's job). An empty model yields a single INFO
@@ -127,7 +364,8 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
     model — no target name, no class literal, no golden — and skips any role the target's ISA does not
     define (derive-or-skip, never a false positive)."""
     if model.is_fixed_format():
-        return _lint_fixed(model, words)
+        return _lint_fixed(model, words) + analyze_schedule(
+            model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget)["findings"]
     if model.is_empty():
         return [{"rule": "no_isa_model", "severity": "info",
                  "detail": "this target ships no ISA definition; static ISA lint is unavailable"}]
@@ -204,6 +442,9 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
                              "detail": f"a '{op}' kernel needs a '{label}'-role instruction (this ISA "
                                        f"defines {classes}) but the kernel emits none — its output cannot "
                                        "be correct; add it before spending an oracle run"})
+
+    findings.extend(analyze_schedule(
+        model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget)["findings"])
 
     return findings
 

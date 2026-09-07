@@ -101,6 +101,7 @@ def test_a_re_materialized_weight_is_rejected():
     assert len(findings) == 1, findings
     assert "redundant load" in findings[0] and "NOT resident" in findings[0]
     assert str(_WEIGHT_SPAD) in findings[0], "the finding must name the destination that was rewritten"
+    assert TCK.residency_findings(trace) == findings
 
 
 def test_a_genuinely_resident_weight_is_accepted():

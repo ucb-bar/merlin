@@ -11,12 +11,21 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 - `pipeline.py` — upstream pass pipeline + `translate_module_to_llvmir` (in the model2MLIR venv).
 - `codegen.py`, `toolchain.py`, `weights_pack.py` (manifest/safetensors → blob + arg table), `abi.py` (`_mlir_ciface_forward` host runner + `ScalarArg`), `lower.py`/`cli.py`.
 - `kernel_backend.py` — compile one outlined kernel func in isolation + check it vs a numpy reference (the per-kernel bisection harness; used by `runtime.dispatch_runtime`).
+- `compact_abi.py` — opt-in all-pointer entry compaction from an explicit compiler/runtime
+  base-buffer layout. Requires target-derived pointer index widths, a distinct entry symbol,
+  complete per-argument bindings, and verifies the whole CFG under pointer substitution.
+  It does not infer arena reuse, alignment, no-alias facts, or compatibility with an old harness.
 - `impr_features.py` + the per-feature modules next to it (`selfcopy.py`, `transpose_fuse.py`,
   `epilogue_fusion.py`) — NAMED, default-off edits to the pass list / transform schedule. A feature
   defines its own edit and registers itself; the empty feature set must leave the pipeline
   byte-identical. `epilogue_fusion.py` fuses a per-output epilogue (the int8 requant) into the loop
   nest of the reduction that produced it, via affine producer-consumer fusion at zero compute
-  tolerance.
+  tolerance. `requant_fuse.py` does the same job for a contraction the per-op schedule has already
+  tiled and vectorized (where the affine fusion is inert): it tiles the epilogue on TENSORS and fuses
+  the contraction and its accumulator fill into that tile loop, so the model-sized i32 accumulator is
+  never built. Two registered points, because they differ in kind — the plain one only removes the
+  traversal, the `_vec` one also reshapes the epilogue tile — and the emitted-code evidence separates
+  them.
 - `custom_isa.py` — `merlin.inline_asm` → `llvm.inline_asm` 1:1 (custom ISA / `.insn` raw encodings; no LLVM fork). `passes_xdsl.lower_bf16_matmul_f32acc` rewrites bf16 matmuls to accumulate in f32.
 
 ## What does not belong here
@@ -37,7 +46,7 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 - Weight tensors are never embedded in C arrays — pointers into the safetensors payload blob, offsets straight from the header (`weights_pack.pack`).
 - Vectorization is clang `-O2 -march=rv64gcv` auto-vectorization (verified: emits vsetvli). A scalable-vector tile/vectorize MLIR path may be layered later.
 - Host (x86 ctypes) parity vs torch reference is the gate before any spike run.
-- `HostModel.load` defaults to `RTLD_LOCAL` (global only for the >1024-arg trampoline path) so several model/kernel `.so`s coexist in one process without their shared `forward`/`memrefCopy` symbols clashing. `emit_c_interface` wraps only memref args as descriptor pointers; scalar args are passed by value — use `abi.ScalarArg` (the dispatch runtime relies on this for `cumsum`-style kernels).
+- `HostModel.load` defaults to `RTLD_LOCAL`, including the >1024-arg trampoline path: the trampoline receives the loaded library's exact entry address. Several model/kernel `.so`s must coexist without their shared `forward`/`memrefCopy` symbols clashing. `emit_c_interface` wraps only memref args as descriptor pointers; scalar args are passed by value — use `abi.ScalarArg` (the dispatch runtime relies on this for `cumsum`-style kernels).
 
 ## Testing expectations
 

@@ -52,6 +52,7 @@ _REAL_USAGE = {
 
 def _fake_codex(tmp_path: Path, lines: list[dict], *, final: str = "DONE",
                 exit_code: int = 0, hang: bool = False,
+                orphan_pid_path: Path | None = None,
                 version: str = "codex-cli 0.153.0") -> Path:
     """Write an executable stand-in for the codex CLI that replays *lines*.
 
@@ -65,7 +66,7 @@ def _fake_codex(tmp_path: Path, lines: list[dict], *, final: str = "DONE",
     stream_path.write_text(json.dumps(lines))
     body = [
         f"#!{sys.executable}",
-        "import json, sys, time, os",
+        "import json, sys, time, os, subprocess",
         "argv = sys.argv[1:]",
         # The real CLI answers --version without reading stdin, and the driver asks it for the
         # provenance stamp. A stand-in that replayed its event stream here would hand back the first
@@ -82,6 +83,11 @@ def _fake_codex(tmp_path: Path, lines: list[dict], *, final: str = "DONE",
         "for line in lines:",
         "    sys.stdout.write(json.dumps(line) + '\\n')",
         "    sys.stdout.flush()",
+        *(["child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'], "
+            "                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, "
+            "                         stderr=subprocess.DEVNULL, close_fds=True)",
+            f"open({str(orphan_pid_path)!r}, 'w').write(str(child.pid))"]
+          if orphan_pid_path is not None else []),
         *(["time.sleep(600)"] if hang else []),
         "if out:",
         f"    open(out, 'w').write({final!r})",
@@ -337,6 +343,17 @@ def test_a_hung_round_times_out_and_still_leaves_the_usage_on_disk(tmp_path):
     summary = _by_type(records, "codex_summary")[0]
     assert summary["timed_out"] is True
     assert summary["turns_usage_reported"] == 1, "usage seen before the kill is still counted"
+
+
+def test_a_successful_leader_cannot_leave_its_process_group_running(tmp_path):
+    pid_path = tmp_path / "descendant.pid"
+    rc, _tpath, _records = _run(
+        tmp_path, _fake_codex(tmp_path, _stream(), orphan_pid_path=pid_path))
+
+    assert rc == 0
+    pid = int(pid_path.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
 
 
 def test_the_prompt_bytes_are_kept_as_an_artifact(tmp_path):

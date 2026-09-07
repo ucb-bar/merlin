@@ -10,6 +10,7 @@ and registers its RTL with mlc; no per-target code.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
 import struct
@@ -281,6 +282,62 @@ class HostLaneMatrix:
 
 
 @dataclass(frozen=True)
+class PreflightCapabilityProbe:
+    """One target-owned fixture that demonstrates a named hardware capability.
+
+    The generic preflight treats ``capability`` and operation identities as opaque data. ``adapter`` owns
+    the execution/lowering mechanism, ``fixture`` names its target-owned input, and ``requirements`` names
+    operation identities as ``{domain, dialect, operation}``. Scalar ISA, RVV, and target-dialect probes
+    share one protocol without teaching the harness any target's mnemonics or dialect.
+    """
+
+    capability: str
+    adapter: str
+    fixture: dict[str, Any]
+    requirements: dict[str, Any]
+
+    @classmethod
+    def from_mapping(cls, value: Any, *, descriptor: Path, index: int) -> "PreflightCapabilityProbe":
+        field = f"preflight.capability_probes[{index}]"
+        if not isinstance(value, dict):
+            raise ValueError(f"{descriptor}: {field} must be a mapping")
+        capability = value.get("capability")
+        adapter = value.get("adapter")
+        fixture = value.get("fixture")
+        requirements = value.get("requirements")
+        if not isinstance(capability, str) or not capability.strip():
+            raise ValueError(f"{descriptor}: {field}.capability must be a non-empty string")
+        if (not isinstance(adapter, str) or not adapter.strip() or ":" not in adapter
+                or not all(adapter.strip().partition(":")[::2])):
+            raise ValueError(
+                f"{descriptor}: {field}.adapter must be a non-empty 'module:callable' reference")
+        if not isinstance(fixture, dict) or not fixture:
+            raise ValueError(f"{descriptor}: {field}.fixture must be a non-empty mapping")
+        if not isinstance(requirements, dict):
+            raise ValueError(f"{descriptor}: {field}.requirements must be a mapping")
+        operations = requirements.get("operations")
+        if not isinstance(operations, list) or not operations:
+            raise ValueError(f"{descriptor}: {field}.requirements.operations must be a non-empty list")
+        identities = []
+        for op_index, operation in enumerate(operations):
+            if not isinstance(operation, dict):
+                raise ValueError(f"{descriptor}: {field}.requirements.operations[{op_index}] must be a mapping")
+            domain, dialect, name = (operation.get("domain"), operation.get("dialect"),
+                                     operation.get("operation"))
+            if (not isinstance(domain, str) or not domain.strip()
+                    or not isinstance(dialect, str) or not dialect.strip()
+                    or not isinstance(name, str) or not name.strip()):
+                raise ValueError(
+                    f"{descriptor}: {field}.requirements.operations[{op_index}] requires non-empty "
+                    "domain, dialect, and operation")
+            identities.append((domain, dialect, name))
+        if len(set(identities)) != len(identities):
+            raise ValueError(f"{descriptor}: {field}.requirements.operations contains duplicates")
+        return cls(capability=capability.strip(), adapter=adapter.strip(),
+                   fixture=copy.deepcopy(fixture), requirements=copy.deepcopy(requirements))
+
+
+@dataclass(frozen=True)
 class TargetExperiment:
     """The declarative SETUP for one target's experiment (derivable facts are NOT here)."""
     target: str
@@ -312,6 +369,10 @@ class TargetExperiment:
     # per-target SETUP (which shipped validation program to smoke), so declared, not derived. Only an
     # ``external_backend`` (self-hosted-ISA program-oracle) target needs one; others leave it None.
     preflight_smoke_program: str | None = None
+    # OPTIONAL independent capability demonstrations. Unlike ``preflight_smoke_program`` (one broad
+    # oracle-connectivity check), each record names the capability it establishes and the derived ISA
+    # operations its target-owned fixture must actually demonstrate. Empty means no additional claim.
+    preflight_capability_probes: tuple[PreflightCapabilityProbe, ...] = ()
     # OPTIONAL: repo-relative dir of the BACKEND package whose ``contracts/`` hold this target's
     # rtl_facts / irdl pins, when it is NOT ``merlin/targets/<target>``. An experiment target can be
     # served by a differently-named core package; leaving that to be inferred from the target name
@@ -348,6 +409,13 @@ class TargetExperiment:
     graded_resource_exclude: tuple[str, ...] = ()
     graded_resource_policy: str | None = None
     graded_required_models: tuple[str, ...] = ()
+    # OPTIONAL: the complete-model capsule Phase 2 treats as its fixed global objective when the
+    # immutable Phase 1 snapshot predates capsule-level ``performance.global_objective`` metadata.
+    # This is an experiment declaration, not a size/latency heuristic: choosing the smallest measured
+    # program made a focused host-island seam masquerade as an end-to-end objective.  New snapshots
+    # should declare the objective on the capsule itself; this field keeps older, already-sealed Phase 1
+    # evidence usable without rewriting or rerunning it.
+    performance_global_objective: str | None = None
     # THE PHASE PARTITION of the admitted cohort -- a third, independent fact, and deliberately NOT a
     # third exclusion list by default. ``phase_policy.phase_of`` DERIVES which phase a member can serve
     # from what can be checked about it at this target's declared certification budget: whether its
@@ -648,6 +716,34 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
             raise ValueError(f"{p}: {field}.{key} must be a non-negative integer")
         return value
 
+    performance = doc.get("performance") or {}
+    if not isinstance(performance, dict):
+        raise ValueError(f"{p}: performance must be a mapping")
+    raw_global_objective = performance.get("global_objective_capsule")
+    if raw_global_objective is not None:
+        if (not isinstance(raw_global_objective, str) or not raw_global_objective
+                or Path(raw_global_objective).name != raw_global_objective
+                or raw_global_objective in (".", "..")):
+            raise ValueError(
+                f"{p}: performance.global_objective_capsule must be one capsule directory name")
+        performance_global_objective = raw_global_objective
+    else:
+        performance_global_objective = None
+
+    preflight = doc.get("preflight") or {}
+    if not isinstance(preflight, dict):
+        raise ValueError(f"{p}: preflight must be a mapping")
+    raw_capability_probes = preflight.get("capability_probes") or []
+    if not isinstance(raw_capability_probes, list):
+        raise ValueError(f"{p}: preflight.capability_probes must be a list")
+    capability_probes = tuple(
+        PreflightCapabilityProbe.from_mapping(value, descriptor=p, index=index)
+        for index, value in enumerate(raw_capability_probes)
+    )
+    capability_names = [probe.capability for probe in capability_probes]
+    if len(set(capability_names)) != len(capability_names):
+        raise ValueError(f"{p}: preflight.capability_probes contains duplicate capability names")
+
     legacy_exclude = names(grading.get("exclude_capsules"), field="grading.exclude_capsules")
     capability_exclude = names(grading.get("capability_exclude_capsules"),
                                field="grading.capability_exclude_capsules")
@@ -724,8 +820,8 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         prior_backends=tuple((doc.get("answer_surfaces") or {}).get("prior_backends") or ()),
         path=p,
         descriptor_sha256=hashlib.sha256(descriptor_bytes).hexdigest(),
-        preflight_smoke_program=(lambda s: str(s) if s else None)(
-            (doc.get("preflight") or {}).get("smoke_program")),
+        preflight_smoke_program=(lambda s: str(s) if s else None)(preflight.get("smoke_program")),
+        preflight_capability_probes=capability_probes,
         declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
         backend_package_dir=(lambda s: str(s) if s else None)(doc.get("backend_package_dir")),
         # Cohort admission (which capsules are graded, and why one is not) alongside the host-lane
@@ -737,6 +833,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         graded_resource_exclude=resource_exclude,
         graded_resource_policy=(lambda s: str(s) if s else None)(resource_bound.get("policy")),
         graded_required_models=required_models,
+        performance_global_objective=performance_global_objective,
         graded_phase2_only=phase2_only,
         graded_phase_exclude=phase_exclude,
         graded_phase=(int(phase_number) if isinstance(phase_number, int)

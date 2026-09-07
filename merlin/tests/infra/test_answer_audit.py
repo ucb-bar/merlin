@@ -84,6 +84,35 @@ def test_no_answer_reference_is_clean(audit, tmp_path):
     assert r["hits"] == []
 
 
+def test_reading_an_agent_owned_submission_path_is_clean(audit, tmp_path):
+    own = tmp_path / "submission/mlir_oot/lowering/pipeline.py"
+    own.parent.mkdir(parents=True)
+    own.write_text("def lower(): return 1\n")
+    tp = _transcript(tmp_path, "sed -n '1,80p' submission/mlir_oot/lowering/pipeline.py",
+                     own.read_text())
+
+    r = audit(tp, arm="merlin_assisted", workspace=tmp_path)
+
+    assert r["clean"] is True
+    assert r["owned_reads"] == 1
+    assert [h["kind"] for h in r["hits"]] == ["owned_read"]
+
+
+def test_submission_symlink_cannot_launder_a_withheld_read(audit, tmp_path):
+    withheld = tmp_path / "outside/lowering/pipeline.py"
+    withheld.parent.mkdir(parents=True)
+    withheld.write_text("secret answer bytes\n")
+    link = tmp_path / "submission/mlir_oot/lowering"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(withheld.parent, target_is_directory=True)
+    tp = _transcript(tmp_path, "cat submission/mlir_oot/lowering/pipeline.py", withheld.read_text())
+
+    r = audit(tp, arm="merlin_assisted", workspace=tmp_path)
+
+    assert r["clean"] is False
+    assert any(h["kind"] == "path_read" for h in r["hits"])
+
+
 def test_grep_of_public_weight_filename_declaration_is_clean(audit, tmp_path):
     """The interface names its private input; inspecting that public declaration is not reading it."""
     tp = _transcript(

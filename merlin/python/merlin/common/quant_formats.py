@@ -272,6 +272,28 @@ def machine_bits(token: str) -> int | None:
     return None
 
 
+def storage_bits(dtype: str) -> int:
+    """Element storage width, without any capsule address-layout dependency.
+
+    Packed formats use their declared packed width; plain machine spellings
+    are parsed structurally. Scale-plane placement is NOT part of this width.
+    The historical capsule helper delegates here, preserving its exceptions.
+    """
+    key = str(dtype)
+    if key.startswith("torch."):
+        key = key[len("torch."):]
+    if has(key):
+        fmt = get(key)
+        return int(fmt.pack_bits or fmt.element_bits)
+    bits = machine_bits(key)
+    if bits is None:
+        raise KeyError(
+            f"capsule_dram: cannot size dtype {dtype!r} — it is neither a format registered in "
+            f"merlin/schemas/quant_formats.registry.yaml ({names()}) nor a machine width; "
+            f"register the format rather than assuming a width")
+    return bits
+
+
 def is_element_dtype(token: str) -> bool:
     """True if ``token`` names an element type this tooling can reason about — a registered format (by
     canonical name or alias) or a plain machine width. The vocabulary check for artifacts that declare a

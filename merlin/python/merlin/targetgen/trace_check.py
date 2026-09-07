@@ -189,6 +189,24 @@ def check(trace: dict, expected: dict, cb: dict | None = None,
     return {"status": "pass" if not violations else "fail", "violations": violations}
 
 
+def residency_findings(trace: dict) -> list[str]:
+    """Find exact redundant reloads without requiring a capsule to declare residency mode.
+
+    ``check`` keeps mode conformance conditional on the capsule contract.  Whole-program performance
+    diagnosis has a different question: does the emitted stream visibly re-materialize a value that
+    is still live on chip?  The underlying detector already answers that from decoded source,
+    destination and extent identities, so expose it directly instead of duplicating or weakening it in
+    the performance harness.  An empty result proves only that this exact defect was not observed; it
+    is not proof that every profitable value remained resident.
+    """
+    if not isinstance(trace, dict):
+        raise TypeError("trace must be a mapping")
+    instructions = trace.get("instructions", [])
+    if not isinstance(instructions, list):
+        raise TypeError("trace instructions must be a list")
+    return _residency_findings(instructions)
+
+
 def _operand_identity(value) -> tuple:
     """A hashable identity for one decoded operand reference, compared structurally.
 

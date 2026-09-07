@@ -51,6 +51,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -449,21 +450,35 @@ class _Transcript:
             pass
 
 
-def _kill_tree(proc: subprocess.Popen) -> None:
-    """SIGTERM then SIGKILL the child's process group."""
+def _terminate_process_group(pgid: int, proc: subprocess.Popen | None = None) -> None:
+    """Terminate a saved child process group even after its leader has exited."""
+    if pgid <= 1:
+        raise ValueError("refusing to signal an unsafe process-group id")
     for sig, grace in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 5.0)):
         try:
-            os.killpg(os.getpgid(proc.pid), sig)
-        except (ProcessLookupError, PermissionError, OSError):
-            try:
-                proc.kill()
-            except OSError:
-                return
-        try:
-            proc.wait(timeout=grace)
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
             return
-        except subprocess.TimeoutExpired:
-            continue
+        except (PermissionError, OSError):
+            if proc is not None:
+                try:
+                    proc.kill()
+                except OSError:
+                    return
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            if proc is not None:
+                proc.poll()  # reap an exited group leader so an empty group disappears
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """SIGTERM then SIGKILL the child's saved process group."""
+    _terminate_process_group(proc.pid, proc)
 
 
 def _link_for_aet(run_dir: Path, raw_path: Path, rnd: int) -> Path | None:
@@ -556,8 +571,24 @@ def _sandbox_script(rounds: Path, rnd: int, turn: int, command: str) -> list[str
     the agent must not be able to read or edit the command that sandboxes it.
     """
     script = rounds / f"round_{rnd:02d}.sandbox.turn{turn:02d}.sh"
-    script.write_text(command, encoding="utf-8")
-    script.chmod(0o500)
+    # A completed launch seals this file 0500.  A checkpoint resume may retry the same round/turn and
+    # therefore the same path; opening the sealed inode for writing fails before Codex starts.  Replace
+    # it atomically with a newly sealed inode instead of temporarily making the old launch record
+    # writable.  The behaviour is identical for every driver invocation and independent of target.
+    rounds.mkdir(parents=True, exist_ok=True)
+    staged: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=rounds,
+                prefix=f".{script.name}.", suffix=".tmp", delete=False) as handle:
+            handle.write(command)
+            staged = Path(handle.name)
+        staged.chmod(0o500)
+        os.replace(staged, script)
+        staged = None
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
     return ["bash", str(script)]
 
 
@@ -662,6 +693,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                      "backend under submission/ and re-running agent_selfcheck until capsules pass.")
     turn_index = 0
     rc = 0
+    active_proc: subprocess.Popen | None = None
+    active_pgid: int | None = None
     try:
       while True:
         cur_prompt = prompt_path if turn_index == 0 else prompt_path.with_name(
@@ -684,6 +717,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
             try:
                 proc = subprocess.Popen(cmd, stdin=in_f, stdout=subprocess.PIPE, stderr=err_f,
                                         cwd=str(ws), env=dict(os.environ), start_new_session=True)
+                active_proc, active_pgid = proc, proc.pid
             except (OSError, ValueError) as exc:
                 # E2BIG NAMES `bash` AND NOTHING ELSE, so a spawn refused for size looks identical to
                 # a missing interpreter. execve bounds argv AND envp together, and the environment
@@ -831,6 +865,9 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
             if timed_out:
                 _kill_tree(proc)
             rc = proc.wait()
+            # A successful leader exit is not proof that its compiler/tool descendants exited.
+            _terminate_process_group(proc.pid, proc)
+            active_proc, active_pgid = None, None
             try:
                 proc.stdout.close()
             except OSError:
@@ -850,6 +887,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         if stop:
             break
     finally:
+        if active_proc is not None and active_pgid is not None:
+            _terminate_process_group(active_pgid, active_proc)
         for handle in (raw_f, stamped_f):
             try:
                 os.fsync(handle.fileno())

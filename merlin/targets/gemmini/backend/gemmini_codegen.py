@@ -33,21 +33,20 @@ RETIRE_PER_JOB = "per_job"
 RETIRE_SETTINGS = frozenset({RETIRE_ONCE, RETIRE_PER_JOB})
 
 
-class CodegenError(RuntimeError):
-    pass
+# One pure error/container identity is shared by backend and sandbox build service.
+from pathlib import Path as _BuildPath
+from merlin.targetgen.contract.build_service import load_build_package as _load_build_package
+_build_support = _load_build_package(_BuildPath(__file__).resolve().parent.parent / 'build_support' / '__init__.py')
+CodegenError = _build_support.CodegenError
 
 
 def _ceil_dim(x: int) -> int:
-    return ((x + DIM - 1) // DIM) * DIM
+    return _build_support.format.ceil_dim(x, DIM)
 
 
 def _pad_rowmajor(data: list[int], rows: int, cols: int, prows: int, pcols: int) -> list[int]:
     """Zero-pad a row-major rows x cols matrix into prows x pcols."""
-    out = [0] * (prows * pcols)
-    for r in range(rows):
-        base, pbase = r * cols, r * pcols
-        out[pbase:pbase + cols] = data[base:base + cols]
-    return out
+    return _build_support.format.pad_rowmajor(data, rows, cols, prows, pcols)
 
 
 def _c_array(name: str, ctype: str, data: list[int]) -> str:

@@ -158,10 +158,11 @@ related, code_refs`). **Point-in-time reports** (results/findings/status/present
 
 # Experiment-run convention — one continuous session, per-capsule tiering
 
-A capsule-bench run uses **`--schedule continuous` with a long `--round-timeout`** (e.g. 43200). In that
+A capsule-bench run defaults to **`--schedule continuous`** and uses a long `--round-timeout` (e.g. 43200). In that
 mode the round COUNT is not a terminator: the run stops on EVIDENCE (converged, plateaued) or a declared
 budget, `--max-rounds` is ignored, and the post-freeze public+hidden L3 grade still runs — so a formal
-success is reachable. Use a long round timeout so agent sessions are long and barriers are rare.
+success is reachable. Use a long round timeout so agent sessions are long and barriers are rare. Pass
+`--schedule rounds` only to reproduce a historical round-relaunch experiment.
 
 **Do NOT use `--continuous`.** It is a legacy single-session path: it keeps one session and re-grades
 underneath it, but it does not run the post-freeze public+hidden grade, returns 1, and hardcodes

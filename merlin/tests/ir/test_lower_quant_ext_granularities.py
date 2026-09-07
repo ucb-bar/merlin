@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.llvmlower.passes_xdsl import lower_quant_ext
+from merlin.llvmlower.passes_xdsl import lower_quant_ext, prune_dead_pure_tensor_ops
 
 
 def _mod(kind, attrs, wty, sty, zty, oty):
@@ -62,3 +62,58 @@ def test_multiple_granularities_in_one_module():
     assert lower_quant_ext(mod) == 2
     mod.verify()
     assert "quant_ext." not in str(mod)
+
+
+def test_per_tensor_quantize_lowers_to_exact_standard_qdq_expression():
+    mod = parse_mlir_text('''module {
+  func.func @q(%x: tensor<2x8xf32>, %s: tensor<f32>, %z: tensor<i64>) -> tensor<2x8xi8> {
+    %r = "quant_ext.quantize_per_tensor"(%x, %s, %z) <{quant_min = -128 : i64, quant_max = 127 : i64}> : (tensor<2x8xf32>, tensor<f32>, tensor<i64>) -> tensor<2x8xi8>
+    return %r : tensor<2x8xi8>
+  }
+}''')
+    assert lower_quant_ext(mod) == 1
+    mod.verify()
+    assert "quant_ext." not in str(mod)
+    generics = [o for o in mod.walk() if o.name == "linalg.generic"]
+    assert len(generics) == 2
+    reciprocal, gen = generics
+    assert [o.name for o in reciprocal.body.blocks[0].ops] == [
+        "arith.constant", "arith.divf", "linalg.yield"]
+    assert [o.name for o in gen.body.blocks[0].ops] == [
+        "arith.mulf", "math.roundeven", "arith.sitofp", "arith.addf",
+        "arith.maximumf", "arith.minimumf", "arith.fptosi", "linalg.yield"]
+    assert str(gen.indexing_maps.data[1]) == "affine_map<(d0, d1) -> ()>"
+    assert str(gen.indexing_maps.data[2]) == "affine_map<(d0, d1) -> ()>"
+
+
+def test_dead_qdq_cone_is_pruned_without_touching_unknown_side_effects():
+    mod = parse_mlir_text('''module {
+  func.func @f(%x: tensor<2x8xf32>, %w: tensor<2x8xi8>, %s: tensor<f32>, %z: tensor<i32>) -> tensor<2x8xf32> {
+    %dead = "quant_ext.dequantize_per_tensor"(%w, %s, %z) : (tensor<2x8xi8>, tensor<f32>, tensor<i32>) -> tensor<2x8xf32>
+    %zero = arith.constant 0.0 : f32
+    %out = tensor.splat %zero : tensor<2x8xf32>
+    return %out : tensor<2x8xf32>
+  }
+}''')
+    assert prune_dead_pure_tensor_ops(mod) == 1
+    mod.verify()
+    assert "quant_ext." not in str(mod)
+    assert "tensor.splat" in str(mod)
+
+
+def test_prune_preserves_constants_captured_by_a_live_linalg_region():
+    mod = parse_mlir_text('''module {
+  func.func @f(%x: tensor<2xf32>) -> tensor<2xf32> {
+    %c = arith.constant 3.0 : f32
+    %e = tensor.empty() : tensor<2xf32>
+    %r = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%x : tensor<2xf32>) outs(%e : tensor<2xf32>) {
+    ^bb0(%v: f32, %o: f32):
+      %p = arith.mulf %v, %c : f32
+      linalg.yield %p : f32
+    } -> tensor<2xf32>
+    return %r : tensor<2xf32>
+  }
+}''')
+    assert prune_dead_pure_tensor_ops(mod) == 0
+    mod.verify()
+    assert "arith.constant 3.000000e+00" in str(mod)

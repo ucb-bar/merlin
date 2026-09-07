@@ -188,6 +188,67 @@ def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
             f"{' ...' if len(referenced) > 6 else ''} but the command buffer declares no 'tensors'. "
             f"An operand slot holds the NAME of a tensor declared in 'tensors' (e.g. \"Y0\"), not a "
             f"shape, a type, or a dimension list")
+
+    kernel_abi = cb.get("kernel_abi")
+    if isinstance(kernel_abi, dict) and kernel_abi.get("kind") == "whole_program":
+        args = kernel_abi.get("args")
+        arg_names = [arg.get("tensor") for arg in args if isinstance(arg, dict)] \
+            if isinstance(args, list) else []
+        declared = [name for name, spec in (cb.get("tensors") or {}).items()
+                    if isinstance(spec, dict)]
+        missing = [name for name in declared if name not in arg_names]
+        if missing:
+            problems.append(
+                f"whole-program kernel_abi.args omits declared tensor buffer(s) {missing}; the "
+                f"runner cannot bind an interface buffer that is absent from the pointer boundary")
+        duplicates = sorted({name for name in arg_names if name and arg_names.count(name) > 1})
+        if duplicates:
+            problems.append(
+                f"whole-program kernel_abi.args has duplicate pointer slot(s) for tensor(s) "
+                f"{duplicates}; one declared buffer must occupy exactly one ABI position")
+        undeclared = [name for name in arg_names if name not in (cb.get("tensors") or {})]
+        if undeclared:
+            problems.append(
+                f"whole-program kernel_abi.args names tensor(s) {undeclared} with no declared tensor "
+                f"buffer; the runner never allocates an implicit pointer")
+        access_of = {arg.get("tensor"): arg.get("access") for arg in args
+                     if isinstance(arg, dict)} if isinstance(args, list) else {}
+        unread_inputs = [name for name, spec in (cb.get("tensors") or {}).items()
+                         if isinstance(spec, dict)
+                         and spec.get("role") in ("input", "weight", "bias", "scale")
+                         and access_of.get(name) not in ("read", "readwrite")]
+        if unread_inputs:
+            problems.append(
+                f"whole-program kernel_abi tensor(s) {unread_inputs} have an input-like role but no "
+                f"read access; the runner must supply the declared model stimulus to the kernel")
+        unwritable_results = [name for name, spec in (cb.get("tensors") or {}).items()
+                              if isinstance(spec, dict)
+                              and spec.get("role") in ("output", "intermediate")
+                              and access_of.get(name) not in ("write", "readwrite")]
+        if unwritable_results:
+            problems.append(
+                f"whole-program kernel_abi tensor(s) {unwritable_results} have an output-like role but "
+                f"no write access; the submitted kernel must produce those buffers")
+        bad_outputs = [name for name in (kernel_abi.get("outputs") or [])
+                       if access_of.get(name) not in ("write", "readwrite")]
+        if bad_outputs:
+            problems.append(
+                f"whole-program kernel_abi output tensor(s) {bad_outputs} do not have write access in "
+                f"kernel_abi.args; a reported result must be produced by the submitted kernel")
+        declared_outputs = [name for name, spec in (cb.get("tensors") or {}).items()
+                            if isinstance(spec, dict) and spec.get("role") == "output"]
+        reported_outputs = kernel_abi.get("outputs") or []
+        if set(reported_outputs) != set(declared_outputs):
+            problems.append(
+                f"whole-program kernel_abi must report exactly the declared model outputs "
+                f"{declared_outputs}, got {reported_outputs}; an intermediate is not a substitute for "
+                f"the interface result")
+        derived = harness_derived_tensors(cb)
+        if derived:
+            problems.append(
+                f"whole-program kernel_abi cannot use harness derivation recipe(s) "
+                f"{sorted(set(derived.values()))} for {sorted(derived)}; all model work must execute "
+                f"inside the measured submitted kernel")
     return problems
 
 

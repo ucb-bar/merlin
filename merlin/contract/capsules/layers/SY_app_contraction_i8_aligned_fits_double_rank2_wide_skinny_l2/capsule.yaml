@@ -60,4 +60,4 @@ pass_requirements:
 - target-isa-lowering
 - tile-schedule
 max_oracle_tier: L2
-extends: contraction/i8/aligned/fits_double/rank2/wide_skinny
+extends: SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l3

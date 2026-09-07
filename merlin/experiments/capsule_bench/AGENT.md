@@ -24,7 +24,7 @@ not here; this directory holds the machinery that runs and grades them.
 ## How a run is shaped — continuous, per-capsule, and cert-preserving (the DEFAULT)
 
 A run is **one long-lived agent session**, re-graded underneath it. This is the default; there is no
-flag to remember. `--no-continuous` exists only to reproduce a legacy round-relaunch run.
+flag to remember. `--schedule rounds` exists only to reproduce a legacy round-relaunch run.
 
 Three properties, each enforced by `merlin/tests/infra/test_continuous_is_the_default.py`:
 

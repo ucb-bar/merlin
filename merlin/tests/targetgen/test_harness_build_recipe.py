@@ -45,6 +45,24 @@ def test_an_overriding_link_script_wins():
     assert "/w/link.derived.ld" in cmd and "/ld/test.ld" not in cmd
 
 
+@pytest.mark.parametrize("libraries", [
+    ("-lfirst", "-lsecond"),
+    ("-Wl,--start-group", "/runtime/a.a", "-lb", "-Wl,--end-group"),
+])
+def test_linker_arguments_follow_all_objects_and_keep_declared_order(libraries):
+    recipe = _recipe(ldflags=libraries)
+    linked = recipe.link_command(objects=[Path("/w/main.o"), Path("/w/start.o")],
+                                  output=Path("/w/out.elf"))
+    combined = recipe.command(sources=[Path("/w/main.c")], output=Path("/w/out.elf"))
+    for command in (linked, combined):
+        assert tuple(command[-len(libraries):]) == libraries
+        assert command.count(libraries[0]) == 1
+    assert linked.index("/w/main.o") < linked.index("/w/start.o") < linked.index(libraries[0])
+    assert combined.index("/sup/y.S") < combined.index(libraries[0])
+    compiled = recipe.compile_command(source=Path("/w/main.c"), output=Path("/w/main.o"))
+    assert all(flag not in compiled for flag in libraries)
+
+
 def test_the_error_class_travels_with_the_recipe():
     """A build failure should raise what that target's callers already catch, not a generic error
     they would have to start handling."""
@@ -68,6 +86,7 @@ def test_the_reference_target_declares_a_complete_recipe():
     assert r.compiler.name and r.include_roots and r.support_sources
     assert r.load_address > 0 and r.cflags
     assert issubclass(r.error_cls, Exception) and r.error_cls is not RuntimeError
+    assert "-lm" not in r.cflags and "-lm" in r.ldflags
 
 
 # ------------------------------------------------------------------ the renderer capability

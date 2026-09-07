@@ -171,6 +171,8 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
+    from ...llvmlower.weight_prepack import prepare_build_bundle
+    model_dir = prepare_build_bundle(model_dir, work, features)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     gcc = _spike.gcc_path()
     ld = gcc.with_name("riscv64-unknown-elf-ld")
@@ -208,7 +210,7 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
             from . import zephyr_model as _zm
             prepared_path, features = _zm.prepare_for_lowering(
                 prepared_path, work, int8_compute=int8_compute, features=features,
-                matrix=matrix, device=device)
+                vlen=vlen, matrix=matrix, device=device)
             vectorize = True
         if op_profile:
             # Instrumented AFTER preparation, so the ids name the ops that actually run -- instrumenting

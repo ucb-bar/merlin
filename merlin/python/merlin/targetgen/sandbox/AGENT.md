@@ -10,6 +10,8 @@ Shared, descriptor+manifest-driven agentic bwrap sandbox — a new target gets a
 - `toolchain.py` — The legit tools bound back over the deny-by-default masks: universal + the descriptor's `sim_via` family, cross-checked by `kind` via `merlin.targetgen.families`.
 - `bwrap.py` — Deny-by-default argv assembly + the hermetic mount-table replay that PROVES no answer surface is reachable (coverage guard), without launching bwrap.
 - `__init__.py` — `build_sandbox(descriptor, ws, bundle)` → a `Sandbox` facade (argv / env / wrap / coverage_gap); `resolve_kind` for family routing.
+- `build_dependencies.py` — One-call host-owned pure-build source grants, preserving the existing answer masks and exact worker/request/tool pins. Never an agent mount API.
+- `executable_dependencies.py` — One exact host-adapter-pinned raw engine leaf, with argv/ELF/receipt revalidation and unchanged answer masks; no implicit backend or data grants.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->

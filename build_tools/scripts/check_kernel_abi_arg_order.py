@@ -68,6 +68,47 @@ def _probe_movement() -> dict:
                           "attributes": {"output_dtype": "i32"}}]}
 
 
+def _probe_whole_program() -> dict:
+    """A mesh -> scalar-host -> mesh-shaped program with an explicit pointer boundary.
+
+    The gate does not reconstruct the scalar operation. It only proves that the runner passes every
+    declared buffer to the submitted kernel in the ABI's declared order.
+    """
+    return {
+        "abi_version": "0.1",
+        "tensors": {
+            "scale": {"shape": [16], "dtype": "f32", "role": "input"},
+            "W": {"shape": [16, 16], "dtype": "i8", "role": "weight"},
+            "A0": {"shape": [16, 16], "dtype": "i8", "role": "input"},
+            "mid": {"shape": [16, 16], "dtype": "i8", "role": "intermediate"},
+            "Y0": {"shape": [16, 16], "dtype": "i8", "role": "output"},
+        },
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "R"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT",
+             "operands": {"lhs": "A0", "rhs": "R", "dst": "acc0"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "mid"},
+             "attributes": {"epilogue": [], "output_dtype": "i8"}},
+            {"opcode": "MATMUL_RESIDENT",
+             "operands": {"lhs": "mid", "rhs": "R", "dst": "acc1"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc1", "dst": "Y0"},
+             "attributes": {"epilogue": [], "output_dtype": "i8"}},
+        ],
+        "kernel_abi": {
+            "kind": "whole_program",
+            "args": [
+                {"tensor": "scale", "access": "read"},
+                {"tensor": "W", "access": "read"},
+                {"tensor": "A0", "access": "read"},
+                {"tensor": "mid", "access": "write"},
+                {"tensor": "Y0", "access": "write"},
+            ],
+            "outputs": ["Y0"],
+        },
+    }
+
+
 def _probe_native_whole_op(opcode: str) -> dict | None:
     """A minimal buffer for one whole-op opcode, with the activation declared BEFORE the weight.
 
@@ -180,6 +221,15 @@ def _resident_groups(cb: dict) -> list[tuple[str, list[tuple[str, str]]]]:
 
 def resolve_token(token: str, cb: dict) -> list[str]:
     """The pointer arguments one contract token expands to, for ``cb``. Raises on an unknown token."""
+    if token == "declared_whole_program_args":
+        abi = cb.get("kernel_abi") or {}
+        args = abi.get("args")
+        if abi.get("kind") != "whole_program" or not isinstance(args, list) or not args:
+            raise Unresolvable("the buffer declares no whole-program kernel ABI")
+        names = [arg.get("tensor") for arg in args if isinstance(arg, dict)]
+        if len(names) != len(args) or any(not isinstance(name, str) or not name for name in names):
+            raise Unresolvable("a whole-program ABI argument names no tensor")
+        return names
     if token == "movement_src":
         ops = _movement_command(cb).get("operands") or {}
         name = ops.get("src") or ops.get("lhs")
@@ -310,7 +360,7 @@ def check(verbose: bool = False) -> list[str]:
             problems.append(f"{_CONTRACT.name}: a shape row is missing `shape` or `order`: {row!r}")
             continue
         by_shape[shape] = row
-    for required in ("movement", "native_whole_op", "resident_matmul"):
+    for required in ("whole_program", "movement", "native_whole_op", "resident_matmul"):
         if required not in by_shape:
             problems.append(f"{_CONTRACT.name}: no arg_order row for the {required!r} command shape — "
                             f"a renderer dispatches to it, so it cannot go undocumented")
@@ -340,6 +390,8 @@ def check(verbose: bool = False) -> list[str]:
 
         # Probe every declared shape and compare the emitted call with the resolved tokens.
         probes: list[tuple[str, dict]] = []
+        if "whole_program" in by_shape:
+            probes.append(("whole_program", _probe_whole_program()))
         if "movement" in by_shape:
             probes.append(("movement", _probe_movement()))
         if "native_whole_op" in by_shape:

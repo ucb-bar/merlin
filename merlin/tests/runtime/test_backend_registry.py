@@ -63,6 +63,24 @@ def test_get_backend_lazy_import():
     assert hasattr(spike, "run_command_buffer") and hasattr(spike, "available")
 
 
+def test_execution_capabilities_are_declared_by_the_backend_with_evidence():
+    """A software execution capability is not a hardware trait and is never inferred from a target name."""
+    facts = base.execution_capability_facts("gemmini")
+    for name in ("whole_program_kernel_abi", "warm_single_counter_region_cycles"):
+        assert facts[name]["satisfied"] is True
+        assert facts[name]["tier"] == "backend_declared"
+        assert "gemmini" in facts[name]["evidence"]
+
+    # A loaded backend that does not declare the capability refutes it explicitly.  This is distinct
+    # from an unavailable backend, whose support cannot be established at all.
+    spike = base.execution_capability_facts("spike")
+    assert spike["whole_program_kernel_abi"]["satisfied"] is False
+    assert spike["whole_program_kernel_abi"]["tier"] == "backend_declared"
+    missing = base.execution_capability_facts("definitely_not_a_registered_backend")
+    assert missing["whole_program_kernel_abi"]["satisfied"] is None
+    assert missing["whole_program_kernel_abi"]["missing"]
+
+
 def test_parse_console_shared_protocol():
     # the OUT/METRIC/DONE parser shared by the backends (spike/gemmini delegate to it)
     outs, raw = base.parse_console("OUT Y0 2 2 1 2 3 4\nMETRIC cycles 100\nDONE\n")

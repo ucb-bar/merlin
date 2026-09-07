@@ -72,10 +72,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--capsule-root", required=True, type=Path,
                     help="corpus root holding <capsule>/capsule.yaml")
     ap.add_argument("--workdir", required=True, type=Path)
-    ap.add_argument("--timeout", type=int, default=3600)
-    ap.add_argument("--reference-timeout", type=int, default=25200,
-                    help="the reference engine is more than an order of magnitude slower; one deadline "
-                         "sized for the candidate kills exactly the deep cases a capture is wanted for")
+    ap.add_argument("--timeout", type=int, default=600,
+                    help="bounded reduced-witness timeout; full-size validation is optional and separate")
+    ap.add_argument("--reference-timeout", type=int, default=600,
+                    help="bounded reduced-witness reference timeout; reduce the shape instead of "
+                         "extending the inner-loop deadline")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args(argv)
 

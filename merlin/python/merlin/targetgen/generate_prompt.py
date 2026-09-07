@@ -440,6 +440,7 @@ def prompt_slots(te, manifest) -> dict:
     Returns a flat ``{slot: value}`` dict — the only content that varies across targets for a fixed
     experiment/arm/condition."""
     from .rtl.mlc_bridge import render_fact_bundle_for, fact_bundle_for
+    from .operation_capabilities import memory_operation_prompt_block, operation_contract_for_target
     target = te.target
     bundle = fact_bundle_for(target)                  # KIND-routed; discovered ONCE; feeds brief + emit framing
     _iw = 32                                           # instruction width for the emit framing — DERIVED, not literal
@@ -453,6 +454,9 @@ def prompt_slots(te, manifest) -> dict:
     # LLVM-dialect kernel contract, and the .word-ISA contracts (DRAM base map + halt-op) do not apply — the
     # runner owns the harness (embed/call/print) and the BSP owns boot/halt.
     _mlir = _is_simt_mlir(manifest)
+    _operation_contract = operation_contract_for_target(target, manifest.contract)
+    _operation_guidance = memory_operation_prompt_block(
+        {"operation_capabilities": _operation_contract})
     return {
         "target": target,
         "tool_stem": f"{target}-opt",                 # not "gemmini-opt"
@@ -478,7 +482,8 @@ def prompt_slots(te, manifest) -> dict:
         "hwbringup_set": te.hwbringup_set,
         # SIMT-MLIR target: ground the agent in the LLVM-dialect kernel contract (a compiler lowering compiled
         # fork-free), NOT the self-hosted-ISA .word spec. Otherwise: name the shipped real ISA files.
-        "isa_spec": _simt_mlir_grounding(target) if _mlir else _isa_spec_block(te),
+        "isa_spec": (_simt_mlir_grounding(target) if _mlir else _isa_spec_block(te))
+                    + _operation_guidance,
         # DRAM address contract (self-hosted-ISA external_backend only): declare every tensor + base so the
         # emitted .word kernel and the program oracle agree on operand/result addresses (the atlas 0/11
         # output-base bug). A SIMT-MLIR kernel takes pointer operands from the runner harness — no DRAM map.
@@ -545,6 +550,31 @@ Rules: keys must be command names you declared (anything else is rejected and re
 submission-relative files or directories; the longest matching path wins, so a nested entry is not
 swallowed by its parent. Keep it accurate rather than narrow — an under-declared component is how a
 certificate outlives the code it was earned on.
+
+### Declare the compiler's semantic optimization surfaces
+Phase 2 automatically inventories the source symbols reachable from `components:` and joins measured
+whole-model bottlenecks to this manifest map. Add top-level `optimization_surfaces:` entries for the
+real places an optimization agent may change. This is not a list of hoped-for features: every `path`
+must be inside a declared component, every `symbol` must be the exact Python AST name (`Class.method`
+or function), and each entry must say what emitted artifact change would prove the mechanism fired.
+Use only the shared effects accepted by the schema: placement, layout, dtype, encoding, quantization,
+movement, residency, fusion, synchronization, issue, tiling, latency_hiding.
+```yaml
+optimization_surfaces:
+  - id: schedule-selection
+    scope: heuristic                    # flag | knob | heuristic | pass | codegen
+    path: mlir_oot/lowering/schedule.py
+    symbol: Scheduler.choose
+    effects: [movement, residency, latency_hiding]
+    cca_axes: [dispatch.dma_overlap, communication.resident_across_calls]
+    mechanism: choose a legal whole-region schedule from derived target capabilities
+    emitted_delta: fewer declared transfers or dependencies with identical required work
+    validation: warm reduced witness, then complete-model analytical re-plan
+    abandonment: no emitted delta, legality failure, or warm compute cycles do not improve
+```
+Do not invent a surface to satisfy the form. If a lever does not exist yet, implement the general
+compiler mechanism first and then declare its real symbol. Phase 2 treats an absent or invalid mapping
+as UNKNOWN rather than guessing from a filename.
 {dram_contract}{termination_contract}
 ## Plan before you build (FIRST round only)
 If `qa/verdict.json` does not exist yet, this is the first round: **before writing any code, write
@@ -561,14 +591,12 @@ rounds — follow and refine PLAN.md. Keep each item to a line or two:
 - **Verification loop**: the cheapest self-check per change, escalating to the full set only to converge.
 It is your design contract with yourself — short and honest; update it only when your strategy changes.
 
-## Cross-round memory (each round is a FRESH session)
-You have NO memory of prior rounds except what is on disk. Between rounds the harness writes
-`qa/round_brief.md` — your progress log across all graded rounds (per-round pass count, failure planes,
-lowest mismatch) plus your own notes and a nudge if you stopped journaling. **At the START of every round,
-read `qa/round_brief.md` and `docs/iteration_notes.md` before touching code**: build on what you already
-worked out, and do NOT undo a change that improved an earlier round. **After every change, append to
-`docs/iteration_notes.md`** what you changed, what the verdict showed, and your next hypothesis — that file
-and the brief are your only durable memory across rounds.
+## Durable run memory
+The certified schedule keeps one continuing session, but the process can still resume after a timeout,
+quota boundary, or operator restart. Do not rely on conversational memory alone. The harness writes
+`qa/round_brief.md` with graded progress, and your own durable notes live in `docs/iteration_notes.md`.
+Read both before changing an existing submission. After every substantive change, append what changed,
+what the verdict showed, and the next hypothesis; do not undo a change that improved an earlier grade.
 
 ## Grading + your QA signal
 {grading_model}
@@ -754,9 +782,11 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
          "1. Your compiler backend lives under `submission/`; compute is COMPILER-GENERATED (never a hand kernel).",
          "2. Base every ISA / mesh / datapath / encoding decision on the **Target ISA facts** above + the",
          "   capability contract under `merlin/contract/` — never guess or hardcode; derive any fact not given.",
-         "3. After EVERY build, run `python3 agent_selfcheck.py --submission submission --capsules all` and",
-         "   iterate until all required capsules pass — a submission you did not self-check is not acceptable.",
-         "   THEN run `python3 agent_selfcheck.py --submission submission --shape-coverage`, which probes the",
+         "3. After each substantive build, run `python3 agent_selfcheck.py --submission submission",
+         "   --capsules <changed-capsule-or-subset>` for the smallest affected scope. Run `--capsules all`",
+         "   at convergence milestones and once before declaring done — not after every edit. A submission",
+         "   you did not self-check is not acceptable. Also run `python3 agent_selfcheck.py --submission",
+         "   submission --shape-coverage`, which probes the",
          "   SAME operation at one tile and at two tiles in each of M, K and N. It costs no simulator (it runs",
          "   only your emit path), so run it often. **The capsules are a FIXED SET OF SHAPES: passing all of",
          "   them says nothing about whether you lower anything else, and you are graded on shapes you have",

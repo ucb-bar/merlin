@@ -139,12 +139,12 @@ def test_chipyard_formal_model_sim_uses_dynamic_rtl_engine_policy(monkeypatch):
     multi-hour model run to Verilator after an equally faithful GSIM adapter becomes available.
     """
     grader = _mod("grade_agent_run")
-    monkeypatch.setattr(grader.CR, "_bespoke_sim_via", lambda _target: "chipyard")
     monkeypatch.setattr(
-        grader.CR, "chipyard_l3_selection",
+        grader.CR, "describe_l3_engine",
         lambda _target: {
             "engine": "gsim", "fidelity": "elaborated_rtl",
             "reason": "gsim available", "considered": [], "passed_over": ["vcs"],
+            "available": True, "sim_via": "chipyard",
         },
     )
 
@@ -152,18 +152,48 @@ def test_chipyard_formal_model_sim_uses_dynamic_rtl_engine_policy(monkeypatch):
 
     assert resolved["engine"] == "gsim"
     assert resolved["fidelity"] == "elaborated_rtl"
-    assert resolved["selection"] == "chipyard_l3_policy"
+    assert resolved["sim_via"] == "chipyard"
+
+
+def test_arc_routed_formal_model_sim_uses_shared_dynamic_rtl_engine_policy(monkeypatch):
+    """An empty static tier_sim still resolves the target's available elaborated-RTL engine."""
+    grader = _mod("grade_agent_run")
+    monkeypatch.setattr(
+        grader.CR, "describe_l3_engine",
+        lambda _target: {
+            "engine": "gsim", "fidelity": "elaborated_rtl",
+            "reason": "target-derived gsim wrapper", "available": True, "sim_via": "",
+        },
+    )
+
+    resolved = grader._formal_model_simulator("new-arc-target")
+
+    assert resolved["engine"] == "gsim"
+    assert resolved["fidelity"] == "elaborated_rtl"
+    assert resolved["sim_via"] == ""
 
 
 def test_chipyard_formal_model_sim_refuses_non_rtl_policy_result(monkeypatch):
     grader = _mod("grade_agent_run")
-    monkeypatch.setattr(grader.CR, "_bespoke_sim_via", lambda _target: "chipyard")
     monkeypatch.setattr(
-        grader.CR, "chipyard_l3_selection",
-        lambda _target: {"engine": "spike", "fidelity": "functional_model"},
+        grader.CR, "describe_l3_engine",
+        lambda _target: {
+            "engine": "spike", "fidelity": "functional_model", "available": True,
+        },
     )
 
     with pytest.raises(RuntimeError, match="elaborated_rtl"):
+        grader._formal_model_simulator("gemmini")
+
+
+def test_formal_model_sim_refuses_unavailable_shared_policy_result(monkeypatch):
+    grader = _mod("grade_agent_run")
+    monkeypatch.setattr(
+        grader.CR, "describe_l3_engine",
+        lambda _target: {"available": False, "reason": "no certifying engine"},
+    )
+
+    with pytest.raises(RuntimeError, match="no certifying engine"):
         grader._formal_model_simulator("gemmini")
 
 
@@ -319,3 +349,14 @@ def test_arm4_wrapper_allows_an_explicit_identical_bundle_pin(monkeypatch):
     assert wrapper.main(["--run-id", "test", "--bundle", bundle]) == 0
     assert called and called[0][called[0].index("--bundle") + 1] == bundle
     assert called[0][called[0].index("--arm") + 1] == "merlin_assisted"
+
+
+def test_arm4_target_local_alias_derives_its_adjacent_descriptor():
+    wrapper = _mod("run_rtlchecks_qa_loop")
+    target_root = HARNESS.parent / "targets"
+    entrypoint = next(target_root.glob("*/scripts/run_rtlchecks_qa_loop.py"))
+    expected = entrypoint.parent.parent / "target_experiment.yaml"
+
+    assert expected.is_file()
+    assert wrapper._descriptor_for_invocation(str(entrypoint)) == expected.resolve()
+    assert wrapper._descriptor_for_invocation(str(HARNESS / "run_rtlchecks_qa_loop.py")) is None

@@ -20,8 +20,28 @@ Usage (mirror the baseline loop's flags)::
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+
+def _descriptor_for_invocation(argv0: str) -> Path | None:
+    """Return the descriptor adjacent to a target-local launcher alias, if one exists.
+
+    ``_common`` intentionally defaults when no descriptor is selected, which is useful for the canonical
+    harness entrypoint but dangerous for an alias under ``targets/<name>/scripts``: invoking that alias
+    used to stage the default target while its pathname advertised another one.  Derive from the
+    filesystem layout before importing ``_common``; an explicit environment selection still wins.
+    """
+    invoked = Path(argv0).expanduser().absolute()
+    candidate = invoked.parent.parent / "target_experiment.yaml"
+    return candidate.resolve() if candidate.is_file() else None
+
+
+if not os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip():
+    _invoked_descriptor = _descriptor_for_invocation(sys.argv[0])
+    if _invoked_descriptor is not None:
+        os.environ["MERLIN_TARGET_EXPERIMENT"] = str(_invoked_descriptor)
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:

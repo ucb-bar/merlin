@@ -116,6 +116,25 @@ def test_aliased_field_is_refused_by_the_linear_packer():
     assert -1 in (fields.get("imm") or []), "aliased imm bit should be flagged non-linear (-1)"
 
 
+class _NullaryImmediate:
+    """An immediate-format encoding whose immediate is identity, not an assembler operand."""
+    opcode = 0x73
+    imm = 1
+
+    def to_bytecode(self) -> int:
+        return self.opcode | ((self.imm & 0xFFF) << 20)
+
+
+def test_semantically_nullary_constant_stays_in_the_decode_signature():
+    base = II._base_word(_NullaryImmediate)
+    fields, touched = II._operand_fields(_NullaryImmediate, base, operand_attrs=set())
+    mask, value = II._fixed_signature_from_touched(base, touched)
+
+    assert fields == {}
+    assert (base & mask) == value
+    assert ((0x73 | (0 << 20)) & mask) != value
+
+
 # --------------------------------------------------------------------------------------------
 # IsaModel container (hand-built entry, no derivation needed)
 # --------------------------------------------------------------------------------------------

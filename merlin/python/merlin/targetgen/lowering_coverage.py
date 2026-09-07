@@ -42,6 +42,16 @@ CORNERS: dict[str, tuple[int, int, int]] = {
     "n_2tiles": (1, 1, 2),
 }
 
+# Offsets from one derived tile on (M, K, N). Unlike ``CORNERS`` these deliberately exercise extents
+# that are not multiples of the hardware tile. They remain target-agnostic because only the derived tile
+# edge is used; no accelerator geometry literal appears here.
+TAIL_CORNERS: dict[str, tuple[int, int, int]] = {
+    "sub_tile": (-1, -1, -1),
+    "m_tail": (1, 0, 0),
+    "k_tail": (0, 1, 0),
+    "n_tail": (0, 0, 1),
+}
+
 
 @dataclass(frozen=True)
 class CoverageResult:
@@ -143,6 +153,7 @@ def probe_shape(package: str | Path, *, target: str, m: int, k: int, n: int,
 
 def sweep(package: str | Path, *, target: str, contract: str | Path | None = None,
           corners: dict[str, tuple[int, int, int]] | None = None,
+          tail_corners: dict[str, tuple[int, int, int]] | None = None,
           timeout: int = 300) -> dict:
     """Probe every corner and summarise, PER AXIS.
 
@@ -154,10 +165,18 @@ def sweep(package: str | Path, *, target: str, contract: str | Path | None = Non
     tile = tile_edge(target)
     operand_mlir, accum_mlir = b.mlir_dtype(b.operand_dtype), b.mlir_dtype(b.accum_dtype)
     corners = corners or CORNERS
+    tail_corners = TAIL_CORNERS if tail_corners is None else tail_corners
     results: list[CoverageResult] = []
     work: dict[str, int] = {}
     for name, (fm, fk, fn) in corners.items():
         m, k, n = tile * fm, tile * fk, tile * fn
+        outcome, detail, w = probe_shape(package, target=target, m=m, k=k, n=n,
+                                         operand_mlir=operand_mlir, accum_mlir=accum_mlir,
+                                         contract=contract, timeout=timeout)
+        work[name] = w
+        results.append(CoverageResult(name, (m, k, n), outcome, detail, w))
+    for name, (dm, dk, dn) in tail_corners.items():
+        m, k, n = max(1, tile + dm), max(1, tile + dk), max(1, tile + dn)
         outcome, detail, w = probe_shape(package, target=target, m=m, k=k, n=n,
                                          operand_mlir=operand_mlir, accum_mlir=accum_mlir,
                                          contract=contract, timeout=timeout)
@@ -178,7 +197,9 @@ def sweep(package: str | Path, *, target: str, contract: str | Path | None = Non
     # about COVERAGE (did you write code for this shape), and the numeric tiers keep their own job.
     base_work = work.get("tile", 0)
     for i, r in enumerate(results):
-        if r.corner != "tile" and r.outcome == "lowered" and base_work and r.work < base_work:
+        is_larger = all(x >= tile for x in r.shape) and any(x > tile for x in r.shape)
+        if r.corner != "tile" and is_larger and r.outcome == "lowered" \
+                and base_work and r.work < base_work:
             results[i] = CoverageResult(
                 r.corner, r.shape, "collapsed",
                 (f"emitted {r.work} instruction word(s) for a problem {r.shape} that is LARGER than the "
@@ -201,12 +222,18 @@ def sweep(package: str | Path, *, target: str, contract: str | Path | None = Non
     if baseline_ok:
         out["multi_tile_axes_uncovered"] = sorted(
             {c[0] for c, o in by.items() if c.endswith("_2tiles") and o != "lowered"})
-        out["all_covered"] = not out["multi_tile_axes_uncovered"]
+        out["tail_cases_uncovered"] = sorted(
+            c for c in tail_corners if by.get(c) != "lowered")
+        out["tail_axes_uncovered"] = sorted(
+            {c[0] for c in out["tail_cases_uncovered"] if c in {"m_tail", "k_tail", "n_tail"}})
+        out["all_covered"] = not (out["multi_tile_axes_uncovered"] or out["tail_cases_uncovered"])
     else:
         # Refusing to answer beats answering wrongly: with the baseline down, every multi-tile corner
         # fails for a reason that has nothing to do with shape, and reporting "M, K and N all uncovered"
         # would be a confident, specific, wrong attribution.
         out["multi_tile_axes_uncovered"] = []
+        out["tail_cases_uncovered"] = []
+        out["tail_axes_uncovered"] = []
         out["all_covered"] = False
         out["unmeasured"] = ("the single-tile baseline did not lower, so nothing here can be attributed "
                              "to shape generalization -- fix the baseline, then re-read this")

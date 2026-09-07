@@ -105,6 +105,19 @@ def test_the_declared_bias_capsule_lowers_at_all():
     assert args == ["W", "A0", "Y0", "B"]
 
 
+@pytest.mark.parametrize("shape", [[16], [1, 16]])
+def test_harness_accepts_separately_packed_bias_from_oot_compiler(shape):
+    """The frozen compiler packs bias too; that handle is not a matrix RHS/ABI group."""
+    cb = _cb(16, 32, 16, epilogue=["bias_add"])
+    cb["tensors"]["B"]["shape"] = shape
+    cb["commands"].insert(2, {
+        "opcode": "RES_PACK", "operands": {"src": "B", "dst": "B_res"},
+        "attributes": {"layout": "packed_bias"}})
+    source = gem.render_harness(cb, target="gemmini")
+    assert "gemmini_kernel((void*)T_W, (void*)T_A0, (void*)T_Y0, (void*)T_B)" in source
+    assert gm.emit_kernel_mlir(cb)[1] == ["W", "A0", "Y0", "B"]
+
+
 def test_emitted_classes_are_exactly_the_ones_the_capsule_declares():
     """The capsule declares PRELOAD + COMPUTE_PRELOADED and no bespoke bias opcode, because the target
     HAS no bias opcode: the bias rides the existing move-in/preload pair."""

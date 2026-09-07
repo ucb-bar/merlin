@@ -5,10 +5,34 @@ that declares a bespoke sim (chipyard) additionally gets spike/verilator. These 
 tests (the full cb-round-trip grade is exercised in the 2nd-target cross-target proof, P4)."""
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.rtl import mlc_bridge as B
+
+
+def test_program_cosim_wall_timeout_terminates_worker(monkeypatch, tmp_path):
+    """A backend stuck below ``large_stack_call`` must not trap a grading worker forever."""
+    from merlin.targetgen import program_oracle as PO
+
+    helper = tmp_path / "slow_cosim_helper.py"
+    helper.write_text("import time\ntime.sleep(10)\n")
+    monkeypatch.setattr(PO, "_COSIM_HELPER", helper)
+
+    started = time.monotonic()
+    with pytest.raises(PO.ProgramDidNotHalt, match="wall timeout"):
+        PO._run_raw_program_helper(
+            "synthetic",
+            words=[1],
+            preload=[(0x1000, b"input")],
+            reads={"Y0": (0x2000, 4)},
+            max_cycles=20_000,
+            workdir=tmp_path,
+            timeout=0.05,
+        )
+    assert time.monotonic() - started < 2.0
 
 
 def test_arc_is_the_default_tier_for_a_command_buffer_target(monkeypatch):

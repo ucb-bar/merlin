@@ -1177,61 +1177,131 @@ sweeps:
     the achievable ceiling against deep-K matmul''s ~100% -- so it is where a schedule change has room
     to show. Channel depth is varied and everything else held fixed, so the fitted rate is cycles per
     unit of contraction depth and nothing else moves under it.'
-blocked_unimplemented:
-- family: PB
-  status: blocked_unimplemented
-  reason: 'per-lane cycle accounting does not exist: the capsule path runs the accelerator on the target''s
-    oracle and the host lane in-process on the development machine, so a seam differential would price
-    this workstation rather than the SoC'
+# Host-island placement is measured as one whole program under one target counter. Both members use
+# the same standard linalg program shape, operands, contractions, and saturating requant epilogue; only
+# the island member carries the explicit host-required scalar map. Software execution support is gated
+# separately from hardware traits so a target without this ABI skips with evidence.
+- id: PB
   fit_axes:
   - K
   comparison_roles:
   - island
   - no_island
-  performance:
-    level: L4_boundary
-    family: PB
-    lever: host_island_placement
-    # its paired delta is what the search minimises
-    member_class: OBJECTIVE
-    claim: DIFFERENTIAL
-    comparand:
-      kind: group_arithmetic
-      against: the_same_layers_without_a_host_island_between_them
-      cancels:
-      - operation_shape
-      - operands
-      - numeric_policy
-      demand_equal:
-      - M
-      - N
-      - K
-      - operand_dtype
-      - accum_dtype
-    falsifier:
-      observation: island_cycles_minus_no_island_cycles
-      fires_when: an_a_h_a_round_trip_costs_no_more_than_staying_on_the_accelerator
-      negative_control: two_adjacent_accelerator_regions_with_no_host_work_between_them
-    gate:
-      traits:
-      - structural_pipeline_depth
-      instrument: per_lane_cycle_count
-      capacity: both_lanes_executing_under_one_cycle_counter
-      on_missing: skip_with_evidence
-    regime:
-      separation: one_identical_shape_per_group
-      layout: both_members_share_every_extent_and_differ_only_in_the_island
-    emitter:
-      status: blocked
-      entry: new:host_seam_differential
-      knobs:
-        needs: per_lane_cycle_accounting
-        unblocked_by: fused_single_elf
-    cost:
-      tier: 2
-      runs: two_per_shape
-      projected_cycles: derived_at_preflight
-      basis: one_island_member_and_one_without
+  base:
+    cat: _perf
+    kind: model_slice
+    op: host_island_seam
+    out: Y0
+    xor_mask: 1
+    label: dev
+    source_role: derived_sweep
+    semantic:
+      semantic_family: contraction
+      generalization_axis: composition
+      must_accelerate: true
+      not_asserted_reason: the_host_scalar_region_is_required_while_both_contractions_must_accelerate
+    performance:
+      level: L4_boundary
+      family: PB
+      lever: host_island_placement
+      member_class: OBJECTIVE
+      claim: DIFFERENTIAL
+      comparand:
+        kind: comparison_group
+        against: the_same_two_contractions_without_the_host_required_map
+        cancels:
+        - operation_shape
+        - external_operands
+        - contraction_count
+        - saturating_requant_epilogue
+        - numeric_policy
+        demand_equal:
+        - M
+        - N
+        - K
+        - H
+        - operand_dtype
+        - accum_dtype
+      falsifier:
+        observation: island_cycles_minus_no_island_cycles
+        fires_when: the_host_required_map_costs_no_more_than_the_matched_no_island_program
+        negative_control: no_island_member_with_the_same_two_contractions
+      gate:
+        traits:
+        - structural_pipeline_depth
+        execution_capabilities:
+        - whole_program_kernel_abi
+        - warm_single_counter_region_cycles
+        instrument: whole_program_cycle_count
+        capacity: both_execution_lanes_inside_one_warm_target_counter_window
+        on_missing: skip_with_evidence
+      regime:
+        separation: one_identical_shape_per_comparison_group
+        layout: members_share_all_extents_and_external_tensors_and_differ_only_in_host_scalar_map
+      emitter:
+        status: existing
+        entry: merlin.targetgen.corpus_spec.build
+        knobs:
+          surface: linalg-on-tensors
+          operation: host_island_seam
+          accelerator_regions: 2
+          shared_epilogue: saturating_i32_to_i8
+      cost:
+        tier: 2
+        runs: two_members_by_two_replicates_per_shape
+        projected_cycles: derived_at_preflight
+        basis: one_island_member_and_one_matched_no_island_member_under_the_same_counter
+      acceptance:
+        schema_version: 1
+        analyzer: merlin.perf.comparison_group_claim.analyze_comparison_group_claim/v1
+        # These members compare two workloads produced by the newly authored compiler. The frozen
+        # functional seed is ancestry, not an additional semantic member of this comparison group.
+        program_arm: candidate
+        roles: [island, no_island]
+        expected_faster: no_island
+        group_field: comparison_group
+        allowed_attribute_differences: [comparison_role, host_transform]
+        replicates:
+          exact_count: 2
+          identities: [r000, r001]
+        band:
+          kind: measured_replicate_dispersion
+          declared_constant: null
+        evidence:
+          # Resolved per target by the generator. The shared profile names fidelities, not one target's
+          # simulator binaries; the frozen capsule records the concrete engines selected by that target.
+          correctness_simulator: '$target_oracle:L2'
+          correctness_tier: L2
+          timing_simulator: '$target_oracle:L3'
+          timing_tier: L3
+  variants:
+  - comparison_role: island
+    host_transform: xor_low_bit
+    comparison_group:
+      name: 'host_island_m{M}k{K}h{H}n{N}'
+      role: island
+    lanes:
+      require: [on_mesh, scalar_rvv_lane]
+  - comparison_role: no_island
+    host_transform: none
+    comparison_group:
+      name: 'host_island_m{M}k{K}h{H}n{N}'
+      role: no_island
+    lanes:
+      require: [on_mesh]
+      forbid: [scalar_rvv_lane]
+  axes:
+    M: [tile]
+    N: [tile]
+    H: [tile]
+    K: [2*tile, 4*tile]
+  name: '{id}{i:02d}_{comparison_role}_m{M}k{K}h{H}n{N}'
+  source_reference: >-
+    shared host-island differential: the same two integer contractions and saturating requant epilogue,
+    with one explicit scalar XOR map present only in the island member. Both execute as one submitted
+    whole-program kernel after one unmeasured warm call; only the next complete call is measured.
+
+blocked_unimplemented:
 - family: PT
   status: blocked_unimplemented
   reason: the cohort's starting depth is a MEASURED property of the target -- the depth at which its realised

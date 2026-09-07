@@ -193,9 +193,9 @@ def test_declaration_rejects_too_few_or_nonindependent_trials_and_replicates() -
     with pytest.raises(STATS.EvidenceError, match="distinct"):
         STATS.predeclare(trials=repeated, capsules=[{"family": "f", "capsule": "c"}],
                          replicates=("r0", "r1", "r2"))
-    with pytest.raises(STATS.EvidenceError, match="at least 3 unique paired"):
+    with pytest.raises(STATS.EvidenceError, match="at least 2 unique paired"):
         STATS.predeclare(trials=_trials(), capsules=[{"family": "f", "capsule": "c"}],
-                         replicates=("r0", "r1"))
+                         replicates=("r0",))
 
 
 def test_corrupted_predeclared_matrix_digest_refuses() -> None:

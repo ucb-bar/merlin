@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import struct
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -173,6 +174,62 @@ def test_the_compiler_input_actually_changes(tmp_path):
     assert before.count("linalg.transpose") == 1
     assert after.count("linalg.transpose") == 0
     assert before != after
+
+
+@pytest.mark.parametrize("backend", ["baremetal", "zephyr"])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monkeypatch,
+                                                                 backend, enabled):
+    """Replay the actual build up to the ABI seam; only tool execution/lowering is substituted."""
+    from merlin.runtime.backends import spike_model as sm, zephyr_model as zm
+    src = _bundle(tmp_path / "src")
+    monkeypatch.setattr(wp, "_default_cache_root", lambda: tmp_path / "cache")
+    monkeypatch.setattr(sm._spike, "gcc_path", lambda: tmp_path / "riscv64-unknown-elf-gcc")
+    monkeypatch.setattr(sm.toolchain, "clang", lambda: tmp_path / "clang")
+    monkeypatch.setattr(zm, "available", lambda: True)
+    monkeypatch.setattr(zm, "allocation_bytes", lambda _: (0, False))
+    seen = {}
+
+    def prepare(path, work, **kwargs):
+        seen["prepare"] = Path(path).parent
+        seen["vlen"] = kwargs.get("vlen")
+        return path, kwargs["features"]
+
+    def lower(path, work, **kwargs):
+        seen["lower"] = Path(path).parent
+        return SimpleNamespace(ll_path=tmp_path / "model.ll")
+
+    class ReachedABI(Exception):
+        pass
+
+    def generate(bundle, destination, inputs):
+        seen["abi"] = Path(bundle)
+        seen["inputs"] = Path(inputs)
+        raise ReachedABI
+
+    monkeypatch.setattr(zm, "prepare_for_lowering", prepare)
+    monkeypatch.setattr(sm, "lower_model_file", lower)
+    monkeypatch.setattr(zm, "lower_model_file", lower)
+    monkeypatch.setattr(sm, "_run", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(zm, "_run", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(sm.c_runtime, "generate", generate)
+    feature_set = frozenset({wp.FEATURE}) if enabled else frozenset()
+    work = tmp_path / "work"
+    with pytest.raises(ReachedABI):
+        (sm.build if backend == "baremetal" else zm.build_app)(
+            src, work, features=feature_set, vlen=512)
+    assert seen["lower"] == seen["abi"]
+    assert seen["inputs"] == seen["abi"] / "inputs.npz"
+    if enabled:
+        assert seen["vlen"] == 512
+        assert seen["prepare"] == seen["abi"] != src
+        assert "linalg.transpose" not in (seen["abi"] / "model.mlir").read_text()
+        assert json.loads((work / "bundle_preparation.json").read_text())["effect"][
+            "transposes_removed"] == 1
+    else:
+        assert seen["abi"] == src
+        assert not (work / "bundle_preparation.json").exists()
+    assert "linalg.transpose" in (src / "model.mlir").read_text()
 
 
 # ---------------------------------------------------------------------------------------------

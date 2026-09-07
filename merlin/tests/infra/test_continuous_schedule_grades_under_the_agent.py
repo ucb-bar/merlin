@@ -115,7 +115,8 @@ def _stop_policy():
 
     def go(*, schedule, rnd=0, max_rounds=12, active_wall_s=0.0, max_wall_s=0,
            authoring_complete=False) -> bool:
-        a = types.SimpleNamespace(schedule=schedule, max_rounds=max_rounds, max_wall_s=max_wall_s)
+        a = types.SimpleNamespace(schedule=schedule, max_rounds=max_rounds, max_wall_s=max_wall_s,
+                                  seal_current=False)
         return ns["_factory"](a, rnd, active_wall_s, lambda: authoring_complete)()
 
     return go
@@ -220,7 +221,7 @@ def test_the_background_grader_regrades_on_its_interval_while_the_agent_runs(tmp
     ws, run_dir = _ws(tmp_path, with_verdict=True)   # phase 1 already satisfied; this is the interval
     ticks, labels = [], []
 
-    def grade(_ws, _rd, tick, _no_oracle, _timeout, label="round"):
+    def grade(_ws, _rd, tick, _no_oracle, _timeout, label="round", **_scratch):
         # NB: recorded, never asserted in here -- the grader catches everything a grade raises (that is
         # the point of the next test), so an assertion in this stub would be swallowed into a skipped
         # tick and the gate would silently pass.
@@ -252,6 +253,59 @@ def test_the_background_grader_regrades_on_its_interval_while_the_agent_runs(tmp
     assert not th.is_alive(), "the grader outlived the session"
 
 
+def test_in_turn_snapshots_do_not_collide_across_agent_rounds(tmp_path, monkeypatch):
+    """A later agent round must not reopen the prior round's sealed ``cand_901`` tree.
+
+    Real snapshot submissions are made read-only after grading. Before the scratch identity included
+    the agent-round coordinate, the next round restarted at tick 901 and failed in ``rmtree`` with
+    ``PermissionError`` before any verdict could reach the agent.
+    """
+    M = _driver()
+    ws, run_dir = _ws(tmp_path, with_verdict=True)
+    completed: list[str] = []
+    snapshots = []
+
+    def grade(_ws, rd, _tick, _no_oracle, _timeout, label="round", *, scratch_key=None,
+              previous_scratch_key=None):
+        assert label == "inturn"
+        assert scratch_key is not None
+        snap = rd / "_qa_work" / f"cand_{scratch_key}" / "submission"
+        snap.mkdir(parents=True)
+        marker = snap / "sealed"
+        marker.write_text(previous_scratch_key or "first")
+        completed.append(scratch_key)
+        snapshots.append((snap, marker))
+        return {"all_pass": False, "n_passed": 1, "n_capsules": 2}
+
+    monkeypatch.setattr(M, "qa_grade", grade)
+    _shrink_waits(monkeypatch)
+
+    first = M._start_in_turn_grader(ws, run_dir, _args(grade_interval=900),
+                                    interval_grades=True, round_index=0)
+    _spin(lambda: any(k.startswith("r0000_") for k in completed))
+    M._stop_in_turn_grader(first)
+    for snap, marker in snapshots:
+        marker.chmod(0o444)
+        snap.chmod(0o555)
+
+    second = M._start_in_turn_grader(ws, run_dir, _args(grade_interval=900),
+                                     interval_grades=True, round_index=1)
+    _spin(lambda: any(k.startswith("r0001_") for k in completed))
+    M._stop_in_turn_grader(second)
+
+    try:
+        round0 = {k for k in completed if k.startswith("r0000_")}
+        round1 = {k for k in completed if k.startswith("r0001_")}
+        assert round0 and round1, (
+            f"the second agent round could not create a snapshot after round 0 was sealed: {completed}")
+        assert round0.isdisjoint(round1), (
+            f"agent rounds reused an in-turn scratch identity: {sorted(round0 & round1)}")
+    finally:
+        for snap, marker in snapshots:
+            snap.chmod(0o755)
+            marker.chmod(0o644)
+
+
 def test_the_rounds_schedule_gets_no_interval_grades(tmp_path, monkeypatch):
     """Interval re-grading is the continuous schedule's feature; `rounds` keeps its round barrier.
 
@@ -277,7 +331,7 @@ def test_a_grade_of_a_half_written_submission_never_kills_the_run(tmp_path, monk
     ws, run_dir = _ws(tmp_path, with_verdict=True)
     calls, ok = [], []
 
-    def grade(_ws, _rd, tick, _no_oracle, _timeout, label="round"):
+    def grade(_ws, _rd, tick, _no_oracle, _timeout, label="round", **_scratch):
         calls.append(tick)
         if len(calls) == 1:
             raise RuntimeError("submission half-written")
@@ -319,6 +373,49 @@ def test_the_grader_stops_when_the_session_does(tmp_path, monkeypatch):
         f"stopping the grader took {elapsed:.1f}s — its interval wait is not interruptible, so every "
         f"turn ends by blocking on it")
     assert not any(t.name.endswith("-grader") and t.is_alive() for t in threading.enumerate())
+
+
+def test_teardown_cannot_abandon_an_inflight_grade():
+    """A timed join may return while the oracle grade is still using the machine.
+
+    The caller starts the authoritative grade immediately after teardown.  Therefore returning with a
+    live in-turn thread creates two full-suite grades in one process; this is a single-flight invariant,
+    not a best-effort shutdown request.  A tiny stand-in makes the old 60-second timeout observable
+    without making this regression test wait for 60 seconds.
+    """
+    M = _driver()
+
+    class Stop:
+        def __init__(self):
+            self.set_called = False
+
+        def set(self):
+            self.set_called = True
+
+    class InFlightGrade:
+        def __init__(self):
+            self.alive = True
+            self.join_timeout = "not-called"
+
+        def join(self, timeout=None):
+            self.join_timeout = timeout
+            # A real grade cannot be killed by Thread.join.  It is guaranteed finished only when the
+            # caller performs the blocking join used for the single-flight hand-off.
+            if timeout is None:
+                self.alive = False
+
+        def is_alive(self):
+            return self.alive
+
+    grade, stop = InFlightGrade(), Stop()
+    M._stop_in_turn_grader((grade, stop))
+
+    assert stop.set_called
+    assert grade.join_timeout is None, (
+        "grader teardown used a finite join and can return while a full-suite grade is still running")
+    assert not grade.is_alive(), (
+        "grader teardown returned with an in-flight grade alive; the authoritative grade would now "
+        "run concurrently with it")
 
 
 def test_a_turn_that_lands_no_first_verdict_is_reported_and_not_graded_on(tmp_path, monkeypatch,
@@ -413,6 +510,10 @@ def test_the_certified_schedule_installs_the_grader_around_the_agent_session():
     assert iv and all("schedule" in x for x in iv), (
         f"the in-turn grader's interval phase is not keyed to the schedule ({iv or 'absent'}); "
         f"`--schedule continuous` would land ONE verdict per turn and then go quiet")
+    round_ids = {ast.unparse(k.value) for s in starts for k in s.keywords if k.arg == "round_index"}
+    assert round_ids == {"rnd"}, (
+        f"the in-turn grader is not keyed to the current agent round ({round_ids or 'absent'}); "
+        "every new round would reuse the previous round's sealed cand_901 snapshot")
 
     stops = [n for n in ast.walk(loop)
              if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_stop_in_turn_grader"]

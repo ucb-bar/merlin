@@ -82,6 +82,31 @@ def test_rocc_endpoint_is_routed_to_the_rocc_tools():
     assert BR.is_rocc_endpoint(None) is False
 
 
+def test_schedule_contract_is_reloaded_during_a_long_lived_session(tmp_path):
+    """A broker must expose contract corrections without requiring the Atlas run to restart."""
+    BR = _load_broker()
+    contract = tmp_path / "schedule_contract.yaml"
+    contract.write_text("version: 1\nminimum_issue_gap: []\n", encoding="utf-8")
+    assert BR._read_schedule_contract(contract)["version"] == 1
+
+    contract.write_text("version: 2\nregister_dependency_gap: []\n", encoding="utf-8")
+    refreshed = BR._read_schedule_contract(contract)
+    assert refreshed["version"] == 2
+    assert "register_dependency_gap" in refreshed
+
+
+def test_broker_restart_skips_only_atomically_completed_requests(tmp_path):
+    BR = _load_broker()
+    for rid in ("complete", "response_only", "done_only", "pending"):
+        (tmp_path / f"req_{rid}.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "resp_complete.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "done_complete").write_text("ok", encoding="utf-8")
+    (tmp_path / "resp_response_only.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "done_done_only").write_text("ok", encoding="utf-8")
+
+    assert BR._completed_request_names(tmp_path) == {"req_complete.json"}
+
+
 def test_rocc_endpoint_executes_the_live_package_imports_end_to_end():
     """Catch stale broker import aliases before an agent spends a round discovering them."""
     BR = _load_broker()
@@ -117,6 +142,14 @@ def test_lint_flags_missing_halt_and_reports_coverage(broker):
     out = BR._handle({"cmd": "lint", "kernel_s": "MatMul rd=1, rs1=1\n", "op": "matmul"}, ctx)
     assert any(f["rule"] == "no_halt" for f in out["findings"])       # never halts -> flagged
     assert "MatMul" in out["coverage"]["present"]
+    assert out["schedule"]["instruction_count"] == 1
+
+
+def test_lint_surfaces_a_static_cycle_budget_refutation(broker):
+    BR, ctx = broker
+    out = BR._handle({"cmd": "lint", "kernel_s": "MatMul rd=1, rs1=1\nHalt\n",
+                      "op": "matmul", "cycle_budget": 1}, ctx)
+    assert any(f["rule"] == "static_cycle_budget_exceeded" for f in out["findings"])
 
 
 def test_lint_fails_closed_when_the_terminator_was_never_derived(broker):

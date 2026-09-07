@@ -9,6 +9,7 @@ receipt.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -472,6 +473,140 @@ def encode_declared_outputs(outputs: Any, command_buffer: Mapping[str, Any]) \
     return aggregate.hexdigest(), rows
 
 
+def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) \
+        -> tuple[dict[str, Any], Mapping[str, Any], Callable[[Mapping[str, Any]], bool],
+                 dict[str, Any]]:
+    """Bind an ELF build and its correctness check to the grader's own numeric authority.
+
+    Most Gemmini capsules are integer command-buffer programs, for which
+    ``reference_outputs(command_buffer)`` is the independent semantic check.  A complete-kernel program
+    is intentionally different: either its numeric domain is not modeled by the integer command
+    interpreter, or its command stream is only the accelerator projection of an explicitly declared
+    ``kernel_abi.kind=whole_program`` ELF.  The formal grader therefore runs the complete ELF on the
+    capsule golden's operands and compares its output to that golden.  Treating an empty or partial
+    command stream as the complete computation instead prices initialized/intermediate buffers; it can
+    reject a correct ELF without testing the operation that ELF implements.
+
+    Reproduce the formal boundary here.  Golden operands are attached before the one shared ELF is
+    built, positional operands are resolved by declaration order exactly as in ``capsule_runner``, and
+    the capsule's declared numeric policy is used for correctness.  Verilator and GSIM must still
+    produce identical declared output bytes below, so tolerance cannot conceal an engine divergence.
+
+    This boundary is deliberately target-, operation-, and capsule-neutral.  It is selected only by
+    semantic evidence already present in the capsule/command-buffer contracts.
+    """
+    from merlin.runtime.reference import outputs_match, reference_outputs
+    from merlin.targetgen import capsule_golden as golden
+
+    capsule = dict(_load_mapping(capsule_manifest, yaml_input=True))
+    capsule["__dir__"] = str(capsule_manifest.parent)
+    cb = copy.deepcopy(dict(command_buffer))
+    independent_float = golden.is_independent_float_golden(capsule, capsule_manifest.parent)
+    whole_program = ((cb.get("kernel_abi") or {}).get("kind") == "whole_program")
+    if not (independent_float or whole_program):
+        expected = reference_outputs(cb)
+        return (cb, expected, lambda observed: outputs_match(dict(observed), dict(expected)), {
+            "kind": "command_buffer_reference",
+            "golden_source": "merlin.runtime.reference",
+            "numeric_policy": {"compare": "exact"},
+        })
+
+    canonical = golden.canonical_input_values(capsule, capsule_manifest.parent)
+    operand_source = "recorded_capsule_golden"
+    model_binding: dict[str, Any] = {}
+    if whole_program and capsule.get("kind") == "model":
+        # A model capsule's golden records only runtime inputs.  Its linalg function also has one
+        # pointer argument for every externalized parameter/buffer in the sealed safetensors file.
+        # Deterministic name materialization is therefore not a valid fallback: it would execute the
+        # submitted program with invented weights and compare it with a golden computed from the real
+        # ones.  Reuse the formal model grader's frozen-bundle adapter.  That adapter validates the
+        # loader, export signature, safetensors bytes, runtime inputs, and golden against each other;
+        # resolve_forward_args then reads all arguments in the exact exported function order.
+        from merlin.runtime.dispatch_runtime import resolve_forward_args
+        from merlin.targetgen.capsule_runner import _model_runtime_bundle
+
+        with _model_runtime_bundle(capsule, timeout=300) as (bundle, provenance, verify_unchanged):
+            arrays = resolve_forward_args(bundle)
+            verify_unchanged()
+        abi = cb.get("kernel_abi") or {}
+        tensors = cb.get("tensors") or {}
+        leaf_args = [
+            str(arg.get("tensor"))
+            for arg in (abi.get("args") or [])
+            if isinstance(arg, Mapping)
+            and isinstance(tensors.get(str(arg.get("tensor"))), Mapping)
+            and tensors[str(arg.get("tensor"))].get("role") in ("input", "weight", "bias")
+        ]
+        if len(leaf_args) != len(set(leaf_args)):
+            raise ProducerError("complete-model kernel ABI repeats a read-only leaf pointer")
+        if len(leaf_args) != len(arrays):
+            raise ProducerError(
+                "complete-model exported argument count does not match its kernel ABI leaves: "
+                f"bundle={len(arrays)} abi={len(leaf_args)}")
+        canonical = {
+            name: {"shape": list(array.shape), "values": array.reshape(-1).tolist()}
+            for name, array in zip(leaf_args, arrays)
+        }
+        operand_source = "validated_frozen_model_bundle"
+        model_binding = {
+            "model_source_sha256": provenance["source"]["content_sha256"],
+            "model_bundle_sha256": provenance["bundle"]["content_sha256"],
+            "model_bundle_construction": provenance["construction"],
+            "model_bundle_validation": provenance["validation"],
+        }
+    if not canonical and whole_program:
+        # Integer goldens are recomputed rather than shipped with recorded decoded values.  Feed the
+        # ELF the exact deterministic leaves that recomputation used.  This is one shared stimulus
+        # definition, not harness-side model arithmetic: the harness embeds leaves and the submitted
+        # kernel alone computes every declared result.
+        canonical = golden.materialized_input_values(capsule)
+        operand_source = "recomputed_golden_materialization"
+    tensors = cb.get("tensors")
+    if not isinstance(tensors, Mapping):
+        raise ProducerError("complete-kernel command buffer has no tensor declarations")
+    leaves = [str(name) for name, spec in tensors.items()
+              if isinstance(spec, Mapping) and spec.get("role") in ("input", "weight", "bias")]
+    overlap = set(canonical) & set(tensors)
+    if set(leaves) <= set(canonical):
+        bound = {name: canonical[name] for name in leaves}
+        binding = "by_name"
+    elif not overlap and len(leaves) == len(canonical):
+        # linalg-on-tensors names ABI operands positionally (arg0, arg1, ...), while the capsule
+        # records the source-level names. Both orders are the forward-function argument order.
+        bound = dict(zip(leaves, canonical.values()))
+        binding = "linalg_positional_declaration_order"
+    else:
+        raise ProducerError(
+            "complete-kernel golden operands cannot be bound unambiguously to the command buffer")
+    if not bound or set(bound) != set(leaves):
+        raise ProducerError("complete-kernel golden does not cover every command-buffer leaf")
+    for name, value in bound.items():
+        if not isinstance(value, Mapping) or not isinstance(value.get("values"), list):
+            raise ProducerError(f"canonical operand {name!r} has no flat value list")
+        shape = (tensors[name] or {}).get("shape")
+        if not isinstance(shape, list) or math.prod(shape) != len(value["values"]):
+            raise ProducerError(f"canonical operand {name!r} disagrees with its command-buffer shape")
+    cb["canonical_inputs"] = bound
+    expected = golden.golden(capsule, capsule_manifest.parent)
+    policy = dict(capsule.get("numeric_policy") or {})
+    source = golden.golden_source(capsule, capsule_manifest.parent)
+
+    def matches(observed: Mapping[str, Any]) -> bool:
+        return golden.compare(dict(expected), dict(observed), policy,
+                              golden_source=source).get("status") == "pass"
+
+    return cb, expected, matches, {
+        "kind": ("whole_program_capsule_golden" if whole_program
+                 else "independent_capsule_golden"),
+        "golden_source": source,
+        "numeric_policy": policy,
+        "operand_binding": binding,
+        "operand_source": operand_source,
+        "canonical_inputs_sha256": _document_sha(bound),
+        **model_binding,
+    }
+
+
 def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str | Path,
                  workdir: str | Path, artifacts: ArtifactPaths, timeout: int = 3600,
                  reference_timeout: int | None = None,
@@ -497,7 +632,8 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
     cb_path, llvm_path = artifact_path / "command_buffer.json", artifact_path / "lowered.llvm.mlir"
     if not cb_path.is_file() or not llvm_path.is_file():
         raise ProducerError(f"{artifact_path}: command_buffer.json/lowered.llvm.mlir are required")
-    cb = _load_mapping(cb_path)
+    cb, expected, matches_expected, semantic_reference = _semantic_oracle(
+        manifest_path, _load_mapping(cb_path))
     llvm_text = llvm_path.read_text(encoding="utf-8")
     case_work = Path(workdir)
     case_work.mkdir(parents=True, exist_ok=True)
@@ -511,9 +647,9 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
     if backend is None:
         from merlin.runtime.backends import base as backends
         backend = backends.get_backend(target)
-    from merlin.runtime.reference import outputs_match, reference_outputs
+    from merlin.runtime.backends import base as backends
+    from merlin.runtime.commandbuffer import declared_output_dtypes
     from merlin.perf import capture_store as STORE
-    expected = reference_outputs(cb)
     pins = artifacts.pinned()
     # A CAPTURE IS A PURE FUNCTION OF THE ELF AND THE ENGINES, so one already taken for these exact
     # bytes and pins answers this call. The reference leg is the expensive half by more than an order
@@ -526,8 +662,10 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
     # measurement is about the ELF while the manifest binding is about which capsule asked.
     _workload = derive_workload(manifest_path)
     _identity = GATE.workload_sha256(_workload)
-    _hit = STORE.lookup(target, elf_sha256=elf_digest, pins=pins)
-    if _hit is not None and _hit.get("workload_sha256") == _identity:
+    _hit = STORE.lookup(
+        target, elf_sha256=elf_digest, pins=pins, workload_sha256=_identity,
+        semantic_reference=semantic_reference)
+    if _hit is not None:
         return {**_hit, "target": target,
                 "capsule": str(_load_mapping(manifest_path, yaml_input=True).get("name") or ""),
                 "capsule_manifest_path": str(manifest_path),
@@ -550,7 +688,11 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
             outputs, _ = backend.parse_output(console)
         except Exception as exc:  # noqa: BLE001 - backend result is untrusted evidence
             raise ProducerError(f"{engine} console is not gradeable: {exc}") from exc
-        if not outputs_match(outputs, expected):
+        # Bare-metal harnesses print a float destination's exact container word. Decode from the
+        # command buffer's declared dtype before applying the capsule's numeric policy; integer
+        # outputs and backends that already return floats remain byte-identical.
+        outputs = backends.decode_float_readback(outputs, declared_output_dtypes(cb))
+        if not matches_expected(outputs):
             raise ProducerError(f"{engine} did not produce the reference output")
         output_digest, output_rows = encode_declared_outputs(outputs, cb)
         runs[side] = {
@@ -574,6 +716,7 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
         "capsule_manifest_path": str(manifest_path),
         "capsule_manifest_sha256": _sha_file(manifest_path),
         "workload": workload, "workload_sha256": GATE.workload_sha256(workload),
+        "semantic_reference": semantic_reference,
         "elf_sha256": elf_digest, "agreement": "AGREE", "evidence": GATE.STRONG_EVIDENCE,
         "bytes_match": True, **runs,
     }

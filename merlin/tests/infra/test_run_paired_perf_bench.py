@@ -23,6 +23,33 @@ _SPEC.loader.exec_module(RUNNER)
 import produce_gsim_certificate as PRODUCER  # noqa: E402
 
 
+def test_paired_input_loader_forwards_exact_named_functional_waivers(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    observed = {}
+
+    class StopAfterFunctionalInspection(Exception):
+        pass
+
+    def inspect(*args, **kwargs):
+        observed["args"] = args
+        observed["kwargs"] = kwargs
+        raise StopAfterFunctionalInspection
+
+    monkeypatch.setattr(RUNNER.PC, "inspect_functional_run", inspect)
+    with pytest.raises(StopAfterFunctionalInspection):
+        RUNNER.load_paired_inputs(
+            tmp_path / "candidate.json", "functional", "a" * 64, object(),
+            corpus_root=tmp_path / "corpus", corpus_manifest_sha256="b" * 64,
+            corpus_capsules_sha256="c" * 64, phase="tuning",
+            corpus_manifest=tmp_path / "corpus/manifest.json",
+            gsim_certificate=tmp_path / "certificate.json",
+            gsim_certificate_sha256="d" * 64,
+            waive_functional_gate=("score_incomplete", "phase_grade_incomplete"))
+
+    assert observed["kwargs"]["waive"] == frozenset(
+        {"score_incomplete", "phase_grade_incomplete"})
+
+
 def _inputs(tmp_path: Path, members: tuple | None = None, *, phase: str = "held_out"):
     descriptor = {
         "operation": {"op": "matmul", "attributes": {
@@ -202,6 +229,32 @@ def _mock_measurement(spec, cycles: int) -> dict:
     return {"status": "pass", "numeric": "pass", "per_sim": per_sim,
             "gsim_qualification": {"admitted": True},
             "work_volume": {}, "command_buffer_artifact": None}
+
+
+@pytest.mark.parametrize("tier", [None, {"status": "skipped", "reason": "not attempted"},
+                                  {"status": "error", "reason": "oracle timeout"}])
+def test_absent_execution_is_not_misreported_as_certificate_rejection(tmp_path, monkeypatch, tier):
+    monkeypatch.setattr(RUNNER, "hash_tree", lambda _: {"sha256": "a" * 64})
+    monkeypatch.setattr(RUNNER.FIXED.CR, "load_capsule", lambda *_a, **_k: {})
+    monkeypatch.setattr(RUNNER.FIXED.CR, "_spike_verilator_adapter", lambda *_a: object())
+    monkeypatch.setattr(RUNNER, "_gsim_l3_adapter", lambda *_a, **_k: object())
+    tiers = {"L2": {"status": "pass"}}
+    if tier is not None:
+        tiers["L3"] = tier
+    monkeypatch.setattr(RUNNER.FIXED.CR, "run_capsule", lambda *_a, **_k: {
+        "status": "error", "numeric": "pass", "tiers": tiers})
+    monkeypatch.setattr(RUNNER.FIXED, "_measurement_identity", lambda **_k: ({}, []))
+    calls = []
+    monkeypatch.setattr(RUNNER.GATE, "validate_execution", lambda *_a: calls.append(1))
+    row = RUNNER._run_arm4_engines(
+        tmp_path, {"id": "one"}, tmp_path, tmp_path, 10, "test",
+        measurement_pass="one", expected_package_sha256="a" * 64,
+        rtl_identity={}, decision=SimpleNamespace(), certificate=SimpleNamespace(), reuse_scope="one")
+    assert calls == [], "there is no execution for a certificate to validate"
+    assert row["gsim_qualification"]["kind"] == "execution_missing"
+    assert row["gsim_qualification"]["admitted"] is False
+    assert row["execution_outcome"]["gsim"]["tier_outcome"] == tier
+    assert row["per_sim"]["gsim"]["cycles"] is None
 
 
 def test_mocked_execution_has_fresh_workspaces_primary_gsim_and_exact_denominator(

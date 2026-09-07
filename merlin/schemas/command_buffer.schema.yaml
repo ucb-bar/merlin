@@ -19,6 +19,7 @@ optional_top_level_fields:
   # field documented nowhere is a field the two schema representations can silently disagree about.
   - tensors            # handle -> {dtype, shape}; absent when every operand is an inline resource
   - params             # scalar lowering parameters (e.g. acc_scale)
+  - kernel_abi         # explicit whole-program pointer args/access and final outputs
   - declined           # see `decline_example` below
 producer: merlin runtime lowering (merlin-runtime-to-command-buffer)
 consumers:

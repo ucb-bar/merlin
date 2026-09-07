@@ -74,6 +74,17 @@ class BackendKind(str, Enum):
                                    # (xnnpack/openblas/ours on a board; xnnpack on the host)
 
 
+#: Closed vocabulary for SOFTWARE execution capabilities a backend may declare.  These are kept out
+#: of ``merlin.perf.profile.TRAITS`` deliberately: whether the runner can build a whole-program ABI or
+#: place a warm and measured invocation under one counter is a property of the backend/harness, not a
+#: discovered property of the accelerator RTL.  A shared performance family may require both kinds of
+#: evidence, but it must not turn missing tooling into a claim about the hardware.
+EXECUTION_CAPABILITIES: tuple[str, ...] = (
+    "whole_program_kernel_abi",
+    "warm_single_counter_region_cycles",
+)
+
+
 @dataclass(frozen=True)
 class BackendInfo:
     name: str
@@ -321,79 +332,7 @@ def backends_of_class(target_class: TargetClass) -> list[str]:
     return sorted(n for n, b in _REGISTRY.items() if b.target_class == target_class)
 
 
-@dataclass(frozen=True)
-class HarnessBuildRecipe:
-    """How to compile + link a runner-owned harness against one target's bare-metal environment.
-
-    The generic contract-compile path used to obtain every one of these by importing a specific
-    backend, which meant it did not merely emit one target's harness text — it ran one target's entire
-    build. None of it is derivable from RTL: a compiler path, an include layout and a set of support
-    sources are properties of a target's software environment, so the backend that owns the target
-    supplies them and the generic path only orchestrates.
-
-    ``error_cls`` travels with the recipe so a build failure still raises the exception type that
-    target's callers already catch, rather than a generic one they would have to start handling.
-    """
-
-    compiler: Path
-    include_roots: tuple[Path, ...]
-    support_sources: tuple[Path, ...]
-    link_script: Path
-    load_address: int
-    cflags: tuple[str, ...] = ()
-    error_cls: type[Exception] = RuntimeError
-
-    def command(self, *, sources: "Sequence[Path]", output: Path,
-                link_script: Path | None = None) -> list[str]:
-        """The full compiler invocation for ``sources`` -> ``output``."""
-        cmd = [str(self.compiler), *self.cflags]
-        for root in self.include_roots:
-            cmd += ["-I", str(root)]
-        cmd += ["-T", str(link_script or self.link_script), "-o", str(output)]
-        cmd += [str(s) for s in sources]
-        cmd += [str(s) for s in self.support_sources]
-        return cmd
-
-    def compile_command(self, *, source: Path, output: Path) -> list[str]:
-        """Compile ONE source to an object with an explicit name.
-
-        Compiling and linking in a single invocation makes the build non-reproducible: the driver
-        names its intermediate object ``ccXXXXXX.o`` and that random name is recorded in the ELF as an
-        STT_FILE symbol. Measured 2026-09-03: two builds of byte-identical sources differed in exactly
-        6 bytes, ``ccFzUU8w.o`` vs ``ccnuEDwa.o``, while producing identical cycle counts. That single
-        difference defeats any content-addressed reuse of a measurement, because the artifact digest
-        moves when nothing about the program did.
-        """
-        cmd = [str(self.compiler), *self.cflags]
-        for root in self.include_roots:
-            cmd += ["-I", str(root)]
-        return cmd + ["-c", str(source), "-o", str(output)]
-
-    def march(self) -> str:
-        """The ISA string this target's bare-metal build declares (``-march=...``), or a refusal.
-
-        Read rather than assumed, because it has to agree with the OTHER half of the same ELF. The
-        runner compiles the package's kernel object itself, and that step carried its own hardcoded
-        march: on a core whose recipe says ``rv64gc`` the kernel was built ``rv64gcv``, so the moment
-        a kernel had anything the auto-vectorizer could take (a scalar host-lane float program is the
-        first one that does), it emitted ``vsetivli``/``vle32.v`` for a core with no vector unit and
-        trapped -- reported as the submission's kernel faulting at runtime.
-        """
-        for flag in self.cflags:
-            if flag.startswith("-march="):
-                return flag
-        raise self.error_cls(
-            "this target's build recipe declares no -march=; the runner cannot compile the package "
-            "kernel for the same ISA the harness is built for, and a mismatch is a runtime trap")
-
-    def link_command(self, *, objects: "Sequence[Path]", output: Path,
-                     link_script: Path | None = None) -> list[str]:
-        """Link already-compiled objects. Support sources are NOT re-appended: they are among them."""
-        cmd = [str(self.compiler), *self.cflags]
-        for root in self.include_roots:
-            cmd += ["-I", str(root)]
-        cmd += ["-T", str(link_script or self.link_script), "-o", str(output)]
-        return cmd + [str(o) for o in objects]
+from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe
 
 
 def harness_build_recipe(target: str) -> HarnessBuildRecipe:
@@ -461,6 +400,59 @@ def get_backend(name: str):
     return importlib.import_module(_REGISTRY[name].module)
 
 
+def execution_capability_facts(target: str) -> dict[str, dict[str, Any]]:
+    """Tri-state, evidence-bearing software capabilities for ``target``'s registered backend.
+
+    A loaded backend settles every name in :data:`EXECUTION_CAPABILITIES`: a declared name is true and
+    an omitted one is false.  If the backend itself cannot be resolved, support is UNKNOWN rather than
+    false because no implementation was available to inspect.  Nothing is inferred from a target name,
+    target class, opcode, or hardware trait; adding a new target means declaring capabilities in that
+    target's own backend module.
+    """
+    try:
+        backend = get_backend(target)
+    except Exception as exc:  # noqa: BLE001 -- an unavailable plugin is UNKNOWN and carries why
+        why = f"{type(exc).__name__}: {exc}"
+        return {
+            name: {
+                "satisfied": None,
+                "tier": "not_established",
+                "evidence": f"backend {target!r} could not be resolved: {why}",
+                "missing": [f"a loadable backend declaring execution capability {name!r}"],
+            }
+            for name in EXECUTION_CAPABILITIES
+        }
+
+    raw = getattr(backend, "EXECUTION_CAPABILITIES", {})
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise TypeError(
+            f"backend {target!r} EXECUTION_CAPABILITIES must be a name -> evidence mapping")
+    unknown = sorted(set(raw) - set(EXECUTION_CAPABILITIES))
+    if unknown:
+        raise ValueError(
+            f"backend {target!r} declares unknown execution capabilities {unknown}; canonical names "
+            f"are {list(EXECUTION_CAPABILITIES)}")
+    facts: dict[str, dict[str, Any]] = {}
+    for name in EXECUTION_CAPABILITIES:
+        evidence = raw.get(name)
+        if evidence is not None and (not isinstance(evidence, str) or not evidence.strip()):
+            raise ValueError(
+                f"backend {target!r} execution capability {name!r} needs non-empty evidence text")
+        supported = evidence is not None
+        facts[name] = {
+            "satisfied": supported,
+            "tier": "backend_declared",
+            "evidence": (f"backend {target!r} ({backend.__name__}) declares: {evidence}"
+                         if supported else
+                         f"backend {target!r} ({backend.__name__}) does not declare this capability"),
+            "missing": ([] if supported else
+                        [f"backend declaration and implementation of {name!r}"]),
+        }
+    return facts
+
+
 # --- shared backend plumbing (the copy-pasted console protocol, collapsed) --------------------------
 def _strip_warning_fragments(text: str) -> str:
     """Drop each line's ``%Warning:``/``Warning:`` fragment onward (stray Verilator noise), keeping
@@ -517,19 +509,7 @@ def parse_console(text: str, *, error_cls: type[Exception] = RuntimeError,
     return outputs, raw
 
 
-def float_format_of(dtype: str) -> str | None:
-    """The registered FLOAT format ``dtype`` names, or ``None`` when it names an integer/unknown one.
-
-    A predicate, not a converter: it answers "is a value of this dtype a float pattern?" through the
-    one registry that defines the code<->value mapping (:mod:`merlin.runtime.fp8_formats`), so a
-    format added there is understood here without an edit. Never raises — an unknown or integer
-    spelling is simply "not a float", which is the answer a readback decoder needs.
-    """
-    from merlin.runtime import fp8_formats as _ff
-    try:
-        return _ff.canonical_float(str(dtype))
-    except KeyError:
-        return None
+from merlin.runtime.fp8_formats import float_format_of
 
 
 def decode_float_readback(outputs: dict[str, list], dtypes: dict[str, str]) -> dict[str, list]:

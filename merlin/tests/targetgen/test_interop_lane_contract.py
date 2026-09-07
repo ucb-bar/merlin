@@ -25,6 +25,7 @@ import json
 import pytest
 
 from merlin.common.paths import merlin_dir
+from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.capsule_runner import dispatch_boundary_report, lane_report
 
 _SCHEMA = merlin_dir() / "contract/schemas/capsule.schema.json"
@@ -193,6 +194,78 @@ def test_execution_accounting_can_also_confirm_a_lane():
                    {"ordinal": 1, "symbol": "add", "lane": "scalar_rvv_lane", "status": "pass"}]}
     rep = lane_report({"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}, plan, exec_ok)
     assert rep["unexercised"] == []
+
+
+def test_exact_whole_program_completion_credits_mandatory_cfg_tasks():
+    capsule = {"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}
+    cb = {
+        "kernel_abi": {"kind": "whole_program"},
+        "params": {"global_program_plan": {"tasks": [
+            {"task_index": 0, "kind": "contraction"},
+            {"task_index": 1, "kind": "host"},
+            {"task_index": 2, "kind": "contraction"},
+        ]}},
+    }
+    proof = {"status": "verified", "control_flow": {"status": "verified"},
+             "emitted_operations_by_task": {0: 4, 1: 7, 2: 3}}
+    tiers = {"L2": CR.TierResult("L2", "pass", True)}
+    trace = {"instructions": [{"class": "COMPUTE_PRELOADED", "funct": 4}]}
+
+    rep = CR.whole_program_completion_lane_report(
+        capsule, cb, global_plan_proof=proof, numeric={"status": "pass"},
+        tiers=tiers, decoded_trace=trace)
+
+    assert rep["observed"] == ["on_mesh", "scalar_rvv_lane"]
+    assert rep["unexercised"] == []
+    assert set(rep["evidence"].values()) == {CR.WHOLE_PROGRAM_COMPLETION_EVIDENCE}
+    assert rep["completed_tasks"] == [0, 1, 2]
+
+
+def test_exact_whole_program_cfg_proves_the_absence_of_a_forbidden_task_lane():
+    capsule = {"lanes": {"require": ["on_mesh"], "forbid": ["scalar_rvv_lane"]}}
+    cb = {"kernel_abi": {"kind": "whole_program"},
+          "params": {"global_program_plan": {"tasks": [
+              {"task_index": 0, "kind": "contraction"},
+              {"task_index": 1, "kind": "contraction"},
+          ]}}}
+    proof = {"status": "verified", "control_flow": {"status": "verified"},
+             "emitted_operations_by_task": {0: 3, 1: 3}}
+
+    rep = CR.whole_program_completion_lane_report(
+        capsule, cb, global_plan_proof=proof, numeric={"status": "pass"},
+        tiers={"L2": CR.TierResult("L2", "pass", True)},
+        decoded_trace={"instructions": [{"class": "COMPUTE_PRELOADED", "funct": 4}]})
+
+    assert rep["observed"] == ["on_mesh"]
+    assert rep["violated"] == []
+    assert rep["evidence"]["scalar_rvv_lane"] == CR.WHOLE_PROGRAM_COMPLETION_EVIDENCE
+
+
+@pytest.mark.parametrize("proof,numeric,tiers,trace", [
+    ({"status": "UNKNOWN"}, {"status": "pass"},
+     {"L2": CR.TierResult("L2", "pass", True)},
+     {"instructions": [{"class": "COMPUTE_PRELOADED"}]}),
+    ({"status": "verified", "control_flow": {"status": "verified"},
+      "emitted_operations_by_task": {0: 1, 1: 1}}, {"status": "fail"},
+     {"L2": CR.TierResult("L2", "pass", True)},
+     {"instructions": [{"class": "COMPUTE_PRELOADED"}]}),
+    ({"status": "verified", "control_flow": {"status": "verified"},
+      "emitted_operations_by_task": {0: 1, 1: 1}}, {"status": "pass"},
+     {"L2": CR.TierResult("L2", "unavailable", True)},
+     {"instructions": [{"class": "COMPUTE_PRELOADED"}]}),
+])
+def test_whole_program_completion_never_credits_unverified_or_unexecuted_work(
+        proof, numeric, tiers, trace):
+    capsule = {"lanes": {"require": ["on_mesh", "scalar_rvv_lane"]}}
+    cb = {"kernel_abi": {"kind": "whole_program"},
+          "params": {"global_program_plan": {"tasks": [
+              {"task_index": 0, "kind": "contraction"},
+              {"task_index": 1, "kind": "host"},
+          ]}}}
+
+    assert CR.whole_program_completion_lane_report(
+        capsule, cb, global_plan_proof=proof, numeric=numeric,
+        tiers=tiers, decoded_trace=trace) is None
 
 
 def test_a_plan_only_verdict_says_so_and_is_never_a_pass():

@@ -43,6 +43,13 @@ def test_every_corner_is_a_multiple_of_the_tile_edge():
     assert LC.CORNERS["n_2tiles"] == (1, 1, 2)
 
 
+def test_tail_corners_cover_subtile_and_each_independent_remainder_axis():
+    assert LC.TAIL_CORNERS["sub_tile"] == (-1, -1, -1)
+    assert LC.TAIL_CORNERS["m_tail"] == (1, 0, 0)
+    assert LC.TAIL_CORNERS["k_tail"] == (0, 1, 0)
+    assert LC.TAIL_CORNERS["n_tail"] == (0, 0, 1)
+
+
 # --------------------------------------------------------------- the invariant
 
 def _sweep(monkeypatch, work_by_corner, declined=()):
@@ -60,7 +67,30 @@ def _sweep(monkeypatch, work_by_corner, declined=()):
         return "lowered", None, work_by_corner[corner]
 
     monkeypatch.setattr(LC, "probe_shape", fake)
-    return LC.sweep("pkg", target="t")
+    return LC.sweep("pkg", target="t", tail_corners={})
+
+
+def test_tail_failures_are_named_per_axis_without_a_golden(monkeypatch):
+    monkeypatch.setattr(LC, "_binding", lambda t: type(
+        "B", (), {"operand_dtype": "int8", "accum_dtype": "int32",
+                  "mlir_dtype": staticmethod(lambda tok: {"int8": "i8"}.get(tok, "i32"))})())
+    monkeypatch.setattr(LC, "tile_edge", lambda t: 32)
+
+    def fake(package, *, target, m, k, n, operand_mlir, accum_mlir, contract=None, timeout=300):
+        if (m, k, n) == (32, 32, 33):
+            return "declined", "no N-tail legalization", 0
+        return "lowered", None, 100
+
+    monkeypatch.setattr(LC, "probe_shape", fake)
+    result = LC.sweep("pkg", target="t", corners={"tile": (1, 1, 1)},
+                      tail_corners={"sub_tile": (-1, -1, -1),
+                                    "m_tail": (1, 0, 0),
+                                    "k_tail": (0, 1, 0),
+                                    "n_tail": (0, 0, 1)})
+
+    assert result["tail_axes_uncovered"] == ["n"]
+    assert result["tail_cases_uncovered"] == ["n_tail"]
+    assert result["all_covered"] is False
 
 
 def test_a_program_that_shrinks_on_a_bigger_problem_is_a_silent_refusal(monkeypatch):

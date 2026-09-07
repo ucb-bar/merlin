@@ -72,6 +72,7 @@ UNWAIVABLE: frozenset[str] = frozenset({
 # Declared as a literal so a NEW predicate is not silently waivable the moment someone adds it --
 # adding one here is a deliberate act, and `inspect_functional_run` refuses an unknown name.
 _WAIVABLE_PREDICATES: frozenset[str] = frozenset({
+    "manifest_not_gradeable",
     "score_incomplete",
     "score_not_gradeable",
     "score_evidence_incomplete",
@@ -93,6 +94,7 @@ _WAIVABLE_PREDICATES: frozenset[str] = frozenset({
     "task_scope_public_mismatch",
     "task_scope_hidden_mismatch",
     "graded_count_not_admitted_cohort",
+    "operator_sealed_before_convergence",
 })
 
 
@@ -301,6 +303,14 @@ def _validate_clean_run(environment: dict, summary: dict) -> list[Deviation]:
         found.append(Deviation("qa_loop_not_converged",
                                f"functional QA loop did not converge "
                                f"(converged={summary.get('converged')!r})"))
+    operator_seal = summary.get("operator_seal")
+    if isinstance(operator_seal, dict) and operator_seal.get("requested") is True:
+        found.append(Deviation(
+            "operator_sealed_before_convergence",
+            "functional authoring was explicitly stopped at completed round "
+            f"{operator_seal.get('last_completed_round')!r}; checkpoint submission "
+            f"{operator_seal.get('checkpoint_submission_sha256')!r} was sent through the ordinary "
+            "official grade and immutable freeze"))
     rounds = summary.get("rounds")
     if not isinstance(rounds, list) or not rounds:
         found.append(Deviation("no_completed_round", "functional QA evidence has no completed round"))
@@ -521,10 +531,16 @@ def inspect_functional_run(run_root: Path, run_id: str, expected_digest: str, *,
     if not str(environment.get("bundle_id") or "").startswith("merlin_assisted_rtlchecks_"):
         raise CampaignGateError("functional run is not from the Arm-4 RTL-checks bundle")
     found: list[Deviation] = list(_validate_clean_run(environment, summary))
-    if (manifest.get("integrity_status") != "clean" or manifest.get("integrity_exempt") is not False
-            or manifest.get("gradeable") is not True):
+    if (manifest.get("integrity_status") != "clean"
+            or manifest.get("integrity_exempt") is not False):
         found.append(Deviation("manifest_integrity_gate_failed",
-                               "functional run did not pass integrity and gradeability gates"))
+                               "functional run did not pass the manifest integrity gate "
+                               f"(integrity_status={manifest.get('integrity_status')!r}, "
+                               f"integrity_exempt={manifest.get('integrity_exempt')!r})"))
+    if manifest.get("gradeable") is not True:
+        found.append(Deviation("manifest_not_gradeable",
+                               "functional run manifest is not gradeable "
+                               f"(gradeable={manifest.get('gradeable')!r})"))
     public = manifest.get("public_dev") or {}
     hidden = manifest.get("hidden") or {}
     if public.get("functional_pass") != 1 or hidden.get("functional_pass") != 1:

@@ -54,6 +54,7 @@ FLOAT_ONLY_OPCODES = frozenset({"RMSNORM", "SOFTMAX", "GELU", "SOFTCAP", "ROPE"}
 #: reference raises ``unknown opcode`` on them, so there is nothing here to mirror.
 UNIMPLEMENTED_OPCODES = frozenset({
     "LAYERNORM", "GEGLU", "ATTENTION_FULL", "CONV", "MATMUL_BATCHED",
+    "K_CHAIN", "DEPTHWISE_CONV2D",
 })
 
 #: Opcodes that provably cannot change a committed value, so skipping them is sound rather than

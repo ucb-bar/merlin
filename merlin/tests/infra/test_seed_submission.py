@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 import sys
 
 import pytest
@@ -53,6 +54,39 @@ def test_seed_copies_candidate_cleanly_and_records_exact_identity(tmp_path):
     assert persisted == record
     assert record["content_sha256"] and record["n_files"] == 2
     assert record["source"] == str(source.resolve())
+
+
+def test_seed_from_a_frozen_run_is_writable_without_mutating_the_source(tmp_path):
+    """A frozen submission is a valid seed, but its read-only modes are not part of the new treatment.
+
+    Keeping those modes makes the new agent unable to add a compiler file, update its manifest, or
+    create ``READY_FOR_BARRIER``. The source must remain frozen while only the workspace copy becomes
+    authorable.
+    """
+    loop = _loop()
+    source = tmp_path / "preserved" / "submission"
+    package = source / "mlir_oot"
+    package.mkdir(parents=True)
+    manifest = source / "manifest.yaml"
+    backend = package / "backend.py"
+    manifest.write_text("commands: {}\n", encoding="utf-8")
+    backend.write_text("VALUE = 1\n", encoding="utf-8")
+    for directory in (package, source):
+        directory.chmod(0o555)
+    for file in (manifest, backend):
+        file.chmod(0o444)
+    ws, run_dir = tmp_path / "new-ws", tmp_path / "new-run"
+    ws.mkdir(); run_dir.mkdir()
+
+    loop._seed_submission(ws, source, run_dir)
+
+    seeded = ws / "submission"
+    assert seeded.stat().st_mode & stat.S_IWUSR
+    assert (seeded / "mlir_oot").stat().st_mode & stat.S_IWUSR
+    assert (seeded / "manifest.yaml").stat().st_mode & stat.S_IWUSR
+    assert (seeded / "mlir_oot/backend.py").stat().st_mode & stat.S_IWUSR
+    assert not (source.stat().st_mode & stat.S_IWUSR)
+    assert not (manifest.stat().st_mode & stat.S_IWUSR)
 
 
 def test_seed_refuses_unsafe_or_ungradeable_sources(tmp_path):

@@ -129,6 +129,67 @@ def test_lower_matmul_int8_makes_integer_contraction(tmp_path):
     assert int_contract, "expected one i8×i8→i32 integer contraction"
 
 
+def test_dynamic_matmul_scale_defines_the_all_zero_row(tmp_path):
+    """The generated activation scale is 1 for ``amax == 0``, never ``0 / 127``.
+
+    Besides making zero input well-defined, keeping the guard in the scale constructor gives the
+    quantize-round fusion a structural proof that its divisor cannot be zero.
+    """
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_matmul_int8
+
+    src = tmp_path / "deqmm_zero_scale.mlir"
+    src.write_text(_DEQUANT_MM.format(m=2, k=8, n=4), encoding="utf-8")
+    module = parse_mlir_file(src)
+    assert lower_matmul_int8(module) == 1
+    module.verify()
+
+    scale_bodies = [
+        [body_op.name for body_op in op.body.blocks[0].ops]
+        for op in module.walk()
+        if op.name == "linalg.generic" and op.body.blocks
+        and any(body_op.name == "arith.divf" for body_op in op.body.blocks[0].ops)
+        and any(body_op.name == "linalg.yield" for body_op in op.body.blocks[0].ops)
+    ]
+    assert any("arith.cmpf" in names and "arith.select" in names for names in scale_bodies), \
+        scale_bodies
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
+def test_zero_activation_stays_finite_after_quant_round_fusion(tmp_path):
+    """Fresh-process host reproducer for the TinyLlama all-NaN failure.
+
+    A zero activation must quantize to integer zero and requantize to finite float zero even after
+    the round/clamp/convert chain is inlined for vectorization.
+    """
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.passes_quant_int import lower_matmul_int8
+    from merlin.llvmlower.quant_round import fuse_round_clamp_convert
+    from merlin.xdsl_dialects._common import text as to_text
+
+    m, k, n = 2, 8, 4
+    src = tmp_path / "zero_matmul.mlir"
+    src.write_text(_DEQUANT_MM.format(m=m, k=k, n=n), encoding="utf-8")
+    module = parse_mlir_file(src)
+    assert lower_matmul_int8(module) == 1
+    assert fuse_round_clamp_convert(module) == 1
+    result = lower_model(to_text(module), tmp_path / "zero_matmul_host", targets=("host",))
+
+    act = np.zeros((m, k), np.float32)
+    weight = np.arange(k * n, dtype=np.int8).reshape(k, n) - np.int8(16)
+    scale = np.full((n,), 0.03125, np.float32)
+    zero_point = np.zeros((n,), np.int32)
+    out = np.full((m, n), np.nan, np.float32)
+    HostModel.load(str(result.host_so))([
+        (act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
+        (scale.ctypes.data, scale.shape), (zero_point.ctypes.data, zero_point.shape),
+        (out.ctypes.data, out.shape),
+    ])
+    assert np.array_equal(out, np.zeros_like(out)), out
+
+
 # conv: a 7-iterator linalg.generic with a stride-16 affine input map (d2*16+d5, d3*16+d6),
 # f32 activation + f32 weight (torchao leaves conv weights f32) -> i8×i8→i32 + requant.
 _CONV_MOD = (
@@ -173,6 +234,106 @@ def test_lower_conv_int8_makes_integer_conv(tmp_path):
         and all(_ibits(i.type) == 8 for i in op.inputs) and _ibits(op.results[0].type) == 32]
     assert i8conv, "expected one i8×i8→i32 conv with the stride-affine maps intact"
 
+
+def test_dynamic_conv_scales_define_zero_activation_and_weight_groups(tmp_path):
+    """Both runtime-created conv scales select one for a zero maximum.
+
+    The fixture has an f32 activation and an f32 weight, so it exercises the per-tensor activation
+    constructor and the per-output-channel dynamic-weight constructor independently.
+    """
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_conv_int8
+    from xdsl.dialects.builtin import f32
+
+    src = tmp_path / "conv_zero_scales.mlir"
+    src.write_text(_CONV_MOD.format(oc=4), encoding="utf-8")
+    module = parse_mlir_file(src)
+    assert lower_conv_int8(module) == 1
+    module.verify()
+
+    scale_bodies = []
+    for op in module.walk():
+        if op.name != "linalg.generic" or not op.body.blocks:
+            continue
+        names = [body_op.name for body_op in op.body.blocks[0].ops]
+        if names and names[0] == "arith.divf" and op.results[0].type.element_type == f32:
+            scale_bodies.append(names)
+    assert len(scale_bodies) == 2, scale_bodies
+    assert all("arith.cmpf" in names and "arith.select" in names for names in scale_bodies), \
+        scale_bodies
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
+def test_zero_conv_groups_stay_finite_after_quant_round_fusion(tmp_path):
+    """Both zero activation and zero dynamic-weight groups produce finite zero output."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.passes_quant_int import lower_conv_int8
+    from merlin.llvmlower.quant_round import fuse_round_clamp_convert
+    from merlin.xdsl_dialects._common import text as to_text
+
+    src = tmp_path / "conv_zero_host.mlir"
+    src.write_text(_CONV_MOD.format(oc=4), encoding="utf-8")
+    module = parse_mlir_file(src)
+    assert lower_conv_int8(module) == 1
+    assert fuse_round_clamp_convert(module) == 2
+    result = lower_model(to_text(module), tmp_path / "conv_zero_host", targets=("host",))
+    model = HostModel.load(str(result.host_so))
+
+    act = np.zeros((1, 3, 64, 64), np.float32)
+    weight = np.ones((4, 3, 16, 16), np.float32)
+    out = np.full((1, 4, 4, 4), np.nan, np.float32)
+    model([(act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
+           (out.ctypes.data, out.shape)])
+    assert np.array_equal(out, np.zeros_like(out)), out
+
+    act.fill(1.0)
+    weight.fill(0.0)
+    out.fill(np.nan)
+    model([(act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
+           (out.ctypes.data, out.shape)])
+    assert np.array_equal(out, np.zeros_like(out)), out
+
+
+def test_dynamic_gelu_scale_defines_zero_without_changing_its_nonzero_floor(tmp_path):
+    """i-GELU's scale selects one only at zero and retains its existing epsilon floor otherwise."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.passes_quant_int import lower_gelu_int
+
+    text = """module {
+      func.func @forward(%x: tensor<2x8xf32>) -> tensor<2x8xf32> {
+        %e = tensor.empty() : tensor<2x8xf32>
+        %y = linalg.generic {
+          indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, affine_map<(d0,d1)->(d0,d1)>],
+          iterator_types = ["parallel", "parallel"]}
+          ins(%x : tensor<2x8xf32>) outs(%e : tensor<2x8xf32>) {
+        ^bb(%a: f32, %o: f32):
+          %r = math.erf %a : f32
+          linalg.yield %r : f32
+        } -> tensor<2x8xf32>
+        return %y : tensor<2x8xf32>
+      }
+    }"""
+    src = tmp_path / "gelu_zero_scale.mlir"
+    src.write_text(text, encoding="utf-8")
+    module = parse_mlir_file(src)
+    assert lower_gelu_int(module) == 1
+    module.verify()
+
+    scale_bodies = []
+    for op in module.walk():
+        if op.name != "linalg.generic" or not op.body.blocks:
+            continue
+        names = [body_op.name for body_op in op.body.blocks[0].ops]
+        if names[:3] == ["arith.divf", "arith.constant", "arith.maximumf"]:
+            scale_bodies.append(names)
+    assert len(scale_bodies) == 1
+    assert "arith.cmpf" in scale_bodies[0] and "arith.select" in scale_bodies[0], scale_bodies
+    from merlin.llvmlower.quant_round import fuse_round_clamp_convert
+    report: dict = {}
+    assert fuse_round_clamp_convert(module, report_out=report) == 1
+    assert report.get("refused_clamp_not_two_sided") == 2, report
 
 # softmax-shaped: a (S - rowmax) subtraction feeding the exp (the signature lower_softmax_int
 # requires). %m is the per-row max (pass zeros in the numeric test so sub == x).

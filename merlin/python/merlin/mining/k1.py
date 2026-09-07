@@ -755,6 +755,43 @@ class K1Error(RuntimeError):
 _MMAP_WEIGHTS_THRESHOLD = 1_500_000_000
 
 
+#: Flag classes the K1 model-object build DERIVES for itself and a package may therefore not
+#: override. ``-march``/``-mabi`` are TARGET facts (the board's real VLEN, its f16 extensions, its
+#: ABI) resolved by :func:`codegen_march` / :data:`K1_MABI`; a package that also spells an ``-march``
+#: is spelling a weaker one (``rv64gcv`` promises only the RVV MINIMUM VLEN of 128, which doubles
+#: every register group on this VLEN=256 board -- see :func:`codegen_march`). Letting the package
+#: win there would silently un-pin the vector length and drop ``zfh``/``zvfh`` while appearing to be
+#: a change of vectorizer flags, so those two are dropped from the package list and the derived
+#: values are kept.
+_PKG_CFLAGS_DERIVED_HERE = ("-march=", "-mabi=")
+
+
+def merge_package_cflags(base: list[str], pkg_cflags) -> list[str]:
+    """``base`` (the derived model-object flags) extended with the PACKAGE's declared cflags.
+
+    A package's ``knobs.yaml`` may declare cflags (``rvv/hand_v0_int8`` declares
+    ``-fno-vectorize -fno-slp-vectorize``). Until this existed `build_k1_binary` never read them, so
+    clang's own loop and SLP vectorizers ran on our emitted ``model.ll`` and an unknown share of the
+    vector code in the binary was theirs rather than the transform schedule's -- the same
+    inert-declaration failure this module's comments warn about, in the other direction: there a flag
+    was never handed to the compiler; here a flag was never READ from the thing that declared it.
+
+    FAIL CLOSED. A package cflag that is neither derived here nor understood is an ERROR rather than
+    a silent drop: silently dropping is precisely the defect being removed. Flags whose class this
+    build derives for itself (:data:`_PKG_CFLAGS_DERIVED_HERE`) are dropped DELIBERATELY and the
+    derived value kept, because they are facts about the board rather than package preferences.
+    """
+    out = list(base)
+    for flag in pkg_cflags or ():
+        if flag.startswith(_PKG_CFLAGS_DERIVED_HERE):
+            continue                      # derived from the target; the package's weaker spelling loses
+        if not flag.startswith("-"):
+            raise K1Error(f"package cflag {flag!r} is not a flag; refusing to guess its meaning")
+        if flag not in out:
+            out.append(flag)
+    return out
+
+
 def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                     inputs_npz: str | Path | None = None,
                     force_scalar: bool | None = None,
@@ -766,7 +803,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
                     dispatch_timing: bool = False, op_profile: bool = False,
                     dump_cap: int | None = 4096,
                     max_session_steps: int | None = None,
-                    ours_mr: int = 4, ours_pack_b: bool = False) -> Path:
+                    ours_mr: int = 4, ours_pack_b: bool = False,
+                    honor_pkg_cflags: bool = False) -> Path:
     """Cross-compile a K1 Linux RVV binary from the workload + RVV package.
 
     Reuses the EXACT spike/Zephyr lowering (``zephyr_model.prepare_for_lowering`` ->
@@ -1045,9 +1083,15 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
     # the inert-lever failure this file's own comments warn about. Only the model object gets these;
     # the harness and runtime stay on fixed flags so a measurement changes one thing.
     from ..llvmlower.impr_features import apply_cflags as _apply_cflags
-    _model_flags = _apply_cflags(
-        [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt, "-Wno-override-module"],
-        feats or frozenset())
+    _base_flags = [f"-march={codegen_march()}", f"-mabi={K1_MABI}", *model_opt,
+                   "-Wno-override-module"]
+    # PACKAGE-DECLARED cflags (default OFF -> `_base_flags` unchanged -> byte-identical object, the
+    # same frozen-baseline invariant `apply_cflags` carries). `rvv/hand_v0_int8` declares
+    # `-fno-vectorize -fno-slp-vectorize`; with this off, clang's loop and SLP vectorizers run on
+    # our emitted `model.ll` and part of the binary's vector code is THEIRS, not the schedule's.
+    if honor_pkg_cflags:
+        _base_flags = merge_package_cflags(_base_flags, getattr(pkg, "cflags", ()))
+    _model_flags = _apply_cflags(_base_flags, feats or frozenset())
     _run([clang23, "--target=riscv64-unknown-linux-gnu", *_model_flags,
           "-c", res.ll_path, "-o", model_o])
     # 2b. POST-CODEGEN CENSUS: is the model still IN the object? A backend that deletes reachable

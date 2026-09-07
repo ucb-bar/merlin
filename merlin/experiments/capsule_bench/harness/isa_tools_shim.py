@@ -6,6 +6,9 @@ golden is ever involved — asm encodes the syntax YOU chose; disasm/lint inspec
 
   # assemble a mnemonic listing -> the correct .word lines for your kernel.S
   python isa_tools.py asm ops.txt
+  # relative branch labels use the target-declared PC/immediate units (no hand-scaled offsets)
+  # loop: ADDI rd=5,rs1=5,imm=4095
+  #       BNE rs1=5,rs2=0,imm=loop
   # disassemble your kernel.S -> what each word actually decodes to (catches invented encodings)
   python isa_tools.py disasm submission/kernel.S
   # static-lint your kernel.S -> illegal opcodes, missing terminator, instruction-class coverage
@@ -56,6 +59,9 @@ def main(argv=None):
     ap.add_argument("--op", default="matmul", help="lint coverage: the capsule op (default matmul)")
     ap.add_argument("--output-dtype", default=None)
     ap.add_argument("--movement", action="store_true", help="lint coverage: a data-movement capsule")
+    ap.add_argument("--cycle-budget", type=int, default=None,
+                    help="lint: reject when the straight-line instruction+delay lower bound already "
+                         "exceeds this many cycles")
     ap.add_argument("--capsule", default=None, help="debug: which public capsule to run your kernel on")
     ap.add_argument("--run-to", type=int, default=None,
                     help="debug: stop after this many instructions (omit = run to halt)")
@@ -88,7 +94,8 @@ def main(argv=None):
         req = {"cmd": "debug", "capsule": a.capsule, "kernel_s": text, "command_buffer": text,
                "run_to": a.run_to, "regions": regions, "state_summary": a.state, "timeout": a.timeout}
     else:
-        req = {"cmd": a.cmd, "op": a.op, "output_dtype": a.output_dtype, "movement": a.movement}
+        req = {"cmd": a.cmd, "op": a.op, "output_dtype": a.output_dtype,
+               "movement": a.movement, "cycle_budget": a.cycle_budget}
         req["text" if a.cmd == "asm" else "kernel_s"] = text
 
     ws = Path(__file__).resolve().parent               # the shim lives at <ws>/isa_tools.py

@@ -19,6 +19,56 @@
     "backend": {
       "type": "string"
     },
+    "kernel_abi": {
+      "type": "object",
+      "description": "Explicit pointer boundary for one submitted whole-program kernel. The runner only allocates these buffers, performs an unmeasured warm call, measures one call, and reads the named outputs; all computation remains in the submitted artifact.",
+      "required": [
+        "kind",
+        "args",
+        "outputs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "whole_program"
+        },
+        "args": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "tensor",
+              "access"
+            ],
+            "properties": {
+              "tensor": {
+                "type": "string",
+                "minLength": 1
+              },
+              "access": {
+                "type": "string",
+                "enum": [
+                  "read",
+                  "write",
+                  "readwrite"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "tensors": {
       "type": "object",
       "additionalProperties": {
@@ -48,9 +98,10 @@
               "weight",
               "bias",
               "output",
-              "scale"
+              "scale",
+              "intermediate"
             ],
-            "description": "Tensor role. 'scale' is a block-scale stream: a microscaling operand is a PAIR (quantized elements plus one shared exponent per fixed block of them), so the scales are operands in their own right, not hidden state. Omitting it here made a block-scaled target's own capsules fail the protocol gate before grading."
+            "description": "Tensor role. 'scale' is a block-scale stream: a microscaling operand is a PAIR (quantized elements plus one shared exponent per fixed block of them), so the scales are operands in their own right, not hidden state. 'intermediate' is a runner-allocated buffer produced and consumed inside one submitted whole-program kernel; unlike 'output', it is not a benchmark result."
           },
           "base": {
             "type": "integer",
@@ -102,7 +153,9 @@
               "BIAS_ADD",
               "CONV2D",
               "MOVEMENT",
-              "ATTENTION_PV"
+              "ATTENTION_PV",
+              "K_CHAIN",
+              "DEPTHWISE_CONV2D"
             ]
           },
           "operands": {

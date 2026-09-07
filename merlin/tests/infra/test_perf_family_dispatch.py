@@ -178,7 +178,7 @@ def synthetic_analyzer():
 def test_a_replicate_floor_family_produces_a_candidate_handoff() -> None:
     """PR declares ``minimum_count`` and no identities; that is a contract, not a refusal."""
     capsules = _pr_capsules()
-    claim = PAS.prepare_formal_pk_claim(capsules)
+    claim = PAS.prepare_formal_claim(capsules)
 
     assert claim["status"] == "READY"
     assert claim["family"] == "PR" and claim["claim"] == "DIFFERENTIAL"
@@ -211,7 +211,7 @@ def _sealing_inputs(capsules, claim):
 
 def test_the_handoff_survives_its_own_sealed_record_validation() -> None:
     capsules = _pr_capsules()
-    claim = PAS.prepare_formal_pk_claim(capsules)
+    claim = PAS.prepare_formal_claim(capsules)
     identities, cells, families = _sealing_inputs(capsules, claim)
 
     PAS._validate_formal_claim_facts(claim, len(identities), identities, 1, cells, families)
@@ -237,7 +237,7 @@ def test_every_shipped_claim_family_now_reaches_a_handoff() -> None:
     for prefix in prefixes:
         capsules = _capsules_named(prefix)
         try:
-            claim = PAS.prepare_formal_pk_claim(capsules)
+            claim = PAS.prepare_formal_claim(capsules)
         except PAS.StageGateError as exc:
             refused[prefix] = str(exc)
             continue
@@ -254,17 +254,17 @@ def test_a_family_with_no_code_written_for_it_is_dispatched_from_its_declaration
     assert "ZZ" not in _SCRIPTS.joinpath("perf_agent_stage.py").read_text(encoding="utf-8")
 
     capsules = _synthetic_capsules()
-    claim = PAS.prepare_formal_pk_claim(capsules)
+    claim = PAS.prepare_formal_claim(capsules)
 
     assert claim["family"] == "ZZ" and claim["status"] == "READY"
     assert PAS._preflight_cohort(claim) == ("r000", "r001")
     assert PAS._family_declarations(capsules, claim)[0].family == "ZZ"
 
     # Its floor is honoured as a floor, and a request below it is refused.
-    raised = PAS.prepare_formal_pk_claim(capsules, 4)
+    raised = PAS.prepare_formal_claim(capsules, 4)
     assert PAS._preflight_cohort(raised) == ("r000", "r001", "r002", "r003")
     with pytest.raises(PAS.StageGateError, match="minimum_count=2"):
-        PAS.prepare_formal_pk_claim(capsules, 1)
+        PAS.prepare_formal_claim(capsules, 1)
 
 
 # --------------------------------------------------------------------------------------------
@@ -275,7 +275,7 @@ def test_pk_handoff_is_exactly_its_own_analyzers_preflight() -> None:
     capsules = _pk_capsules()
     direct = PK.preflight_pk_claim([capsule.descriptor for capsule in capsules])
 
-    dispatched = PAS.prepare_formal_pk_claim(capsules)
+    dispatched = PAS.prepare_formal_claim(capsules)
 
     assert PAS._canonical_json(dispatched) == PAS._canonical_json(direct)
     assert dispatched["declaration"] == PK.supported_acceptance()
@@ -284,7 +284,7 @@ def test_pk_handoff_is_exactly_its_own_analyzers_preflight() -> None:
         PK.supported_acceptance()
     # An exact_count stays exact: a request that differs is still refused by its own message.
     with pytest.raises(PAS.StageGateError, match="exact_count=2"):
-        PAS.prepare_formal_pk_claim(capsules, 3)
+        PAS.prepare_formal_claim(capsules, 3)
 
 
 # --------------------------------------------------------------------------------------------
@@ -306,36 +306,36 @@ def test_a_family_declaring_no_analyzer_is_refused_by_name() -> None:
         for index in range(4))
 
     with pytest.raises(PAS.StageGateError, match="declares no acceptance.analyzer"):
-        PAS.prepare_formal_pk_claim(capsules)
+        PAS.prepare_formal_claim(capsules)
 
     # ...and mixing it with a family that DOES declare one still refuses, rather than quietly
     # authoring PK's claim over a corpus PT is part of.
     mixed = capsules[:2] + _pk_capsules()[:2]
     with pytest.raises(PAS.StageGateError, match="declares no acceptance.analyzer"):
-        PAS.prepare_formal_pk_claim(mixed)
+        PAS.prepare_formal_claim(mixed)
 
 
 def test_removing_the_declared_analyzer_is_what_makes_the_positive_stop_passing() -> None:
     """Mutation check: the PR handoff succeeds, and fails for THIS reason once the fact is gone."""
     capsules = _pr_capsules()
-    assert PAS.prepare_formal_pk_claim(capsules)["status"] == "READY"
+    assert PAS.prepare_formal_claim(capsules)["status"] == "READY"
 
     stripped = _rewritten(capsules,
                           lambda d: d["performance"]["acceptance"].pop("analyzer"))
     with pytest.raises(PAS.StageGateError, match="declares no acceptance.analyzer"):
-        PAS.prepare_formal_pk_claim(stripped)
+        PAS.prepare_formal_claim(stripped)
 
     malformed = _rewritten(
         capsules, lambda d: d["performance"]["acceptance"].__setitem__("analyzer", "not-a-path"))
     with pytest.raises(PAS.StageGateError, match="unusable"):
-        PAS.prepare_formal_pk_claim(malformed)
+        PAS.prepare_formal_claim(malformed)
 
     absent = _rewritten(
         capsules,
         lambda d: d["performance"]["acceptance"].__setitem__(
             "analyzer", "perf_no_such_analyzer.analyze/v1"))
     with pytest.raises(PAS.StageGateError, match="is unavailable"):
-        PAS.prepare_formal_pk_claim(absent)
+        PAS.prepare_formal_claim(absent)
 
 
 def test_the_refusal_comes_from_the_analyzer_the_declaration_NAMES(synthetic_analyzer) -> None:
@@ -352,7 +352,7 @@ def test_the_refusal_comes_from_the_analyzer_the_declaration_NAMES(synthetic_ana
     synthetic_analyzer.preflight_zz_claim = refuse
     with pytest.raises(PAS.StageGateError,
                        match="frozen ZZ formal claim preflight refused: ZZ has not measured"):
-        PAS.prepare_formal_pk_claim(_synthetic_capsules())
+        PAS.prepare_formal_claim(_synthetic_capsules())
 
     # Naming a real module is not enough either: the contract it freezes must be this family's.
     borrowed = _rewritten(
@@ -360,13 +360,13 @@ def test_the_refusal_comes_from_the_analyzer_the_declaration_NAMES(synthetic_ana
         lambda d: d["performance"]["acceptance"].__setitem__(
             "analyzer", "perf_pk_claim.analyze_pk_claim/v3"))
     with pytest.raises(PAS.StageGateError, match="frozen ZZ formal claim preflight refused"):
-        PAS.prepare_formal_pk_claim(borrowed)
+        PAS.prepare_formal_claim(borrowed)
 
 
 def test_a_corpus_declaring_two_analyzers_is_refused_rather_than_split() -> None:
     mixed = _pk_capsules()[:2] + _pr_capsules()[:3]
     with pytest.raises(PAS.StageGateError, match="declares 2 claim analyzers"):
-        PAS.prepare_formal_pk_claim(mixed)
+        PAS.prepare_formal_claim(mixed)
 
 
 def test_a_declaration_stating_no_replicate_count_is_refused() -> None:
@@ -376,7 +376,7 @@ def test_a_declaration_stating_no_replicate_count_is_refused() -> None:
         contract.pop("exact_count", None)
 
     with pytest.raises(PAS.StageGateError, match="neither an exact nor a minimum"):
-        PAS.prepare_formal_pk_claim(_rewritten(_pr_capsules(), drop_counts))
+        PAS.prepare_formal_claim(_rewritten(_pr_capsules(), drop_counts))
 
 
 def test_run_facts_a_stage_cannot_supply_fail_closed() -> None:

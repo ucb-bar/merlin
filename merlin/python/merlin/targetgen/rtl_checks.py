@@ -1520,6 +1520,15 @@ def _resolve_arg_order_token(token: str, cb: dict) -> list[str]:
     One token, one resolution rule. A token this function does not know is a REFUSAL — so when the
     contract grows a shape, the consuming check reports UNKNOWN with that reason rather than screening
     a stream against an order it invented."""
+    if token == "declared_whole_program_args":
+        abi = cb.get("kernel_abi") or {}
+        args = abi.get("args")
+        if abi.get("kind") != "whole_program" or not isinstance(args, list) or not args:
+            raise _Unresolvable("the buffer declares no whole-program kernel ABI")
+        names = [arg.get("tensor") for arg in args if isinstance(arg, dict)]
+        if len(names) != len(args) or any(not isinstance(name, str) or not name for name in names):
+            raise _Unresolvable("a whole-program ABI argument names no tensor")
+        return names
     if token == "movement_src":
         ops = _movement_command(cb).get("operands") or {}
         name = ops.get("src") or ops.get("lhs")
@@ -1605,6 +1614,15 @@ def resolve_kernel_arg_order(command_buffer: dict | None) -> tuple[list[str], st
         order = row.get("order")
         if not isinstance(order, list) or not order:
             refusals.append(f"{shape}: the contract row carries no machine-checkable order token list")
+            continue
+        abi_gate = row.get("kernel_abi_kind")
+        actual_abi_kind = ((command_buffer.get("kernel_abi") or {}).get("kind")
+                           if isinstance(command_buffer.get("kernel_abi"), dict) else None)
+        if abi_gate is not None and actual_abi_kind != abi_gate:
+            refusals.append(f"{shape}: the buffer does not declare kernel_abi.kind={abi_gate!r}")
+            continue
+        if abi_gate is None and actual_abi_kind is not None:
+            refusals.append(f"{shape}: explicit kernel_abi.kind={actual_abi_kind!r} takes precedence")
             continue
         gate = row.get("opcodes")
         if isinstance(gate, list) and gate:

@@ -47,6 +47,7 @@ is byte-identical to the baseline.
 """
 from __future__ import annotations
 
+from .bmm_tail_pad import RUNNER_PRELUDE as _BMM_TAIL_PAD_PRELUDE
 from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
@@ -385,7 +386,7 @@ def rewrite_source() -> str:
     return _REWRITER_SRC
 
 
-def run_source() -> str:
+def run_source(*, tag_bmm_tails: bool = False) -> str:
     """The lowering-runner body for this feature: split the pipeline at SCALARIZE_MARKER, run stage 1
     (forms the resident accumulator + lowers the contraction to vector.fma with f32 A-extracts), run
     the A-scalarization rewrite, then run stage 2 (bufferize -> LLVM). Mirrors the act_poly runner
@@ -400,6 +401,7 @@ def run_source() -> str:
         + _CONCAT_DPS_PRELUDE
         + _TRANSPOSE_MAPS_PRELUDE
         + _PARALLEL_GRAIN_PRELUDE
+        + _BMM_TAIL_PAD_PRELUDE
         + _REWRITER_SRC
         + _MID_STAGE_SRC
         + _PARALLEL_GRAIN_LATE_SRC +
@@ -415,9 +417,18 @@ def run_source() -> str:
         "ctx = ir.Context()\n"
         "with open(src_path) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
+        + ("_tag_stage1 = [p for p in stage1.split(',') if p]\n"
+           "_tag_cut = next((i + 1 for i, p in enumerate(_tag_stage1) "
+           "if 'linalg-specialize-generic-ops' in p), 0)\n"
+           "if _tag_cut:\n"
+           "    PassManager.parse('builtin.module(' + ','.join(_tag_stage1[:_tag_cut]) + ')', "
+           "ctx).run(module.operation)\n"
+           "    stage1 = ','.join(_tag_stage1[_tag_cut:])\n"
+           "_tag_odd_batch_matmul_tails(module, ctx, 4, 8)\n"
+           if tag_bmm_tails else "")
         # Every runner variant runs the SAME pre-pipeline rewrites. A variant that quietly skips one
         # is how erase_self_copy came to read as an inert lever for seven beam rounds.
-        "if _FOLD_WEIGHT_TRANSPOSE:\n"
+        + "if _FOLD_WEIGHT_TRANSPOSE:\n"
         "    print('OK fold_weight_transpose folded', _fold_weight_transposes(module, ctx)[0])\n"
         "if _CONCAT_DPS:\n"
         "    print('OK concat_dps rewrote', _concat_dps(module, ctx)[0])\n"

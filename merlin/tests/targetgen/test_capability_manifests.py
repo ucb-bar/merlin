@@ -42,11 +42,13 @@ def test_prototype_manifests_reproduce_residual_plus_inert_family_defaults():
                 assert m[key] == {**val, "backends": ["simulator"]}
             else:
                 assert m[key] == val, f"{name}.{key} drifted from the residual"
-        # the only NEW top-level keys are the family-derived defaults, matching the compute-unit kind
-        # ...plus the capability AUDIT the deriver now records every run. These are derivation
+        # the only NEW top-level keys are the family-derived defaults, matching the compute-unit kind,
+        # the joined dialect/instruction operation registry, and the capability AUDIT the deriver records
+        # every run. These are derivation
         # RESULTS, not curated content: they are deliberately absent from the residual so a stale
         # committed evidence block can never masquerade as fresh.
         assert set(m) - set(residual) == {"endpoint_kind", "runner",
+                                          "operation_capabilities",
                                           "capability_evidence", "semantic_capabilities_derived",
         "semantic_capabilities_unknown", "unmapped_observations"}
         prof = fam.family_profile(_primary_kind(cu.compute_units(m)))

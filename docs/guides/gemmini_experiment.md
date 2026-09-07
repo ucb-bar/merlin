@@ -135,15 +135,29 @@ Resumable via `out/runs/gemmini/cert/ledger.jsonl` (skips already-correct cells)
 toolchain through `.env`. RTL facts are extracted by `targetgen/rtl/circt_introspect.py`
 (`firtool --ir-hw` → HW-dialect) and compiled into FileCheck assertions by `rtl_check_compiler.py`.
 
-## 4. Perf-bench (cross-approach profile)
+## 4. Agentic perf-bench (sealed, one claim per campaign)
 
 ```bash
-.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/run_perf_bench.py \
-  --kernels all --approaches golden,baseline,merlin_targetgen,merlin_native   # + agentic_* backends
+# CONFIG.json contains an explicit suite_id, member names, functional run+digest,
+# target descriptor/RTL/profile paths, and exact tuning+functional certificate paths.
+.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py prepare \
+  --root out/artifacts/perf-bench/gemmini/suites/SUITE_ID --config CONFIG.json
+.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py preflight \
+  --root out/artifacts/perf-bench/gemmini/suites/SUITE_ID
+.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py run \
+  --root out/artifacts/perf-bench/gemmini/suites/SUITE_ID
+.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py status \
+  --root out/artifacts/perf-bench/gemmini/suites/SUITE_ID
 ```
-The `agentic_*` backends resolve the latest submission per arm live from `out/runs/gemmini/capsule-bench/`
-(a not-yet-run arm is an honest skip). golden(C-lib) and IREE-dialect are additional reference approaches.
-Outputs under `out/runs/gemmini/perf-bench/` + `out/artifacts/plots/gemmini/perf-bench/`.
+
+There is no latest-submission lookup and no mixed-claim campaign. Preparation seals the source,
+derives each analyzer/cohort, and records exact functional and engine identities. Preflight verifies
+those bytes and executes every frozen baseline member before any authoring spend. The launcher then
+runs/resumes one campaign per claim; its internal measurement entry point is
+`run_paired_perf_bench.py`, which predeclares and records adjacent/interleaved baseline-candidate
+cells. `run_perf_bench.py` remains a fixed-corpus helper used by the paired runner, not this workflow's
+top-level CLI. Suite state lives below the supplied artifact root; raw campaign cells remain under
+`out/runs/gemmini/perf-bench/`.
 
 ## 5. Publish a certified champion
 

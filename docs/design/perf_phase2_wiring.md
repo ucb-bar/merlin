@@ -2,18 +2,31 @@
 title: "Design: wiring phase 2 — what the performance search can measure, ask, and refuse"
 kind: design
 status: current
-last_verified: 2026-09-04
+last_verified: 2026-09-06
 owner: gemmini-perf-bench
 related: [compiler_plane, expert_gap_attribution, command_stream_reorder_emitter]
 code_refs:
   - merlin/experiments/gemmini_perf_bench/scripts/perf_agent_stage.py
+  - merlin/experiments/gemmini_perf_bench/scripts/functional_coverage.py
   - merlin/experiments/gemmini_perf_bench/scripts/perf_model.py
   - merlin/experiments/gemmini_perf_bench/scripts/perf_holdout_corpus.py
-  - merlin/experiments/gemmini_perf_bench/scripts/run_perf_bench.py
+  - merlin/experiments/gemmini_perf_bench/scripts/perf_snapshot.py
+  - merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py
+  - merlin/experiments/gemmini_perf_bench/scripts/run_agentic_perf_experiment.py
+  - merlin/experiments/gemmini_perf_bench/scripts/run_paired_perf_bench.py
   - merlin/python/merlin/perf/handshake.py
+  - merlin/python/merlin/perf/global_planner.py
+  - merlin/python/merlin/perf/agent_guidance.py
+  - merlin/python/merlin/perf/artifact_activity.py
+  - merlin/python/merlin/perf/command_buffer_diagnostics.py
+  - merlin/python/merlin/perf/execution_policy.py
+  - merlin/python/merlin/perf/model_placement.py
+  - merlin/python/merlin/perf/whole_model_report.py
+  - merlin/python/merlin/xdsl_dialects/lowering/global_plan.py
+  - merlin/python/merlin/xdsl_dialects/lowering/global_plan_emission.py
+  - merlin/python/merlin/runtime/program.py
   - merlin/python/merlin/perf/roofline.py
   - merlin/python/merlin/targetgen/coverage_report.py
-  - merlin/python/merlin/targetgen/cert_cost.py
 ---
 
 # Wiring phase 2
@@ -144,23 +157,34 @@ Attainment is judged against the achievable bound. Judging against the structura
 fire; judging against a nameplate would stop the search early for a reason about arithmetic rather
 than about the machine.
 
-## Rationing the expensive tier
+## Functional certification is explicit sampling, not a size heuristic
 
-The cycle-accurate tier used to be selected by a string a generator wrote down —
-`"L2+L3" if macs <= 2_000_000 else "L2_only"` — and, worse, the paired bench ran
-`setdefault("sim_hint", "L2+L3")`, so a kernel nobody had labelled took the **most expensive path by
-default**. That is the one direction that cannot be recovered from: a wrongly-cheap plan
-under-certifies and says so; a wrongly-expensive one silently spends the budget the rest of the
-corpus needed.
+The former `sim_hint` / `plan_cert_tier` path is not the campaign policy. It was removed after its
+cost fit could not price the active corpus and therefore withheld every cycle-accurate cell. The
+paired campaign instead requires an exact tuning certificate for every selected member; a missing
+or unpriced member is refused before authoring rather than silently promoted or dropped.
 
-`plan_cert_tier` derives the decision from `cert_cost`, whose fit is measured on the target's own
-certified runs and which refuses rather than guessing. Cheapest-first within a declared budget, with
-a recorded reason for every kernel held back. Measured on the 31-member corpus: an unbounded budget
-certifies all 31; a 600 s budget certifies 20 and names the 11 it dropped.
+The separately expensive public+hidden **functional** equivalence certificate is exact by default.
+An operator may explicitly request `functional_coverage.py`'s stratified policy. It groups the
+frozen cohort by operation plus semantic attributes, selects one member per stratum, records every
+selected and unsampled identity, and states that the result proves output agreement only for those
+selected workloads. A supplied cost model is accepted only when it names the same reference engine
+and exact engine pins; if a stratum is only partly priced, the whole stratum falls back to an
+input-element proxy. Producer and consumer independently re-derive the strata and selection, and
+both reject missing strata, changed selection, and certificate extras.
 
-The fit itself is a finding: `69.2 s + 3.61 ms/cycle, R^2 = 0.016` over 55 samples. Cycles explain
-about 2% of certification cost — it is almost entirely fixed overhead. **The number of certified
-members dominates, not their size**, which cuts against sizing by MACs at the root.
+This sampling policy does not widen timing authority. The tuning and held-out performance paths
+still execute through the certificate-bound GSIM engine on the exact campaign cohort.
+
+## One claim per sealed campaign
+
+`perf_suite.py` is the repository-owned launcher. It partitions the explicit member list by analyzer
+claim before authoring, seals one private source snapshot for the suite, and gives every claim its own
+campaign, three predeclared trials, cohort, replicate schedule, held-out reveal, and result seal.
+Static preflight and a real baseline execution preflight both finish before paid authoring begins.
+`run_agentic_perf_experiment.py` coordinates each claim and invokes `run_paired_perf_bench.py` for
+the actual baseline/candidate cells. New candidate records name that paired runner as their consumer;
+schema-v3 records already sealed with the former `run_perf_bench.py` name remain readable.
 
 ## What the corpus does and does not represent
 
@@ -208,3 +232,139 @@ Inter-layer scheduling is untested (no capsule spans two different ops), and 27 
   a `source_role` the capsule schema does not define, so the run died at the reveal step *after* all
   three candidates had sealed and all three functional regrades had passed. The two are now compared
   directly in a test rather than trusted to stay in step.
+
+## Macro/global loop now exposed automatically
+
+The Phase-2 authoring loop now treats the complete model as the objective and a reduced execution as
+one calibration instrument. The shared machinery is target-neutral: it contains no accelerator name,
+opcode spelling, or inferred resource role.
+
+The compiler/runtime side has four explicit layers:
+
+1. `GlobalPlan` represents selected multi-operation regions and the representation transitions between
+   them. The planner selects an exact, non-overlapping cover of the model rather than independently
+   accepting locally attractive regions.
+2. Target-neutral command-buffer analysis derives work, declared boundary movement, representation
+   directives, synchronization, residency/fusion findings, and repeated-model projections. Occupancy,
+   physical traffic, and executed conversions remain `UNKNOWN` unless an event adapter or counter
+   receipt establishes them.
+3. `GlobalPlanEmission` is a checked target-adapter seam. Its receipt must account for every logical
+   dispatch exactly once, every selected region and materializing transition, and bijective model
+   input/output mappings with unchanged external shape and dtype. `build_program` uses the emitted
+   program only after that verification; without an emitter the plan remains explicit shadow analysis.
+4. `whole_model_report` refuses promotion when compute, movement, occupancy, overlap, or encoding
+   evidence is incomplete. It ranks those gaps as optimization opportunities instead of converting
+   absence into zero.
+
+Every agent round now receives these host-generated fields in `STAGE_CONTEXT.json`:
+
+- `initial_whole_model_analysis`: frozen-baseline versus live-candidate command buffers, structural
+  findings, and a ranked `optimization_brief`;
+- `automatic_optimization_inventory`: real Python AST symbols and manifest command consumers, plus
+  structurally verified, author-declared `optimization_surfaces` mapping a semantic lever to an exact
+  file and symbol; the subsequent emission comparison tests whether the declared effect occurred;
+- `reduced_global_profile`: the frozen reduced witness, why it was selected, and the
+  `profile-reduced-global-witness` broker action;
+- `iteration_measurement_contract`: at most 600 simulator seconds, one unmeasured warm invocation,
+  exactly one measured invocation, total compute cycles as the primary metric, and only the movement,
+  occupancy, overlap, and encoding counters needed to explain it.
+
+The objective is declarative rather than inferred from whichever model is smallest. A public model
+capsule may set `performance.global_objective: true`; exactly one such model wins selection and more
+than one is a refusal. For an older immutable Phase-1 snapshot without that metadata, the target
+experiment must name `performance.global_objective_capsule`; absence, disagreement, or a name outside
+the sealed snapshot is a refusal. Gemmini names `M2_microvit_gemmini`, the complete reduced model that
+the existing campaign priced at roughly four L3 seconds. It can no longer silently substitute the
+smaller `M3_host_island_seam_gemmini` seam harness. The full-size ResNet-50 capsule added after that
+92/96 snapshot is marked for a future snapshot and resource-excluded from mandatory L3, but is not
+retroactively treated as Phase-1-qualified evidence. Thus an actual frozen model graph drives the
+current loop without rewriting Phase 1 or placing a multi-hour simulation in the search loop.
+
+The agent can refresh the source map with `inspect-optimization-surfaces`, rerun complete-model
+emission with `analyze-whole-model`, and request the warm reduced profile only when occupancy or
+overlap is the deciding unknown. The reduced result is labeled as calibration and cannot be promoted
+as an end-to-end result. The declared whole-model objective, every evaluation/mixed-lane harness, and
+the witness selection cannot change after candidate evidence is observed; formal promotion still
+evaluates the complete sealed cohort.
+
+L3 is deliberately sparse. Per round, the broker permits one optional occupancy profile and two
+tuning GSIM calls: at most one exploratory promotion check and one call reserved for the exact bytes
+being sealed. All other iterations use the no-simulator whole-model analysis, command-buffer analysis,
+and source-surface inventory. This is not because the cheaper signals are treated as timing truth:
+the analyzer records that neither command-buffer cost nor the instruction-count tier reliably orders
+same-workload schedules. Cheap evidence may reject added work, movement, barriers, conversions, or an
+inert edit; only the sparse timing gate may promote a remaining candidate.
+
+Full-size execution is outside the search loop and is not a Phase-2 prerequisite. It is optional
+post-freeze validation for environments that have FireSim. If FireSim is explicitly used, the queue
+owns exactly this lifecycle for each execution:
+
+```text
+firesim kill
+firesim infrasetup
+firesim runworkload
+firesim kill
+```
+
+Two limitations are deliberate and visible. First, the frozen Phase-1 package inspected on 2026-09-06
+contains 343 indexed AST symbols but no `optimization_surfaces`; changing that sealed manifest would
+invalidate its digest. The current loop therefore exposes its full source index and tells the agent to
+add structurally validated semantic mappings, while newly generated packages are prompted and
+schema-enabled to declare them initially. Second, the shared emitter protocol does not invent target instructions. Each
+target adapter must implement legal plan emission before a global plan can replace executable
+dispatches. Until that happens, the analysis is useful but no compiler speedup is claimed.
+
+## Live full-model audit: the first blocker is composition, not a tile
+
+The joined analyzer was run on 2026-09-06 against the immutable 92/96 Phase-1 compiler and the
+declared `M2_microvit_gemmini` objective. It completed in about 2.5 seconds without L3 or FireSim. The
+result is a refusal, not a cycle estimate:
+
+```text
+CPU-lane program for @forward needs about 666948 straight-line element evaluations,
+past backend 400000 budget; emitted kernel is single-block so no loop to roll them into.
+```
+
+The command buffer contains no executable commands, and the 114-byte lowered artifact is an empty
+target function. Both are now reported as `declined`/`UNKNOWN`; neither is allowed to masquerade as
+zero arithmetic, zero movement, complete encoding coverage, or successful residency. The same cheap
+scan found this full-model emission failure for the frozen M0, M1, M2, and M3 interfaces. Phase 1 was
+not rerun and the frozen package was not edited.
+
+The refusal still carries useful compiler evidence. M2 has 132 placed regions: 12 in one declared
+lane, 120 in the other, with 24 adjacent lane transitions. Thirteen captured contractions account for
+124,928 structural MACs. The compiler places 118,016 MACs (94.4672%) on its `on_mesh` lane and 6,912
+(5.5328%) on its `scalar_rvv_lane`; all thirteen contractions fall in the target-derived
+`fits_double` capacity regime. This does **not** mean the model is 94.5% accelerated: non-contraction
+work, boundary movement, and the declined host program remain unpriced. It means the next compiler
+change should address rolled host lowering and/or a larger legal fused/offloaded cover before another
+micro-schedule search.
+
+The no-simulator loop now joins four evidence levels on every re-emission:
+
+1. captured graph work and compiler-declared lane placement, weighted by exact contraction MACs;
+2. command-buffer movement, materialization, synchronization, representation and residency shape;
+3. target-artifact instruction roles obtained from the selected target's own facts, plus program CCA;
+4. decoded trace conformance and the existing exact redundant-residency-reload detector.
+
+`gap_coverage` tells the agent whether each mechanism has both evidence and a verified editable AST
+surface. Its rows cover whole-model placement, arithmetic lowering, encoding/layout, movement,
+cross-operation residency, fusion/host boundaries, loop offload, latency hiding/double buffering,
+synchronization, and capacity/contention. A row is `ready` only when both sides exist; missing evidence
+or a missing edit surface remains explicit. The Phase-1 package currently declares no semantic
+surfaces, so the agent must add candidate-owned mappings that pass AST ownership and editable-CCA-axis
+validation.
+
+Three gaps remain before this is an end-to-end optimizer rather than a complete diagnostic loop:
+
+- the candidate compiler needs a `TargetPlanningAdapter` and legal `GlobalPlanEmitter` that turn the
+  shared exact-cover plan and representation transitions into executable dispatch;
+- host-lane codegen needs rolled loops (or equivalent structured lowering) so a real mixed model does
+  not expand past the straight-line budget;
+- dynamic contention and realized latency hiding still require a target resource-event adapter and,
+  only when they decide between candidates, the bounded warm reduced profile.
+
+These are protocols, not Gemmini assumptions. Lane names, resource roles, instruction meanings,
+capacity, and legal encodings come from the selected compiler/target adapters. A new accelerator can
+reuse the planner, activity timeline, CCA ownership, emission accounting, report, and experiment
+policy and supply only its facts and legal emitter.

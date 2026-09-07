@@ -76,6 +76,26 @@ def test_an_integer_output_still_materializes_from_names(monkeypatch, tmp_path):
     assert _link(_cb("i32", canonical_inputs=RECORDED), monkeypatch, tmp_path) is None
 
 
+def test_an_integer_whole_program_runs_on_the_attached_semantic_operands(monkeypatch, tmp_path):
+    """A whole-program buffer may rename linalg operands positionally (A0 -> arg0).
+
+    The runner attaches the recomputed integer golden's deterministic operands under those ABI
+    names.  The linker must pass them to the harness instead of rematerializing a different tensor
+    from the positional name.
+    """
+    cb = _cb("i32", canonical_inputs=RECORDED)
+    cb["kernel_abi"] = {
+        "kind": "whole_program",
+        "args": [
+            {"tensor": "arg0", "access": "read"},
+            {"tensor": "Y0", "access": "write"},
+        ],
+        "outputs": ["Y0"],
+    }
+
+    assert _link(cb, monkeypatch, tmp_path) == VALUES
+
+
 def test_a_buffer_with_no_recorded_operands_is_unaffected(monkeypatch, tmp_path):
     assert _link(_cb("f32"), monkeypatch, tmp_path) is None
 

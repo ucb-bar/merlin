@@ -54,6 +54,18 @@ module {
 }
 """
 
+# FP32 pointwise convolutions specialize to a NAMED conv before tagging. The mixed-type
+# integer fixture above does not, so it never exercised the same form as a ResNet recapture.
+POINTWISE_F32 = (CONV_MLIR.replace("18x18", "16x16").replace("3x3xi8", "1x1xi8")
+    .replace("xi8", "xf32").replace("xi32", "xf32").replace("0 : i32", "0.0 : f32")
+    .replace("ins(%z : i32)", "ins(%z : f32)")
+    .replace("%x: i8, %y: i8, %acc: i32", "%x: f32, %y: f32, %acc: f32")
+    .replace("      %xe = arith.extsi %x : i8 to i32\n", "")
+    .replace("      %ye = arith.extsi %y : i8 to i32\n", "")
+    .replace("arith.muli %xe, %ye : i32", "arith.mulf %x, %y : f32")
+    .replace("arith.addi %m, %acc : i32", "arith.addf %acc, %m : f32")
+    .replace("linalg.yield %s : i32", "linalg.yield %s : f32"))
+
 #: The schedule text as it stood BEFORE the conv arm, for a table holding one matmul block. The arm
 #: must leave this untouched: a conv-free table is every build anyone ships today, and a single
 #: character of drift here re-lowers every model.
@@ -134,12 +146,17 @@ def test_conv_shapes_reads_the_direct_form_off_the_ir():
 def test_conv_geometry_solves_the_window_and_rejects_what_is_not_a_conv():
     """The predicate is pure extent arithmetic, so both sides of the tagging can run it.
 
-    ``in = (out - 1) * stride + kernel`` both validates the shape triple and RECOVERS the stride.
+    The floor-division window equation validates the shape triple and recovers a unique stride.
     """
     # stride 1: 16 -> 18 through a 3x3 window
     assert pb.conv_geometry([1, 32, 16, 16], [1, 64, 18, 18], [32, 64, 3, 3]) == (1, 1)
     # stride 2: 32 -> 65 through a 3x3 window
     assert pb.conv_geometry([1, 32, 32, 32], [1, 64, 65, 65], [32, 64, 3, 3]) == (2, 2)
+    # Floor division may leave a trailing input row/column unused (padded stride-2 conv).
+    assert pb.conv_geometry([1, 32, 32, 32], [1, 64, 66, 66], [32, 64, 3, 3]) == (2, 2)
+    assert pb.conv_geometry([1, 64, 112, 112], [1, 3, 230, 230], [64, 3, 7, 7]) == (2, 2)
+    # Shapes alone cannot choose among several legal strides: do not invent one.
+    assert pb.conv_geometry([1, 32, 2, 2], [1, 64, 11, 11], [32, 64, 3, 3]) is None
     # channel mismatch is not this conv
     assert pb.conv_geometry([1, 32, 16, 16], [1, 63, 18, 18], [32, 64, 3, 3]) is None
     # an input too small for the window
@@ -291,3 +308,111 @@ def test_the_tagger_names_an_unpriced_conv_instead_of_ignoring_it():
     assert "seen_untagged.add" in src
     # one definition of the predicate, spliced from merlin -- never restated
     assert src.count("def conv_geometry") == 1, src[:2000]
+
+
+@pytest.mark.parametrize("mlir", [
+    POINTWISE_F32,
+    POINTWISE_F32.replace("16x16", "8x8").replace("1x1xf32", "3x3xf32")
+        .replace("tensor<1x64x8x8xf32>", "tensor<1x64x18x18xf32>")
+        .replace("d2 + d5", "d2 * 2 + d5").replace("d3 + d6", "d3 * 2 + d6"),
+    POINTWISE_F32.replace("16x16", "1x1")
+        .replace("d2 + d5", "d2 * 2 + d5").replace("d3 + d6", "d3 * 2 + d6"),
+], ids=["pointwise", "strided-unused-trailing-input", "singleton-stride-is-irrelevant"])
+def test_fp32_conv_survives_specialization_and_vectorizes(tmp_path, mlir):
+    from merlin.llvmlower.toolchain import m2m_python
+    if not m2m_python().is_file():
+        pytest.skip("no model2MLIR venv")
+    source = tmp_path / "model.mlir"
+    source.write_text(mlir)
+    table = pb.conv_block_table(source, (pb.CONV_ARM_FEATURE,), mr_cap=4, nr_cap=16)
+    assert len(table) == 1
+    tagged = pb.tag_prepared_mlir(source, table, work=tmp_path)
+    assert "linalg.conv_2d_nchw_fchw" in tagged.read_text()
+    rc, out, err = _run_schedule(tmp_path, tagged.read_text(), pb.schedule_text(table, 64))
+    assert rc == 0, err
+    assert "vector.transfer_read" in out
+    assert "linalg.conv_2d_nchw_fchw" not in out
+    assert "linalg.generic" not in out
+
+    # Compile the same tagged schedule through bufferization and the host ABI, not just the
+    # transform interpreter. Integer-valued fp32 data keeps the reference exact across reductions.
+    import numpy as np
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower import toolchain
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.codegen import build_host_shared
+    from merlin.llvmlower.passes_xdsl import preprocess_text_textual
+    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+    if not toolchain.available():
+        pytest.skip("host compilation toolchain unavailable")
+    func = next(op for op in parse_mlir_file(source).walk() if op.name == "func.func")
+    input_shape, weight_shape = [tuple(a.type.get_shape()) for a in func.body.blocks[0].args]
+    output_shape = tuple(func.function_type.outputs.data[0].get_shape())
+    stride = pb.conv_geometry(output_shape, input_shape, weight_shape)
+    rng = np.random.default_rng(123)
+    activation = rng.integers(-2, 3, size=input_shape).astype(np.float32)
+    weight = rng.integers(-2, 3, size=weight_shape).astype(np.float32)
+    result = np.zeros(output_shape, dtype=np.float32)
+    expected = np.zeros_like(result)
+    kh, kw = weight_shape[-2:]
+    for h in range(output_shape[2]):
+        for w in range(output_shape[3]):
+            patch = activation[:, :, h * stride[0]:h * stride[0] + kh,
+                               w * stride[1]:w * stride[1] + kw]
+            expected[:, :, h, w] = np.einsum("nchw,fchw->nf", patch, weight)
+    upstream, _ = preprocess_text_textual(tagged.read_text())
+    ll = tmp_path / "model.ll"
+    ll.write_text(lower_to_llvm_ir(upstream, workdir=tmp_path, vectorize=True,
+                                   transform_schedule=pb.schedule_text(table, 64)))
+    so = build_host_shared(ll, tmp_path / "model.so")
+    HostModel.load(str(so), n_args=3)([(a.ctypes.data, list(a.shape))
+                                      for a in (activation, weight, result)])
+    np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("stride,input_hw", [(1, (5, 7)), (2, (8, 12))])
+def test_integer_direct_conv_matches_independent_full_range_reference(tmp_path, stride, input_hw):
+    """Signed i8 arithmetic, batch and channel tails, including unused strided input edges."""
+    import numpy as np
+    from merlin.llvmlower import toolchain
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.codegen import build_host_shared
+    from merlin.llvmlower.passes_xdsl import preprocess_text_textual
+    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+
+    if not toolchain.available():
+        pytest.skip("host compilation toolchain unavailable")
+    ih, iw = input_hw
+    text = (CONV_MLIR.replace("1x64x18x18", f"2x3x{ih}x{iw}")
+            .replace("32x64x3x3", "6x3x3x3").replace("1x32x16x16", "2x6x3x5")
+            .replace("d2 + d5", f"d2 * {stride} + d5")
+            .replace("d3 + d6", f"d3 * {stride} + d6"))
+    source = tmp_path / "input.mlir"
+    source.write_text(text)
+    table = pb.conv_block_table(source, (pb.CONV_ARM_FEATURE,), mr_cap=4, nr_cap=16)
+    assert len(table) == 1, "the int8 contraction must actually be selected"
+    tagged = pb.tag_prepared_mlir(source, table, work=tmp_path)
+    schedule = pb.schedule_text(table, 64)
+    rc, transformed, error = _run_schedule(tmp_path, tagged.read_text(), schedule)
+    assert rc == 0, error
+    assert "vector.transfer_read" in transformed
+    assert "linalg.generic" not in transformed
+    upstream, _ = preprocess_text_textual(tagged.read_text())
+    llvm = tmp_path / "integer.ll"
+    llvm.write_text(lower_to_llvm_ir(upstream, workdir=tmp_path, vectorize=True,
+                                    transform_schedule=schedule))
+    model = HostModel.load(str(build_host_shared(llvm, tmp_path / "integer.so")), n_args=3)
+    rng = np.random.default_rng(456)
+    activation = rng.integers(-128, 128, size=(2, 3, ih, iw), dtype=np.int8)
+    weight = rng.integers(-128, 128, size=(6, 3, 3, 3), dtype=np.int8)
+    expected = np.empty((2, 6, 3, 5), dtype=np.int32)
+    for h in range(3):
+        for w in range(5):
+            patch = activation[:, :, h * stride:h * stride + 3, w * stride:w * stride + 3]
+            expected[:, :, h, w] = np.einsum("nchw,fchw->nf", patch.astype(np.int32),
+                                             weight.astype(np.int32))
+    output = np.zeros_like(expected)
+    buffers = [(a.ctypes.data, list(a.shape)) for a in (activation, weight, output)]
+    for _ in range(3):
+        model(buffers)
+        np.testing.assert_array_equal(output, expected)

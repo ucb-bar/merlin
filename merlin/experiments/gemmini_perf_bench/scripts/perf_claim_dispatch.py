@@ -120,6 +120,14 @@ def _registry() -> dict[str, Callable[..., dict]]:
     except Exception:  # noqa: BLE001
         pass
     try:
+        # Generated comparison-group members are separate programs, not two emitter settings of one
+        # capsule. The analyzer lives in the shared perf package and is target-neutral; dispatch still
+        # keys only on the frozen analyzer identity.
+        from merlin.perf import comparison_group_claim as CG
+        table[CG.ANALYZER] = CG.analyze_comparison_group_claim
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         # This analyzer keeps its identity inside its acceptance template rather than as a module
         # constant, so it is read from there -- never re-spelled here, which would let the registry
         # and the contract drift apart silently.
