@@ -372,9 +372,10 @@ def _authoring_completion(numeric_all_pass: bool, workflow_conformant: bool) -> 
 
 
 def _formal_completion(numeric_all_pass: bool, workflow_conformant: bool,
-                       official_grade_complete: bool) -> bool:
-    """Formal success additionally requires the outer, post-freeze public+hidden L3 grade."""
-    return bool(numeric_all_pass and workflow_conformant and official_grade_complete)
+                       official_grade_complete: bool, telemetry_complete: bool) -> bool:
+    """Formal success requires the outer grade AND a complete, sealed process record."""
+    return bool(numeric_all_pass and workflow_conformant and official_grade_complete
+                and telemetry_complete)
 
 
 def _workflow_conformance(tpath: Path, submission_dir: Path, arm: str, endpoint_kind: str,
@@ -3843,6 +3844,9 @@ def main(argv: list[str] | None = None) -> int:
                                "tokens_output": rsum.get("tokens_output"),
                                "tokens_cached": rsum.get("tokens_cached"),
                                "tokens_input": rsum.get("tokens_input"),
+                               "tokens_fresh_input": rsum.get("tokens_fresh_input"),
+                               "tokens_cache_write": rsum.get("tokens_cache_write"),
+                               "usage_complete": rsum.get("usage_complete"),
                                "thinking_blocks": rsum.get("thinking_blocks"),
                                "tokens_reasoning": rsum.get("tokens_reasoning"),
                                "estimated_cost_usd": rsum.get("estimated_cost_usd"),
@@ -4302,23 +4306,52 @@ def main(argv: list[str] | None = None) -> int:
         official_grade["failures"] = ["feedback_channel_unhealthy"]
     elif wsub.exists():
         official_grade["failures"] = ["workflow_nonconformant"]
+
+    # Telemetry is part of the experiment result, not a best-effort epilogue. Seal mutable rollout /
+    # broker evidence and derive the unified record BEFORE deciding formal completion. Any writer or
+    # integrity failure remains a named incomplete record and prevents a "complete" claim.
+    _telemetry_path = run_dir / "timing_detailed.json"
+    try:
+        _telemetry_record = _emit_run_timing(run_dir, rounds_summary)
+        _telemetry_integrity = _telemetry_record.get("telemetry_integrity") or {
+            "complete": False, "failures": ["telemetry_integrity_missing"]}
+    except Exception as exc:  # noqa: BLE001 — fail closed into the durable summaries below
+        _telemetry_integrity = {
+            "complete": False,
+            "failures": [f"telemetry_writer_failed:{type(exc).__name__}:{exc}"],
+        }
+        _telemetry_path.write_text(json.dumps({"telemetry_integrity": _telemetry_integrity}, indent=2))
+    _telemetry_bytes = _telemetry_path.read_bytes()
+    telemetry = {
+        "complete": _telemetry_integrity.get("complete") is True,
+        "failures": list(_telemetry_integrity.get("failures") or []),
+        "path": str(_telemetry_path),
+        "sha256": hashlib.sha256(_telemetry_bytes).hexdigest(),
+        "bytes": len(_telemetry_bytes),
+    }
     formal_complete = (not incomplete_operator_seal) and _formal_completion(
         bool(verdict.get("all_pass")), workflow_conformant,
-        official_grade["complete"] and feedback_health["healthy"])
+        official_grade["complete"] and feedback_health["healthy"], telemetry["complete"])
     qa_summary.update({"converged": formal_complete, "formal_complete": formal_complete,
-                       "official_grade": official_grade})
+                       "official_grade": official_grade, "telemetry": telemetry})
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(qa_summary, sort_keys=False))
+    # The official grader wrote the manifest before process telemetry existed. Bind that final process
+    # record into the same manifest and ensure its top-level completion claim cannot contradict the QA
+    # summary when telemetry is incomplete.
+    _manifest_path = run_dir / "run_manifest.yaml"
+    if _manifest_path.is_file():
+        _manifest_doc = yaml.safe_load(_manifest_path.read_text(encoding="utf-8")) or {}
+        _manifest_doc["telemetry"] = telemetry
+        _completion = _manifest_doc.setdefault("completion", {})
+        _completion["telemetry_complete"] = telemetry["complete"]
+        if not telemetry["complete"]:
+            _completion["formal_grade_complete"] = False
+        _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
     # The detailed usage record is written before the potentially long outer grade so the grader can
     # include it in its manifest.  Correct its launcher exit code once the authoritative grade exists.
     _cd = yaml.safe_load(_cy.read_text()) or {}
     _cd["exit_code"] = 0 if formal_complete else 1
     _cy.write_text(yaml.safe_dump(_cd, sort_keys=False))
-    # auto-emit a per-run timing decomposition (best-effort; the detailed cross-arm view is the analysis
-    # script, but this gives each run its own think+gen / tool / sim split + CIRCT-gate skips at finish).
-    try:
-        _emit_run_timing(run_dir, rounds_summary)
-    except Exception as e:
-        print(f"[timing] decomposition skipped: {e}")
     print(f"\nrun complete: {run_dir}  numeric_all_pass={verdict.get('all_pass')} "
           f"workflow_conformant={workflow_conformant} "
           f"official_grade_complete={official_grade['complete']} formal_complete={formal_complete} "
@@ -4326,7 +4359,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if formal_complete else 1
 
 
-def _emit_run_timing(run_dir: Path, rounds_summary: list) -> None:
+def _emit_run_timing(run_dir: Path, rounds_summary: list) -> dict:
     """Write run_dir/timing_detailed.json: the think-vs-tool split, plus this arm's CIRCT gate counts.
 
     DERIVED from the transcript's arrival stamps by :mod:`timing_decomposition`. It used to be
@@ -4337,20 +4370,8 @@ def _emit_run_timing(run_dir: Path, rounds_summary: list) -> None:
     """
     import timing_decomposition as _TD
 
-    rec = _TD.decompose_run(run_dir)
-    # CIRCT gate counts stay here: harness bookkeeping, not a property of the transcript.
-    gate = run_dir / "circt_gate_log.jsonl"
-    skips = ran = 0
-    if gate.is_file():
-        for ln in gate.read_text().splitlines():
-            try:
-                r = json.loads(ln)
-            except Exception:  # noqa: BLE001
-                continue
-            skips += int(bool(r.get("sim_skipped")))
-            ran += int(not r.get("sim_skipped"))
-    rec["circt_gate"] = {"sims_skipped": skips, "sims_run": ran}
-    (run_dir / "timing_detailed.json").write_text(json.dumps(rec, indent=2))
+    out = _TD.write_run_timing(run_dir)
+    return json.loads(out.read_text(encoding="utf-8"))
 
 if __name__ == "__main__":
     raise SystemExit(main())

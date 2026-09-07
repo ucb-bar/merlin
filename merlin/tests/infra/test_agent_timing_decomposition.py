@@ -43,14 +43,24 @@ def _init(round_=0):
             "started_at": _at(0)}
 
 
-def _use(sec, call_id):
+def _use(sec, call_id, name="Bash", input_=None):
     return {"type": "assistant", "arrived_at": _at(sec), "message": {
-        "content": [{"type": "tool_use", "id": call_id, "name": "Bash", "input": {}}]}}
+        "content": [{"type": "tool_use", "id": call_id, "name": name,
+                     "input": input_ or {}}]}}
 
 
-def _res(sec, call_id):
+def _res(sec, call_id, content="ok", is_error=False):
     return {"type": "user", "arrived_at": _at(sec), "message": {
-        "content": [{"type": "tool_result", "tool_use_id": call_id, "content": "ok"}]}}
+        "content": [{"type": "tool_result", "tool_use_id": call_id,
+                     "content": content, "is_error": is_error}]}}
+
+
+def _usage(sec, message_id, fresh, write, read, output, reasoning):
+    return {"type": "assistant", "arrived_at": _at(sec), "message": {
+        "id": message_id, "model": "gpt-test", "content": [], "usage": {
+            "input_tokens": fresh, "cache_creation_input_tokens": write,
+            "cache_read_input_tokens": read, "output_tokens": output,
+            "reasoning_output_tokens": reasoning}}}
 
 
 def _text(sec):
@@ -167,6 +177,123 @@ def test_the_split_partitions_the_measured_span():
             _use(60, "c"), _res(90, "c")]
     rec = TD.decompose(evts)
     assert rec["think_generate_s"] + rec["tool_and_wait_s"] == pytest.approx(rec["measured_span_s"])
+
+
+def test_named_tools_latency_errors_tokens_rates_and_activity_share_are_recorded():
+    evts = [_init(), _use(10, "a", "Bash", {"command": "one"}), _res(40, "a", "done"),
+            _use(50, "b", "Edit", {"patch": "x"}), _use(55, "c", "Bash"),
+            _res(60, "b", "bad", True), _usage(65, "m1", 100, 20, 300, 40, 25),
+            _usage(66, "m1", 100, 20, 300, 40, 25),  # duplicate streaming envelope
+            _res(75, "c"), _usage(80, "m2", 50, 10, 40, 20, 5)]
+    rec = TD.decompose(evts)
+    assert rec["activity_share"]["tool_and_wait"] == pytest.approx(55 / 80)
+    assert rec["activity_share"]["think_generate"] == pytest.approx(25 / 80)
+    assert sum(rec["activity_share"][k] for k in ("tool_and_wait", "think_generate")) == 1
+    assert rec["tools"]["used"] == ["Bash", "Edit"]
+    assert rec["tools"]["by_tool"]["Bash"]["calls_completed"] == 2
+    assert rec["tools"]["by_tool"]["Bash"]["duration_sum_s"] == 50
+    assert rec["tools"]["by_tool"]["Bash"]["duration_mean_s"] == 25
+    assert rec["tools"]["by_tool"]["Bash"]["duration_max_s"] == 30
+    assert rec["tools"]["by_tool"]["Edit"]["errors"] == 1
+    assert rec["tool_call_seconds_sum"] == 60
+    assert rec["tool_concurrency_overlap_s"] == 5
+    tokens = rec["tokens"]
+    assert tokens["tokens_fresh_input"] == 150
+    assert tokens["tokens_cache_write"] == 30
+    assert tokens["tokens_cache_read"] == 340
+    assert tokens["tokens_output"] == 60
+    assert tokens["tokens_reasoning"] == 30
+    assert tokens["tokens_total"] == 580
+    assert tokens["cache_read_share_of_input"] == pytest.approx(340 / 520)
+    assert rec["rates"]["output_tokens_per_think_generate_s"] == pytest.approx(2.4)
+    assert rec["rates"]["output_tokens_per_agent_span_s"] == pytest.approx(0.75)
+    assert rec["rates"]["total_tokens_per_agent_span_s"] == pytest.approx(7.25)
+
+
+def test_oracle_timing_keeps_every_l_tier_invocation_and_null_is_not_zero(tmp_path):
+    base = tmp_path / "_qa_work" / "runs_r0" / "runs" / "target-capsule-bench"
+    fixtures = {
+        "A": {"L2": {"status": "pass", "engine": "spike", "timing": {
+            "build_s": 1, "sim_active_s": 2, "oracle_wait_s": 3, "adapter_wall_s": 6}},
+              "L3": {"status": "pass", "engine": "gsim", "timing": {
+                  "build_s": 4, "sim_active_s": 5, "oracle_wait_s": 6, "adapter_wall_s": 15}}},
+        "B": {"L3": {"status": "fail", "engine": "gsim", "timing": {
+            "build_s": 7, "sim_active_s": 8, "oracle_wait_s": 9, "adapter_wall_s": 24}}},
+        "C": {"L3": {"status": "unavailable", "engine": "gsim", "timing": None}},
+    }
+    for capsule, tiers in fixtures.items():
+        path = base / capsule / "capsule_result.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"capsule": capsule, "tiers": tiers}))
+    rec = TD.oracle_timing(tmp_path)
+    assert rec["by_tier"]["L2"]["totals_s"]["adapter_wall_s"] == 6
+    l3 = rec["by_tier"]["L3"]
+    assert l3["records"] == 3 and l3["timed_records"] == 2
+    assert l3["missing_timing_records"] == 1
+    assert l3["totals_s"] == {"build_s": 11.0, "sim_active_s": 13.0,
+                               "oracle_wait_s": 15.0, "adapter_wall_s": 39.0}
+    assert l3["totals_are_lower_bounds"] is True
+    assert len(rec["per_invocation"]) == 4
+
+
+def _complete_codex_run(tmp_path):
+    rounds = tmp_path / "rounds"
+    rounds.mkdir()
+    events = [_init(), _use(10, "a"), _res(20, "a"), _usage(30, "m1", 10, 0, 20, 5, 1),
+              {"type": "codex_summary", "arrived_at": _at(31), "turns_started": 1,
+               "turns_usage_reported": 1, "usage_complete": True, "unknown_types": []}]
+    (rounds / "round_00.transcript.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in events) + "\n")
+    raw = [{"type": "turn.started"}, {"type": "turn.completed", "usage": {
+        "input_tokens": 30, "cached_input_tokens": 20, "output_tokens": 5}}]
+    (rounds / "round_00.codex_events.raw.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in raw) + "\n")
+    (rounds / "round_00.codex_events.timestamped.jsonl").write_text(
+        "\n".join(json.dumps({"seq": i, "arrived_at": _at(i), "event": row})
+                  for i, row in enumerate(raw, 1)) + "\n")
+    for suffix, content in (("prompt.txt", "prompt"), ("final.txt", "answer")):
+        (rounds / f"round_00.{suffix}").write_text(content)
+    (rounds / "round_00.codex_summary.json").write_text(json.dumps({
+        "turns_started": 1, "turns_usage_reported": 1, "usage_complete": True,
+        "unknown_types": [], "wall_s": 31}))
+    rollout = rounds / "round_00.codex_rollout_snapshot" / "rollout.jsonl"
+    rollout.parent.mkdir()
+    rollout.write_text("\n".join(json.dumps(row) for row in [
+        {"timestamp": _at(0), "type": "event_msg", "payload": {"type": "task_started"}},
+        {"timestamp": _at(5), "type": "token_usage_record", "payload": {
+            "turn_id": "t", "response_id": "r", "usage": {
+                "input_tokens": 30, "cached_input_tokens": 20, "cache_write_input_tokens": 0,
+                "output_tokens": 5, "reasoning_output_tokens": 1}}}]) + "\n")
+    evidence = tmp_path / "agent_evidence_snapshot" / ".qa_channel"
+    evidence.mkdir(parents=True)
+    (evidence / "progress.json").write_text("{}")
+    (rounds / "round_00.resource_samples.jsonl").write_text(json.dumps({
+        "sampled_at": _at(0), "rss_bytes": 1, "processes": 1, "threads": 1}) + "\n")
+    return tmp_path
+
+
+def test_complete_telemetry_is_sealed_reconciled_and_gateable(tmp_path):
+    run = _complete_codex_run(tmp_path)
+    rec = TD.decompose_run(run)
+    assert rec["stream_reconciliation"]["complete"] is True
+    assert rec["telemetry_integrity"] == {
+        "complete": True, "failures": [], "rounds": [{
+            "round": "round_00", "complete": True, "failures": [], "turns_started": 1,
+            "turns_usage_reported": 1, "driver_wall_s": 31}],
+        "policy": rec["telemetry_integrity"]["policy"]}
+    assert rec["llm"]["tokens"]["tokens_cache_read"] == 20
+    assert rec["resources"]["available"] is True
+    roles = {row["role"] for row in rec["artifacts"]["files"]}
+    assert "authoritative_provider_cli_stream" in roles
+    assert "authoritative_codex_rollout_full_io_and_incremental_usage" in roles
+
+
+def test_missing_raw_stream_blocks_telemetry_completion(tmp_path):
+    run = _complete_codex_run(tmp_path)
+    (run / "rounds" / "round_00.codex_events.raw.jsonl").unlink()
+    rec = TD.decompose_run(run)
+    assert rec["telemetry_integrity"]["complete"] is False
+    assert "round_00:missing_raw" in rec["telemetry_integrity"]["failures"]
 
 
 # --- the run-directory product ---------------------------------------------------------------------

@@ -211,6 +211,8 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
     thinking_blocks = 0
     any_usage = False
     n_events = 0
+    codex_turns_started = codex_turns_reported = 0
+    codex_usage_complete: bool | None = None
     result_usage: dict = {}               # authoritative, SUBAGENT-INCLUSIVE per-model usage, SUMMED
                                           # across every result event in the file (one per round)
     # The CLI's own total_cost_usd is authoritative ONLY when the CLI is billing the model it thinks it
@@ -229,6 +231,12 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         except Exception:
             continue
         n_events += 1
+        if evt.get("type") == "codex_summary":
+            codex_turns_started += int(evt.get("turns_started", 0) or 0)
+            codex_turns_reported += int(evt.get("turns_usage_reported", 0) or 0)
+            complete = evt.get("usage_complete")
+            codex_usage_complete = bool(complete) if codex_usage_complete is None else (
+                codex_usage_complete and bool(complete))
         _r, _t = _blocks_in(evt)
         thinking_blocks += _r
         tool_calls += _t
@@ -305,7 +313,13 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
                                  sum(m["reasoning"] for m in stream_by_model.values()))
         return rec
 
-    tok_in = sum(m["input"] + m["cache_create"] for m in by_model.values())
+    # Keep the historical ``tokens_input`` field (all non-cache-read prefill) for downstream
+    # compatibility, but also expose its two physically different parts.  A cache write is neither a
+    # cache hit nor ordinary fresh prompt traffic; folding it into input made cache effectiveness and
+    # provider token-rate calculations impossible to reconstruct from the summary alone.
+    tok_fresh_in = sum(m["input"] for m in by_model.values())
+    tok_cache_write = sum(m["cache_create"] for m in by_model.values())
+    tok_in = tok_fresh_in + tok_cache_write
     tok_cached = sum(m["cache_read"] for m in by_model.values())
     tok_out = sum(m["output"] for m in by_model.values())
     # Reasoning is only ever reported on the streamed assistant events, so it is summed from there even
@@ -329,7 +343,10 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
     rec = {
         "available": True,
         "usage_source": usage_source,   # 'result_event' (subagent-inclusive) | 'assistant_stream' (fallback)
-        "tokens_input": tok_in, "tokens_cached": tok_cached, "tokens_output": tok_out,
+        "tokens_input": tok_in,
+        "tokens_fresh_input": tok_fresh_in,
+        "tokens_cache_write": tok_cache_write,
+        "tokens_cached": tok_cached, "tokens_output": tok_out,
         "tokens_total": tok_in + tok_cached + tok_out,
         # tool_calls/thinking are TOP-LEVEL agent only — subagent tool_use never appears in the top-level
         # stream and the result event carries no per-subagent tool count, so this cannot include them.
@@ -339,12 +356,22 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         "billing_mode": billing_mode,
         "tokens_native_by_model": {k: dict(v) for k, v in by_model.items()},
         "n_events": n_events,
+        "tokens_input_semantics": "fresh_input_plus_cache_write; use explicit buckets for analysis",
+        "cache_read_share_of_input": (tok_cached / (tok_fresh_in + tok_cache_write + tok_cached)
+                                      if (tok_fresh_in + tok_cache_write + tok_cached) else None),
+        "cache_write_share_of_input": (tok_cache_write /
+                                       (tok_fresh_in + tok_cache_write + tok_cached)
+                                       if (tok_fresh_in + tok_cache_write + tok_cached) else None),
     }
     # Fail closed: a driver that bills reasoning tokens but never delimits a reasoning block yields
     # UNKNOWN, not 0 (see _record_reasoning_blocks).
     _record_reasoning_blocks(rec, thinking_blocks, tok_reason)
     if tok_reason:
         rec["tokens_reasoning"] = tok_reason      # subset of tokens_output; not added to any total
+    if codex_usage_complete is not None:
+        rec["usage_complete"] = codex_usage_complete
+        rec["turns_started"] = codex_turns_started
+        rec["turns_completed"] = codex_turns_reported
     if billing_mode != METERED:
         # Checked BEFORE the missing-price case: for a seat run both are usually true (a subscription
         # model has no metered rate), and "no price entry" is the wrong reason to print -- it reads as a
@@ -533,6 +560,9 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
         "driver": driver,
         "model": model,
         "tokens_input": tok_in,
+        # Agent-native readers define ``tokens_input`` as the uncached remainder.  Spell that out so
+        # callers can use one unambiguous bucket name across Claude-shaped and native transcripts.
+        "tokens_fresh_input": tok_in,
         "tokens_cached": tok_cached,
         "tokens_output": tok_out,
         # Cache WRITES are fresh input the provider charged for, so they belong in the total; cached

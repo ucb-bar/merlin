@@ -167,8 +167,9 @@ def test_completion_predicates_stay_whole_corpus():
     loop = _mod("run_baseline_qa_loop")
     assert loop._authoring_completion(True, True) is True
     assert loop._authoring_completion(False, True) is False
-    assert loop._formal_completion(True, True, True) is True
-    assert loop._formal_completion(True, True, False) is False
+    assert loop._formal_completion(True, True, True, True) is True
+    assert loop._formal_completion(True, True, True, False) is False
+    assert loop._formal_completion(True, True, False, True) is False
 
 
 def test_the_official_grade_still_refuses_a_partial_phase(tmp_path):

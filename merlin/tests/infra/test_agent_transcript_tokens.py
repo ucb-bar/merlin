@@ -197,6 +197,31 @@ def test_a_run_that_reported_no_reasoning_at_all_is_zero_not_unknown(tmp_path):
     assert "thinking_blocks_unavailable_reason" not in rec
 
 
+def test_normalized_usage_keeps_fresh_write_read_output_and_completion_separate(tmp_path):
+    first = _assistant([], usage={"input_tokens": 100, "cache_creation_input_tokens": 20,
+                                  "cache_read_input_tokens": 300, "output_tokens": 40,
+                                  "reasoning_output_tokens": 25})
+    first["message"]["id"] = "m1"
+    duplicate = json.loads(json.dumps(first))
+    second = _assistant([], usage={"input_tokens": 50, "cache_creation_input_tokens": 10,
+                                   "cache_read_input_tokens": 40, "output_tokens": 20,
+                                   "reasoning_output_tokens": 5})
+    second["message"]["id"] = "m2"
+    p = _w(tmp_path, [first, duplicate, second,
+                      {"type": "codex_summary", "turns_started": 1,
+                       "turns_usage_reported": 1, "usage_complete": True}])
+    rec = ET.parse_transcript(p)
+    assert rec["tokens_fresh_input"] == 150
+    assert rec["tokens_cache_write"] == 30
+    assert rec["tokens_cached"] == 340
+    assert rec["tokens_input"] == 180  # compatibility: fresh + cache write
+    assert rec["tokens_output"] == 60 and rec["tokens_reasoning"] == 30
+    assert rec["tokens_total"] == 580
+    assert rec["cache_read_share_of_input"] == pytest.approx(340 / 520)
+    assert rec["usage_complete"] is True
+    assert rec["turns_started"] == rec["turns_completed"] == 1
+
+
 def test_claude_thinking_blocks_are_still_counted(tmp_path):
     p = _w(tmp_path, [
         _assistant([{"type": "thinking", "thinking": "..."},

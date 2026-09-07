@@ -376,8 +376,12 @@ def main(argv: list[str] | None = None) -> int:
         "process": {"wall_time_seconds": ctt.get("wall_time_seconds"),
                     "tokens_total": ctt.get("tokens_total"),
                     "tokens_input": ctt.get("tokens_input"),
+                    "tokens_fresh_input": ctt.get("tokens_fresh_input"),
+                    "tokens_cache_write": ctt.get("tokens_cache_write"),
+                    "tokens_cached": ctt.get("tokens_cached"),
                     "tokens_output": ctt.get("tokens_output"),
                     "tokens_reasoning": ctt.get("tokens_reasoning"),
+                    "usage_complete": ctt.get("usage_complete"),
                     "estimated_cost_usd": ctt.get("estimated_cost_usd"),
                     # A subscription-seat run has no per-token spend; its dollars are notional and
                     # kept in their own field so nothing sums them into a money budget.

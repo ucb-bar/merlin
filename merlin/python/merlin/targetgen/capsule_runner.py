@@ -3848,8 +3848,11 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # arg_order and the cb's non-output leaves are both in @forward-argument order, so zip them.
             _tensors = cb.get("tensors") or {}
             if not (set(_vals) & set(_tensors)):
-                _leaves = [n for n, s in _tensors.items()
-                           if s.get("role") in ("input", "weight", "bias")]
+                from merlin.runtime.commandbuffer import whole_program_entry_bindings as _entry_bindings
+                _leaves = _entry_bindings(cb)
+                if _leaves is None:
+                    _leaves = [n for n, s in _tensors.items()
+                               if s.get("role") in ("input", "weight", "bias")]
                 _ordered = list(_vals.values())
                 if len(_leaves) == len(_ordered):
                     cb["canonical_inputs"] = dict(zip(_leaves, _ordered))
@@ -4155,6 +4158,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     _cache_refusals[tier] = _why_not
             import time as _time
             _adapter_t0 = _time.perf_counter()
+            def _failed_adapter_timing() -> dict:
+                """Wall is measurable even when an adapter raises before returning its phase split.
+
+                Build/sim/wait remain unknown rather than fabricated zeroes.  Previously every timeout,
+                trap, did-not-halt, and oracle-unavailable result discarded even its measured wall time,
+                making the most expensive L-tier attempts disappear from experiment accounting.
+                """
+                return {"build_s": None, "sim_active_s": None, "oracle_wait_s": None,
+                        "adapter_wall_s": round(_time.perf_counter() - _adapter_t0, 3),
+                        "partial": True,
+                        "unavailable_reason": "adapter raised before returning the phase timing split"}
             try:
                 res = adapter(cb, llvm_text, paths.generated, timeout)
             except _PODidNotHalt as e:
@@ -4164,13 +4178,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 # did-not-halt plane. MUST precede the _ORACLE_UNAVAILABLE clause below: this is a
                 # subclass of it, and being caught there is exactly what hid the diagnosis.
                 tiers[tier] = TierResult(tier, "fail", mand, reason=_did_not_halt_reason(str(e)),
-                                         derived_from_rtl=tier in cfg.rtl_tiers)
+                                         derived_from_rtl=tier in cfg.rtl_tiers,
+                                         timing=_failed_adapter_timing(),
+                                         concurrency=concurrency_stamp(workers))
                 if mand:
                     raise _did_not_halt_failure(str(e)) from e
                 continue
             except _ORACLE_UNAVAILABLE as e:
                 tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
-                                         derived_from_rtl=tier in cfg.rtl_tiers)
+                                         derived_from_rtl=tier in cfg.rtl_tiers,
+                                         timing=_failed_adapter_timing(),
+                                         concurrency=concurrency_stamp(workers))
                 continue
             except Exception as e:  # adapter raised — classify: a non-terminating program is the AGENT's
                 # bug (it ran to the cycle cap), a TIMEOUT fail, NOT a tool_crash. Mislabeling it
@@ -4191,7 +4209,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     reason=(_did_not_halt_reason(_msg) if _did_not_halt
                             else f"kernel faulted at runtime: {_clip(_msg, 260)}" if _trapped
                             else f"{_sim} crash: {_clip(_msg, 300)}"),
-                    derived_from_rtl=tier in cfg.rtl_tiers)
+                    derived_from_rtl=tier in cfg.rtl_tiers,
+                    timing=_failed_adapter_timing(),
+                    concurrency=concurrency_stamp(workers))
                 if mand:
                     if _did_not_halt:
                         raise _did_not_halt_failure(_msg) from e

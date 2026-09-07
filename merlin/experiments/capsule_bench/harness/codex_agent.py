@@ -718,6 +718,19 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
                 proc = subprocess.Popen(cmd, stdin=in_f, stdout=subprocess.PIPE, stderr=err_f,
                                         cwd=str(ws), env=dict(os.environ), start_new_session=True)
                 active_proc, active_pgid = proc, proc.pid
+                # Resource telemetry is sampled OUTSIDE the graded sandbox and follows the complete
+                # bwrap/Codex/tool descendant tree. One file per continuation turn prevents ambiguous
+                # counter resets when Codex is resumed in a new process.
+                _resource_path = rounds / f"round_{rnd:02d}.turn{turn_index:02d}.resource_samples.jsonl"
+                try:
+                    subprocess.Popen(
+                        [sys.executable, str(Path(__file__).with_name("resource_sampler.py")),
+                         "--pid", str(proc.pid), "--output", str(_resource_path)],
+                        cwd=str(ws), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        start_new_session=True)
+                except OSError as _e:
+                    tr.emit({"type": "resource_sampler_unavailable", "reason": str(_e),
+                             "arrived_at": _now()})
             except (OSError, ValueError) as exc:
                 # E2BIG NAMES `bash` AND NOTHING ELSE, so a spawn refused for size looks identical to
                 # a missing interpreter. execve bounds argv AND envp together, and the environment
