@@ -32,11 +32,12 @@ register(BackendInfo("gemmini", TargetClass.NPU, BackendKind.KERNEL, __name__))
 
 
 def __getattr__(name: str):
-    """Expose the codegen submodules LAZILY (``gem.gemmini_codegen`` / ``gem.gemmini_codegen_mlir``) so that
-    importing this package to register the backend does NOT eagerly import ``gemmini_codegen_mlir`` (whose
-    module-level fact-load needs the RTL toolchain). Callers that reach the codegen internals trigger the load
-    on first access — exactly when they already need the toolchain anyway."""
-    if name in ("gemmini_codegen", "gemmini_codegen_mlir"):
+    """Expose codegen and deployment-evidence submodules lazily.
+
+    Importing this package to register the backend therefore does not eagerly load target facts.
+    Callers trigger those dependencies only when they request codegen or exact deployment evidence.
+    """
+    if name in ("gemmini_codegen", "gemmini_codegen_mlir", "gemmini_deployment_evidence"):
         return importlib.import_module(f"{__name__}.{name}")
     if name in ("analyze_machine_artifact", "machine_artifact_policy_identity"):
         return getattr(importlib.import_module(f"{__name__}.gemmini_machine_audit"), name)
