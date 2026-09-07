@@ -320,8 +320,13 @@ class TargetCoverage:
         """How many roster capsules demand each bar -- the corpus's own difficulty mix."""
         return Counter(c.bar or "undeclared" for c in self.capsules.values())
 
-    def stalled_planes(self) -> Counter:
-        """Where the never-passed roster capsules stop. The 'why' beside the 'how much'.
+    def uncertified_planes(self) -> Counter:
+        """Where the graded-but-uncertified roster capsules stop -- the 'why' beside 'how much'.
+
+        Spans every graded capsule short of its own bar, NOT only the ones that never passed
+        anything. A capsule that clears the cheap tiers every time and never reaches its declared
+        certifying tier is the commonest way coverage stalls, and a tally restricted to total
+        failures reports zero for exactly that case.
 
         Counted over CAPSULES, not over grade rows: a capsule re-graded 300 times would otherwise
         outvote every other capsule and the tally would describe how often a run repeated itself.
@@ -329,7 +334,7 @@ class TargetCoverage:
         """
         tally: Counter = Counter()
         for cov in self.capsules.values():
-            if not cov.grades or cov.ever_passed or cov.best_tier_rank >= 0:
+            if not cov.grades or cov.depth in (PASSED_AT_BAR, PASSED_ABOVE_BAR):
                 continue
             if cov.planes:
                 tally[cov.planes.most_common(1)[0][0]] += 1
@@ -352,7 +357,7 @@ class TargetCoverage:
             "counts": self.counts(),
             "bands": self.bands(),
             "bars": dict(self.bars().most_common()),
-            "stalled_planes": dict(self.stalled_planes().most_common()),
+            "uncertified_planes": dict(self.uncertified_planes().most_common()),
             "passed_without_overall": self.passed_without_overall(),
             "off_roster": {
                 "owned": sorted(c.name for c in self.off_roster.values()

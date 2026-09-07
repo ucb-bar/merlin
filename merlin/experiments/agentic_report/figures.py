@@ -69,9 +69,16 @@ _MIN_TIER_SAMPLES = 3
 _REGISTRY: dict[str, callable] = {}
 
 
-def figure(name):
+def figure(name, *, needs="facts"):
+    """Register a figure and declare WHICH facts file feeds it.
+
+    Most figures are one row per run and read `run_facts.json`. Coverage is one row per capsule,
+    unioned over every run that ever graded it, so it cannot live in that file -- the union is the
+    whole point, since no single run covers a corpus. The declaration keeps that explicit instead
+    of letting a figure reach for a second source on its own.
+    """
     def wrap(fn):
-        _REGISTRY[name] = fn
+        _REGISTRY[name] = (fn, needs)
         return fn
     return wrap
 
@@ -833,26 +840,189 @@ def granted_vs_used(facts, out):
     _save(fig, out, "fig11_granted_vs_used")
 
 
+
+# --------------------------------------------------------------------------- corpus coverage
+
+#: The coverage bands, drawn from deepest evidence outward, so a bar reads left-to-right as
+#: "how far did anyone ever get". `never_graded` is deliberately last, hatched and unfilled: it is
+#: an ABSENCE of evidence, and giving it a solid colour makes an untouched corpus look measured.
+COVERAGE_BANDS = [
+    ("passed_above_bar", NAVY, "passed deeper than required"),
+    ("passed_at_bar", SAGE, "certified — passed its own required tier"),
+    ("passed_below_bar", GOLD, "passed, short of its required tier"),
+    ("graded_never_passed", MAUVE, "graded, never passed anything"),
+    ("bar_unknown", SLATE, "passed, required tier undeclared"),
+    ("never_graded", EMPTY_FILL, "in the corpus, never graded"),
+]
+#: One hue family for the "why" panel, so reasons never read as depths.
+PLANE_TINTS = ["#6E6A7F", "#8A8199", "#A79BB0", "#C0B6C6", "#D5CDD8", "#E6E0E8"]
+
+
+@figure("fig13_corpus_coverage", needs="coverage")
+def corpus_coverage(rows, out):
+    """How much of each declared corpus the whole archive has evidence for, and why not more."""
+    rows = [r for r in rows if r.get("roster_size")]
+    if not rows:
+        return
+    # Certified first, then the larger corpus: the reader should meet the strongest cell first,
+    # and a tie between two zero cells is broken by which corpus is bigger, not alphabetically.
+    def certified(r):
+        c = r["counts"]
+        return c["passed_at_bar"] + c["passed_above_bar"]
+    rows.sort(key=lambda r: (-certified(r), -r["roster_size"]))
+
+    n = len(rows)
+    height = 0.74 * n + 4.2
+    # sharey is structural, not cosmetic: the two panels are the SAME rows, and the whole design
+    # promise is that the eye can carry a row from one to the other. Independent y-limits let the
+    # right panel drift by a fraction of a row, which silently re-attributes a reason to a target.
+    fig, (ax, why) = plt.subplots(
+        1, 2, figsize=(14.4, height), sharey=True,
+        gridspec_kw={"width_ratios": [3.05, 1.0], "wspace": 0.05})
+    ys = np.arange(n)[::-1]
+
+    left = np.zeros(n)
+    for band, colour, _ in COVERAGE_BANDS:
+        vals = np.array([float(r["counts"].get(band, 0)) for r in rows])
+        ax.barh(ys, vals, left=left, height=0.62, color=colour,
+                edgecolor=PAGE_BG, linewidth=1.1,
+                hatch=(GAP_HATCH if band == "never_graded" else None))
+        left = left + vals
+
+    for i, r in enumerate(rows):
+        c, total = r["counts"], r["roster_size"]
+        cert = c["passed_at_bar"] + c["passed_above_bar"]
+        ax.text(total + total * 0.015, ys[i],
+                f"{cert}/{total} certified  ({100 * cert / total:.0f}%)",
+                va="center", ha="left", fontsize=9.2, color=INK, family=SERIF)
+
+    labels = []
+    for r in rows:
+        runs = r["n_runs"]
+        extra = ""
+        rt = [x for x in r.get("run_targets") or [] if x != r["target"]]
+        if rt:
+            extra = f"\nrun as {rt[0]}" if len(rt) == 1 else f"\n{len(rt)} run-time names"
+        labels.append(f"{r['target']}\n{runs} run(s){extra}" if runs
+                      else f"{r['target']}\nnever run{extra}")
+    ax.set_yticks(ys)
+    ax.set_yticklabels(labels, fontsize=9.4)
+    ax.set_xlabel("capsules in the declared corpus")
+    ax.set_xlim(0, max(r["roster_size"] for r in rows) * 1.24)
+    style_ax(ax, grid="x")
+    title(ax, "How much of each corpus has evidence", fs=13)
+
+    # ---- why the uncertified part is uncertified
+    tally = Counter()
+    for r in rows:
+        tally.update(r.get("uncertified_planes") or {})
+    top = [k for k, _ in tally.most_common(4)]
+    colour_of = dict(zip(top, PLANE_TINTS))
+    for i, r in enumerate(rows):
+        planes = dict(r.get("uncertified_planes") or {})
+        if not planes:
+            why.text(0.5, ys[i], "nothing graded" if not r["n_runs"] else "all certified",
+                     ha="center", va="center", fontsize=8.4, color=INK, alpha=0.55,
+                     family=SERIF, transform=why.get_yaxis_transform())
+            continue
+        left = 0.0
+        for name in top:
+            v = float(planes.pop(name, 0))
+            if v:
+                why.barh(ys[i], v, left=left, height=0.62, color=colour_of[name],
+                         edgecolor=PAGE_BG, linewidth=1.1)
+                left += v
+        rest = sum(planes.values())
+        if rest:
+            why.barh(ys[i], rest, left=left, height=0.62, color=EMPTY_FILL,
+                     edgecolor=PAGE_BG, linewidth=1.1)
+    # NOT set_yticklabels([]) -- with a shared y-axis that empties the LEFT panel's row labels
+    # too, and the figure loses the only thing naming its rows.
+    why.tick_params(labelleft=False)
+    why.set_xlabel("uncertified capsules, by where they stop")
+    style_ax(why, grid="x")
+    title(why, "Why not more", fs=13)
+
+    # A legend entry for a band that is zero everywhere teaches the reader a category the figure
+    # does not contain, and makes them hunt for a colour that is not there.
+    drawn = {b for b, _, _ in COVERAGE_BANDS
+             if any(r["counts"].get(b, 0) for r in rows)}
+    handles = [Patch(facecolor=c, label=lab,
+                     hatch=(GAP_HATCH if b == "never_graded" else None),
+                     edgecolor=INK if b == "never_graded" else "none")
+               for b, c, lab in COVERAGE_BANDS if b in drawn]
+    handles += [Patch(facecolor=colour_of[k], label=f"stops at {k}") for k in top]
+    if tally and len(tally) > len(top):
+        handles.append(Patch(facecolor=EMPTY_FILL, label="other planes"))
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.85 / height),
+               ncol=5, frameon=True, fontsize=8.8)
+
+    # The caption carries every denominator the bars cannot: off-roster grades (which are NOT
+    # coverage of this corpus) and the hidden lane (which this source cannot see at all).
+    notes = []
+    owned = {r["target"]: r["off_roster"]["owned"] for r in rows if r["off_roster"]["owned"]}
+    unowned = {r["target"]: r["off_roster"]["unowned"] for r in rows
+               if r["off_roster"]["unowned"]}
+    for target, names in owned.items():
+        row = next(r for r in rows if r["target"] == target)
+        owners = Counter(row["off_roster"]["owners"].get(nm, "?") for nm in names)
+        who = ", ".join(f"{n} declared by `{o}`" for o, n in owners.most_common())
+        notes.append(f"{target} also graded {len(names)} capsule(s) its own corpus does not "
+                     f"declare ({who}) — excluded from the bar, because grading another "
+                     f"corpus is not coverage of this one")
+    for target, names in unowned.items():
+        notes.append(f"{target} graded {len(names)} capsule(s) that no current corpus declares "
+                     f"(retired since) — real evidence, but about a corpus that has changed")
+    for r in rows:
+        st = (r.get("availability") or {}).get("hidden_lane") or {}
+        if st.get("kind") == "unavailable":
+            notes.append(f"{r['target']}: {st['reason']}")
+            break
+    pw = [r for r in rows if r.get("passed_without_overall")]
+    if pw:
+        notes.append(f"{sum(len(r['passed_without_overall']) for r in pw)} capsule(s) passed a "
+                     f"tier without ever passing overall — counted by the tier they reached, "
+                     f"which is evidence, not a verdict")
+    _figcaption(fig, "Certified means the capsule passed the tier IT declares, not one bar for "
+                     "the corpus. " + " · ".join(notes) + ".")
+    suptitle(fig, "What the benchmark has actually exercised", y=1.0)
+    fig.subplots_adjust(left=0.135, right=0.985, top=0.91, bottom=2.35 / height)
+    _save(fig, out, "fig13_corpus_coverage")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     from merlin.common.paths import artifacts_dir
     ap.add_argument("--facts", type=Path, default=artifacts_dir() / "agentic-report" / "run_facts.json")
+    ap.add_argument("--coverage", type=Path,
+                    default=artifacts_dir() / "agentic-report" / "coverage_facts.json")
     ap.add_argument("--out", type=Path, default=artifacts_dir() / "agentic-report" / "figures")
     ap.add_argument("--only", action="append", default=[])
     a = ap.parse_args(argv)
     facts = json.loads(a.facts.read_text())
+    inputs = {"facts": facts, "coverage": None}
+    if a.coverage.is_file():
+        inputs["coverage"] = json.loads(a.coverage.read_text())
     use_merlin_style()
     # The house style paints a cream canvas repo-wide. Repaint to white for this kit only.
     plt.rcParams.update({"axes.facecolor": PAGE_BG, "figure.facecolor": PAGE_BG,
                          "savefig.facecolor": PAGE_BG})
     names = a.only or list(_REGISTRY)
     for name in names:
-        fn = _REGISTRY.get(name)
-        if fn is None:
+        entry = _REGISTRY.get(name)
+        if entry is None:
             print(f"  [skip] unknown figure {name!r}; known: {sorted(_REGISTRY)}", file=sys.stderr)
             continue
-        fn(facts, a.out)
+        fn, needs = entry
+        data = inputs.get(needs)
+        if data is None:
+            # A figure whose input was never built is REFUSED with the command that builds it --
+            # not drawn empty, which would read as "the archive has nothing to show".
+            print(f"  [skip] {name}: needs {needs}, which is absent. Build it with "
+                  f"`build_report.py {needs}`.", file=sys.stderr)
+            continue
+        fn(data, a.out)
     return 0
 
 

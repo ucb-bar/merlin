@@ -27,6 +27,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
 from merlin.agentreport.anatomy import build_anatomy                          # noqa: E402
 from merlin.agentreport.availability import Availability                      # noqa: E402
+from merlin.agentreport.corpus_coverage import (build as build_coverage,      # noqa: E402
+                                                owner_map, read_required_tiers,
+                                                read_roster)
 from merlin.agentreport.cost_curve import build_cost_curve                    # noqa: E402
 from merlin.agentreport.capsule_time import read_capsule_timings, summarize   # noqa: E402
 from merlin.agentreport.index import ArmSpec, RunRef, build_index             # noqa: E402
@@ -425,6 +428,111 @@ def cmd_anatomy(a) -> int:
     return 0
 
 
+def _profile_of_target(desc_root: Path) -> dict[str, str]:
+    """Run-time target name -> the capsule profile that declares its corpus.
+
+    Derived from each target's own descriptor, never from a prefix: a descriptor directory named
+    for the profile declares the run-time `target:` string, and those differ whenever a target is
+    named for a hardware revision (`saturn_opu` declares `saturn_opu_mxv256d128`). Guessing the
+    link by trimming a suffix would silently attribute one revision's runs to another's corpus,
+    which is the exact mistake the hardware-provenance rule exists to stop.
+    """
+    out: dict[str, str] = {}
+    for path in sorted(desc_root.glob("*/target_experiment.yaml")):
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, ValueError):
+            continue
+        name = str(doc.get("target") or "")
+        if name:
+            out[name] = path.parent.name
+    return out
+
+
+def _deepest_declared_tier(labels) -> str:
+    """The deepest tier in a declared list, by ordinal. Shared with the library's own parser."""
+    best, best_rank = "", -1
+    for label in labels or []:
+        digits = "".join(c for c in str(label).split("-")[0] if c.isdigit())
+        rank = int(digits) if digits else -1
+        if rank > best_rank:
+            best, best_rank = str(label), rank
+    return best
+
+
+def cmd_coverage(a) -> int:
+    """Corpus coverage per target: how much of each declared roster the archive has evidence for.
+
+    Kept apart from `facts` on purpose. `run_facts.json` is one row per RUN; coverage is one row
+    per CAPSULE, unioned across every run that ever graded it, so it does not fit that shape --
+    and the union is the whole point, since no single run covers a corpus.
+    """
+    index_path = a.index or (artifacts_dir() / CONCERN / "index.json")
+    refs = json.loads(index_path.read_text())
+
+    corpus = repo_root() / "merlin" / "contract" / "capsules"
+    profiles = corpus / "profiles"
+    desc_root = repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
+
+    profile_of = _profile_of_target(desc_root)
+    # Report one row per PROFILE -- the corpus belongs to the profile, and two run-time target
+    # names can share one. A profile with a roster and no runs is a real answer (zero) and must
+    # not be dropped: it is corpus we built and never graded.
+    all_profiles = sorted({p.name.split(".")[0] for p in profiles.glob("*.yaml")
+                           if not p.name.startswith("_")}
+                          | {profile_of.get(r["target"], r["target"]) for r in refs})
+
+    rosters, reasons = {}, {}
+    for name in all_profiles:
+        rosters[name], reasons[name] = read_roster(profiles, name)
+
+    required, req_reason = read_required_tiers(corpus)
+    if req_reason:
+        print(f"  [warn] {req_reason}", file=sys.stderr)
+    print(f"  {len(required)} capsule(s) declare their own certifying bar")
+
+    defaults = {}
+    for name in all_profiles:
+        path = profiles / f"{name}.yaml"
+        if not path.is_file():
+            continue
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, ValueError):
+            continue
+        defaults[name] = _deepest_declared_tier(
+            (doc.get("datapath") or {}).get("required_oracle_tiers"))
+
+    out_rows = []
+    for name in all_profiles:
+        runs, run_targets = [], set()
+        for r in refs:
+            if r["bench"] != "capsule-bench":
+                continue
+            if profile_of.get(r["target"], r["target"]) != name:
+                continue
+            runs.append((r["run_id"], r["arm"], Path(r["path"])))
+            run_targets.add(r["target"])
+        cov = build_coverage(name, roster=rosters[name], runs=runs,
+                             required_tiers=required, default_bar=defaults.get(name, ""),
+                             owners=owner_map(rosters, exclude=name),
+                             roster_reason=reasons[name])
+        row = cov.to_dict()
+        row["run_targets"] = sorted(run_targets)
+        out_rows.append(row)
+        c = cov.counts()
+        certified = c["passed_at_bar"] + c["passed_above_bar"]
+        print(f"  {name:<18} roster {cov.roster_size:>4}  runs {cov.n_runs:>4}  "
+              f"certified {certified:>4}  never graded {c['never_graded']:>4}  "
+              f"never passed {c['graded_never_passed']:>4}  off-roster {len(cov.off_roster):>3}")
+
+    out = a.out or (artifacts_dir() / CONCERN / "coverage_facts.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(out_rows, indent=2) + "\n")
+    print(f"\n{len(out_rows)} profile(s) -> {out}")
+    return 0
+
+
 def cmd_rescue(a) -> int:
     """Copy the light telemetry out of any root that holds the only copy of its runs."""
     cfg = Config.load(a.config)
@@ -481,6 +589,11 @@ def main(argv=None) -> int:
     p.add_argument("--facts", type=Path)
     p.add_argument("--out", type=Path)
     p.set_defaults(fn=cmd_anatomy)
+
+    p = sub.add_parser("coverage", help="per-capsule corpus coverage, unioned across all runs")
+    p.add_argument("--index", type=Path)
+    p.add_argument("--out", type=Path)
+    p.set_defaults(fn=cmd_coverage)
 
     p = sub.add_parser("rescue", help="copy light telemetry out of the fragile roots")
     p.add_argument("--dry-run", action="store_true")
