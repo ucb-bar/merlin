@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from argparse import ArgumentParser
 from collections import defaultdict
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 
 SCHEMA = "host_epilogue_site_inventory_v1"
+PORTFOLIO_SCHEMA = "portfolio_host_epilogue_site_inventory_v1"
 MECHANISM_ID = "t01_01_exact_host_epilogue_materialization_deletion"
 
 _PIN_FIELDS = (
@@ -29,6 +32,10 @@ _PIN_FIELDS = (
 )
 _POINTWISE_CATEGORIES = frozenset({"elementwise", "quantize_requant"})
 _MATERIALIZATION_CATEGORIES = frozenset({"alloc", "fill_init", "layout_copy", "layout_view"})
+_MEMBER_IDENTITY_FIELDS = frozenset({
+    "analysis", "capsule", "capsule_sha256", "full_model_simulation_allowed",
+    "required_lanes", "required_tiers", "role",
+})
 
 
 def _digest(value: Any) -> str:
@@ -461,3 +468,217 @@ def inventory_host_epilogue_sites(record: Mapping[str, Any]) -> dict[str, Any]:
     )
     result["inventory_sha256"] = _digest(result)
     return result
+
+
+def _portfolio_identity(identities: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """Reconstruct the public ordered portfolio identity carried by an iteration."""
+    return {
+        "schema": "full_model_optimization_portfolio_v1",
+        "members": [dict(identity) for identity in identities],
+        "selection": "multi_model_pareto_without_invented_static_cycle_total",
+        "execution": "bounded_host_admitted_analysis_with_deterministic_record_order",
+        "holdout_policy": "separate_post_authoring_evaluation",
+        "micro_graphs": "smoke_and_mechanism_calibration_only",
+    }
+
+
+def inventory_portfolio_host_epilogue_sites(
+        record: Mapping[str, Any], *, iteration_record_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Inventory every exactly ordered member of one global-performance iteration.
+
+    The first member must resolve through the protocol's ``/analysis`` alias; subsequent members
+    must carry their own analysis.  The identities are order-sensitive and checked against the
+    iteration's canonical portfolio hash before any source IDs are exposed.
+    """
+    result: dict[str, Any] = {
+        "schema": PORTFOLIO_SCHEMA,
+        "mechanism_id": MECHANISM_ID,
+        "status": "not_ready",
+        "candidate_sha256": None,
+        "portfolio_sha256": None,
+        "iteration_record_sha256": iteration_record_sha256,
+        "iteration_payload_sha256": None,
+        "ordered_member_identities": [],
+        "members": [],
+        "problems": [],
+        "proof_scope": (
+            "ordered complete-model portfolio of exact per-member logical-DAG/source-task site "
+            "inventories; authoring source-site selection only"
+        ),
+        "not_proven": [
+            "source-body arithmetic equivalence",
+            "legal cross-operation fusion or materialization deletion",
+            "positive emitted-work delta",
+            "per-model or aggregate cycle improvement",
+        ],
+    }
+    problems: list[str] = []
+    if not isinstance(record, Mapping):
+        problems.append("global performance iteration record is missing")
+    elif record.get("schema") != "global_perf_iteration_v1":
+        problems.append("record is not a global_perf_iteration_v1")
+    if iteration_record_sha256 is not None and not _pin(iteration_record_sha256):
+        problems.append("iteration_record_sha256 is not an exact SHA-256 digest")
+    if problems:
+        result["problems"] = problems
+        result["portfolio_site_inventory_sha256"] = _digest(result)
+        return result
+
+    result["iteration_payload_sha256"] = _digest(record)
+    candidate_sha256 = record.get("candidate_sha256")
+    portfolio = record.get("portfolio")
+    if not _pin(candidate_sha256):
+        problems.append("iteration candidate identity is not an exact SHA-256 digest")
+    if not isinstance(portfolio, Mapping):
+        problems.append("iteration portfolio is missing")
+        portfolio = {}
+    if portfolio.get("schema") != "full_model_portfolio_iteration_v1":
+        problems.append("iteration portfolio schema is unsupported")
+    if portfolio.get("candidate_sha256") != candidate_sha256:
+        problems.append("iteration and portfolio candidate identities disagree")
+    if portfolio.get("full_model_simulation_allowed") is not False:
+        problems.append("portfolio does not explicitly prohibit full-model simulation")
+    if portfolio.get("selection") != "multi_model_pareto_without_invented_static_cycle_total":
+        problems.append("portfolio selection contract is unsupported")
+    members = portfolio.get("members")
+    if not isinstance(members, list) or not members:
+        problems.append("ordered portfolio members are unavailable")
+        members = []
+    if (portfolio.get("members_total") != len(members)
+            or portfolio.get("members_ready") != len(members)):
+        problems.append("portfolio is not a complete ready ordered member set")
+
+    identities: list[Mapping[str, Any]] = []
+    analyses: list[Mapping[str, Any]] = []
+    primary_analysis = record.get("analysis")
+    for index, member in enumerate(members):
+        if not isinstance(member, Mapping):
+            problems.append(f"portfolio member {index} is malformed")
+            continue
+        identity = member.get("identity")
+        if not isinstance(identity, Mapping) or set(identity) != _MEMBER_IDENTITY_FIELDS:
+            problems.append(f"portfolio member {index} lacks an exact identity")
+            continue
+        role = "primary" if index == 0 else "training"
+        if (identity.get("role") != role
+                or identity.get("analysis") != "full_graph_compile_and_static_only"
+                or identity.get("full_model_simulation_allowed") is not False
+                or not isinstance(identity.get("capsule"), str) or not identity.get("capsule")
+                or not _pin(identity.get("capsule_sha256"))):
+            problems.append(f"portfolio member {index} identity violates the ordered protocol")
+        for field in ("required_lanes", "required_tiers"):
+            values = identity.get(field)
+            strings = (isinstance(values, list)
+                       and all(isinstance(value, str) and value for value in values))
+            if not strings or len(values) != len(set(values)):
+                problems.append(f"portfolio member {index} has malformed {field}")
+        if member.get("status") != "completed":
+            problems.append(f"portfolio member {index} analysis is not completed")
+        if index == 0:
+            if member.get("analysis_ref") != "/analysis" or "analysis" in member:
+                problems.append("primary member does not resolve uniquely through /analysis")
+            analysis = primary_analysis
+        else:
+            if member.get("analysis_ref") is not None or not isinstance(member.get("analysis"), Mapping):
+                problems.append(f"portfolio member {index} lacks one unique embedded analysis")
+            analysis = member.get("analysis")
+        if not isinstance(analysis, Mapping):
+            problems.append(f"portfolio member {index} analysis is missing")
+            analysis = {}
+        expected_workload = {
+            field: identity.get(field)
+            for field in ("capsule", "capsule_sha256", "required_lanes", "required_tiers")
+        }
+        if analysis.get("workload") != expected_workload:
+            problems.append(f"portfolio member {index} analysis workload differs from its identity")
+        if analysis.get("candidate_sha256") != candidate_sha256:
+            problems.append(f"portfolio member {index} analysis belongs to another candidate")
+        identities.append(identity)
+        analyses.append(analysis)
+
+    declared_portfolio_sha256 = portfolio.get("portfolio_sha256")
+    if (len(identities) != len(members) or not _pin(declared_portfolio_sha256)
+            or _digest(_portfolio_identity(identities)) != declared_portfolio_sha256):
+        problems.append("ordered member identities do not match the exact portfolio hash")
+
+    result.update(
+        candidate_sha256=candidate_sha256,
+        portfolio_sha256=declared_portfolio_sha256,
+        ordered_member_identities=[dict(identity) for identity in identities],
+        problems=sorted(set(problems)),
+    )
+    if problems:
+        result["portfolio_site_inventory_sha256"] = _digest(result)
+        return result
+
+    member_rows: list[dict[str, Any]] = []
+    inventory_problems: list[str] = []
+    for index, (identity, analysis) in enumerate(zip(identities, analyses, strict=True)):
+        inventory = inventory_host_epilogue_sites(analysis)
+        if inventory.get("status") not in {"ready_for_source_site_binding", "no_candidate_chains"}:
+            inventory_problems.append(f"member {index} exact site inventory is not ready")
+        member_rows.append({
+            "member_index": index,
+            "identity": dict(identity),
+            "identity_sha256": _digest(identity),
+            "analysis_location": "/analysis" if index == 0 else f"/portfolio/members/{index}/analysis",
+            "analysis_sha256": _digest(analysis),
+            "site_inventory_status": inventory.get("status"),
+            "site_inventory_sha256": inventory.get("inventory_sha256"),
+            "bindings": inventory.get("bindings"),
+            "source_operation_ids": inventory.get("source_operation_ids", []),
+            "chains": inventory.get("chains", []),
+            "refusals": inventory.get("refusals", []),
+            "inventory_problems": inventory.get("problems", []),
+            "inventory_missing_fields": inventory.get("missing_fields", []),
+        })
+    result["members"] = member_rows
+    result["problems"] = inventory_problems
+    result["status"] = (
+        "ready_for_portfolio_source_site_binding" if not inventory_problems else "not_ready")
+    result["portfolio_site_inventory_sha256"] = _digest(result)
+    return result
+
+
+def _raw_sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = ArgumentParser(description="Emit an exact host-epilogue portfolio source-site inventory")
+    parser.add_argument("iteration", type=Path, help="global_perf_iteration_v1 JSON record")
+    parser.add_argument("output", type=Path, help="new immutable inventory JSON path")
+    args = parser.parse_args(argv)
+    if args.iteration.is_symlink() or not args.iteration.is_file():
+        parser.error("iteration must be an existing non-symlink regular file")
+    source_bytes = args.iteration.read_bytes()
+    try:
+        record = json.loads(source_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        parser.error(f"iteration is not valid JSON: {exc}")
+    result = inventory_portfolio_host_epilogue_sites(
+        record, iteration_record_sha256=_raw_sha256(source_bytes))
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    output_bytes = (json.dumps(result, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
+    try:
+        with args.output.open("xb") as stream:
+            stream.write(output_bytes)
+    except FileExistsError:
+        parser.error("output already exists; immutable inventories are never overwritten")
+    print(json.dumps({
+        "status": result["status"],
+        "output": str(args.output.resolve()),
+        "output_sha256": _raw_sha256(output_bytes),
+        "portfolio_site_inventory_sha256": result["portfolio_site_inventory_sha256"],
+        "member_counts": [{
+            "member_index": row["member_index"],
+            "source_operation_ids": len(row["source_operation_ids"]),
+            "chains": len(row["chains"]),
+        } for row in result["members"]],
+    }, sort_keys=True))
+    return 0 if result["status"] == "ready_for_portfolio_source_site_binding" else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

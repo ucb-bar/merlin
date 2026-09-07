@@ -4,7 +4,11 @@ import copy
 import hashlib
 import json
 
-from merlin.perf.host_epilogue_site_inventory import inventory_host_epilogue_sites
+from merlin.perf.host_epilogue_site_inventory import (
+    inventory_host_epilogue_sites,
+    inventory_portfolio_host_epilogue_sites,
+    main,
+)
 
 
 def _digest(value):
@@ -172,3 +176,102 @@ def test_inventory_accepts_direct_analysis_record_and_never_reads_model_identity
     analysis = copy.deepcopy(record["analysis"])
     analysis["workload"] = {"capsule": "a_name_that_must_not_affect_selection"}
     assert inventory_host_epilogue_sites(analysis)["source_operation_ids"] == [2, 3, 4]
+
+
+def _portfolio_record():
+    record = _record()
+    first_identity = {
+        "analysis": "full_graph_compile_and_static_only",
+        "capsule": "first",
+        "capsule_sha256": "a" * 64,
+        "full_model_simulation_allowed": False,
+        "required_lanes": [],
+        "required_tiers": [],
+        "role": "primary",
+    }
+    second_identity = {
+        "analysis": "full_graph_compile_and_static_only",
+        "capsule": "second",
+        "capsule_sha256": "b" * 64,
+        "full_model_simulation_allowed": False,
+        "required_lanes": ["lane"],
+        "required_tiers": ["tier"],
+        "role": "training",
+    }
+    first_workload = {key: first_identity[key] for key in
+                      ("capsule", "capsule_sha256", "required_lanes", "required_tiers")}
+    second_workload = {key: second_identity[key] for key in
+                       ("capsule", "capsule_sha256", "required_lanes", "required_tiers")}
+    record["analysis"]["workload"] = first_workload
+    second_analysis = copy.deepcopy(record["analysis"])
+    second_analysis["workload"] = second_workload
+    identities = [first_identity, second_identity]
+    portfolio_identity = {
+        "schema": "full_model_optimization_portfolio_v1",
+        "members": identities,
+        "selection": "multi_model_pareto_without_invented_static_cycle_total",
+        "execution": "bounded_host_admitted_analysis_with_deterministic_record_order",
+        "holdout_policy": "separate_post_authoring_evaluation",
+        "micro_graphs": "smoke_and_mechanism_calibration_only",
+    }
+    record["portfolio"] = {
+        "schema": "full_model_portfolio_iteration_v1",
+        "candidate_sha256": record["candidate_sha256"],
+        "full_model_simulation_allowed": False,
+        "selection": "multi_model_pareto_without_invented_static_cycle_total",
+        "portfolio_sha256": _digest(portfolio_identity),
+        "members_total": 2,
+        "members_ready": 2,
+        "members": [
+            {"identity": first_identity, "analysis_ref": "/analysis", "status": "completed"},
+            {"identity": second_identity, "analysis": second_analysis, "status": "completed"},
+        ],
+    }
+    return record
+
+
+def test_portfolio_inventory_resolves_primary_alias_and_embedded_members_in_exact_order():
+    result = inventory_portfolio_host_epilogue_sites(
+        _portfolio_record(), iteration_record_sha256="c" * 64)
+    assert result["status"] == "ready_for_portfolio_source_site_binding"
+    assert [row["identity"]["capsule"] for row in result["members"]] == ["first", "second"]
+    assert [row["analysis_location"] for row in result["members"]] == [
+        "/analysis", "/portfolio/members/1/analysis"]
+    assert [row["source_operation_ids"] for row in result["members"]] == [
+        [2, 3, 4], [2, 3, 4]]
+    asserted = result.pop("portfolio_site_inventory_sha256")
+    assert asserted == _digest(result)
+
+
+def test_portfolio_inventory_fails_closed_when_order_or_member_analysis_identity_drifts():
+    reordered = _portfolio_record()
+    reordered["portfolio"]["members"].reverse()
+    result = inventory_portfolio_host_epilogue_sites(reordered)
+    assert result["status"] == "not_ready"
+    assert result["members"] == []
+    assert "ordered member identities do not match the exact portfolio hash" in result["problems"]
+
+    mismatched = _portfolio_record()
+    mismatched["portfolio"]["members"][1]["analysis"]["workload"]["capsule"] = "first"
+    result = inventory_portfolio_host_epilogue_sites(mismatched)
+    assert result["status"] == "not_ready"
+    assert result["members"] == []
+    assert "portfolio member 1 analysis workload differs from its identity" in result["problems"]
+
+
+def test_portfolio_inventory_cli_writes_once_and_reports_raw_hash(tmp_path, capsys):
+    source = tmp_path / "iteration.json"
+    source.write_text(json.dumps(_portfolio_record(), sort_keys=True) + "\n")
+    output = tmp_path / "inventory.json"
+    assert main([str(source), str(output)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["output_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
+    artifact = json.loads(output.read_text())
+    asserted = artifact.pop("portfolio_site_inventory_sha256")
+    assert asserted == _digest(artifact)
+    try:
+        main([str(source), str(output)])
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("immutable CLI output was overwritten")
