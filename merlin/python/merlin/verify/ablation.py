@@ -175,11 +175,13 @@ def read_unit(unit: Path) -> dict[str, Any]:
         rec["grade"] = json.loads((unit / GRADE_NAME).read_text(encoding="utf-8"))
     except Exception as exc:
         rec["load_error"] = f"grade unreadable: {type(exc).__name__}"
+        rec["load_error_kind"] = "grade_unreadable"
         return rec
     try:
         rec["agent_cb"] = json.loads((unit / "generated" / BUFFER_NAME).read_text(encoding="utf-8"))
     except Exception as exc:
         rec["load_error"] = f"buffer unreadable: {type(exc).__name__}"
+        rec["load_error_kind"] = "buffer_unreadable"
         return rec
     try:
         rec["spec_cb"] = parse_interface_mlir(
@@ -187,7 +189,15 @@ def read_unit(unit: Path) -> dict[str, Any]:
     except Exception as exc:
         # The contract grammar fails closed on an op it does not define; that is a parser limit on
         # OUR side, so it is an abstention reason, not a defect in the submission.
+        #
+        # Kept DISTINCT from a missing or corrupt file. A spec written in a grammar this parser does
+        # not read is a different fact about the archive than a spec that would not load, and folding
+        # the two into one "unreadable" count is what produced the misleading `output_count` bucket in
+        # the first place -- one label, two causes, and the bigger one invisible.
         rec["load_error"] = f"spec unparseable: {type(exc).__name__}: {exc}"[:220]
+        rec["load_error_kind"] = ("spec_not_contract_grammar"
+                                  if type(exc).__name__ == "InterfaceGrammarError"
+                                  else "spec_unreadable")
         return rec
     rec["shape"] = classify(rec["spec_cb"], rec["agent_cb"])
     return rec
@@ -261,7 +271,8 @@ def check_unit(unit_str: str, timeout_ms: int, wall_seconds: int = 90) -> dict[s
     rec = read_unit(unit)
     if "load_error" in rec:
         return {"unit": unit_str, "capsule": unit.name, "verdict": "abstained",
-                "reason": rec["load_error"], "reason_kind": "unreadable",
+                "reason": rec["load_error"],
+                "reason_kind": rec.get("load_error_kind", "unreadable"),
                 "shape": "unknown", "seconds": round(time.time() - t0, 2)}
 
     out = {"unit": unit_str, "capsule": unit.name, "shape": rec["shape"],
@@ -330,7 +341,12 @@ def _reason_kind(reason: str) -> str:
     if "epilogue" in low:
         return "epilogue"
     if "commits" in low:
-        return "output_count"
+        # NOT an output-COUNT mismatch, which is what the old name said. This fires when the SPEC side
+        # encodes to zero outputs, so it says nothing about the submission at all. Under the old
+        # fail-open parser it also absorbed every spec written in a grammar this parser cannot read --
+        # 284 units reported as an output-count problem when the spec had simply never been read.
+        # Those now fail closed in the parser and are counted as spec_not_contract_grammar instead.
+        return "spec_commits_nothing"
     if "is (" in low or "shape" in low:
         return "shape_mismatch"
     return "other"

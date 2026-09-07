@@ -153,6 +153,7 @@ class CommandBufferEncoder:
                 continue
             if op not in ENCODABLE_OPCODES:
                 raise UnsupportedSemantics(_why_not_encodable(i, op))
+            self._refuse_unmodelled_step(i, op, attrs)
             if op == "RES_PACK":
                 self._res_pack(operands, attrs)
             elif op in ("MATMUL", "MATMUL_RESIDENT"):
@@ -356,6 +357,36 @@ class CommandBufferEncoder:
         t = self._get(src)
         self.env[dst] = t
         return dst, t
+
+    #: Opcodes for which an ``op`` attribute is part of the modelled semantics, so seeing one is not a
+    #: sign the buffer is saying something this encoder cannot read. VREDUCE selects its reduction with
+    #: it; VECTOR_MAP is handled by :meth:`_combine_of`, which refuses rather than guesses.
+    _OP_ATTR_IS_MODELLED = frozenset({"VREDUCE", "VECTOR_MAP"})
+
+    def _refuse_unmodelled_step(self, i: int, opcode: str, attrs: dict) -> None:
+        """Abstain when a command carries an ``op`` step this encoder does not model.
+
+        FOUND BY ADJUDICATING A CONTRADICTION, and it is the worst outcome in the vocabulary: a false
+        VERIFIED. Some submissions write the buffer at RoCC instruction level -- the semantic opcode is
+        reused across several commands and the real step lives in an ``op`` attribute
+        (``config_ex`` / ``config_ld`` / ``mvin`` / ``preload`` / ``compute_preloaded`` / ``config_st``
+        / ``mvout`` / ``flush``). This encoder read none of those, so three RES_PACKs collapsed to one,
+        two COMMITs to one, and the result happened to be the function the specification asked for.
+        Verdict: verified. On hardware the same program saturated every output at 127 -- INT8_MAX --
+        against a golden expecting i32, because the store width came from a config step nothing here
+        looked at.
+
+        The COMMIT in that buffer also carried no ``output_dtype``, so the encoder supplied its own
+        default and that default is what matched the spec. A default must never be what decides a
+        verdict: it is the checker agreeing with itself.
+        """
+        if opcode in self._OP_ATTR_IS_MODELLED or "op" not in attrs:
+            return
+        raise UnsupportedSemantics(
+            f"command {i} ({opcode}) carries op={attrs['op']!r}, a step this encoder does not model. "
+            f"Buffers written at instruction level reuse one semantic opcode across several commands "
+            f"and put the real step here; ignoring it collapses them into one operation and can report "
+            f"a program VERIFIED that saturates on hardware")
 
     def _operand(self, operands: dict, *keys: str, opcode: str):
         """Read the first spelling of a REQUIRED operand that this buffer supplies, or abstain.

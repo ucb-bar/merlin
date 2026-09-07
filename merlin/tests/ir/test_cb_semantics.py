@@ -424,3 +424,44 @@ def test_comparing_a_narrow_output_against_a_wide_one_does_not_kill_the_query():
     # exporting is the assertion: a width mismatch used to fail here, taking the verdict with it
     text = to_smtlib(builtin.ModuleOp([SolverOp.from_region(Region([blk]))]))
     assert text.strip(), "export produced nothing"
+
+
+def test_an_instruction_level_buffer_abstains_instead_of_verifying_falsely():
+    """The worst verdict in the vocabulary, reproduced: a false VERIFIED.
+
+    Found by adjudicating a contradiction, not by a seeded fault. A submission wrote its buffer at RoCC
+    instruction level -- the semantic opcode reused across commands, the real step carried in an `op`
+    attribute (`config_ex`/`config_ld`/`mvin`/`preload`/`compute_preloaded`/`config_st`/`mvout`). The
+    encoder read none of them, so three RES_PACKs collapsed to one and two COMMITs to one, and the
+    collapsed program happened to be exactly what the specification asked for. It reported VERIFIED,
+    while on hardware every output saturated at 127 (INT8_MAX) against a golden expecting i32.
+
+    Ignoring an attribute is not neutral: it makes a DIFFERENT program, and here the different program
+    was the correct one. Anything the encoder cannot model must abstain.
+    """
+    from merlin.verify.cb_semantics import CommandBufferEncoder
+    from merlin.verify.smt_semantics import UnsupportedSemantics
+
+    _, cb, _ = _pair()
+    cb = copy.deepcopy(cb)
+    pack = next(c for c in cb["commands"] if c["opcode"] == "RES_PACK")
+    # one duplicated command carrying a config step -- the shape the real submission had
+    pack["attributes"]["op"] = "config_ex"
+
+    e = CommandBufferEncoder(_null_encoder(), cb)
+    e.declare_leaves()
+    with pytest.raises(UnsupportedSemantics, match="config_ex"):
+        e.run()
+
+
+def test_the_opcodes_that_legitimately_carry_op_are_not_refused():
+    """VREDUCE selects its reduction with `op`; refusing it would abstain on everything it can encode.
+
+    The guard above must discriminate, not blanket-refuse -- an over-broad abstention is a coverage
+    loss disguised as caution, and would have quietly emptied the reduction family.
+    """
+    from merlin.verify.cb_semantics import CommandBufferEncoder
+
+    e = CommandBufferEncoder(_null_encoder(), {"tensors": {}, "commands": []})
+    for opcode in ("VREDUCE", "VECTOR_MAP"):
+        e._refuse_unmodelled_step(0, opcode, {"op": "sum"})      # must not raise

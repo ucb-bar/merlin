@@ -613,6 +613,18 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
         elif mnem == "evict":
             cb["commands"].append({"opcode": "EVICT", "operands": {"handle": srcs[0]}})
 
+    # FAIL CLOSED ON A MODULE THAT IS NOT THIS GRAMMAR AT ALL -- the same rule as the undefined-mnemonic
+    # guard above, applied to the case that guard cannot see. It rejects `merlin_iface` ops v0.1 does
+    # not define; a module carrying NO `merlin_iface` ops (linalg-on-tensors, say) contains none to
+    # reject, so every line fell through the dispatch and this returned an empty program that read as a
+    # successful parse. Measured cost of that silence: 284 archived submissions abstained with "the
+    # interface program commits no outputs", which named the symptom and hid the cause -- the spec had
+    # never been read. A caller cannot tell an empty program from an unread one, so this must raise.
+    if not cb["tensors"] and not cb["commands"]:
+        raise InterfaceGrammarError(
+            f"no merlin_iface op or tensor was found; interface grammar v{GRAMMAR_VERSION} cannot read "
+            f"this module, which declares {_module_attrs(text)[:120]!r}. Returning an empty program "
+            f"would be indistinguishable from a program that genuinely does nothing")
     return cb
 
 
