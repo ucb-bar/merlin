@@ -16,9 +16,9 @@ from typing import Any
 from xdsl.dialects.builtin import IntegerType, VectorType
 from xdsl.dialects.llvm import ICmpPredicateFlag
 from xdsl.ir import Block, BlockArgument, Operation
-from xdsl.irdl.dominance import DominanceInfo
 
 from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from .host_cfg_index import PreparedHostCFG, prepare_host_cfg, require_prepared_host_cfg
 
 
 _INTEGER = frozenset({"llvm.add", "llvm.sub", "llvm.mul", "llvm.sdiv", "llvm.udiv",
@@ -160,13 +160,16 @@ def _constant_loop(header, latch, nodes, predecessors, positions):
             "predicate": predicate}, nodes
 
 
-def analyze_host_cfg_activity(function: Any) -> dict[str, Any]:
+def analyze_host_cfg_activity(function: Any, *,
+                              prepared_cfg: PreparedHostCFG | None = None) -> dict[str, Any]:
     """Account one submitted LLVM function at the emitted IR level."""
-    blocks = list(function.body.blocks)
+    cfg = (require_prepared_host_cfg(function, prepared_cfg)
+           if prepared_cfg is not None else prepare_host_cfg(function))
+    blocks = cfg.blocks
     if not blocks:
         return {"schema": "host_cfg_activity_v1", "status": "UNKNOWN", "problems": ["empty function"]}
     index = {block: i for i, block in enumerate(blocks)}
-    predecessors = {block: set() for block in blocks}
+    predecessors = cfg.predecessors
     problems: list[str] = []
     for block in blocks:
         terminator = block.last_op
@@ -174,10 +177,8 @@ def analyze_host_cfg_activity(function: Any) -> dict[str, Any]:
             problems.append(f"block {index[block]} has unsupported terminator")
             continue
         for target in terminator.successors:
-            if target not in predecessors:
+            if target not in cfg.block_set:
                 problems.append("branch leaves analyzed function")
-            else:
-                predecessors[target].add(block)
     reachable = set()
     pending = [blocks[0]]
     while pending:
@@ -191,7 +192,7 @@ def analyze_host_cfg_activity(function: Any) -> dict[str, Any]:
         problems.append("function contains unreachable blocks")
     loops = []
     if not problems:
-        dominance = DominanceInfo(function.body)
+        dominance = cfg.dominance
         backedges = [(header, latch) for header in blocks for latch in predecessors[header]
                      if dominance.dominates(header, latch)]
         for header, latch in backedges:

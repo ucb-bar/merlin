@@ -2767,7 +2767,8 @@ def analyze_whole_model_emission(
     only timing verdict.
     """
     from merlin.perf.artifact_activity import analyze_artifact_activity  # noqa: PLC0415
-    from merlin.perf.model_placement import captured_global_graph, contraction_placement  # noqa: PLC0415
+    from merlin.perf.model_placement import (  # noqa: PLC0415
+        captured_global_graph, contraction_placement, prepare_captured_source)
     from merlin.targetgen import oot_runner as OR  # noqa: PLC0415
     from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
     from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
@@ -3027,6 +3028,15 @@ def analyze_whole_model_emission(
         }
         diagnostics["trace_conformance"] = trace_conformance
 
+        prepared_source_analysis = None
+        prepared_source_failure = None
+        try:
+            # Placement, graph capture and plan verification all consume the same immutable source.
+            # Parse and outline it once; each consumer still performs its own semantic checks.
+            prepared_source_analysis = prepare_captured_source(interface)
+        except Exception as exc:  # Existing per-audit fallbacks below retain fail-closed evidence.
+            prepared_source_failure = exc
+
         def _placement(buffer: Mapping[str, Any]) -> dict[str, Any]:
             params = buffer.get("params")
             params = params if isinstance(params, Mapping) else {}
@@ -3034,7 +3044,9 @@ def analyze_whole_model_emission(
             if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
                 return {"status": "UNKNOWN", "reason": "compiler emitted no region-to-lane map"}
             try:
-                return contraction_placement(interface, rows, target=target, entry=descriptor.get("entry"))
+                return contraction_placement(
+                    interface, rows, target=target, entry=descriptor.get("entry"),
+                    prepared_source=prepared_source_analysis)
             except Exception as exc:  # noqa: BLE001 - incomplete placement is explicit evidence
                 return {"status": "UNKNOWN",
                         "reason": ("MAC-weighted placement could not be derived: "
@@ -3049,7 +3061,10 @@ def analyze_whole_model_emission(
             ),
         }
         try:
-            diagnostics["captured_logical_graph"] = captured_global_graph(interface)
+            if prepared_source_analysis is None and prepared_source_failure is not None:
+                raise prepared_source_failure
+            diagnostics["captured_logical_graph"] = captured_global_graph(
+                interface, prepared_source=prepared_source_analysis)
         except Exception as exc:  # noqa: BLE001 - report missing graph coverage explicitly
             diagnostics["captured_logical_graph"] = {
                 "status": "UNKNOWN",
@@ -3070,7 +3085,8 @@ def analyze_whole_model_emission(
                         source_text=source_text, lowered_text=base_llvm, command_buffer=baseline_buffer,
                         candidate_sha256=baseline_identity["baseline_sha256"],
                         command_buffer_sha256=baseline_plan_binding["command_buffer_sha256"],
-                        parsed_lowered_module=base_lowered_module)
+                        parsed_lowered_module=base_lowered_module,
+                        prepared_source_analysis=prepared_source_analysis)
             except Exception as exc:
                 baseline_plan = {"status": "UNKNOWN",
                     "reason": f"host baseline global-plan verifier failed: {type(exc).__name__}: {exc}"}
@@ -3101,7 +3117,8 @@ def analyze_whole_model_emission(
                         source_text=source_text, lowered_text=cand_llvm,
                         command_buffer=candidate_buffer, candidate_sha256=candidate_before,
                         command_buffer_sha256=_sha256(cand_buffer.encode("utf-8")),
-                        parsed_lowered_module=cand_lowered_module)
+                        parsed_lowered_module=cand_lowered_module,
+                        prepared_source_analysis=prepared_source_analysis)
             except Exception as exc:  # noqa: BLE001 - incomplete host verification is explicit
                 diagnostics["verified_global_plan_emission"] = {
                     "status": "UNKNOWN",

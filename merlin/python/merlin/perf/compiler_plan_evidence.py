@@ -68,7 +68,8 @@ def _source_has_multiply_accumulate(op: Any) -> bool:
 def verify_compiler_global_plan(*, source_text: str, lowered_text: str,
                                 command_buffer: Mapping[str, Any], candidate_sha256: str,
                                 command_buffer_sha256: str | None = None,
-                                parsed_lowered_module: Any = None) -> dict[str, Any]:
+                                parsed_lowered_module: Any = None,
+                                prepared_source_analysis: Any = None) -> dict[str, Any]:
     """Bind complete source/task/IR coverage to exact candidate and artifact identities.
 
     A package that does not yet emit the protocol remains UNKNOWN. Invalid or incomplete evidence
@@ -98,8 +99,18 @@ def verify_compiler_global_plan(*, source_text: str, lowered_text: str,
         problems.append("candidate declined whole-model compilation")
     if len(candidate_sha256) != 64 or any(c not in "0123456789abcdef" for c in candidate_sha256):
         problems.append("candidate identity is not a SHA-256 digest")
-    source = parse_mlir_text(source_text)
-    _, graph = lower_model_to_dispatch_program(source, prune=False)
+    if prepared_source_analysis is not None:
+        if (getattr(prepared_source_analysis, "source_sha256", None) != source_digest
+                or getattr(prepared_source_analysis, "parsed_module", None) is None
+                or getattr(prepared_source_analysis, "graph", None) is None
+                or dispatch_digest(prepared_source_analysis.graph)
+                != getattr(prepared_source_analysis, "logical_dispatch_digest", None)):
+            raise ValueError("prepared source analysis changed or does not match source bytes")
+        source = prepared_source_analysis.parsed_module
+        graph = prepared_source_analysis.graph
+    else:
+        source = parse_mlir_text(source_text)
+        _, graph = lower_model_to_dispatch_program(source, prune=False)
     functions = [op for op in source.body.block.ops
                  if op.name == "func.func" and op.sym_name.data == graph.entry]
     if len(functions) != 1 or len(functions[0].body.blocks) != 1:
@@ -352,8 +363,11 @@ def verify_compiler_global_plan(*, source_text: str, lowered_text: str,
     elif len(llvm_functions[0].body.blocks[0].args) != len(abi_args):
         problems.append("lowered kernel arguments disagree with whole-program tensor ABI")
     if len(llvm_functions) == 1 and llvm_functions[0].body.blocks:
+        from .host_cfg_index import prepare_host_cfg
+        prepared_cfg = prepare_host_cfg(llvm_functions[0])
         from .task_cfg_evidence import analyze_task_cfg
-        cfg_evidence = analyze_task_cfg(llvm_functions[0], task_ids)
+        cfg_evidence = analyze_task_cfg(
+            llvm_functions[0], task_ids, prepared_cfg=prepared_cfg)
         problems.extend(cfg_evidence["problems"])
         emitted_counts.update(cfg_evidence.get("emitted_operations_by_task", {}))
         shared_constants = cfg_evidence.get("shared_prologue_operations", {}).get("llvm.mlir.constant", 0)
@@ -361,7 +375,8 @@ def verify_compiler_global_plan(*, source_text: str, lowered_text: str,
         # deletion. Full CFG/block traces are not needed in an agent's first-page context.
         from .host_cfg_activity import analyze_host_cfg_activity
         try:
-            activity = analyze_host_cfg_activity(llvm_functions[0])
+            activity = analyze_host_cfg_activity(
+                llvm_functions[0], prepared_cfg=prepared_cfg)
             fields = ("schema", "status", "problems", "loop_count", "static_operations",
                       "dynamic_operations", "load_payload_bytes", "store_payload_bytes",
                       "static_allocation_payload_bytes", "cpu_cycles", "dram_bytes",

@@ -2,8 +2,10 @@
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import IntegerAttr, ModuleOp, i32, i64
 from xdsl.ir import Block, Region
+from xdsl.irdl.dominance import DominanceInfo
 import pytest
 
+from merlin.perf.host_cfg_index import prepare_host_cfg
 from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
 
 
@@ -175,3 +177,24 @@ def test_forwarding_different_value_does_not_prove_induction_update():
     report = analyze_host_cfg_activity(carried_function(forwarded=True, wrong_forwarding=True))
     assert report['status'] == 'UNKNOWN'
     assert report['dynamic_operations'] is None
+
+
+def test_prepared_cfg_is_equivalent_and_function_identity_bound():
+    fn = function()
+    prepared = prepare_host_cfg(fn)
+    assert analyze_host_cfg_activity(
+        fn, prepared_cfg=prepared) == analyze_host_cfg_activity(fn)
+
+    other = function()
+    with pytest.raises(ValueError, match="different function object"):
+        analyze_host_cfg_activity(other, prepared_cfg=prepared)
+
+
+def test_prepared_dominance_matches_xdsl_for_every_block_pair():
+    fn = function()
+    prepared = prepare_host_cfg(fn)
+    reference = DominanceInfo(fn.body)
+
+    assert all(
+        prepared.dominance.dominates(left, right) == reference.dominates(left, right)
+        for left in fn.body.blocks for right in fn.body.blocks)

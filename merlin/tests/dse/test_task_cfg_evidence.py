@@ -1,6 +1,8 @@
 """Control-flow task receipts must not hide skipped tasks or invalid SSA."""
 from merlin.frontends.linalg_mlir import make_context, parse_mlir_text
+from merlin.perf.host_cfg_index import prepare_host_cfg
 from merlin.perf.task_cfg_evidence import analyze_task_cfg
+import pytest
 from xdsl.dialects.llvm import LLVM
 
 
@@ -12,6 +14,46 @@ def _check(body, tasks, *, globals_=""):
                              + body + '} }', context)
     function = next(op for op in module.body.block.ops if op.name == "llvm.func")
     return analyze_task_cfg(function, tasks)
+
+
+def test_prepared_cfg_is_equivalent_and_function_identity_bound():
+    context = make_context()
+    context.load_dialect(LLVM)
+    module = parse_mlir_text('''builtin.module {
+      llvm.func @kernel(%p: !llvm.ptr) {
+        %v = llvm.load %p {merlin.global_task = 0 : i64} : !llvm.ptr -> i64
+        llvm.store %v, %p {merlin.global_task = 0 : i64} : i64, !llvm.ptr
+        llvm.return
+      }
+    }''', context)
+    function = next(op for op in module.body.block.ops if op.name == "llvm.func")
+    prepared = prepare_host_cfg(function)
+    assert analyze_task_cfg(function, [0], prepared_cfg=prepared) == analyze_task_cfg(function, [0])
+
+    other = parse_mlir_text(str(module), context)
+    other_function = next(op for op in other.body.block.ops if op.name == "llvm.func")
+    with pytest.raises(ValueError, match="different function object"):
+        analyze_task_cfg(other_function, [0], prepared_cfg=prepared)
+
+
+def test_unreachable_cfg_keeps_legacy_refusal_evidence():
+    context = make_context()
+    context.load_dialect(LLVM)
+    module = parse_mlir_text('''builtin.module {
+      llvm.func @kernel(%p: !llvm.ptr) {
+        %v = llvm.load %p {merlin.global_task = 0 : i64} : !llvm.ptr -> i64
+        llvm.return
+      ^dead:
+        llvm.return
+      }
+    }''', context)
+    function = next(op for op in module.body.block.ops if op.name == "llvm.func")
+    prepared = prepare_host_cfg(function)
+
+    assert analyze_task_cfg(
+        function, [0], prepared_cfg=prepared) == analyze_task_cfg(function, [0])
+    assert "owned kernel contains unreachable blocks" in analyze_task_cfg(
+        function, [0], prepared_cfg=prepared)["problems"]
 
 
 def test_task_present_only_on_one_returning_path_is_not_mandatory():

@@ -12,29 +12,70 @@ import math
 import hashlib
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from merlin.perf.model_macs import observe_model_macs as observe_contractions
 
 
-def captured_global_graph(model_mlir: str | Path) -> dict[str, Any]:
+@dataclass(frozen=True)
+class PreparedCapturedSource:
+    """Host-only parsed/outlined source reused across independent whole-graph audits."""
+
+    source_sha256: str
+    parsed_module: Any
+    outlined: Any
+    graph: Any
+    logical_dispatch_digest: str
+
+
+def prepare_captured_source(model_mlir: str | Path) -> PreparedCapturedSource:
+    """Parse and outline immutable source once, retaining an exact byte/digest binding."""
+    from merlin.common.mlir_query import parse
+    from merlin.xdsl_dialects.lowering.dispatch_program import lower_model_to_dispatch_program
+    from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
+
+    source_path = Path(model_mlir)
+    source = source_path.read_bytes()
+    parsed = parse(source_path)
+    outlined, graph = lower_model_to_dispatch_program(parsed, prune=False)
+    outlined.module.verify()
+    return PreparedCapturedSource(
+        source_sha256=hashlib.sha256(source).hexdigest(), parsed_module=parsed,
+        outlined=outlined, graph=graph, logical_dispatch_digest=dispatch_digest(graph))
+
+
+def _require_prepared_source(
+        model_mlir: str | Path,
+        prepared: PreparedCapturedSource,
+) -> PreparedCapturedSource:
+    from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
+
+    source_sha256 = hashlib.sha256(Path(model_mlir).read_bytes()).hexdigest()
+    if prepared.source_sha256 != source_sha256:
+        raise ValueError("prepared captured source does not match immutable source bytes")
+    if dispatch_digest(prepared.graph) != prepared.logical_dispatch_digest:
+        raise ValueError("prepared captured graph changed after host construction")
+    return prepared
+
+
+def captured_global_graph(
+        model_mlir: str | Path, *,
+        prepared_source: PreparedCapturedSource | None = None,
+) -> dict[str, Any]:
     """Compile the actual capture into the graph consumed by the shared global emitter.
 
     The unpruned graph binds every driver operation, including scalar glue and constants. This is
     the logical objective, not a claim about what a candidate's target codegen has implemented.
     """
-    from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.xdsl_dialects.lowering.dispatch_program import lower_model_to_dispatch_program
-    from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
-
-    source = Path(model_mlir).read_bytes()
-    outlined, graph = lower_model_to_dispatch_program(parse_mlir_text(source.decode()), prune=False)
-    outlined.module.verify()
+    prepared = (_require_prepared_source(model_mlir, prepared_source)
+                if prepared_source is not None else prepare_captured_source(model_mlir))
+    graph = prepared.graph
     return {
         "schema": "captured_global_graph_v1", "status": "verified",
-        "source_sha256": hashlib.sha256(source).hexdigest(),
-        "logical_dispatch_digest": dispatch_digest(graph),
+        "source_sha256": prepared.source_sha256,
+        "logical_dispatch_digest": prepared.logical_dispatch_digest,
         "nodes": len(graph.nodes), "dispatches": graph.n_dispatches,
         "buffers": len(graph.buffers), "arguments": len(graph.args),
         "results": len(graph.results),
@@ -57,7 +98,8 @@ def _string_attr(op: Any, key: str) -> str | None:
 
 def contraction_placement(model_mlir: str | Path,
                           placement_rows: Sequence[Mapping[str, Any]], *,
-                          target: str | None = None, entry: str | None = None) -> dict[str, Any]:
+                          target: str | None = None, entry: str | None = None,
+                          prepared_source: PreparedCapturedSource | None = None) -> dict[str, Any]:
     """Return exact contraction work by the lane declared for each captured region."""
     lanes: dict[str, str] = {}
     conflicts: list[str] = []
@@ -77,7 +119,10 @@ def contraction_placement(model_mlir: str | Path,
     macs_by_regime: Counter[str] = Counter()
     rows: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
-    observed = observe_contractions(model_mlir, entry=entry) if entry is not None else observe_contractions(model_mlir)
+    source = (_require_prepared_source(model_mlir, prepared_source).parsed_module
+              if prepared_source is not None else model_mlir)
+    observed = (observe_contractions(source, entry=entry)
+                if entry is not None else observe_contractions(source))
     for ordinal, (op, shape) in enumerate(observed):
         region = _string_attr(op, "prov.region_id")
         status = getattr(shape, "status", "derived")

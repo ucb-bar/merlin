@@ -1,10 +1,12 @@
 """Structural compiler evidence cannot certify arithmetic or timing."""
 from copy import deepcopy
 import hashlib
+from pathlib import Path
 
 import pytest
 
 from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
+from merlin.perf.model_placement import prepare_captured_source
 
 
 SOURCE = '''builtin.module {
@@ -132,6 +134,29 @@ def test_host_parsed_artifact_is_reused_but_still_verified(monkeypatch):
                                         parsed_lowered_module=parsed)
     assert result["status"] == "verified"
     assert parsed_texts == [SOURCE]
+
+
+def test_prepared_source_analysis_is_evidence_equivalent(tmp_path: Path):
+    source = tmp_path / "model.mlir"
+    source.write_text(SOURCE)
+    prepared = prepare_captured_source(source)
+
+    reused = verify_compiler_global_plan(
+        source_text=SOURCE, lowered_text=LOWERED, command_buffer=_buffer(),
+        candidate_sha256="a" * 64, prepared_source_analysis=prepared)
+
+    assert reused == _verify()
+
+
+def test_prepared_source_analysis_refuses_source_identity_drift(tmp_path: Path):
+    source = tmp_path / "model.mlir"
+    source.write_text(SOURCE)
+    prepared = prepare_captured_source(source)
+
+    with pytest.raises(ValueError, match="does not match source bytes"):
+        verify_compiler_global_plan(
+            source_text=SOURCE + "\n", lowered_text=LOWERED, command_buffer=_buffer(),
+            candidate_sha256="a" * 64, prepared_source_analysis=prepared)
 
 
 def test_explicit_compiler_scratch_is_structural_not_dtype_semantics():

@@ -9,32 +9,32 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Sequence
 
+from .host_cfg_index import PreparedHostCFG, prepare_host_cfg, require_prepared_host_cfg
 
-def analyze_task_cfg(function: Any, task_ids: Sequence[int]) -> dict[str, Any]:
+
+def analyze_task_cfg(function: Any, task_ids: Sequence[int], *,
+                     prepared_cfg: PreparedHostCFG | None = None) -> dict[str, Any]:
     """Check owned CFG operations and mandatory task coverage on every returning path."""
     from xdsl.ir import Block
-    from xdsl.irdl.dominance import DominanceInfo
 
-    blocks = list(function.body.blocks)
+    cfg = (require_prepared_host_cfg(function, prepared_cfg)
+           if prepared_cfg is not None else prepare_host_cfg(function))
+    blocks = cfg.blocks
     problems: set[str] = set()
     if not blocks:
         return {"status": "refused", "problems": ["kernel has no entry block"]}
     entry = blocks[0]
-    block_set = set(blocks)
-    successors = {}
-    predecessors = {block: set() for block in blocks}
+    block_set = cfg.block_set
+    successors = cfg.successors
+    predecessors = cfg.predecessors
     for block in blocks:
         terminal = block.last_op
         if terminal is None or terminal.name not in {"llvm.br", "llvm.cond_br", "llvm.return"}:
             problems.add("kernel block has no supported control-flow terminator")
-            successors[block] = ()
             continue
-        successors[block] = tuple(terminal.successors)
         for successor in terminal.successors:
             if successor not in block_set:
                 problems.add("kernel branch leaves its function")
-            else:
-                predecessors[successor].add(block)
     if problems:
         return {"status": "refused", "problems": sorted(problems)}
     reachable = set()
@@ -49,7 +49,7 @@ def analyze_task_cfg(function: Any, task_ids: Sequence[int]) -> dict[str, Any]:
     returns = [block for block in blocks if block.last_op.name == "llvm.return"]
     if not returns:
         problems.add("kernel has no returning path")
-    dominators = DominanceInfo(function.body)
+    dominators = cfg.dominance
     positions = {op: index for block in blocks for index, op in enumerate(block.ops)}
 
     # Hoisted definitions do not execute a task's computation. Only constants, entry-address
