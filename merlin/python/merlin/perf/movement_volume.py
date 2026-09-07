@@ -25,6 +25,8 @@ import hashlib
 import json
 from typing import Any
 
+from merlin.runtime.commandbuffer import batched_matmul_geometry
+
 __all__ = ["CommandMovement", "ProgramMovement", "movement_from_command_buffer",
            "movement_evidence", "NO_COMMAND_BUFFER_REFUSAL"]
 
@@ -37,7 +39,6 @@ _NO_TRAFFIC = frozenset({"EVICT"})
 _READS = {
     "MATMUL": ("lhs", "weight", "rhs"),
     "MATMUL_RESIDENT": ("lhs", "weight", "rhs"),
-    "BATCHED_MATMUL": ("lhs", "weight", "rhs"),
     "CONV2D": ("input", "weight", "lhs", "rhs"),
     "ATTENTION_QK": ("q", "k", "lhs", "rhs"),
     "ATTENTION_PV": ("p", "v", "lhs", "rhs"),
@@ -126,6 +127,16 @@ def _nbytes(tensors: Mapping[str, Any], name: Any) -> int | None:
         return None
 
 
+def _shape(tensors: Mapping[str, Any], name: Any) -> tuple[int, ...] | None:
+    tensor = tensors.get(name) if isinstance(name, str) else None
+    raw = tensor.get("shape") if isinstance(tensor, Mapping) else None
+    if (not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or not raw
+            or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0
+                   for value in raw)):
+        return None
+    return tuple(int(value) for value in raw)
+
+
 def movement_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramMovement:
     """Recover exact operand traffic from shared IR semantics, preserving every refusal."""
     try:
@@ -177,6 +188,31 @@ def movement_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramMo
                 rows.append(CommandMovement(index, opcode, 0, nbytes, provenance))
                 continue
             reason = f"{opcode.lower()} destination does not resolve to a declared tensor"
+        elif opcode == "BATCHED_MATMUL":
+            # This whole-op command reads BOTH varying operands and writes its declared destination.
+            # Its canonical ABI keys are a/w/dst; treating it like MATMUL's lhs/rhs plus a later
+            # COMMIT previously returned an exact zero for a perfectly valid batched contraction.
+            try:
+                batched_matmul_geometry(
+                    _shape(tensors, operands.get("a")),
+                    _shape(tensors, operands.get("w")),
+                    _shape(tensors, operands.get("dst")),
+                    op=f"command {index} BATCHED_MATMUL",
+                )
+            except ValueError as e:
+                reason = str(e)
+            else:
+                a_bytes = _nbytes(tensors, operands.get("a"))
+                w_bytes = _nbytes(tensors, operands.get("w"))
+                dst_bytes = _nbytes(tensors, operands.get("dst"))
+                if a_bytes is not None and w_bytes is not None and dst_bytes is not None:
+                    moved_in, moved_out = a_bytes + w_bytes, dst_bytes
+                    total_in += moved_in
+                    total_out += moved_out
+                    rows.append(CommandMovement(
+                        index, opcode, moved_in, moved_out, provenance))
+                    continue
+                reason = "BATCHED_MATMUL a/w/dst storage does not have an exact byte size"
         elif opcode in _READS:
             moved = 0
             unresolved: list[str] = []

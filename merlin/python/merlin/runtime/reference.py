@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .commandbuffer import (BIAS_STAGES, apply_pool_stage, bias_tensor_name,
-                            conv_im2col, conv_out_dims, materialize_inputs,
-                            pool_params)
+from .commandbuffer import (BIAS_STAGES, apply_pool_stage, batched_matmul_geometry,
+                            bias_tensor_name, conv_im2col, conv_out_dims,
+                            materialize_inputs, pool_params)
 from .tensor import Tensor
 
 
@@ -172,39 +172,12 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
     env: dict[str, Tensor] = materialize_inputs(cb, inputs)
     resident_source: dict[str, str] = {}
     resident_dequant: dict[str, tuple[str, str, int]] = {}   # pack dst -> (i8 src, scale, axis)
-    matmul_for: dict[str, dict] = {}
-    commits: list[dict] = []
-
-    for cmd in cb.get("commands", []):
-        op = cmd["opcode"]
-        ops = cmd.get("operands", {})
-        attrs = cmd.get("attributes", {})
-        if op == "RES_PACK":
-            resident_source[ops["dst"]] = ops["src"]
-            if "scale" in ops:
-                resident_dequant[ops["dst"]] = (ops["src"], ops["scale"],
-                                                int(attrs.get("dequant_axis", 1)))
-        elif op in ("MATMUL_RESIDENT", "MATMUL"):
-            matmul_for[ops["dst"]] = cmd
-        elif op == "COMMIT":
-            commits.append(cmd)
+    accumulators: dict[str, Tensor] = {}
 
     default_shift = int(cb.get("params", {}).get("requant_shift", 4))
     outputs: dict[str, list] = {}
 
-    for commit in commits:
-        ops = commit.get("operands", {})
-        attrs = commit.get("attributes", {})
-        mm = matmul_for[ops["src"]]
-        mops = mm.get("operands", {})
-        lhs = env[mops["lhs"]]
-        if mops["rhs"] in resident_dequant:                     # int8 weight-only dequant pack
-            src_name, scale_name, axis = resident_dequant[mops["rhs"]]
-            rhs = env[src_name].dequant_per_channel(env[scale_name], axis)
-        else:
-            rhs_name = resident_source.get(mops["rhs"], mops["rhs"])  # resolve through the pack
-            rhs = env[rhs_name]
-        t = lhs.matmul(rhs)
+    def commit_accumulator(t: Tensor, ops: dict[str, Any], attrs: dict[str, Any]) -> None:
         shift = int(attrs.get("requant_shift", default_shift))
         for stage in attrs.get("epilogue", []):
             if stage in BIAS_STAGES:
@@ -251,14 +224,39 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
         # vector op) resolves it — a whole model's intermediate activations flow through env.
         env[ops["dst"]] = t
 
-    # Vector-family ops: recompute directly (no residency optimization to bypass, so the
-    # reference is the same elementwise math — the meaningful gate for this family is
-    # merlin == RTL oracle, not the residency-bypass cross-check that matmul has).
+    # Interpret in program order. Collecting producers by handle before executing commits made a
+    # reused accumulator name resolve to its last producer and ran commits before preceding vector
+    # producers. Handles resolve at their point of use, just like tensor names.
     for cmd in cb.get("commands", []):
         op = cmd["opcode"]
         ops = cmd.get("operands", {})
         attrs = cmd.get("attributes", {})
-        if op == "VECTOR_MAP":
+        if op == "RES_PACK":
+            resident_source[ops["dst"]] = ops["src"]
+            if "scale" in ops:
+                resident_dequant[ops["dst"]] = (ops["src"], ops["scale"],
+                                                int(attrs.get("dequant_axis", 1)))
+        elif op == "EVICT":
+            # EVICT has no numerical effect.  ``handle`` is the canonical ABI
+            # spelling, but tolerate the legacy ``src`` spelling accepted by
+            # old command-buffer fixtures instead of turning a bookkeeping
+            # hint that this engine may ignore into a reference failure.
+            handle = ops.get("handle", ops.get("src"))
+            if isinstance(handle, str):
+                resident_source.pop(handle, None)
+                resident_dequant.pop(handle, None)
+        elif op in ("MATMUL_RESIDENT", "MATMUL"):
+            lhs = env[ops["lhs"]]
+            rhs_operand = ops["rhs"]
+            if rhs_operand in resident_dequant:
+                src_name, scale_name, axis = resident_dequant[rhs_operand]
+                rhs = env[src_name].dequant_per_channel(env[scale_name], axis)
+            else:
+                rhs = env[resident_source.get(rhs_operand, rhs_operand)]
+            accumulators[ops["dst"]] = lhs.matmul(rhs)
+        elif op == "COMMIT":
+            commit_accumulator(accumulators[ops["src"]], ops, attrs)
+        elif op == "VECTOR_MAP":
             combine = attrs.get("combine", "add")
             if combine == "identity":            # data movement: dst is a copy of lhs (layout move)
                 a = env[ops["lhs"]]
@@ -326,30 +324,26 @@ def reference_outputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) 
             env[dst] = t
             outputs[dst] = t.to_list()
         elif op == "BATCHED_MATMUL":
-            # O[b] = A[b] @ W[b] over a batch of INDEPENDENT 2-D contractions. The weight differs per
-            # batch, so there is no residency to reuse and no COMMIT to evaluate at: this writes its
-            # own output the way the other self-contained operations here do.
-            #
-            # Modelled because the contract admits rank-3 contractions and the lowering loops the
-            # batch around the same 2-D kernel. Leaving it out did not make batched work refuse
-            # loudly -- it made this engine raise UnmodeledOp, which reads as "grade it on hardware
-            # instead" and silently removed the one tier that compares two independent evaluations.
             a_name, w_name, dst = ops["a"], ops["w"], ops["dst"]
             at, wt = env[a_name], env[w_name]
-            if len(at.shape) != 3 or len(wt.shape) != 3:
+            dst_spec = cb.get("tensors", {}).get(dst)
+            if not isinstance(dst_spec, dict):
                 raise ValueError(
-                    f"BATCHED_MATMUL needs two rank-3 operands: {a_name}{at.shape} @ {w_name}{wt.shape}")
-            batch, m, kdim = at.shape
-            wbatch, k2, n = wt.shape
-            if batch != wbatch or kdim != k2:
-                raise ValueError(
-                    f"BATCHED_MATMUL operands do not contract: {a_name}{at.shape} @ {w_name}{wt.shape}")
+                    f"BATCHED_MATMUL {dst!r}: destination must name a declared tensor")
+            dst_shape = dst_spec.get("shape")
+            geometry = batched_matmul_geometry(
+                at.shape, wt.shape, dst_shape, op=f"BATCHED_MATMUL {dst!r}")
             flat: list = []
-            for index in range(batch):
-                lhs = Tensor((m, kdim), at.data[index * m * kdim:(index + 1) * m * kdim], at.dtype)
-                rhs = Tensor((kdim, n), wt.data[index * kdim * n:(index + 1) * kdim * n], wt.dtype)
+            for index in range(geometry.batch_count):
+                a0 = index * geometry.lhs_slice_elements
+                w0 = index * geometry.rhs_slice_elements
+                lhs = Tensor((geometry.m, geometry.k),
+                             at.data[a0:a0 + geometry.lhs_slice_elements], at.dtype)
+                rhs = Tensor((geometry.k, geometry.n),
+                             wt.data[w0:w0 + geometry.rhs_slice_elements], wt.dtype)
                 flat.extend(lhs.matmul(rhs).data)
-            t = Tensor((batch, m, n), flat, "i32")
+            output_dtype = str(dst_spec.get("dtype") or "i32")
+            t = Tensor(geometry.output_shape, flat, output_dtype)
             env[dst] = t
             outputs[dst] = t.to_list()
         elif op == "MOVEMENT":

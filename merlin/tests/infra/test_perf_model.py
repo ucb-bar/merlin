@@ -18,6 +18,22 @@ sys.path.insert(0, str(repo_root() / "merlin/experiments/gemmini_perf_bench/scri
 import perf_model as PM  # noqa: E402
 
 
+def test_rank_n_batched_reduction_depth_comes_from_the_trailing_k_axis():
+    cb = {
+        "tensors": {
+            "a": {"shape": [2, 3, 5, 7]},
+            "w": {"shape": [2, 3, 7, 11]},
+            "dst": {"shape": [2, 3, 5, 11]},
+        },
+        "commands": [{"opcode": "BATCHED_MATMUL",
+                      "operands": {"a": "a", "w": "w", "dst": "dst"}}],
+    }
+    assert PM._command_reduction_depths(cb) == (7,)
+
+    cb["tensors"]["w"]["shape"] = [2, 1, 7, 11]
+    assert PM._command_reduction_depths(cb) == (), "batch broadcasting is not this opcode"
+
+
 def _result(root: Path, name: str, *, cycles, commands=None, buffer: bool = True) -> None:
     """One capsule run as the functional harness leaves it on disk."""
     d = root / name

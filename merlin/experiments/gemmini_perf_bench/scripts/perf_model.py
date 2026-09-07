@@ -37,6 +37,7 @@ from typing import Any
 
 from merlin.perf.decompose import ResourceKind
 from merlin.perf.envelope import Basis, Peak, ResourceDemand, resource_time
+from merlin.runtime.commandbuffer import batched_matmul_geometry
 
 COMPUTE = "compute"
 
@@ -197,10 +198,13 @@ def _command_reduction_depths(command_buffer: Mapping[str, Any]) -> tuple[int, .
                 return ()
             depths.append(lhs_shape[1])
         elif opcode == "BATCHED_MATMUL":
-            lhs_shape = shape(operands.get("a"))
-            if not lhs_shape or len(lhs_shape) != 3:
+            try:
+                geometry = batched_matmul_geometry(
+                    shape(operands.get("a")), shape(operands.get("w")),
+                    shape(operands.get("dst")), op="BATCHED_MATMUL reduction depth")
+            except ValueError:
                 return ()
-            depths.append(lhs_shape[2])
+            depths.append(geometry.k)
         elif opcode == "ATTENTION_QK":
             lhs_shape = shape(operands.get("q"))
             if not lhs_shape or len(lhs_shape) != 2:

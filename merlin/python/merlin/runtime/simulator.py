@@ -17,9 +17,9 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .commandbuffer import (BIAS_STAGES, apply_pool_stage, bias_tensor_name, conv_im2col,
-                            conv_out_dims, materialize_inputs, pool_params,
-                            validate_command_buffer)
+from .commandbuffer import (BIAS_STAGES, apply_pool_stage, batched_matmul_geometry,
+                            bias_tensor_name, conv_im2col, conv_out_dims, materialize_inputs,
+                            pool_params, validate_command_buffer)
 from .metrics import Metrics
 from .tensor import Tensor
 
@@ -256,22 +256,38 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             trace.append({"name": "bias_add", "object": dst, "count": len(t.data)})
 
         elif op == "BATCHED_MATMUL":
-            # O[b] = A[b] @ W[b] for a batch of independent 2-D matmuls (weight differs per batch, so no
-            # residency reuse). Slice the flat (batch,m,k)/(batch,k,n) tensors per batch and matmul each.
             a, w, dst = env[ops["a"]], env[ops["w"]], ops["dst"]
-            batch, m, kdim = a.shape
-            _, _, n = w.shape
+            dst_spec = cb.get("tensors", {}).get(dst)
+            if not isinstance(dst_spec, dict):
+                raise SimulationError(
+                    f"BATCHED_MATMUL {dst!r}: destination must name a declared tensor")
+            dst_shape = dst_spec.get("shape")
+            try:
+                geometry = batched_matmul_geometry(
+                    a.shape, w.shape, dst_shape, op=f"BATCHED_MATMUL {dst!r}")
+            except ValueError as e:
+                raise SimulationError(str(e)) from e
             out: list = []
-            for bb in range(batch):
-                asl = Tensor((m, kdim), a.data[bb * m * kdim:(bb + 1) * m * kdim], a.dtype)
-                wsl = Tensor((kdim, n), w.data[bb * kdim * n:(bb + 1) * kdim * n], w.dtype)
+            for index in range(geometry.batch_count):
+                a0 = index * geometry.lhs_slice_elements
+                w0 = index * geometry.rhs_slice_elements
+                asl = Tensor((geometry.m, geometry.k),
+                             a.data[a0:a0 + geometry.lhs_slice_elements], a.dtype)
+                wsl = Tensor((geometry.k, geometry.n),
+                             w.data[w0:w0 + geometry.rhs_slice_elements], w.dtype)
                 out.extend(asl.matmul(wsl).data)
-            env[dst] = Tensor((batch, m, n), out, "i32")
-            outputs[dst] = [[[out[bb * m * n + i * n + j] for j in range(n)]
-                             for i in range(m)] for bb in range(batch)]
-            metrics.dispatch_count += batch
-            metrics.cycles += batch * base_matmul_cycles(m, kdim, n)
-            trace.append({"name": "batched_matmul", "object": dst, "count": batch})
+            output_dtype = str(dst_spec.get("dtype") or "i32")
+            result = Tensor(geometry.output_shape, out, output_dtype)
+            env[dst] = result
+            outputs[dst] = result.to_list()
+            metrics.bytes_read += a.nbytes + w.nbytes
+            metrics.bytes_written += result.nbytes
+            metrics.bytes_moved += a.nbytes + w.nbytes + result.nbytes
+            metrics.dispatch_count += geometry.batch_count
+            metrics.cycles += geometry.batch_count * base_matmul_cycles(
+                geometry.m, geometry.k, geometry.n)
+            trace.append({"name": "batched_matmul", "object": dst,
+                          "count": geometry.batch_count})
 
         elif op in ("RMSNORM", "SOFTMAX", "GELU", "SOFTCAP", "ROPE"):
             # Row-wise vector ops the backends emit as whole-op mnemonics. Without them a CONFORMANT

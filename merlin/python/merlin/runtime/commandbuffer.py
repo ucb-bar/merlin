@@ -8,7 +8,8 @@ explicit inputs mapping can override them.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,88 @@ EPILOGUE_STAGE_SET = frozenset(EPILOGUE_STAGES)
 #: NAME resolved rather than a flag. Kept as its own tuple because a bias dropped in silence leaves
 #: every element off by exactly its column's bias, which reads as a plausible answer.
 BIAS_STAGES = ("bias_add", "bias")
+
+
+@dataclass(frozen=True)
+class BatchedMatmulGeometry:
+    """Shape facts for one rank-N batch of independent matrix contractions.
+
+    ``batch_shape`` is deliberately retained rather than collapsed into one ABI dimension: the
+    command preserves the source tensor's rank, while an engine that executes 2-D kernels may walk
+    its row-major slices using ``batch_count``.
+    """
+
+    batch_shape: tuple[int, ...]
+    batch_count: int
+    m: int
+    k: int
+    n: int
+
+    @property
+    def output_shape(self) -> tuple[int, ...]:
+        return (*self.batch_shape, self.m, self.n)
+
+    @property
+    def lhs_slice_elements(self) -> int:
+        return self.m * self.k
+
+    @property
+    def rhs_slice_elements(self) -> int:
+        return self.k * self.n
+
+    @property
+    def output_slice_elements(self) -> int:
+        return self.m * self.n
+
+    @property
+    def macs(self) -> int:
+        return self.batch_count * self.m * self.k * self.n
+
+
+def batched_matmul_geometry(
+    lhs_shape: Sequence[int] | None,
+    rhs_shape: Sequence[int] | None,
+    dst_shape: Sequence[int] | None,
+    *,
+    op: str = "BATCHED_MATMUL",
+) -> BatchedMatmulGeometry:
+    """Validate ``A[*B,M,K] @ W[*B,K,N] -> Y[*B,M,N]`` and return its geometry.
+
+    There is no broadcasting: both varying operands must carry the same non-empty batch prefix.
+    Flattening that prefix is only an execution detail and follows row-major lexicographic order.
+    Shapes are static and strictly positive so a zero/unknown extent cannot be priced as real work.
+    """
+
+    def normalized(shape: Sequence[int] | None, role: str) -> tuple[int, ...]:
+        if (not isinstance(shape, Sequence) or isinstance(shape, (str, bytes))
+                or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0
+                       for value in shape)):
+            raise ValueError(
+                f"{op}: {role} shape must contain only positive static integers, got {shape!r}")
+        result = tuple(int(value) for value in shape)
+        if len(result) < 3:
+            raise ValueError(f"{op}: {role} must have rank at least 3, got shape {result}")
+        return result
+
+    lhs = normalized(lhs_shape, "operand a")
+    rhs = normalized(rhs_shape, "operand w")
+    lhs_batch, (m, k) = lhs[:-2], lhs[-2:]
+    rhs_batch, (k2, n) = rhs[:-2], rhs[-2:]
+    if lhs_batch != rhs_batch:
+        raise ValueError(
+            f"{op}: operand batch prefixes must match exactly (no broadcasting), got "
+            f"{lhs_batch} and {rhs_batch}")
+    if k != k2:
+        raise ValueError(f"{op}: reduction dimensions do not match, got K={k} and K={k2}")
+    batch_count = 1
+    for extent in lhs_batch:
+        batch_count *= extent
+    geometry = BatchedMatmulGeometry(lhs_batch, batch_count, m, k, n)
+    dst = normalized(dst_shape, "destination")
+    if dst != geometry.output_shape:
+        raise ValueError(
+            f"{op}: destination shape must be {geometry.output_shape}, got {dst}")
+    return geometry
 
 
 def bias_tensor_name(operands: dict[str, Any], attrs: dict[str, Any], *, op: str) -> str:

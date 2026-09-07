@@ -24,15 +24,25 @@ from __future__ import annotations
 import pytest
 
 from merlin.perf import work_volume as WV
+from merlin.perf.movement_volume import movement_from_command_buffer
 from merlin.runtime.commandbuffer import materialize_inputs
 from merlin.runtime.reference import MODELED_OPCODES, reference_outputs
-from merlin.runtime.simulator import simulate
+from merlin.runtime.simulator import SimulationError, simulate
 
 #: Two independent slices, chosen so the two batches do NOT compute the same thing -- a batched kernel
 #: that ignored the batch index and ran slice 0 twice would still match a fixture whose slices agree.
 A0 = [[[1, 2, 3], [4, 5, 6]], [[1, 0, 1], [0, 1, 0]]]
 W = [[[1, 0], [0, 1], [1, 1]], [[2, 0], [0, 2], [1, 1]]]
 EXPECTED = [[[4, 5], [10, 11]], [[3, 1], [0, 2]]]
+
+# Four distinct matrices under a two-dimensional [2, 2] batch prefix. Distinct values make both
+# flattening axes observable; a rank-4 implementation that only advances the outermost index fails.
+A4 = [[A0[0], A0[1]],
+      [[[2, 0, 0], [0, 2, 0]], [[0, 0, 1], [1, 1, 1]]]]
+W4 = [[W[0], W[1]],
+      [[[1, 2], [3, 4], [5, 6]], [[1, 0], [0, 1], [2, 3]]]]
+EXPECTED4 = [[EXPECTED[0], EXPECTED[1]],
+             [[[2, 4], [6, 8]], [[2, 3], [3, 4]]]]
 
 
 def _command_buffer():
@@ -97,6 +107,81 @@ def test_batched_work_is_counted_and_not_left_a_lower_bound():
     work = WV.work_from_command_buffer(_command_buffer())
     assert not work.is_lower_bound, work.refusals
     assert work.exact_macs == 2 * (2 * 3 * 2), "batch x (M x K x N)"
+
+
+def test_rank_four_preserves_both_batch_axes_and_prices_all_four_slices():
+    cb = _command_buffer()
+    cb["tensors"]["A0"]["shape"] = [2, 2, 2, 3]
+    cb["tensors"]["W"]["shape"] = [2, 2, 3, 2]
+    cb["tensors"]["Y0"]["shape"] = [2, 2, 2, 2]
+    cb["commands"][0]["attributes"] = {}
+
+    reference = reference_outputs(cb, {"A0": A4, "W": W4})
+    simulated = simulate(cb, {"A0": A4, "W": W4})
+    work = WV.work_from_command_buffer(cb)
+    movement = movement_from_command_buffer(cb)
+
+    assert reference["Y0"] == EXPECTED4
+    assert simulated["outputs"]["Y0"] == EXPECTED4
+    assert simulated["metrics"]["dispatch_count"] == 4
+    assert simulated["metrics"]["bytes_read"] == 24 + 24
+    assert simulated["metrics"]["bytes_written"] == 2 * 2 * 2 * 2 * 4
+    assert work.exact_macs == 4 * 2 * 3 * 2
+    assert movement.known_bytes_in == 48
+    assert movement.known_bytes_out == 64
+    assert movement.exact_bytes == 112
+
+
+def test_wrong_destination_shape_is_refused_by_every_host_consumer():
+    cb = _command_buffer()
+    cb["tensors"]["Y0"]["shape"] = [2, 2, 3]
+
+    work = WV.work_from_command_buffer(cb)
+    movement = movement_from_command_buffer(cb)
+    assert work.is_lower_bound and work.exact_macs is None
+    assert movement.is_lower_bound and movement.exact_bytes is None
+    with pytest.raises(ValueError, match="destination shape must be"):
+        reference_outputs(cb, {"A0": A0, "W": W})
+    with pytest.raises(SimulationError, match="destination shape must be"):
+        simulate(cb, {"A0": A0, "W": W})
+
+
+def test_an_undeclared_destination_is_unknown_not_free_work_or_traffic():
+    cb = _command_buffer()
+    del cb["tensors"]["Y0"]
+
+    assert WV.work_from_command_buffer(cb).exact_macs is None
+    assert movement_from_command_buffer(cb).exact_bytes is None
+    with pytest.raises(ValueError, match="destination must name a declared tensor"):
+        reference_outputs(cb, {"A0": A0, "W": W})
+    with pytest.raises(SimulationError):
+        simulate(cb, {"A0": A0, "W": W})
+
+
+def test_reference_resolves_a_reused_accumulator_in_program_order():
+    cb = {
+        "abi_version": "0.1", "target": "test", "params": {},
+        "tensors": {
+            "A1": {"role": "input", "shape": [1, 2], "dtype": "i8"},
+            "A2": {"role": "input", "shape": [1, 2], "dtype": "i8"},
+            "W": {"role": "weight", "shape": [2, 1], "dtype": "i8"},
+            "Y1": {"role": "output", "shape": [1, 1], "dtype": "i32"},
+            "Y2": {"role": "output", "shape": [1, 1], "dtype": "i32"},
+        },
+        "commands": [
+            {"opcode": "MATMUL", "operands": {"lhs": "A1", "rhs": "W", "dst": "acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y1"},
+             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {"opcode": "MATMUL", "operands": {"lhs": "A2", "rhs": "W", "dst": "acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y2"},
+             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+        ],
+        "outputs": ["Y1", "Y2"],
+    }
+    inputs = {"A1": [[1, 2]], "A2": [[3, 4]], "W": [[1], [1]]}
+    expected = {"Y1": [[3]], "Y2": [[7]]}
+    assert reference_outputs(cb, inputs) == expected
+    assert simulate(cb, inputs)["outputs"] == expected
 
 
 def test_operands_over_different_batches_refuse_rather_than_guess():
