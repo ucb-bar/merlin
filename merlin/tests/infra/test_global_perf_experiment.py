@@ -179,7 +179,7 @@ def test_portfolio_recompiles_every_full_graph_on_one_candidate_snapshot(tmp_pat
                for row in second["portfolio"]["members"][1:])
 
 
-def test_portfolio_budget_is_size_weighted_order_preserving_and_rolls_surplus(
+def test_one_worker_portfolio_uses_lpt_shared_deadline_and_declared_record_order(
         tmp_path, monkeypatch):
     extras = [
         _portfolio_sentinel(tmp_path, "large-second", interface_bytes=900),
@@ -204,13 +204,16 @@ def test_portfolio_budget_is_size_weighted_order_preserving_and_rolls_surplus(
     experiment.analyzer = analyzer
     record = experiment.analyze(candidate, hypothesis="bounded generic portfolio allocation")
     assert [name for name, _ in budgets] == [
-        "real-model", "large-second", "small-third", "large-fourth"]
+        "large-second", "large-fourth", "real-model", "small-third"]
     assert [budget for _, budget in budgets] == pytest.approx([
-        15.0, 38.3333333333, 22.5, 70.0])
+        100.0, 80.0, 70.0, 65.0])
     allocations = [row["analysis_allocation"] for row in record["portfolio"]["members"]]
     assert [row["interface_bytes"] for row in allocations] == [100, 900, 100, 900]
     assert all(row["policy"] == record["portfolio"]["analysis_allocation_policy"]
                for row in allocations)
+    assert [row["allocated_seconds"] for row in allocations] == pytest.approx([
+        70.0, 100.0, 65.0, 80.0])
+    assert record["portfolio"]["analysis_concurrency"]["admitted_workers"] == 1
     assert record["elapsed_seconds"] == 40.0
 
 
@@ -313,7 +316,43 @@ def test_concurrent_portfolio_restores_declared_result_order(tmp_path, monkeypat
     assert completed == ["fourth", "third", "second", "real-model"]
     assert record["portfolio"]["analysis_concurrency"]["admitted_workers"] == 4
     assert record["portfolio"]["analysis_allocation_policy"] == \
-        "concurrent_shared_deadline_with_measured_cost_admission"
+        "shared_portfolio_deadline_with_measured_cost_lpt_admission"
+
+
+def test_one_worker_observed_case_does_not_starve_long_member_with_local_slice(
+        tmp_path, monkeypatch):
+    extras = [_portfolio_sentinel(tmp_path, name) for name in ("tiny", "lstm", "smol")]
+    experiment, candidate, _ = setup_experiment(
+        tmp_path, portfolio_sentinels=extras, timeout_s=600,
+        portfolio_analysis_workers=4, minimum_memory_available_bytes=64 * G._GIB)
+    costs = [64.915176, 213.509303, 30.469780, 241.742972]
+    durations = {"real-model": 96.336, "tiny": 213.509303,
+                 "lstm": 30.469780, "smol": 241.742972}
+    delegate = experiment.analyzer
+    clock = [0.0]
+    execution = []
+    monkeypatch.setattr(G.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(G, "_host_memory_available_bytes", lambda: 80 * G._GIB)
+    monkeypatch.setattr(experiment, "_portfolio_analysis_cost_estimates", lambda: costs)
+
+    def analyzer(base, current, objective, **kwargs):
+        execution.append((objective.capsule, kwargs["timeout_s"]))
+        duration = durations[objective.capsule]
+        assert kwargs["timeout_s"] >= duration
+        result = delegate(base, current, objective, **kwargs)
+        clock[0] += duration
+        return result
+
+    experiment.analyzer = analyzer
+    record = experiment.analyze(candidate, hypothesis="share the exact portfolio deadline")
+    assert [name for name, _ in execution] == ["smol", "tiny", "real-model", "lstm"]
+    assert dict(execution)["real-model"] == pytest.approx(
+        600 - durations["smol"] - durations["tiny"])
+    assert dict(execution)["real-model"] > 96.336
+    assert record["portfolio"]["members_ready"] == 4
+    assert [row["identity"]["capsule"] for row in record["portfolio"]["members"]] == [
+        "real-model", "tiny", "lstm", "smol"]
+    assert record["elapsed_seconds"] == pytest.approx(sum(durations.values()))
 
 
 def test_exact_baseline_emission_cache_reuses_identity_and_refuses_corruption(tmp_path):

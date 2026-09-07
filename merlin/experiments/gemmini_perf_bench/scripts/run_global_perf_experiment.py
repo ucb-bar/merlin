@@ -1440,67 +1440,55 @@ class GlobalPerfExperiment:
         member_results: list[tuple[dict[str, Any], dict[str, Any], Mapping[str, Any] | None,
                                    dict[str, Any], float] | None] = [
             None for _ in self.portfolio_sentinels]
-        if concurrency["admitted_workers"] > 1:
-            # All workers receive the same outer deadline. Their budgets overlap in wall time but
-            # remain individually bounded; deterministic portfolio order is restored on collection.
-            planning = [portfolio_member_analysis_allocation(
-                remaining, self.portfolio_sentinels[index:],
-                emission_seconds_by_capsule_sha256=costs)
-                for index in range(len(self.portfolio_sentinels))]
-            allocations = [{**row,
-                "planning_allocated_seconds": row["allocated_seconds"],
-                "allocated_seconds": remaining,
-                "policy": "concurrent_shared_deadline_with_measured_cost_admission"}
-                for row in planning]
-            deadline = time.monotonic() + remaining
-            cost_estimates = self._portfolio_analysis_cost_estimates()
-            schedule = portfolio_concurrent_schedule(
-                cost_estimates, concurrency["admitted_workers"])
-            concurrency["schedule"] = schedule
-            concurrency["submission_order_capsule_sha256"] = [
-                self.portfolio_sentinels[index].capsule_sha256
-                for index in schedule["submission_order"]]
+        # Worker count one and worker count N use the same absolute portfolio deadline.  The old
+        # one-worker fallback assigned a local weighted slice to each declared-order member; a
+        # long-running member could be killed even though the portfolio still had ample time.
+        # LPT scheduling still bounds total wall time and gives long observed members
+        # first access to the deadline.  Each queued member receives the exact remaining outer
+        # budget when it actually starts; results are restored to declared portfolio order below.
+        planning = [portfolio_member_analysis_allocation(
+            remaining, self.portfolio_sentinels[index:],
+            emission_seconds_by_capsule_sha256=costs)
+            for index in range(len(self.portfolio_sentinels))]
+        deadline = time.monotonic() + remaining
+        cost_estimates = self._portfolio_analysis_cost_estimates()
+        schedule = portfolio_concurrent_schedule(
+            cost_estimates, concurrency["admitted_workers"])
+        concurrency["schedule"] = schedule
+        concurrency["submission_order_capsule_sha256"] = [
+            self.portfolio_sentinels[index].capsule_sha256
+            for index in schedule["submission_order"]]
 
-            def analyze_index(index: int):
-                member_started = time.monotonic()
-                timeout = deadline - member_started
-                result = self._analyze_portfolio_member(
-                    submitted, candidate_sha256=after,
-                    sentinel=self.portfolio_sentinels[index], timeout_s=timeout,
-                    scope=scope, primary=index == 0,
-                    analyzer_override=self._member_analyzer())
-                return (*result, allocations[index], time.monotonic() - member_started)
+        def analyze_index(index: int):
+            member_started = time.monotonic()
+            timeout = max(0.0, deadline - member_started)
+            allocation = {**planning[index],
+                "planning_allocated_seconds": planning[index]["allocated_seconds"],
+                "allocated_seconds": timeout,
+                "policy": "shared_portfolio_deadline_with_measured_cost_lpt_admission"}
+            result = self._analyze_portfolio_member(
+                submitted, candidate_sha256=after,
+                sentinel=self.portfolio_sentinels[index], timeout_s=timeout,
+                scope=scope, primary=index == 0,
+                analyzer_override=self._member_analyzer())
+            return (*result, allocation, time.monotonic() - member_started)
 
-            executor = concurrent.futures.ThreadPoolExecutor(
-                max_workers=concurrency["admitted_workers"],
-                thread_name_prefix="phase2-model")
-            futures = {index: executor.submit(analyze_index, index)
-                       for index in schedule["submission_order"]}
-            try:
-                for index in range(len(self.portfolio_sentinels)):
-                    future = futures[index]
-                    wait = max(0.01, deadline - time.monotonic() + 1.0)
-                    member_results[index] = future.result(timeout=wait)
-            except Exception:
-                for future in futures.values():
-                    future.cancel()
-                raise
-            finally:
-                executor.shutdown(wait=True, cancel_futures=True)
-        else:
-            allocations = []
-            for index, sentinel in enumerate(self.portfolio_sentinels):
-                member_started = time.monotonic()
-                remaining = budget_seconds - (member_started - started)
-                allocation = portfolio_member_analysis_allocation(
-                    remaining, self.portfolio_sentinels[index:],
-                    emission_seconds_by_capsule_sha256=self._baseline_emission_costs())
-                result = self._analyze_portfolio_member(
-                    submitted, candidate_sha256=after, sentinel=sentinel,
-                    timeout_s=allocation["allocated_seconds"], scope=scope,
-                    primary=index == 0, analyzer_override=self._member_analyzer())
-                member_results[index] = (*result, allocation, time.monotonic() - member_started)
-                allocations.append(allocation)
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=concurrency["admitted_workers"],
+            thread_name_prefix="phase2-model")
+        futures = {index: executor.submit(analyze_index, index)
+                   for index in schedule["submission_order"]}
+        try:
+            for index in range(len(self.portfolio_sentinels)):
+                future = futures[index]
+                wait = max(0.01, deadline - time.monotonic() + 1.0)
+                member_results[index] = future.result(timeout=wait)
+        except Exception:
+            for future in futures.values():
+                future.cancel()
+            raise
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
         if any(row is None for row in member_results):
             raise RuntimeError("portfolio analysis did not return every deterministic member result")
         primary = member_results[0]
@@ -1621,10 +1609,7 @@ class GlobalPerfExperiment:
             "members_ready": readiness["portfolio_members_ready"],
             "members_total": readiness["portfolio_members_total"],
             "selection": readiness["selection"],
-            "analysis_allocation_policy": (
-                "concurrent_shared_deadline_with_measured_cost_admission"
-                if concurrency["admitted_workers"] > 1 else
-                "bounded_equal_chance_floor_plus_measured_emission_cost_with_rolling_surplus"),
+            "analysis_allocation_policy": "shared_portfolio_deadline_with_measured_cost_lpt_admission",
             "analysis_concurrency": concurrency,
             "full_model_simulation_allowed": False,
         }
