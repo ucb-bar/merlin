@@ -146,7 +146,7 @@ def setup_experiment(tmp_path, *, verified=True, primary_interface_bytes=9, **ex
     return experiment, candidate, calls
 
 
-def test_full_graph_static_analysis_budget_is_distinct_from_authoring_and_probe_ceiling(tmp_path):
+def test_host_only_full_graph_and_authoring_budgets_are_distinct_from_probe_ceiling(tmp_path):
     experiment, candidate, calls = setup_experiment(tmp_path, timeout_s=1200)
 
     record = experiment.analyze(candidate, hypothesis="Exercise the host-only static ceiling")
@@ -160,7 +160,7 @@ def test_full_graph_static_analysis_budget_is_distinct_from_authoring_and_probe_
         G.run_global_agent_sequence(
             experiment, candidate, run_round=lambda *_args, **_kwargs: {},
             stage_root=tmp_path / "stage", max_rounds=1,
-            total_authoring_seconds=601, round_seconds=601)
+            total_authoring_seconds=1201, round_seconds=1201)
     (tmp_path / "too_long").mkdir()
     with pytest.raises(ValueError, match="1200-second host wall budget"):
         setup_experiment(tmp_path / "too_long", timeout_s=1201)

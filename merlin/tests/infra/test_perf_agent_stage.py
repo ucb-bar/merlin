@@ -12,6 +12,9 @@ import inspect
 import json
 import shlex
 import sys
+import threading
+import time
+import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -2340,6 +2343,60 @@ def test_a_refused_inner_command_still_gets_a_receipt_so_the_ledger_has_no_gap(t
     assert rows[0]["state"] == "rejected" and rows[0]["returncode"] != 0
     # And the ledger stays gapless: indices are exactly their positions.
     assert [r["index"] for r in rows] == list(range(len(rows)))
+
+
+def test_broker_shutdown_waits_for_an_inflight_request_before_receipts_are_sealed(
+        tmp_path, monkeypatch):
+    """Leaving ``serving`` is the receipt-ledger sealing boundary.
+
+    ``ThreadingHTTPServer`` uses daemon request threads by default.  That let the outer round chmod
+    the ledger read-only while a request handler was still returning from a timed-out whole-model
+    analysis.  The handler then failed to append its already allocated receipt, and the exact
+    transcript-to-receipt join correctly refused the entire round (portfolio v11, round 1).
+    """
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    action = PAS.BrokerAction("candidate-parse", ("tool",), (), "parse", True)
+    stream = tmp_path / "control" / "receipts.jsonl"
+    broker = PAS._Broker(
+        PAS.AgentSandboxPolicy(("bwrap",), (), "available_not_an_isolation_claim", True, True, True),
+        SimpleNamespace(), candidate, (action,), stream,
+        deadline=PAS.time.monotonic() + 60, max_calls=8, max_tool_seconds=10)
+    entered = threading.Event()
+    completed = threading.Event()
+
+    def slow_execute(_request):
+        entered.set()
+        time.sleep(1.25)
+        return {"returncode": 0, "stdout": "", "stderr": "", "elapsed_s": 1.25}
+
+    monkeypatch.setattr(broker, "execute", slow_execute)
+    client_error = []
+
+    started = time.monotonic()
+    with broker.serving() as (host, port):
+        request = urllib.request.Request(
+            f"http://{host}:{port}/execute", data=b'{}', method="POST",
+            headers={"Content-Type": "application/json", "X-Perf-Token": broker.token})
+
+        def invoke():
+            try:
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    response.read()
+            except Exception as exc:  # noqa: BLE001 - surfaced below on the test thread
+                client_error.append(exc)
+            finally:
+                completed.set()
+
+        client = threading.Thread(target=invoke, daemon=True)
+        client.start()
+        assert entered.wait(timeout=2)
+    elapsed = time.monotonic() - started
+    client.join(timeout=2)
+
+    assert completed.is_set(), "broker context returned while an allocated request was still live"
+    assert client_error == []
+    assert elapsed >= 1.0
 
 
 def test_a_call_after_the_broker_deadline_gets_a_rejection_receipt(tmp_path):

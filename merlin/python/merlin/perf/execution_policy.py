@@ -13,8 +13,11 @@ from typing import Any, Mapping
 
 
 ITERATION_MAX_SECONDS = 600.0
+# Agent authoring and host-only whole-graph analysis do not execute a model.  Large global compiler
+# changes may need more than the reduced-witness simulation ceiling, so keep their bound separate.
+GLOBAL_AUTHORING_ROUND_MAX_SECONDS = 1200.0
 # Full-graph compilation and static accounting never execute the model.  Keep their host deadline
-# separate from the reduced-witness simulation/authoring limit: large portfolio members can need
+# separate from the reduced-witness simulation limit: large portfolio members can need
 # more than ten minutes to lower and audit even though no simulator is involved.
 FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS = 1200.0
 STATIC_PLANNER_MAX_SECONDS = 300.0

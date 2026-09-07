@@ -5385,6 +5385,16 @@ class _Broker:
     def serving(self) -> Iterator[tuple[str, int]]:
         owner = self
 
+        class ReceiptJoiningHTTPServer(ThreadingHTTPServer):
+            # A return from this context is the host's receipt-ledger sealing boundary.  The
+            # stdlib default is daemon_threads=True, so ThreadingMixIn.server_close() otherwise
+            # returns with allocated execute requests still running.  The outer round then makes
+            # receipts.jsonl read-only and the late handler loses its receipt.  Every action is
+            # already bounded by the broker deadline, so joining here is finite and preserves the
+            # exact transcript-to-receipt contract.
+            daemon_threads = False
+            block_on_close = True
+
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
                 try:
@@ -5416,7 +5426,7 @@ class _Broker:
             def log_message(self, _format: str, *args: object) -> None:
                 return
 
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._server = ReceiptJoiningHTTPServer(("127.0.0.1", 0), Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         try:

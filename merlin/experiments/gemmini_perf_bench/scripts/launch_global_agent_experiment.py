@@ -17,7 +17,8 @@ import perf_agent_stage as PAS
 from merlin.benchharness import hash_tree
 from merlin.perf.host_resources import (HostResourcePolicy, HostResourceTripwire,
                                         sample_host_memory, summarize_samples, violations)
-from merlin.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS
+from merlin.perf.execution_policy import (FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS,
+                                          GLOBAL_AUTHORING_ROUND_MAX_SECONDS)
 from merlin.targetgen.target_experiment import load_target_experiment
 from run_global_perf_experiment import (FrozenPhase1, GlobalPerfExperiment, configure_global_analysis,
                                         run_global_agent_round, run_global_agent_sequence,
@@ -334,8 +335,11 @@ def main(argv: list[str] | None = None) -> int:
     if len(set(args.portfolio_capsule)) != len(args.portfolio_capsule):
         parser.error("portfolio-capsule members must be distinct")
     total_authoring = args.total_authoring_seconds if args.total_authoring_seconds is not None else args.round_seconds
-    if min(args.max_rounds, total_authoring, args.round_seconds) <= 0 or args.round_seconds > 600:
-        parser.error("authoring bounds must be positive and each round at most600 seconds")
+    if (min(args.max_rounds, total_authoring, args.round_seconds) <= 0
+            or args.round_seconds > GLOBAL_AUTHORING_ROUND_MAX_SECONDS):
+        parser.error(
+            "authoring bounds must be positive and each round at most "
+            f"{GLOBAL_AUTHORING_ROUND_MAX_SECONDS:g} seconds")
     if not 0 < args.iteration_seconds <= FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:
         parser.error(
             "iteration-seconds is the host-only full-graph static-analysis ceiling and must be "

@@ -26,6 +26,7 @@ import perf_agent_stage as PAS
 from merlin.benchharness import hash_tree
 from merlin.perf.execution_policy import (
     FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS,
+    GLOBAL_AUTHORING_ROUND_MAX_SECONDS,
     ITERATION_MAX_SECONDS,
 )
 from merlin.perf.mechanism_probe import ProbeBinding, ProbeObservation, require_probe_admission
@@ -3649,7 +3650,8 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
     telemetry. Setup/analysis wall time is separately retained by each iteration. A checkpoint
     certifies structural/provenance review, never a measured global improvement.
     """
-    if (min(max_rounds, total_authoring_seconds, round_seconds) <= 0 or round_seconds > 600
+    if (min(max_rounds, total_authoring_seconds, round_seconds) <= 0
+            or round_seconds > GLOBAL_AUTHORING_ROUND_MAX_SECONDS
             or on_round_failure not in ("stop", "resume-last-checkpoint")):
         raise ValueError("invalid sustained global authoring bounds or continuation policy")
     experiment._check_inputs()
