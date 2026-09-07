@@ -443,6 +443,41 @@ GRADE_WORKER_BYTES = 256 * 1024 * 1024
 #: grade that took every core would starve both. Named here so it is arguable rather than buried.
 GRADE_HOST_SHARE = 0.75
 
+#: Workers a grade keeps even on a host that is already saturated. The load bound below is a COURTESY
+#: -- it yields cores to other people -- and a courtesy taken to its limit stops the experiment
+#: entirely. This is the floor that keeps a grade making progress; it deliberately does NOT override
+#: the memory bound, which is physical rather than polite.
+GRADE_MIN_WORKERS = 2
+
+
+def _cores_in_use() -> "float | None":
+    """CPUs currently occupied by work that is not this grade, or ``None`` where it cannot be read.
+
+    THE HOST IS SHARED, AND THE STATIC BOUNDS CANNOT SEE THAT. Core count and total memory say what
+    the machine could do when idle; they say nothing about the colleague already running a build on
+    it. Measured on this host while these experiments were being profiled: a 1-minute load of 37.94
+    against 48 cores, at which point the static bounds would still have handed a grade 36 workers --
+    74 runnable tasks on 48 cores, which is how a shared machine gets driven into swap and thrash by
+    someone who only meant to grade a corpus.
+
+    Two readings, the larger winning, because they fail in opposite directions. The 1-minute load
+    average is smoothed, so it survives a brief dip but lags a burst by up to a minute. ``nr_running``
+    from the same file is instantaneous, so it catches a burst the average has not absorbed yet but is
+    a single noisy sample. One of this process's own runnable tasks is discounted from the
+    instantaneous figure, since a grade should not back off on account of itself.
+
+    Load average counts uninterruptible sleepers as well as runnable tasks, so a host busy with I/O
+    reads as loaded even where CPUs are idle. That is the conservative direction and is left alone.
+    """
+    try:
+        # "<1min> <5min> <15min> <running>/<total> <lastpid>" -- split structurally, no pattern match.
+        fields = Path("/proc/loadavg").read_text().split()
+        load1 = float(fields[0])
+        running, _, _ = fields[3].partition("/")
+        return max(load1, float(running) - 1.0)
+    except (OSError, ValueError, IndexError):
+        return None
+
 
 def _available_memory_bytes() -> "int | None":
     """What the kernel says is actually available, or ``None`` where it does not say.
@@ -467,17 +502,27 @@ def default_grade_workers(n_capsules: int | None = None) -> int:
     """How many per-capsule workers to fan out — the per-capsule build+sim runs are independent, so
     grading N capsules serially wastes wall-clock.
 
-    Bounded by three things, the tightest winning. Never more than the number of capsules, and always
-    overridable via ``MERLIN_GRADE_WORKERS``.
+    Bounded by four things, the tightest winning. Never more than the number of capsules, and always
+    overridable via ``MERLIN_GRADE_WORKERS`` — an operator who names a number gets it.
 
     * **CPUs this process may actually run on** — affinity, not the machine's core count, so a
       cgroup-limited container is bounded by what it was given rather than by what it can see.
-    * **Memory**, at the MEASURED per-worker footprint above. A real bound on a small host; not one
-      here, where 125 GB would carry hundreds of workers.
-    * **A share of the host left free** (:data:`GRADE_HOST_SHARE`). This one is a POLICY, not a
-      measurement, and is written as such: a grade runs underneath a live agent session that is
-      compiling and running its own tools on the same machine, and that machine is shared with other
-      people's work. Taking every core would starve both.
+    * **Memory**, at the MEASURED per-worker footprint above, against what the kernel says is
+      AVAILABLE right now — so another tenant's resident set already narrows this. A real bound on a
+      small host; not one here, where 125 GB would carry hundreds of workers.
+    * **CPUs not already busy** (:func:`_cores_in_use`). The three bounds above describe an idle
+      machine; this one describes the machine as it is. Without it a grade sizes itself to the
+      hardware and lands on top of whoever is already using it.
+    * **A share of the host left free** (:data:`GRADE_HOST_SHARE`) — a POLICY, not a measurement, and
+      written as such: a grade runs underneath a live agent session compiling and running its own
+      tools on the same machine, and that machine is shared. Taking every core would starve both.
+
+    The load bound is a courtesy and so carries a floor (:data:`GRADE_MIN_WORKERS`): a saturated host
+    narrows a grade rather than stopping it. The memory bound carries no floor, because running out of
+    memory is not a matter of manners.
+
+    Re-read once per grade, which is the granularity at which a grade can act on it — a pool already
+    fanned out is not resized if the host fills up underneath it.
 
     The former cap of 16 was a literal with no derivation behind it, and on the 48-core host these
     experiments run on it left 30 cores idle through every grade — measured mid-run at a load average
@@ -493,6 +538,11 @@ def default_grade_workers(n_capsules: int | None = None) -> int:
         except AttributeError:           # not every platform exposes affinity; the count is the bound
             cpus = os.cpu_count() or 4
         w = max(1, min(cpus - 2, int(cpus * GRADE_HOST_SHARE)))
+        busy = _cores_in_use()
+        if busy is not None:
+            # The floor applies to THIS bound only: yielding cores to other people is courtesy, and a
+            # courtesy must not be able to halt the experiment.
+            w = min(w, max(GRADE_MIN_WORKERS, int(cpus - busy)))
         available = _available_memory_bytes()
         if available is not None:
             raw = os.environ.get("MERLIN_GRADE_WORKER_BYTES", "")
