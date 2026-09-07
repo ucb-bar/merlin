@@ -56,7 +56,6 @@ from ..llvmlower.prov_cse import ensure_registered as _register_cse_through_prov
 from ..llvmlower.perop_blocks import ensure_registered as _register_conv_register_block
 from ..llvmlower.im2col_pack import ensure_registered as _register_im2col_panel_pack
 from ..llvmlower.quant_round import ensure_registered as _register_fuse_quantize_round_convert
-from ..llvmlower.requant_fuse import ensure_registered as _register_fuse_requant_into_contraction
 
 _register_fold_weight_transpose()
 _register_prepack_weight_layout()
@@ -78,11 +77,6 @@ _register_im2col_panel_pack()
 # lever's own module is imported by nothing on the proposal path, so without this line `_composes`
 # would swallow its KeyError and the lever would be INVISIBLE rather than declined.
 _register_fuse_quantize_round_convert()
-# The fused requant epilogue. Registered HERE for the reason the block above gives, and additionally
-# hooked by NAME in `impr_features._try_lazy_register`: `k1.build_k1_binary -> normalize` imports no
-# proposer at all, and the lowering subprocess re-imports `impr_features` fresh, so neither sees a
-# registration this module made.
-_register_fuse_requant_into_contraction()
 
 # Whole-model HARDCODE levers, most-impactful first by measured byte-traffic / e2e attribution. Each
 # entry is (feature_name, is_full_schedule_replacement). These are the levers a per-facet CCA diff
@@ -229,46 +223,6 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # exists: an amplification factor is not a speedup, and this repo has twice ranked a lever on
     # flawless static evidence that measured SLOWER (`fold_weight_transpose` 1.09x,
     # `vectorize_non_contraction_generics` 1.28x).
-    # THE SECOND PASS OVER THE ACCUMULATOR, which is what every other lever on this list only makes
-    # cheaper. The W8A8 datapath emits the requantize epilogue as a separate all-parallel op over the
-    # contraction's whole i32 output, so the per-op schedule vectorizes the contraction, writes every
-    # MR x NR accumulator tile out to a model-sized i32 tensor, and then makes a COMPLETE second pass
-    # over that tensor to convert and scale it. CENSUS on the prepared modules (host analysis): 49 of
-    # 49 lstmnetvit int8 contractions and 53 of 53 resnet50 int8 contractions have exactly one
-    # consumer and it is the requant, with the same three-op body every time -- so this is not a
-    # special case, it is the whole int8 datapath. 2.97 MB (lstmnetvit) and 44.46 MB (resnet50) of i32
-    # accumulator are materialized per forward, i.e. twice that in write-then-read round trip.
-    # This lever tiles the EPILOGUE and fuses the contraction and its accumulator fill into that tile
-    # loop, so each output's convert-and-scale runs on the tile that just produced it. Ranked here --
-    # below the levers with board numbers, above the two whose evidence is also emitted-code-only --
-    # because it is arithmetic-identical (same reduction order, same operands) and its static case is
-    # a whole pass over the model's largest intermediate, but ITS WALL IS UNMEASURED. Requires
-    # `perop_register_block` in the same set (that request's tagger applies the pair tags); named
-    # alone it refuses rather than building the baseline.
-    # RANKED IN THE _vec SPELLING, measured. The lever has two points -- fuse the epilogue into the
-    # contraction's tile loop and leave that tile's loop form to clang, or additionally vectorize the
-    # tile at MR x NR -- and they do NOT agree in sign. Linked ELF, `forward`, per-op blocking as the
-    # common base, instructions / vector instructions:
-    #     lstmnetvit int8   base 79,751/17,330   plain 84,170/17,467   _vec 75,883/17,657
-    #     small_llama int8  base 56,900/13,734   plain 54,061/12,803   _vec 51,006/13,259
-    # and on the SEVEN-LEVER stack the board is tuning (prepack_weight_layout, perop_register_block,
-    # promote_buffers_to_stack, expand_memref_copy, cse_through_provenance,
-    # fuse_elementwise_post_contraction, quantize_before_gather), lstmnetvit int8:
-    #     stack 59,520/16,580   + plain 59,548/17,387   + _vec 56,389/16,843
-    # i.e. -5.3% instructions at +1.6% vector instructions, libm call sites unchanged at 42, and the
-    # model-sized i32 zero-fills gone (`memset` sites 67 -> 38). That profile is the one to compare
-    # against the four-lever epilogue stack that regressed on this same model (+17.9% instructions,
-    # +4.4% wall) and against `vectorize_non_contraction_generics` (4.9x vector instructions, 1.28x
-    # slower): this lever removes a PASS, it does not trade instructions for vector width.
-    # so the plain point is model-dependent in sign (+5.5% / -5.0%) and the _vec point is -4.9% and
-    # -10.4%. That the RESHAPE is the paying half is the opposite of the amax result in
-    # `llvmlower/reduce_vec.py`, and it is not a contradiction: fusing the epilogue is itself what
-    # SHORTENS its loop (the trip count goes from the whole M x N output to one MR x NR tile), so
-    # leaving it to clang hands the backend a worse loop than it had. The plain point stays registered
-    # as the ATTRIBUTION CONTROL -- an ablation that drops only the reshape is the only way to price
-    # the two halves apart on the board -- but ranking it would spend beam width on the arm whose
-    # static case is worse on the model this stack is being tuned for.
-    ("fuse_requant_into_contraction_vec", False),         # epilogue: 2nd full pass over i32 acc -> in-tile
     ("im2col_panel_pack", False),                         # im2col: [K][M] -> [M/NR][K][NR] packed panels
     # The convolutional half of the same tail, and the only lever here that DELETES an intermediate
     # tensor rather than scheduling one better. model2MLIR expands every conv into im2col + matmul

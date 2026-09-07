@@ -29,31 +29,20 @@ from merlin.common.paths import merlin_dir
 
 
 def _lever_modules() -> dict[str, str]:
-    """Lever name -> module stem, parsed from the sources (the same rule the resolver derives).
-
-    ``FEATURE`` and ``<X>_FEATURE`` both count, because a module may own more than one point:
-    ``requant_fuse`` registers the traversal removal and the variant that also reshapes the epilogue
-    loop, so the board can price the reshape separately, and ``perop_blocks`` owns
-    ``CONV_ARM_FEATURE``. Restated here rather than imported from the resolver on purpose -- a mirror
-    that called the thing it mirrors would pass for any rule at all.
-    """
+    """FEATURE -> module stem, parsed from the sources (the same rule the resolver derives)."""
     out: dict[str, str] = {}
     for src in sorted((merlin_dir() / "python" / "merlin" / "llvmlower").glob("*.py")):
         tree = ast.parse(src.read_text(encoding="utf-8"))
-        features: list[str] = []
-        has_ensure = False
+        feature, has_ensure = None, False
         for node in tree.body:
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) \
                     and isinstance(node.value.value, str) \
-                    and any(isinstance(t, ast.Name)
-                            and (t.id == "FEATURE" or t.id.endswith("_FEATURE"))
-                            for t in node.targets):
-                features.append(node.value.value)
+                    and any(isinstance(t, ast.Name) and t.id == "FEATURE" for t in node.targets):
+                feature = node.value.value
             elif isinstance(node, ast.FunctionDef) and node.name == "ensure_registered":
                 has_ensure = True
-        if has_ensure:
-            for feature in features:
-                out.setdefault(feature, src.stem)
+        if feature and has_ensure:
+            out[feature] = src.stem
     return out
 
 
