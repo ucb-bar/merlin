@@ -1238,6 +1238,10 @@ class GlobalPerfExperiment:
         self.mechanism_catalog: dict[str, Any] | None = None
         self.mechanism_catalog_binding: dict[str, Any] | None = None
         self._mechanism_catalog_binding_sha256: str | None = None
+        self.mechanism_work_order: dict[str, Any] | None = None
+        self.mechanism_work_order_binding: dict[str, Any] | None = None
+        self._mechanism_work_order_binding_sha256: str | None = None
+        self.mechanism_work_order_analysis_binding: dict[str, Any] | None = None
         self._active_mechanism_round: dict[str, Any] | None = None
         self.output.mkdir(parents=True)
         if reference_raw is not None:
@@ -1506,6 +1510,49 @@ class GlobalPerfExperiment:
                 raise ValueError("host-frozen compiler mechanism catalog changed")
             validate_mechanism_catalog(
                 self.mechanism_catalog, self.edit_scope_seed, self.edit_contract)
+        if self.mechanism_work_order_binding is not None:
+            binding = self.mechanism_work_order_binding
+            frozen = Path(binding["frozen_path"])
+            source = Path(binding["source_path"])
+            receipt = self.output / "compiler_mechanism_work_order_receipt.json"
+            if (self.mechanism_catalog_binding is None or self.mechanism_work_order is None
+                    or self._mechanism_work_order_binding_sha256 is None
+                    or binding.get("sha256") != self._mechanism_work_order_binding_sha256
+                    or binding.get("sha256") != PAS._document_sha256({
+                        key: value for key, value in binding.items() if key != "sha256"})
+                    or binding.get("mechanism_catalog_binding_sha256")
+                    != self._mechanism_catalog_binding_sha256
+                    or binding.get("initial_candidate_sha256")
+                    != self.edit_scope_binding["initial_candidate_sha256"]
+                    or binding.get("portfolio_sha256") != self.portfolio_identity_sha256
+                    or binding.get("work_order") != self.mechanism_work_order
+                    or PAS._document_sha256(self.mechanism_work_order)
+                    != binding.get("work_order_document_sha256")
+                    or frozen != self.output / "compiler_mechanism_work_order.json"
+                    or frozen.is_symlink() or not frozen.is_file()
+                    or frozen.stat().st_mode & 0o222
+                    or PAS._sha256_file(frozen) != binding.get("canonical_bytes_sha256")
+                    or PAS._mapping_file(frozen) != self.mechanism_work_order
+                    or receipt.is_symlink() or not receipt.is_file()
+                    or PAS._mapping_file(receipt) != binding
+                    or not source.is_absolute() or source.resolve() != source
+                    or source.is_symlink() or not source.is_file()
+                    or source.stat().st_mode & 0o222
+                    or PAS._sha256_file(source) != binding.get("source_file_sha256")):
+                raise ValueError("host-frozen compiler mechanism work order changed")
+            self._validate_mechanism_work_order(
+                self.mechanism_work_order,
+                candidate_sha256=self.edit_scope_binding["initial_candidate_sha256"])
+            if self.mechanism_work_order_analysis_binding is not None:
+                analysis_receipt = self.output / "compiler_mechanism_work_order_analysis.json"
+                analysis_binding = self.mechanism_work_order_analysis_binding
+                if (analysis_binding.get("sha256") != PAS._document_sha256({
+                        key: value for key, value in analysis_binding.items() if key != "sha256"})
+                        or analysis_binding.get("work_order_binding_sha256")
+                        != self._mechanism_work_order_binding_sha256
+                        or analysis_receipt.is_symlink() or not analysis_receipt.is_file()
+                        or PAS._mapping_file(analysis_receipt) != analysis_binding):
+                    raise ValueError("compiler mechanism work-order analysis binding changed")
         if self.phase1 is not None and self.phase1.verify(self.baseline) != self.phase1_binding:
             raise ValueError("frozen Phase-1 qualification or waivers changed during global search")
         if (self.target_descriptor is not None
@@ -1626,6 +1673,189 @@ class GlobalPerfExperiment:
         self._check_inputs()
         return copy.deepcopy(binding)
 
+    def _validate_mechanism_work_order(
+            self, document: Mapping[str, Any], *, candidate_sha256: str) -> dict[str, Any]:
+        """Validate the host's executable per-portfolio mechanism assignment."""
+        if document.get("schema") != "host_prepared_mechanism_work_order_v1":
+            raise ValueError("compiler mechanism work order has an unsupported schema")
+        declared = document.get("sha256")
+        if (not PAS._is_sha256(declared)
+                or PAS._document_sha256({key: value for key, value in document.items()
+                                         if key != "sha256"}) != declared):
+            raise ValueError("compiler mechanism work-order document hash changed")
+        if self.mechanism_catalog is None or self.edit_contract is None:
+            raise ValueError("compiler mechanism work order requires the frozen catalog and authority")
+        mechanisms = self.mechanism_catalog.get("mechanisms")
+        mechanism_id = document.get("mechanism_id")
+        if (not isinstance(mechanisms, list) or len(mechanisms) != 1
+                or mechanisms[0].get("id") != mechanism_id):
+            raise ValueError("compiler mechanism work order does not exactly match the active catalog")
+        if (document.get("catalog_sha256") != self.mechanism_catalog.get("sha256")
+                or document.get("contract_sha256") != self.edit_contract.get("sha256")):
+            raise ValueError("compiler mechanism work-order catalog or contract binding changed")
+        if (document.get("initial_candidate_sha256") != candidate_sha256
+                or document.get("round_start_candidate_sha256") != candidate_sha256):
+            raise ValueError("compiler mechanism work-order candidate binding changed")
+        if (document.get("portfolio_sha256") != self.portfolio_identity_sha256
+                or document.get("ordered_portfolio") != self.portfolio_identity["members"]):
+            raise ValueError("compiler mechanism work-order portfolio binding changed")
+        if document.get("status") != "ready_for_authoring":
+            raise ValueError("compiler mechanism work order is not host-ready for authoring")
+        # Source-operation indices are graph-local and may repeat.  A flat list can silently bind
+        # one model's index to another model, so only exact ordered per-member rows are executable.
+        if document.get("source_operation_ids") not in (None, []):
+            raise ValueError("compiler mechanism work order uses ambiguous flat source-operation IDs")
+        rows = document.get("portfolio_site_bindings")
+        if not isinstance(rows, list) or len(rows) != len(self.portfolio_identity["members"]):
+            raise ValueError("compiler mechanism work order lacks every portfolio site binding")
+        any_site = False
+        for expected, row in zip(self.portfolio_identity["members"], rows, strict=True):
+            if not isinstance(row, Mapping):
+                raise ValueError("compiler mechanism work-order site binding is malformed")
+            hashes = ("compiler_sha256", "source_sha256", "plan_digest",
+                      "candidate_command_buffer_sha256", "candidate_lowered_sha256")
+            operation_ids, chains = row.get("source_operation_ids"), row.get("chains")
+            if (row.get("capsule") != expected["capsule"]
+                    or row.get("capsule_sha256") != expected["capsule_sha256"]
+                    or row.get("compiler_sha256") != candidate_sha256
+                    or any(not PAS._is_sha256(row.get(name)) for name in hashes)
+                    or not isinstance(row.get("status"), str) or not row["status"]
+                    or not isinstance(row.get("inventory"), Mapping)
+                    or not isinstance(operation_ids, list) or not isinstance(chains, list)
+                    or any(not isinstance(value, (str, int)) or isinstance(value, bool)
+                           or (isinstance(value, str) and not value)
+                           or (isinstance(value, int) and value < 0) for value in operation_ids)
+                    or len({(type(value).__name__, value) for value in operation_ids})
+                    != len(operation_ids)
+                    or any(not isinstance(chain, Mapping) for chain in chains)):
+                raise ValueError("compiler mechanism work-order per-member identity/hash/site binding changed")
+            any_site = any_site or bool(operation_ids) or bool(chains)
+        if not any_site:
+            raise ValueError("compiler mechanism work order has no host-bound source sites")
+        return copy.deepcopy(dict(document))
+
+    def freeze_mechanism_work_order(
+            self, source: Path, source_sha256: str, *, candidate: Path) -> dict[str, Any]:
+        """Freeze one immutable, executable, per-member host work order before authoring."""
+        source = Path(source)
+        if self.mechanism_catalog_binding is None:
+            raise ValueError("compiler mechanism work order requires a frozen mechanism catalog")
+        if self.iterations or self.mechanism_work_order_binding is not None:
+            raise ValueError("compiler mechanism work order must be frozen once before candidate execution")
+        if (not PAS._is_sha256(source_sha256) or not source.is_absolute()
+                or source.resolve() != source or source.is_symlink() or not source.is_file()
+                or source.stat().st_mode & 0o222
+                or PAS._sha256_file(source) != source_sha256):
+            raise ValueError("compiler mechanism work order is not an exact immutable absolute file")
+        if (source.is_relative_to(self.edit_scope_seed.resolve())
+                or source.is_relative_to(self.edit_scope_initial_source)):
+            raise ValueError("compiler mechanism work order cannot originate in candidate-editable source")
+        self.validate_candidate_scope(candidate)
+        candidate_sha256 = hash_tree(candidate)["sha256"]
+        raw = source.read_bytes()
+        if len(raw) > 8_000_000:
+            raise ValueError("compiler mechanism work order exceeds the host metadata bound")
+        try:
+            document = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("compiler mechanism work order must be one JSON object") from exc
+        if not isinstance(document, Mapping):
+            raise ValueError("compiler mechanism work order must be one JSON object")
+        validated = self._validate_mechanism_work_order(
+            document, candidate_sha256=candidate_sha256)
+        canonical = PAS._canonical_json(validated)
+        frozen = self.output / "compiler_mechanism_work_order.json"
+        with frozen.open("xb") as stream:
+            stream.write(canonical)
+        frozen.chmod(0o444)
+        body = {
+            "schema": "host_frozen_compiler_mechanism_work_order_v1",
+            "source_path": str(source), "source_file_sha256": source_sha256,
+            "frozen_path": str(frozen),
+            "canonical_bytes_sha256": PAS._sha256(canonical),
+            "work_order_document_sha256": PAS._document_sha256(validated),
+            "work_order_declared_sha256": validated["sha256"],
+            "mechanism_catalog_binding_sha256": self._mechanism_catalog_binding_sha256,
+            "initial_candidate_sha256": candidate_sha256,
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "work_order": validated,
+            "permission_scope": "host work assignment only; grants no edit or measurement authority",
+        }
+        binding = {**body, "sha256": PAS._document_sha256(body)}
+        self.mechanism_work_order = validated
+        self.mechanism_work_order_binding = binding
+        self._mechanism_work_order_binding_sha256 = binding["sha256"]
+        self._write("compiler_mechanism_work_order_receipt.json", binding)
+        self._check_inputs()
+        return copy.deepcopy(binding)
+
+    def bind_mechanism_work_order_analysis(
+            self, record: Mapping[str, Any]) -> dict[str, Any] | None:
+        """Bind every assigned graph-local site row to the exact current static artifacts."""
+        if self.mechanism_work_order_binding is None:
+            return None
+        self._check_inputs()
+        if (record.get("candidate_sha256")
+                != self.mechanism_work_order["round_start_candidate_sha256"]
+                or (record.get("portfolio") or {}).get("portfolio_sha256")
+                != self.portfolio_identity_sha256):
+            raise ValueError("compiler mechanism work order is not bound to the current portfolio analysis")
+        members = []
+        for index, (sentinel, site) in enumerate(zip(
+                self.portfolio_sentinels,
+                self.mechanism_work_order["portfolio_site_bindings"], strict=True)):
+            analysis = self._portfolio_member_analysis(record, index)
+            plan = (analysis.get("diagnostics") or {}).get("verified_global_plan_emission") or {}
+            emission = analysis.get("emission") or {}
+            expected = {
+                "compiler_sha256": record.get("candidate_sha256"),
+                "source_sha256": plan.get("source_sha256"),
+                "plan_digest": plan.get("plan_digest"),
+                "candidate_command_buffer_sha256": emission.get(
+                    "candidate_command_buffer_sha256"),
+                "candidate_lowered_sha256": emission.get("candidate_lowered_sha256"),
+            }
+            if (analysis.get("candidate_sha256") != record.get("candidate_sha256")
+                    or (analysis.get("workload") or {}).get("capsule_sha256")
+                    != sentinel.capsule_sha256
+                    or any(site.get(name) != value or not PAS._is_sha256(value)
+                           for name, value in expected.items())):
+                raise ValueError(
+                    "compiler mechanism work-order member evidence differs from current analysis")
+            members.append({
+                "capsule": sentinel.capsule, "capsule_sha256": sentinel.capsule_sha256,
+                **expected, "analysis_sha256": PAS._document_sha256(analysis),
+                "site_binding_sha256": PAS._document_sha256(site),
+            })
+        body = {
+            "schema": "compiler_mechanism_work_order_analysis_binding_v1",
+            "work_order_binding_sha256": self._mechanism_work_order_binding_sha256,
+            "candidate_sha256": record["candidate_sha256"],
+            "portfolio_sha256": self.portfolio_identity_sha256,
+            "iteration": record.get("iteration"),
+            "members": members,
+        }
+        iteration = record.get("iteration")
+        iteration_path = self.output / f"iteration_{iteration:04d}.json" if isinstance(
+            iteration, int) and not isinstance(iteration, bool) else None
+        if (iteration_path is None or iteration_path.is_symlink()
+                or not iteration_path.is_file()
+                or PAS._mapping_file(iteration_path) != record):
+            raise ValueError("compiler mechanism work order has no immutable analysis iteration")
+        body["iteration_record"] = {
+            "path": str(iteration_path.resolve()),
+            "sha256": PAS._sha256_file(iteration_path),
+        }
+        binding = {**body, "sha256": PAS._document_sha256(body)}
+        if self.mechanism_work_order_analysis_binding is not None:
+            if binding != self.mechanism_work_order_analysis_binding:
+                raise ValueError("compiler mechanism work-order analysis binding changed")
+            return copy.deepcopy(binding)
+        self.mechanism_work_order_analysis_binding = binding
+        self._write("compiler_mechanism_work_order_analysis.json", binding)
+        self._check_inputs()
+        return copy.deepcopy(binding)
+
     def begin_mechanism_round(self, candidate: Path, *, round_index: int) -> dict[str, Any] | None:
         """Capture immutable round-start bytes before an author receives the workspace."""
         if self.mechanism_catalog_binding is None:
@@ -1655,6 +1885,7 @@ class GlobalPerfExperiment:
             "round_start_path": str(snapshot.resolve()),
             "compiler_dependencies": dependencies,
             "mechanism_catalog_sha256": self._mechanism_catalog_binding_sha256,
+            "mechanism_work_order_sha256": self._mechanism_work_order_binding_sha256,
             "edit_authority_sha256": PAS._document_sha256(self.edit_scope_binding),
         }
         receipt = self._write(f"mechanism_round_start_{round_index:04d}.json", binding)
@@ -1673,6 +1904,11 @@ class GlobalPerfExperiment:
         self._check_inputs()
         active = self._active_mechanism_round
         candidate_sha256 = hash_tree(candidate)["sha256"]
+        if (self.mechanism_work_order_binding is not None
+                and self.mechanism_work_order_analysis_binding is None
+                and (require_semantic_edit or active is None
+                     or candidate_sha256 != active.get("candidate_sha256"))):
+            raise ValueError("compiler mechanism work order has no current static-analysis binding")
         if active is None:
             if candidate_sha256 != self.edit_scope_binding["initial_candidate_sha256"]:
                 raise ValueError("edited compiler analysis has no immutable mechanism round start")
@@ -1707,6 +1943,9 @@ class GlobalPerfExperiment:
             "candidate_sha256": candidate_sha256,
             "candidate_compiler_dependencies": self._compiler_dependencies(candidate),
             "mechanism_catalog_binding_sha256": self._mechanism_catalog_binding_sha256,
+            "mechanism_work_order_binding_sha256": self._mechanism_work_order_binding_sha256,
+            "mechanism_work_order_analysis_sha256": (
+                self.mechanism_work_order_analysis_binding or {}).get("sha256"),
         })
         if require_semantic_edit and result["semantic_noop"]:
             result["status"] = "refused"
@@ -2389,6 +2628,9 @@ class GlobalPerfExperiment:
             "optimization_baseline_sha256": self.optimization_baseline_sha256,
             "optimization_baseline": copy.deepcopy(self.optimization_baseline_binding),
             "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "compiler_mechanism_work_order": copy.deepcopy(self.mechanism_work_order_binding),
+            "mechanism_work_order_analysis": copy.deepcopy(
+                self.mechanism_work_order_analysis_binding),
             "round_mechanism_attribution": {
                 "schema": "global_compiler_mechanism_seed_analysis_v1",
                 "status": "initial_seed", "candidate_sha256": candidate_sha256,
@@ -2647,6 +2889,9 @@ class GlobalPerfExperiment:
             "analysis_reuse": reuse,
             "exact_analysis_reused": True,
             "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "compiler_mechanism_work_order": copy.deepcopy(self.mechanism_work_order_binding),
+            "mechanism_work_order_analysis": copy.deepcopy(
+                self.mechanism_work_order_analysis_binding),
             "round_mechanism_attribution": copy.deepcopy(mechanism_attribution),
             "baseline_sha256": self.baseline_sha256,
             "optimization_baseline_sha256": self.optimization_baseline_sha256,
@@ -2940,6 +3185,9 @@ class GlobalPerfExperiment:
             "optimization_baseline_sha256": self.optimization_baseline_sha256,
             "optimization_baseline": copy.deepcopy(self.optimization_baseline_binding),
             "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "compiler_mechanism_work_order": copy.deepcopy(self.mechanism_work_order_binding),
+            "mechanism_work_order_analysis": copy.deepcopy(
+                self.mechanism_work_order_analysis_binding),
             "round_mechanism_attribution": copy.deepcopy(mechanism_attribution),
             "hypothesis": hypothesis, "analysis": analysis, "readiness": readiness,
             "historical_reference": copy.deepcopy(self.historical_reference),
@@ -4141,6 +4389,9 @@ class GlobalPerfExperiment:
             "machine_build_policy": copy.deepcopy(self.machine_build_policy),
             "compiler_edit_authority": self.edit_scope_binding if self.edit_contract is not None else None,
             "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "compiler_mechanism_work_order": copy.deepcopy(self.mechanism_work_order_binding),
+            "mechanism_work_order_analysis": copy.deepcopy(
+                self.mechanism_work_order_analysis_binding),
             "round_mechanism_attribution": copy.deepcopy(row.get("round_mechanism_attribution")),
             "compiler_dependencies": row["compiler_dependencies"],
             "cross_run_static_analysis_binding": row.get("cross_run_static_analysis_binding"),
@@ -4209,6 +4460,9 @@ class GlobalPerfExperiment:
             "machine_build_policy": copy.deepcopy(self.machine_build_policy),
             "compiler_edit_authority": self.edit_scope_binding if self.edit_contract is not None else None,
             "compiler_mechanism_catalog": copy.deepcopy(self.mechanism_catalog_binding),
+            "compiler_mechanism_work_order": copy.deepcopy(self.mechanism_work_order_binding),
+            "mechanism_work_order_analysis": copy.deepcopy(
+                self.mechanism_work_order_analysis_binding),
             "round_mechanism_attribution": copy.deepcopy(row.get("round_mechanism_attribution")),
             "compiler_dependencies": row["compiler_dependencies"],
             "cross_run_static_analysis_binding": row.get("cross_run_static_analysis_binding"),
@@ -4278,6 +4532,125 @@ def _verify_checkpoint_mechanism_catalog(
     validate_mechanism_catalog(catalog, initial, authority["contract"])
 
 
+def _verify_checkpoint_mechanism_work_order(
+        root: Path, binding: Mapping[str, Any] | None,
+        analysis_binding: Mapping[str, Any] | None,
+        catalog_binding: Mapping[str, Any] | None,
+        authority: Mapping[str, Any] | None,
+        portfolio: Mapping[str, Any] | None) -> None:
+    """Verify portable local work-order bytes and their exact initial-analysis receipt."""
+    if binding is None:
+        if analysis_binding is not None:
+            raise ValueError("checkpoint has work-order analysis without a work order")
+        return
+    if not all(isinstance(value, Mapping) for value in (
+            binding, catalog_binding, authority, portfolio)):
+        raise ValueError("checkpoint mechanism work order lacks its frozen identities")
+    body = {key: value for key, value in binding.items() if key != "sha256"}
+    frozen = root / "compiler_mechanism_work_order.json"
+    receipt = root / "compiler_mechanism_work_order_receipt.json"
+    work_order = binding.get("work_order")
+    rows = work_order.get("portfolio_site_bindings") if isinstance(work_order, Mapping) else None
+    members = portfolio.get("members")
+    catalog = catalog_binding.get("catalog")
+    mechanisms = catalog.get("mechanisms") if isinstance(catalog, Mapping) else None
+    if (binding.get("schema") != "host_frozen_compiler_mechanism_work_order_v1"
+            or binding.get("sha256") != PAS._document_sha256(body)
+            or binding.get("mechanism_catalog_binding_sha256") != catalog_binding.get("sha256")
+            or binding.get("initial_candidate_sha256")
+            != authority.get("initial_candidate_sha256")
+            or binding.get("portfolio_sha256") != PAS._document_sha256(portfolio)
+            or not isinstance(work_order, Mapping)
+            or PAS._document_sha256(work_order) != binding.get("work_order_document_sha256")
+            or work_order.get("sha256") != PAS._document_sha256({
+                key: value for key, value in work_order.items() if key != "sha256"})
+            or work_order.get("catalog_sha256")
+            != (catalog or {}).get("sha256")
+            or work_order.get("contract_sha256") != authority.get("contract", {}).get("sha256")
+            or work_order.get("initial_candidate_sha256")
+            != authority.get("initial_candidate_sha256")
+            or work_order.get("round_start_candidate_sha256")
+            != authority.get("initial_candidate_sha256")
+            or work_order.get("ordered_portfolio") != members
+            or work_order.get("portfolio_sha256") != PAS._document_sha256(portfolio)
+            or work_order.get("status") != "ready_for_authoring"
+            or work_order.get("source_operation_ids") not in (None, [])
+            or not isinstance(mechanisms, list) or len(mechanisms) != 1
+            or mechanisms[0].get("id") != work_order.get("mechanism_id")
+            or not isinstance(rows, list) or not isinstance(members, list)
+            or len(rows) != len(members)
+            or frozen.is_symlink() or not frozen.is_file() or frozen.stat().st_mode & 0o222
+            or PAS._sha256_file(frozen) != binding.get("canonical_bytes_sha256")
+            or PAS._mapping_file(frozen) != work_order
+            or receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_mode & 0o222
+            or PAS._mapping_file(receipt) != binding):
+        raise ValueError("checkpoint compiler mechanism work order changed")
+    for expected, row in zip(members, rows, strict=True):
+        operation_ids = row.get("source_operation_ids") if isinstance(row, Mapping) else None
+        chains = row.get("chains") if isinstance(row, Mapping) else None
+        hashes = ("compiler_sha256", "source_sha256", "plan_digest",
+                  "candidate_command_buffer_sha256", "candidate_lowered_sha256")
+        if (not isinstance(row, Mapping) or row.get("capsule") != expected.get("capsule")
+                or row.get("capsule_sha256") != expected.get("capsule_sha256")
+                or row.get("compiler_sha256") != authority.get("initial_candidate_sha256")
+                or any(not PAS._is_sha256(row.get(name)) for name in hashes)
+                or not isinstance(row.get("inventory"), Mapping)
+                or not isinstance(row.get("status"), str) or not row.get("status")
+                or not isinstance(operation_ids, list) or not isinstance(chains, list)
+                or any(not isinstance(chain, Mapping) for chain in chains)):
+            raise ValueError("checkpoint compiler mechanism work-order site binding changed")
+    if analysis_binding is None:
+        raise ValueError("checkpoint compiler mechanism work order lacks analyzed site bindings")
+    analysis_body = {key: value for key, value in analysis_binding.items() if key != "sha256"}
+    analysis_receipt = root / "compiler_mechanism_work_order_analysis.json"
+    initial_reference = analysis_binding.get("iteration_record")
+    initial_iteration = (root / f"iteration_{analysis_binding.get('iteration'):04d}.json"
+                         if isinstance(analysis_binding.get("iteration"), int)
+                         and not isinstance(analysis_binding.get("iteration"), bool) else None)
+    if (analysis_binding.get("schema")
+            != "compiler_mechanism_work_order_analysis_binding_v1"
+            or analysis_binding.get("sha256") != PAS._document_sha256(analysis_body)
+            or analysis_binding.get("work_order_binding_sha256") != binding.get("sha256")
+            or analysis_binding.get("portfolio_sha256") != PAS._document_sha256(portfolio)
+            or not isinstance(initial_reference, Mapping) or initial_iteration is None
+            or Path(initial_reference.get("path", "")).resolve() != initial_iteration.resolve()
+            or initial_iteration.is_symlink() or not initial_iteration.is_file()
+            or PAS._sha256_file(initial_iteration) != initial_reference.get("sha256")
+            or analysis_receipt.is_symlink() or not analysis_receipt.is_file()
+            or analysis_receipt.stat().st_mode & 0o222
+            or PAS._mapping_file(analysis_receipt) != analysis_binding):
+        raise ValueError("checkpoint compiler mechanism work-order analysis changed")
+    initial_record = PAS._mapping_file(initial_iteration)
+    bound_members = analysis_binding.get("members")
+    if (initial_record.get("candidate_sha256") != work_order.get("round_start_candidate_sha256")
+            or (initial_record.get("portfolio") or {}).get("portfolio_sha256")
+            != PAS._document_sha256(portfolio)
+            or not isinstance(bound_members, list) or len(bound_members) != len(members)):
+        raise ValueError("checkpoint compiler mechanism work-order initial analysis changed")
+    for index, (identity, site, bound) in enumerate(zip(
+            members, rows, bound_members, strict=True)):
+        analysis = (initial_record.get("analysis") if index == 0 else
+                    ((initial_record.get("portfolio") or {}).get("members") or [])[index].get(
+                        "analysis"))
+        plan = (analysis.get("diagnostics") or {}).get(
+            "verified_global_plan_emission") if isinstance(analysis, Mapping) else None
+        emission = analysis.get("emission") if isinstance(analysis, Mapping) else None
+        expected = {
+            "capsule": identity["capsule"], "capsule_sha256": identity["capsule_sha256"],
+            "compiler_sha256": initial_record.get("candidate_sha256"),
+            "source_sha256": (plan or {}).get("source_sha256"),
+            "plan_digest": (plan or {}).get("plan_digest"),
+            "candidate_command_buffer_sha256": (emission or {}).get(
+                "candidate_command_buffer_sha256"),
+            "candidate_lowered_sha256": (emission or {}).get("candidate_lowered_sha256"),
+            "analysis_sha256": PAS._document_sha256(analysis),
+            "site_binding_sha256": PAS._document_sha256(site),
+        }
+        if not isinstance(bound, Mapping) or any(bound.get(key) != value
+                                                  for key, value in expected.items()):
+            raise ValueError("checkpoint compiler mechanism work-order artifact binding changed")
+
+
 def consume_authoring_checkpoint(path: Path) -> dict[str, Any]:
     """Verify a blocked, exact portfolio checkpoint without granting promotion authority."""
     document = PAS._mapping_file(path)
@@ -4336,10 +4709,18 @@ def consume_authoring_checkpoint(path: Path) -> dict[str, Any]:
     portfolio = iteration.get("portfolio") or {}
     portfolio_identity = document.get("portfolio") or {}
     members, identities = portfolio.get("members"), portfolio_identity.get("members")
+    _verify_checkpoint_mechanism_work_order(
+        path.parent, document.get("compiler_mechanism_work_order"),
+        document.get("mechanism_work_order_analysis"),
+        document.get("compiler_mechanism_catalog"), authority, portfolio_identity)
     if (iteration.get("candidate_sha256") != document.get("candidate_sha256")
             or iteration.get("compiler_dependencies") != document.get("compiler_dependencies")
             or iteration.get("compiler_mechanism_catalog")
                 != document.get("compiler_mechanism_catalog")
+            or iteration.get("compiler_mechanism_work_order")
+                != document.get("compiler_mechanism_work_order")
+            or iteration.get("mechanism_work_order_analysis")
+                != document.get("mechanism_work_order_analysis")
             or iteration.get("round_mechanism_attribution")
                 != document.get("round_mechanism_attribution")
             or PAS._document_sha256(analysis) != document.get("analysis_sha256")
@@ -4450,8 +4831,16 @@ def consume_global_candidate(path: Path) -> dict[str, Any]:
     experiment_record = PAS._mapping_file(path.parent / "experiment.json")
     portfolio_identity = document.get("portfolio")
     portfolio = iteration.get("portfolio") or {}
+    _verify_checkpoint_mechanism_work_order(
+        path.parent, document.get("compiler_mechanism_work_order"),
+        document.get("mechanism_work_order_analysis"),
+        document.get("compiler_mechanism_catalog"), authority, portfolio_identity)
     if (iteration.get("compiler_mechanism_catalog")
             != document.get("compiler_mechanism_catalog")
+            or iteration.get("compiler_mechanism_work_order")
+                != document.get("compiler_mechanism_work_order")
+            or iteration.get("mechanism_work_order_analysis")
+                != document.get("mechanism_work_order_analysis")
             or iteration.get("round_mechanism_attribution")
             != document.get("round_mechanism_attribution")):
         raise ValueError("sealed compiler mechanism attribution changed")
@@ -5308,6 +5697,7 @@ def run_global_agent_round(
     mechanism_round_start = experiment.begin_mechanism_round(
         candidate, round_index=round_index)
     initial = experiment.analyze(candidate, hypothesis="Inspect the current complete-model global plan")
+    mechanism_work_order_analysis = experiment.bind_mechanism_work_order_analysis(initial)
     finalization_reserve_s = _agent_finalization_reserve_seconds(round_timeout_s)
     broker_window_s = round_timeout_s - finalization_reserve_s
     # The complete portfolio can legitimately take longer than the entire Codex round.  It cannot
@@ -5355,6 +5745,11 @@ def run_global_agent_round(
         "execution controls. When host_frozen_mechanism_catalog is present it is machine enforced: "
         "every semantic compiler edit in this round must map to exactly one catalog mechanism ID, "
         "and an unchanged or formatting-only submission is recorded as a refused no-op. "
+        "When host_frozen_mechanism_work_order is present it is the only executable assignment: "
+        "use its exact per-member graph-local source-operation IDs and chain inventory, and preserve "
+        "its candidate, catalog, portfolio, source, plan, command-buffer and lowered-artifact hashes. "
+        "Do not infer, substitute or add sites; stop if the assigned evidence does not match the "
+        "current full-graph analysis. The work order grants no additional edit authority. "
         "Imports in approved owning files remain subject to the masked shared "
         "dependency policy. If a needed compiler lever has no approved owner, report that specific "
         "missing surface instead of expanding your own authority. Before editing, state a compact "
@@ -5473,6 +5868,9 @@ def run_global_agent_round(
         "prior_round_context": prior_round_context,
         "host_frozen_edit_authority": experiment.edit_scope_binding if experiment.edit_contract is not None else None,
         "host_frozen_mechanism_catalog": copy.deepcopy(experiment.mechanism_catalog_binding),
+        "host_frozen_mechanism_work_order": copy.deepcopy(
+            experiment.mechanism_work_order_binding),
+        "mechanism_work_order_analysis": copy.deepcopy(mechanism_work_order_analysis),
         "mechanism_round_start": copy.deepcopy(mechanism_round_start),
         "automatic_optimization_inventory": PAS.inspect_compiler_package(candidate).to_dict(),
         "optimization_surfaces_schema": PAS._mapping_file(
@@ -5611,6 +6009,10 @@ def run_global_agent_round(
               "candidate_sha256": current["candidate_sha256"], "agent_exit_code": rc,
               "audit": audit, "broker_evidence": evidence, "telemetry": telemetry,
               "mechanism_attribution": mechanism_attribution,
+              "compiler_mechanism_work_order": copy.deepcopy(
+                  experiment.mechanism_work_order_binding),
+              "mechanism_work_order_analysis": copy.deepcopy(
+                  experiment.mechanism_work_order_analysis_binding),
               "host_post_authoring_validation": post_validation,
               "authoring_readiness": copy.deepcopy(current.get("readiness")),
               "promotion_ready": (current.get("readiness", {}).get("status")

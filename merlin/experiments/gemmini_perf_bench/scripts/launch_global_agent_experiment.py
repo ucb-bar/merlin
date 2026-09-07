@@ -38,6 +38,15 @@ def _mechanism_catalog_worker_arguments(path: Path | None, digest: str | None) -
     return ("--mechanism-catalog", str(path), "--mechanism-catalog-sha256", str(digest))
 
 
+def _mechanism_work_order_worker_arguments(
+        path: Path | None, digest: str | None) -> tuple[str, ...]:
+    """Forward one already-validated immutable host work-order pin exactly."""
+    if path is None:
+        return ()
+    return ("--mechanism-work-order", str(path),
+            "--mechanism-work-order-sha256", str(digest))
+
+
 def _acquire_host_resource_lease(stage_root: Path):
     """Exclude another heavy compiler experiment without claiming machine-wide ownership."""
     lease_path = PAS.repo_root() / "out/artifacts/cache/host_resources/full_model_perf.lock"
@@ -293,6 +302,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="absolute immutable host compiler_mechanism_catalog_v1 JSON")
     parser.add_argument("--mechanism-catalog-sha256",
                         help="required exact raw-file SHA-256 for mechanism-catalog")
+    parser.add_argument("--mechanism-work-order", type=Path,
+                        help="absolute immutable host_prepared_mechanism_work_order_v1 JSON")
+    parser.add_argument("--mechanism-work-order-sha256",
+                        help="required exact raw-file SHA-256 for mechanism-work-order")
     parser.add_argument("--validation-only", action="store_true",
                         help="validate and seal an existing checkpoint without a new paid authoring round")
     parser.add_argument("--analysis-only", action="store_true",
@@ -356,6 +369,18 @@ def main(argv: list[str] | None = None) -> int:
                 or catalog.stat().st_mode & 0o222
                 or PAS._sha256_file(catalog) != args.mechanism_catalog_sha256):
             parser.error("mechanism-catalog must be an exact immutable absolute file")
+    if bool(args.mechanism_work_order) != bool(args.mechanism_work_order_sha256):
+        parser.error("mechanism-work-order requires its exact mechanism-work-order-sha256 pin")
+    if args.mechanism_work_order:
+        work_order = args.mechanism_work_order
+        if not args.mechanism_catalog:
+            parser.error("mechanism-work-order requires an explicit mechanism-catalog")
+        if (not PAS._is_sha256(args.mechanism_work_order_sha256)
+                or not work_order.is_absolute() or work_order.resolve() != work_order
+                or work_order.is_symlink() or not work_order.is_file()
+                or work_order.stat().st_mode & 0o222
+                or PAS._sha256_file(work_order) != args.mechanism_work_order_sha256):
+            parser.error("mechanism-work-order must be an exact immutable absolute file")
     if args.validation_only and args.static_analysis_seed_checkpoint:
         parser.error("validation-only compares two revisions and cannot import an initial static seed")
     if args.historical_reference:
@@ -366,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
             or args.probe_interface or args.probe_runtime_receipt or args.probe_profile != "none"
             or args.compare_controlled_context or args.semantic_only or args.max_rounds != 1
             or args.total_authoring_seconds is not None or args.edit_contract
-            or args.mechanism_catalog):
+            or args.mechanism_catalog or args.mechanism_work_order):
         parser.error("analysis-only excludes authoring/resume, qualification and profiling options")
     if bool(args.optimization_baseline) != bool(args.optimization_baseline_sha256):
         parser.error("optimization-baseline requires its exact optimization-baseline-sha256 pin")
@@ -465,6 +490,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.mechanism_catalog:
                 command.extend(_mechanism_catalog_worker_arguments(
                     args.mechanism_catalog, args.mechanism_catalog_sha256))
+            if args.mechanism_work_order:
+                command.extend(_mechanism_work_order_worker_arguments(
+                    args.mechanism_work_order, args.mechanism_work_order_sha256))
             if args.historical_reference:
                 command.extend(("--historical-reference", str(args.historical_reference.resolve()),
                                 "--historical-reference-sha256", args.historical_reference_sha256))
@@ -642,6 +670,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.mechanism_catalog:
             experiment.freeze_mechanism_catalog(
                 args.mechanism_catalog, args.mechanism_catalog_sha256)
+        if args.mechanism_work_order:
+            experiment.freeze_mechanism_work_order(
+                args.mechanism_work_order, args.mechanism_work_order_sha256,
+                candidate=candidate)
     provider = None
     semantic_provider = None
     context_provider = None
@@ -739,6 +771,8 @@ def main(argv: list[str] | None = None) -> int:
         "maximum_rounds": args.max_rounds, "total_authoring_seconds": total_authoring,
         "on_round_failure": args.on_round_failure,
         "compiler_mechanism_catalog": copy.deepcopy(experiment.mechanism_catalog_binding),
+        "compiler_mechanism_work_order": copy.deepcopy(
+            experiment.mechanism_work_order_binding),
         "static_analysis_seed": ({"path": str(args.static_analysis_seed_checkpoint.resolve()),
             "sha256": args.static_analysis_seed_sha256,
             "policy": "exact_content_hit_or_cold_analysis_miss"}

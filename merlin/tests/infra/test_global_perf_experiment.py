@@ -124,6 +124,8 @@ def setup_experiment(tmp_path, *, verified=True, primary_interface_bytes=9, **ex
         candidate_sha = calls[-1]
         plan = {"status": "verified", "plan_digest": SHA["plan"],
                 "candidate_sha256": candidate_sha, "logical_dispatch_digest": SHA["graph"],
+                "source_sha256": PAS._sha256_file(
+                    Path(objective.frozen_source_path) / "capsule.interface.mlir"),
                 "candidate_lowered_sha256": SHA["llvm"],
                 "candidate_command_buffer_sha256": SHA["buffer"], "emitted_dispatches": 2}
         return {
@@ -1868,6 +1870,49 @@ def _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, mechanisms):
     return path, binding
 
 
+def _test_mechanism_work_order(experiment, candidate, *, mechanism_id="epilogue"):
+    candidate_sha256 = hash_tree(candidate)["sha256"]
+    rows = []
+    for index, sentinel in enumerate(experiment.portfolio_sentinels):
+        rows.append({
+            "capsule": sentinel.capsule, "capsule_sha256": sentinel.capsule_sha256,
+            "compiler_sha256": candidate_sha256,
+            "source_sha256": PAS._sha256_file(
+                Path(sentinel.frozen_source_path) / "capsule.interface.mlir"),
+            "plan_digest": SHA["plan"],
+            "candidate_command_buffer_sha256": SHA["buffer"],
+            "candidate_lowered_sha256": SHA["llvm"],
+            "status": "eligible_sites_bound" if index == 0 else "complete_no_eligible_sites",
+            "inventory": {"eligible_chains": 1 if index == 0 else 0},
+            "source_operation_ids": [0, 1] if index == 0 else [],
+            "chains": [{"producer": 0, "consumer": 1}] if index == 0 else [],
+        })
+    document = {
+        "schema": "host_prepared_mechanism_work_order_v1",
+        "status": "ready_for_authoring", "mechanism_id": mechanism_id,
+        "catalog_sha256": experiment.mechanism_catalog["sha256"],
+        "contract_sha256": experiment.edit_contract["sha256"],
+        "initial_candidate_sha256": candidate_sha256,
+        "round_start_candidate_sha256": candidate_sha256,
+        "ordered_portfolio": experiment.portfolio_identity["members"],
+        "portfolio_sha256": experiment.portfolio_identity_sha256,
+        "source_operation_ids": [], "portfolio_site_bindings": rows,
+    }
+    document["sha256"] = PAS._document_sha256(document)
+    return document
+
+
+def _freeze_test_mechanism_work_order(
+        experiment, candidate, tmp_path, *, mechanism_id="epilogue"):
+    document = _test_mechanism_work_order(
+        experiment, candidate, mechanism_id=mechanism_id)
+    path = tmp_path / "mechanism_work_order.json"
+    path.write_bytes(PAS._canonical_json(document))
+    path.chmod(0o444)
+    return path, experiment.freeze_mechanism_work_order(
+        path, PAS._sha256_file(path), candidate=candidate)
+
+
 def test_mechanism_catalog_gates_before_analysis_and_binds_iteration_checkpoint(
         tmp_path):
     experiment, candidate, calls = setup_experiment(tmp_path)
@@ -1994,6 +2039,237 @@ def test_source_worker_receives_the_exact_mechanism_catalog_pin(tmp_path):
     assert launcher._mechanism_catalog_worker_arguments(path, digest) == (
         "--mechanism-catalog", str(path), "--mechanism-catalog-sha256", digest)
     assert launcher._mechanism_catalog_worker_arguments(None, None) == ()
+
+
+def test_mechanism_work_order_is_immutable_and_binds_current_member_artifacts(tmp_path):
+    experiment, candidate, calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    _path, binding = _freeze_test_mechanism_work_order(
+        experiment, candidate, tmp_path)
+    experiment.begin_mechanism_round(candidate, round_index=0)
+    initial = experiment.analyze(candidate, hypothesis="bind exact work-order artifacts")
+    analysis_binding = experiment.bind_mechanism_work_order_analysis(initial)
+    assert analysis_binding["candidate_sha256"] == hash_tree(candidate)["sha256"]
+    assert analysis_binding["members"][0]["site_binding_sha256"] == PAS._document_sha256(
+        experiment.mechanism_work_order["portfolio_site_bindings"][0])
+    assert PAS._mapping_file(Path(binding["frozen_path"])) == binding["work_order"]
+    assert len(calls) == 1
+    compiler = candidate / "compiler.py"
+    compiler.write_text(compiler.read_text().replace("return 1", "return 2", 1))
+    assert experiment.finalize_mechanism_round(
+        candidate, round_index=0)["selected_mechanism_id"] == "epilogue"
+    row = experiment.analyze(candidate, hypothesis="execute exact assigned mechanism")
+    assert row["compiler_mechanism_work_order"] == binding
+    assert row["mechanism_work_order_analysis"] == analysis_binding
+    checkpoint = experiment.seal(candidate)
+    consumed = G.consume_global_candidate(checkpoint)
+    assert consumed["compiler_mechanism_work_order"] == binding
+    assert consumed["mechanism_work_order_analysis"] == analysis_binding
+    analysis_receipt = experiment.output / "compiler_mechanism_work_order_analysis.json"
+    analysis_receipt.chmod(0o644)
+    analysis_receipt.write_bytes(b"{}\n")
+    with pytest.raises(ValueError, match="work-order analysis"):
+        G.consume_global_candidate(checkpoint)
+
+
+@pytest.mark.parametrize("mutation", ["candidate", "catalog", "portfolio", "self_hash",
+                                      "flat_sites", "missing_member"])
+def test_mechanism_work_order_identity_mutations_fail_closed(tmp_path, mutation):
+    experiment, candidate, _calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    document = _test_mechanism_work_order(experiment, candidate)
+    if mutation == "candidate":
+        document["round_start_candidate_sha256"] = "0" * 64
+    elif mutation == "catalog":
+        document["catalog_sha256"] = "0" * 64
+    elif mutation == "portfolio":
+        document["portfolio_sha256"] = "0" * 64
+    elif mutation == "flat_sites":
+        document["source_operation_ids"] = [0]
+    elif mutation == "missing_member":
+        document["portfolio_site_bindings"] = []
+    if mutation != "self_hash":
+        document["sha256"] = PAS._document_sha256({
+            key: value for key, value in document.items() if key != "sha256"})
+    else:
+        document["sha256"] = "0" * 64
+    path = tmp_path / f"work-order-{mutation}.json"
+    path.write_bytes(PAS._canonical_json(document))
+    path.chmod(0o444)
+    with pytest.raises(ValueError, match="mechanism work order|mechanism work-order"):
+        experiment.freeze_mechanism_work_order(
+            path, PAS._sha256_file(path), candidate=candidate)
+
+
+def test_mechanism_work_order_current_analysis_hash_drift_refuses_before_authoring(tmp_path):
+    experiment, candidate, _calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    document = _test_mechanism_work_order(experiment, candidate)
+    document["portfolio_site_bindings"][0]["plan_digest"] = "0" * 64
+    document["sha256"] = PAS._document_sha256({
+        key: value for key, value in document.items() if key != "sha256"})
+    path = tmp_path / "work-order.json"
+    path.write_bytes(PAS._canonical_json(document))
+    path.chmod(0o444)
+    experiment.freeze_mechanism_work_order(
+        path, PAS._sha256_file(path), candidate=candidate)
+    experiment.begin_mechanism_round(candidate, round_index=0)
+    initial = experiment.analyze(candidate, hypothesis="current exact analysis")
+    with pytest.raises(ValueError, match="differs from current analysis"):
+        experiment.bind_mechanism_work_order_analysis(initial)
+
+
+def test_mechanism_work_order_keeps_repeated_source_ids_bound_per_four_members(tmp_path):
+    portfolio = []
+    for index in range(3):
+        source = tmp_path / f"training-{index}"
+        source.mkdir()
+        (source / "capsule.yaml").write_text("interface_mlir: capsule.interface.mlir\n")
+        (source / "capsule.interface.mlir").write_bytes(b"x" * (index + 2))
+        portfolio.append(PAS.StageE2ESentinel(
+            f"training-{index}", str(source), str(source),
+            PAS._exact_tree_record(source)["sha256"], (), ()))
+    experiment, candidate, calls = setup_experiment(
+        tmp_path, portfolio_sentinels=tuple(portfolio))
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    document = _test_mechanism_work_order(experiment, candidate)
+    for row in document["portfolio_site_bindings"]:
+        row["status"] = "eligible_sites_bound"
+        row["inventory"] = {"eligible_chains": 1}
+        row["source_operation_ids"] = [0, 1]
+        row["chains"] = [{"producer": 0, "consumer": 1}]
+    document["sha256"] = PAS._document_sha256({
+        key: value for key, value in document.items() if key != "sha256"})
+    path = tmp_path / "four-model-work-order.json"
+    path.write_bytes(PAS._canonical_json(document))
+    path.chmod(0o444)
+    experiment.freeze_mechanism_work_order(
+        path, PAS._sha256_file(path), candidate=candidate)
+    experiment.begin_mechanism_round(candidate, round_index=0)
+    initial = experiment.analyze(candidate, hypothesis="four exact graphs")
+    binding = experiment.bind_mechanism_work_order_analysis(initial)
+    assert len(binding["members"]) == 4
+    assert len(calls) == 4
+    assert [member["capsule"] for member in binding["members"]] == [
+        member.capsule for member in experiment.portfolio_sentinels]
+
+
+def test_mechanism_work_order_requires_raw_absolute_readonly_exact_file(tmp_path):
+    experiment, candidate, _calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    document = _test_mechanism_work_order(experiment, candidate)
+    path = tmp_path / "work-order.json"
+    path.write_bytes(PAS._canonical_json(document))
+    digest = PAS._sha256_file(path)
+    with pytest.raises(ValueError, match="immutable absolute"):
+        experiment.freeze_mechanism_work_order(
+            Path("work-order.json"), digest, candidate=candidate)
+    link = tmp_path / "work-order-link.json"
+    link.symlink_to(path)
+    with pytest.raises(ValueError, match="immutable absolute"):
+        experiment.freeze_mechanism_work_order(link, digest, candidate=candidate)
+    with pytest.raises(ValueError, match="immutable absolute"):
+        experiment.freeze_mechanism_work_order(path, digest, candidate=candidate)
+    path.chmod(0o444)
+    with pytest.raises(ValueError, match="immutable absolute"):
+        experiment.freeze_mechanism_work_order(path, "0" * 64, candidate=candidate)
+    experiment.freeze_mechanism_work_order(path, digest, candidate=candidate)
+    path.chmod(0o644)
+    path.write_bytes(b"{}\n")
+    with pytest.raises(ValueError, match="mechanism work order changed"):
+        experiment._check_inputs()
+
+
+def test_exact_active_v14_work_order_matches_retained_four_model_analysis():
+    root = PAS.repo_root()
+    artifact = root / ("out/artifacts/perf-bench/gemmini/"
+        "development_v14_epilogue_site_bindings_20260907/active_t01_01_work_order.json")
+    catalog_path = root / ("out/artifacts/perf-bench/gemmini/"
+        "development_v14_mechanism_catalog_20260907/active_t01_01_mechanism_catalog.json")
+    contract_path = root / ("out/artifacts/perf-bench/gemmini/"
+        "development_v14_retained_surface_catalog_20260907/edit_contract.json")
+    retained = root / ("out/artifacts/perf-bench/gemmini/"
+        "global_phase2_portfolio_r50_tiny_lstm_smol_w8a8_v13_20260907/global_iterations")
+    candidate, iteration_path, checkpoint_path = (
+        retained / "round_0000_candidate_submission", retained / "iteration_0001.json",
+        retained / "round_0000_candidate.json")
+    required = (artifact, catalog_path, contract_path, candidate, iteration_path, checkpoint_path)
+    if not all(path.exists() for path in required):
+        pytest.skip("exact local V14 host-preparation artifacts are not installed")
+    from merlin.perf.compiler_edit_scope import validate_edit_contract, validate_mechanism_catalog
+    work, catalog, contract = (PAS._mapping_file(path)
+                               for path in (artifact, catalog_path, contract_path))
+    checkpoint, iteration = PAS._mapping_file(checkpoint_path), PAS._mapping_file(iteration_path)
+    assert PAS._sha256_file(artifact) == (
+        "6f8b11ba12091f4e5936a57b3524c61ba60c366aa42f6b088a9c0e967a358f64")
+    validate_edit_contract(contract, candidate)
+    validate_mechanism_catalog(catalog, candidate, contract)
+    validator = object.__new__(G.GlobalPerfExperiment)
+    validator.mechanism_catalog, validator.edit_contract = catalog, contract
+    validator.portfolio_identity = checkpoint["portfolio"]
+    validator.portfolio_identity_sha256 = PAS._document_sha256(validator.portfolio_identity)
+    validated = validator._validate_mechanism_work_order(
+        work, candidate_sha256=hash_tree(candidate)["sha256"])
+    assert validated["sha256"] == "0c38b0a3417b252630dbbe5fe0cfb4910a3d5e92aad8731922d7fc8ffa2dfedf"
+    assert len(validated["portfolio_site_bindings"]) == 4
+    for index, site in enumerate(validated["portfolio_site_bindings"]):
+        analysis = (iteration["analysis"] if index == 0
+                    else iteration["portfolio"]["members"][index]["analysis"])
+        plan, emission = analysis["diagnostics"]["verified_global_plan_emission"], analysis["emission"]
+        assert {key: site[key] for key in (
+            "compiler_sha256", "source_sha256", "plan_digest",
+            "candidate_command_buffer_sha256", "candidate_lowered_sha256")} == {
+                "compiler_sha256": iteration["candidate_sha256"],
+                "source_sha256": plan["source_sha256"], "plan_digest": plan["plan_digest"],
+                "candidate_command_buffer_sha256": emission["candidate_command_buffer_sha256"],
+                "candidate_lowered_sha256": emission["candidate_lowered_sha256"],
+            }
+
+
+@pytest.mark.parametrize("flag", ["--mechanism-work-order",
+                                  "--mechanism-work-order-sha256"])
+def test_launcher_requires_mechanism_work_order_path_sha_and_catalog(flag, tmp_path):
+    launcher = importlib.import_module("launch_global_agent_experiment")
+    value = str((tmp_path / "work-order.json").resolve()) if flag.endswith(
+        "work-order") else "a" * 64
+    with pytest.raises(SystemExit) as caught:
+        launcher.main(["--campaign-config", "not-read.json", "--candidate", "candidate",
+                       "--output", "not-created", flag, value])
+    assert caught.value.code == 2
+
+
+def test_source_worker_receives_the_exact_mechanism_work_order_pin(tmp_path):
+    launcher = importlib.import_module("launch_global_agent_experiment")
+    path = (tmp_path / "work-order.json").resolve()
+    digest = "b" * 64
+    assert launcher._mechanism_work_order_worker_arguments(path, digest) == (
+        "--mechanism-work-order", str(path), "--mechanism-work-order-sha256", digest)
+    assert launcher._mechanism_work_order_worker_arguments(None, None) == ()
 
 
 def test_context_provider_installation_is_not_current_motif_applicability():
@@ -3246,6 +3522,8 @@ def test_real_macro_round_transport_compiles_each_revision_without_micro_feedbac
     mechanism_path.write_bytes(PAS._canonical_json(mechanism_catalog))
     mechanism_path.chmod(0o444)
     experiment.freeze_mechanism_catalog(mechanism_path, PAS._sha256_file(mechanism_path))
+    _freeze_test_mechanism_work_order(
+        experiment, candidate, tmp_path, mechanism_id="lowering")
     # Qualification IO is tested separately; this fixture exercises the authoring transport.
     experiment.phase1_binding = {"test_fixture": "verified existing qualification"}
     action = PAS.BrokerAction(PAS.E2E_ANALYSIS_ACTION, (PAS._HOST_E2E_ANALYSIS_SENTINEL,), (),
@@ -3299,6 +3577,8 @@ def test_real_macro_round_transport_compiles_each_revision_without_micro_feedbac
     assert "Do not place shell or Python commands before or after a broker call" in task
     assert "exactly one coherent optimization mechanism per round" in task
     assert "must not include opportunistic unrelated edits" in task
+    assert "host_frozen_mechanism_work_order" in task
+    assert "Do not infer, substitute or add sites" in task
     assert "delete whole-program work and boundaries" in task
     assert "only then operator, tile, or local scalar cleanup" in task
     assert context["portfolio_action_digest"]["members"][0]["identity"]["capsule"] == "real-model"
@@ -3306,6 +3586,10 @@ def test_real_macro_round_transport_compiles_each_revision_without_micro_feedbac
     assert context["mandatory_analysis_reserve"]["seconds"] == 0
     assert context["host_post_authoring_validation"]["maximum_seconds"] == experiment.timeout_s
     assert context["host_post_authoring_validation"]["full_model_simulation_allowed"] is False
+    assert context["host_frozen_mechanism_work_order"]["work_order"][
+        "mechanism_id"] == "lowering"
+    assert context["mechanism_work_order_analysis"]["candidate_sha256"] != result[
+        "candidate_sha256"]
 
 
 def test_macro_round_validates_final_bytes_after_authoring_with_independent_host_budget(
