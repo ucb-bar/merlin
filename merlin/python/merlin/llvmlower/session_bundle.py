@@ -113,12 +113,18 @@ def load(root: str | Path) -> MultiProgramSession:
         steps = int(item.get("steps", 0))
         if steps < 1:
             raise ValueError(f"program {name}: steps must be positive")
-        required = ("model.mlir", "inputs.npz", "weights.safetensors",
-                    "weights.safetensors.manifest.json")
+        required = ("model.mlir", "inputs.npz", "weights.safetensors.manifest.json")
         missing = [str(bundle / filename) for filename in required
                    if not (bundle / filename).is_file()]
         if missing:
             raise ValueError(f"program {name}: capture artifacts are absent: {missing}")
+        manifest = _mapping(
+            json.loads((bundle / "weights.safetensors.manifest.json").read_text()),
+            f"program {name} argument manifest",
+        )
+        weights = bundle / "weights.safetensors"
+        if c_runtime.manifest_requires_weight_blob(manifest) and not weights.is_file():
+            raise ValueError(f"program {name}: capture artifacts are absent: {[str(weights)]}")
         inputs = tuple(parse_forward_signature(bundle / "model.mlir"))
         _, output_values = forward_signature(bundle / "model.mlir")
         outputs = tuple(output_values)
@@ -318,18 +324,20 @@ def _session_sources(session: MultiProgramSession) -> tuple[str, str]:
     cases: list[str] = []
     for target_index, target in enumerate(session.programs):
         copies: list[str] = []
-        for binding in session.bindings:
+        for binding_index, binding in enumerate(session.bindings):
             if binding.target_program != target.name:
                 continue
+            source_size = f"source_bytes_{binding_index}"
+            target_size = f"target_bytes_{binding_index}"
             source_index = session.program_names.index(binding.source_program)
             copies += [
-                f"      size_t source_bytes = merlin_stage_{source_index}_output_bytes("
+                f"      size_t {source_size} = merlin_stage_{source_index}_output_bytes("
                 f"{binding.source_output});",
-                f"      size_t target_bytes = merlin_stage_{target_index}_input_bytes("
+                f"      size_t {target_size} = merlin_stage_{target_index}_input_bytes("
                 f"{binding.target_input});",
-                "      if (!source_bytes || source_bytes != target_bytes) return -1;",
+                f"      if (!{source_size} || {source_size} != {target_size}) return -1;",
                 f"      memcpy(merlin_stage_{target_index}_input({binding.target_input}), "
-                f"merlin_stage_{source_index}_output({binding.source_output}), source_bytes);",
+                f"merlin_stage_{source_index}_output({binding.source_output}), {source_size});",
             ]
         body = "\n".join(copies) if copies else "      (void)0;"
         cases.append(f"    case {target_index}: {{\n{body}\n      return 0;\n    }}")

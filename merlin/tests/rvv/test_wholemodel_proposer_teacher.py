@@ -536,6 +536,9 @@ def test_refinements_cost_the_seed_generation_no_width():
     mr = [f for f in refinement_forks(["perop_register_block"]) if f.targets.endswith(":mr_cap")]
     assert mr, "per-op blocking in the parent must open the MR-cap axis"
     assert all(f.targets.endswith(":mr_cap") for f in mr)
+    nr = [f for f in refinement_forks(["perop_register_block"]) if f.targets.endswith(":nr_cap")]
+    assert nr, "per-op blocking in the parent must open the NR-cap axis"
+    assert all(f.targets.endswith(":nr_cap") for f in nr)
 
     stack = refinement_forks(["promote_buffers_to_stack"])
     assert stack, "stack promotion in the parent must open the cap axis"
@@ -555,9 +558,30 @@ def test_a_refinement_replaces_the_magnitude_it_retunes_rather_than_stacking_it(
         assert sum(I.parse_perop_mr_sentinel(f) is not None for f in feats) == 1
         assert "erase_self_copy" in feats, "unrelated parent features must survive"
 
+    for fp in refinement_forks(["perop_register_block", "erase_self_copy"]):
+        if not fp.targets.endswith(":nr_cap"):
+            continue
+        feats = fp.overrides["compiler_features"]
+        assert I.PEROP_BLOCK_NAME not in feats
+        assert sum(I.parse_perop_nr_sentinel(f) is not None for f in feats) == 1
+        assert "erase_self_copy" in feats
+
     for fp in refinement_forks(["promote_buffers_to_stack"]):
         feats = fp.overrides["compiler_features"]
         assert sum(f.startswith(I.PROMOTE_STACK_NAME) for f in feats) == 1
+
+
+def test_openmp_coarsening_is_only_proposed_after_full_residual_parallelism():
+    from merlin.mining.wholemodel_proposer import refinement_forks
+
+    assert not any(fp.targets == "wholemodel:coarsen_openmp_regions"
+                   for fp in refinement_forks([]))
+    proposals = refinement_forks(["parallelize_residual_loops_0"])
+    coarsen = next(fp for fp in proposals
+                   if fp.targets == "wholemodel:coarsen_openmp_regions")
+    assert set(coarsen.overrides["compiler_features"]) == {
+        "parallelize_residual_loops_0", "coarsen_openmp_regions",
+    }
 
 
 def test_an_enabler_is_never_proposed_alone():

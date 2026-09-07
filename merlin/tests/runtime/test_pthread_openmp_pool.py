@@ -56,7 +56,9 @@ int main(void) {
   if (merlin_omp_init(4) != 4) return 2;
   if (atomic_load(&creates) != 3 || atomic_load(&joins) != 0) return 3;
   for (int repeat = 0; repeat < 40; ++repeat) {
-    __kmpc_push_num_threads(0, 0, 4);
+    /* Exercise subsets of the persistent pool as well as the complete team. */
+    int team = repeat & 1 ? 2 : 4;
+    __kmpc_push_num_threads(0, 0, team);
     __kmpc_fork_call(0, 1, (void *)region, &ctx);
   }
   if (atomic_load(&creates) != 3 || atomic_load(&joins) != 0) return 4;
@@ -72,6 +74,38 @@ int main(void) {
 """
 
 
+_ENV_AND_AFFINITY = r"""
+#define _GNU_SOURCE
+#include "libomp_pthread.h"
+#include <sched.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void) {
+  cpu_set_t allowed;
+  CPU_ZERO(&allowed);
+  if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0) return 2;
+  int want = CPU_COUNT(&allowed);
+  if (want > 4) want = 4;
+  if (want < 1) return 3;
+  char value[16];
+  if (snprintf(value, sizeof(value), "%d", want) < 1) return 4;
+  if (setenv("OMP_NUM_THREADS", value, 1) != 0) return 5;
+
+  int got = merlin_omp_init_from_env(1);
+  if (got != want || merlin_omp_num_threads() != want) return 6;
+  cpu_set_t observed;
+  CPU_ZERO(&observed);
+  for (int tid = 0; tid < got; ++tid) {
+    int cpu = merlin_omp_worker_cpu(tid);
+    if (cpu < 0 || !CPU_ISSET(cpu, &allowed) || CPU_ISSET(cpu, &observed)) return 7;
+    CPU_SET(cpu, &observed);
+  }
+  return 0;
+}
+"""
+
+
 @pytest.mark.skipif(CC is None, reason="no host C compiler")
 def test_repeated_exact_cover_regions_reuse_one_process_lifetime_pool(tmp_path):
     harness = tmp_path / "repeated.c"
@@ -81,6 +115,20 @@ def test_repeated_exact_cover_regions_reuse_one_process_lifetime_pool(tmp_path):
         CC, "-std=c11", "-O2", "-pthread", f"-I{runtime_dir() / 'c'}",
         str(harness), str(runtime_dir() / "c/libomp_pthread.c"),
         "-Wl,--wrap=pthread_create", "-Wl,--wrap=pthread_join", "-o", str(binary),
+    ], capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
+    assert run.returncode == 0, run.stderr
+
+
+@pytest.mark.skipif(CC is None, reason="no host C compiler")
+def test_environment_team_is_pinned_to_distinct_allowed_cpus(tmp_path):
+    harness = tmp_path / "affinity.c"
+    harness.write_text(_ENV_AND_AFFINITY, encoding="utf-8")
+    binary = tmp_path / "affinity"
+    proc = subprocess.run([
+        CC, "-std=c11", "-O2", "-pthread", f"-I{runtime_dir() / 'c'}",
+        str(harness), str(runtime_dir() / "c/libomp_pthread.c"), "-o", str(binary),
     ], capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, proc.stderr
     run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)

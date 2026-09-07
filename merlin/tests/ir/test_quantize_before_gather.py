@@ -239,6 +239,48 @@ def test_fires_on_a_plain_copy_producer(tmp_path):
     assert report.get("prequant_gather_mode_source_amax", 0) == 1
 
 
+def test_pre_gather_scale_defines_the_all_zero_tensor(tmp_path):
+    """The pre-gather constructor uses the same zero-amax scale rule as ordinary quantization."""
+    module, report = _lower(tmp_path, "copy_zero_scale", _MM_ON_GATHER.format(
+        sk=8, k=8, n=4, m=2, imap=_IDENT, body=_COPY_BODY))
+    assert report.get("prequant_gather_rewrites", 0) == 1
+    scales = [
+        op for op in module.walk()
+        if op.name == "linalg.generic"
+        and getattr(op.attributes.get("prov.role"), "data", "") == "act_scale"
+    ]
+    assert len(scales) == 1
+    names = [op.name for op in scales[0].body.blocks[0].ops]
+    assert "arith.cmpf" in names and "arith.select" in names, names
+
+
+def test_zero_pre_gather_activation_stays_finite_after_qround(tmp_path):
+    """A zero source remains finite through pre-gather quantization and qround fusion."""
+    from merlin.llvmlower import toolchain
+    if not toolchain.available():
+        pytest.skip("m2m venv / clang-23 missing")
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.quant_round import fuse_round_clamp_convert
+    from merlin.xdsl_dialects._common import text as to_text
+
+    m, k, n = 2, 8, 4
+    module, report = _lower(tmp_path, "copy_zero_host", _MM_ON_GATHER.format(
+        sk=k, k=k, n=n, m=m, imap=_IDENT, body=_COPY_BODY))
+    assert report.get("prequant_gather_rewrites", 0) == 1
+    assert fuse_round_clamp_convert(module) == 2  # pre-gather activation + ordinary f32 weight
+    result = lower_model(to_text(module), tmp_path / "copy_zero_host", targets=("host",))
+
+    act = np.zeros((k, n), np.float32)
+    weight = np.arange(m * k, dtype=np.float32).reshape(m, k) - 8.0
+    out = np.full((m, n), np.nan, np.float32)
+    HostModel.load(str(result.host_so))([
+        (act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
+        (out.ctypes.data, out.shape),
+    ])
+    assert np.array_equal(out, np.zeros_like(out)), out
+
+
 def test_refuses_a_computed_producer(tmp_path):
     """A body that computes anything does not commute with quantization."""
     _m, report = _lower(tmp_path, "computed", _MM_ON_GATHER.format(

@@ -380,16 +380,21 @@ def _reorder_generalize_before_fuse(passes: list[str]) -> list[str]:
     return [*out[:fuse], _GENERALIZE_NAMED, *out[fuse:]]
 
 
-def _par_residue_parallel() -> bool:
-    """Rebuild the OLD residue handling (``MERLIN_PAR_RESIDUE_PARALLEL=1``): send every op the
-    transform schedule did not claim through ``convert-linalg-to-parallel-loops`` as well.
+def _par_residue_parallel(features=frozenset()) -> bool:
+    """Whether residual linalg operations use dependence-aware parallel-loop lowering.
 
-    An A/B escape hatch, kept for the same reason :func:`_dealloc_passes` keeps ``MERLIN_NO_DEALLOC``:
-    this changes the emitted code for every derived-split multicore build, and the honest way to
-    defend a claim about it is to be able to rebuild both arms.
+    The named ``parallelize_residual_loops_<grain>`` family is the reproducible path: it also
+    implies the matching grain-control feature, which prevents the old unbounded fork explosion.
+    ``MERLIN_PAR_RESIDUE_PARALLEL=1`` remains only as an A/B compatibility escape hatch.
+
+    The environment switch is kept for the same reason :func:`_dealloc_passes` keeps
+    ``MERLIN_NO_DEALLOC``: this changes the emitted code for every derived-split multicore build,
+    and the honest way to defend a claim about it is to be able to rebuild both arms.
     """
     import os
-    return bool(os.environ.get("MERLIN_PAR_RESIDUE_PARALLEL"))
+    from .residual_parallel import threshold_of
+    return threshold_of(features) is not None or bool(
+        os.environ.get("MERLIN_PAR_RESIDUE_PARALLEL"))
 
 
 def _fuse_post() -> bool:
@@ -414,7 +419,8 @@ _PARALLEL_DIM_NUM_THREADS = {
 
 def parallel_transform_schedule(n_harts: int, *, matmul_dim: str = "n",
                                 batch_matmul_dim: str = "b",
-                                chunks: "list | None" = None) -> str:
+                                chunks: "list | None" = None,
+                                tile_aligned: bool = False) -> str:
     """Transform schedule that wraps each contraction in an `scf.forall` over ``n_harts``.
 
     Runs BEFORE the package's own schedule (separate entry point, see above), so the inner
@@ -440,6 +446,17 @@ def parallel_transform_schedule(n_harts: int, *, matmul_dim: str = "n",
         raise ValueError(f"parallel schedule needs n_harts >= 2, got {n_harts}")
     if chunks is not None:
         return _perop_parallel_schedule(chunks)
+    if tile_aligned:
+        body = [
+            '    %matmul = transform.structured.match ops{["linalg.matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op\n'
+            '    %matmul_loop, %matmul_tiled = transform.structured.tile_using_forall %matmul tile_sizes [0, 16] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)',
+            '    %batch_matmul = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op\n'
+            '    %batch_matmul_loop, %batch_matmul_tiled = transform.structured.tile_using_forall %batch_matmul tile_sizes [1, 0, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)',
+        ]
+        return ("module attributes {transform.with_named_sequence} {\n"
+                f"  transform.named_sequence @{PARALLEL_ENTRY}"
+                "(%arg0: !transform.any_op {transform.readonly}) {\n"
+                + "\n".join(body) + "\n    transform.yield\n  }\n}\n")
     body = []
     for op, dim in (("linalg.matmul", matmul_dim), ("linalg.batch_matmul", batch_matmul_dim)):
         choices = _PARALLEL_DIM_NUM_THREADS[op]
@@ -715,12 +732,12 @@ def build_rvv_pipeline(sched_path: "str | Path", hoist_static_allocs: bool = Tru
         # So when the split is the DERIVED per-op one (`perop_parallel`), parallelism is expressed by
         # the `scf.forall` arms merlin chose and by nothing else, and the residue keeps the serial
         # `convert-linalg-to-loops` the 1-hart build gives it. `MERLIN_PAR_RESIDUE_PARALLEL=1`
-        # rebuilds the old arm, for the same reason `MERLIN_NO_DEALLOC` exists: a claim about this is
-        # only defensible if both arms can be built. With the legacy class-wide split (no `chunks`)
-        # nothing moves -- that pipeline string is byte-identical to before.
+        # rebuilds the old arm; the named `parallelize_residual_loops_<grain>` family selects the
+        # same lowering together with a mandatory small-region cutoff. With the legacy class-wide
+        # split (no `chunks`) nothing moves -- that pipeline string is byte-identical to before.
         *(["scf-forall-to-parallel",
            *(["func.func(convert-linalg-to-loops)"]
-             if perop_parallel and not _par_residue_parallel()
+             if perop_parallel and not _par_residue_parallel(features)
              else ["func.func(convert-linalg-to-parallel-loops)"]),
            "convert-scf-to-openmp", "canonicalize"]
           if par else
@@ -759,11 +776,17 @@ from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
 from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
+from .parallel_coarsen import RUNNER_PRELUDE as _PARALLEL_COARSEN_PRELUDE
+from .parallel_coarsen import STAGE_SRC as _PARALLEL_COARSEN_STAGE_SRC
+from .parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
+from .parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
 from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
 from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
+from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
+from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
 
 # --- The use-after-free check that guards the sinking stage ---------------------------------
 #
@@ -884,11 +907,13 @@ _ORIG_RUN_STAGES = _run_stages
 _SINK_MARK = 'optimize-allocation-liveness'
 
 
-def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
+def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
+                pre_generalize=()):
     passes = [p for p in pipeline.split(',') if p]
     k = next((i for i, p in enumerate(passes) if _SINK_MARK in p), -1)
     if k < 0:
-        return _ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late)
+        return _ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late, post_openmp,
+                                pre_generalize)
     head, tail = passes[:k + 1], passes[k + 1:]
     # `erase`/`mid` open their window after buffer-loop-hoisting, and `late` opens its own before
     # convert-scf-to-openmp; hand each to whichever half contains its anchor, or it would be
@@ -896,9 +921,11 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
     # tail, where the wrapped runner still applies it at the end rather than dropping it.
     hoist_head = any('buffer-loop-hoisting' in p for p in head)
     late_head = any('convert-scf-to-openmp' in p for p in head)
+    post_head = late_head
     _ORIG_RUN_STAGES(ctx, module, ','.join(head),
                      erase if hoist_head else 0, mid if hoist_head else (),
-                     late if late_head else ())
+                     late if late_head else (), post_openmp if post_head else (),
+                     pre_generalize)
     bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
     print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
     if bad:
@@ -907,7 +934,7 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=()):
     if tail:
         _ORIG_RUN_STAGES(ctx, module, ','.join(tail),
                          0 if hoist_head else erase, () if hoist_head else mid,
-                         () if late_head else late)
+                         () if late_head else late, () if post_head else post_openmp, ())
 """
 
 #: The line the runner prints once the check has run. `lower_to_llvm_ir` REQUIRES it whenever the
@@ -991,7 +1018,25 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PANEL_PARALLEL_MID_SRC + _PARALLEL_GRAIN_LATE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _BROADCAST_FOLD_PRELUDE + _NAMED_BROADCAST_FOLD_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _PARALLEL_TEAM_PRELUDE + _PARALLEL_COARSEN_PRELUDE + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PANEL_PARALLEL_MID_SRC + _PARALLEL_GRAIN_LATE_SRC + _PARALLEL_TEAM_STAGE_SRC + _PARALLEL_COARSEN_STAGE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
+
+def _residual_vector_ops(module):
+    """Return vector-dialect op names still present at the LLVM translation edge."""
+    found = []
+
+    def visit(op):
+        name = op.operation.name
+        if name.startswith('vector.'):
+            found.append(name)
+        for region in op.regions:
+            for block in region.blocks:
+                for child in block.operations:
+                    visit(child)
+
+    for top in module.body.operations:
+        visit(top)
+    return sorted(set(found))
+
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
 with open(src_path) as f:
@@ -1010,6 +1055,13 @@ if _FOLD_WEIGHT_TRANSPOSE:
     for _fwt_kind, _fwt_detail in _fwt_report:
         print("OK fold_weight_transpose", _fwt_kind, _fwt_detail)
     print("OK fold_weight_transpose folded", _fwt_n)
+# fold_broadcast_into_generic (default-off): replace a sole-use broadcast intermediate by a
+# projected indexing map on an already-all-parallel generic. Reduction consumers are refused.
+if _FOLD_BROADCAST:
+    _bf_n, _bf_report = _fold_broadcasts(module, ctx)
+    for _bf_kind, _bf_detail in _bf_report:
+        print("OK fold_broadcast_into_generic", _bf_kind, _bf_detail)
+    print("OK fold_broadcast_into_generic folded", _bf_n)
 # concat_dps (default-off): a `tensor.concat` operand produced by a destination-passing op is
 # retargeted to write STRAIGHT INTO the concatenated buffer, so bufferization has no data movement
 # left to emit for it. Must run BEFORE the pass manager: after one-shot-bufferize the destination is
@@ -1019,7 +1071,12 @@ if _CONCAT_DPS:
     for _cd_kind, _cd_detail in _cd_report:
         print("OK concat_dps", _cd_kind, _cd_detail)
     print("OK concat_dps rewrote", _cd_n)
-_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES)
+_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES,
+            _POST_OPENMP_STAGES, _PRE_GENERALIZE_STAGES)
+_vector_residue = _residual_vector_ops(module)
+if _vector_residue:
+    raise RuntimeError(
+        'vector dialect survived the LLVM lowering edge: ' + ', '.join(_vector_residue))
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
 print("OK")
@@ -1044,10 +1101,13 @@ from torch_mlir.dialects import llvm
 '''
 
 _RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE
-                         + _TRANSPOSE_MAPS_PRELUDE + _COPY_EXPAND_PRELUDE
-                         + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE
+                         + _TRANSPOSE_MAPS_PRELUDE + _BROADCAST_FOLD_PRELUDE
+                         + _NAMED_BROADCAST_FOLD_PRELUDE + _COPY_EXPAND_PRELUDE
+                         + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _PARALLEL_TEAM_PRELUDE
+                         + _PARALLEL_COARSEN_PRELUDE
                          + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PANEL_PARALLEL_MID_SRC
-                         + _PARALLEL_GRAIN_LATE_SRC
+                         + _PARALLEL_GRAIN_LATE_SRC + _PARALLEL_TEAM_STAGE_SRC
+                         + _PARALLEL_COARSEN_STAGE_SRC
                          + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
@@ -1071,6 +1131,11 @@ if _FOLD_WEIGHT_TRANSPOSE:
     for _fwt_kind, _fwt_detail in _fwt_report:
         print("OK fold_weight_transpose", _fwt_kind, _fwt_detail)
     print("OK fold_weight_transpose folded", _fwt_n)
+if _FOLD_BROADCAST:
+    _bf_n, _bf_report = _fold_broadcasts(module, ctx)
+    for _bf_kind, _bf_detail in _bf_report:
+        print("OK fold_broadcast_into_generic", _bf_kind, _bf_detail)
+    print("OK fold_broadcast_into_generic folded", _bf_n)
 # concat_dps (default-off): a `tensor.concat` operand produced by a destination-passing op is
 # retargeted to write STRAIGHT INTO the concatenated buffer, so bufferization has no data movement
 # left to emit for it. Must run BEFORE the pass manager: after one-shot-bufferize the destination is
@@ -1082,7 +1147,8 @@ if _CONCAT_DPS:
     print("OK concat_dps rewrote", _cd_n)
 with ctx, ir.Location.unknown():
     _n = apply_activation_polynomial(module, ctx)
-_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES)
+_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES,
+            _POST_OPENMP_STAGES, _PRE_GENERALIZE_STAGES)
 with open(out_path, "w") as f:
     __MERLIN_EMIT__
 print("OK act_poly rewrote", _n)
@@ -1132,12 +1198,44 @@ def _select_runner(pipeline: str, feats: "frozenset[str]", *, emit: str) -> str:
         return _activation_poly_runner(emit)
     if _needs_scalarize_runner(pipeline, feats):
         from .accum_microkernel import run_source
-        return run_source().replace("__MERLIN_EMIT__", emit)
+        from .bmm_tail_pad import FEATURE as _BMM_TAIL_PAD_FEATURE
+        return run_source(tag_bmm_tails=_BMM_TAIL_PAD_FEATURE in feats).replace(
+            "__MERLIN_EMIT__", emit)
     return _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
 
 
 class PipelineError(RuntimeError):
     pass
+
+
+def _residual_vector_dialect_ops(path: Path) -> tuple[str, ...]:
+    """Return vector-dialect operation names left at the translation boundary.
+
+    This is a lexical scan of the MLIR operation-name grammar used by the former
+    ``\\bvector\\.[A-Za-z0-9_]+`` check.  Keeping the boundary and identifier rules explicit
+    avoids making a textual compiler gate depend on a regex while preserving what it accepts.
+    """
+    text = path.read_text(encoding="utf-8")
+    prefix = "vector."
+    operations: set[str] = set()
+    cursor = 0
+    while True:
+        start = text.find(prefix, cursor)
+        if start < 0:
+            break
+        cursor = start + 1
+        if start and (text[start - 1] == "_" or text[start - 1].isalnum()):
+            continue
+        end = start + len(prefix)
+        name_end = end
+        while name_end < len(text):
+            char = text[name_end]
+            if not (char.isascii() and (char.isalnum() or char == "_")):
+                break
+            name_end += 1
+        if name_end != end:
+            operations.add(text[start:name_end])
+    return tuple(sorted(operations))
 
 
 def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
@@ -1174,6 +1272,12 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     _register_fold_weight_transpose()
     from .weight_prepack import ensure_registered as _register_prepack_weight_layout
     _register_prepack_weight_layout()
+    from .weight_prequant import ensure_registered as _register_prequantize_constant_weights
+    _register_prequantize_constant_weights()
+    from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
+    _register_fold_broadcast_into_generic()
+    from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
+    _register_named_broadcast_fold()
     from .concat_dps import ensure_registered as _register_concat_dps
     _register_concat_dps()
     # The direct-conv arm's REQUEST feature. Registered here for the same reason as the four above:
@@ -1200,10 +1304,16 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             sched_text = apply_schedule(transform_schedule or RVV_TRANSFORM_SCHEDULE, feats)
             sched.write_text(sched_text, encoding="utf-8")
             par_sched = None
+            _tile_aligned_parallel = False
             if parallel_harts is not None:
                 par_sched = work / "rvv_parallel_schedule.mlir"
+                from .bmm_tail_pad import FEATURE as _BMM_TAIL_PAD_FEATURE
+                _tile_aligned_parallel = _BMM_TAIL_PAD_FEATURE in feats
                 par_sched.write_text(
-                    parallel_transform_schedule(parallel_harts, chunks=parallel_chunks),
+                    parallel_transform_schedule(
+                        parallel_harts,
+                        chunks=parallel_chunks,
+                        tile_aligned=_tile_aligned_parallel),
                     encoding="utf-8")
                 if parallel_chunks is not None and not parallel_chunks:
                     import sys as _sys
@@ -1226,7 +1336,8 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             pipeline = build_rvv_pipeline(sched, hoist_static_allocs=hoist_static_allocs,
                                           features=feats, par_sched_path=par_sched,
                                           vec_sched_path=vec_sched,
-                                          perop_parallel=parallel_chunks is not None)
+                                          perop_parallel=(parallel_chunks is not None
+                                                          or _tile_aligned_parallel))
         elif parallel:
             pipeline = _parallel_pipeline()   # multicore (OpenMP) scalar path — K1 big models
         else:
@@ -1288,22 +1399,74 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # the tensor carrier before changing the marked loop to ``scf.parallel``.
     from .im2col_pack import FEATURE as _IM2COL_PANEL_FEATURE
     from .weight_panel import FEATURE as _WEIGHT_PANEL_FEATURE
-    _panel_parallel_gate = "1" if (omp and ({_IM2COL_PANEL_FEATURE, _WEIGHT_PANEL_FEATURE} & feats)) \
-        else "0"
+    # A pack feature can legitimately produce only single-panel carriers. Their loops have one
+    # trip and ``marker_ops`` intentionally emits no marker: requiring the parallel rewrite in
+    # that case made a correctly packed serial carrier fail with ``regions=0``. Gate on an actual
+    # marker CALL in the prepared module (not the declaration kept for uniformity).
+    from .panel_parallel import has_marker_call_text as _has_panel_marker_call
+    _panel_parallel_gate = "1" if (
+        omp and ({_IM2COL_PANEL_FEATURE, _WEIGHT_PANEL_FEATURE} & feats)
+        and _has_panel_marker_call(src.read_text(encoding="utf-8"))
+    ) else "0"
+    # argv[11:13] carry the ModelBlaster-style per-dispatch team policy.  The cost unit comes from
+    # the feature name; the cap is the target-independent worker count already passed into this
+    # lowering.  Naming it on a serial build is an error because there is no OpenMP region to edit.
+    from .parallel_team import work_of as _parallel_team_work
+    _team_work = _parallel_team_work(feats)
+    if _team_work is not None and parallel_harts is None:
+        raise ValueError("parallel_team_cost requires an explicit parallel_harts worker cap")
+    _team_work_gate = str(int(_team_work)) if _team_work is not None else "0"
+    _team_cap_gate = str(int(parallel_harts or 0)) if _team_work is not None else "0"
+    from .parallel_coarsen import FEATURE as _PARALLEL_COARSEN_FEATURE
+    _coarsen_gate = "1" if _PARALLEL_COARSEN_FEATURE in feats else "0"
+    if _coarsen_gate == "1" and not omp:
+        raise ValueError("coarsen_openmp_regions requires a parallel lowering")
+    if _coarsen_gate == "1" and _team_work is not None:
+        raise ValueError("coarsen_openmp_regions and parallel_team_cost are incompatible: "
+                         "team widths must agree across a coarsened region")
+    # argv[14] gates the pre-pipeline affine-map fold. Appending the argument preserves every
+    # existing runner gate's stable index.
+    from .broadcast_fold import FEATURE as _FOLD_BROADCAST_FEATURE
+    _fold_broadcast_gate = "1" if _FOLD_BROADCAST_FEATURE in feats else "0"
+    # argv[15] selects the after-schedule/pre-generalize named add/mul fold.
+    from .named_broadcast_fold import FEATURE as _NAMED_BROADCAST_FOLD_FEATURE
+    _named_broadcast_gate = "1" if _NAMED_BROADCAST_FOLD_FEATURE in feats else "0"
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
     stage_out = (work / "model.llvmdialect.mlir") if omp else out
     proc = subprocess.run(
         [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb,
-         _expand_copy, _fold_wt, _concat_dps_gate, _grain_gate, _panel_parallel_gate],
+         _expand_copy, _fold_wt, _concat_dps_gate, _grain_gate, _panel_parallel_gate,
+         _team_work_gate, _team_cap_gate, _coarsen_gate, _fold_broadcast_gate,
+         _named_broadcast_gate],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")
+    if _fold_broadcast_gate == "1":
+        from .broadcast_fold import require_report as _require_broadcast_fold_report
+        try:
+            _folded = _require_broadcast_fold_report(proc.stdout, work)
+            print(f"[broadcast-fold] folded {_folded} materialized broadcasts")
+        except ValueError as exc:
+            raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
+    if _named_broadcast_gate == "1":
+        from .named_broadcast_fold import require_report as _require_named_broadcast_report
+        try:
+            _named = _require_named_broadcast_report(proc.stdout, work)
+            print(f"[named-broadcast-fold] {_named}")
+        except ValueError as exc:
+            raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
     if _panel_parallel_gate == "1":
         from .panel_parallel import require_complete_report as _require_panel_report
         try:
             _require_panel_report(proc.stdout, work)
+        except ValueError as exc:
+            raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
+    if _coarsen_gate == "1":
+        from .parallel_coarsen import require_report as _require_coarsen_report
+        try:
+            _require_coarsen_report(proc.stdout)
         except ValueError as exc:
             raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
     if SINK_DEALLOC_PASS in pipeline and DEALLOC_CHECK_TOKEN not in proc.stdout:
@@ -1318,6 +1481,12 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
             "bypasses `_run_stages`; do not combine MERLIN_SINK_DEALLOCS with it until the check "
             f"is wired there too.\n{proc.stdout}")
     if omp:
+        residual_vector_ops = _residual_vector_dialect_ops(stage_out)
+        if residual_vector_ops:
+            raise PipelineError(
+                "vector dialect survived the lowering pipeline before mlir-translate: "
+                + ", ".join(residual_vector_ops)
+                + f"\nLLVM-dialect artifact: {stage_out}")
         from .toolchain import mlir_translate
         tproc = subprocess.run(
             [str(mlir_translate()), "--mlir-to-llvmir", str(stage_out), "-o", str(out)],

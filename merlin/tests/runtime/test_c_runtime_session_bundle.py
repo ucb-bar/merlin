@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import replace
 
 import pytest
 import yaml
@@ -73,6 +74,19 @@ def test_load_validates_stage_order_state_routes_and_abis(tmp_path, monkeypatch)
     _mock_abis(monkeypatch, target_shape=[3])
     with pytest.raises(ValueError, match="ABI mismatch"):
         session_bundle.load(root)
+
+
+def test_load_accepts_a_weightless_identity_stage(tmp_path, monkeypatch):
+    """SmolVLA action_decode is a compiled identity and has no stored parameters."""
+    root = _root(tmp_path)
+    stage = root / "stages" / "prefill"
+    (stage / "weights.safetensors").unlink()
+    (stage / "weights.safetensors.manifest.json").write_text(json.dumps({
+        "0": {"kind": "input", "name": "state"},
+    }), encoding="utf-8")
+    _mock_abis(monkeypatch)
+
+    assert session_bundle.load(root).program_names == ("prefill", "decode")
 
 
 def test_load_rejects_eager_primary_stage_and_escaping_bundle(tmp_path, monkeypatch):
@@ -156,6 +170,21 @@ long merlin_stage_1_correctness_top1(void){return 3;}
         str(fixture),
     ], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
+
+
+def test_scheduler_names_copy_sizes_uniquely_for_multiple_stage_bindings(tmp_path, monkeypatch):
+    """Two values routed into one stage must still produce valid C block scope."""
+    root = _root(tmp_path)
+    _mock_abis(monkeypatch)
+    session = session_bundle.load(root)
+    first = session.bindings[0]
+    session = replace(session, bindings=(first, replace(first, name="state_copy")))
+
+    _, source = session_bundle._session_sources(session)
+
+    assert "size_t source_bytes_0" in source
+    assert "size_t source_bytes_1" in source
+    assert source.count("size_t source_bytes =") == 0
 
 
 def test_c_runtime_can_name_a_stage_entrypoint(monkeypatch, tmp_path):

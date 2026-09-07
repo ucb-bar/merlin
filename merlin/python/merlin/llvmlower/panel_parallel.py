@@ -26,6 +26,25 @@ from pathlib import Path
 PANEL_MARKER_SYMBOL = "__merlin_parallel_panel_marker"
 
 
+def has_marker_call_text(mlir_text: str) -> bool:
+    """Whether printed MLIR contains a marker call, not merely its declaration.
+
+    xDSL prints calls in generic form while torch-mlir commonly uses the custom form. Inspect
+    individual lines for both spellings so a private declaration alone never enables the
+    post-bufferization rewrite. That distinction matters when every packed carrier has one trip:
+    :func:`marker_ops` deliberately emits no call because there is no panel-level work to share.
+    """
+    for line in mlir_text.splitlines():
+        if PANEL_MARKER_SYMBOL not in line:
+            continue
+        stripped = line.strip()
+        if stripped.startswith("func.call @"):
+            return True
+        if stripped.startswith('"func.call"') and "callee = @" in stripped:
+            return True
+    return False
+
+
 def marker_call():
     """The fail-closed marker inserted directly in one panel-loop body."""
     from xdsl.dialects.func import CallOp

@@ -6,7 +6,8 @@ This module rewrites every contraction (``linalg.matmul`` and the batched ``lina
 matmuls/attention from ``collapse_overrank_matmul``) into a real integer contraction:
 
   * each f32 activation operand is dynamically quantized to i8 (symmetric, per output-row:
-    ``s = max|x|/127`` reduced over the operand's contraction dim, zero-point 0);
+    ``s = max|x|/127`` reduced over the operand's contraction dim, with ``s = 1`` when the maximum
+    is zero, zero-point 0);
   * a ``dequantize_per_channel`` weight operand is used directly as i8 (its per-channel scale
     carried forward), the dequant dropped;
   * the contraction runs ``i8×i8→i32`` (clang ``-march=rv64gcv`` lowers it to widening
@@ -78,6 +79,27 @@ def _select_targets(targets, select, key=None):
         return targets
     k = (lambda t: t) if key is None else key
     return [t for t in targets if select(k(t))]
+
+
+def _emit_zero_safe_scale(block, amax, denominator):
+    """Emit ``amax == 0 ? 1 : amax / denominator`` and return the selected scale.
+
+    The old ``amax / 127`` spelling makes an all-zero quantization group divide ``0 / 0`` in the
+    following quantizer.  That reaches ``fptosi(NaN)``, which is LLVM poison.  Selecting one only
+    for the zero maximum defines that case while leaving every nonzero scale's arithmetic and bits
+    unchanged.  The explicit select is also a structural proof for passes which inline rounding.
+    """
+    from xdsl.dialects import arith
+    from xdsl.dialects.builtin import FloatAttr
+
+    ftype = amax.type
+    raw = arith.DivfOp(amax, denominator)
+    zero = arith.ConstantOp(FloatAttr(0.0, ftype))
+    one = arith.ConstantOp(FloatAttr(1.0, ftype))
+    is_zero = arith.CmpfOp(amax, zero.results[0], "oeq")
+    safe = arith.SelectOp(is_zero.result, one.results[0], raw.result)
+    block.add_ops([raw, zero, one, is_zero, safe])
+    return safe.result
 
 
 # --- quantize-before-gather ---------------------------------------------------------------------
@@ -404,7 +426,8 @@ def _emit_prequant_gather(gather, reshapes):
     # --- s = amax / 127 ---
     sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
     sb = Block(arg_types=[f32, f32]); s_in, _unused = sb.args
-    sd = arith.DivfOp(s_in, c127.results[0]); sb.add_ops([sd, L.YieldOp(sd.result)])
+    safe_scale = _emit_zero_safe_scale(sb, s_in, c127.results[0])
+    sb.add_op(L.YieldOp(safe_scale))
     s_a = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
                       indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
                       iterator_types=ArrayAttr([]), result_types=(sc_t,))
@@ -616,7 +639,8 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
             sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
             ident_p = AffineMap.identity(len(sc_shape)).results
             sb = Block(arg_types=[f32, f32]); s_in, _ = sb.args
-            sd = arith.DivfOp(s_in, c127.results[0]); sb.add_ops([sd, L.YieldOp(sd.result)])
+            safe_scale = _emit_zero_safe_scale(sb, s_in, c127.results[0])
+            sb.add_op(L.YieldOp(safe_scale))
             sc = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
                              indexing_maps=ArrayAttr([amap(len(sc_shape), ident_p),
                                                       amap(len(sc_shape), ident_p)]),
@@ -823,8 +847,17 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         pre = []
 
         # --- weight -> i8 + per-output-channel scale s_w ---
-        wt_dims = [rr.position for rr in maps[1].data.results]   # iterator dim per weight axis
-        wt_keep = [ax for ax, d in enumerate(wt_dims) if not red_flags[d]]   # parallel (out-ch) axes
+        wt_exprs = list(maps[1].data.results)  # iterator expression per weight axis
+        # A grouped direct conv indexes weight axis 0 as ``g * (F/G) + fg``.  That compound
+        # expression is still entirely parallel and therefore still a per-output-channel axis;
+        # requiring a bare AffineDimExpr here made the integer rewrite crash precisely on the
+        # grouped-direct form that removes im2col.  Classify an axis by every dimension it uses.
+        wt_keep = []
+        for ax, expr in enumerate(wt_exprs):
+            terms, _const = _affine_terms(expr)
+            if terms and all(0 <= d < len(red_flags) and not red_flags[d]
+                             for d, _coeff in terms):
+                wt_keep.append(ax)
         if _is_dequant(wt.owner):
             deq = wt.owner
             wt_i8, s_w = deq.operands[0], deq.operands[1]        # already i8 + per-channel scale
@@ -849,7 +882,8 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
             ws_e = tensor.EmptyOp((), ws_t); wc127 = arith.ConstantOp(FloatAttr(127.0, f32))
             id_k = AffineMap.identity(len(ws_shape)).results
             wsb = Block(arg_types=[f32, f32]); ws_in, _ = wsb.args
-            wsd = arith.DivfOp(ws_in, wc127.results[0]); wsb.add_ops([wsd, L.YieldOp(wsd.result)])
+            safe_wscale = _emit_zero_safe_scale(wsb, ws_in, wc127.results[0])
+            wsb.add_op(L.YieldOp(safe_wscale))
             s_w_g = L.GenericOp(inputs=(w_amx.results[0],), outputs=(ws_e.results[0],),
                                 body=Region(wsb),
                                 indexing_maps=ArrayAttr([amap(len(ws_shape), id_k),
@@ -887,7 +921,8 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
                           result_types=(sc_t,))
         sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
         sb = Block(arg_types=[f32, f32]); s_in, _ = sb.args
-        sd = arith.DivfOp(s_in, c127.results[0]); sb.add_ops([sd, L.YieldOp(sd.result)])
+        safe_scale = _emit_zero_safe_scale(sb, s_in, c127.results[0])
+        sb.add_op(L.YieldOp(safe_scale))
         s_a = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
                           indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
                           iterator_types=ArrayAttr([]), result_types=(sc_t,))
@@ -922,9 +957,14 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         out_dims = [rr.position for rr in maps[-1].data.results]
         P = len(out_dims); d_par = AffineMap.identity(P).results
         # weight's (single) parallel iterator dim -> output channel position
-        wt_dims = [rr.position for rr in maps[1].data.results]
-        wt_par = [d for d in wt_dims if not red_flags[d]]
-        wpos = out_dims.index(wt_par[0])
+        scale_exprs = [wt_exprs[ax] for ax in wt_keep]
+        if not scale_exprs:
+            continue
+        # The output map is an identity projection of the parallel iterator prefix for every
+        # admitted direct conv. Reusing the weight's parallel expression therefore maps a rank-1
+        # scale as ``d1`` for ordinary conv and ``d1 * (F/G) + d2`` for grouped conv.
+        if out_dims != list(range(P)):
+            continue
         out_e = tensor.EmptyOp((), out_t)
         wb = Block(arg_types=[i32, f32, f32, f32]); accv, sav, swv, _ = wb.args
         cur = arith.SIToFPOp(accv, f32); m1 = arith.MulfOp(cur.result, sav)
@@ -933,7 +973,7 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         requant = L.GenericOp(inputs=(i8cv.results[0], s_a.results[0], s_w),
                               outputs=(out_e.results[0],), body=Region(wb),
                               indexing_maps=ArrayAttr([amap(P, d_par), amap(P, []),
-                                                       amap(P, [d_par[wpos]]), amap(P, d_par)]),
+                                                       amap(P, scale_exprs), amap(P, d_par)]),
                               iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * P),
                               result_types=(out_t,))
         _carry_prov(op, contraction=i8cv, requant=requant)
@@ -1161,7 +1201,11 @@ def lower_gelu_int(module, *, select=None) -> int:
         sre = tensor.EmptyOp((), Rt); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
         sb = Block(arg_types=[f32, f32]); nm, _ = sb.args
         sd = arith.DivfOp(nm, c127.results[0]); eps = arith.ConstantOp(FloatAttr(1e-12, f32))
-        sfl = arith.MaximumfOp(sd.result, eps.results[0]); sb.add_ops([sd, eps, sfl, L.YieldOp(sfl.result)])
+        sfl = arith.MaximumfOp(sd.result, eps.results[0])
+        sz = arith.ConstantOp(FloatAttr(0.0, f32)); so = arith.ConstantOp(FloatAttr(1.0, f32))
+        is_zero = arith.CmpfOp(nm, sz.results[0], "oeq")
+        safe = arith.SelectOp(is_zero.result, so.results[0], sfl.result)
+        sb.add_ops([sd, eps, sfl, sz, so, is_zero, safe, L.YieldOp(safe.result)])
         sx = L.GenericOp(inputs=(amax.results[0],), outputs=(sre.results[0],), body=Region(sb),
                          indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
                          iterator_types=par_rowit, result_types=(Rt,))

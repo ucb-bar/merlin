@@ -46,6 +46,30 @@ module {
 }
 """
 
+_PROVED_NONZERO_SCALE_QUANTIZE = _QUANTIZE.replace(
+    "      %d = arith.divf %x, %sv : f32\n",
+    "      %safe_s = arith.constant 1.000000e+00 : f32\n"
+    "      %d = arith.divf %x, %safe_s : f32\n",
+)
+
+
+_DYNAMIC_MM = """
+module attributes {prov.quantization = "int8_weight_only"} {
+  func.func @forward(%a: tensor<2x8xf32>, %w: tensor<8x4xi8>,
+                     %s: tensor<4xf32>, %zp: tensor<4xi32>) -> tensor<2x4xf32> {
+    %wd = "quant_ext.dequantize_per_channel"(%w, %s, %zp)
+      <{axis = 1 : i64, input_dtype = "i8"}> :
+      (tensor<8x4xi8>, tensor<4xf32>, tensor<4xi32>) -> tensor<8x4xf32>
+    %e = tensor.empty() : tensor<2x4xf32>
+    %z = arith.constant 0.0 : f32
+    %f = linalg.fill ins(%z : f32) outs(%e : tensor<2x4xf32>) -> tensor<2x4xf32>
+    %y = linalg.matmul ins(%a, %wd : tensor<2x8xf32>, tensor<8x4xf32>)
+      outs(%f : tensor<2x4xf32>) -> tensor<2x4xf32>
+    return %y : tensor<2x4xf32>
+  }
+}
+"""
+
 
 def _body_names(module):
     for op in module.walk():
@@ -57,7 +81,7 @@ def _body_names(module):
 def test_the_quantize_chain_is_fused_and_leaves_no_math_op():
     from merlin.llvmlower.quant_round import fuse_round_clamp_convert
 
-    module = _parse(_QUANTIZE)
+    module = _parse(_PROVED_NONZERO_SCALE_QUANTIZE)
     assert "math.roundeven" in _body_names(module)
     report: dict = {}
     assert fuse_round_clamp_convert(module, report_out=report) == 1
@@ -84,7 +108,7 @@ def test_an_unprovable_chain_is_refused_and_counted(mutation, reason):
     not approximate -- an approximation here is an integer-valued op answering a different number."""
     from merlin.llvmlower.quant_round import fuse_round_clamp_convert
 
-    text = _QUANTIZE
+    text = _PROVED_NONZERO_SCALE_QUANTIZE
     if mutation == "__drop_lower__":
         text = text.replace("      %m2 = arith.maximumf %m1, %lo : f32\n", "")
         text = text.replace("arith.fptosi %m2", "arith.fptosi %m1")
@@ -98,6 +122,35 @@ def test_an_unprovable_chain_is_refused_and_counted(mutation, reason):
     assert fuse_round_clamp_convert(module, report_out=report) == 0
     assert report.get(f"refused_{reason}"), report
     assert "math.roundeven" in _body_names(module), "a refused chain must be left ALONE"
+
+
+def test_a_dynamic_quantization_scale_is_refused_before_vectorization():
+    """The actual activation chain can divide zero by an all-zero tensor's zero scale.
+
+    ``fptosi(NaN)`` is LLVM poison.  Keeping the libm-shaped scalar loop and inlining it are not
+    observationally interchangeable once the latter enables vectorization, so the peephole must
+    wait until scale construction defines the zero-amax case.
+    """
+    from merlin.llvmlower.quant_round import fuse_round_clamp_convert
+
+    module = _parse(_QUANTIZE)
+    report: dict = {}
+    assert fuse_round_clamp_convert(module, report_out=report) == 0
+    assert report == {"refused_round_divisor_may_be_zero": 1, "rewrites": 0}
+    assert "math.roundeven" in _body_names(module)
+
+
+def test_a_zero_guarded_dynamic_scale_is_proved_and_rewritten():
+    """The matcher follows the quantizer's scale operand back to the guarded scale constructor."""
+    from merlin.llvmlower.passes_quant_int import lower_matmul_int8
+    from merlin.llvmlower.quant_round import fuse_round_clamp_convert
+
+    module = _parse(_DYNAMIC_MM)
+    assert lower_matmul_int8(module) == 1
+    report: dict = {}
+    assert fuse_round_clamp_convert(module, report_out=report) == 1
+    assert report == {"rewrites": 1}
+    assert not any(op.name == "math.roundeven" for op in module.walk())
 
 
 def test_the_emitted_arithmetic_equals_the_chain_it_replaces():
@@ -164,10 +217,17 @@ def test_the_lever_resolves_in_a_process_that_imports_no_proposer():
                          cwd=str(repo_root()))
     assert out.returncode == 0, out.stderr
     got = out.stdout.strip().split(",")
-    # It must also drag in the lever that gives it its payoff: alone the rewrite trades a call for
-    # inline arith and measures as a wash.
     assert "fuse_quantize_round_convert" in got
-    assert "vectorize_non_contraction_generics" in got, got
+    # The exact rewrite must not silently perturb contraction lowering through the broad schedule.
+    assert "vectorize_non_contraction_generics" not in got, got
+
+
+def test_the_explicit_vectorized_variant_composes_both_features():
+    from merlin.llvmlower.impr_features import normalize
+
+    got = normalize({"fuse_quantize_round_convert_vec"})
+    assert "fuse_quantize_round_convert" in got
+    assert "vectorize_non_contraction_generics" in got
 
 
 def test_it_is_ranked_so_the_search_can_reach_it():

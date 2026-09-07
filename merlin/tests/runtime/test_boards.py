@@ -327,8 +327,11 @@ def test_the_hart_count_reaches_the_split_and_not_the_block():
 
     src = inspect.getsource(zm.prepare_for_lowering)
     assert "harts" in inspect.signature(zm.prepare_for_lowering).parameters
-    assert "parallel_chunk_table(_cshapes(prepared), table, harts)" in src, (
+    assert "parallel_chunk_table(_par_shapes, table, harts)" in src, (
         "the hart count must reach the split derivation")
+    assert "s for s in _cshapes(prepared)" in src
+    assert "_par_shapes.extend(_pb.conv_shapes(prepared))" in src, (
+        "both matmul-like contractions and direct convolutions must reach the split derivation")
     assert "harts" not in inspect.signature(pb.block_table).parameters, (
         "the block must not be a function of the hart count")
     # ...and build_app must pass the image's hart count down, not the default.

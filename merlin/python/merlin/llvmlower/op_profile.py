@@ -746,6 +746,10 @@ _TO_FLOAT = frozenset({"arith.sitofp", "arith.uitofp"})
 _SCALE = frozenset({"arith.mulf", "arith.divf"})
 _ABS = frozenset({"math.absf"})
 _MAX = frozenset({"arith.maximumf", "arith.maxnumf", "arith.maxsi", "arith.maxui"})
+# The provenance-free INT8 contraction emitted by quantized lowering widens byte operands, then
+# multiplies and accumulates into i32.  Requiring the widen as well as multiply+add avoids calling
+# an ordinary pointwise integer axpy a contraction.
+_INT_EXT = frozenset({"arith.extsi", "arith.extui"})
 
 #: Categories that together make up the quantize chain. A consumer that wants "the whole chain"
 #: sums these EXPLICITLY rather than having the sum made for it, because the scale search is a
@@ -771,6 +775,8 @@ def classify_generic_body(body_ops) -> tuple[str, str] | None:
         # folded into quantize_requant: an abs-then-max reduction is also a legitimate model op, and
         # a bucket that can be wrong should be one a reader can see and discount separately.
         return "quantize_scale_search", "body:abs_max"
+    if (ops & _INT_EXT) and "arith.muli" in ops and "arith.addi" in ops:
+        return "contraction", "body:int_widen_mul_accumulate"
     return None
 
 

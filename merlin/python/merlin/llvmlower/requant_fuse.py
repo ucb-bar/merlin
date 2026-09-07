@@ -267,9 +267,43 @@ def fused_arms(pairs, vectorize_epilogue: bool = False) -> str:
     out = []
     for entry in pairs:
         idx, mr, nr, rank = int(entry[0]), int(entry[1]), int(entry[2]), int(entry[3])
+        parallel_tiles = [int(x) for x in entry[4:]]
+        if parallel_tiles and (len(parallel_tiles) != rank or not any(parallel_tiles)):
+            raise ValueError(
+                f"requant-fusion pair {idx} has invalid rank-{rank} parallel tile "
+                f"{parallel_tiles}")
         tile, ktile, mm_vec, rq_vec, n_loops = _tile_spec(rank, mr, nr)
         h = f"q{idx}"
         loop_types = ", ".join(["!transform.any_op"] * (n_loops + 1))
+        # A paired contraction's ordinary parallel tag is removed by the tagger because the generic
+        # multicore transform runs before this producer/consumer fusion and would put the producer
+        # behind an scf.forall boundary.  Carry that tag's exact, block-legal tile in the pair table
+        # instead and shard the CONSUMER first.  Producer fusion then happens inside each shard, so
+        # removing the model-sized accumulator traversal no longer serializes the contraction.
+        parallel = ""
+        parallel_cleanup = ""
+        requant_handle = f"%{h}r"
+        contraction_handle = f"%{h}c"
+        fill_handle = f"%{h}f"
+        if parallel_tiles:
+            sizes = ", ".join(str(x) for x in parallel_tiles)
+            parallel = (
+                f'    %{h}p, %{h}pl = transform.structured.tile_using_forall %{h}r '
+                f'tile_sizes [{sizes}] : (!transform.any_op) -> '
+                f'(!transform.any_op, !transform.any_op)\n'
+                f'    %{h}pc, %{h}pk1 = transform.structured.fuse_into_containing_op '
+                f'%{h}c into %{h}pl : (!transform.any_op, !transform.any_op) -> '
+                f'(!transform.any_op, !transform.any_op)\n'
+                f'    %{h}pf, %{h}pk2 = transform.structured.fuse_into_containing_op '
+                f'%{h}f into %{h}pk1 : (!transform.any_op, !transform.any_op) -> '
+                f'(!transform.any_op, !transform.any_op)\n')
+            requant_handle = f"%{h}p"
+            contraction_handle = f"%{h}pc"
+            fill_handle = f"%{h}pf"
+            parallel_cleanup = (
+                f'\n    transform.apply_patterns to %{h}pl {{\n'
+                f'      transform.apply_patterns.tensor.fold_tensor_empty\n'
+                f'    }} : !transform.any_op')
         out.append(
             f'    %{h}r = transform.structured.match '
             f'attributes{{{tag_for(idx, ROLE_REQUANT)}}} in %arg0 '
@@ -280,12 +314,14 @@ def fused_arms(pairs, vectorize_epilogue: bool = False) -> str:
             f'    %{h}f = transform.structured.match '
             f'attributes{{{tag_for(idx, ROLE_FILL)}}} in %arg0 '
             f': (!transform.any_op) -> !transform.any_op\n'
-            f'    %{h}t, %{h}l:{n_loops} = transform.structured.tile_using_for %{h}r '
+            + parallel
+            + f'    %{h}t, %{h}l:{n_loops} = transform.structured.tile_using_for {requant_handle} '
             f'tile_sizes {tile} : (!transform.any_op) -> ({loop_types})\n'
-            f'    %{h}cf, %{h}k1 = transform.structured.fuse_into_containing_op %{h}c '
+            f'    %{h}cf, %{h}k1 = transform.structured.fuse_into_containing_op '
+            f'{contraction_handle} '
             f'into %{h}l#{n_loops - 1} : (!transform.any_op, !transform.any_op) -> '
             f'(!transform.any_op, !transform.any_op)\n'
-            f'    %{h}ff, %{h}k2 = transform.structured.fuse_into_containing_op %{h}f '
+            f'    %{h}ff, %{h}k2 = transform.structured.fuse_into_containing_op {fill_handle} '
             f'into %{h}k1 : (!transform.any_op, !transform.any_op) -> '
             f'(!transform.any_op, !transform.any_op)\n'
             f'    %{h}ck, %{h}kl = transform.structured.tile_using_for %{h}cf '
@@ -306,7 +342,8 @@ def fused_arms(pairs, vectorize_epilogue: bool = False) -> str:
             # would also rewrite unrelated ops, so it is applied where its effect is the point.
             f'    transform.apply_patterns to %{h}l#0 {{\n'
             f'      transform.apply_patterns.tensor.fold_tensor_empty\n'
-            f'    }} : !transform.any_op')
+            f'    }} : !transform.any_op'
+            + parallel_cleanup)
     return "\n".join(out) + "\n" if out else ""
 
 

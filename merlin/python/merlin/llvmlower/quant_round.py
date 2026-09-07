@@ -33,11 +33,13 @@ Two consequences, and the second is the one that makes this a lever rather than 
    the one for the quantize chain, and it composes the same way -- rewrite to pure arith BEFORE the
    tagger runs, and the existing per-rank arms claim the op with no new arm written.
 
-That is why this feature ``implies`` `vectorize_non_contraction_generics`. On its own the rewrite is
-roughly instruction-NEUTRAL in scalar form (it trades a call and its callee for a similar count of
-inline arith), so naming it alone would measure a wash; the payoff is that the op becomes
-vectorizable, and a default-off lever whose payoff needs a second default-off lever is an inert lever
-(the reasoning `impr_features.ImprFeature.implies` and `_vec_noncontraction_hygiene` already record).
+The exact rewrite and explicit MLIR vectorization are deliberately separate feature points.  The
+rewrite alone removes the libm barrier and lets LLVM's loop vectorizer claim the resulting ordinary
+arithmetic.  ``fuse_quantize_round_convert_vec`` additionally enables Merlin's bounded
+``vectorize_non_contraction_generics`` schedule.  Keeping that composition explicit matters: on the
+TinyLlama MR4/NR32 packed path the broad schedule changed the proven scalar-feed kernel from
+``lb + vwmacc.vx`` into ``lbu + vmv.v.x + vsext + vwmacc.vv``.  A helper feature must not silently
+rewrite an unrelated hot contraction while reporting itself as an epilogue optimization.
 
 THE EQUIVALENCE, which is the whole correctness argument and is exact, not approximate.
 
@@ -61,12 +63,12 @@ operation, NOT affected by the dynamic rounding mode), `C` for the clamp the cha
 
   So the whole chain is exactly: clamp into `[lo, hi]`, then round half-to-even. Checked at every
   boundary the composition has:
-    * `v` NaN: `arith.minimumf` is IEEE `minimum` and PROPAGATES NaN, so the baseline reaches
-      `fptosi(NaN)`, which is POISON in LLVM. The rewrite reaches `fptosi(NaN)` too and is poison in
-      the same place. Neither form is defined here and the pass does not pretend to fix it; it is
-      recorded because the input can occur (an all-zero activation tensor gives `amax = 0`, `s = 0`,
-      `0/0 = NaN`) and because it is the one input class where "bit-identical" is a statement about
-      two undefined values rather than two defined ones.
+    * `v` NaN: `arith.minimumf` is IEEE `minimum` and PROPAGATES NaN, so both forms would reach
+      `fptosi(NaN)`, which is POISON in LLVM. They are therefore equivalent only for defined inputs,
+      not observationally interchangeable after optimization. In particular, an all-zero activation
+      used to give `amax = 0`, `s = 0`, and `0/0 = NaN`. Scale construction now selects `s = 1`
+      for exactly that case; the matcher follows the tensor producer and accepts only that proved
+      guard (or a finite nonzero constant), refusing an unguarded dynamic divisor.
     * `v = +/-inf`: `re` fixes them, the clamp pins them to `hi`/`lo`. The rewrite clamps first and
       gets `hi`/`lo` directly. Same.
     * `|v| >= 2^23`: `v` is already integral, so `re(v) = v` and the clamp pins it to `hi`/`lo`. The
@@ -125,6 +127,11 @@ from __future__ import annotations
 #: name raises and returns False, so a lever nobody registered is not declined, it is INVISIBLE.
 FEATURE = "fuse_quantize_round_convert"
 
+#: Explicit composition of the exact rewrite with Merlin's bounded non-contraction vectorizer.
+#: ``FEATURE`` intentionally does not imply this: the broad schedule can perturb contraction
+#: lowering, while the exact rewrite by itself still removes LLVM's scalar libm barrier.
+VEC_FEATURE = "fuse_quantize_round_convert_vec"
+
 #: Largest magnitude a clamp bound may have for the inline round to be exact. At or above 2^23 an f32
 #: has no fractional bits left, so `c - trunc(c)` stops being exact and `t` stops being representable
 #: in a narrow destination type. NOT a tuning number and NOT a target fact -- it is where f32's
@@ -168,6 +175,72 @@ def _single_use(value) -> bool:
     return len(list(value.uses)) == 1
 
 
+def _guarded_scale_value(value):
+    """Return the scalar yielded by a scale tensor feeding this generic block argument.
+
+    Dynamic quantization computes the scale in one ``linalg.generic`` and consumes that tensor in
+    another.  The divisor visible beside ``roundeven`` is consequently a block argument, not the
+    guarding ``arith.select`` itself.  Follow exactly that one producer edge; do not guess through
+    arbitrary tensor computations.
+    """
+    block = getattr(value, "owner", None)
+    index = getattr(value, "index", None)
+    region = getattr(block, "parent", None)
+    consumer = getattr(region, "parent", None)
+    if (index is None or getattr(consumer, "name", None) != "linalg.generic"
+            or index >= len(consumer.inputs)):
+        return None
+    producer = getattr(consumer.inputs[index], "owner", None)
+    if getattr(producer, "name", None) != "linalg.generic" or not producer.body.blocks:
+        return None
+    body = producer.body.blocks[0]
+    terminator = body.last_op
+    if getattr(terminator, "name", None) != "linalg.yield" or len(terminator.operands) != 1:
+        return None
+    return terminator.operands[0]
+
+
+def _is_zero_guarded_scale(value) -> bool:
+    """Whether ``value`` comes from the exact ``amax == 0 ? 1 : amax / C`` constructor."""
+    selected = _guarded_scale_value(value)
+    select = getattr(selected, "owner", None)
+    if getattr(select, "name", None) != "arith.select":
+        return False
+    cond, when_zero, otherwise = select.operands
+    one = _const_float(when_zero)
+    false_owner = getattr(otherwise, "owner", None)
+    cmp = getattr(cond, "owner", None)
+    if (one is None or one != one or one == 0.0
+            or getattr(cmp, "name", None) != "arith.cmpf"):
+        return False
+    # Most constructors select the raw division. i-GELU retains its pre-existing positive epsilon
+    # floor for tiny nonzero rows and selects one only at exactly zero. Accept that exact spelling
+    # too; a zero/negative/nonconstant floor proves nothing.
+    if getattr(false_owner, "name", None) == "arith.maximumf":
+        a, b = false_owner.operands
+        floor, otherwise = _const_float(b), a
+        if floor is None:
+            floor, otherwise = _const_float(a), b
+        if floor is None or floor != floor or floor <= 0.0:
+            return False
+        false_owner = getattr(otherwise, "owner", None)
+    div = false_owner
+    if getattr(div, "name", None) != "arith.divf":
+        return False
+    # xDSL encodes ordered-equal (`oeq`) as predicate 1.  Requiring it matters: unordered equality
+    # would select the fallback for NaN too and no longer describe this constructor.
+    predicate = cmp.properties.get("predicate")
+    if getattr(getattr(predicate, "value", None), "data", None) != 1:
+        return False
+    numerator, denominator = div.operands
+    denom = _const_float(denominator)
+    if denom is None or denom != denom or denom == 0.0:
+        return False
+    lhs, rhs = cmp.operands
+    return ((lhs is numerator and _const_float(rhs) == 0.0)
+            or (rhs is numerator and _const_float(lhs) == 0.0))
+
+
 def _int_range(int_type) -> tuple[int, int]:
     w = int_type.width.data
     return (-(2 ** (w - 1)), 2 ** (w - 1) - 1)
@@ -208,6 +281,22 @@ def _match_chain(fptosi_op):
         if name == "math.roundeven":
             if not _single_use(cur):
                 return "round_result_shared"
+            # A dynamic quantization scale may be zero.  The real whole-model form is
+            # ``roundeven(x / (amax / 127))``; for an all-zero activation ``amax == 0`` and the
+            # zero lanes evaluate ``0 / 0``.  Both the old and new LLVM IR then contain
+            # ``fptosi(NaN)``, which is poison, but the old scalar libm call happens to inhibit
+            # vectorization while the inline form lets LLVM exploit that poison.  On K1 the latter
+            # made TinyLlama's complete output canonical NaNs.  Preserve the observed program until
+            # Scale construction now defines the zero-amax case as one. Only rewrite when the
+            # divisor is a finite nonzero constant or comes from that exact guarded producer.
+            rounded = owner.operands[0]
+            rounded_owner = getattr(rounded, "owner", None)
+            if getattr(rounded_owner, "name", None) == "arith.divf":
+                divisor_value = rounded_owner.operands[1]
+                divisor = _const_float(divisor_value)
+                if ((divisor is None or divisor != divisor or divisor == 0.0)
+                        and not _is_zero_guarded_scale(divisor_value)):
+                    return "round_divisor_may_be_zero"
             if lo == float("-inf") or hi == float("inf"):
                 # A one-sided clamp leaves the rounded value unbounded on the other side, so the
                 # inline round has no range to be exact in. Refuse; do not guess a bound.
@@ -319,40 +408,43 @@ def fuse_round_clamp_convert(module, report_out: "dict | None" = None) -> int:
 
 
 def ensure_registered() -> str:
-    """Register the feature if it is not already. Idempotent; returns :data:`FEATURE`."""
+    """Register the isolated rewrite and explicit vectorized composition. Idempotent."""
     from . import impr_features as F
-    if FEATURE in F.known():
+    if FEATURE in F.known() and VEC_FEATURE in F.known():
         return FEATURE
-    F.register(F.ImprFeature(
-        name=FEATURE,
-        action_class="PASS",
-        description=(
-            "Fuse the int8 quantize chain `math.roundeven -> clamp -> arith.fptosi` into a "
-            "rounding-mode-INDEPENDENT inline round, so the generic carrying it stops containing a "
-            "`math.*` op and becomes claimable by the existing per-rank vectorize arms. The chain is "
-            "emitted at three sites in `passes_quant_int` and is a scalar libm CALL per element: "
-            "`convert-math-to-libm` turns `math.roundeven` into `roundevenf` and scalarizes the "
-            "vector form back into per-lane extracts + calls, so nothing downstream will vectorize "
-            "a loop containing it -- and the `merlin.vec_r{rank}` TAGGER refuses any all-parallel "
-            "generic with a `math.*` body outright, which is why these ops carry no tag today. Same "
-            "composition as `vectorized_transcendental_activation`: rewrite to pure arith BEFORE the "
-            "tagger runs and the existing arms claim the op, with no new arm. EXACT, not "
-            "approximate: the clamp commutes with round-half-to-even because every bound is integral "
-            "(refused otherwise), which bounds the argument; and `fptosi`'s truncate-toward-zero is "
-            "then a no-op on an already-integral value inside the destination type -- so the two "
-            "different rounding rules in the chain collapse to one. The inline round uses "
-            "trunc/convert-back/compare rather than the add-magic-constant trick, because the chain "
-            "it replaces is rounding-mode independent and the magic trick is not, on a target whose "
-            "`frm` this repo does not derive. REFUSES and COUNTS a non-integral bound, a one-sided "
-            "clamp, a bound outside the destination integer type, a shared intermediate and "
-            "`fptoui`. IMPLIES `vectorize_non_contraction_generics`: on its own the rewrite is "
-            "roughly instruction-neutral in scalar form (a call and its callee traded for inline "
-            "arith), so the payoff is entirely that the op becomes vectorizable -- and a default-off "
-            "lever whose payoff needs a second default-off lever measures as a wash. Orthogonal to "
-            "`quantize_before_gather`, which changes the SCALE (per-tensor vs per-row) and is a "
-            "genuine numeric change: this pass does not touch the scale computation at all. "
-            "NO SPEED CLAIM -- the wall is unmeasured, and on this repo a lever that removed ops and "
-            "shrank the object has measured 1.09x SLOWER. Default-off; baseline byte-identical."),
-        implies=frozenset({F.VEC_NONCONTRACTION_NAME}),
-    ))
+    if FEATURE not in F.known():
+        F.register(F.ImprFeature(
+            name=FEATURE,
+            action_class="PASS",
+            description=(
+                "Fuse the int8 quantize chain `math.roundeven -> clamp -> arith.fptosi` into a "
+                "rounding-mode-INDEPENDENT inline round, removing the scalar `roundevenf` libm "
+                "barrier while leaving the transform schedule unchanged. EXACT, not approximate: "
+                "the clamp commutes with round-half-to-even because every bound is integral "
+                "(refused otherwise), which bounds the argument; and `fptosi`'s "
+                "truncate-toward-zero is then a no-op on an already-integral value inside the "
+                "destination type. The inline round uses trunc/convert-back/compare rather than "
+                "the rounding-mode-dependent magic-constant trick. REFUSES and COUNTS a "
+                "non-integral bound, a one-sided clamp, a bound outside the destination integer "
+                "type, an unguarded dynamic or zero divisor, a shared intermediate and `fptoui`. "
+                "It follows an activation scale through one linalg producer edge only when that "
+                "producer yields the exact `amax == 0 ? 1 : amax / C` guard. This isolated "
+                "point intentionally does "
+                "NOT imply `vectorize_non_contraction_generics`: that broad schedule changed "
+                "TinyLlama's packed MR4/NR32 kernel from `lb + vwmacc.vx` to a broadcast-heavy "
+                "`vwmacc.vv` form. LLVM autovectorization remains free to claim the pure-arithmetic "
+                "loops without perturbing the contraction schedule. Orthogonal to "
+                "`quantize_before_gather`, which changes the scale computation. NO SPEED CLAIM; "
+                "default-off and baseline byte-identical."),
+        ))
+    if VEC_FEATURE not in F.known():
+        F.register(F.ImprFeature(
+            name=VEC_FEATURE,
+            action_class="PASS",
+            description=(
+                "Explicit composition of `fuse_quantize_round_convert` with "
+                "`vectorize_non_contraction_generics`. Use only when a post-codegen contraction "
+                "census proves the broader schedule preserved the selected kernel."),
+            implies=frozenset({FEATURE, F.VEC_NONCONTRACTION_NAME}),
+        ))
     return FEATURE

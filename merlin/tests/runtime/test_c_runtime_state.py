@@ -78,6 +78,29 @@ def test_generation_keeps_all_outputs_and_emits_stateful_session(monkeypatch, tm
     assert proc.returncode == 0, proc.stderr
 
 
+def test_generation_accepts_a_weightless_identity_program(monkeypatch, tmp_path):
+    """An ABI-only session stage has inputs and outputs but legitimately no weight blob."""
+    model, _ = _bundle(tmp_path)
+    (model / "weights.safetensors").unlink()
+    monkeypatch.setattr(c_runtime, "parse_forward_signature",
+                        lambda _: [([2], "f32"), ([2], "f32")])
+    monkeypatch.setattr(
+        c_runtime,
+        "load_safetensors_header",
+        lambda _: pytest.fail("a weightless program must not open a missing safetensors blob"),
+    )
+    import merlin.common.mlir_query as query
+    monkeypatch.setattr(query, "forward_signature",
+                        lambda _: (([([2], "f32"), ([2], "f32")]),
+                                   [([2], "f32"), ([2], "f32")]))
+
+    out = tmp_path / "generated_weightless"
+    info = c_runtime.generate(model, out, model / "inputs.npz")
+
+    assert info["weights_bytes"] == 0
+    assert (out / "weights.bin").read_bytes() == b""
+
+
 def test_generation_rejects_state_shape_mismatch(monkeypatch, tmp_path):
     model, _ = _bundle(tmp_path, bad_state_shape=True)
     monkeypatch.setattr(c_runtime, "parse_forward_signature",

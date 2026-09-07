@@ -42,6 +42,16 @@ def test_single_panel_has_no_marker_to_leak_after_loop_folding():
     assert str(marked[0].callee) == "@__merlin_parallel_panel_marker"
 
 
+def test_marker_call_census_distinguishes_a_call_from_the_private_declaration():
+    declaration = "module { func.func private @__merlin_parallel_panel_marker() }"
+    assert not PP.has_marker_call_text(declaration)
+    assert PP.has_marker_call_text(MARKED)
+    generic = '''
+      "func.call"() <{callee = @__merlin_parallel_panel_marker}> : () -> ()
+    '''
+    assert PP.has_marker_call_text(generic)
+
+
 def _rewrite(text: str, tmp_path) -> tuple[str, str]:
     src = tmp_path / "in.mlir"
     src.write_text(text, encoding="utf-8")
@@ -165,9 +175,11 @@ def test_every_lowering_runner_carries_the_panel_rewrite_and_gate():
     for src in runners:
         assert "_parallelize_panel_loops" in src
         assert "len(sys.argv) > 10" in src
-        assert "_MID_STAGES, _LATE_STAGES)" in src
+        assert "_MID_STAGES, _LATE_STAGES," in src
+        assert "_POST_OPENMP_STAGES)" in src
     lowering = open(P.__file__, encoding="utf-8").read()
-    assert "_grain_gate, _panel_parallel_gate]" in lowering
+    assert "_grain_gate, _panel_parallel_gate," in lowering
+    assert "_team_work_gate, _team_cap_gate, _coarsen_gate]" in lowering
 
 
 def test_report_is_fail_closed_and_persisted(tmp_path):

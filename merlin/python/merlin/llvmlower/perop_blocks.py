@@ -44,7 +44,8 @@ TAG_PREFIX = "merlin.blk_"
 #: key on. It is spelled like one so it flows through ``shape_key`` / ``distinct_blocks`` /
 #: ``coverage`` with the contraction classes instead of needing a parallel bookkeeping path.
 _CLASS_TOKEN = {"linalg.matmul": "mm", "linalg.batch_matmul": "bmm",
-                "linalg.conv2d_direct": "conv"}
+                "linalg.conv2d_direct": "conv",
+                "linalg.conv2d_grouped_direct": "gconv"}
 
 #: The DIRECT 2-D convolution contraction: ``out[n,f,oh,ow] += in[n,ci,oh*sh+kh,ow*sw+kw] * w[f,ci,kh,kw]``,
 #: i.e. the form model2MLIR emits when the im2col intermediate would exceed its element budget
@@ -53,6 +54,13 @@ _CLASS_TOKEN = {"linalg.matmul": "mm", "linalg.batch_matmul": "bmm",
 #: ``kernels.shapes._generic_contraction``'s test -- that requires exactly ONE reduction dim and this
 #: has three (ci, kh, kw) -- so ``block_table`` never sees it and nothing tags it.
 CONV_CLASS = "linalg.conv2d_direct"
+
+#: Grouped direct convolution keeps ``G`` and ``F/G`` as separate parallel dimensions so its
+#: output indexing map remains an identity.  It therefore needs an eight-dimensional transform
+#: arm, distinct from :data:`CONV_CLASS`'s seven-dimensional one.  Treating both as one class would
+#: make ``distinct_blocks`` collapse equal (MR, NR) choices into one transform arm whose tile-size
+#: vector is invalid for half its payloads.
+GROUPED_CONV_CLASS = "linalg.conv2d_grouped_direct"
 
 #: Default-OFF request that adds the conv arm. Same contract as ``PEROP_NR_FILL_NAME``: a REQUEST the
 #: preparation step consumes, never a lowering edit. Absent -> :func:`conv_block_table` returns ``{}``,
@@ -143,12 +151,30 @@ def parallel_chunk_table(shapes, table: dict[str, tuple[int, int]],
         if blk is None:                       # unblocked op: nothing to preserve, nothing to tag
             continue
         mr, nr = int(blk[0]), int(blk[1])
-        m, n = par[-2], par[-1]
-        # (axis index counted from the END of the parallel dims, admits-predicate, tie rank)
-        axes = [(1, lambda t: _rvv_blocking_lowers(mr, nr, m, t), 0),      # N
-                (2, lambda t: _rvv_blocking_lowers(mr, nr, t, n), 2)]     # M
-        if len(par) > 2:                      # batch_matmul: B is outside the (M, N) block entirely
-            axes.append((len(par), lambda _t: True, 1))
+        if s.op == CONV_CLASS:
+            # dims (N,F,OH,OW): the register block is (F,OW), not the last two dimensions.
+            # OH and N are still legal outer splits but rank after the block axes on a tie.
+            f, ow = par[1], par[3]
+            axes = [(1, lambda t: _rvv_blocking_lowers(mr, nr, f, t), 0),
+                    (3, lambda t: _rvv_blocking_lowers(mr, nr, t, ow), 1),
+                    (2, lambda _t: True, 2),
+                    (4, lambda _t: True, 3)]
+        elif s.op == GROUPED_CONV_CLASS:
+            # dims (N,G,F/G,OH,OW): G is the best independent split (no operand is shared),
+            # followed by the two register-block axes, then spatial/batch outer loops.
+            fg, ow = par[2], par[4]
+            axes = [(4, lambda _t: True, 0),
+                    (1, lambda t: _rvv_blocking_lowers(mr, nr, fg, t), 1),
+                    (3, lambda t: _rvv_blocking_lowers(mr, nr, t, ow), 2),
+                    (2, lambda _t: True, 3),
+                    (5, lambda _t: True, 4)]
+        else:
+            m, n = par[-2], par[-1]
+            # (axis index counted from the END of the parallel dims, admits-predicate, tie rank)
+            axes = [(1, lambda t: _rvv_blocking_lowers(mr, nr, m, t), 0),      # N
+                    (2, lambda t: _rvv_blocking_lowers(mr, nr, t, n), 2)]     # M
+            if len(par) > 2:                  # batch_matmul: B is outside the block entirely
+                axes.append((len(par), lambda _t: True, 1))
         best = None
         for back, admits, rank in axes:
             got = _even_split(par[-back], harts, admits)
@@ -579,16 +605,25 @@ def conv_geometry(out_shape, in_shape, w_shape) -> "tuple[int, int] | None":
     A predicate stated twice in two dialects is a predicate that can drift; stated as extents it
     cannot.
 
-    ``in[n, ci, (oh-1)*sh + kh, (ow-1)*sw + kw]`` is the exact extent an unpadded, undilated conv
-    window covers, so solving it for ``sh``/``sw`` both VALIDATES the geometry and recovers the
-    stride. Anything that does not solve to positive integers is not this form and gets no block.
+    An unpadded, undilated convolution obeys
+    ``out = floor((input - kernel) / stride) + 1``.  The older exact-cover equation rejected every
+    ResNet stride-2 op whose padded input has one trailing element beyond its final window (58, 3,
+    28 is the smallest example), leaving those contractions scalar.  Recover the stride from the
+    floor equation and accept it only when the extents identify exactly one positive integer.  An
+    ambiguous or impossible shape gets no block; output extent one retains the conservative stride
+    one convention because the schedule does not depend on a stride that shape cannot identify.
     """
-    if len(out_shape) != 4 or len(in_shape) != 4 or len(w_shape) != 4:
+    if len(out_shape) not in (4, 5) or len(in_shape) != 4 or len(w_shape) != 4:
         return None
-    n, f, oh, ow = (int(d) for d in out_shape)
+    if len(out_shape) == 4:
+        n, f, oh, ow = (int(d) for d in out_shape)
+        groups, f_per_g = 1, f
+    else:
+        n, groups, f_per_g, oh, ow = (int(d) for d in out_shape)
+        f = groups * f_per_g
     n_i, ci_i, ih, iw = (int(d) for d in in_shape)
     f_w, ci_w, kh, kw = (int(d) for d in w_shape)
-    if n != n_i or f != f_w or ci_i != ci_w:
+    if groups < 1 or n != n_i or f != f_w or ci_i != groups * ci_w:
         return None
     strides = []
     for o, i, k in ((oh, ih, kh), (ow, iw, kw)):
@@ -598,22 +633,29 @@ def conv_geometry(out_shape, in_shape, w_shape) -> "tuple[int, int] | None":
             strides.append(1)                 # a single output position pins no stride; 1 is the
             continue                          # only one that can be wrong about nothing
         span = i - k
-        if span < 0 or span % (o - 1):
+        if span < 0:
             return None
-        s = span // (o - 1)
-        if s < 1:
+        quotient = o - 1
+        # floor(span / s) == quotient iff
+        #   floor(span / (quotient + 1)) + 1 <= s <= floor(span / quotient).
+        # Shapes are sufficient evidence only when that interval contains one integer.
+        s_min = span // (quotient + 1) + 1
+        s_max = span // quotient
+        if s_min != s_max or s_min < 1:
             return None
-        strides.append(s)
+        strides.append(s_min)
     return strides[0], strides[1]
 
 
 def conv_shapes(src) -> "list[Any]":
     """Every DIRECT 2-D convolution in ``src``, as :class:`ContractionShape` at :data:`CONV_CLASS`.
 
-    ``parallel`` is ``(N, F, Oh, Ow)`` and ``reduction`` is ``(Ci, Kh, Kw)`` -- the op's own dim order,
-    which is what the tile-size vector below is written in. Returns ``[]`` (never raises) on an
-    unreadable module, the same degradation ``kernels.shapes.observe_contractions`` takes: an observer
-    that cannot read must report "nothing", which costs a vectorization, not a build.
+    An ordinary direct conv has ``parallel=(N,F,Oh,Ow)``.  A grouped direct conv has
+    ``parallel=(N,G,F/G,Oh,Ow)`` so the generic can retain an identity output map; both use
+    ``reduction=(C/G,Kh,Kw)``.  These are the ops' own dimension orders, which is what the two
+    tile-size vectors below are written in. Returns ``[]`` (never raises) on an unreadable module,
+    the same degradation ``kernels.shapes.observe_contractions`` takes: an observer that cannot read
+    must report "nothing", which costs a vectorization, not a build.
     """
     from ..common import mlir_query as mq
     from ..kernels.microkernel import ContractionShape
@@ -628,7 +670,10 @@ def conv_shapes(src) -> "list[Any]":
             if mq.op_name(op) != "linalg.generic":
                 continue
             its = _iterator_types(op)
-            if not its or its[:4] != ["parallel"] * 4 or its[4:] != ["reduction"] * 3:
+            if not its or len(its) not in (7, 8):
+                continue
+            npar = len(its) - 3
+            if its[:npar] != ["parallel"] * npar or its[npar:] != ["reduction"] * 3:
                 continue
             maps = indexing_maps(op)
             if maps is None or len(maps) != 3 or not _has_compound_term(maps[0]):
@@ -638,10 +683,18 @@ def conv_shapes(src) -> "list[Any]":
             if len(ins) < 2 or not outs:
                 continue
             (out, out_dt), (a, a_dt), (w, w_dt) = outs[0], ins[0], ins[1]
-            if conv_geometry(out, a, w) is None:
+            geometry = conv_geometry(out, a, w)
+            if geometry is None:
+                continue
+            # The current F x Ow vector arm requires a unit-stride activation projection.  With
+            # stride two, Ow maps to ``2 * Ow + Kw`` and MLIR's vectorizer rejects the transfer
+            # (reproduced on ResNet conv1 and every stage transition).  Recognize that geometry
+            # above so it is observable, but fail closed here until a stride-aware arm exists.
+            if geometry != (1, 1):
                 continue
             found.append(ContractionShape(
-                op=CONV_CLASS, parallel=tuple(int(d) for d in out),
+                op=(CONV_CLASS if len(out) == 4 else GROUPED_CONV_CLASS),
+                parallel=tuple(int(d) for d in out),
                 reduction=tuple(int(d) for d in w[1:]), dtypes=(a_dt, w_dt, out_dt)))
         except Exception:  # noqa: BLE001
             continue
@@ -671,7 +724,10 @@ def conv_block_table(src, features: "Any" = (), *, mr_cap: int = DEFAULT_MR, nr_
     ensure_registered()
     out: dict[str, tuple[int, int]] = {}
     for s in conv_shapes(src):
-        f, ow = int(s.parallel[1]), int(s.parallel[3])
+        if s.op == GROUPED_CONV_CLASS:
+            f, ow = int(s.parallel[2]), int(s.parallel[4])
+        else:
+            f, ow = int(s.parallel[1]), int(s.parallel[3])
         shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
         mr, nr = _solve_block(mr_cap, shape_nr_cap, [(f, ow)],
                               mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()))
@@ -842,9 +898,10 @@ _PAIR_PHASE_SRC = '''
 def tag_requant_pairs(module, ctx):
     """Tag (contraction, fill, requant) triples that can be fused into one tile loop.
 
-    Returns ``(pairs, refused)`` where ``pairs`` is ``[[index, MR, NR, parallel_rank], ...]`` and
-    ``refused`` counts, per reason, the tagged contractions this could NOT pair -- an epilogue that
-    cannot be reached is COUNTED, never silently left behind.
+    Returns ``(pairs, refused)`` where each pair starts with
+    ``[index, MR, NR, parallel_rank]`` and, when the contraction carries a multicore tag, appends its
+    exact ``parallel_rank`` tile sizes. ``refused`` counts, per reason, the tagged contractions this
+    could NOT pair -- an epilogue that cannot be reached is COUNTED, never silently left behind.
 
     The index is assigned HERE, in the one place that has actually seen the pairs, because each pair
     needs its own 1:1 transform handles (``fuse_into_containing_op`` refuses a multi-op containing
@@ -887,6 +944,26 @@ def tag_requant_pairs(module, ctx):
                     if rank not in (2, 3):
                         _bump("parallel_rank_%d" % rank)
                         continue
+                    # Preserve the exact block-legal shard chosen for this contraction.  The
+                    # generic parallel transform runs before producer/consumer fusion, so the
+                    # ordinary tag cannot stay on the producer; the fused arm consumes these tile
+                    # sizes and creates the same outer forall around the requant consumer instead.
+                    par_names = [x for x in names if x.startswith(_MERLIN_PAR_PREFIX)]
+                    if len(par_names) > 1:
+                        _bump("multiple_parallel_tags")
+                        continue
+                    parallel_tiles = []
+                    if par_names:
+                        payload = par_names[0][len(_MERLIN_PAR_PREFIX):].split("_")
+                        tile_words = payload[1:]       # leading word is mm / bmm
+                        if (len(tile_words) != rank
+                                or any(not word.isdigit() for word in tile_words)):
+                            _bump("parallel_tag_unparseable")
+                            continue
+                        parallel_tiles = [int(word) for word in tile_words]
+                        if not any(parallel_tiles):
+                            _bump("parallel_tag_empty")
+                            continue
                     fill, requant, why = merlin_requant_pair(inner, ir)
                     if why is not None:
                         _bump(why)
@@ -903,7 +980,15 @@ def tag_requant_pairs(module, ctx):
                     # The block arm must not also claim this op: two arms tiling one contraction is
                     # not a slower build, it is a wrong one.
                     del inner.operation.attributes[tagged[0]]
-                    pairs.append([idx, mr, nr, rank])
+                    # The generic multicore arm runs BEFORE the fused schedule. Leaving its tag on
+                    # a paired contraction wraps only the producer in an scf.forall and makes it
+                    # unreachable from the consumer-fusion arm. Remove only THIS ordinary request;
+                    # its exact tile was recorded in ``parallel_tiles`` above, and the fused arm
+                    # recreates the forall around the consumer before pulling producer+fill inside.
+                    # Grouped direct convs and contractions that did not pair keep their ordinary tags.
+                    for par_name in par_names:
+                        del inner.operation.attributes[par_name]
+                    pairs.append([idx, mr, nr, rank, *parallel_tiles])
     walk(module.operation)
     return pairs, refused
 '''
@@ -942,9 +1027,9 @@ def runner_rewrite_src(table: dict[str, tuple[int, int]],
     pair_src = ""
     if pair_fuse:
         from . import requant_fuse as _rf
-        pair_src = ("\n\n_MERLIN_BLK_PREFIX = %r\n_MERLIN_RQ_PREFIX = %r\n"
+        pair_src = ("\n\n_MERLIN_BLK_PREFIX = %r\n_MERLIN_PAR_PREFIX = %r\n_MERLIN_RQ_PREFIX = %r\n"
                     "_MERLIN_RQ_ROLES = (%r, %r, %r)\n\n"
-                    % (TAG_PREFIX, _rf.TAG_PREFIX,
+                    % (TAG_PREFIX, PAR_TAG_PREFIX, _rf.TAG_PREFIX,
                        _rf.ROLE_CONTRACTION, _rf.ROLE_FILL, _rf.ROLE_REQUANT)
                     + inspect.getsource(_rf.merlin_requant_pair) + "\n\n" + _PAIR_PHASE_SRC)
     return f'''
@@ -957,6 +1042,7 @@ _MERLIN_PAR_TABLE = {{
 }}
 
 _MERLIN_CONV_CLASS = {CONV_CLASS!r}
+_MERLIN_GROUPED_CONV_CLASS = {GROUPED_CONV_CLASS!r}
 
 
 {geometry_src}
@@ -982,10 +1068,10 @@ def _merlin_shape_key(op):
 def _merlin_conv_key(op):
     """The merlin shape key for a DIRECT 2-D convolution generic, or None.
 
-    The same three tests merlin priced with: 4 parallel + 3 reduction iterators; an activation map
-    that is NOT a projected permutation (the `d2 * sh + d5` window term -- which is also exactly why
-    `transform.structured.vectorize` refuses the op until the schedule folds its unit dims); and three
-    rank-4 shapes that solve the unpadded-window extent equation in `conv_geometry` above.
+    The same three tests merlin priced with: 4 or 5 parallel + 3 reduction iterators; an activation
+    map that is NOT a projected permutation (the window term -- which is also exactly why
+    `transform.structured.vectorize` refuses the op until the schedule folds its unit dims); and
+    shapes that solve the unpadded-window extent equation in `conv_geometry` above.
     """
     if op.operation.name != "linalg.generic":
         return None
@@ -994,11 +1080,12 @@ def _merlin_conv_key(op):
     try:
         iters = [str(x) for x in op.operation.attributes["iterator_types"]]
         maps = op.operation.attributes["indexing_maps"]
-        if len(iters) != 7 or len(maps) != 3:
+        if len(iters) not in (7, 8) or len(maps) != 3:
             return None
-        if any("reduction" in s for s in iters[:4]):
+        npar = len(iters) - 3
+        if any("reduction" in s for s in iters[:npar]):
             return None
-        if any("reduction" not in s for s in iters[4:]):
+        if any("reduction" not in s for s in iters[npar:]):
             return None
         if ir.AffineMapAttr(maps[0]).value.is_projected_permutation:
             return None
@@ -1007,9 +1094,13 @@ def _merlin_conv_key(op):
         w = [d for d in ir.ShapedType(op.operands[1].type).shape]
     except Exception:
         return None
-    if conv_geometry(out, a, w) is None:
+    geometry = conv_geometry(out, a, w)
+    if geometry is None or geometry != (1, 1):
+        # Keep runner eligibility identical to ``conv_shapes``: the current F x Ow arm cannot
+        # vectorize a non-unit-stride activation map.
         return None
-    return "%s:%s:%s" % (_MERLIN_CONV_CLASS, "x".join(str(d) for d in out),
+    cls = _MERLIN_CONV_CLASS if len(out) == 4 else _MERLIN_GROUPED_CONV_CLASS
+    return "%s:%s:%s" % (cls, "x".join(str(d) for d in out),
                          "x".join(str(d) for d in w[1:]))
 
 
@@ -1044,7 +1135,8 @@ def tag_perop_blocks(module, ctx):
                         key = _merlin_conv_key(inner)
                         if key is None:
                             continue
-                        tok = "conv"
+                        tok = ("gconv" if key.startswith(_MERLIN_GROUPED_CONV_CLASS + ":")
+                               else "conv")
                     else:
                         continue
                     blk = _MERLIN_BLOCK_TABLE.get(key)
@@ -1072,37 +1164,48 @@ def tag_perop_blocks(module, ctx):
 CONV_NEST_PREFIX = "merlin.conv_nest_"
 
 
-def conv_nest_tag(mr: int, nr: int) -> str:
-    return f"{CONV_NEST_PREFIX}{int(mr)}x{int(nr)}"
+def conv_nest_tag(mr: int, nr: int, op: str = CONV_CLASS) -> str:
+    return f"{CONV_NEST_PREFIX}{class_token(op)}_{int(mr)}x{int(nr)}"
 
 
 def _conv_arms(blocks: "list[tuple[str, int, int]]") -> str:
     """The direct-conv arms, or ``""`` when the table prices no conv (the byte-identical default).
 
     Emitted as THREE stages rather than one, for the reason recorded in the module header: tile ->
-    annotate the reduction nest -> fold the now-unit dims out of the op (which is what makes its
-    indexing maps projected permutations, without which ``transform.structured.vectorize`` refuses
-    the op outright) -> re-match inside the annotated nest -> vectorize.
+    annotate the reduction nest -> re-match that nest -> fold the now-unit dims out of ONLY the
+    direct-conv payload (which is what makes its indexing maps projected permutations, without which
+    ``transform.structured.vectorize`` refuses the op outright) -> vectorize.
 
-    The fold is emitted ONCE for all conv blocks. It is a func-scope pattern application, so it also
-    folds unit extents out of untagged linalg ops elsewhere in the module -- semantics-preserving, but
-    a real perturbation, and the reason this whole arm is behind a default-off request.
+    The fold must stay scoped to the annotated conv nest.  Applying it to the whole function made the
+    feature revisit unrelated crop/gather generics whose indexing maps intentionally cover only a
+    subset of an input.  LLVM-23's fold pattern then inferred the cropped result extent as the source
+    extent and rejected an otherwise untouched LSTMNetVIT op (15 versus 8).  Besides failing the
+    build, a function-wide cleanup would make this request perturb operations it never priced.
     """
     if not blocks:
         return ""
     tile_arms, vec_arms = [], []
     for i, (op, mr, nr) in enumerate(blocks):
         h = f"c{i}"
-        nest = conv_nest_tag(mr, nr)
-        # dims (n, f, oh, ow, ci, kh, kw): NR on ow (contiguous, weight-invariant), MR on f.
+        nest = conv_nest_tag(mr, nr, op)
+        if op == GROUPED_CONV_CLASS:
+            # dims (n,g,fg,oh,ow,cg,kh,kw): NR on ow, MR on the within-group F axis.
+            outer_tile = f"[1, 1, {mr}, 1, {nr}, 0, 0, 0]"
+            reduction_tile = "[0, 0, 0, 0, 0, 1, 1, 1]"
+            outer_loops = 5
+        else:
+            # dims (n,f,oh,ow,ci,kh,kw): NR on ow, MR on f.
+            outer_tile = f"[1, {mr}, 1, {nr}, 0, 0, 0]"
+            reduction_tile = "[0, 0, 0, 0, 1, 1, 1]"
+            outer_loops = 4
         tile_arms.append(
             f'    %{h} = transform.structured.match attributes{{{tag_for(op, mr, nr)}}} in %arg0 '
             f': (!transform.any_op) -> !transform.any_op\n'
-            f'    %{h}t, %{h}l:4 = transform.structured.tile_using_for %{h} '
-            f'tile_sizes [1, {mr}, 1, {nr}, 0, 0, 0] : (!transform.any_op) -> '
-            f'({", ".join(["!transform.any_op"] * 5)})\n'
+            f'    %{h}t, %{h}l:{outer_loops} = transform.structured.tile_using_for %{h} '
+            f'tile_sizes {outer_tile} : (!transform.any_op) -> '
+            f'({", ".join(["!transform.any_op"] * (outer_loops + 1))})\n'
             f'    %{h}k, %{h}kl:3 = transform.structured.tile_using_for %{h}t '
-            f'tile_sizes [0, 0, 0, 0, 1, 1, 1] : (!transform.any_op) -> '
+            f'tile_sizes {reduction_tile} : (!transform.any_op) -> '
             f'({", ".join(["!transform.any_op"] * 4)})\n'
             f'    transform.annotate %{h}kl#0 "{nest}" : !transform.any_op')
         sizes = f"[{nr}]" if int(mr) == 1 else f"[{mr}, {nr}]"
@@ -1115,16 +1218,14 @@ def _conv_arms(blocks: "list[tuple[str, int, int]]") -> str:
             f': (!transform.any_op) -> !transform.any_op\n'
             f'    transform.foreach %{h}n : !transform.any_op {{\n'
             f'    ^bb_{h}(%{h}one: !transform.any_op):\n'
+            f'      transform.apply_patterns to %{h}one {{\n'
+            f'        transform.apply_patterns.linalg.fold_unit_extent_dims_via_slices\n'
+            f'      }} : !transform.any_op\n'
             f'      %{h}g = transform.structured.match ops{{["linalg.generic"]}} in %{h}one '
             f': (!transform.any_op) -> !transform.any_op\n'
             f'      transform.structured.vectorize %{h}g vector_sizes {sizes} : !transform.any_op\n'
             f'    }}')
-    fold = ('    %convf = transform.structured.match ops{["func.func"]} in %arg0 '
-            ': (!transform.any_op) -> !transform.any_op\n'
-            '    transform.apply_patterns to %convf {\n'
-            '      transform.apply_patterns.linalg.fold_unit_extent_dims_via_slices\n'
-            '    } : !transform.any_op')
-    return "\n".join(tile_arms + [fold] + vec_arms) + "\n"
+    return "\n".join(tile_arms + vec_arms) + "\n"
 
 
 def _requant_fuse_arms(pairs, vec_epilogue: bool = False) -> str:
@@ -1157,7 +1258,8 @@ def schedule_text(table: dict[str, tuple[int, int]], kc: int,
     """
     contraction_blocks, conv_blocks = [], []
     for entry in distinct_blocks(table):
-        (conv_blocks if entry[0] == CONV_CLASS else contraction_blocks).append(entry)
+        (conv_blocks if entry[0] in (CONV_CLASS, GROUPED_CONV_CLASS)
+         else contraction_blocks).append(entry)
     arms = []
     for i, (op, mr, nr) in enumerate(contraction_blocks):
         h = f"b{i}"

@@ -204,13 +204,42 @@ def test_a_geometry_the_block_table_did_not_price_is_refused_not_guessed():
     assert report.refusals == {"refused_unpriced": 1}
 
 
-def test_a_panel_width_that_does_not_divide_ow_is_refused():
-    # Ow = 20, NR = 16: splitting ow into (owo, owi) would need a mod/floordiv in the gather's map
-    # and a masked panel in the schedule. Refused, and named.
+def test_a_panel_width_below_two_is_refused_as_non_beneficial():
+    module = mq.parse(_module(ow=7, oh=3))
+    report = ip.rewrite_module(module, _table(8, 21, 18, 4, 1))
+    assert report.packed == 0
+    assert report.refusals == {"refused_panel_width_too_narrow": 1}
+
+
+def test_a_panel_width_that_does_not_divide_ow_uses_a_narrow_tail_panel():
+    # Ow = 20, NR = 16: the four full-width panels (one per output row) retain NR=16, while a
+    # separate width-4 panel per row covers the tail. The two loops insert directly into the original
+    # [F, M] accumulator, so there is no padded whole-output copy.
     module = mq.parse(_module(ow=20, oh=4))
     report = ip.rewrite_module(module, _table(8, 80, 18, 4, 16))
-    assert report.packed == 0
-    assert report.refusals == {"refused_nr_does_not_divide_ow": 1}
+    assert report.packed == 1
+    assert not report.refusals
+    assert report.entries == [
+        (pb.shape_key("linalg.matmul", (8, 16), (18,)), 4, 16),
+        (pb.shape_key("linalg.matmul", (8, 4), (18,)), 4, 4),
+    ]
+    text = str(module)
+    assert "tensor<4x18x16xi8>" in text
+    assert "tensor<4x18x4xi8>" in text
+    assert text.count("scf.for") == 2
+    assert "tensor<8x80xi32>" in text
+    _mlir_opt_verifies(text)
+
+
+def test_an_output_row_narrower_than_nr_uses_only_the_tail_loop():
+    module = mq.parse(_module(ow=7, oh=3))
+    report = ip.rewrite_module(module, _table(8, 21, 18, 4, 16))
+    assert report.packed == 1
+    assert report.entries == [(pb.shape_key("linalg.matmul", (8, 7), (18,)), 4, 7)]
+    text = str(module)
+    assert text.count("scf.for") == 1
+    assert "tensor<3x18x7xi8>" in text
+    _mlir_opt_verifies(text)
 
 
 def test_a_gather_whose_result_has_a_second_consumer_is_refused():
@@ -268,3 +297,42 @@ def test_the_packed_index_scheme_addresses_the_same_element(sh, sw, dh, dw, ow, 
                             packed_src = (nn, cc, o * sh + i * dh,
                                           owo * (sw * nr) + owi * sw + j * dw)
                             assert packed_src == src
+
+
+@pytest.mark.parametrize("ow,oh,sh,sw,dh,dw", [
+    (20, 4, 1, 1, 1, 1),
+    (28, 5, 2, 2, 1, 1),
+    (56, 3, 1, 1, 2, 2),
+    (7, 2, 3, 1, 1, 2),
+])
+def test_full_and_tail_panels_cover_each_output_once_without_out_of_bounds_reads(
+        ow, oh, sh, sw, dh, dw):
+    """Evaluate the two gather maps and output offsets used by the non-divisible rewrite."""
+    c, kh, kw, n, nr = 2, 3, 3, 1, 16
+    full, tail = divmod(ow, nr)
+    seen = set()
+    for nn in range(n):
+        for o in range(oh):
+            row = nn * oh + o
+            for panel in range(full):
+                for wi in range(nr):
+                    w = panel * nr + wi
+                    m = row * ow + w
+                    assert m not in seen
+                    seen.add(m)
+                    assert (nn, 0, o * sh, w * sw) == (
+                        nn, 0, o * sh, (panel * nr + wi) * sw)
+            for wi in range(tail):
+                w = full * nr + wi
+                m = row * ow + w
+                assert m not in seen
+                seen.add(m)
+                for cc in range(c):
+                    for i in range(kh):
+                        for j in range(kw):
+                            unpacked = (nn, cc, o * sh + i * dh, w * sw + j * dw)
+                            tail_gather = (
+                                nn, cc, o * sh + i * dh,
+                                (full * nr + wi) * sw + j * dw)
+                            assert tail_gather == unpacked
+    assert seen == set(range(n * oh * ow))

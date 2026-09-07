@@ -392,6 +392,18 @@ def test_a_body_no_rule_reads_stays_unknown():
         "unclassified_generic", "unknown")
 
 
+def test_int_widen_multiply_accumulate_is_a_contraction():
+    body = ["arith.extsi", "arith.extsi", "arith.muli", "arith.addi"]
+    assert opf.classify_generic_body(body) == (
+        "contraction", "body:int_widen_mul_accumulate")
+    assert opf.resolve_category({"mlir_op": "linalg.generic", "body_ops": body}) == (
+        "contraction", "body:int_widen_mul_accumulate")
+
+
+def test_plain_integer_axpy_is_not_enough_to_claim_a_contraction():
+    assert opf.classify_generic_body(["arith.muli", "arith.addi"]) is None
+
+
 def test_body_evidence_names_itself_so_it_can_be_audited():
     cat, src = opf.resolve_category({"mlir_op": "linalg.generic",
                                      "body_ops": ["math.roundeven", "arith.fptosi"]})

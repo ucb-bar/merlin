@@ -47,15 +47,22 @@ is byte-identical to the baseline.
 """
 from __future__ import annotations
 
+from .bmm_tail_pad import RUNNER_PRELUDE as _BMM_TAIL_PAD_PRELUDE
 from .concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
 from .copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
 from .copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
 from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
 from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
+from .parallel_coarsen import RUNNER_PRELUDE as _PARALLEL_COARSEN_PRELUDE
+from .parallel_coarsen import STAGE_SRC as _PARALLEL_COARSEN_STAGE_SRC
+from .parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
+from .parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
 from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
 from .panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
+from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
+from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
 
 # Sentinel pass name spliced into the pipeline string by the feature's edit_pipeline to mark where
 # the A-scalarization rewrite runs (after contract->vector.fma lowering, before one-shot-bufferize).
@@ -387,7 +394,7 @@ def rewrite_source() -> str:
     return _REWRITER_SRC
 
 
-def run_source() -> str:
+def run_source(*, tag_bmm_tails: bool = False) -> str:
     """The lowering-runner body for this feature: split the pipeline at SCALARIZE_MARKER, run stage 1
     (forms the resident accumulator + lowers the contraction to vector.fma with f32 A-extracts), run
     the A-scalarization rewrite, then run stage 2 (bufferize -> LLVM). Mirrors the act_poly runner
@@ -401,12 +408,19 @@ def run_source() -> str:
         + _COPY_EXPAND_PRELUDE
         + _CONCAT_DPS_PRELUDE
         + _TRANSPOSE_MAPS_PRELUDE
+        + _BROADCAST_FOLD_PRELUDE
+        + _NAMED_BROADCAST_FOLD_PRELUDE
         + _PARALLEL_GRAIN_PRELUDE
+        + _PARALLEL_TEAM_PRELUDE
+        + _PARALLEL_COARSEN_PRELUDE
         + _PANEL_PARALLEL_PRELUDE
+        + _BMM_TAIL_PAD_PRELUDE
         + _REWRITER_SRC
         + _MID_STAGE_SRC
         + _PANEL_PARALLEL_MID_SRC
-        + _PARALLEL_GRAIN_LATE_SRC +
+        + _PARALLEL_GRAIN_LATE_SRC
+        + _PARALLEL_TEAM_STAGE_SRC
+        + _PARALLEL_COARSEN_STAGE_SRC +
         f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         "passes = pipeline.split(',')\n"
@@ -419,10 +433,21 @@ def run_source() -> str:
         "ctx = ir.Context()\n"
         "with open(src_path) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
+        + ("_tag_stage1 = [p for p in stage1.split(',') if p]\n"
+           "_tag_cut = next((i + 1 for i, p in enumerate(_tag_stage1) "
+           "if 'linalg-specialize-generic-ops' in p), 0)\n"
+           "if _tag_cut:\n"
+           "    PassManager.parse('builtin.module(' + ','.join(_tag_stage1[:_tag_cut]) + ')', "
+           "ctx).run(module.operation)\n"
+           "    stage1 = ','.join(_tag_stage1[_tag_cut:])\n"
+           "_tag_odd_batch_matmul_tails(module, ctx, 4, 8)\n"
+           if tag_bmm_tails else "")
         # Every runner variant runs the SAME pre-pipeline rewrites. A variant that quietly skips one
         # is how erase_self_copy came to read as an inert lever for seven beam rounds.
-        "if _FOLD_WEIGHT_TRANSPOSE:\n"
+        + "if _FOLD_WEIGHT_TRANSPOSE:\n"
         "    print('OK fold_weight_transpose folded', _fold_weight_transposes(module, ctx)[0])\n"
+        "if _FOLD_BROADCAST:\n"
+        "    print('OK fold_broadcast_into_generic folded', _fold_broadcasts(module, ctx)[0])\n"
         "if _CONCAT_DPS:\n"
         "    print('OK concat_dps rewrote', _concat_dps(module, ctx)[0])\n"
         "if stage1:\n"
@@ -436,7 +461,8 @@ def run_source() -> str:
         "    _n = scalarize_a_reads(module, ctx)\n"
         "    _m += sink_extf_through_extract(module, ctx)\n"
         "if stage2:\n"
-        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES)\n"
+        "    _run_stages(ctx, module, stage2, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES, "
+        "_POST_OPENMP_STAGES, _PRE_GENERALIZE_STAGES)\n"
         "with open(out_path, 'w') as f:\n"
         "    __MERLIN_EMIT__\n"
         "print('OK scalarize_a rewrote', _n, 'sink_extf', _m)\n"

@@ -179,6 +179,24 @@ def _try_lazy_register(name: str) -> bool:
         except ValueError:
             return False
         return name in _REGISTRY
+    # Per-region OpenMP team policy is another name-derived continuous family.  Resolve it here so
+    # a package and the lowering subprocess do not depend on the proposer having imported it first.
+    from .parallel_team import FEATURE_PREFIX as _PT_PREFIX
+    if name.startswith(_PT_PREFIX):
+        from .parallel_team import ensure_registered as _pt_ensure
+        try:
+            _pt_ensure(int(name[len(_PT_PREFIX):]))
+        except ValueError:
+            return False
+        return name in _REGISTRY
+    from .residual_parallel import FEATURE_PREFIX as _RP_PREFIX
+    if name.startswith(_RP_PREFIX):
+        from .residual_parallel import ensure_registered as _rp_ensure
+        try:
+            _rp_ensure(int(name[len(_RP_PREFIX):]))
+        except ValueError:
+            return False
+        return name in _REGISTRY
     point = _vec_noncontraction_point(name)
     if point is not None:
         # The non-contraction family's points are DERIVABLE FROM THE NAME (lanes and max rank), so
@@ -882,6 +900,7 @@ module attributes {{transform.with_named_sequence}} {{
 #: reading the triple as an upper BOUND. On tiny_llama that derivation returns exactly (4, 16) /
 #: (4, 8), i.e. this frozen point, so the model this block was tuned on is unaffected.
 WHOLEMODEL_VF_NAME = "accumulator_resident_wholemodel_vf"
+WHOLEMODEL_VF_BMMPAD_NAME = "accumulator_resident_wholemodel_vf_bmmpad"
 WHOLEMODEL_VF_CAPS: tuple[int, int, int] = (4, 16, 16)
 WHOLEMODEL_VF_MR_MM = 1
 WHOLEMODEL_VF_NR_BMM = 8
@@ -925,7 +944,8 @@ def _accumulator_resident_v3_pre_schedule(MR: int, NR: int, KC: int,
                                           NR_bmm: int | None = None,
                                           MR_mm: int | None = None,
                                           skip_mm: bool = False,
-                                          skip_bmm: bool = False) -> str:
+                                          skip_bmm: bool = False,
+                                          pad_bmm: bool = False) -> str:
     """PRE-bufferize schedule for the v3 (vfmacc.vf) micro-kernel — SAME as the v1/v2 pre-schedule
     but WITHOUT ``bufferize_to_allocation``.
 
@@ -998,20 +1018,32 @@ module attributes {{transform.with_named_sequence}} {{
     %g = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.structured.vectorize %g : !transform.any_op"""
            if __import__("os").environ.get("MERLIN_VEC_EW") else ""))
-    _mm_arm = "" if skip_mm else f"""
+    _mm_arm = f"""
     %mm = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t1, %lmn:2 = transform.structured.tile_using_for %mm tile_sizes [{MM}, {NR}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
     %mm2 = transform.structured.match ops{{["linalg.matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %t2, %lk = transform.structured.tile_using_for %mm2 tile_sizes [0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
     transform.structured.vectorize %t2 vector_sizes [{MM}, {NR}, 1] : !transform.any_op"""
-    _bmm_arm = "" if skip_bmm else f"""
+    if skip_mm:
+        _mm_arm = ""
+    _bmm_arm = f"""
     %bm = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt1, %blmn:3 = transform.structured.tile_using_for %bm tile_sizes [1, {MR}, {NB}, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
     %bm2 = transform.structured.match ops{{["linalg.batch_matmul"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     %bt2, %blk = transform.structured.tile_using_for %bm2 tile_sizes [0, 0, 0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
     transform.structured.vectorize %bt2 vector_sizes [1, {MR}, {NB}, 1] : !transform.any_op"""
+    if skip_bmm:
+        _bmm_arm = ""
+    _pad_sequence = "" if not pad_bmm else f"""
+  transform.named_sequence @__transform_bmm_pad(%arg0: !transform.any_op {{transform.readonly}}) {{
+    %btail = transform.structured.match attributes{{merlin.bmm_pad_tail}} in %arg0 : (!transform.any_op) -> !transform.any_op
+    %bpadded, %bpad, %bcp = transform.structured.pad %btail pad_to_multiple_of [{MR}, {NB}] {{padding_dimensions = [1, 2], copy_back_op = "linalg.copy"}} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    transform.yield
+  }}
+"""
     return f"""\
 module attributes {{transform.with_named_sequence}} {{
+{_pad_sequence}
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {{transform.readonly}}) {{{_mm_arm}{_bmm_arm}{_ew}
     %f = transform.structured.match ops{{["func.func"]}} in %arg0 : (!transform.any_op) -> !transform.any_op
     transform.apply_patterns to %f {{
@@ -1125,6 +1157,17 @@ def _accumulator_resident_v3_mrpad_pipeline(passes: list[str]) -> list[str]:
     Reuses ``_packed_eliminate_empties`` (same insertion the packed feature uses). Only runs when this
     feature is enabled; baseline pipeline untouched."""
     return _packed_eliminate_empties(_accumulator_resident_v3_pipeline(passes))
+
+
+def _accumulator_resident_v3_bmmpad_pipeline(passes: list[str]) -> list[str]:
+    """Pad odd BMM extents before the parallel transform, then run v3 lowering."""
+    out = _accumulator_resident_v3_mrpad_pipeline(passes)
+    anchor = next(i for i, p in enumerate(out)
+                  if "transform-interpreter{entry-point=__transform_main}" in p)
+    parallel = next((i for i, p in enumerate(out)
+                     if "entry-point=__transform_parallel_main" in p), anchor)
+    out.insert(parallel, "transform-interpreter{entry-point=__transform_bmm_pad}")
+    return out
 
 
 # NOTE: distinct entry-point name (`@__transform_accum_post`) so that when BOTH the pre- and
@@ -2723,6 +2766,48 @@ register(ImprFeature(
 #: of reading the ambient ``MERLIN_PEROP_MR_CAP``.
 PEROP_MR_SENTINEL_PREFIX = f"{PEROP_BLOCK_NAME}_mr"
 
+#: Sentinel family that names the per-op NR cap. This is the N-axis counterpart of
+#: :data:`PEROP_MR_SENTINEL_PREFIX`: it makes the cap part of the candidate identity instead of an
+#: ambient source constant, so model-specific register-pressure/locality tradeoffs can be measured
+#: by the search and reproduced later.
+PEROP_NR_SENTINEL_PREFIX = f"{PEROP_BLOCK_NAME}_nr"
+
+
+def parse_perop_nr_sentinel(name: str) -> int | None:
+    """The NR cap named by ``perop_register_block_nr<N>``, or ``None`` for another feature."""
+    if not name.startswith(PEROP_NR_SENTINEL_PREFIX):
+        return None
+    suffix = name[len(PEROP_NR_SENTINEL_PREFIX):]
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
+
+
+def perop_nr_sentinel(nr_cap: int) -> str:
+    """Register a preparation-time request that pins the per-op N-tile cap."""
+    n = int(nr_cap)
+    if n <= 0:
+        raise ValueError(f"{PEROP_BLOCK_NAME}: NR cap must be positive, got {nr_cap!r}")
+    name = f"{PEROP_NR_SENTINEL_PREFIX}{n}"
+    if name in known():
+        return name
+    register(ImprFeature(
+        name=name,
+        action_class="PASS",
+        description=(f"request PER-CONTRACTION register blocking with the NR cap pinned to {n}. "
+                     f"Identical to {PEROP_BLOCK_NAME} except the N cap is named and therefore "
+                     "searchable and reproducible. This exposes the model-specific tradeoff "
+                     "between wider panels and i32 accumulator register pressure. A sentinel "
+                     "resolved by prepare_for_lowering; default-off and baseline byte-identical."),
+        edit_pipeline=_perop_sentinel_unresolved,
+        schedule_replace=True,
+    ))
+    return name
+
+
+# The default cap is 16, represented by the plain PEROP_BLOCK_NAME request. These rungs bracket it.
+PEROP_NR_LADDER: tuple[str, ...] = tuple(perop_nr_sentinel(_n) for _n in (2, 4, 8, 32))
+
 
 def parse_perop_mr_sentinel(name: str) -> int | None:
     """The MR cap a ``perop_register_block_mr<N>`` sentinel names, or None if ``name`` is not one.
@@ -2942,6 +3027,31 @@ def _register_accumulator_resident_v3() -> list[str]:
         schedule_replace=True,
     ))
     names.append(WHOLEMODEL_VF_NAME)
+
+    # Odd attention extents need BOTH M and N tail handling.  smolVLA's language-side attention
+    # uses 113x113 score/value contractions, so the ordinary MR=4/NR=8 schedule produces a single
+    # multi-op vector.mask around each vector.contract.  LLVM 23 cannot lower that form.  Padding
+    # the two PARALLEL iteration dimensions to their tile multiples leaves the 4x8 main kernel
+    # unchanged, fills only zero rows/columns, and copies the original result slice back.  Omitting
+    # padding_values is intentional: transform.structured.pad infers the additive zero from each
+    # contraction's own element types, so one schedule safely handles i8*i8->i32 score BMMs and
+    # bf16*bf16->f32 softmax/value BMMs in the same graph.
+    register(ImprFeature(
+        name=WHOLEMODEL_VF_BMMPAD_NAME,
+        action_class="PASS",
+        description="Whole-model vfmacc/vwmacc accumulator-resident kernel with batch-matmul M/N "
+                    "padding. Pads attention's parallel M and N extents to MR=4/NR=8, preserving "
+                    "the full 4x8 vector tile while eliminating unlowerable vector.mask-wrapped "
+                    "contracts on odd extents such as smolVLA's 113x113 attention. Zero padding is "
+                    "inferred per operand dtype and the original result slice is copied back. "
+                    "Default-off; the published wholemodel_vf feature is unchanged.",
+        edit_pipeline=_accumulator_resident_v3_bmmpad_pipeline,
+        edit_schedule=lambda _t: _accumulator_resident_v3_pre_schedule(
+            *WHOLEMODEL_VF_CAPS, NR_bmm=WHOLEMODEL_VF_NR_BMM,
+            MR_mm=WHOLEMODEL_VF_MR_MM, pad_bmm=True),
+        schedule_replace=True,
+    ))
+    names.append(WHOLEMODEL_VF_BMMPAD_NAME)
 
     # ITERATION-3 (packing/memory residual): MR>1 register-block variant of the vf kernel for
     # A-OPERAND REUSE — the OpenBLAS lever. The memory-traffic decode (output/kernels/ceiling/

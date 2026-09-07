@@ -32,7 +32,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Package module index](reference/module_index.md) — `generated` · owner: tooling
 - [Plotting house style](reference/plot_style.md) — `current`, verified 2026-07-14 · owner: plotting
 - [Repository structure](reference/repo_structure.md) — `current`, verified 2026-07-14 · owner: core — see also: [architecture](reference/architecture.md)
-- [Runtime](reference/runtime.md) — `current`, verified 2026-07-14 · owner: runtime — see also: [zephyr](guides/zephyr.md)
+- [Runtime](reference/runtime.md) — `current`, verified 2026-09-07 · owner: runtime — see also: [zephyr](guides/zephyr.md)
 - [RVV kernel-mining methodology](reference/rvv_kernel_mining_methodology.md) — `current`, verified 2026-07-19 · owner: kernels — see also: [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md)
 - [Schema reference](reference/schemas.md) — `generated` · owner: tooling
 - [xDSL prototyping plane](reference/xdsl.md) — `current`, verified 2026-07-14 · owner: ir — see also: [dialects](reference/dialects.md), [core_dialects](reference/core_dialects.md)
@@ -77,7 +77,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 
 - ["Design note: attributing the expert-kernel gap (instructions vs stalls)"](design/expert_gap_attribution.md) — `current`, verified 2026-07-19 · owner: core — see also: [beam_search](guides/beam_search.md)
 - ["Design note: auditing for runtime escapes in emitted compute regions"](design/runtime_escape_audit.md) — `current`, verified 2026-07-19 · owner: core — see also: [expert_gap_attribution](design/expert_gap_attribution.md), [compiler_plane](design/compiler_plane.md)
-- ["Design note: can the search beat ExecuTorch on its own? (int8, K1, from a frozen unoptimized seed)"](design/autonomous_search_vs_executorch.md) — `current`, verified 2026-09-03 · owner: rvvgen — see also: [beam_cca_architecture](design/beam_cca_architecture.md), [codegen_vs_handc_wholemodel](design/codegen_vs_handc_wholemodel.md), [expert_gap_attribution](design/expert_gap_attribution.md)
+- ["Design note: can the search beat ExecuTorch on its own? (int8, K1, from a frozen unoptimized seed)"](design/autonomous_search_vs_executorch.md) — `current`, verified 2026-09-07 · owner: rvvgen — see also: [beam_cca_architecture](design/beam_cca_architecture.md), [codegen_vs_handc_wholemodel](design/codegen_vs_handc_wholemodel.md), [expert_gap_attribution](design/expert_gap_attribution.md)
 - ["Design note: deriving the axes a conformance cell cannot express"](design/derived_capsule_axes.md) — `current`, verified 2026-09-03 · owner: core
 - ["Design note: memory mapping is an obligation set, not a heuristic"](design/memory_mapping_obligations.md) — `current`, verified 2026-08-30 · owner: core — see also: [performance_levers_per_archetype](design/performance_levers_per_archetype.md), [performance_budget_unit](design/performance_budget_unit.md)
 - ["Design note: teaching a compiler to fit real models, and measuring an agent against a code writer"](design/agent_uses_the_compiler_gemmini.md) — `current`, verified 2026-09-03 · owner: core — see also: [target_publishing](design/target_publishing.md), [performance_levers_per_archetype](design/performance_levers_per_archetype.md), [incremental_target_evolution_opu](design/incremental_target_evolution_opu.md)

@@ -164,6 +164,7 @@ def _median(xs: list[int]) -> float | None:
 def run_profiled(model_dir: Path, pkg, golden_refs: dict, n: int, work_root: Path,
                  kernel_backend: str | None = None, cos_th: float | None = None,
                  rel_th: float | None = None, iters: int = 1, warmup: int = 0,
+                 parallel_harts: int | None = None,
                  max_session_steps: int | None = None,
                  dump_cap: int | None = 4096) -> dict:
     """Build+run the instrumented binary n times; gate cos; accumulate per-op ticks.
@@ -188,6 +189,7 @@ def run_profiled(model_dir: Path, pkg, golden_refs: dict, n: int, work_root: Pat
         try:
             res = k1.run_on_k1(model_dir, work, pkg, timeout=1800, op_profile=True,
                                kernel_backend=kernel_backend, iters=iters, warmup=warmup,
+                               parallel_harts=parallel_harts,
                                max_session_steps=max_session_steps, dump_cap=dump_cap)
             ok, why, gate = gate_run(res["prefix"], golden_refs, cos_th=cos_th, rel_th=rel_th,
                                      tag=f"on {i}")
@@ -264,6 +266,7 @@ def run_profiled(model_dir: Path, pkg, golden_refs: dict, n: int, work_root: Pat
 def run_unprofiled(model_dir: Path, pkg, golden_refs: dict, n: int, work_root: Path,
                    kernel_backend: str | None = None, cos_th: float | None = None,
                    rel_th: float | None = None, iters: int = 1, warmup: int = 0,
+                   parallel_harts: int | None = None,
                    max_session_steps: int | None = None,
                    dump_cap: int | None = 4096) -> dict:
     """Build+run the byte-identical UN-instrumented binary n times (the perturbation control)."""
@@ -276,6 +279,7 @@ def run_unprofiled(model_dir: Path, pkg, golden_refs: dict, n: int, work_root: P
         try:
             res = k1.run_on_k1(model_dir, work, pkg, timeout=1800, op_profile=False,
                                kernel_backend=kernel_backend, iters=iters, warmup=warmup,
+                               parallel_harts=parallel_harts,
                                max_session_steps=max_session_steps, dump_cap=dump_cap)
             ok, why, gate = gate_run(res["prefix"], golden_refs, cos_th=cos_th, rel_th=rel_th,
                                      tag=f"off {i}")
@@ -468,6 +472,10 @@ def main() -> None:
                          "comparison: ExecuTorch's runner has no warmup and averages its cold first "
                          "execution into --num_executions, so measuring ours cold against that is "
                          "comparing a cold number to a mostly-warm one -- and it penalises US.")
+    ap.add_argument("--cores", type=int, choices=(1, 2, 4, 8), default=1,
+                    help="K1 cores used by BOTH the instrumented profile and its perturbation "
+                         "control. Values above one build the RVV+OpenMP path and pin the same "
+                         "ELF to that many CPUs; default 1 preserves prior behavior.")
     ap.add_argument("--cos", type=float, default=None,
                     help="OPTIONAL extra strictness on top of the tier gate. The verdict is the "
                          "tier gate's own (T1 w8a8: cos>0.999 + rel<1e-2 + per-element; T2 fp32: "
@@ -558,18 +566,20 @@ def main() -> None:
     from merlin.common.paths import build_dir
     _tmp = _os.environ.get("MERLIN_OPPROF_WORK") or _os.environ.get("TMPDIR")
     _root = Path(_tmp) if _tmp else (build_dir() / "opprofile")
-    work_root = _root / f"tr_opprofile_{md.name}_{bk}_{ftag}"
+    work_root = _root / f"tr_opprofile_{md.name}_{bk}_{ftag}_c{a.cores}"
     work_root.mkdir(parents=True, exist_ok=True)
 
     kb = a.kernel_backend
     print(f"=== {md.name}: profiled (instrumented, kernel_backend={kb}) x{a.n} ===")
     prof = run_profiled(md, pkg_on, golden_refs, a.n, work_root, kernel_backend=kb,
                         iters=a.iters, warmup=a.warmup,
+                        parallel_harts=(a.cores if a.cores > 1 else None),
                         max_session_steps=a.max_session_steps, dump_cap=a.dump_cap,
                         cos_th=a.cos, rel_th=a.rel)
     print(f"=== {md.name}: unprofiled control x{a.n} ===")
     unprof = run_unprofiled(md, pkg_off, golden_refs, a.n, work_root, kernel_backend=kb,
                             iters=a.iters, warmup=a.warmup,
+                            parallel_harts=(a.cores if a.cores > 1 else None),
                             max_session_steps=a.max_session_steps, dump_cap=a.dump_cap,
                             cos_th=a.cos, rel_th=a.rel)
 
@@ -578,7 +588,8 @@ def main() -> None:
         "compiler_features": feats,
         "timer": "rdtime per-op marks + CLOCK_MONOTONIC wall_ns; cycle_accurate=false",
         "timebase_hz": TIMEBASE_HZ, "n": a.n, "cos_threshold": a.cos, "rel_threshold": a.rel,
-        "iters": a.iters, "warmup": a.warmup, "max_session_steps": a.max_session_steps,
+        "iters": a.iters, "warmup": a.warmup, "cores": a.cores,
+        "max_session_steps": a.max_session_steps,
         "dump_cap": a.dump_cap, "golden_tiers": sorted(golden_refs),
         "method": ("Per-op rdtime marks interleaved between the top-level ops of @forward "
                    "(default-off; un-instrumented build byte-identical). Ticks credited to the "

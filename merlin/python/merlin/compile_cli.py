@@ -669,7 +669,8 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         out["trajectory_correctness"] = res.get("trajectory_correctness")
         out["stage_wall_ns"] = res.get("stage_wall_ns")
         routed_key = {"xnnpack": "n_xnn_routed", "openblas": "n_openblas_routed",
-                      "ours": "n_ours_routed"}.get(kernel_backend or "")
+                      "ours": "n_ours_routed",
+                      "outlined_int8": "n_outlined_int8_routed"}.get(kernel_backend or "")
         eligible_key = {"xnnpack": "n_xnn_eligible",
                         "openblas": "n_openblas_eligible"}.get(kernel_backend or "")
         candidates_key = {"xnnpack": "n_xnn_candidates",

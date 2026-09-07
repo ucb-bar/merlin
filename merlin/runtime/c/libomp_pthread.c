@@ -1,9 +1,14 @@
+#define _GNU_SOURCE
 /* Persistent pthread implementation of the OpenMP ABI subset emitted by Merlin.
  * See libomp_pthread.h. */
 #include "libomp_pthread.h"
 #include "omp_static_schedule.h"
 
+#include <errno.h>
+#include <limits.h>
 #include <pthread.h>
+#include <sched.h>
+#include <semaphore.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -38,18 +43,23 @@ typedef void (*micro14_t)(int32_t *, int32_t *, void *, void *, void *, void *, 
 typedef void (*micro15_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
 typedef void (*micro16_t)(int32_t *, int32_t *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *, void *);
 
-struct worker { pthread_t thread; int slot; unsigned long seen; };
+struct worker {
+  pthread_t thread;
+  sem_t start;
+  sem_t done;
+  int slot;
+  int observed_cpu;
+} __attribute__((aligned(64)));
 static struct worker workers[MERLIN_OMP_PTHREAD_MAX_THREADS];
 static pthread_mutex_t init_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t dispatch_mu = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t pool_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t critical_mu = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t work_cv = PTHREAD_COND_INITIALIZER;
-static pthread_cond_t done_cv = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t ready_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t ready_cv = PTHREAD_COND_INITIALIZER;
 static int initialized;
 static int pool_size = 1;
-static unsigned long generation;
-static int completed;
+static int master_cpu = -1;
+static int started;
 static void *task_fn;
 static int task_argc, task_team;
 static void *task_args[MERLIN_OMP_MAX_SHARED];
@@ -62,6 +72,34 @@ static _Thread_local int tls_requested;
 static void fail(const char *why) {
   fprintf(stderr, "FAIL merlin pthread OpenMP runtime: %s\n", why);
   abort();
+}
+
+static int observed_cpu(void) {
+#ifdef __linux__
+  return sched_getcpu();
+#else
+  return -1;
+#endif
+}
+
+static int allowed_cpus(int *cpus, int capacity) {
+#ifdef __linux__
+  cpu_set_t allowed;
+  CPU_ZERO(&allowed);
+  if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0)
+    fail("sched_getaffinity failed");
+  int count = 0;
+  for (int cpu = 0; cpu < CPU_SETSIZE && count < capacity; ++cpu)
+    if (CPU_ISSET(cpu, &allowed)) cpus[count++] = cpu;
+  if (count == 0) fail("process affinity mask contains no CPUs");
+  return count;
+#else
+  long count = sysconf(_SC_NPROCESSORS_ONLN);
+  if (count < 1) count = 1;
+  if (count > capacity) count = capacity;
+  for (int cpu = 0; cpu < count; ++cpu) cpus[cpu] = cpu;
+  return (int)count;
+#endif
 }
 
 static void call_micro(void *fn, int argc, void **args, int32_t tid) {
@@ -97,29 +135,31 @@ static void run_region(int tid, int team, void *fn, int argc, void **args) {
 
 static void *worker_main(void *opaque) {
   struct worker *worker = (struct worker *)opaque;
-  pthread_mutex_lock(&pool_mu);
+  pthread_mutex_lock(&ready_mu);
+  worker->observed_cpu = observed_cpu();
+  ++started;
+  pthread_cond_signal(&ready_cv);
+  pthread_mutex_unlock(&ready_mu);
   for (;;) {
-    while (generation == worker->seen) pthread_cond_wait(&work_cv, &pool_mu);
-    worker->seen = generation;
+    while (sem_wait(&worker->start) != 0)
+      if (errno != EINTR) fail("worker semaphore wait failed");
     int team = task_team, argc = task_argc;
     void *fn = task_fn;
     void *args[MERLIN_OMP_MAX_SHARED];
     for (int i = 0; i < argc; ++i) args[i] = task_args[i];
-    pthread_mutex_unlock(&pool_mu);
-    if (worker->slot < team) run_region(worker->slot, team, fn, argc, args);
-    pthread_mutex_lock(&pool_mu);
-    if (worker->slot < team) {
-      ++completed;
-      if (completed == team - 1) pthread_cond_signal(&done_cv);
-    }
+    run_region(worker->slot, team, fn, argc, args);
+    if (sem_post(&worker->done) != 0) fail("worker completion semaphore post failed");
   }
   return NULL;
 }
 
 int merlin_omp_init(int requested) {
+  int cpus[MERLIN_OMP_PTHREAD_MAX_THREADS];
+  int cpu_count = allowed_cpus(cpus, MERLIN_OMP_PTHREAD_MAX_THREADS);
   if (requested < 1) requested = 1;
   if (requested > MERLIN_OMP_PTHREAD_MAX_THREADS)
     requested = MERLIN_OMP_PTHREAD_MAX_THREADS;
+  if (requested > cpu_count) requested = cpu_count;
   pthread_mutex_lock(&init_mu);
   if (!initialized) {
     pthread_attr_t attr;
@@ -127,16 +167,38 @@ int merlin_omp_init(int requested) {
     if (attr_ok && pthread_attr_setstacksize(&attr, MERLIN_OMP_PTHREAD_WORKER_STACK) != 0)
       attr_ok = 0;
     pool_size = 1;
+    started = 0;
+#ifdef __linux__
+    cpu_set_t master_set;
+    CPU_ZERO(&master_set);
+    CPU_SET(cpus[0], &master_set);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(master_set), &master_set) != 0)
+      fail("could not pin OpenMP master thread");
+#endif
+    master_cpu = observed_cpu();
     if (attr_ok) {
       for (int slot = 1; slot < requested; ++slot) {
         workers[slot].slot = slot;
-        workers[slot].seen = 0;
+        workers[slot].observed_cpu = -1;
+        if (sem_init(&workers[slot].start, 0, 0) != 0 ||
+            sem_init(&workers[slot].done, 0, 0) != 0)
+          fail("could not initialize worker semaphores");
+#ifdef __linux__
+        cpu_set_t worker_set;
+        CPU_ZERO(&worker_set);
+        CPU_SET(cpus[slot], &worker_set);
+        if (pthread_attr_setaffinity_np(&attr, sizeof(worker_set), &worker_set) != 0)
+          fail("could not set OpenMP worker affinity");
+#endif
         if (pthread_create(&workers[slot].thread, &attr, worker_main, &workers[slot]) != 0)
           break;
         pool_size = slot + 1;
       }
       pthread_attr_destroy(&attr);
     }
+    pthread_mutex_lock(&ready_mu);
+    while (started != pool_size - 1) pthread_cond_wait(&ready_cv, &ready_mu);
+    pthread_mutex_unlock(&ready_mu);
     initialized = 1;
   }
   int result = pool_size;
@@ -144,9 +206,32 @@ int merlin_omp_init(int requested) {
   return result;
 }
 
+int merlin_omp_init_from_env(int fallback_threads) {
+  int requested = fallback_threads;
+  const char *value = getenv("OMP_NUM_THREADS");
+  if (value && *value) {
+    char *end = NULL;
+    errno = 0;
+    long parsed = strtol(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' || parsed < 1 || parsed > INT_MAX)
+      fail("OMP_NUM_THREADS must be a positive integer");
+    requested = (int)parsed;
+  }
+  return merlin_omp_init(requested);
+}
+
 int merlin_omp_num_threads(void) {
   pthread_mutex_lock(&init_mu);
   int result = initialized ? pool_size : 0;
+  pthread_mutex_unlock(&init_mu);
+  return result;
+}
+
+int merlin_omp_worker_cpu(int tid) {
+  pthread_mutex_lock(&init_mu);
+  int result = -1;
+  if (initialized && tid >= 0 && tid < pool_size)
+    result = tid == 0 ? master_cpu : workers[tid].observed_cpu;
   pthread_mutex_unlock(&init_mu);
   return result;
 }
@@ -174,8 +259,7 @@ void __kmpc_fork_call(ident_t *loc, int32_t argc, void *microtask, ...) {
   int requested = tls_requested;
   tls_requested = 0;
   if (requested < 1) {
-    long cpus = sysconf(_SC_NPROCESSORS_ONLN);
-    requested = cpus > 0 ? (int)cpus : 1;
+    requested = merlin_omp_init_from_env(1);
   }
   int available = merlin_omp_init(requested);
   int team = requested < available ? requested : available;
@@ -185,16 +269,16 @@ void __kmpc_fork_call(ident_t *loc, int32_t argc, void *microtask, ...) {
   /* One caller owns the published task until every worker completes.  This also makes
    * simultaneous application-thread entry deterministic instead of corrupting globals. */
   pthread_mutex_lock(&dispatch_mu);
-  pthread_mutex_lock(&pool_mu);
-  task_fn = microtask; task_argc = argc; task_team = team; completed = 0;
+  task_fn = microtask; task_argc = argc; task_team = team;
   for (int i = 0; i < argc; ++i) task_args[i] = args[i];
-  ++generation;
-  pthread_cond_broadcast(&work_cv);
-  pthread_mutex_unlock(&pool_mu);
+  /* Wake only helpers selected for this dispatch, avoiding a condition-variable broadcast to
+   * workers outside a smaller requested team. */
+  for (int slot = 1; slot < team; ++slot)
+    if (sem_post(&workers[slot].start) != 0) fail("worker semaphore post failed");
   run_region(0, team, microtask, argc, args);
-  pthread_mutex_lock(&pool_mu);
-  while (completed != team - 1) pthread_cond_wait(&done_cv, &pool_mu);
-  pthread_mutex_unlock(&pool_mu);
+  for (int slot = 1; slot < team; ++slot)
+    while (sem_wait(&workers[slot].done) != 0)
+      if (errno != EINTR) fail("worker completion semaphore wait failed");
   pthread_mutex_unlock(&dispatch_mu);
 }
 

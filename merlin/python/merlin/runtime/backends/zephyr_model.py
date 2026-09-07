@@ -689,7 +689,8 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                          blocking: bool = True, harts: int = 1,
                          vlen: int | None = None,
                          matrix: "MatrixRouting | None" = None,
-                         device: "Any | None" = None) -> tuple[Path, frozenset[str]]:
+                         device: "Any | None" = None,
+                         outline_int8: bool = False) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
 
@@ -774,6 +775,23 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                       f"{_why['present']} — this feature cannot fire and will measure as a no-op")
         except Exception as _e:                  # a diagnostic must never break a build
             print(f"[lever] applicability check unavailable: {type(_e).__name__}: {_e}")
+    # K1 CPU KERNEL OUTLINING. This deliberately runs at the same seam as matrix-unit routing:
+    # after quantization has exposed structural i8xi8->i32 contraction generics, but before panel
+    # packing or per-op scheduling rewrites them. The 155 TinyLlama weight matmuls become calls to
+    # one descriptor-driven RVV body; rank-3 attention contractions remain in the normal pipeline.
+    if outline_int8:
+        from ...llvmlower import weight_panel as _outline_wpan
+        if _outline_wpan.FEATURE in features:
+            raise ValueError(
+                f"outline_int8 and {_outline_wpan.FEATURE!r} both claim the same rank-2 weight "
+                "contractions; remove the panel-pack feature for an outlined-kernel build")
+        from . import outlined_int8_board as _outlined
+        routed = _outlined.rewrite_prepared_file(prepared, work)
+        if not routed.count:
+            raise ValueError(
+                "outline_int8 requested, but no legal rank-2 i8xi8->i32 contraction was routed")
+        print(f"[outlined-int8] routed {routed.count} rank-2 contraction(s) across "
+              f"{len(routed.signatures)} signature(s); batched contractions remain in Merlin")
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
@@ -849,12 +867,17 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                 f"baseline and report as applied")
         _judge_levers_on(prepared)
         return _strip_provenance(prepared, work, features), features
+    from ...llvmlower import im2col_identity_view as _iv
     from ...llvmlower import im2col_pack as _ip
     from ...llvmlower import perop_blocks as _pb
     from ...llvmlower.impr_features import (PEROP_BLOCK_NAME, PEROP_MR_FILL_NAME,
                                             PEROP_NR_FILL_NAME,
                                             ensure_perop_block, parse_perop_mr_sentinel,
-                                            PEROP_MR_SENTINEL_PREFIX)
+                                            parse_perop_nr_sentinel, PEROP_MR_SENTINEL_PREFIX,
+                                            PEROP_NR_SENTINEL_PREFIX)
+    _mr_named = sorted({n for f in features if (n := parse_perop_mr_sentinel(f)) is not None})
+    _nr_named = sorted({n for f in features if (n := parse_perop_nr_sentinel(f)) is not None})
+    _has_block_request = bool(PEROP_BLOCK_NAME in features or _mr_named or _nr_named)
     # The panel-pack rewrite lives inside the per-op blocking branch below (it needs that branch's
     # block table for its NR, and the table the tagger is built from must be re-derived after it). So
     # asking for it WITHOUT the block request would silently do nothing -- the exact "a request that
@@ -864,25 +887,30 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # unresolved-sentinel guard.
     from ...llvmlower import requant_fuse as _rf
     _rf_named = sorted(features & {_rf.FEATURE, _rf.VEC_FEATURE})
-    if _rf_named and PEROP_BLOCK_NAME not in features:
+    if _rf_named and not _has_block_request:
         raise ValueError(
             f"{_rf_named} requires {PEROP_BLOCK_NAME!r} in the same feature set: the "
             f"(contraction, fill, requant) tags it fuses on are applied by that request's tagger, "
             f"and only its schedule carries the fused arms. Named alone it would tag nothing, build "
             f"the baseline, and report as applied. Name both.")
     from ...llvmlower import weight_panel as _wpan
-    if _wpan.FEATURE in features and PEROP_BLOCK_NAME not in features:
+    if _wpan.FEATURE in features and not _has_block_request:
         raise ValueError(
             f"{_wpan.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel "
             f"width IS the N tile that request's block table derives, and only its schedule arm can "
             f"tile the packed contraction. Named alone it would repack every weight and leave every "
             f"packed contraction to convert-linalg-to-loops. Name both.")
-    if _ip.FEATURE in features and PEROP_BLOCK_NAME not in features:
+    if _ip.FEATURE in features and not _has_block_request:
         raise ValueError(
             f"{_ip.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel width "
             f"is the N tile that request's block table derives, and only its schedule arm can tile "
             f"the packed contraction. Named alone it would rewrite the IR and leave every packed "
             f"contraction to convert-linalg-to-loops. Name both.")
+    if _iv.FEATURE in features and not _has_block_request:
+        raise ValueError(
+            f"{_iv.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: viewed "
+            "1x1 contractions must retain the ordinary per-op matmul schedule. Named alone the "
+            "copy would disappear but the contraction could fall to scalar lowering. Name both.")
     # The N-fill request is a SEARCH KNOB, off by default, because its sign is model-dependent: on the
     # K1 it measured 1.160x FASTER on spectformer int8 and 1.196x SLOWER on small_llama int8, both far
     # outside the 2.6% band. The accumulator is i32, not i8, so at VLEN=256 an NR=16 tile is already
@@ -912,13 +940,18 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # cap WINS over the ambient env so a fork's measurement describes the fork, not the shell it ran
     # in. Two different caps in one feature set is a contradiction with no correct answer, so refuse
     # rather than let sorted-order pick one.
-    _mr_named = sorted({n for f in features if (n := parse_perop_mr_sentinel(f)) is not None})
     if len(_mr_named) > 1:
         raise ValueError(
             f"conflicting per-op MR caps requested in one feature set: {_mr_named}. Each "
             f"{PEROP_MR_SENTINEL_PREFIX}<N> pins the cap block_table derives under, so two of them "
             f"describe two different builds; name exactly one.")
     mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()
+    if len(_nr_named) > 1:
+        raise ValueError(
+            f"conflicting per-op NR caps requested in one feature set: {_nr_named}. Each "
+            f"{PEROP_NR_SENTINEL_PREFIX}<N> pins the cap block_table derives under, so two of them "
+            f"describe two different builds; name exactly one.")
+    nr_cap = _nr_named[0] if _nr_named else perop_nr_cap(vlen)
     # The M-fill request, the exact counterpart of the N-fill one above: passing a vlen here is the
     # only thing that turns it on, so the default path derives the table under the single ambient cap
     # and is byte-identical. A NAMED `_mr<N>` sentinel is a PIN and wins over the derivation -- a fork
@@ -931,8 +964,15 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
               f"{_mr_named[0]} pins the per-op MR cap to {_mr_named[0]}, and a named pin wins over "
               "the register-file derivation")
         mr_fill_vlen = None
-    if _mr_named:
-        features = ({f for f in features if parse_perop_mr_sentinel(f) is None}
+    if nr_fill_vlen and _nr_named:
+        print(f"[zephyr_model] {PEROP_NR_FILL_NAME} ignored: {PEROP_NR_SENTINEL_PREFIX}"
+              f"{_nr_named[0]} pins the per-op NR cap to {_nr_named[0]}, and a named pin wins over "
+              "the vector-width derivation")
+        nr_fill_vlen = None
+    if _mr_named or _nr_named:
+        features = ({f for f in features
+                     if parse_perop_mr_sentinel(f) is None
+                     and parse_perop_nr_sentinel(f) is None}
                     | {PEROP_BLOCK_NAME})
     if PEROP_BLOCK_NAME in features:
         from ...kernels.shapes import contraction_shapes as _cshapes
@@ -949,8 +989,19 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # (lstmnetvit int8 at 8 harts: 5 matmuls dropped out of the table to scalar loops, 9 narrowed,
         # +63.5% instructions and -63% vector ops in the LINKED ELF, before any thread existed). The
         # split is now derived FROM this block instead -- see `_pb.parallel_chunk_table` below.
-        _blk = dict(mr_cap=mr_cap, nr_cap=perop_nr_cap(vlen),
+        _blk = dict(mr_cap=mr_cap, nr_cap=nr_cap,
                     vlen=nr_fill_vlen, mr_vlen=mr_fill_vlen)
+        # Degenerate N=1, 1x1, unit-stride im2col is already the NCHW input's row-major order.
+        # Turn it into a [C,H*W] view before panel packing. The remaining non-identity gathers still
+        # take the packed-panel path; viewed contractions retain the ordinary matmul schedule.
+        if _iv.FEATURE in features:
+            prepared, _views = _iv.rewrite_prepared_file(prepared, work)
+            print(f"[im2col_identity_view] viewed={_views.viewed} "
+                  + " ".join(f"{k}={v}" for k, v in sorted(_views.refusals.items())))
+            if not _views.viewed:
+                raise ValueError(
+                    f"{_iv.FEATURE}: no im2col copy was proven to be an identity view; refusing "
+                    "to build the baseline under the lever's name")
         # PANEL-PACKED im2col, default-off (`im2col_pack.FEATURE`). It has to run HERE, between the
         # table that gives it its NR and the table the tagger/schedule are built from: the panel width
         # is the N tile this model's own block policy derived (VLEN- and dtype-aware), and the packed
@@ -995,7 +1046,7 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
         # {} unless `perop_blocks.CONV_ARM_FEATURE` is in `features`, so the default build's table --
         # and every schedule and tag derived from it -- is byte-identical.
         table.update(_pb.conv_block_table(prepared, features, mr_cap=mr_cap,
-                                          nr_cap=perop_nr_cap(vlen), vlen=nr_fill_vlen,
+                                          nr_cap=nr_cap, vlen=nr_fill_vlen,
                                           mr_vlen=mr_fill_vlen))
         # PANEL-PACKED contractions need NO table entry of their own: the panel loop leaves an
         # ORDINARY [F, NR] x K contraction behind, which `block_table` above already observed and
@@ -1027,6 +1078,15 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                                  tuple(int(d) for d in (s.reduction or ())))
                 not in packed_entries
             ]
+            # Direct convolutions are deliberately invisible to `contraction_shapes` (they have
+            # three reduction dimensions, while that observer recognizes one).  Pricing them into
+            # `table` above but omitting them here produced a particularly deceptive multicore
+            # artifact: the schedule vectorized the grouped conv, the build and accuracy gate both
+            # passed, yet no `merlin.par_gconv_*` tag was ever emitted and the two large depthwise
+            # convs ran serially (32 ms each on K1).  Feed the direct-conv observer into the SAME
+            # chunk solver.  With the request off these shapes have no table entry, so this is
+            # byte-identical for every existing non-direct build.
+            _par_shapes.extend(_pb.conv_shapes(prepared))
             par_table = _pb.parallel_chunk_table(_par_shapes, table, harts)
             # THE FUSED REQUANT EPILOGUE (`fuse_requant_into_contraction`, default-off). The
             # pairing is done by the SAME tagger pass as the block tags -- it has to be, because a

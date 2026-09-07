@@ -32,13 +32,18 @@ double roundeven(double x) { return rint(x); }
  *     these helpers with `unsigned short` (an INTEGER-class type in rdi/ax) silently
  *     mismatches the convention — the bf16 arg/return goes through the wrong register,
  *     so `0.066f * 31.0f` came back as ~8.6e9 (host smolvla cos 0.083). Use `__bf16`.
- *   - riscv64 lp64d / bare-metal soft-bf16: no bf16 FP register; `__bf16` is ABI-passed
- *     as a 16-bit integer (a0) — `unsigned short` matches, and `__bf16` may be unavailable
- *     under -ffreestanding, so keep `unsigned short` there.
+ *   - riscv64 lp64d under clang: LLVM's legalized bf16 calls pass and return `__bf16`
+ *     through fa0 even without a native bf16 ISA extension. Declaring the runtime helper as
+ *     `unsigned short` returns in a0 instead. On K1 this turned every integer-to-bf16 conversion
+ *     in smolVLA's dequantized weights into zero: the caller read the unchanged float in fa0 and
+ *     stored its low 16 bits. SpacemiT clang-19 supports `__bf16` in freestanding mode, so use the
+ *     real type for clang RISC-V too. Non-clang freestanding toolchains retain the integer fallback;
+ *     their lowered model and runtime must be produced by an ABI-compatible compiler pair.
  * The conversion math is identical either way (done on a 16-bit pattern via memcpy);
  * only the declared parameter/return TYPE — hence the register class — differs.
  * __truncsfbf2 uses round-half-to-even (matches torch). */
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(__x86_64__) || defined(__i386__) || \
+    (defined(__riscv) && defined(__clang__))
 typedef __bf16 merlin_bf16_t;
 #else
 typedef unsigned short merlin_bf16_t;

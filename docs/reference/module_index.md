@@ -43,6 +43,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.runtime.backends` | Merlin runtime execution backends. |
 | `merlin.runtime.backends.openblas_board` | BOARD (RVV) OpenBLAS kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
 | `merlin.runtime.backends.ours_board` | BOARD (RVV) OURS GEMM kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
+| `merlin.runtime.backends.outlined_int8_board` | Reusable K1 RVV kernel for Merlin's W8A8 rank-2 contractions. |
 | `merlin.runtime.backends.xnnpack_board` | BOARD (RVV) XNNPACK kernel backend: route the f32 ``linalg.matmul`` dispatches of a |
 | `merlin.runtime.backends.xnnpack_host` | HOST XNNPACK kernel backend for the dispatch runtime (default-off, additive). |
 | `merlin.rvvgen` | Compatibility shim: ``merlin.rvvgen`` is now :mod:`merlin.mining`. |

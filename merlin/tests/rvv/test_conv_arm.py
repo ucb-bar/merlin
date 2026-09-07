@@ -54,6 +54,37 @@ module {
 }
 """
 
+#: Grouped direct convolution as emitted by model2MLIR after the im2col-removal path.  G and F/G
+#: are separate output/parallel dimensions so the output map stays an identity; the following
+#: collapse_shape is a view and is intentionally outside the contraction tested here.
+GROUPED_CONV_MLIR = """\
+#in  = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d0, d1 * 8 + d5, d3 + d6, d4 + d7)>
+#w   = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d1 * 8 + d2, d5, d6, d7)>
+#out = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (d0, d1, d2, d3, d4)>
+module {
+  func.func @forward(%a: tensor<1x256x17x25xi8>, %b: tensor<256x8x3x3xi8>)
+      -> tensor<1x32x8x15x23xi32> {
+    %z = arith.constant 0 : i32
+    %e = tensor.empty() : tensor<1x32x8x15x23xi32>
+    %f = linalg.fill ins(%z : i32) outs(%e : tensor<1x32x8x15x23xi32>)
+         -> tensor<1x32x8x15x23xi32>
+    %r = linalg.generic {indexing_maps = [#in, #w, #out],
+                         iterator_types = ["parallel", "parallel", "parallel", "parallel",
+                                           "parallel", "reduction", "reduction", "reduction"]}
+         ins(%a, %b : tensor<1x256x17x25xi8>, tensor<256x8x3x3xi8>)
+         outs(%f : tensor<1x32x8x15x23xi32>) {
+    ^bb0(%x: i8, %y: i8, %acc: i32):
+      %xe = arith.extsi %x : i8 to i32
+      %ye = arith.extsi %y : i8 to i32
+      %m = arith.muli %xe, %ye : i32
+      %s = arith.addi %m, %acc : i32
+      linalg.yield %s : i32
+    } -> tensor<1x32x8x15x23xi32>
+    return %r : tensor<1x32x8x15x23xi32>
+  }
+}
+"""
+
 #: The schedule text as it stood BEFORE the conv arm, for a table holding one matmul block. The arm
 #: must leave this untouched: a conv-free table is every build anyone ships today, and a single
 #: character of drift here re-lowers every model.
@@ -131,23 +162,54 @@ def test_conv_shapes_reads_the_direct_form_off_the_ir():
     assert s.dtypes == ("i8", "i8", "i32"), s
 
 
+def test_conv_shapes_reads_grouped_direct_form_without_flattening_its_parallel_axes():
+    shapes = pb.conv_shapes(GROUPED_CONV_MLIR)
+    assert len(shapes) == 1, shapes
+    s = shapes[0]
+    assert s.op == pb.GROUPED_CONV_CLASS
+    assert s.parallel == (1, 32, 8, 15, 23)
+    assert s.reduction == (8, 3, 3)
+    assert s.dtypes == ("i8", "i8", "i32")
+
+
 def test_conv_geometry_solves_the_window_and_rejects_what_is_not_a_conv():
     """The predicate is pure extent arithmetic, so both sides of the tagging can run it.
 
-    ``in = (out - 1) * stride + kernel`` both validates the shape triple and RECOVERS the stride.
+    ``out = floor((in - kernel) / stride) + 1`` validates the shape triple and recovers a UNIQUE
+    stride.  Real padded tensors need not be exactly covered by the final window.
     """
     # stride 1: 16 -> 18 through a 3x3 window
     assert pb.conv_geometry([1, 32, 16, 16], [1, 64, 18, 18], [32, 64, 3, 3]) == (1, 1)
     # stride 2: 32 -> 65 through a 3x3 window
     assert pb.conv_geometry([1, 32, 32, 32], [1, 64, 65, 65], [32, 64, 3, 3]) == (2, 2)
+    # ResNet's real stride-2 forms leave one trailing padded element outside the last window.
+    assert pb.conv_geometry([1, 128, 28, 28], [1, 128, 58, 58],
+                            [128, 128, 3, 3]) == (2, 2)
+    assert pb.conv_geometry([1, 512, 28, 28], [1, 256, 56, 56],
+                            [512, 256, 1, 1]) == (2, 2)
     # channel mismatch is not this conv
     assert pb.conv_geometry([1, 32, 16, 16], [1, 63, 18, 18], [32, 64, 3, 3]) is None
     # an input too small for the window
     assert pb.conv_geometry([1, 32, 16, 16], [1, 64, 2, 2], [32, 64, 3, 3]) is None
     # a span that no integer stride explains
     assert pb.conv_geometry([1, 32, 16, 16], [1, 64, 20, 18], [32, 64, 3, 3]) is None
+    # More than one stride gives this floor-divided extent, so shapes alone cannot choose safely.
+    assert pb.conv_geometry([1, 32, 2, 2], [1, 64, 6, 6], [32, 64, 3, 3]) is None
     # not rank 4
     assert pb.conv_geometry([32, 16], [64, 18], [32, 64]) is None
+
+
+def test_stride2_geometry_is_observable_but_refused_by_the_current_vector_arm():
+    """F x Ow vectorization cannot legalize ``2 * Ow + Kw``; never fail during lowering."""
+    stride2 = (CONV_MLIR
+               .replace("d2 + d5", "d2 * 2 + d5")
+               .replace("d3 + d6", "d3 * 2 + d6")
+               .replace("1x64x18x18", "1x64x58x58")
+               .replace("1x32x16x16", "1x32x28x28"))
+    assert pb.conv_geometry([1, 32, 28, 28], [1, 64, 58, 58],
+                            [32, 64, 3, 3]) == (2, 2)
+    assert pb.conv_shapes(stride2) == []
+    assert pb.conv_block_table(stride2, [pb.CONV_ARM_FEATURE], mr_cap=4, nr_cap=16) == {}
 
 
 # --------------------------------------------------------------------------------------------------
@@ -189,11 +251,48 @@ def test_the_conv_arm_tiles_ow_and_f_and_folds_before_vectorizing():
     assert "tile_sizes [1, 4, 1, 16, 0, 0, 0]" in text, text
     assert "tile_sizes [0, 0, 0, 0, 1, 1, 1]" in text, text
     assert "transform.apply_patterns.linalg.fold_unit_extent_dims_via_slices" in text, text
+    assert 'match ops{["func.func"]}' not in text.split("%f =", 1)[0], (
+        "the conv-only fold must not be applied to unrelated linalg ops in the whole function")
+    assert "transform.apply_patterns to %c0one" in text, text
     assert "vector_sizes [4, 16]" in text, text
     # the fold drops the op's tag, so the vectorize must find the op through the annotated nest
     assert 'transform.annotate' in text and pb.conv_nest_tag(4, 16) in text, text
     assert text.index("fold_unit_extent_dims_via_slices") < text.index("vector_sizes [4, 16]"), (
         "the fold must run BEFORE the vectorize, or the vectorize has nothing it can accept")
+
+
+def test_the_grouped_conv_arm_tiles_group_local_f_and_ow():
+    table = {"linalg.conv2d_grouped_direct:1x32x8x15x23:8x3x3": (4, 23)}
+    text = pb.schedule_text(table, 64)
+    assert pb.tag_for(pb.GROUPED_CONV_CLASS, 4, 23) in text
+    assert "tile_sizes [1, 1, 4, 1, 23, 0, 0, 0]" in text
+    assert "tile_sizes [0, 0, 0, 0, 0, 1, 1, 1]" in text
+    assert "vector_sizes [4, 23]" in text
+
+
+def test_grouped_conv_parallelism_prefers_independent_groups():
+    shapes = pb.conv_shapes(GROUPED_CONV_MLIR)
+    table = pb.conv_block_table(
+        GROUPED_CONV_MLIR,
+        [pb.CONV_ARM_FEATURE],
+        mr_cap=4,
+        nr_cap=16,
+        vlen=256,
+        mr_vlen=256,
+    )
+    chunks = pb.parallel_chunk_table(shapes, table, 8)
+    key = "linalg.conv2d_grouped_direct:1x32x8x15x23:8x3x3"
+    assert chunks[key] == (0, 4, 0, 0, 0), chunks
+
+
+def test_prepare_feeds_direct_convs_to_the_multicore_chunk_solver():
+    """A unit-tested solver is inert unless the whole-model preparation calls it on conv shapes."""
+    import inspect
+
+    from merlin.runtime.backends import zephyr_model
+
+    src = inspect.getsource(zephyr_model.prepare_for_lowering)
+    assert "_par_shapes.extend(_pb.conv_shapes(prepared))" in src
 
 
 def test_mr_one_folds_to_a_rank_one_vector():
@@ -247,6 +346,19 @@ def test_the_conv_arm_actually_vectorizes_the_conv(tmp_path):
     assert "linalg.generic" not in out, (
         "the conv must be gone from linalg -- if it survives it falls to convert-linalg-to-loops "
         "and lowers scalar, which is the state this arm exists to fix")
+
+
+def test_the_grouped_conv_arm_actually_vectorizes_without_im2col(tmp_path):
+    tagged = GROUPED_CONV_MLIR.replace(
+        "outs(%f : tensor<1x32x8x15x23xi32>) {",
+        "outs(%f : tensor<1x32x8x15x23xi32>) attrs = {"
+        + pb.tag_for(pb.GROUPED_CONV_CLASS, 4, 23) + "} {")
+    table = {"linalg.conv2d_grouped_direct:1x32x8x15x23:8x3x3": (4, 23)}
+    rc, out, err = _run_schedule(tmp_path, tagged, pb.schedule_text(table, 64))
+    assert rc == 0, err
+    assert "vector.transfer_read" in out
+    assert "vector<4x23xi32>" in out
+    assert "linalg.generic" not in out
 
 
 def test_the_tagger_tags_a_priced_conv(tmp_path):

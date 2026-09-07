@@ -152,6 +152,14 @@ class TestWhatItRefuses:
 
 
 class TestWhatItEmits:
+    def test_a_caller_can_supply_a_distinct_symbol_namespace(self):
+        mod = _module(_INT8_MM)
+        got = PO.rewrite_contractions_to_opu(
+            mod, select=_ALL, symbol_prefix="merlin_outlined_gemm_i8")
+        assert tuple(got.signatures) == ("merlin_outlined_gemm_i8_0",)
+        from merlin.xdsl_dialects._common import text as to_text
+        assert "func.call @merlin_outlined_gemm_i8_0" in to_text(mod)
+
     def test_the_contraction_becomes_a_call_to_the_kernel(self):
         mod = _module(_INT8_MM)
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
@@ -343,6 +351,17 @@ class TestTheFileSeam:
         assert "func.call @merlin_opu_gemm_i8_0" in text
         assert 'bufferization.access = "read"' in text
         assert PO.load_sidecar(tmp_path) == {"merlin_opu_gemm_i8_0": (64, 16, 32)}
+
+    def test_custom_sidecar_does_not_clobber_the_matrix_unit_record(self, tmp_path):
+        prepared = tmp_path / "model.prepared.mlir"
+        prepared.write_text(_INT8_MM, encoding="utf-8")
+        got = PO.rewrite_prepared_file(
+            prepared, tmp_path, select=_ALL,
+            symbol_prefix="merlin_outlined_gemm_i8", sidecar_name="outlined.json")
+        assert got.count == 1
+        assert not (tmp_path / PO.SIDECAR_NAME).exists()
+        assert PO.load_sidecar(tmp_path, "outlined.json") == {
+            "merlin_outlined_gemm_i8_0": (64, 16, 32)}
 
     def test_nothing_selected_leaves_the_module_byte_identical(self, tmp_path):
         # The module is only rewritten when something moved, so an enabled-but-declining build cannot

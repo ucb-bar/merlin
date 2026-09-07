@@ -75,6 +75,29 @@ def test_parallel_harts_requires_vectorize():
         P.lower_to_llvm_ir("module {}", vectorize=False, parallel_harts=4)
 
 
+def test_residual_vector_operation_scan_preserves_mlir_name_boundaries(tmp_path):
+    boundary = tmp_path / "translation_boundary.mlir"
+    boundary.write_text("""
+      %0 = vector.transfer_read %source[%c0], %pad
+      %1 = "vector.mask"(%mask, %0) : (vector<8xi1>, vector<8xf32>) -> vector<8xf32>
+      %2 = vector.contract2_x %lhs, %rhs, %acc
+      // Duplicates are collapsed, and embedded substrings are not operation names.
+      %3 = vector.transfer_read %source[%c1], %pad
+      %4 = myvector.not_an_operation
+      %5 = évector.not_an_operation
+      // Preserve the former ASCII identifier grammar and its stopping point.
+      %6 = vector.partial-name
+      %7 = vector.
+    """, encoding="utf-8")
+
+    assert P._residual_vector_dialect_ops(boundary) == (
+        "vector.contract2_x",
+        "vector.mask",
+        "vector.partial",
+        "vector.transfer_read",
+    )
+
+
 @pytest.mark.skipif(not MLIR_OPT.is_file() or not MLIR_TRANSLATE.is_file(),
                     reason="third_party/llvm-install MLIR tools not built")
 def test_composed_lowering_emits_both_openmp_and_vectors(tmp_path):
