@@ -1504,6 +1504,125 @@ sampling question entirely. Abstentions are raised during encoding and cost mill
 ~29% that reach the solver cost seconds. Solver budget fixed at 15,000 ms; a unit exceeding it is
 `unknown`, never a pass.
 
+### 2026-09-07 — the V1 capsule set, and the formal layer turns out to sit one level too high
+
+Jack Burd handed over a 77-candidate V1 capsule inventory with a formal claim calculus, a 462-row
+proof-obligation ledger, and two 24-case sets dated 2026-09-06. The question was what our compiler and
+our formal layer can say about them. Five measurements answer it, and two of them are unflattering in
+a way that redirects the work.
+
+**The V1 bar, quoted rather than paraphrased.** 77 candidates over 8 families, 462 edge obligations
+across six semantic edges, **0 PROVED edges**, 459 UNKNOWN, 3 COUNTEREXAMPLE; 40 compiled, 15
+Spike-tested, **0 RTL-simulator and 0 FPGA runs**, 0 fully closed; global `UNKNOWN`, release `HOLD`.
+Its pass claim requires every candidate to satisfy its contract with *no* UNKNOWN result, and its own
+policy lists `sequential_rtl_formally_verified` among claims prohibited without additional proof. A
+global PASS was therefore never reachable this phase, and this entry does not claim one.
+
+Two clauses of that calculus are load-bearing for us because our package was built to the same rule:
+`W = A ⊎ H ⊎ D` must be a disjoint closed partition with `U ⊆ H ∪ D`, hence `U ∩ A = ∅`; and "an empty
+command buffer plus process exit zero does not identify a member of `A`".
+
+**Their 48 new capsules add zero coverage, on all nine axes.** Measured with
+`conformance.uncovered(spec, roots, tile_dim=16, exclude=graded_exclude)` against the tracked gemmini
+requirement — not a hand-rolled classifier, which is the trap that made ARR vacuous on every target
+once already, and which I walked into again here by reading `numeric_policy.dtype` (the compare dtype)
+instead of the operand dtype. Those hand-rolled numbers were discarded.
+
+| axis | ours | their 48 | union | delta |
+|---|---:|---:|---:|---:|
+| cells | 12/12 | 6/12 | 12/12 | 0 |
+| composition | 6/6 | 2/6 | 6/6 | 0 |
+| memory regime | 3/3 | 2/3 | 3/3 | 0 |
+| shape geometry | 6/7 | 4/7 | 6/7 | 0 |
+| host-only lane | 1/1 | 0/1 | 1/1 | 0 |
+| host lane | 10/11 | 0/11 | 10/11 | 0 |
+| epilogue | 5/5 | 5/5 | 5/5 | 0 |
+| conv window | 10/10 | 1/10 | 10/10 | 0 |
+| scope (adjacency) | 2/12 | 0/12 | 2/12 | 0 |
+
+**And yet one of those capsules found a defect we ship.** That is the whole point of the entry:
+coverage-axis subsumption is not fault-detection subsumption. `CD00_dirty_spad_conv_padding` moves a
+nonzero `DIRTY` tensor into regular scratchpad, then runs a 3x3 conv with one-pixel padding.
+`out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/mlir_oot/lowering/isa.py` — sha256 `a5954568…`,
+**the exact `lowering/isa.py` sha their report pins as the frozen compiler, so our copy is the artifact
+they measured, and it is tracked in git** — emits im2col MVIN only for in-bounds positions. The guard
+`if 0 <= ih < in_h and 0 <= iw < in_w:` has no `else` branch and the file contains no zero-writer at
+all, while compute reads the complete gathered tile. Their Spike run differs from the declared
+convolution in 8/27 elements; their direct implementation, which zeroes invalid positions, matches
+27/27.
+
+The reference is not ambiguous: `runtime.commandbuffer.conv_im2col`'s `at()` returns `0` out of
+bounds, and its docstring names it the single source of truth for harness, reference, simulate and
+golden. Spec and ISA lowering genuinely disagree.
+
+Three independent blind spots hid it from 92/96 and from 12/12 cell coverage: no conformance axis
+expresses **residual accelerator state at operation entry**, so no capsule of ours establishes dirty
+scratchpad before a padded conv; `runtime.simulator` models command buffers at tensor level and has no
+scratchpad, so no command-buffer-level tier can see the divergence; and `CONV2D` is in
+`cb_semantics.DEFERRED_OPCODES`, so the formal layer abstains on convolution entirely. The V1 calculus
+already anticipated the gap — initialization is an undischarged assumption there
+(`A02_DEFINED_TWO_STATE_INPUTS`, `A03_ABI_LAYOUT_ALIAS`) and it warns that missing initialization
+conditions are open proof premises, not a way to shrink the domain after a failure.
+
+**Their three COUNTEREXAMPLE edges reproduce in our tree in one command each.** A D-partition audit
+over all 8,100 command buffers in their snapshot: 7,840 accepted, **193 declines correctly discharged**
+(explicit `declined` block, empty command list, no output tensor — all 193 with the same reason,
+`op=model`, "upstream linalg model regions are not yet routed to the target pipeline"), and **67
+empty-and-silent violations** that localize exactly onto their three `unsupported_op_regressions`
+candidates. Running our own `gemmini-opt --convert-iface-to-gemmini --emit-command-buffer` on their
+`candidate.mlir`:
+
+| case | op | exit | stderr | commands | `declined` | declared output present |
+|---|---|---:|---:|---:|---|---|
+| `unsupported_unknown_rmsnorm` | `merlin_iface.rmsnorm` | 0 | 0 B | 0 | absent | no |
+| `unsupported_direct_spad_forbidden` | `merlin_iface.direct_spad` | 0 | 0 B | 0 | absent | no |
+| `unsupported_random_stateful` | `merlin_iface.random_normal` | 0 | 0 B | 0 | absent | no |
+
+Each violates two of the policy's explicit-decline oracles: `required_explicit_decline` (no
+diagnostic, no block, exit 0) and `no_silent_host_loss` (the declared output `Y` is dropped without a
+word). These inputs are in neither `H` nor `D`, so `U ⊆ H ∪ D` fails and the partition is not closed —
+the admission inconsistency their HOLD already names.
+
+**Our A3 fix does not cover them, and it would have been easy to claim it did.** A3 made
+`parse_interface_mlir` raise on a module with *zero* `merlin_iface` ops. These modules carry
+`merlin_iface` ops, so the parser is satisfied; the silent drop happens inside
+`--convert-iface-to-gemmini`, which discards an op it does not handle instead of declining. Same
+defect family, one layer down, not fixed.
+
+**The formal layer is one level above where the compiler works.** Over 1,558 unique cases carrying all
+three levels: median 6 interface ops, median 4 command-buffer commands, median 44 decoded RoCC
+instructions. So `interface -> command_buffer` is a **0.67x** near-transliteration while
+`command_buffer -> RoCC trace` is **10.75x** median and 3,085x at worst. `validate_equivalence` and
+`validate_compilation` check the first step; tiling, scratchpad addressing, CONFIG state and
+PRELOAD/COMPUTE sequencing all live in the second.
+
+The consequence is measured, not argued. Of 7,637 spec+buffer pairs — 1,596 unique, 29 outside the
+contract grammar, 1,567 classified — **1,550 (98.9%) are `identical`**: the equivalence query is
+literally `X == X`. Only **17** carry real content. Our own archive is 60.6% vacuous; this corpus is
+far worse. Note that encoder *eligibility* on the same corpus is also 98.9%, and the coincidence is a
+trap: eligibility and evidential content are different measurements, and only the second bounds a
+claim.
+
+Their attention certificates, by contrast, interpret the raw packed RoCC operands and state their
+independence from "the OOT lowering, the Merlin trace decoder, [and] the general matmul validator".
+They are at the right altitude; we are not. In their lemma vocabulary the unencoded edge is
+`L05_TARGET_TO_COMMANDS` / `L06_COMMAND_TO_LLVM` / `L07_TRACE_DECODE_AND_ORDER`.
+
+**What this redirects.** The pre-measurement priority was rank>2 (`CONV2D` + `BATCHED_MATMUL`). On
+this corpus that buys 11 of 1,578 buffers. The measurement says the highest-value formal work is a
+`cb_semantics` sibling that encodes the **decoded instruction stream**, whose fields
+`rtl/facts.load_facts` and the RoCC decoder already derive. `CONV2D` remains worth doing — it is the
+`conv_proof` family (6 of 77), 10 of the 48 new capsules, and atlas's `conv window 0/10` — but it is
+no longer the lever.
+
+**Scope limits.** `E01_SOURCE_TO_PASS` is unavailable on this corpus: all 72 cases carrying both
+`before.mlir` and `capsule.interface.mlir` are byte-identical, and the 31 `aten_generator` candidates
+carry `before_mlir: null`, so there is no pre-pass source to validate against. `E03`–`E06` are outside
+this layer. The 48 new capsules declare `[L0, L1, L2]` and demand no L3, so they carry no RTL-backed
+evidence. And their numbers come from frozen compiler sha256 `3bdefb4e…` at source commit `390623a6…`
+while ours is the current tree behind 92/96: the one artifact provably shared is the `isa.py` sha
+above, and nothing else here is comparable without a re-pin.
+
 ## 7. Reproducing what is claimed here
 
 NOTE: the shared `.venv` may resolve `merlin` from a different worktree, so pin `PYTHONPATH`:
