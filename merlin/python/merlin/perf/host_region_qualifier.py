@@ -143,13 +143,25 @@ def pointwise_concat_emission_evidence(
     )
     deleted = materialization_delta.get("deleted_payload_bytes") or {}
     expected = extraction.get("probe_intermediate_payload_bytes")
+    operand_shapes = extraction.get("probe_operand_shapes")
+    operand_count = extraction.get("concat_operand_count")
+    result_shape = extraction.get("probe_result_shape")
+    identity_contract = (
+        operand_count != 1
+        or (isinstance(operand_shapes, list) and len(operand_shapes) == 1
+            and extraction.get("identity_concat") is True
+            and operand_shapes[0] == result_shape)
+    )
     source_contract = (
         extraction.get("schema") == "actual_source_pointwise_concat_witness_v1"
         and extraction.get("mechanism") == "pointwise_concat"
         and extraction.get("all_source_producer_uses_preserved") is True
         and type(extraction.get("concat_axis")) is int
-        and isinstance(extraction.get("probe_operand_shapes"), list)
-        and isinstance(extraction.get("probe_result_shape"), list)
+        and isinstance(operand_shapes, list)
+        and isinstance(result_shape, list)
+        and type(operand_count) is int and operand_count >= 1
+        and operand_count == len(operand_shapes)
+        and identity_contract
     )
     exact_deletion = (
         materialization_delta.get("status") == "changed_reduced_materialization"
@@ -175,6 +187,8 @@ def pointwise_concat_emission_evidence(
         "materialization_delta": dict(materialization_delta),
         "source_scalar_region_sha256": extraction.get("scalar_region_sha256"),
         "concat_axis": extraction.get("concat_axis"),
+        "concat_operand_count": operand_count,
+        "identity_concat": extraction.get("identity_concat"),
         "probe_operand_shapes": extraction.get("probe_operand_shapes"),
         "probe_result_shape": extraction.get("probe_result_shape"),
         "all_source_producer_uses_preserved": extraction.get(

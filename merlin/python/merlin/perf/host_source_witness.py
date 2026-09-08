@@ -418,6 +418,8 @@ def extract_pointwise_concat(source_text: str, source_indices: Sequence[int], *,
 
     The concat axis and segment order come from the actual source.  Every non-concatenated
     dimension is reduced uniformly, while each concatenated segment is reduced independently.
+    The one-operand identity form is retained as an actual source operation: it is precisely the
+    witness needed when codegen proves that the concat itself is only a type-preserving view.
     A producer with any use other than the selected concat is refused: recomputing it in one
     concat copy loop would otherwise silently drop or duplicate a source-visible value.
     """
@@ -456,7 +458,7 @@ def extract_pointwise_concat(source_text: str, source_indices: Sequence[int], *,
         concat = use.operation
         concat_index = positions.get(concat)
         if (concat.name != "tensor.concat" or concat_index not in permitted
-                or len(concat.results) != 1 or len(concat.operands) < 2
+                or len(concat.results) != 1 or not concat.operands
                 or not 0 <= use.index < len(concat.operands)
                 or concat.operands[use.index] is not producer.results[0]):
             continue
@@ -596,6 +598,8 @@ def extract_pointwise_concat(source_text: str, source_indices: Sequence[int], *,
         "producer_concat_operand": producer_operand,
         "producer_result_scalar_operation": scalar_result_name,
         "concat_axis": axis,
+        "concat_operand_count": len(operand_shapes),
+        "identity_concat": len(operand_shapes) == 1,
         "source_operand_shapes": [list(shape) for shape in operand_shapes],
         "source_result_shape": list(result_shape),
         "probe_operand_shapes": [list(shape) for shape in probe_operand_shapes],

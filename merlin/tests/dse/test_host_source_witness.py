@@ -282,6 +282,24 @@ POINTWISE_CONCAT = '''builtin.module {
 }'''
 
 
+POINTWISE_IDENTITY_CONCAT = '''builtin.module {
+  func.func @forward(%input: tensor<5x7xf32>) -> tensor<5x7xf32> {
+    %empty = tensor.empty() : tensor<5x7xf32>
+    %negative = linalg.generic {
+        indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, affine_map<(d0,d1)->(d0,d1)>],
+        iterator_types = ["parallel", "parallel"]}
+      ins(%input : tensor<5x7xf32>) outs(%empty : tensor<5x7xf32>) {
+    ^bb0(%value: f32, %unused: f32):
+      %negated = arith.negf %value : f32
+      linalg.yield %negated : f32
+    } -> tensor<5x7xf32>
+    %joined = "tensor.concat"(%negative) <{dim = 1 : i64}>
+      : (tensor<5x7xf32>) -> tensor<5x7xf32>
+    func.return %joined : tensor<5x7xf32>
+  }
+}'''
+
+
 def test_pointwise_concat_clones_actual_axis_segments_and_exact_scalar_semantics():
     from merlin.perf.host_source_witness import extract_pointwise_concat
 
@@ -290,6 +308,8 @@ def test_pointwise_concat_clones_actual_axis_segments_and_exact_scalar_semantics
 
     assert receipt["source_indices"] == [1, 2]
     assert receipt["concat_axis"] == 1
+    assert receipt["concat_operand_count"] == 2
+    assert receipt["identity_concat"] is False
     assert receipt["source_operand_shapes"] == [[5, 7], [5, 2]]
     assert receipt["probe_operand_shapes"] == [[3, 3], [3, 2]]
     assert receipt["probe_result_shape"] == [3, 5]
@@ -305,6 +325,30 @@ def test_pointwise_concat_clones_actual_axis_segments_and_exact_scalar_semantics
     expected = np.concatenate((np.negative(left, dtype=np.float32), right), axis=1)
     actual = evaluate_pointwise_source(probe, [left, right])[0]
     assert actual.tobytes() == expected.tobytes()
+
+
+def test_pointwise_identity_concat_clones_and_evaluates_exact_scalar_semantics():
+    from merlin.perf.host_source_witness import extract_pointwise_concat
+
+    probe, receipt = extract_pointwise_concat(
+        POINTWISE_IDENTITY_CONCAT, [0, 1, 2], max_extent=3, max_elements=32)
+
+    assert receipt["source_indices"] == [1, 2]
+    assert receipt["concat_axis"] == 1
+    assert receipt["concat_operand_count"] == 1
+    assert receipt["identity_concat"] is True
+    assert receipt["source_operand_shapes"] == [[5, 7]]
+    assert receipt["probe_operand_shapes"] == [[3, 3]]
+    assert receipt["probe_result_shape"] == [3, 3]
+    assert receipt["probe_intermediate_payload_bytes"] == 36
+    assert receipt["bounded_tensor_elements"] == 27
+    values = np.asarray([
+        [0.0, -0.0, 2**-24],
+        [1.0, -1.0, 2**20],
+        [-2**-20, 127.0, -127.0],
+    ], dtype=np.float32)
+    actual = evaluate_pointwise_source(probe, [values])[0]
+    assert actual.tobytes() == np.negative(values, dtype=np.float32).tobytes()
 
 
 def test_pointwise_concat_refuses_shared_producer_and_oversized_probe():
@@ -681,6 +725,8 @@ def test_pointwise_concat_emission_requires_direct_scalar_to_concat_output():
                   "producer_result_scalar_operation": "arith.negf",
                   "scalar_region_sha256": "a" * 64,
                   "concat_axis": 1,
+                  "concat_operand_count": 2,
+                  "identity_concat": False,
                   "probe_operand_shapes": [[3, 3], [3, 2]],
                   "probe_result_shape": [3, 5],
                   "probe_intermediate_payload_bytes": 36,
@@ -701,4 +747,10 @@ def test_pointwise_concat_emission_requires_direct_scalar_to_concat_output():
     assert evidence["floating_arithmetic_and_conversion_counts_preserved"] is True
     assert pointwise_concat_emission_evidence(
         extraction, before, after, emitted_operation_names=["llvm.store"],
+        direct_output=True, materialization_delta=delta)["status"] == "NOT_DEMONSTRATED"
+    malformed_identity = {**extraction, "concat_operand_count": 1,
+                          "identity_concat": True, "probe_operand_shapes": []}
+    assert pointwise_concat_emission_evidence(
+        malformed_identity, before, after,
+        emitted_operation_names=["llvm.fneg", "llvm.store"],
         direct_output=True, materialization_delta=delta)["status"] == "NOT_DEMONSTRATED"
