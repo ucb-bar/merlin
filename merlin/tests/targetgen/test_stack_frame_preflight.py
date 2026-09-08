@@ -68,6 +68,9 @@ def test_target_bound_object_records_hash_bound_static_frame(tmp_path, monkeypat
         "object_sha256": hashlib.sha256(b"fixture object").hexdigest(),
         "stack_usage_report_sha256": hashlib.sha256(canonical_report.encode()).hexdigest(),
         "diagnostic": None,
+        # A frame that fit exactly as emitted. The key is always present so that "nothing was done
+        # to make this fit" and "the field was not recorded" cannot read the same.
+        "repair": None,
     }
 
 
@@ -122,3 +125,107 @@ def test_target_bound_recipe_must_declare_stack_policy(tmp_path, monkeypatch):
 def test_stack_policy_rejects_ambiguous_declarations(entry, budget):
     with pytest.raises(ValueError):
         KernelStackFramePolicy(entry, budget)
+
+
+# ---------------------------------------------------------------------------------------------
+# Repairing an over-budget frame by moving its static temporaries into one arena
+# ---------------------------------------------------------------------------------------------
+#
+# The host lane hoists one `alloca` per intermediate into the entry frame with no reuse, so the
+# frame scales with the model: 816 bytes on ResNet-50 and 99,897,984 on SmolVLA's flow_denoise
+# against a 65,536-byte budget. The repair runs ONLY after the emitted frame has been measured over
+# budget, which is what keeps an already-fitting build byte-identical -- and the one bundle known to
+# have run correctly on hardware is an already-fitting build, so that property is load-bearing.
+
+_OVERSIZED_LLVM = """; fixture
+define void @fixture_entry(ptr %0) {
+  %1 = alloca i8, i64 8192, align 64
+  %2 = alloca i8, i64 8192, align 64
+  ret void
+}
+"""
+
+
+def _repairable_build(tmp_path, monkeypatch, *, frames, budget=4096, llvm=_OVERSIZED_LLVM):
+    """Drive the object build with a scripted frame size per compiler invocation.
+
+    ``frames`` is consumed in order, so the first entry is the frame of the EMITTED program and the
+    second (if any) is the frame after the arena rewrite. That ordering is the thing under test:
+    the repair must be measured, never assumed.
+    """
+    from merlin.llvmlower import codegen, pipeline
+    from merlin.runtime.backends import base
+
+    monkeypatch.setattr(pipeline, "lower_to_llvm_ir", lambda text, *, workdir: llvm)
+    monkeypatch.setattr(base, "harness_build_recipe", lambda target: _recipe(budget=budget))
+    sizes = list(frames)
+    calls = []
+
+    def compile_ll(source, output, target, *, extra_flags):
+        source, output = Path(source), Path(output)
+        calls.append(source.name)
+        output.write_bytes(b"fixture object " + source.name.encode())
+        frame = sizes.pop(0)
+        output.with_suffix(".su").write_text(
+            f"{source}:fixture_entry\t{frame}\tstatic\n", encoding="utf-8")
+        return output
+
+    monkeypatch.setattr(codegen, "compile_ll", compile_ll)
+    result = compiler.llvm_mlir_to_object("module {}", tmp_path, target="fixture")
+    return result, calls
+
+
+def test_an_oversized_frame_is_REPAIRED_and_the_receipt_says_so(tmp_path, monkeypatch):
+    obj, calls = _repairable_build(tmp_path, monkeypatch, frames=[16512, 384])
+    assert calls == ["kernel.ll", "kernel.arena.ll"], "the emitted program is measured FIRST"
+    assert obj == tmp_path / "kernel.arena.o"
+    receipt = json.loads((tmp_path / "kernel.stack_frame.json").read_text())
+    assert receipt["status"] == "passed"
+    assert receipt["frame_bytes"] == 384 and receipt["headroom_bytes"] == 4096 - 384
+    repair = receipt["repair"]
+    assert repair["transform"] == "stack_arena_bind"
+    assert repair["frame_bytes_before"] == 16512
+    assert "exceeding the target-declared 4096-byte budget" in repair["diagnostic_before"]
+    assert repair["n_bound"] == 2 and repair["n_refused"] == 0
+    assert repair["moved_bytes"] == 16384
+    assert repair["arena_bytes"] >= 16384 and repair["shares_bytes"] is False
+    # The receipt must be bound to the bytes that were MEASURED, not to the emitted ones.
+    assert repair["emitted_llvm_ir_sha256"] == hashlib.sha256(_OVERSIZED_LLVM.encode()).hexdigest()
+    assert receipt["llvm_ir_sha256"] != repair["emitted_llvm_ir_sha256"]
+
+
+def test_a_frame_that_ALREADY_FITS_is_never_rewritten(tmp_path, monkeypatch):
+    """The regression that would invalidate the hardware-validated bundle."""
+    obj, calls = _repairable_build(tmp_path, monkeypatch, frames=[384])
+    assert calls == ["kernel.ll"], "no second compile: nothing was rewritten"
+    assert obj == tmp_path / "kernel.o"
+    assert not (tmp_path / "kernel.arena.ll").exists()
+    assert not (tmp_path / "kernel.arena.o").exists()
+    assert json.loads((tmp_path / "kernel.stack_frame.json").read_text())["repair"] is None
+
+
+def test_a_repair_that_STILL_does_not_fit_raises_the_ORIGINAL_refusal(tmp_path, monkeypatch):
+    """A repaired variant nobody asked for must not become the subject of the diagnostic."""
+    with pytest.raises(ValueError, match="budget by 12416"):
+        _repairable_build(tmp_path, monkeypatch, frames=[16512, 9000])
+    receipt = json.loads((tmp_path / "kernel.stack_frame.json").read_text())
+    assert receipt["status"] == "rejected"
+    assert receipt["frame_bytes"] == 16512, "the EMITTED frame, not the repaired one"
+    assert receipt["repair"] is None
+
+
+def test_an_oversized_frame_with_NOTHING_BINDABLE_is_rejected_unchanged(tmp_path, monkeypatch):
+    """No alloca to move means no repair is available, and the refusal must stand."""
+    with pytest.raises(ValueError, match="budget by 12416"):
+        _repairable_build(tmp_path, monkeypatch, frames=[16512],
+                          llvm="; fixture\ndefine void @fixture_entry(ptr %0) {\n  ret void\n}\n")
+    receipt = json.loads((tmp_path / "kernel.stack_frame.json").read_text())
+    assert receipt["status"] == "rejected" and receipt["repair"] is None
+    assert not (tmp_path / "kernel.arena.ll").exists()
+
+
+def test_a_module_the_arena_pass_cannot_READ_is_rejected_unchanged(tmp_path, monkeypatch):
+    """A StackArenaError must leave the original refusal in place, not surface as a new error."""
+    with pytest.raises(ValueError, match="budget by 12416"):
+        _repairable_build(tmp_path, monkeypatch, frames=[16512], llvm="; no function at all\n")
+    assert json.loads((tmp_path / "kernel.stack_frame.json").read_text())["repair"] is None

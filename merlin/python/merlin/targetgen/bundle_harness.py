@@ -327,3 +327,86 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
         "mutable_bytes": plan.mutable_bytes,
         "gate_declaration": gate.to_dict(),
     }
+
+
+# ---------------------------------------------------------------------------------------------
+# Freestanding support: symbols the target's baremetal environment does not provide
+# ---------------------------------------------------------------------------------------------
+#
+# ResNet-50's kernel references nothing outside `memcpy`/`memset`, so this never came up. SmolVLA's
+# flow-matching time embedding calls `sin`, `cos` and `pow`, and newlib's `pow` reaches an errno
+# write, so the link fails on `__errno` -- a symbol the curated baremetal environment has no
+# definition for. Vendored support trees are not ours to edit, and adding a stub straight into a
+# link line is how an unrelated missing symbol later gets satisfied by accident.
+#
+# So a shim is only ever emitted for a symbol listed here WITH the argument for why the definition
+# is honest, and an unresolved symbol not on the list is REFUSED by name. The refusal is the
+# valuable half: a program that turns out to need real functionality must not link against a stub
+# that returns zero.
+
+#: Symbols this repo can give a freestanding single-threaded program an honest definition for.
+#: ``why`` is not a comment -- :func:`render_freestanding_support` emits it into the generated C, so
+#: a reader of the harness sees the argument alongside the definition.
+FREESTANDING_SHIMS: Mapping[str, Mapping[str, str]] = {
+    "__errno": {
+        "definition": ("static int merlin_errno_storage;\n"
+                       "int *__errno(void) { return &merlin_errno_storage; }"),
+        "why": ("newlib's libm writes errno on a domain or range error, and generated kernel code "
+                "never reads it, so STORAGE is the whole requirement and providing it changes no "
+                "computed value. If generated code ever read errno this shim would be wrong and "
+                "plausible, which is exactly why it is listed with its justification instead of "
+                "being added as a link fix"),
+    },
+}
+
+
+def unresolved_symbols(linker_output: str) -> tuple[str, ...]:
+    """Symbol names a linker reported as undefined, parsed structurally from its own message.
+
+    Read from what the linker actually said rather than predicted from the object, because the
+    question is not "what does this object reference" (``sin``, ``pow`` and ``memcpy`` are all
+    referenced and all resolve) but "what did the environment fail to supply".
+    """
+    marker = "undefined reference to "
+    found: list[str] = []
+    for line in linker_output.splitlines():
+        _, sep, tail = line.partition(marker)
+        if not sep:
+            continue
+        tail = tail.strip()
+        if not tail:
+            continue
+        opener = tail[0]
+        closers = {"`": "'", "'": "'", '"': '"'}
+        if opener not in closers:
+            continue
+        name, sep, _ = tail[1:].partition(closers[opener])
+        if sep and name and name not in found:
+            found.append(name)
+    return tuple(found)
+
+
+def render_freestanding_support(symbols: Sequence[str]) -> str:
+    """C definitions for ``symbols``, or refuse and name the ones with no honest definition.
+
+    ``symbols`` are the names a link actually failed on. Every one must be listed in
+    :data:`FREESTANDING_SHIMS`; anything else raises, because stubbing an unknown symbol produces a
+    program that links and computes something other than what it declares.
+    """
+    unknown = [name for name in symbols if name not in FREESTANDING_SHIMS]
+    if unknown:
+        raise BundleHarnessError(
+            f"the link is unresolved on {sorted(unknown)}, for which this repo has no honest "
+            f"freestanding definition (it can supply {sorted(FREESTANDING_SHIMS)}). A stub would "
+            f"let the program link and compute something other than what it declares; supply the "
+            f"real symbol through the target's support sources, or add it here WITH the argument "
+            f"for why a stub is faithful")
+    if not symbols:
+        return "/* the environment resolved every referenced symbol: no shim needed */"
+    blocks = ["/* Freestanding support. Each definition carries the argument for why it is",
+              "   faithful; see merlin.targetgen.bundle_harness.FREESTANDING_SHIMS. */"]
+    for name in symbols:
+        shim = FREESTANDING_SHIMS[name]
+        blocks.append(f"/* {name}: {shim['why']} */")
+        blocks.append(str(shim["definition"]))
+    return "\n".join(blocks)

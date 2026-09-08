@@ -669,3 +669,68 @@ class TestTheTrajectoryGateActuallyFails:
         rc, out = self._build(tmp_path, 3)
         assert "MERLIN_GATE_TRAJECTORY steps=4 failed=3" in out, out[-2000:]
         assert rc != 0 and "METRIC cycles" not in out
+
+
+class TestFreestandingSupportIsDeclaredNotPatchedIn:
+    """A missing symbol at link time is repaired from a declared table, or refused by name.
+
+    ResNet-50's kernel references nothing outside ``memcpy``/``memset``. SmolVLA's flow-matching
+    time embedding calls ``sin``, ``cos`` and ``pow``, and newlib's ``pow`` reaches an errno write,
+    so the link failed on ``__errno`` -- a symbol the curated baremetal environment does not define.
+    The valuable half is the refusal: a program that needs real functionality must not link against
+    a stub that returns zero.
+    """
+
+    def test_it_reads_the_symbols_the_LINKER_named(self):
+        """From what the linker said, not from what the object references: `sin`, `pow` and
+        `memcpy` are all referenced and all resolve."""
+        report = (
+            "ld: warning: has a LOAD segment with RWX permissions\n"
+            "ld: libm.a(libm_a-w_pow.o): in function `pow':\n"
+            "w_pow.c:(.text.pow+0xb0): undefined reference to `__errno'\n"
+            "w_pow.c:(.text.pow+0xc2): undefined reference to `__errno'\n"
+            "math_err.c:(.text.with_errno+0xe): undefined reference to `__errno'\n")
+        assert BH.unresolved_symbols(report) == ("__errno",), "de-duplicated, in order"
+
+    def test_a_clean_link_reports_no_symbols(self):
+        assert BH.unresolved_symbols("ld: warning: RWX segment\n") == ()
+        assert BH.unresolved_symbols("") == ()
+
+    def test_several_distinct_symbols_are_all_reported(self):
+        report = ("a.c:(.text+0x1): undefined reference to `__errno'\n"
+                  "b.c:(.text+0x2): undefined reference to `_kill'\n"
+                  "c.c:(.text+0x3): undefined reference to `__errno'\n")
+        assert BH.unresolved_symbols(report) == ("__errno", "_kill")
+
+    def test_a_declared_symbol_yields_its_definition_AND_its_justification(self):
+        out = BH.render_freestanding_support(("__errno",))
+        assert "int *__errno(void)" in out
+        assert "never reads it" in out, "the argument travels with the definition, in the C"
+
+    def test_an_UNDECLARED_symbol_is_REFUSED_not_stubbed(self):
+        with pytest.raises(BH.BundleHarnessError) as excinfo:
+            BH.render_freestanding_support(("_write", "__errno"))
+        message = str(excinfo.value)
+        assert "_write" in message and "no honest freestanding definition" in message
+        assert "compute something other than what it declares" in message
+
+    def test_no_symbols_means_an_explicit_no_op_not_an_empty_string(self):
+        """An empty fragment spliced into a harness reads as "this step did not run"."""
+        out = BH.render_freestanding_support(())
+        assert out.strip() and "no shim needed" in out
+
+    def test_every_declared_shim_carries_both_a_definition_and_a_why(self):
+        for name, shim in BH.FREESTANDING_SHIMS.items():
+            assert shim.get("definition"), name
+            assert len(str(shim.get("why", ""))) > 80, f"{name} needs a real argument, not a label"
+
+    @pytest.mark.skipif(_CC is None, reason="no C compiler on this host")
+    def test_the_emitted_shim_COMPILES(self, tmp_path):
+        source = tmp_path / "shim.c"
+        source.write_text(BH.render_freestanding_support(tuple(BH.FREESTANDING_SHIMS)),
+                          encoding="utf-8")
+        build = subprocess.run(
+            [_CC, "-std=c11", "-Wall", "-Wextra", "-Werror",
+             "-Wno-gcc-install-dir-libstdcxx", "-c", str(source), "-o", str(tmp_path / "shim.o")],
+            capture_output=True, text=True)
+        assert build.returncode == 0, build.stderr[:2000]

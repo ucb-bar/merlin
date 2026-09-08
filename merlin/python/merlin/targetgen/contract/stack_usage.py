@@ -136,7 +136,8 @@ def measure_entrypoint(report_path: Path, *, llvm_path: Path, entry_symbol: str,
 def write_receipt(path: Path, *, status: str, llvm_path: Path, object_path: Path,
                   report_path: Path, entry_symbol: str, max_static_bytes: int,
                   measurement: StackFrameMeasurement | None = None,
-                  diagnostic: str | None = None) -> Path:
+                  diagnostic: str | None = None,
+                  repair: dict | None = None) -> Path:
     """Write the content-bound stack assessment beside the compiler outputs."""
     llvm_path, object_path, report_path = map(Path, (llvm_path, object_path, report_path))
     record = {
@@ -151,6 +152,10 @@ def write_receipt(path: Path, *, status: str, llvm_path: Path, object_path: Path
         "object_sha256": _sha256(object_path) if object_path.is_file() else None,
         "stack_usage_report_sha256": _sha256(report_path) if report_path.is_file() else None,
         "diagnostic": diagnostic,
+        # What was DONE to make an over-budget frame fit, if anything, and what the first
+        # measurement said before it. A frame that passes only after a transform must not
+        # be indistinguishable from one that passed exactly as emitted.
+        "repair": dict(repair) if repair else None,
     }
     destination = Path(path)
     destination.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n", encoding="utf-8")

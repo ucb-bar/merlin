@@ -89,8 +89,8 @@ def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path, *, target: str | 
         stale_output.unlink(missing_ok=True)
     compiled = Path(codegen.compile_ll(
         llvm_path, object_path, "riscv", extra_flags=(*extra, "-fstack-usage")))
-    from .stack_usage import (StackFramePreflightError, measure_entrypoint,
-                              write_receipt)
+    from .stack_usage import (StackFramePreflightError, _sha256 as _stack_sha,
+                              measure_entrypoint, write_receipt)
     try:
         if compiled != object_path or compiled.is_symlink() or not compiled.is_file():
             raise StackFramePreflightError(
@@ -99,17 +99,84 @@ def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path, *, target: str | 
             report_path, llvm_path=llvm_path, entry_symbol=policy.entry_symbol,
             max_static_bytes=policy.max_static_bytes)
     except StackFramePreflightError as exc:
+        # REPAIR ON A PROVEN FAILURE, never pre-emptively. The host lane hoists one `alloca` per
+        # intermediate into the entry frame with no reuse, so the frame scales with the model:
+        # 816 bytes on ResNet-50 and 99,897,984 bytes on SmolVLA's flow_denoise against a
+        # 65,536-byte budget. Seating that storage in one `.bss` arena fits it (measured: 496).
+        #
+        # It runs ONLY after the emitted frame has been measured over budget, so a build that
+        # already fits is byte-identical to before -- which is what keeps the one bundle known to
+        # have run correctly on hardware a valid acceptance test for this path.
+        repaired = _repair_oversized_frame(
+            llvm_path, object_path, recipe=recipe, policy=policy, extra=extra)
+        if repaired is None:
+            write_receipt(
+                receipt_path, status="rejected", llvm_path=llvm_path, object_path=compiled,
+                report_path=report_path, entry_symbol=policy.entry_symbol,
+                max_static_bytes=policy.max_static_bytes, measurement=exc.measurement,
+                diagnostic=str(exc))
+            raise recipe.error_cls("kernel stack-frame preflight failed: " + str(exc)) from exc
+        compiled, measurement, arena_llvm, arena_su, arena_report = repaired
         write_receipt(
-            receipt_path, status="rejected", llvm_path=llvm_path, object_path=compiled,
-            report_path=report_path, entry_symbol=policy.entry_symbol,
-            max_static_bytes=policy.max_static_bytes, measurement=exc.measurement,
-            diagnostic=str(exc))
-        raise recipe.error_cls("kernel stack-frame preflight failed: " + str(exc)) from exc
+            receipt_path, status="passed", llvm_path=arena_llvm, object_path=compiled,
+            report_path=arena_su, entry_symbol=policy.entry_symbol,
+            max_static_bytes=policy.max_static_bytes, measurement=measurement,
+            repair={
+                "transform": "stack_arena_bind",
+                "frame_bytes_before": (exc.measurement.frame_bytes
+                                       if exc.measurement is not None else None),
+                "diagnostic_before": str(exc),
+                "emitted_llvm_ir_sha256": _stack_sha(llvm_path),
+                **arena_report,
+            })
+        return compiled
     write_receipt(
         receipt_path, status="passed", llvm_path=llvm_path, object_path=compiled,
         report_path=report_path, entry_symbol=policy.entry_symbol,
         max_static_bytes=policy.max_static_bytes, measurement=measurement)
     return compiled
+
+
+def _repair_oversized_frame(llvm_path, object_path, *, recipe, policy, extra):
+    """Seat the entry frame's static temporaries in one arena and RE-MEASURE.
+
+    Returns ``(object, measurement, llvm_path, report_path, report)``, or ``None`` when the repair
+    is unavailable or did not actually fit. The measurement is taken on the REBUILT object; a repair
+    that is believed rather than measured is how an over-budget frame reaches a device.
+
+    On ``None`` the caller's original refusal stands, and it is deliberately the diagnostic the
+    caller sees: the emitted program is what was asked about, and a second diagnostic describing a
+    repaired variant would name a program nobody requested.
+    """
+    from merlin.llvmlower import codegen as _codegen
+    from merlin.llvmlower.stack_arena import StackArenaError, bind_stack_arena
+
+    from .stack_usage import StackFramePreflightError, measure_entrypoint
+    llvm_path, object_path = Path(llvm_path), Path(object_path)
+    try:
+        rewritten, report = bind_stack_arena(llvm_path.read_text(encoding="utf-8"),
+                                             entry_symbol=policy.entry_symbol)
+    except StackArenaError:
+        return None
+    if not report.n_bound:
+        return None
+    arena_llvm = llvm_path.with_suffix(".arena.ll")
+    arena_object = object_path.with_suffix(".arena.o")
+    arena_su = arena_object.with_suffix(".su")
+    arena_llvm.write_text(rewritten, encoding="utf-8")
+    for stale in (arena_object, arena_su):
+        stale.unlink(missing_ok=True)
+    rebuilt = Path(_codegen.compile_ll(arena_llvm, arena_object, "riscv",
+                                       extra_flags=(*extra, "-fstack-usage")))
+    try:
+        measurement = measure_entrypoint(
+            arena_su, llvm_path=arena_llvm, entry_symbol=policy.entry_symbol,
+            max_static_bytes=policy.max_static_bytes)
+    except StackFramePreflightError:
+        return None
+    # The arena's bytes are NOT free: they are `.bss` in the same image, and a large one narrows the
+    # PC-relative window a medany build has to work in. Reported through the receipt, never absorbed.
+    return rebuilt, measurement, arena_llvm, arena_su, report.to_dict()
 
 
 def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
