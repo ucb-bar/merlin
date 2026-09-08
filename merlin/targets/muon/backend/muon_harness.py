@@ -1254,7 +1254,9 @@ __attribute__((naked,noinline,used)) static void __merlin_simt_launch({definitio
     ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
     "la t0, __merlin_simt_call_state\\n"
 {loads}
-    "call {kernel_symbol}\\n"
+    "la ra, 1f\\n"
+    "tail {kernel_symbol}\\n"
+    "1:\\n"
     "li t1, 1\\n"
     ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
     "la t0, __merlin_simt_call_state\\n"

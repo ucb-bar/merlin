@@ -90,7 +90,9 @@ def test_wrapper_publishes_state_before_tmc_and_restores_manager(mh, monkeypatch
         ptrs="float*, const float*, float*", argument_count=3, model=_model())
 
     first_tmc = source.index(".insn r 11, 0, 0, x0, t1, x0")
-    call = source.index("call radiance_kernel")
+    return_address = source.index("la ra, 1f")
+    tail = source.index("tail radiance_kernel")
+    epilogue = source.index('"1:\\n"')
     second_tmc = source.index(".insn r 11, 0, 0, x0, t1, x0", first_tmc + 1)
     assert source.index("sw a0, 0(t0)") < first_tmc
     assert source.index("sw a1, 4(t0)") < first_tmc
@@ -98,7 +100,7 @@ def test_wrapper_publishes_state_before_tmc_and_restores_manager(mh, monkeypatch
     assert source.index("sw ra, 12(t0)") < first_tmc
     assert source.index("fence rw, rw") < first_tmc
     assert source.index("li t1, 65535") < first_tmc
-    assert first_tmc < source.index("lw a0, 0(t0)") < call < second_tmc
+    assert first_tmc < source.index("lw a0, 0(t0)") < return_address < tail < epilogue < second_tmc
     assert second_tmc < source.index("lw ra, 12(t0)") < source.index("ret")
 
 
