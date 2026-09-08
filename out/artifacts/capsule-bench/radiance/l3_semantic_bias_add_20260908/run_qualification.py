@@ -20,7 +20,7 @@ from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
 from merlin.targetgen.linalg_lower import lower_linalg_to_cb
 
 
-CAPSULE = "RP16_bias_add_fp32_pt"
+CAPSULES = ("RP16_bias_add_fp32_pt", "RP5_layernorm_fp32_pt")
 MAX_CYCLES = 360_000
 
 
@@ -43,6 +43,7 @@ def _sha256(path: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", choices=("positive", "negative"), required=True)
+    parser.add_argument("--capsule", choices=CAPSULES, default=CAPSULES[0])
     parser.add_argument("--emulator", type=Path, required=True)
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument("--publish", type=Path, required=True)
@@ -54,7 +55,7 @@ def main() -> int:
         parser.error(f"emulator does not exist: {args.emulator}")
 
     root = repo_root()
-    capsule_dir = root / "merlin/contract/capsules/radiance/model_slices" / CAPSULE
+    capsule_dir = root / "merlin/contract/capsules/radiance/model_slices" / args.capsule
     selection_path = (
         root / "merlin/experiments/capsule_bench/targets/radiance/contracts"
         / "kernel_library_pr1_v1.yaml"
@@ -93,7 +94,12 @@ def main() -> int:
         cb["canonical_inputs"] = canonical
         tensors = cb["tensors"]
         if not (set(canonical) & set(tensors)):
-            leaves = list(cb["arg_order"][:-1])
+            from merlin.runtime.commandbuffer import whole_program_entry_bindings
+            leaves = whole_program_entry_bindings(cb)
+            if leaves is None:
+                leaves = [name for name, spec in tensors.items()
+                          if spec.get("role") in ("input", "weight", "bias")]
+            leaves = list(leaves)
             values = list(canonical.values())
             if len(leaves) != len(values):
                 raise RuntimeError("positional leaf/canonical operand count mismatch")
@@ -133,7 +139,7 @@ def main() -> int:
     receipt = {
         "schema": "radiance_l3_semantic_family_qualification_v1",
         "case": args.case,
-        "capsule": CAPSULE,
+        "capsule": args.capsule,
         "expected_control": "pass" if args.case == "positive" else "fail",
         "numeric_verdict": result["numeric_verdict"],
         "timing": result["timing"],

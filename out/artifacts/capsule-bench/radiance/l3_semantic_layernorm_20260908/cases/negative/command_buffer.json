@@ -1,0 +1,333 @@
+{
+  "abi_version": "0.1",
+  "target": "radiance",
+  "tensors": {
+    "arg0": {
+      "shape": [
+        16,
+        16
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "preload_b64": "WOxtP+g2PT8EgQi/PMjmPqi3B7/Y/Vo+qg0uPwBnkT4MOBm//vYzv4oLBr9AGGy+ph8MP1QnVz8Ac1o8dP2LPsoTZD8IVKi+ZAWXvnyxCL8uqXO/2O5CPngOO77E55I+EI0qv6QQJj+IPyI/wKyfvDxHUr8ou7++XGP1vvhBrb44rQy+QlkDP6T3Q78we869iFtfPuDCvj4Kyl0/2AQIvuhwHT446MY+UE/8vS6bAj+g2kK9/Fc2v4odIL/iVFI/SJw4v8IWUb+elwq/MIhevs5IHT/2ZTE/6HoYPnKLZj/OvkO/PH4cv9J0Fr8S/XQ/RB9nv9DwQr5k+uy+QDTnvhB1fz5sotY+sE0pvzBcSz94YB2/5Ldov+TbNr9Qx0C/VNfvvl4fXz80v7C+dulIP9hBMj7ifhW/tE6xPmDqlb5akCe/3pd2PwDeSDtYWdG+gNcRPVDuVz5y1Cg/mMSEvrCheb9kCMM+mDtMvxpqcD98/II+CHxoP/pwFb9otAQ+oDnJvgjZeb6AeV0+XC2zvpZrLz8QoSY+BJyuPjB+Hb5WESs/APA1u1TmwL5A8Ec/gnRYPwI7Tj8Ali09iPfzPnjwAj5cJDC//sN+P4oHVb9gbrO9vGAgP/TQD79CEk+/9EBhv+CcYL20W1y/XEDJPvyG9T5o19c+HKICPwh9DL5inSq/oFD6PV5EPj+M7Ou+kHtAvuCVGD4Y35W+lMHdvuQiRb9GyXQ/3FiNPvBxvL3AcXY94KeOPbDZej4qqm6/KONnvshdFj6osCm/7u4wv15tbj/gj0e9khRZP9Dlbr5EDlM/3spkPzq9Ur+GV1A/GMHfPpIrT7+Aihm9Mnx0v6By+z2ARAa/rBN4v9rdCT/6okk/2DShPqR+5z7Yous+AMVzPI6xAb98xna/8EvCvZgRSz54HAa/oGDLvtj5p77gkyw9AFOHPqYqcj8AYOW7UOYFvnDgqD2IY86+QB48Pqhn874ySyW/4PU8veCrWL8O52s/7vlSP0AkWb9gpJc9wODBPnQJ+77C6kK/CmlVvyQH577sEsG+FDjlvmikKL6Cx1U/MMllvzC1+T4gU2O95Cq1Pnjn+744WSO+QgEXv657ID8gq7K9sJ72PdBmjL0+H2E/GGZkP9iNQj8Ui52+aHx8P3BkIz/sr4o+0jJlP2CgUD+YIlI/NpxNP0zeEr9A5nk/5F+3voiG7L5sztY++PfOvngsCT90DMy+IBMlvZT9Fr+g/18+eAxHv9Blxz7Oshu/1MgIv8zpwb6kb/A+hCOSvvbVMr9QygM/iL4jvz55WD9mgDe/9GBFPwDGzL4gWMq9EsZvvwzBgD46T0E/cEUMviiDQL7Y9xs/JFOevg=="
+    },
+    "arg1": {
+      "shape": [
+        16
+      ],
+      "dtype": "f32",
+      "role": "weight",
+      "preload_b64": "WVVyPxcHLz9+O5U/MJKlP4MumT96hqY/qpy5P3JMGj8ps50/tSYsP16Nsj8Alqo/o4pLP3Y0vT/rL5I/ruRTPw=="
+    },
+    "arg2": {
+      "shape": [
+        16
+      ],
+      "dtype": "f32",
+      "role": "bias",
+      "preload_b64": "bSliPefTSDzdUIC9DYtDPUrTyD1/LIe9tzq7vdoBpT2iE7o9XUZ/vSDUzbwaqMg8UKWDvUo8Cz0n8au8UyTovA=="
+    },
+    "out": {
+      "shape": [
+        16,
+        16
+      ],
+      "dtype": "f32",
+      "role": "output"
+    }
+  },
+  "commands": [
+    {
+      "opcode": "LAYERNORM",
+      "operands": {
+        "src": "arg0",
+        "gamma": "arg1",
+        "beta": "arg2",
+        "dst": "out"
+      },
+      "attributes": {
+        "eps": 9.999999747378752e-06
+      }
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "operand_naming": "positional",
+  "params": {
+    "kernel_family_selection": {
+      "schema": "semantic_kernel_selection_report_v1",
+      "request": {
+        "op": "layernorm",
+        "dtype": "fp32",
+        "shape": {
+          "cols": 16,
+          "rows": 16
+        }
+      },
+      "derived_hardware_features": [
+        "block_e8m0",
+        "cvfpu",
+        "microscaling",
+        "mx_mesh",
+        "shared_memory",
+        "simt",
+        "tensor_core"
+      ],
+      "selected_family": "kernels/layernorm",
+      "selection_is_numeric_qualification": false,
+      "decisions": [
+        {
+          "family": "kernels/gemm_mxgemmini_ws_downproj_fp4",
+          "status": "refused",
+          "priority": 90,
+          "reasons": [
+            "semantic op 'layernorm' not in ['matmul']",
+            "dtype 'fp32' not in ['mxfp4']",
+            "shape dimension M is unknown",
+            "shape dimension N is unknown",
+            "shape dimension K is unknown"
+          ]
+        },
+        {
+          "family": "kernels/gemm_mxgemmini_ws",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['matmul']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension N is unknown",
+            "shape dimension K is unknown"
+          ]
+        },
+        {
+          "family": "kernels/gemm_mxgemmini",
+          "status": "refused",
+          "priority": 40,
+          "reasons": [
+            "semantic op 'layernorm' not in ['matmul']",
+            "dtype 'fp32' not in ['mxfp4', 'mxfp6', 'mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension N is unknown",
+            "shape dimension K is unknown"
+          ]
+        },
+        {
+          "family": "kernels/gemm_mxgemmini_ws_restream",
+          "status": "refused",
+          "priority": 10,
+          "reasons": [
+            "semantic op 'layernorm' not in ['matmul']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension N is unknown",
+            "shape dimension K is unknown"
+          ]
+        },
+        {
+          "family": "kernels/gemv_batched_fp8_m32",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['batched_matmul']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension K is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/gemv_batched_fp8_m64",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['batched_matmul']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension K is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/gemv_batched_fp8_m128",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['batched_matmul']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension K is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/gemv_batched_fp4_m128",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['batched_matmul']",
+            "dtype 'fp32' not in ['mxfp4']",
+            "shape dimension M is unknown",
+            "shape dimension K is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/flash_attention_mx_gqa",
+          "status": "refused",
+          "priority": 100,
+          "reasons": [
+            "semantic op 'layernorm' not in ['attention_gqa_causal']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "missing derived hardware capabilities ['exp']",
+            "shape dimension Sq is unknown",
+            "shape dimension Sk is unknown",
+            "shape dimension D is unknown",
+            "shape dimension QH is unknown",
+            "shape dimension KVH is unknown"
+          ]
+        },
+        {
+          "family": "kernels/rmsnorm_qkv_fused",
+          "status": "refused",
+          "priority": 100,
+          "reasons": [
+            "semantic op 'layernorm' not in ['rmsnorm_matmul']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension K is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/rope_qkv_fused",
+          "status": "refused",
+          "priority": 100,
+          "reasons": [
+            "semantic op 'layernorm' not in ['matmul_rope']",
+            "dtype 'fp32' not in ['mxfp4']",
+            "missing derived hardware capabilities ['mesh_to_shared_memory']",
+            "shape dimension M is unknown",
+            "shape dimension K is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/simt_quant",
+          "status": "refused",
+          "priority": 90,
+          "reasons": [
+            "semantic op 'layernorm' not in ['block_quantize']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/qkv_bias",
+          "status": "refused",
+          "priority": 90,
+          "reasons": [
+            "semantic op 'layernorm' not in ['matmul_bias']",
+            "dtype 'fp32' not in ['mxfp8']",
+            "shape dimension M is unknown",
+            "shape dimension K is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/geglu",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['geglu']",
+            "missing derived hardware capabilities ['exp']",
+            "shape dimension M is unknown",
+            "shape dimension N is unknown"
+          ]
+        },
+        {
+          "family": "kernels/logit_softcap",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['softcap']",
+            "missing derived hardware capabilities ['tanh']"
+          ]
+        },
+        {
+          "family": "kernels/rmsnorm_gemma",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['rmsnorm_offset_gamma']"
+          ]
+        },
+        {
+          "family": "kernels/embed_scale",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['scaled_embedding_gather']",
+            "missing derived hardware capabilities ['gather']",
+            "shape dimension tokens is unknown",
+            "shape dimension hidden is unknown"
+          ]
+        },
+        {
+          "family": "kernels/gemma_4norm",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['decoder_four_norm']"
+          ]
+        },
+        {
+          "family": "kernels/layernorm",
+          "status": "selected",
+          "priority": 80,
+          "reasons": [
+            "highest-priority eligible strategy"
+          ]
+        },
+        {
+          "family": "kernels/patch_embed",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['patch_embed']",
+            "shape dimension channels is unknown",
+            "shape dimension patch_h is unknown",
+            "shape dimension patch_w is unknown",
+            "shape dimension out_channels is unknown"
+          ]
+        },
+        {
+          "family": "kernels/bias_add",
+          "status": "refused",
+          "priority": 80,
+          "reasons": [
+            "semantic op 'layernorm' not in ['bias_add']"
+          ]
+        },
+        {
+          "family": "kernels/flash_attention_mx_gemma",
+          "status": "disabled",
+          "priority": 100,
+          "reasons": [
+            "experimental family is fail-closed: mesh-written output lacks reliable numeric readback"
+          ]
+        },
+        {
+          "family": "kernels/flash_attention_mx_fp6",
+          "status": "disabled",
+          "priority": 100,
+          "reasons": [
+            "experimental family is fail-closed: final-tile store stalls and does not complete RTL simulation"
+          ]
+        }
+      ]
+    }
+  }
+}

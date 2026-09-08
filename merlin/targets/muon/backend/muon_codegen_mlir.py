@@ -1236,7 +1236,7 @@ def emit_kernel_mlir(
         if selected_family is None:
             raise MuonMlirCodegenError(
                 "semantic kernel family selection refused every declared strategy")
-        if selected_family != "kernels/bias_add":
+        if selected_family not in {"kernels/bias_add", "kernels/layernorm"}:
             raise MuonMlirCodegenError(
                 f"selected family {selected_family!r} has no registered Muon MLIR emitter")
     env = materialize_inputs(cb)

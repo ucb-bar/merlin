@@ -40,6 +40,16 @@ def _bias_add_cb():
     return lower_linalg_to_cb(parsed, target="radiance")
 
 
+def _layernorm_cb():
+    capsule = (
+        repo_root()
+        / "merlin/contract/capsules/radiance/model_slices/RP5_layernorm_fp32_pt"
+        / "capsule.interface.mlir"
+    )
+    parsed = parse_linalg_mlir(capsule.read_text(encoding="utf-8"))
+    return lower_linalg_to_cb(parsed, target="radiance")
+
+
 def test_every_declared_family_has_one_compiler_rule():
     census = KS.validate_selection_contract(_contract())
     assert census["qualified_families"] == 21
@@ -196,3 +206,18 @@ def test_command_buffer_semantics_ignore_capsule_and_oracle_fields():
     a = KS.select_command_buffer_family(cb, hardware, _contract()).to_dict()
     b = KS.select_command_buffer_family(disguised, hardware, _contract()).to_dict()
     assert a == b
+
+
+def test_real_layernorm_lowering_selects_at_muon_emission_seam():
+    cb = _layernorm_cb()
+    mlir = get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(
+        cb,
+        selection_contract=_contract(),
+        hardware_contract={"features": ["simt"]},
+    )
+    report = cb["params"]["kernel_family_selection"]
+    assert report["request"] == {
+        "op": "layernorm", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
+    assert report["selected_family"] == "kernels/layernorm"
+    assert len(report["decisions"]) == 23
+    assert "llvm.intr.sqrt" in mlir

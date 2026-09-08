@@ -318,10 +318,10 @@ def derive_hardware_capabilities(target_contract: Mapping[str, Any]) -> Hardware
 def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
     """Extract a semantic request from a command buffer at the Muon emission boundary.
 
-    This first production bridge is intentionally narrow: it recognizes the standalone 2-D fp32
-    row-broadcast add used by SmolVLA.  Shape, dtype, and operation are reconstructed from the command
-    and tensor ABI; capsule identity and oracle data are never inspected.  More command families must
-    add equally explicit extractors before they can opt into contract-driven family dispatch.
+    The production bridge recognizes standalone 2-D fp32 row-broadcast add and layer normalization.
+    Shape, dtype, and operation are reconstructed from the command and tensor ABI; capsule identity and
+    oracle data are never inspected.  More command families must add equally explicit extractors before
+    they can opt into contract-driven family dispatch.
     """
     commands = cb.get("commands")
     tensors = cb.get("tensors")
@@ -333,12 +333,40 @@ def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
     command = commands[0]
     operands = command.get("operands")
     attrs = command.get("attributes") or {}
+    opcode = str(command.get("opcode") or "").upper()
+    if opcode == "LAYERNORM" and isinstance(operands, Mapping):
+        src, gamma = operands.get("src"), operands.get("gamma")
+        beta, dst = operands.get("beta"), operands.get("dst")
+        if not all(isinstance(name, str) and name in tensors
+                   for name in (src, gamma, beta, dst)):
+            raise KernelSelectionContractError("layernorm operands are absent from the tensor ABI")
+        src_spec, gamma_spec = tensors[src], tensors[gamma]
+        beta_spec, dst_spec = tensors[beta], tensors[dst]
+        if not all(isinstance(spec, Mapping)
+                   for spec in (src_spec, gamma_spec, beta_spec, dst_spec)):
+            raise KernelSelectionContractError("layernorm tensor specifications are not mappings")
+        src_shape = src_spec.get("shape")
+        if (not isinstance(src_shape, list) or len(src_shape) != 2
+                or gamma_spec.get("shape") != [src_shape[1]]
+                or beta_spec.get("shape") != [src_shape[1]]
+                or dst_spec.get("shape") != src_shape):
+            raise KernelSelectionContractError(
+                "LAYERNORM is not a 2-D row normalization with matching affine vectors")
+        raw_dtype = str(dst_spec.get("dtype") or src_spec.get("dtype") or "").lower()
+        dtype = _DTYPE_NAMES.get(raw_dtype)
+        if dtype is None:
+            raise KernelSelectionContractError(f"unsupported command-buffer dtype {raw_dtype!r}")
+        return KernelRequest.from_mapping({
+            "op": "layernorm",
+            "dtype": dtype,
+            "shape": {"rows": src_shape[0], "cols": src_shape[1]},
+        })
     if (str(command.get("opcode") or "").upper() != "VECTOR_MAP"
             or not isinstance(operands, Mapping)
             or not isinstance(attrs, Mapping)
             or attrs.get("combine", "add") != "add"):
         raise KernelSelectionContractError(
-            "semantic family extraction currently supports row-broadcast VECTOR_MAP(add)")
+            "semantic family extraction currently supports LAYERNORM or row-broadcast VECTOR_MAP(add)")
     lhs, rhs, dst = operands.get("lhs"), operands.get("rhs"), operands.get("dst")
     if not all(isinstance(name, str) and name in tensors for name in (lhs, rhs, dst)):
         raise KernelSelectionContractError("bias-add operands are absent from the tensor ABI")
