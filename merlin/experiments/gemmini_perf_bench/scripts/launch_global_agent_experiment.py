@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import fcntl
+import importlib.util
 import json
 import math
 import os
@@ -29,6 +30,215 @@ from run_global_perf_experiment import (FrozenPhase1, GlobalPerfExperiment, conf
 
 
 _GIB = 1024 ** 3
+_HOST_QUALITY_OBSERVER_CONTRACT = "host_reference_only_no_target_or_model_simulator_v1"
+
+
+def _exact_file(path: Path, digest: str, *, label: str) -> Path:
+    """Resolve and verify one host-owned input without following a link."""
+    resolved = Path(path).resolve()
+    if (not PAS._is_sha256(digest) or Path(path).is_symlink() or not resolved.is_file()
+            or PAS._sha256_file(resolved) != digest):
+        raise ValueError(f"{label} is absent, linked, or differs from its exact SHA-256 pin")
+    return resolved
+
+
+def _fast_evaluation_worker_arguments(
+        calibration: Path | None, calibration_sha256: str | None,
+        quality_observer: Path | None, quality_observer_sha256: str | None,
+        quality_observer_symbol: str | None, classification_member_sha256: str | None,
+        corpora: list[list[str]], maximum_model_seconds: float) -> tuple[str, ...]:
+    """Forward fast-evaluator host inputs exactly; the source worker re-verifies every pin."""
+    values: list[str] = ["--fast-evaluation-maximum-model-seconds",
+                         str(maximum_model_seconds)]
+    if calibration is not None:
+        values.extend(("--fast-evaluation-calibration", str(calibration.resolve()),
+                       "--fast-evaluation-calibration-sha256", str(calibration_sha256)))
+    if quality_observer is not None:
+        values.extend(("--fast-evaluation-quality-observer", str(quality_observer.resolve()),
+                       "--fast-evaluation-quality-observer-sha256",
+                       str(quality_observer_sha256),
+                       "--fast-evaluation-quality-observer-symbol",
+                       str(quality_observer_symbol)))
+    if classification_member_sha256 is not None:
+        values.extend(("--fast-evaluation-classification-member-sha256",
+                       classification_member_sha256))
+    for member_sha256, path, corpus_sha256 in corpora:
+        values.extend(("--fast-evaluation-held-out-corpus", member_sha256,
+                       str(Path(path).resolve()), corpus_sha256))
+    return tuple(values)
+
+
+def _validate_fast_evaluation_cli(args, parser: argparse.ArgumentParser) -> bool:
+    """Validate the all-or-none accuracy-bounded installation contract.
+
+    A run with no supplied fast-evaluation evidence is valid and stays exact-only. A partial
+    accuracy configuration is rejected rather than silently losing approximation authority.
+    """
+    paired = (
+        (args.fast_evaluation_calibration,
+         args.fast_evaluation_calibration_sha256, "calibration"),
+        (args.fast_evaluation_quality_observer,
+         args.fast_evaluation_quality_observer_sha256, "quality observer"),
+    )
+    for path, digest, label in paired:
+        if bool(path) != bool(digest):
+            parser.error(f"fast-evaluation {label} requires both path and exact SHA-256")
+    if (isinstance(args.fast_evaluation_maximum_model_seconds, bool)
+            or not 0 < args.fast_evaluation_maximum_model_seconds <= 60):
+        parser.error("fast-evaluation model budget must be in (0, 60] seconds")
+    requested = any((args.fast_evaluation_calibration,
+                     args.fast_evaluation_quality_observer,
+                     args.fast_evaluation_quality_observer_symbol,
+                     args.fast_evaluation_classification_member_sha256,
+                     args.fast_evaluation_held_out_corpus))
+    if not requested:
+        return False
+    if (args.fast_evaluation_calibration is None
+            or args.fast_evaluation_quality_observer is None
+            or not args.fast_evaluation_quality_observer_symbol
+            or not PAS._is_sha256(args.fast_evaluation_classification_member_sha256)
+            or len(args.fast_evaluation_held_out_corpus) != 4):
+        parser.error(
+            "accuracy-bounded fast evaluation requires a pinned calibration, pinned host quality "
+            "observer and symbol, classification member identity, and exactly four held-out corpora")
+    members = [row[0] for row in args.fast_evaluation_held_out_corpus]
+    if (len(set(members)) != 4 or any(not PAS._is_sha256(member) for member in members)
+            or any(not PAS._is_sha256(row[2]) for row in args.fast_evaluation_held_out_corpus)):
+        parser.error("fast-evaluation corpus bindings require four distinct member and corpus SHA-256s")
+    try:
+        _exact_file(args.fast_evaluation_calibration,
+                    args.fast_evaluation_calibration_sha256,
+                    label="fast-evaluation calibration JSON")
+        _exact_file(args.fast_evaluation_quality_observer,
+                    args.fast_evaluation_quality_observer_sha256,
+                    label="fast-evaluation host quality observer")
+        for _member, path, digest in args.fast_evaluation_held_out_corpus:
+            _exact_file(Path(path), digest, label="fast-evaluation held-out corpus")
+    except ValueError as exc:
+        parser.error(str(exc))
+    return True
+
+
+def _load_host_quality_observer(
+        path: Path, digest: str, symbol: str,
+        corpus_records: dict[str, dict[str, str]]):
+    """Load one pinned host-only adapter and bind each invocation to its exact corpus bytes."""
+    observer_path = _exact_file(path, digest, label="fast-evaluation host quality observer")
+    module_name = "_merlin_phase2_quality_observer_" + digest
+    spec = importlib.util.spec_from_file_location(module_name, observer_path)
+    if spec is None or spec.loader is None:
+        raise ValueError("fast-evaluation quality observer cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    if getattr(module, "MERLIN_HOST_QUALITY_OBSERVER_CONTRACT", None) != \
+            _HOST_QUALITY_OBSERVER_CONTRACT:
+        raise ValueError("quality observer does not declare the host-only execution contract")
+    implementation = getattr(module, symbol, None)
+    if not callable(implementation):
+        raise ValueError("quality observer symbol is absent or not callable")
+    frozen_corpus_records = copy.deepcopy(corpus_records)
+
+    def observe(**kwargs):
+        if PAS._sha256_file(observer_path) != digest:
+            raise ValueError("host quality observer changed after installation")
+        sentinel = kwargs.get("sentinel")
+        member_sha256 = getattr(sentinel, "capsule_sha256", None)
+        record = frozen_corpus_records.get(member_sha256)
+        if record is None:
+            raise ValueError("quality observer received an unbound portfolio member")
+        corpus_path = _exact_file(Path(record["path"]), record["sha256"],
+                                  label="fast-evaluation held-out corpus")
+        return implementation(**kwargs, corpus_path=corpus_path)
+
+    return observe
+
+
+def _prepare_fast_evaluator_installation(
+        *, sentinels, target_sha256: str, stage_root: Path, configured: bool,
+        calibration: Path | None, calibration_sha256: str | None,
+        quality_observer: Path | None, quality_observer_sha256: str | None,
+        quality_observer_symbol: str | None, classification_member_sha256: str | None,
+        corpora: list[list[str]], maximum_model_seconds: float):
+    """Build and receipt the production host evaluator, or retain an exact-only loop."""
+    from merlin.perf.phase2_analytical_provider import build_fast_evaluator_installation
+    from merlin.perf.phase2_portfolio import unavailable_fast_evaluation
+
+    members = tuple(sentinel.capsule_sha256 for sentinel in sentinels)
+    if len(members) != 4 or len(set(members)) != 4 or any(
+            not PAS._is_sha256(member) for member in members):
+        if configured:
+            raise ValueError(
+                "accuracy-bounded fast evaluation requires exactly four content-addressed sentinels")
+        installation = None
+        fallback = unavailable_fast_evaluation(
+            reason="four distinct content-addressed portfolio sentinels are not installed")
+        receipt = {
+            "schema": "phase2_fast_evaluator_installation_receipt_v1",
+            "status": "exact_only_fallback", "portfolio_member_sha256s": list(members),
+            "quality_schema": None, "provider_binding": None, "fallback": fallback,
+            "input_bindings": None, "experiment_kwargs_installed": [],
+            "execution": "host_analytical_only_no_complete_model_or_layer_simulation",
+        }
+    else:
+        corpus_records: dict[str, dict[str, str]] = {}
+        observer = None
+        if configured:
+            for member_sha256, raw_path, digest in corpora:
+                path = _exact_file(Path(raw_path), digest,
+                                   label="fast-evaluation held-out corpus")
+                corpus_records[member_sha256] = {
+                    "path": str(path), "sha256": digest, "hash_scope": "exact_file_bytes"}
+            if set(corpus_records) != set(members):
+                raise ValueError("held-out corpus pins must exactly cover the four sentinels")
+            if classification_member_sha256 not in members:
+                raise ValueError("classification member must be one of the four sentinels")
+            observer = _load_host_quality_observer(
+                quality_observer, quality_observer_sha256,
+                quality_observer_symbol, corpus_records)
+        installation = build_fast_evaluator_installation(
+            members,
+            classification_member_sha256=(classification_member_sha256 or members[0]),
+            corpus_sha256_by_member=(
+                {member: row["sha256"] for member, row in corpus_records.items()}
+                if configured else None),
+            calibration=calibration if configured else None,
+            calibration_sha256=calibration_sha256 if configured else None,
+            quality_observer=observer,
+            quality_observer_sha256=quality_observer_sha256 if configured else None,
+            maximum_model_seconds=maximum_model_seconds)
+        if (installation.provider_binding is not None
+                and installation.provider_binding.get("target_sha256") != target_sha256):
+            raise ValueError("fast-evaluation calibration targets different descriptor bytes")
+        receipt = {
+            "schema": "phase2_fast_evaluator_installation_receipt_v1",
+            "status": ("installed" if installation.provider is not None
+                       else "exact_only_fallback"),
+            "portfolio_member_sha256s": list(members),
+            "quality_schema": installation.quality_schema.to_dict(),
+            "provider_binding": copy.deepcopy(installation.provider_binding),
+            "fallback": copy.deepcopy(installation.fallback),
+            "input_bindings": ({
+                "calibration": {"path": str(Path(calibration).resolve()),
+                                "sha256": calibration_sha256,
+                                "hash_scope": "exact_file_bytes"},
+                "quality_observer": {
+                    "path": str(Path(quality_observer).resolve()),
+                    "sha256": quality_observer_sha256,
+                    "symbol": quality_observer_symbol,
+                    "contract": _HOST_QUALITY_OBSERVER_CONTRACT,
+                    "hash_scope": "exact_file_bytes"},
+                "held_out_corpora": corpus_records,
+                "classification_member_sha256": classification_member_sha256,
+            } if configured else None),
+            "experiment_kwargs_installed": sorted(installation.experiment_kwargs()),
+            "execution": "host_analytical_only_no_complete_model_or_layer_simulation",
+        }
+    receipt_path = stage_root / "fast_evaluation_installation.json"
+    PAS._write_json(receipt_path, receipt)
+    receipt["receipt_path"] = str(receipt_path)
+    receipt["receipt_sha256"] = PAS._sha256_file(receipt_path)
+    return installation, receipt
 
 
 def _mechanism_catalog_worker_arguments(path: Path | None, digest: str | None) -> tuple[str, ...]:
@@ -279,6 +489,24 @@ def main(argv: list[str] | None = None) -> int:
                         help="pinned external full-model training member; repeat for a portfolio")
     parser.add_argument("--portfolio-external-objective-sha256", action="append", default=[],
                         help="exact SHA-256 paired by order with portfolio-external-objective")
+    parser.add_argument("--fast-evaluation-calibration", type=Path,
+                        help="exact host analytical calibration JSON; enables accuracy-bounded evaluation only with all companion inputs")
+    parser.add_argument("--fast-evaluation-calibration-sha256",
+                        help="raw-file SHA-256 of fast-evaluation-calibration")
+    parser.add_argument("--fast-evaluation-quality-observer", type=Path,
+                        help="pinned Python host-reference adapter; target execution is forbidden")
+    parser.add_argument("--fast-evaluation-quality-observer-sha256",
+                        help="raw-file SHA-256 of fast-evaluation-quality-observer")
+    parser.add_argument("--fast-evaluation-quality-observer-symbol",
+                        help="explicit callable in the pinned quality-observer adapter")
+    parser.add_argument("--fast-evaluation-classification-member-sha256",
+                        help="exact portfolio member receiving the classification top-1 budget")
+    parser.add_argument(
+        "--fast-evaluation-held-out-corpus", action="append", nargs=3, default=[],
+        metavar=("MEMBER_SHA256", "PATH", "CORPUS_SHA256"),
+        help="bind one portfolio member to one exact held-out corpus file; repeat exactly four times")
+    parser.add_argument("--fast-evaluation-maximum-model-seconds", type=float, default=60.0,
+                        help="serialized host analytical/quality ceiling per model (maximum 60s)")
     parser.add_argument("--round-seconds", type=int, default=600)
     parser.add_argument(
         "--iteration-seconds", type=int, default=600,
@@ -332,6 +560,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--resource-trip-samples", type=int, default=2,
                         help="consecutive pressured samples required while a run is active")
     args = parser.parse_args(argv)
+    fast_evaluation_configured = _validate_fast_evaluation_cli(args, parser)
     if args.baseline_emission_cache is None:
         args.baseline_emission_cache = (
             args.output.resolve().parent / "_global_phase2_baseline_emission_cache_v1")
@@ -464,6 +693,15 @@ def main(argv: list[str] | None = None) -> int:
                        "--max-tool-calls", str(args.max_tool_calls), "--source-worker"]
             command.extend(("--baseline-emission-cache", str(args.baseline_emission_cache)))
             command.extend(("--portfolio-analysis-workers", str(args.portfolio_analysis_workers)))
+            command.extend(_fast_evaluation_worker_arguments(
+                args.fast_evaluation_calibration,
+                args.fast_evaluation_calibration_sha256,
+                args.fast_evaluation_quality_observer,
+                args.fast_evaluation_quality_observer_sha256,
+                args.fast_evaluation_quality_observer_symbol,
+                args.fast_evaluation_classification_member_sha256,
+                args.fast_evaluation_held_out_corpus,
+                args.fast_evaluation_maximum_model_seconds))
             for seed_run in args.baseline_emission_cache_seed_run:
                 command.extend(("--baseline-emission-cache-seed-run", str(seed_run.resolve())))
             command.extend(("--max-rounds", str(args.max_rounds),
@@ -575,6 +813,21 @@ def main(argv: list[str] | None = None) -> int:
         for external in portfolio_externals)
     portfolio_identity = full_model_portfolio_identity((sentinel, *portfolio_sentinels))
     portfolio_sha256 = PAS._document_sha256(portfolio_identity)
+    fast_installation, fast_installation_receipt = _prepare_fast_evaluator_installation(
+        sentinels=(sentinel, *portfolio_sentinels),
+        target_sha256=target.descriptor_sha256,
+        stage_root=stage_root,
+        configured=fast_evaluation_configured,
+        calibration=args.fast_evaluation_calibration,
+        calibration_sha256=args.fast_evaluation_calibration_sha256,
+        quality_observer=args.fast_evaluation_quality_observer,
+        quality_observer_sha256=args.fast_evaluation_quality_observer_sha256,
+        quality_observer_symbol=args.fast_evaluation_quality_observer_symbol,
+        classification_member_sha256=args.fast_evaluation_classification_member_sha256,
+        corpora=args.fast_evaluation_held_out_corpus,
+        maximum_model_seconds=args.fast_evaluation_maximum_model_seconds)
+    fast_experiment_kwargs = (
+        fast_installation.experiment_kwargs() if fast_installation is not None else {})
     resumed = None
     if args.resume_checkpoint:
         resumed = verify_retained_global_checkpoint(args.resume_checkpoint.resolve())
@@ -618,7 +871,8 @@ def main(argv: list[str] | None = None) -> int:
         minimum_memory_available_bytes=resource_policy.minimum_memory_available_bytes,
         source_snapshot_root=PAS.repo_root(),
         source_snapshot_files_sha256=PAS._document_sha256(snapshot_receipt["files"]),
-        output=stage_root / "global_iterations", timeout_s=args.iteration_seconds)
+        output=stage_root / "global_iterations", timeout_s=args.iteration_seconds,
+        **fast_experiment_kwargs)
     if args.analysis_only:
         PAS._write_json(stage_root / "launch.json", {
             "schema": "global_agent_launch_v1", "mode": "analysis_only",
@@ -634,6 +888,7 @@ def main(argv: list[str] | None = None) -> int:
             "objective": sentinel.capsule, "capsule_sha256": sentinel.capsule_sha256,
             "portfolio": experiment.portfolio_identity,
             "portfolio_sha256": experiment.portfolio_identity_sha256,
+            "fast_evaluation_installation": fast_installation_receipt,
             "baseline_emission_cache": experiment.baseline_emission_cache_binding,
             "baseline_emission_cache_seeds": experiment.baseline_emission_cache_seeds,
             "external_objective": primary_external.record() if primary_external is not None else None,
@@ -749,6 +1004,7 @@ def main(argv: list[str] | None = None) -> int:
         "objective": sentinel.capsule, "model": resolved_model,
         "portfolio": experiment.portfolio_identity,
         "portfolio_sha256": experiment.portfolio_identity_sha256,
+        "fast_evaluation_installation": fast_installation_receipt,
         "baseline_emission_cache": experiment.baseline_emission_cache_binding,
         "baseline_emission_cache_seeds": experiment.baseline_emission_cache_seeds,
         "requested_objective_capsule": args.objective_capsule,
