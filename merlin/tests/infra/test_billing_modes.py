@@ -123,9 +123,21 @@ def test_the_codex_driver_declares_a_subscription_seat(loop, monkeypatch):
     assert loop._billing_mode("gpt-5.6-sol") == ET.SUBSCRIPTION_NOTIONAL
 
 
-def test_the_claude_cli_driver_is_metered(loop, monkeypatch):
+def test_the_claude_cli_driver_is_billed_by_its_provider(loop, monkeypatch):
+    """The bare `claude` CLI has no driver module, so only the PROVIDER knows who pays.
+
+    `--provider bedrock` is our AWS key, charged per token. `--provider subscription` is the machine's
+    own ~/.claude seat, which is not charged per token at all -- returning METERED for both made them
+    indistinguishable in the ledger and priced a seat run's tokens at list rates, the same defect
+    `subscription_notional` was introduced to fix one driver over. This test used to assert METERED
+    unconditionally while setting no provider, so it went red when that was fixed: it was checking the
+    old behaviour, not a regression.
+    """
     monkeypatch.setattr(loop, "_DRIVER", "claudecode")
+    monkeypatch.setattr(loop, "_PROVIDER", "bedrock")
     assert loop._billing_mode("claude-opus-4-8") == ET.METERED
+    monkeypatch.setattr(loop, "_PROVIDER", "subscription")
+    assert loop._billing_mode("claude-opus-4-8") == ET.SUBSCRIPTION_NOTIONAL
 
 
 def test_a_driver_that_declares_nothing_is_treated_as_metered(loop, monkeypatch):

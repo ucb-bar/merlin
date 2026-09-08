@@ -2643,8 +2643,12 @@ def _fast_loop_verdict(ws: Path, run_dir: Path, tick: int, timeout: int) -> dict
 
 
 def _start_in_turn_grader(ws: Path, run_dir: Path, a, *, interval_grades: bool,
-                          round_index: int = 0):
+                          round_index: int = 0, on_tick=None):
     """Start the in-turn grader for ONE agent turn; returns a handle for `_stop_in_turn_grader`.
+
+    ``on_tick`` is called after each interval grade with that tick's index. It exists so telemetry can
+    be sunk on this cadence: under ``--schedule continuous`` this is the ONLY loop that runs while the
+    agent works, so anything that must survive a kill has to hang off it and not off the end of the run.
 
     Phase 1 (always): if the agent has no verdict at all, land one — the fast loop-tier grade above —
     as soon as there is a submission to grade. Phase 2 (long turns only): keep re-grading on
@@ -2698,6 +2702,11 @@ def _start_in_turn_grader(ws: Path, run_dir: Path, a, *, interval_grades: bool,
             previous_key = scratch_key
             print(f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} "
                   f"all_pass={v.get('all_pass')}", flush=True)
+            if on_tick is not None:
+                try:
+                    on_tick(t)
+                except Exception as e:  # noqa: BLE001 - a tick hook must never kill the grader
+                    print(f"[in-turn grade {t}] on_tick skipped: {type(e).__name__}: {e}", flush=True)
 
     th = threading.Thread(target=_body, name="in-turn-grader", daemon=True)
     th.start()
@@ -3661,6 +3670,39 @@ def main(argv: list[str] | None = None) -> int:
                            "rl_waits_used": rl_waits_used, "started_at": started_at},
             "last_updated": datetime.now(timezone.utc).isoformat()}, sort_keys=False))
 
+    def _sink_telemetry_now(where: str) -> None:
+        """Sink this run's telemetry into the shared aet store MID-RUN, on the grader's cadence.
+
+        The end-of-run sink further down is the authoritative one, but it is also the ONLY one, and a
+        continuous run is a single round: when a run is killed, times out (rc=124) or hits its wall
+        budget, that call never happens and the run records nothing at all -- no ``logs/metrics.jsonl``,
+        no ``metrics/trajectory.json``, invisible to ``aet spend``/``aet plot`` -- while its transcript
+        sat on disk the whole time. MEASURED on the gemmini run of 2026-09-07, which graded 93/97 across
+        two rc=124 rounds and left no aet record.
+
+        Re-emitting is safe and is why this can run on an interval: ``logs/metrics.jsonl`` is
+        append-only, and every consumer reads it as "values are logged as final scalars; the LAST
+        occurrence of each name wins" (``aet.trajectory.rollup._read_metrics``). So each tick supersedes
+        the previous one rather than summing with it, and a killed run keeps the most recent snapshot.
+
+        ``transcript_paths`` is deliberately left unset: the combined ``transcript.jsonl`` does not
+        exist until the run finalizes, and ``aet_bridge._resolve_transcripts`` falls back to the
+        per-round transcripts under ``rounds/``, which are exactly what exists while the agent works.
+
+        Soft by construction -- telemetry must never gate a run. That softness is also why this is
+        covered by a test (``merlin/tests/infra/test_aet_sink_is_periodic.py``): a sink that silently
+        stops looks identical to a run that had nothing to report.
+        """
+        try:
+            from merlin.targetgen import aet_bridge as AB
+            if not AB.aet_sink_enabled(run_dir):
+                return
+            AB.emit_to_aet(run_dir=run_dir, run_id=a.run_id, method=arm, model=a.model,
+                           target=_te().target, suite="capsule-bench",
+                           billing_mode=_billing_mode(a.model))
+        except Exception as e:  # noqa: BLE001 - telemetry may never kill a run
+            print(f"[aet-sink] {where}: skipped ({type(e).__name__}: {e})", flush=True)
+
     if a.continuous:
         # CONTINUOUS MODE — one session, no round barrier.
         #
@@ -3699,6 +3741,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[continuous] grade {t}: {v.get('n_passed')}/{v.get('n_capsules')} "
                       f"all_pass={v.get('all_pass')}", flush=True)
                 _checkpoint(t)
+                _sink_telemetry_now(f"continuous grade {t}")
                 if v.get("all_pass"):
                     stop.set()                     # converged: stop grading; the session is torn down below
                     return
@@ -3779,7 +3822,8 @@ def main(argv: list[str] | None = None) -> int:
         # agent spent 6184s with no qa/ directory at all. The fast loop-tier grade lands one in minutes;
         # in continuous mode the full mandatory-ladder grade then repeats on --grade-interval.
         _bg = _start_in_turn_grader(ws, run_dir, a, interval_grades=(a.schedule == "continuous"),
-                                    round_index=rnd)
+                                    round_index=rnd,
+                                    on_tick=lambda t: _sink_telemetry_now(f"round {rnd} tick {t}"))
         try:
             if _operator_errata_record is not None:
                 _verify_operator_errata(_operator_errata_record, run_dir)
@@ -4308,7 +4352,7 @@ def main(argv: list[str] | None = None) -> int:
     # MERLIN_AET_SINK=1) so it shows up in `aet spend` / `aet plot` across experiments. This is
     # purely additive — the existing experiment_tokens cost yaml above stays authoritative.
     from merlin.targetgen import aet_bridge as AB
-    if AB.aet_sink_enabled():
+    if AB.aet_sink_enabled(run_dir):
         AB.emit_to_aet(run_dir=run_dir, run_id=a.run_id, method=arm, model=a.model,
                        target=_te().target, suite="capsule-bench",
                        transcript_paths=[combined],
