@@ -18,7 +18,11 @@ sys.path.insert(0, str(ROOT / "submission"))
 
 from mlir_oot.frontend import parse_verified  # noqa: E402
 from mlir_oot.hybrid_runtime import build_hybrid_schedule  # noqa: E402
-from mlir_oot.host_semantics import HostSemanticLane, array_sha256  # noqa: E402
+from mlir_oot.host_semantics import (  # noqa: E402
+    HostSemanticLane,
+    LayoutBridgeLane,
+    array_sha256,
+)
 from run_capture_partition import (  # noqa: E402
     PARTITIONS,
     _load_capture_values,
@@ -440,6 +444,79 @@ def final_indexed_host_witnesses(workload) -> list[dict]:
     return witnesses
 
 
+def layout_bridge_witnesses(workload) -> list[dict]:
+    """Numerically qualify one real bridge per exact map/dtype/topology class."""
+    lane = LayoutBridgeLane(workload)
+    classes = {}
+    for program in lane.programs.values():
+        signature = program.signature
+        key = (
+            signature["semantic"], signature["dtype"],
+            signature["materialization"], len(signature["output_shape"]),
+            tuple((item["kind"], item.get("position"), item.get("value"))
+                  for item in signature["input_map"]),
+        )
+        classes.setdefault(key, []).append(program)
+    witnesses = []
+    for key, programs in sorted(classes.items()):
+        program = min(programs, key=lambda item: (
+            int(np.prod(item.signature["output_shape"], dtype=np.int64)),
+            item.region_id,
+        ))
+        signature = program.signature
+        count = int(np.prod(signature["input_shape"], dtype=np.int64))
+        ordinal = np.arange(count, dtype=np.int64).reshape(signature["input_shape"])
+        if signature["dtype"] == "i1":
+            source = (ordinal % 3) == 0
+        else:
+            source = ((ordinal % 31).astype(np.float32) - np.float32(7)) / np.float32(4)
+        actual = lane.execute(program.region_id, {program.input_values[0]: source})
+
+        index = tuple(
+            0 if item["kind"] == "constant" else slice(None)
+            for item in signature["input_map"]
+        )
+        reduced = source[index]
+        mapped = [
+            item["position"] for item in signature["input_map"]
+            if item["kind"] == "dim"
+        ]
+        if mapped:
+            reduced = np.transpose(reduced, axes=tuple(int(v) for v in np.argsort(mapped)))
+        reshape = [1] * len(signature["output_shape"])
+        for axis, dimension in enumerate(sorted(mapped)):
+            reshape[dimension] = reduced.shape[axis]
+        expected = np.array(
+            np.broadcast_to(reduced.reshape(reshape), signature["output_shape"]),
+            copy=True,
+            order="C",
+        )
+        if not np.array_equal(actual, expected):
+            raise ValueError(f"independent layout oracle failed for {program.region_id}")
+        if not actual.flags.c_contiguous or np.shares_memory(actual, source):
+            raise ValueError(f"layout bridge did not create distinct contiguous storage")
+        witnesses.append({
+            "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+            "label": "_".join((key[0], key[1], key[2], f"rank{key[3]}")),
+            "status": "fresh_numeric_execution_matches_independent_oracle",
+            "claim": (
+                "host materialization evidence only; physical DMA/event execution is absent"
+            ),
+            "representative_region_id": program.region_id,
+            "class_region_count": len(programs),
+            "semantic": signature["semantic"],
+            "dtype": signature["dtype"],
+            "input_shape": signature["input_shape"],
+            "output_shape": signature["output_shape"],
+            "input_map": signature["input_map"],
+            "materialization": signature["materialization"],
+            "output_sha256": array_sha256(actual),
+            "oracle_sha256": array_sha256(expected),
+            "distinct_contiguous_storage": True,
+        })
+    return witnesses
+
+
 def main() -> int:
     source_path = CAPTURE / "model.mlir"
     source = source_path.read_text(encoding="utf-8")
@@ -449,6 +526,7 @@ def main() -> int:
     chain, bounded_regions = bounded_chain_witness()
     host_chain, host_witnesses = generic_host_witnesses(workload)
     indexed_witnesses = final_indexed_host_witnesses(workload)
+    bridge_witnesses = layout_bridge_witnesses(workload)
     schedule = build_hybrid_schedule(
         workload, plan, inventory,
         qualified_partitions=set(QUALIFIED),
@@ -464,6 +542,7 @@ def main() -> int:
     schedule["generic_host_chain"] = host_chain
     schedule["generic_host_numeric_witnesses"] = host_witnesses
     schedule["final_indexed_host_numeric_witnesses"] = indexed_witnesses
+    schedule["layout_bridge_numeric_witnesses"] = bridge_witnesses
     schedule["device_activation_arena"]["alignment_source"] = (
         "the existing Atlas command-buffer allocator's 32-byte tensor-base alignment"
     )
@@ -489,6 +568,8 @@ def main() -> int:
         "generic_host_chain": host_chain,
         "generic_host_numeric_witnesses": host_witnesses,
         "final_indexed_host_numeric_witnesses": indexed_witnesses,
+        "layout_bridge_census": schedule["layout_bridge_census"],
+        "layout_bridge_numeric_witnesses": bridge_witnesses,
         "full_schedule": {
             "path": schedule_path.relative_to(ROOT).as_posix(),
             "sha256": sha256_file(schedule_path),

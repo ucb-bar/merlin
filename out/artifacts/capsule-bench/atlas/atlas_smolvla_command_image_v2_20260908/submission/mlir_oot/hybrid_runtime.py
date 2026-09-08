@@ -12,7 +12,7 @@ import math
 
 from .frontend import _str_attr
 from .full_graph import _partition_class, _tensor_dtype, _tensor_shape
-from .host_semantics import HostSemanticLane, signature_sha256
+from .host_semantics import HostSemanticLane, LayoutBridgeLane, signature_sha256
 
 
 _PROVEN_ALIAS_SEMANTICS = frozenset({"view", "unsqueeze"})
@@ -181,6 +181,7 @@ def build_hybrid_schedule(
     """Build a complete deterministic schedule skeleton and fail-closed readiness verdict."""
     regions, top_level_ops = _region_inventory(workload)
     host_lane = HostSemanticLane(workload)
+    layout_lane = LayoutBridgeLane(workload)
     by_region = {row["region_id"]: row for row in regions}
     observed_classes = Counter(row["category"] for row in regions)
     if dict(sorted(observed_classes.items())) != full_inventory["regions_by_partition_class"]:
@@ -203,12 +204,23 @@ def build_hybrid_schedule(
 
     events: list[dict] = []
     aliases = Counter()
+    materialized_layout = Counter()
     missing_host = []
     for row in regions:
         if row["category"] == "layout_bridge_candidate":
-            status, executable, reason = _alias_status(row)
-            aliases[status] += 1
-            events.append({
+            source_status, executable, reason = _alias_status(row)
+            aliases[source_status] += 1
+            signature = layout_lane.signature_for(row["region_id"])
+            if not executable and signature is not None:
+                executable = True
+                status = "host_materialized_layout_bridge"
+                reason = (
+                    "complete layout signature accepted for distinct contiguous host materialization"
+                )
+                materialized_layout[signature["materialization"]] += 1
+            else:
+                status = source_status
+            event = {
                 "capture_op_index": row["first_op_index"],
                 "kind": "layout_bridge",
                 "region_id": row["region_id"],
@@ -216,7 +228,12 @@ def build_hybrid_schedule(
                 "status": status,
                 "executable": executable,
                 "reason": reason,
-            })
+                "source_requirement": source_status,
+            }
+            if signature is not None:
+                event["layout_signature_sha256"] = signature_sha256(signature)
+                event["materialization"] = signature["materialization"]
+            events.append(event)
         elif row["category"] == "host_required":
             signature = host_lane.signature_for(row["region_id"])
             executable = signature is not None
@@ -329,12 +346,15 @@ def build_hybrid_schedule(
     overlap = sorted(set(partition_regions) & {
         row["region_id"] for row in regions if row["category"] == "host_required"
     })
-    blocking_aliases = aliases["strided_broadcast_requires_descriptor"] + aliases[
-        "materialized_copy_required"] + aliases["unproven_alias"]
+    blocking_aliases = sum(
+        event["kind"] == "layout_bridge" and not event["executable"]
+        for event in events
+    )
     failures = {
         "missing_host_semantics": len(missing_host),
         "unqualified_accelerator_partitions": len(missing_partitions),
         "unrealized_layout_bridges": blocking_aliases,
+        "missing_physical_event_runtime": 1,
     }
     missing_host_by_semantic = Counter(by_region[region_id]["semantic"] for region_id in missing_host)
     runnable = not any(failures.values())
@@ -346,6 +366,30 @@ def build_hybrid_schedule(
         program.semantic for region_id, program in host_lane.programs.items()
         if by_region.get(region_id, {}).get("category") == "host_required"
     )
+    layout_shape_classes: OrderedDict[tuple, dict] = OrderedDict()
+    for region_id, program in layout_lane.programs.items():
+        signature = program.signature
+        map_key = tuple(
+            (item["kind"], item.get("position"), item.get("value"))
+            for item in signature["input_map"]
+        )
+        key = (
+            signature["semantic"], signature["dtype"],
+            tuple(signature["input_shape"]), tuple(signature["output_shape"]),
+            map_key, signature["materialization"],
+        )
+        entry = layout_shape_classes.setdefault(key, {
+            "semantic": signature["semantic"],
+            "dtype": signature["dtype"],
+            "input_shape": signature["input_shape"],
+            "output_shape": signature["output_shape"],
+            "input_map": signature["input_map"],
+            "materialization": signature["materialization"],
+            "count": 0,
+            "region_ids": [],
+        })
+        entry["count"] += 1
+        entry["region_ids"].append(region_id)
     return {
         "schema": "atlas_hybrid_capture_schedule_v1",
         "status": "e2e_runnable" if runnable else "e2e_blocked_fail_closed",
@@ -370,6 +414,9 @@ def build_hybrid_schedule(
             "proven_metadata_aliases": aliases["metadata_alias"],
             "strided_broadcast_bridges": aliases["strided_broadcast_requires_descriptor"],
             "materialized_copy_bridges": aliases["materialized_copy_required"],
+            "host_materialized_layout_bridges": sum(materialized_layout.values()),
+            "host_materialized_layout_bridges_by_rule": dict(sorted(materialized_layout.items())),
+            "qualified_layout_bridges": alias_count - blocking_aliases,
             "partition_host_region_overlap": overlap,
         },
         "fail_closed": {
@@ -386,5 +433,16 @@ def build_hybrid_schedule(
             "qualified": sum(boundary["executable"] for boundary in boundaries),
         },
         "device_activation_arena": arena,
+        "layout_bridge_census": {
+            "shape_class_count": len(layout_shape_classes),
+            "shape_classes": list(layout_shape_classes.values()),
+            "by_semantic": dict(sorted(Counter(
+                program.semantic for program in layout_lane.programs.values()
+            ).items())),
+            "by_materialization": dict(sorted(Counter(
+                program.signature["materialization"]
+                for program in layout_lane.programs.values()
+            ).items())),
+        },
         "events": events,
     }

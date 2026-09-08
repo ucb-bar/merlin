@@ -13,7 +13,7 @@ import pytest
 
 from submission.mlir_oot.frontend import parse_verified
 from submission.mlir_oot.hybrid_runtime import allocate_intervals
-from submission.mlir_oot.host_semantics import HostSemanticLane
+from submission.mlir_oot.host_semantics import HostSemanticLane, LayoutBridgeLane
 
 
 ROOT = Path(__file__).resolve().parent
@@ -25,9 +25,19 @@ def load(path: Path) -> dict:
 
 
 @pytest.fixture(scope="module")
-def real_lane() -> HostSemanticLane:
+def real_workload():
     capture = ROOT.parents[4] / "out/artifacts/recaptures/smolvla_fp32_consistent/model.mlir"
-    return HostSemanticLane(parse_verified(capture.read_text(encoding="utf-8")))
+    return parse_verified(capture.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def real_lane(real_workload) -> HostSemanticLane:
+    return HostSemanticLane(real_workload)
+
+
+@pytest.fixture(scope="module")
+def real_layout_lane(real_workload) -> LayoutBridgeLane:
+    return LayoutBridgeLane(real_workload)
 
 
 def test_interval_allocator_respects_inclusive_lifetimes_and_reuses_storage() -> None:
@@ -51,6 +61,11 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
     assert schedule["status"] == "e2e_blocked_fail_closed"
     assert schedule["runnable_e2e"] is False
     assert schedule["coverage"] == {
+        "host_materialized_layout_bridges": 358,
+        "host_materialized_layout_bridges_by_rule": {
+            "contiguous_identity_copy": 291,
+            "contiguous_zero_stride_broadcast": 67,
+        },
         "host_signature_regions_by_semantic": {
             "add": 215,
             "arange": 63,
@@ -96,14 +111,16 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "previous_missing_host_semantics": 2408,
         "proven_metadata_aliases": 1675,
         "qualified_accelerator_partitions": 3,
+        "qualified_layout_bridges": 2033,
         "semantic_host_required_regions": 2430,
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391,
     }
     assert schedule["fail_closed"]["missing_host_semantics"] == 0
     assert schedule["fail_closed"]["missing_host_semantics_by_semantic"] == {}
+    assert schedule["fail_closed"]["missing_physical_event_runtime"] == 1
     assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
-    assert schedule["fail_closed"]["unrealized_layout_bridges"] == 358
+    assert schedule["fail_closed"]["unrealized_layout_bridges"] == 0
     assert schedule["conversion_boundaries"] == {
         "by_conversion": {
             "device_requantize": 88,
@@ -129,11 +146,178 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
     assert qualified_convolution["semantic"] == "convolution_im2col_matmul"
     assert qualified_convolution["executable"] is True
     assert len(qualified_convolution["operation_signature_sha256"]) == 64
+    layout_events = [row for row in schedule["events"] if row["kind"] == "layout_bridge"]
+    assert len(layout_events) == 2033
+    assert all(row["executable"] for row in layout_events)
+    materialized = [
+        row for row in layout_events
+        if row["status"] == "host_materialized_layout_bridge"
+    ]
+    assert len(materialized) == 358
+    assert all(len(row["layout_signature_sha256"]) == 64 for row in materialized)
     assert schedule["device_activation_arena"]["allocation_count"] == 391
     assert schedule["device_activation_arena"]["reuse_count"] > 0
     assert schedule["device_activation_arena"]["peak_bytes"] < (
         schedule["device_activation_arena"]["naive_no_reuse_bytes"]
     )
+
+
+def _independent_layout_materialization(
+    source: np.ndarray, signature: dict,
+) -> np.ndarray:
+    """Small test oracle derived from affine coordinates, not lane internals."""
+    output_shape = tuple(signature["output_shape"])
+    result = np.empty(output_shape, dtype=source.dtype, order="C")
+    mapping = signature["input_map"]
+    for output_index in np.ndindex(output_shape):
+        input_index = tuple(
+            output_index[item["position"]]
+            if item["kind"] == "dim" else 0
+            for item in mapping
+        )
+        result[output_index] = source[input_index]
+    return result
+
+
+def test_layout_bridge_census_and_saved_numeric_witnesses_are_exact() -> None:
+    schedule = load(PLAN_ROOT / "hybrid_schedule.json")
+    census = schedule["layout_bridge_census"]
+    assert census["shape_class_count"] == 25
+    assert census["by_semantic"] == {"copy": 112, "expand": 246}
+    assert census["by_materialization"] == {
+        "contiguous_identity_copy": 291,
+        "contiguous_zero_stride_broadcast": 67,
+    }
+    assert len(census["shape_classes"]) == 25
+    assert sum(row["count"] for row in census["shape_classes"]) == 358
+
+    witnesses = schedule["layout_bridge_numeric_witnesses"]
+    assert [row["label"] for row in witnesses] == [
+        "copy_f32_contiguous_identity_copy_rank4",
+        "expand_bf16_contiguous_identity_copy_rank4",
+        "expand_bf16_contiguous_zero_stride_broadcast_rank5",
+        "expand_f32_contiguous_identity_copy_rank2",
+        "expand_f32_contiguous_identity_copy_rank4",
+        "expand_f32_contiguous_zero_stride_broadcast_rank3",
+        "expand_f32_contiguous_zero_stride_broadcast_rank5",
+        "expand_i1_contiguous_identity_copy_rank2",
+        "expand_i1_contiguous_identity_copy_rank4",
+        "expand_i1_contiguous_zero_stride_broadcast_rank2",
+        "expand_i1_contiguous_zero_stride_broadcast_rank3",
+    ]
+    assert sum(row["class_region_count"] for row in witnesses) == 358
+    assert all(
+        row["status"] == "fresh_numeric_execution_matches_independent_oracle"
+        and row["output_sha256"] == row["oracle_sha256"]
+        and row["distinct_contiguous_storage"] is True
+        and "physical DMA/event execution is absent" in row["claim"]
+        for row in witnesses
+    )
+
+
+def test_all_real_layout_bridges_qualify_and_each_topology_executes_exactly(
+    real_layout_lane: LayoutBridgeLane,
+) -> None:
+    programs = list(real_layout_lane.programs.values())
+    assert len(programs) == 358
+    assert real_layout_lane.rejections == {}
+    assert Counter(program.semantic for program in programs) == {
+        "copy": 112,
+        "expand": 246,
+    }
+    assert Counter(
+        program.signature["materialization"] for program in programs
+    ) == {
+        "contiguous_identity_copy": 291,
+        "contiguous_zero_stride_broadcast": 67,
+    }
+    grouped = {}
+    for program in programs:
+        signature = program.signature
+        key = (
+            program.semantic,
+            signature["dtype"],
+            signature["materialization"],
+            len(signature["output_shape"]),
+            json.dumps(signature["input_map"], sort_keys=True),
+        )
+        grouped.setdefault(key, []).append(program)
+    assert len(grouped) == 11
+
+    for candidates in grouped.values():
+        program = min(
+            candidates,
+            key=lambda row: (np.prod(row.signature["output_shape"]), row.region_id),
+        )
+        signature = program.signature
+        input_shape = tuple(signature["input_shape"])
+        if signature["dtype"] == "i1":
+            source = (np.arange(np.prod(input_shape)).reshape(input_shape) % 3) == 0
+        else:
+            source = (
+                np.arange(np.prod(input_shape), dtype=np.float32).reshape(input_shape)
+                % np.float32(31)
+            )
+        values = {program.input_values[0]: source}
+        actual = real_layout_lane.execute(program.region_id, values)
+        expected = _independent_layout_materialization(source, signature)
+        np.testing.assert_array_equal(actual, expected)
+        assert actual.flags.c_contiguous
+        assert not np.shares_memory(actual, source)
+        assert values[program.output_value] is actual
+
+
+def test_layout_bridge_malformed_scalar_body_and_copy_broadcast_fail_closed() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%source: tensor<1x1xf32>) -> (tensor<1x4xf32>, tensor<1x4xf32>) {
+        %first_empty = tensor.empty() : tensor<1x4xf32>
+        %wrong_yield = linalg.generic {
+          indexing_maps = [affine_map<(d0, d1) -> (d0, 0)>,
+                           affine_map<(d0, d1) -> (d0, d1)>],
+          iterator_types = ["parallel", "parallel"]
+        } ins(%source : tensor<1x1xf32>) outs(%first_empty : tensor<1x4xf32>)
+          attrs = {prov.region_id = "false_expand", prov.op = "expand",
+                   prov.family = "layout", prov.aten = "aten.expand.default"} {
+        ^bb0(%value: f32, %old: f32):
+          linalg.yield %old : f32
+        } -> tensor<1x4xf32>
+        %second_empty = tensor.empty() : tensor<1x4xf32>
+        %copy_broadcast = linalg.generic {
+          indexing_maps = [affine_map<(d0, d1) -> (d0, 0)>,
+                           affine_map<(d0, d1) -> (d0, d1)>],
+          iterator_types = ["parallel", "parallel"]
+        } ins(%source : tensor<1x1xf32>) outs(%second_empty : tensor<1x4xf32>)
+          attrs = {prov.region_id = "false_copy", prov.op = "copy",
+                   prov.family = "layout", prov.aten = "aten.copy.default"} {
+        ^bb0(%value: f32, %old: f32):
+          linalg.yield %value : f32
+        } -> tensor<1x4xf32>
+        return %wrong_yield, %copy_broadcast : tensor<1x4xf32>, tensor<1x4xf32>
+      }
+    }''')
+    lane = LayoutBridgeLane(workload)
+    assert lane.programs == {}
+    assert lane.rejections == {
+        "false_expand": "layout bridge scalar body is not an exact value copy",
+        "false_copy": "copy bridge is not an exact identity materialization",
+    }
+
+
+def test_layout_bridge_runtime_shape_check_fails_closed(
+    real_layout_lane: LayoutBridgeLane,
+) -> None:
+    program = real_layout_lane.programs["expand_49"]
+    with pytest.raises(ValueError, match="runtime layout input shape differs"):
+        real_layout_lane.execute(
+            program.region_id,
+            {program.input_values[0]: np.ones((1, 2), dtype=np.bool_)},
+        )
+    f32_program = real_layout_lane.programs["expand_148"]
+    with pytest.raises(ValueError, match="runtime layout input dtype differs"):
+        real_layout_lane.execute(
+            f32_program.region_id,
+            {f32_program.input_values[0]: np.ones((1, 50), dtype=np.float64)},
+        )
 
 
 def test_bounded_real_chain_replays_host_semantics_and_retains_scoped_evidence() -> None:

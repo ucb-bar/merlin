@@ -8,11 +8,17 @@ promote structural partitions to executable partitions.
 
 The earlier 2,033 “layout bridge” count needed refinement. These are candidates,
 not aliases: 1,675 `view`/`unsqueeze` regions are proven metadata-only from
-equal element counts and reshape/cast operations; 246 `expand` regions require a
-strided/zero-stride descriptor that the current contiguous ABI lacks; and 112
-`copy` regions require materialization. Independently, 2,430 regions require
-host semantics. The prior schedule treated 22 regions covered by one scoped
-bridge as implemented, leaving 2,408 unresolved.
+equal element counts and reshape/cast operations. The remaining 358 regions are
+now classified into 246 `expand` and 112 `copy` operations, spanning 25 exact
+shape classes. Of those, 291 are identity materializations and 67 are
+constant-zero-axis broadcasts. A fail-closed host bridge lane accepts all 358
+only after proving one parallel `linalg.generic`, an identity output map,
+singleton-only broadcast axes, unchanged dtype, and an exact input-value yield.
+It produces a distinct C-contiguous tensor. This is valid host materialization,
+not a zero-copy strided device descriptor or physical DMA implementation.
+Independently, 2,430 regions require host semantics. The prior schedule treated
+22 regions covered by one scoped bridge as implemented, leaving 2,408
+unresolved.
 
 The generic host semantic lane now extracts and validates complete operation
 signatures instead of trusting provenance names. Its first tranche admitted
@@ -116,24 +122,22 @@ slice-scatter, concat, bitwise, bucketize, and static-select chains. Native
 layer norm and GELU are isolated by accelerator partitions in this capture, so the
 builder truthfully selects and executes the smallest real GELU standalone
 rather than manufacturing a dependency, and does the same for layer norm.
-Every witness replays to identical per-region hashes. This is host-only
-semantic evidence, not device or
-whole-model execution.
+Every witness replays to identical per-region hashes. Eleven additional
+real-capture witnesses cover every bridge topology class and compare fresh
+execution with an independently indexed NumPy oracle; together their class
+counts cover all 358 materializations. This is host-only semantic evidence, not
+device or whole-model execution.
 
-Host semantic coverage is now complete. The remaining exact blockers are 388
-unqualified accelerator partitions and 358 unrealized layout bridges, plus the
+Host semantic and layout-bridge coverage are now complete: all 2,033 bridge
+candidates are qualified, including 358 real host materializations. The
+remaining exact blockers are 388 unqualified accelerator partitions and the
 absent physical event/DMA runtime. Full schedule and compact summary are in
 `whole_capture_plan/hybrid_schedule.json` and
 `whole_capture_plan/hybrid_schedule_summary.json`.
 
 ## Prioritized enablement ladder
 
-1. Realize all 358 blocking layout bridges. The 246 `expand` regions need
-   zero-stride descriptors or exact materialization; the 112 `copy` regions
-   require real storage and copy events. Host materialization is sufficient for
-   a first correctness run; descriptor propagation is the later performance
-   path. The 1,675 already proven metadata aliases require no data movement.
-2. Continue accelerator numeric qualification across the 28 emitted kernel
+1. Continue accelerator numeric qualification across the 28 emitted kernel
    variants. Fresh batch evidence now compiles all 28/28 variants and maps them
    onto all 391 occurrences. RTL numerics tested four variants: three rank-2
    shapes pass, while batched `15x50x64x113` fails closed on VMEM capacity.
@@ -144,16 +148,19 @@ absent physical event/DMA runtime. Full schedule and compact summary are in
    record. The schedule currently has 1,238 unqualified conversions: 688
    host-to-device activations/weights, 74 bias quantizations, 88 device
    requantizations, and 388 device-to-host dequantizations.
-3. Turn the symbolic schedule into a runtime: execute all 6,104 ordered events,
-   materialize host/device conversions, launch split command images, propagate
-   failures, and bind the 391 interval allocations. The proven allocator reuses
-   387 allocations and has a 29,884,416-byte peak, but the current GSIM harness
-   exposes only a 1 MiB alias-free DRAM window, so large partitions must remain
-   sliced/staged unless that harness is changed and requalified.
+2. Turn the symbolic schedule into a runtime: execute all 6,104 ordered events,
+   materialize host/device conversions, invoke the qualified host bridge lane,
+   launch split command images, propagate failures, and bind the 391 interval
+   allocations. The proven allocator reuses 387 allocations and has a
+   29,884,416-byte peak, but the current GSIM harness exposes only a 1 MiB
+   alias-free DRAM window, so large partitions must remain sliced/staged unless
+   that harness is changed and requalified. Zero-stride device descriptors can
+   later replace 67 host broadcasts as a performance optimization; they are not
+   needed to establish host semantic correctness.
 
-The host-semantics gate is now zero. The first honest E2E becomes possible only
-when the remaining three gates are also zero at the same time: 358 unrealized
-bridges, 388 unqualified partitions (and their 1,238 conversion events), and
+The host-semantics and unrealized-layout gates are now zero. The first honest
+E2E becomes possible only when the remaining two gates are also zero at the
+same time: 388 unqualified partitions (and their 1,238 conversion events), and
 the absent physical event/DMA runtime. At that point one fresh full input must
 traverse the entire schedule and be compared with the source-model output.
 Kernel-variant coverage alone, structural 391-partition coverage, or replaying

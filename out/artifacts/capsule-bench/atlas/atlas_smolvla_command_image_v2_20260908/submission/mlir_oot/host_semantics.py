@@ -1321,6 +1321,92 @@ def _extract_im2col_convolution_program(
     )
 
 
+def _extract_layout_bridge_program(region_id: str, operations: tuple) -> HostRegionProgram:
+    if len(operations) != 1 or operations[0].name != "linalg.generic":
+        raise UnsupportedHostRegion("layout bridge is not one captured linalg.generic")
+    generic = operations[0]
+    semantic = _str_attr(generic, "prov.op")
+    aten = _str_attr(generic, "prov.aten")
+    if semantic not in {"expand", "copy"}:
+        raise UnsupportedHostRegion(f"layout semantic {semantic} is unsupported")
+    if len(generic.inputs) != 1 or len(generic.outputs) != 1 or len(generic.results) != 1:
+        raise UnsupportedHostRegion("layout generic arity is unsupported")
+    source = generic.inputs[0]
+    source_shape = _tensor_shape(source)
+    output_shape = _tensor_shape(generic.results[0])
+    if (source_shape is None or output_shape is None
+            or any(extent < 0 for extent in source_shape + output_shape)):
+        raise UnsupportedHostRegion("layout bridge requires static ranked tensors")
+    source_dtype = _dtype_name(source)
+    output_dtype = _dtype_name(generic.results[0])
+    if source_dtype != output_dtype:
+        raise UnsupportedHostRegion("layout bridge changes element dtype")
+    _numpy_dtype(source_dtype)
+    iterator_types = [
+        getattr(item.data, "value", str(item.data)) for item in generic.iterator_types
+    ]
+    if iterator_types != ["parallel"] * len(output_shape):
+        raise UnsupportedHostRegion("layout bridge has a non-parallel iterator")
+    maps = list(generic.indexing_maps)
+    if len(maps) != 2:
+        raise UnsupportedHostRegion("layout bridge map arity is inconsistent")
+    input_record = _general_affine_map_signature(maps[0], source_shape, len(output_shape))
+    output_record = _general_affine_map_signature(maps[1], output_shape, len(output_shape))
+    identity = [
+        {"kind": "dim", "position": axis, "extent": extent}
+        for axis, extent in enumerate(output_shape)
+    ]
+    if output_record != identity:
+        raise UnsupportedHostRegion("layout bridge output map is not identity")
+    mapped_dimensions = [
+        item["position"] for item in input_record if item["kind"] == "dim"
+    ]
+    if len(set(mapped_dimensions)) != len(mapped_dimensions):
+        raise UnsupportedHostRegion("layout bridge input map repeats a loop dimension")
+    for item in input_record:
+        if (item["kind"] == "dim"
+                and item["extent"] != output_shape[item["position"]]):
+            raise UnsupportedHostRegion("layout bridge mapped extent differs from output")
+        if item["kind"] == "constant" and item["extent"] != 1:
+            raise UnsupportedHostRegion("layout bridge broadcasts a nonsingleton axis")
+    compact_input_map = [
+        {key: value for key, value in item.items() if key != "extent"}
+        for item in input_record
+    ]
+    compact_identity = [
+        {"kind": "dim", "position": axis} for axis in range(len(output_shape))
+    ]
+    is_identity = tuple(source_shape) == tuple(output_shape) and compact_input_map == compact_identity
+    if semantic == "copy" and not is_identity:
+        raise UnsupportedHostRegion("copy bridge is not an exact identity materialization")
+    block = generic.body.blocks[0]
+    body = list(block.ops)
+    if (len(block.args) != 2 or tuple(op.name for op in body) != ("linalg.yield",)
+            or tuple(body[0].operands) != (block.args[0],)):
+        raise UnsupportedHostRegion("layout bridge scalar body is not an exact value copy")
+    materialization = (
+        "contiguous_identity_copy" if is_identity else "contiguous_zero_stride_broadcast"
+    )
+    signature = {
+        "schema": "atlas_host_layout_bridge_signature_v1",
+        "semantic": semantic,
+        "aten": aten,
+        "operation_sequence": ["linalg.generic"],
+        "input_shape": list(source_shape),
+        "output_shape": list(output_shape),
+        "dtype": source_dtype,
+        "iterator_types": iterator_types,
+        "input_map": compact_input_map,
+        "output_map": compact_identity,
+        "materialization": materialization,
+        "materialization_rule": "produce a distinct C-contiguous host tensor",
+    }
+    return HostRegionProgram(
+        region_id, semantic, aten, operations, generic, (source,),
+        generic.results[0], signature,
+    )
+
+
 def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     semantic = _str_attr(operations[0], "prov.op")
     aten = _str_attr(operations[0], "prov.aten")
@@ -1458,6 +1544,60 @@ def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
         region_id, semantic, aten, operations, generic,
         tuple(generic.inputs), generic.results[0], signature,
     )
+
+
+class LayoutBridgeLane:
+    """Fail-closed host materialization for captured expand/copy bridge regions."""
+
+    def __init__(self, workload):
+        funcs = [op for op in workload.module.walk() if op.name == "func.func"]
+        if len(funcs) != 1:
+            raise ValueError(f"expected one func.func, found {len(funcs)}")
+        grouped: OrderedDict[str, list] = OrderedDict()
+        for op in funcs[0].body.blocks[0].ops:
+            if _str_attr(op, "prov.op") not in {"expand", "copy"}:
+                continue
+            region_id = _str_attr(op, "prov.region_id")
+            if region_id:
+                grouped.setdefault(region_id, []).append(op)
+        self.programs: OrderedDict[str, HostRegionProgram] = OrderedDict()
+        self.rejections: OrderedDict[str, str] = OrderedDict()
+        for region_id, operations in grouped.items():
+            try:
+                self.programs[region_id] = _extract_layout_bridge_program(
+                    region_id, tuple(operations)
+                )
+            except UnsupportedHostRegion as error:
+                self.rejections[region_id] = str(error)
+
+    def signature_for(self, region_id: str) -> dict | None:
+        program = self.programs.get(region_id)
+        return program.signature if program is not None else None
+
+    def execute(self, region_id: str, values: MutableMapping) -> np.ndarray:
+        if region_id not in self.programs:
+            raise UnsupportedHostRegion(
+                self.rejections.get(region_id, f"unknown layout bridge {region_id}")
+            )
+        program = self.programs[region_id]
+        source_value = program.input_values[0]
+        if source_value not in values:
+            raise ValueError(f"missing runtime layout input for {region_id}")
+        source = np.asarray(values[source_value])
+        if tuple(source.shape) != tuple(program.signature["input_shape"]):
+            raise ValueError(f"runtime layout input shape differs for {region_id}")
+        expected_dtype = np.dtype(_numpy_dtype(program.signature["dtype"]))
+        if source.dtype != expected_dtype:
+            raise ValueError(f"runtime layout input dtype differs for {region_id}")
+        materialized = _broadcast_operand(
+            source, program.signature["input_map"],
+            tuple(program.signature["output_shape"]),
+        )
+        result = np.array(
+            _cast(materialized, program.signature["dtype"]), copy=True, order="C"
+        )
+        values[program.output_value] = result
+        return result
 
 
 class HostSemanticLane:
