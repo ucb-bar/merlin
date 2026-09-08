@@ -173,21 +173,49 @@ def _serial_ceiling(target: str, buffer: Mapping[str, Any]) -> dict[str, Any]:
             "licence": "an upper bound: a serial sum credits no overlap this machine achieves"}
 
 
-def _structural_floor(buffer: Mapping[str, Any], peak_macs_per_cycle: float | None) -> dict[str, Any]:
-    """Cycles the arm cannot beat, from the work its own command buffer prices."""
-    if not peak_macs_per_cycle:
-        return {"status": UNAVAILABLE, "reason": "no derived structural peak for this target"}
+def _priced_macs(buffer: Mapping[str, Any]) -> tuple[int, bool, str]:
+    """``(macs, is_lower_bound, basis)`` for one buffer, from whichever pricing can read it.
+
+    :mod:`merlin.perf.work_volume` is asked first: it recovers conv work from operand SHAPES, which is
+    the strictest reading and the right one when the shapes are intact. It cannot read a buffer whose
+    weights were PREPACKED, though -- it requires the weight as ``(kh*kw*ci, co)`` and an NHWC ifm,
+    while a backend that prepacks emits ``(co, kh*kw*ci)`` and may emit NCHW. Measured: it prices a
+    ResNet-50 at 2,048,000 MACs against a real 4,089,184,256, refusing 53 of 54 commands, which made
+    the structural floor 2000x too low and the empirical ceiling unavailable entirely.
+
+    :mod:`merlin.perf.offload` reads the geometry the command DECLARES plus its destination extent,
+    which survives prepacking and needs no layout assumption. It is the fallback, not the default,
+    because a declaration is a weaker witness than a shape: it is what the compiler SAID it emitted.
+    Whichever answers, the lower-bound flag it reports is preserved -- the two ends of the band check
+    different things and both need to know.
+    """
     from merlin.perf.work_volume import work_from_command_buffer  # noqa: PLC0415
 
     work = work_from_command_buffer(buffer)
     macs = int(getattr(work, "known_macs", 0) or 0)
+    partial = bool(getattr(work, "is_lower_bound", False))
+    if macs and not partial:
+        return macs, False, "operand shapes (work_volume)"
+    from merlin.perf.offload import offload_report  # noqa: PLC0415
+
+    report = offload_report(buffer)
+    if report.routed_macs > macs:
+        return report.routed_macs, report.routed_is_lower_bound, "declared geometry (offload)"
+    return macs, partial, "operand shapes (work_volume)"
+
+
+def _structural_floor(buffer: Mapping[str, Any], peak_macs_per_cycle: float | None) -> dict[str, Any]:
+    """Cycles the arm cannot beat, from the work its own command buffer prices."""
+    if not peak_macs_per_cycle:
+        return {"status": UNAVAILABLE, "reason": "no derived structural peak for this target"}
+    macs, partial, basis = _priced_macs(buffer)
     if not macs:
         return {"status": UNAVAILABLE, "reason": "the buffer prices no work"}
     # A LOWER BOUND OVER PARTIAL WORK IS STILL A LOWER BOUND. An unrecognised opcode means some
     # commands went uncounted, so the true demand is at least this -- which is the direction a floor
     # may err in. It is reported, because a floor built from half the program is much weaker.
     return {"status": DERIVED, "cycles": macs / float(peak_macs_per_cycle), "macs": macs,
-            "counts_every_command": not bool(getattr(work, "is_lower_bound", False)),
+            "counts_every_command": not partial, "macs_basis": basis,
             "basis": "priced MAC demand over the target's derived structural peak",
             "licence": "a floor the arm cannot beat; never an estimate of what it will cost"}
 
@@ -203,13 +231,10 @@ def _empirical_ceiling(buffer: Mapping[str, Any],
     if not slowest_macs_per_cycle or slowest_macs_per_cycle <= 0:
         return {"status": UNAVAILABLE,
                 "reason": "no measured slowest rate was supplied, and one is not invented here"}
-    from merlin.perf.work_volume import work_from_command_buffer  # noqa: PLC0415
-
-    work = work_from_command_buffer(buffer)
-    macs = int(getattr(work, "known_macs", 0) or 0)
+    macs, partial, basis = _priced_macs(buffer)
     if not macs:
         return {"status": UNAVAILABLE, "reason": "the buffer prices no work"}
-    if getattr(work, "is_lower_bound", False):
+    if partial:
         # A CEILING BUILT ON PARTIAL WORK IS NOT A CEILING. The floor may err downward on uncounted
         # commands; the ceiling may not, because uncounted work makes the true cost larger while this
         # estimate stays the same. The asymmetry is the reason the two ends check different things.
@@ -217,7 +242,7 @@ def _empirical_ceiling(buffer: Mapping[str, Any],
                 "reason": ("some commands have no work-counting rule, so the priced work is a lower "
                            "bound and dividing it by a rate cannot bound the cost from above")}
     return {"status": DERIVED, "cycles": macs / float(slowest_macs_per_cycle), "macs": macs,
-            "slowest_macs_per_cycle": float(slowest_macs_per_cycle),
+            "slowest_macs_per_cycle": float(slowest_macs_per_cycle), "macs_basis": basis,
             "basis": "priced MAC demand over the slowest measured rate on this machine",
             "licence": "an EMPIRICAL ceiling: a program slower than anything measured would exceed it"}
 
