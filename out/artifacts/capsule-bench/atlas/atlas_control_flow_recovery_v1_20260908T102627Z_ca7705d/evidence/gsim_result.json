@@ -1,0 +1,46 @@
+{
+  "capsule": "SY_geometry_squareish_gemm",
+  "engine": "gsim_atlas_core",
+  "engine_binary_sha256": "f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c",
+  "firrtl_pin": {
+    "registry_key": "atlas_core_firrtl_gsim",
+    "config": "AT0",
+    "sha256": "eb99a31f19eed99bd05005e82236999660df664e6ac87d64fce303b548863d69",
+    "built_from": ["atlas_npu"]
+  },
+  "atlas_npu_pin": {
+    "commit": "569b7c317889a93427e9d27dff266f7cfd57b787",
+    "local_edits_are_declared_in": "merlin/contract/hardware_pins.yaml"
+  },
+  "before": {
+    "termination": "did_not_halt",
+    "branch_immediate_units_per_instruction": 4,
+    "diagnostic_edge": {
+      "source_word": 3470,
+      "intended_target_word": 2797,
+      "observed_target_word": 2124
+    }
+  },
+  "after": {
+    "termination": "halted",
+    "cycles": 13228115,
+    "program_words": 8721,
+    "branch_immediate_units_per_instruction": 2
+  },
+  "functional_verdict": {
+    "status": "fail",
+    "mismatches": 24919,
+    "elements": 50176,
+    "max_abs_error": 128.0,
+    "mean_abs_error_against_per_mac_bf16": 10.62,
+    "exact_final_reference": {
+      "tolerance_mismatches": 5675,
+      "mean_abs_error": 2.91
+    },
+    "tile32_bf16_reference": {
+      "tolerance_mismatches": 3122,
+      "mean_abs_error": 1.27
+    }
+  },
+  "interpretation": "The control-flow repair removes the nontermination defect. The independent golden still fails; the remaining large-FP8 discrepancy is numeric/accumulation-contract work, not evidence of correctness."
+}

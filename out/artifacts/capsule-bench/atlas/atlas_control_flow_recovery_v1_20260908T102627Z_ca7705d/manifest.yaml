@@ -1,0 +1,25 @@
+artifact_type: atlas_backend_control_flow_recovery
+target: atlas
+version: 1
+timestamp: "20260908T102627Z"
+repo_sha: ca7705da1557586cd12056daf9a81d0559c83caf
+source_run: out/runs/atlas/capsule-bench/merlin_assisted/merlincirct_atlas_fresh_func_20260907
+source_submission: out/runs/atlas/capsule-bench/merlin_assisted/merlincirct_atlas_fresh_func_20260907/submission
+source_codegen_sha256: 1469efb2e444f23ae5d2d82c2f06d4d19d800f5644493a6b93bac3887f5f888f
+schedule_contract_sha256: 11a9a733074a7902be8cd09a05c585af00bea1b73c9624e6ed8884f6b29ab2b5
+hardware_provenance:
+  atlas_npu:
+    commit: "569b7c317889a93427e9d27dff266f7cfd57b787"
+    local_edits: merlin/contract/hardware_pins.yaml
+  atlas_core_firrtl_gsim:
+    config: AT0
+    sha256: eb99a31f19eed99bd05005e82236999660df664e6ac87d64fce303b548863d69
+  diagnostic_gsim_binary_sha256: f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c
+changes:
+  - Derive BNE, BEQ, and JAL displacements with two decoded immediate units per emitted instruction.
+  - Select the compact loop schedule at 16 or more 32x32x32 tile products.
+  - Remove the 3072 leading and 24 trailing NOP workaround around long-loop programs.
+validation:
+  regression: test_control_flow.py
+  gsim: evidence/gsim_result.json
+status: control_flow_fixed_numeric_mismatch_open

@@ -1,0 +1,37 @@
+artifact_type: mlir_oot_target_backend
+target: atlas
+language: python
+authoring:
+  mode: agent_generated_from_rtl_facts
+  author: Codex
+  generated_by_agent: true
+integrity_exempt: false
+entrypoints:
+  tool: mlir_oot/atlas-opt
+commands:
+  parse:
+    argv: ["{tool}", "--verify-diagnostics", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["{tool}", "--convert-iface-to-atlas", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["{tool}", "--emit-command-buffer={output_json}", "{input_mlir}"]
+  lower_target_to_llvm:
+    argv: ["{tool}", "--convert-iface-to-atlas", "--emit-target-artifact", "{input_mlir}"]
+  emit_analysis_bundle:
+    argv: ["{tool}", "--convert-iface-to-atlas", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
+components:
+  parse: [mlir_oot/]
+  lower_interface_to_target: [mlir_oot/]
+  emit_command_buffer: [mlir_oot/]
+  lower_target_to_llvm: [mlir_oot/]
+  emit_analysis_bundle: [mlir_oot/]
+optimization_surfaces:
+  - id: tile-schedule
+    scope: heuristic
+    path: mlir_oot/lowering.py
+    symbol: TileScheduler.choose
+    effects: [tiling, movement, residency, issue]
+    mechanism: derive a complete M/N/K tile schedule from the parsed extents and 32x32 mesh
+    emitted_delta: tile count and per-tile DMA/MXU operations vary monotonically with all extents
+    validation: shape-coverage probes followed by functional capsule grading
+    abandonment: any uncovered multi-tile axis, illegal edge tile, or numeric regression
