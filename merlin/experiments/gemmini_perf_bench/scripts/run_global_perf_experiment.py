@@ -1225,6 +1225,7 @@ class GlobalPerfExperiment:
         self.iterations: list[dict[str, Any]] = []
         self._iteration_record_sha256: dict[int, str] = {}
         self._analysis_lock = threading.Lock()
+        self._fast_evaluation_lock = threading.Lock()
         # Semantic providers compose several strict public accessors. Keep their verified current
         # revision thread-local for one synchronous host action; explicit external-execution
         # checkpoints refresh it below. This is never a cross-action or time-based cache.
@@ -1287,7 +1288,11 @@ class GlobalPerfExperiment:
         self.optimization_baseline_binding_sha256 = PAS._document_sha256(self.optimization_baseline_binding)
         self.portfolio_identity = full_model_portfolio_identity(self.portfolio_sentinels)
         self.portfolio_identity_sha256 = PAS._document_sha256(self.portfolio_identity)
-        from merlin.perf.phase2_portfolio import FastEvaluationPolicy, QualityBudget
+        from merlin.perf.phase2_portfolio import (
+            PORTFOLIO_MEMBER_COUNT,
+            FastEvaluationPolicy,
+            QualityBudget,
+        )
         configured_fast_parts = (fast_evaluation_provider, fast_evaluation_policy,
                                  quality_budgets, fast_evaluation_provider_binding)
         if any(part is not None for part in configured_fast_parts) and not all(
@@ -1301,12 +1306,19 @@ class GlobalPerfExperiment:
         self.fast_evaluation_provider_binding = copy.deepcopy(
             fast_evaluation_provider_binding)
         if fast_evaluation_provider is not None:
+            if len(member_hashes) != PORTFOLIO_MEMBER_COUNT:
+                raise ValueError("fast evaluation requires exactly four content-addressed portfolio members")
             if not isinstance(fast_evaluation_policy, FastEvaluationPolicy):
                 raise TypeError("fast_evaluation_policy must be FastEvaluationPolicy")
             if (set(self.quality_budgets) != set(member_hashes)
                     or any(not isinstance(value, QualityBudget)
                            for value in self.quality_budgets.values())):
                 raise ValueError("quality budgets must exactly cover the content-addressed portfolio")
+            quality_profiles = [budget.profile for budget in self.quality_budgets.values()]
+            if (quality_profiles.count("classification_top1") != 1
+                    or quality_profiles.count("numerical_similarity")
+                    != PORTFOLIO_MEMBER_COUNT - 1):
+                raise ValueError("four-model quality policy requires one top-1 and three numerical budgets")
             provider_binding = self.fast_evaluation_provider_binding
             if (not isinstance(provider_binding, Mapping)
                     or provider_binding.get("schema")
@@ -1314,6 +1326,8 @@ class GlobalPerfExperiment:
                     or not PAS._is_sha256(provider_binding.get("implementation_sha256"))
                     or provider_binding.get("execution") != "host_analytical_only"
                     or provider_binding.get("full_model_simulation_allowed") is not False
+                    or provider_binding.get("resource_admission")
+                    != "serialized_one_model_at_a_time"
                     or isinstance(provider_binding.get("maximum_model_seconds"), bool)
                     or not isinstance(provider_binding.get("maximum_model_seconds"), (int, float))
                     or not 0 < provider_binding["maximum_model_seconds"] <= 60
@@ -2254,7 +2268,8 @@ class GlobalPerfExperiment:
 
         if self.fast_evaluation_provider is None:
             return unavailable_fast_evaluation(
-                reason="no host-owned calibrated analytical provider and quality budget installed")
+                reason=("held-out quality corpus and host analytical evaluator are not both bound; "
+                        "approximate transformations remain disabled"))
         rows = []
         surfaces: dict[str, Sequence[Mapping[str, Any]]] = {}
         provider_wall_seconds: dict[str, float] = {}
@@ -2263,12 +2278,13 @@ class GlobalPerfExperiment:
             surfaces[model_id] = self._fast_evaluation_surfaces(analysis)
             try:
                 provider_started = time.monotonic()
-                raw = self.fast_evaluation_provider(
-                    analysis=analysis, artifacts=artifacts, sentinel=sentinel,
-                    target_descriptor=self.target_descriptor,
-                    target_sha256=self.target_sha256,
-                    portfolio_sha256=self.portfolio_identity_sha256,
-                    provider_binding=copy.deepcopy(self.fast_evaluation_provider_binding))
+                with self._fast_evaluation_lock:
+                    raw = self.fast_evaluation_provider(
+                        analysis=analysis, artifacts=artifacts, sentinel=sentinel,
+                        target_descriptor=self.target_descriptor,
+                        target_sha256=self.target_sha256,
+                        portfolio_sha256=self.portfolio_identity_sha256,
+                        provider_binding=copy.deepcopy(self.fast_evaluation_provider_binding))
                 provider_elapsed = time.monotonic() - provider_started
                 provider_wall_seconds[model_id] = provider_elapsed
                 if provider_elapsed > self.fast_evaluation_provider_binding[
@@ -2293,7 +2309,10 @@ class GlobalPerfExperiment:
         return {**report,
                 "binding": copy.deepcopy(self.fast_evaluation_binding),
                 "binding_sha256": self.fast_evaluation_binding_sha256,
-                "provider_wall_seconds_by_model": provider_wall_seconds}
+                "provider_wall_seconds_by_model": provider_wall_seconds,
+                "provider_evaluation_order": [
+                    member.capsule_sha256 for member in self.portfolio_sentinels],
+                "resource_admission": "serialized_one_model_at_a_time"}
 
     def _analysis_reuse_binding(self, *, candidate_sha256: str,
                                 compiler_dependencies: Mapping[str, Any]) -> dict[str, Any]:

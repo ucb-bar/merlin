@@ -2,7 +2,7 @@
 title: "Design: wiring phase 2 — what the performance search can measure, ask, and refuse"
 kind: design
 status: current
-last_verified: 2026-09-06
+last_verified: 2026-09-08
 owner: gemmini-perf-bench
 related: [compiler_plane, expert_gap_attribution, command_stream_reorder_emitter]
 code_refs:
@@ -13,6 +13,7 @@ code_refs:
   - merlin/experiments/gemmini_perf_bench/scripts/perf_snapshot.py
   - merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py
   - merlin/experiments/gemmini_perf_bench/scripts/run_agentic_perf_experiment.py
+  - merlin/experiments/gemmini_perf_bench/scripts/run_global_perf_experiment.py
   - merlin/experiments/gemmini_perf_bench/scripts/run_paired_perf_bench.py
   - merlin/python/merlin/perf/handshake.py
   - merlin/python/merlin/perf/global_planner.py
@@ -21,6 +22,8 @@ code_refs:
   - merlin/python/merlin/perf/command_buffer_diagnostics.py
   - merlin/python/merlin/perf/execution_policy.py
   - merlin/python/merlin/perf/model_placement.py
+  - merlin/python/merlin/perf/movement_balance.py
+  - merlin/python/merlin/perf/phase2_portfolio.py
   - merlin/python/merlin/perf/whole_model_report.py
   - merlin/python/merlin/xdsl_dialects/lowering/global_plan.py
   - merlin/python/merlin/xdsl_dialects/lowering/global_plan_emission.py
@@ -310,6 +313,38 @@ firesim infrasetup
 firesim runworkload
 firesim kill
 ```
+
+### Fast four-model evaluator and accuracy gate
+
+The full-model authoring path has an optional host-owned evaluator that runs serially over exactly
+four content-addressed portfolio members. Each member has a 60-second-or-smaller wall budget. The
+binding explicitly says `host_analytical_only`, `serialized_one_model_at_a_time`, and
+`full_model_simulation_allowed: false`; it also pins the evaluator implementation and calibration
+receipts. This path cannot invoke L3, FireSim, or a complete-model simulator.
+
+The standard held-out quality schema gives the classification member at most 0.7 percentage-point
+top-1 degradation. Each other member requires cosine similarity at least 0.99 and normalized RMSE
+at most 0.02. All four corpus members need exact content identities. If even one corpus is absent,
+the report switches to `exact_only_fallback`: approximation is disabled, while exact compiler
+transformations and static analysis can continue.
+
+For both baseline and candidate the provider reports a conservative cycle interval, physical bytes
+moved, an explicit occupancy/overlap timeline, encoding-conversion count/bytes/cycles, a composed
+physical roofline with declared resource floors, and calibration risk. Coverage is a first-class
+topological record: supported source work placed, the exact connected-region partition and largest
+region, typed host islands, and boundary crossings/bytes. `UNKNOWN` never becomes zero.
+
+The shared gate checks every known objective for per-model Pareto regression. A loss in any member
+rejects the candidate rather than being averaged away. Increased accelerator coverage alone is not
+a win: at least one model must robustly improve cycles, movement, utilization, overlap, conversion,
+or boundary cost without regressions elsewhere. Unlike-model cycle counts are never summed; the
+only summary is the dimensionless geomean of conservative per-model speedups.
+
+The same report is sealed into each iteration, surfaced through `portfolio_action_digest`, and fed
+back to the authoring agent. Recommended levers are intersected with the host-frozen edit contract,
+so a candidate cannot grant itself new compiler files or symbols. The movement term may be calibrated
+with `movement_balance`, whose controlled multi-size fit carries its one-sided roofline licence; a
+missing or invalid fit stays missing rather than manufacturing a bandwidth.
 
 Two limitations are deliberate and visible. First, the frozen Phase-1 package inspected on 2026-09-06
 contains 343 indexed AST symbols but no `optimization_surfaces`; changing that sealed manifest would
