@@ -69,3 +69,22 @@ def test_engine_names_are_matched_case_insensitively_and_trimmed():
 def test_the_table_declares_the_engines_this_tree_actually_runs():
     declared = set(declared_engines())
     assert {"spike", "firesim", "verilator", "gsim"} <= declared
+
+
+def test_run_on_oracle_refuses_readings_from_a_fabricating_engine():
+    """The wiring, not just the policy: an inert module is the trap this repo keeps re-finding.
+
+    `run_on_oracle` used to stamp `status: "measured"` on raw counter readings whatever engine
+    produced them. The eta path beside it already refused a non-RTL oracle; this path did not.
+    """
+    import inspect
+
+    from merlin.targetgen.contract import compile as compile_mod
+
+    body = inspect.getsource(compile_mod.run_on_oracle)
+    assert "counter_trust" in body, "run_on_oracle must consult the trust table"
+    # the refusal must be recorded, not merely omitted
+    assert "_trust.refusal()" in body
+    assert '"status": "unknown"' in body
+    # and it must be keyed on the engine that ran the program
+    assert "verdict_for(simulator)" in body

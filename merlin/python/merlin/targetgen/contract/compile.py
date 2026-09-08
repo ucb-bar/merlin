@@ -542,9 +542,18 @@ def run_on_oracle(cb: dict[str, Any], lowered_mlir_text: str, *, simulator: str,
     # target's own: this boundary merely preserves readings the runner already paid to collect.  If
     # they exactly cover a structurally derived joint-occupancy block, compute eta; otherwise retain
     # the raw named readings without guessing what they mean.
-    from merlin.perf import hw_counters
+    from merlin.perf import counter_trust, hw_counters
     readings = hw_counters.parse_counter_output(console)
-    if readings:
+    # An engine that SYNTHESISES its accelerator counters must not have its readings stamped
+    # "measured". The eta path above already refuses a non-RTL oracle; this raw-readings path did
+    # not, so a functional model's numbers reached the report with a measurement's provenance --
+    # which is the defect that block's own docstring describes. Refuse by ENGINE and say why, so an
+    # absent field is distinguishable from one nobody collected.
+    _trust = counter_trust.verdict_for(simulator)
+    if readings and not _trust.trusted:
+        result["counters"] = {"status": "unknown", "readings": None,
+                              "why": _trust.refusal(), "engine": _trust.to_dict()}
+    elif readings:
         discovery = hw_counters.counters_for_target(target)
         measured_schema = hw_counters.parse_counter_schema(console)
         report: dict[str, Any] = {"status": "measured", "readings": readings,
