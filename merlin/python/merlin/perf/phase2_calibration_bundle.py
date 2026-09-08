@@ -22,14 +22,11 @@ from pathlib import Path
 from typing import Any
 
 from merlin.perf import attribution as attribution_lib
-from merlin.perf import counter_harvest
-from merlin.perf import headroom
-from merlin.perf import hw_counters
-from merlin.perf import movement_balance
+from merlin.perf import counter_harvest, headroom, hw_counters, movement_balance, phase2_feature_calibration
 from merlin.perf.decompose import ResourceKind, Unavailable
 
 ADAPTER_SCHEMA = "phase2_host_analytical_calibration_adapter_v1"
-FEATURE_SCHEMA = "phase2_analytical_feature_calibration_v1"
+FEATURE_SCHEMA = phase2_feature_calibration.FEATURE_SCHEMA
 PREPARATION_SCHEMA = "phase2_host_analytical_calibration_preparation_v1"
 CALIBRATION_SCHEMA = "phase2_host_analytical_calibration_v1"
 
@@ -355,33 +352,49 @@ def _feature_evidence(adapter: Mapping[str, Any], target_sha: str) -> tuple[
         try:
             path, receipt_sha = _verified_file(reference, field)
             document, _unused, _source = _load_json(path)
-            if (document.get("schema") != FEATURE_SCHEMA or document.get("status") != "derived"
-                    or document.get("target_sha256") != target_sha):
-                raise _EvidenceError(
-                    f"{field}: receipt is not a derived calibration for the bound target",
-                    integrity=True)
-            source_hashes = []
-            for source_index, source_ref in enumerate(_sequence(document.get("source_files"))):
-                source_path, source_sha = _verified_file(
-                    source_ref, f"{field}.source_files[{source_index}]")
-                source_hashes.append(source_sha)
-                evidence.append(_evidence_row(
-                    source_path, source_sha, "raw analytical-feature calibration evidence"))
-            derivation = _mapping(document.get("derivation"))
-            if set(_sequence(derivation.get("evidence_sha256s"))) != set(source_hashes):
-                raise _EvidenceError(
-                    f"{field}: derivation is not bound to exactly its raw evidence files",
-                    integrity=True)
-            feature = dict(_mapping(document.get("feature")))
-            if feature.get("cycles_per_unit") is not None:
-                parameters = int(_number(
-                    derivation.get("n_fitted_parameters"), f"{field} fitted parameters"))
-                points = int(_number(
-                    derivation.get("n_distinct_points"), f"{field} distinct points"))
-                if parameters <= 0 or points < 2 * parameters:
+            kind = str(_mapping(document.get("feature")).get("kind") or "")
+            if kind in {"compute", "movement"}:
+                validation = phase2_feature_calibration.validate_feature_calibration(
+                    path, expected_target_sha256=target_sha)
+                for row in _sequence(validation.get("evidence_files")):
+                    evidence.append({
+                        "path": str(_mapping(row).get("path") or ""),
+                        "sha256": str(_mapping(row).get("sha256") or ""),
+                        "purpose": "raw analytical-feature calibration evidence",
+                    })
+                if validation.get("status") != "ready":
+                    validation_problems = [*_sequence(validation.get("missing")),
+                                           *_sequence(validation.get("refusals"))]
+                    for problem in validation_problems:
+                        row = _mapping(problem)
+                        problems.append({
+                            "field": f"{field}.{row.get('field') or 'validation'}",
+                            "severity": str(row.get("severity") or "missing"),
+                            "reason": str(row.get("reason") or "feature receipt did not validate"),
+                        })
+                    continue
+                feature = dict(_mapping(validation.get("feature")))
+            else:
+                if (document.get("schema") != FEATURE_SCHEMA
+                        or document.get("status") != "derived"
+                        or document.get("target_sha256") != target_sha
+                        or kind != "encoding"):
                     raise _EvidenceError(
-                        f"{field}: cycle fit needs at least two points per fitted parameter",
+                        f"{field}: receipt is not a derived calibration for the bound target",
                         integrity=True)
+                source_hashes = []
+                for source_index, source_ref in enumerate(_sequence(document.get("source_files"))):
+                    source_path, source_sha = _verified_file(
+                        source_ref, f"{field}.source_files[{source_index}]")
+                    source_hashes.append(source_sha)
+                    evidence.append(_evidence_row(
+                        source_path, source_sha, "raw analytical-feature calibration evidence"))
+                derivation = _mapping(document.get("derivation"))
+                if set(_sequence(derivation.get("evidence_sha256s"))) != set(source_hashes):
+                    raise _EvidenceError(
+                        f"{field}: derivation is not bound to exactly its raw evidence files",
+                        integrity=True)
+                feature = dict(_mapping(document.get("feature")))
             feature["provenance_sha256"] = receipt_sha
             features.append(feature)
             evidence.append(_evidence_row(path, receipt_sha, "analytical-feature calibration receipt"))

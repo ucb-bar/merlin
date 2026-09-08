@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from merlin.perf import phase2_calibration_bundle as bundle
+from merlin.perf import phase2_feature_calibration as feature_calibration
 from merlin.perf.phase2_analytical_provider import build_fast_evaluator_installation
 
 
@@ -64,6 +65,84 @@ def _adapter(target_ref, features=()):
 
 
 def _feature_receipt(tmp_path, target_sha, kind, feature):
+    if kind in {"compute", "movement"}:
+        coefficients = ({"cycles_per_unit": feature["cycles_per_unit"]["lo"]}
+                        if kind == "compute" else {
+                            "physical_bytes_per_unit": feature["physical_bytes_per_unit"],
+                            "commands_per_unit": feature["commands_per_unit"],
+                        })
+        measurements = ([{
+            "coefficient": "cycles_per_unit", "evidence_pointer": "/values/cycles",
+            "unit": "cycle", "scope": "target_execution",
+        }] if kind == "compute" else [
+            {"coefficient": "physical_bytes_per_unit",
+             "evidence_pointer": "/values/physical_bytes", "unit": "byte",
+             "scope": "physical_target_interface"},
+            {"coefficient": "commands_per_unit", "evidence_pointer": "/values/commands",
+             "unit": "command", "scope": "target_execution"},
+        ])
+        pairs = []
+        n_pairs = 1 if kind == "compute" else 2
+        for pair_index in range(n_pairs):
+            controls_document = {
+                "schema": feature_calibration.CONTROLS_SCHEMA,
+                "status": "declared",
+                "target_sha256": target_sha,
+                "varied_feature_pointer": "/values/feature",
+                "invariant_pointers": ["/environment", "/measurement_window"],
+            }
+            controls = _write(
+                tmp_path / f"{kind}.{pair_index}.controls",
+                json.dumps(controls_document, sort_keys=True, separators=(",", ":")),
+            )
+            arms = []
+            for arm, count in (("first", pair_index + 1), ("second", pair_index + 2)):
+                source = _write(tmp_path / f"{kind}.{pair_index}.{arm}.source", arm + str(count))
+                values = {
+                    "feature": {"value": count, "unit": "emitted_unit",
+                                "scope": "emitted_feature"},
+                }
+                for coefficient, value in coefficients.items():
+                    name = {"cycles_per_unit": "cycles",
+                            "physical_bytes_per_unit": "physical_bytes",
+                            "commands_per_unit": "commands"}[coefficient]
+                    unit, scope = ({"cycles_per_unit": ("cycle", "target_execution"),
+                                    "physical_bytes_per_unit": (
+                                        "byte", "physical_target_interface"),
+                                    "commands_per_unit": (
+                                        "command", "target_execution")}[coefficient])
+                    values[name] = {"value": value * count, "unit": unit, "scope": scope}
+                observation = {
+                    "schema": feature_calibration.OBSERVATION_SCHEMA, "status": "measured",
+                    "bindings": {"target_sha256": target_sha,
+                                 "source_sha256": source["sha256"],
+                                 "controls_sha256": controls["sha256"]},
+                    "values": values,
+                }
+                evidence = _write(
+                    tmp_path / f"{kind}.{pair_index}.{arm}.json",
+                    json.dumps(observation, sort_keys=True, separators=(",", ":")))
+                arms.append({"source": source, "evidence": evidence})
+            pairs.append({"id": f"{kind}-{pair_index}", "controls": controls,
+                          "first": arms[0], "second": arms[1]})
+        request = {
+            "schema": feature_calibration.REQUEST_SCHEMA,
+            "target_descriptor": {
+                "path": str(tmp_path / "target.yaml"), "sha256": target_sha,
+            },
+            "feature": {
+                "id": feature["id"], "kind": kind, "pointer": feature["pointer"],
+                "evidence_pointer": "/values/feature", "unit": "emitted_unit",
+                "resource": feature["resource"], "effects": feature.get("effects", []),
+            },
+            "measurements": measurements,
+            "controlled_pairs": pairs,
+        }
+        prepared = feature_calibration.prepare_feature_calibration(request)
+        assert prepared["status"] == "ready"
+        return _write(tmp_path / f"{kind}.json", json.dumps(
+            prepared["calibration"], sort_keys=True, separators=(",", ":")))
+
     source = _write(tmp_path / f"{kind}.source", f"measured-{kind}")
     document = {
         "schema": bundle.FEATURE_SCHEMA,
@@ -168,5 +247,5 @@ def test_cycle_feature_receipt_needs_two_points_per_fitted_parameter(tmp_path, m
     receipt = bundle.prepare_phase2_calibration(_adapter(target, [feature]))
 
     assert receipt["status"] == "refused"
-    assert any("two points per fitted parameter" in row["reason"]
+    assert any("fit counts" in row["reason"]
                for row in receipt["refusals"])
