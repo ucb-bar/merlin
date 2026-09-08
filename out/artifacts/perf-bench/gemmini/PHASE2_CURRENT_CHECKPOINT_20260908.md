@@ -58,6 +58,37 @@ Queue job 534 used the required uninterrupted lifecycle:
 `firesim kill -> firesim infrasetup -> firesim runworkload -> firesim kill`.
 The package is sealed against unchanged resubmission.
 
+## Newest hardware result: affine im2col spans
+
+Queue job 535 hardware-qualified the next target-neutral full-model lever. Static convolution
+geometry now classifies affine interior spans once, hoists row-base/y decisions, and retains
+guarded gathers only at borders. This removes repeated address, bounds, and clamp work for 93.26%
+of 14,613,760 packed bytes; 87.30% of bytes use fully guardless interior loops. It adds no model,
+layer, shape, or Gemmini schedule special case.
+
+| comparison | predecessor | q535 | saved | reduction | speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Spike q534 -> affine im2col | 751,827,143 | 506,265,226 | 245,561,917 | 32.6620% | 1.48505x |
+| FireSim q534 -> q535 | 1,537,416,019 | **1,316,619,699** | **220,796,320** | **14.3615%** | **1.16770x** |
+| FireSim q530 -> q535 cumulative | 1,704,064,223 | **1,316,619,699** | **387,444,524** | **22.7365%** | **1.29427x** |
+
+All 1,000 logits remain bit-exact. The accelerator command buffer, 3,787 launches, 1,050 fences,
+and 1,196,945,312 total Gemmini DMA bytes are unchanged, isolating the gain to host dynamic-work
+deletion. Spike overpredicted saved hardware cycles by only 1.11216x for this lever.
+
+The sealed package is
+
+```text
+out/artifacts/perf-bench/gemmini/resnet50_merlin_phase2_affine_im2col_spans_w8a8_warm_measured_firesim_candidate_20260908
+```
+
+Its `verify_bundle.sh` passes and blocks unchanged resubmission. Job 535 used the required queue-only
+`firesim kill -> firesim infrasetup -> firesim runworkload -> firesim kill` lifecycle. The measured
+ELF, staged ELF, and executed ELF all have SHA-256
+`86aea9b8bc6aad86487e652a51629f76dcd472201c85e19077ecb7fac3dbde78`.
+Portable evidence is in `q535_affine_im2col_hardware_result_20260908.md`,
+`q535_affine_im2col_hardware_receipt.json`, and `phase2_affine_im2col_q535.patch`.
+
 ## Invoke this compiler directly
 
 ```sh

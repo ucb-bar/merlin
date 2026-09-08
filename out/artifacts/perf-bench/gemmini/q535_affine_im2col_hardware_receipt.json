@@ -1,0 +1,191 @@
+{
+  "schema": "merlin_firesim_hardware_qualification_v1",
+  "status": "passed",
+  "qualification": "hardware_qualified_candidate",
+  "promoted": true,
+  "safe_to_resubmit_unchanged": false,
+  "queue_job": {
+    "id": 535,
+    "user": "agustin",
+    "priority": 10,
+    "project": "resnet50-merlin-phase2-affine-im2col-spans-w8a8-warm-measured",
+    "state": "DONE",
+    "phase": "DONE",
+    "return_code": 0,
+    "terminal_wall_seconds": 335,
+    "timeout_seconds": 25200,
+    "workload": "merlin-resnet50-phase2-affine-im2col-86aea9b8bc6aad86",
+    "bootbinary": "merlin-resnet50-phase2-affine-im2col-86aea9b8bc6aad86.elf",
+    "hw_config": "resnet50_merlin_warm_measured_full_gemmini_u250_pinned"
+  },
+  "artifact_identity": {
+    "elf_sha256": "86aea9b8bc6aad86487e652a51629f76dcd472201c85e19077ecb7fac3dbde78",
+    "staged_elf_sha256": "86aea9b8bc6aad86487e652a51629f76dcd472201c85e19077ecb7fac3dbde78",
+    "executed_elf_sha256": "86aea9b8bc6aad86487e652a51629f76dcd472201c85e19077ecb7fac3dbde78",
+    "elf_identity_passed": true,
+    "measured_kernel_object_sha256": "e251d0e4d508af30f0828dd1394095de6a580c40c961cd6a8efe240ed3310618",
+    "hwdb_sha256": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "bitstream_archive_sha256": "a9a190b9fc26d577b1e8af0e3b46a94c8efaf2976f7fca6650236e0fd6d4eca1",
+    "flashed_bitstream_sha256": "6bfb72e3d69d0bed14eaa8db9fd5faf53f82780ef9ecded6b2d49983dfcbc229",
+    "required_driver_sha256": "16d49adafd8eea3051cd36330bced89fa1cec6b0fedc634043554d5f35e61ade",
+    "deploy_quintuplet": "xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config"
+  },
+  "queue_lifecycle": {
+    "owner": "/scratch/firesim_queue/bin/firesim-queue",
+    "required_order": [
+      "firesim kill",
+      "firesim infrasetup",
+      "firesim runworkload",
+      "firesim kill"
+    ],
+    "observed_order": [
+      {"command": "firesim kill", "phase": "LEADING_KILL", "stdout_line": 11},
+      {"command": "firesim infrasetup", "phase": "INFRASETUP", "stdout_line": 30},
+      {"command": "firesim runworkload", "phase": "RUNNING", "stdout_line": 136},
+      {"command": "firesim kill", "phase": "TEARDOWN", "stdout_line": 612}
+    ],
+    "order_passed": true,
+    "hwdb_hash_before_leading_kill": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_hash_before_infrasetup": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_hash_before_runworkload": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_hash_before_trailing_kill": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_hash_after_trailing_kill": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706",
+    "hwdb_immutable": true,
+    "trailing_kill_completed": true
+  },
+  "measurement_protocol": {
+    "warmup_invocations": 1,
+    "measured_invocations": 1,
+    "batch": 1,
+    "warmup_profile_begin": true,
+    "warmup_completed_task_markers": [12, 26, 39, 53, 67, 80, 94, 108],
+    "warmup_profile_end_return_code": 0,
+    "untimed_reset": {"kind": "zero_mutable_arena", "bytes": 90083520},
+    "measured_profile_begin": true,
+    "measured_profile_end_return_code": 0,
+    "measured_kernel_instrumentation": "none",
+    "accepted_primary_metric": "measured compute cycles"
+  },
+  "measured_metrics": {
+    "cycles": 1316619699,
+    "instret": 506265232,
+    "main_ld_cycles": 11978594,
+    "main_st_cycles": 2755067,
+    "main_ex_cycles": 3564267,
+    "exe_active_cycle": 31255069,
+    "loop_matmul_active_cycles": 53520245,
+    "rdma_bytes_rec": 1142808576,
+    "wdma_bytes_sent": 54136736,
+    "reservation_station_active_cycles": 53934929
+  },
+  "correctness": {
+    "status": "passed",
+    "logits_checked": 1000,
+    "bad": 0,
+    "nonfinite": 0,
+    "top1": 258,
+    "expected_top1": 258,
+    "checksum_fnv1a64": "c6e777c3fe0aae90",
+    "max_abs_bits": "00000000",
+    "max_rel_bits": "00000000",
+    "qdq_max_abs_bits": "3e31e2aa"
+  },
+  "comparison": {
+    "predecessor": "q534 native scalar",
+    "predecessor_cycles": 1537416019,
+    "candidate_cycles": 1316619699,
+    "cycles_saved": 220796320,
+    "cycle_reduction_percent": 14.36152071211117,
+    "speedup": 1.1676993897081287,
+    "q530_cycles": 1704064223,
+    "cumulative_cycles_saved_from_q530": 387444524,
+    "cumulative_cycle_reduction_percent_from_q530": 22.736497766375557,
+    "cumulative_speedup_from_q530": 1.2942721609696954,
+    "spike_predicted_cycles_saved": 245561917,
+    "spike_overprediction_factor_for_saved_cycles": 1.1121648993062927,
+    "accelerator_schedule_and_dma_unchanged": true
+  },
+  "derived_diagnostics": {
+    "model_macs": 4091330560,
+    "macs_per_end_to_end_cycle": 3.1074505136961346,
+    "macs_per_dma_byte": 3.4181432676850654,
+    "loop_matmul_occupancy_percent": 4.064973738479663,
+    "reservation_station_occupancy_percent": 4.096469849339539,
+    "warning": "Occupancy and arithmetic-intensity values are diagnostics, not proof of a calibrated roofline limit."
+  },
+  "simulation": {
+    "payload_status": "PASSED",
+    "target_cycles_total_including_warmup_and_harness": 3945377522,
+    "wallclock_seconds": 149.7,
+    "host_frequency_mhz": 30.0,
+    "effective_target_frequency_mhz": 26.348,
+    "fmr": 1.14
+  },
+  "source_evidence": {
+    "job_root": "/scratch/firesim_queue/jobs/535",
+    "runworkload_receipt": {
+      "path": "/scratch/firesim_queue/jobs/535/runworkload-full.json",
+      "sha256": "15b467585b3147bb603344f073764147e278ae9c09f23c60ffd6ac1694939bca",
+      "bundle_copy": "validation/firesim_queue_job_535_runworkload_full.json"
+    },
+    "runtime_config": {
+      "path": "/scratch/firesim_queue/jobs/535/config_runtime.yaml",
+      "sha256": "e1d366d9ba143c69f1fb4bdb24ae0d83ad3f65f85ab316311b40980fdf483f89",
+      "bundle_copy": "validation/firesim_queue_job_535_config_runtime.yaml"
+    },
+    "queue_stdout": {
+      "path": "/scratch/firesim_queue/jobs/535/stdout.log",
+      "sha256": "c29ab437a83b95177a6638aa037ebf67f4fb17db882aee039f37c776f9002282",
+      "bundle_copy": "validation/firesim_queue_job_535_stdout.log"
+    },
+    "queue_stderr": {
+      "path": "/scratch/firesim_queue/jobs/535/stderr.log",
+      "sha256": "2b63642ce74f1fc24972c90f95343c3ec4f394a44facf501e0e1953e4a354f55",
+      "bundle_copy": "validation/firesim_queue_job_535_stderr.log"
+    },
+    "uart": {
+      "path": "/scratch/firesim_queue/jobs/535/simulation/sim_slot_0/uartlog",
+      "sha256": "191ebac11ccac4c45d90b93be2cd8253bce8380c4b3706c1531d297024842d4f",
+      "bundle_copy": "validation/firesim_queue_job_535_uart.log"
+    },
+    "heartbeat": {
+      "path": "/scratch/firesim_queue/jobs/535/simulation/sim_slot_0/heartbeat.csv",
+      "sha256": "ad3aa213e749113d5e5939833eb02c56697f5847dda5f83286699ffaa0cd2641"
+    },
+    "staged_elf": {
+      "path": "/scratch/firesim_queue/jobs/535/deploy_overlay/workloads/merlin-resnet50-phase2-affine-im2col-86aea9b8bc6aad86/merlin-resnet50-phase2-affine-im2col-86aea9b8bc6aad86.elf",
+      "sha256": "86aea9b8bc6aad86487e652a51629f76dcd472201c85e19077ecb7fac3dbde78"
+    },
+    "executed_elf": {
+      "path": "/scratch/firesim_queue/jobs/535/simulation/sim_slot_0/merlin-resnet50-phase2-affine-im2col-86aea9b8bc6aad860-merlin-resnet50-phase2-affine-im2col-86aea9b8bc6aad86.elf",
+      "sha256": "86aea9b8bc6aad86487e652a51629f76dcd472201c85e19077ecb7fac3dbde78"
+    },
+    "bitstream_archive": {
+      "path": "/scratch/firesim_queue/jobs/535/simulation/sim_slot_0/firesim.tar.gz",
+      "sha256": "a9a190b9fc26d577b1e8af0e3b46a94c8efaf2976f7fca6650236e0fd6d4eca1"
+    },
+    "flashed_bitstream": {
+      "path": "/scratch/firesim_queue/jobs/535/simulation/sim_slot_0/xilinx_alveo_u250/firesim.bit",
+      "sha256": "6bfb72e3d69d0bed14eaa8db9fd5faf53f82780ef9ecded6b2d49983dfcbc229"
+    },
+    "driver": {
+      "path": "/scratch/firesim_queue/jobs/535/simulation/sim_slot_0/FireSim-xilinx_alveo_u250",
+      "sha256": "16d49adafd8eea3051cd36330bced89fa1cec6b0fedc634043554d5f35e61ade"
+    },
+    "lifecycle_logs": {
+      "leading_kill_sha256": "5c7ad9d998ce8fe20a38f375bb2d69362bfca3d8cdd1e9ce54984eb3c8f70fc6",
+      "infrasetup_sha256": "4932f09d5b25b585a27f26a08757954a687bf2a59b2869e83ac840f9d80b7622",
+      "runworkload_sha256": "5c93ecb4c7e1415fa570de3a2f6587f4d70a4f41aa04fe127a0e7ea488a0075c",
+      "trailing_kill_sha256": "8db02f6143c012ca5ae6de0eb2638502f86c2b94b5c3ecbe49de4b55e81b400c"
+    }
+  },
+  "conclusion": {
+    "affine_im2col_host_work_deletion_hardware_win": true,
+    "hardware_promoted": true,
+    "under_one_billion_cycle_goal": false,
+    "cycle_goal": 1000000000,
+    "cycles_over_goal": 316619699,
+    "next_action": "Retain affine im2col specialization; next delete packing and host boundaries through exact residual/epilogue and capability-selected native-convolution lowering."
+  }
+}
+
