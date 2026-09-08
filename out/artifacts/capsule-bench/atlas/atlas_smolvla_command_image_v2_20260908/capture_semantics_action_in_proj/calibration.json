@@ -29,78 +29,88 @@
   },
   "measurements": {
     "activation": {
-      "codes_sha256": "fe39a9ca1f00a7cacbdb7df9f88d483c645872b54f7bed93b766f8c7479feaf5",
-      "max_abs": 2.0532610416412354,
-      "max_abs_reconstruction_error": 0.06704235076904297,
-      "mean_abs_reconstruction_error": 0.019082384184002876,
+      "codes_sha256": "b6212ef2987aa8be8c52d96d2ecea998ae832aa27391a6604a0864e9c9051161",
+      "max_abs": 3.6359939575195312,
+      "max_abs_reconstruction_error": 0.12958550453186035,
+      "mean_abs_reconstruction_error": 0.018723255023360252,
       "name": "A0",
-      "saturated_elements": 1,
-      "scale": 0.004583171967949186,
-      "scale_hex": "0x1.2c5cddb6db6dbp-8",
+      "saturated_elements": 2,
+      "scale": 0.00811605794089181,
+      "scale_hex": "0x1.09f26db6db6dbp-7",
       "shape": [
-        1,
+        50,
         32
       ],
       "zero_elements": 0
     },
     "bias": {
       "equation": "BF16_RNE(B / output_scale)",
-      "max_abs_error_after_output_rescale": 0.00045831501483917236,
-      "mean_abs_error_after_output_rescale": 0.0001317320711677894,
-      "quant_domain_max_abs": 97792.0,
-      "quant_domain_words_sha256": "3c72489320e1a01f838c2914f8de16b2d68dfb38b050af050a16ede899ce966c"
+      "max_abs_error_after_output_rescale": 0.0004081428050994873,
+      "mean_abs_error_after_output_rescale": 0.00012625110684894025,
+      "quant_domain_max_abs": 55040.0,
+      "quant_domain_words_sha256": "a350a9013f0676abac9f2ce91b1d657e30a489c8ba6992a2e5b9b72f7c5932ec"
     },
-    "output_scale": 1.8084442502016448e-06,
-    "output_scale_hex": "0x1.e57357b35414ep-20",
+    "output_scale": 3.202334700052022e-06,
+    "output_scale_hex": "0x1.adcf61e8ef58cp-19",
     "weight": {
-      "codes_sha256": "9540c732a7cb77e0cda7474a1a9f2d658959762def6138e7b933c4b05cd5db75",
-      "max_abs": 0.17677342891693115,
-      "max_abs_reconstruction_error": 0.006313100457191467,
-      "mean_abs_reconstruction_error": 0.0019652461633086205,
+      "codes_sha256": "10b07e205faa40d7bfab6f48f70c6745aa690c04725d001c15f2e13d3fa2ebed",
+      "max_abs": 0.17676635086536407,
+      "max_abs_reconstruction_error": 0.006312966346740723,
+      "mean_abs_reconstruction_error": 0.001941761001944542,
       "name": "W",
-      "saturated_elements": 1071,
-      "scale": 0.0003945835466895785,
-      "scale_hex": "0x1.9dc036db6db6ep-12",
+      "saturated_elements": 813,
+      "scale": 0.0003945677474673305,
+      "scale_hex": "0x1.9dbbf92492492p-12",
       "shape": [
         32,
-        960
+        720
       ],
       "zero_elements": 0
     }
   },
-  "partition_id": "atlas_p0098",
+  "partition_id": "atlas_p0243",
   "schema": "atlas_capture_partition_calibration_v1",
   "source_tensors": {
     "bias": {
       "header_sha256": "ad1c584111829296f9369eeeff3d14a66153904e830504d8f0befdaabc4f7f9d",
-      "name": "model.state_proj.bias",
-      "raw_sha256": "43bacbaf333a58c0add25cda5b4b668c3be7a99767a2bc9606bfe4c57560ff56",
+      "name": "model.action_in_proj.bias",
+      "raw_sha256": "a3dc52ddc0cad41438231068ecb6c31ba540202e64f55696dc1e659b94e8ad2b",
       "shape": [
-        960
+        720
       ]
     },
     "capture": "out/artifacts/recaptures/smolvla_fp32_consistent",
     "input": {
-      "archive_key": "in4",
-      "argument_index": 511,
-      "bridges": [],
-      "capture_name": "state",
+      "archive_key": "in5",
+      "argument_index": 512,
+      "bridges": [
+        {
+          "op": "tensor.expand_shape",
+          "region_id": "view_787"
+        },
+        {
+          "op": "tensor.collapse_shape",
+          "region_id": "view_787"
+        }
+      ],
+      "capture_name": "noise",
       "device_view_shape": [
-        1,
+        50,
         32
       ],
-      "raw_sha256": "deac09a04e803f7a5ea42aaf8cc2873d23b04444f6c6c3266b3d5ffbe4004cf6",
+      "raw_sha256": "fc07c22c3367070990e8cfd06168e1a2e061ece47b2d65369e1d92e544dc3a85",
       "source_shape": [
         1,
+        50,
         32
       ]
     },
     "weight": {
       "header_sha256": "ad1c584111829296f9369eeeff3d14a66153904e830504d8f0befdaabc4f7f9d",
-      "name": "model.state_proj.weight",
-      "raw_sha256": "3256df649d0a005db9789d0e4b3441b5e99e642b3f3e3e9c1a5f8b0faccae9d2",
+      "name": "model.action_in_proj.weight",
+      "raw_sha256": "4b8407b47c134cfee4d74b9a3c5780a6e51a8a7631113823338e67bb08aff636",
       "shape": [
-        960,
+        720,
         32
       ]
     },

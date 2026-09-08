@@ -1,4 +1,4 @@
-"""Tests for the single real-capture Atlas calibration/dispatch boundary."""
+"""Tests for bounded real-capture Atlas calibration/dispatch boundaries."""
 from __future__ import annotations
 
 import copy
@@ -28,6 +28,7 @@ from mlir_oot.capture_bridge import (  # noqa: E402
     sha256_bytes,
     validate_partition_abi,
 )
+from run_capture_partition import PARTITIONS, _load_capture_values  # noqa: E402
 
 
 def load(path: Path) -> dict:
@@ -38,6 +39,14 @@ def state_proj_partition() -> dict:
     plan = load(ROOT / "whole_capture_plan/partition_plan.json")
     matches = [entry for entry in plan["partitions"]
                if entry["partition_id"] == "atlas_p0098"]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def partition_by_id(partition_id: str) -> dict:
+    plan = load(ROOT / "whole_capture_plan/partition_plan.json")
+    matches = [entry for entry in plan["partitions"]
+               if entry["partition_id"] == partition_id]
     assert len(matches) == 1
     return matches[0]
 
@@ -211,3 +220,108 @@ def test_saved_real_capture_qualification_is_scoped_and_passes_fixed_tolerance()
     assert not passes_tolerance(
         comparison(perturbed, source_reference, floor), contract["tolerance"]
     )
+
+
+def test_action_in_projection_binds_real_noise_and_independently_passes() -> None:
+    out = ROOT / "capture_semantics_action_in_proj"
+    result = load(out / "result.json")
+    calibration = load(out / "calibration.json")
+    dispatch = load(out / "dispatch_manifest.json")
+    raw_receipt = load(ROOT / result["raw_gsim_receipt"])
+    raw_spec_path = ROOT / raw_receipt["spec"]
+    raw_stdout_path = ROOT / raw_receipt["stdout"]
+    raw_stderr_path = ROOT / raw_receipt["stderr"]
+    raw_spec = load(raw_spec_path)
+    raw_result_page = json.loads(raw_stdout_path.read_text().strip().splitlines()[-1])
+    contract = load(ROOT / "calibration_contract.json")
+    partition = partition_by_id("atlas_p0243")
+    capture = REPO / "out/artifacts/recaptures/smolvla_fp32_consistent"
+
+    activation, weight, bias, source = _load_capture_values(
+        partition, capture, PARTITIONS["action_in_proj"]
+    )
+    assert activation.shape == (50, 32)
+    assert source["input"]["source_shape"] == [1, 50, 32]
+    assert source["input"]["bridges"] == [
+        {"op": "tensor.expand_shape", "region_id": "view_787"},
+        {"op": "tensor.collapse_shape", "region_id": "view_787"},
+    ]
+    independently_bridged = bridge_inputs(activation, weight, bias, partition["geometry"])
+    raw_output = (ROOT / result["device_output"]["path"]).read_bytes()
+    device_output = (
+        np.frombuffer(raw_output, dtype="<u2").astype(np.uint32) << 16
+    ).view(np.float32).reshape(50, 720)
+    output_scale = np.float32(independently_bridged["record"]["output_scale"])
+    actual = device_output * output_scale
+    source_reference = np.matmul(activation, weight, dtype=np.float32) + bias
+    quantized_reference = (
+        np.matmul(
+            independently_bridged["decoded"]["A0"],
+            independently_bridged["decoded"]["W"],
+            dtype=np.float32,
+        ) + independently_bridged["decoded"]["B_quant_domain"]
+    ) * output_scale
+    floor = float(contract["tolerance"]["max_relative_denominator_floor"])
+    source_metrics = comparison(actual, source_reference, floor)
+    quantized_metrics = comparison(actual, quantized_reference, floor)
+
+    assert result["partition_id"] == "atlas_p0243"
+    assert result["capture_regions"] == ["matmul_242", "add_197"]
+    assert result["capture_semantics_executable_partitions"] == 2
+    assert result["cycles"] == 573715
+    assert result["image"]["instruction_words"] == 15175
+    assert result["source_f32_comparison"] == source_metrics
+    assert result["quantized_domain_reference_comparison"] == quantized_metrics
+    assert passes_tolerance(source_metrics, contract["tolerance"])
+    assert source_metrics["max_abs_error"] < 0.108
+    assert source_metrics["cosine_similarity"] > 0.9993
+    assert raw_receipt["assertion_clean"] is True
+    assert raw_stderr_path.read_bytes() == b""
+    assert raw_receipt["engine_binary_name"] == "atlas_gsim_sim_assert"
+    assert raw_receipt["cycles"] == raw_result_page["cycles"] == result["cycles"]
+    assert sha256_bytes(raw_output) == raw_receipt["raw_output_sha256"]
+    assert raw_output == bytes.fromhex(raw_result_page["outputs"][0])
+    assert "golden" not in raw_spec and "expected" not in raw_spec
+    assert raw_receipt["spec_sha256"] == hashlib.sha256(raw_spec_path.read_bytes()).hexdigest()
+    assert raw_receipt["stdout_sha256"] == hashlib.sha256(raw_stdout_path.read_bytes()).hexdigest()
+    assert raw_receipt["stderr_sha256"] == hashlib.sha256(raw_stderr_path.read_bytes()).hexdigest()
+    assert raw_receipt["kernel_binary_sha256"] == sha256_bytes(
+        np.asarray(raw_spec["words"], dtype="<u4").tobytes()
+    )
+    assert calibration["schema"] == "atlas_capture_partition_calibration_v1"
+    assert calibration["source_tensors"] == source
+    assert dispatch["abi"] == partition["abi"]
+    assert dispatch["lifetime"] == partition["lifetime"]
+    assert dispatch["events"][-1] == {
+        "capture_op_index": 8357,
+        "phase": "release_Y0_after_frontier",
+    }
+
+    perturbed = actual.copy()
+    perturbed[0, 0] += np.float32(1.0)
+    assert not passes_tolerance(
+        comparison(perturbed, source_reference, floor), contract["tolerance"]
+    )
+
+    # The requested 50x720x32 action output remains unbindable without its
+    # preceding host prefix; do not substitute the model's final golden output.
+    blocked = partition_by_id("atlas_p0390")
+    assert blocked["geometry"] == {"M": 50, "K": 720, "N": 32}
+    assert blocked["abi"]["inputs"][0]["origin"] == {
+        "kind": "host_region",
+        "region_id": "dtype_cast_471",
+        "semantic": "dtype_cast",
+        "bridges": [
+            {"op": "tensor.expand_shape", "region_id": "view_1321"},
+            {"op": "tensor.collapse_shape", "region_id": "view_1321"},
+        ],
+    }
+
+    mutated = copy.deepcopy(partition)
+    mutated["abi"]["inputs"][0]["origin"]["bridges"] = []
+    try:
+        _load_capture_values(mutated, capture, PARTITIONS["action_in_proj"])
+    except ValueError as error:
+        assert "activation view bridge changed" in str(error)
+    else:
+        raise AssertionError("missing activation view bridge was accepted")

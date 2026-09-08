@@ -1,22 +1,33 @@
 {
   "baseline": "atlas_smolvla_compact_loops_v1_20260908 (committed 28/28 IMEM-fit package)",
+  "capture_semantics_bridges": {
+    "calibration_contract": "calibration_contract.json",
+    "claim_scope": "two real capture partitions, not whole-model execution",
+    "partitions": {
+      "atlas_p0098": {
+        "device_output": "capture_semantics_state_proj/device_output.bf16.bin",
+        "dispatch_manifest": "capture_semantics_state_proj/dispatch_manifest.json",
+        "fqn": "model.state_proj",
+        "raw_gsim_receipt": "capture_semantics_state_proj/raw_gsim_receipt.json",
+        "result": "capture_semantics_state_proj/result.json"
+      },
+      "atlas_p0243": {
+        "device_output": "capture_semantics_action_in_proj/device_output.bf16.bin",
+        "dispatch_manifest": "capture_semantics_action_in_proj/dispatch_manifest.json",
+        "fqn": "model.action_in_proj",
+        "raw_gsim_receipt": "capture_semantics_action_in_proj/raw_gsim_receipt.json",
+        "result": "capture_semantics_action_in_proj/result.json"
+      }
+    },
+    "preferred_50x720x32_blocker": "host-produced activation from dtype_cast_471 is not captured",
+    "qualified_partitions": 2,
+    "structural_partitions_total": 391
+  },
   "compact_bias_fix": {
     "after": "explicit BF16 two-register row layout; 960/960 state-projection outputs exact on GSIM",
     "before": "bias_add omitted from compact FP8 matmul; first VREDSUM broadcast fix permuted lanes",
     "epilogue_safety": "bias precedes ReLU; unsupported compact scale/ReLU combinations fail closed",
     "path": "submission/mlir_oot/codegen.py"
-  },
-  "first_capture_semantics_bridge": {
-    "calibration_contract": "calibration_contract.json",
-    "claim_scope": "one real capture partition, not whole-model execution",
-    "device_output": "capture_semantics_state_proj/device_output.bf16.bin",
-    "dispatch_manifest": "capture_semantics_state_proj/dispatch_manifest.json",
-    "fqn": "model.state_proj",
-    "partition_id": "atlas_p0098",
-    "qualified_partitions": 1,
-    "raw_gsim_receipt": "capture_semantics_state_proj/raw_gsim_receipt.json",
-    "result": "capture_semantics_state_proj/result.json",
-    "structural_partitions_total": 391
   },
   "full_capture_parser_fix": {
     "mechanism": "remove only redundant tuple wrappers around multi-result region type lists before xDSL parsing",
@@ -73,7 +84,7 @@
     },
     "focused_tests": {
       "failed": 0,
-      "passed": 23
+      "passed": 24
     },
     "full_capture_partition_plan": {
       "accelerator_dependency_edges": 88,
@@ -117,60 +128,128 @@
     },
     "ok": true,
     "real_capture_semantics_qualification": {
-      "acceptance": {
-        "passed": true,
-        "thresholds": {
-          "cosine_min": 0.995,
-          "max_abs_error": 0.125,
-          "max_relative_denominator_floor": 0.001,
-          "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+      "partitions": {
+        "atlas_p0098": {
+          "acceptance": {
+            "passed": true,
+            "thresholds": {
+              "cosine_min": 0.995,
+              "max_abs_error": 0.125,
+              "max_relative_denominator_floor": 0.001,
+              "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+            }
+          },
+          "capture_regions": [
+            "matmul_97",
+            "add_99"
+          ],
+          "cycles": 154458,
+          "device_output": {
+            "dtype": "bf16",
+            "path": "capture_semantics_state_proj/device_output.bf16.bin",
+            "raw_sha256": "9e6c88fd324ad0629a7506653ff063361570175a2ed2999cf79f62dded542ba7",
+            "shape": [
+              1,
+              960
+            ]
+          },
+          "fqn": "model.state_proj",
+          "quantized_domain_reference_comparison": {
+            "cosine_similarity": 0.9999973773956299,
+            "max_abs_error": 0.012991905212402344,
+            "max_relative_denominator_floor": 0.001,
+            "max_relative_error": 0.08831901103258133,
+            "mean_abs_error": 0.001478539314121008,
+            "rmse": 0.0023077691439539194
+          },
+          "raw_gsim_receipt": {
+            "assertion_clean": true,
+            "cycles": 154458,
+            "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+            "final_pc_available": false,
+            "halt_reason": -1,
+            "halted": true,
+            "path": "capture_semantics_state_proj/raw_gsim_receipt.json",
+            "spec_sha256": "a0a0174e8b2963b0dcc79bf0b72a2b49958a10543b5719fbcc91050247b5c872",
+            "stderr_observation": "empty",
+            "stdout_sha256": "5ba040625c1c5a8aa85f897cd2dd218eaaf3982ea7148ffebecea7d1185c44dd"
+          },
+          "source_f32_comparison": {
+            "cosine_similarity": 0.9994547367095947,
+            "max_abs_error": 0.07092868536710739,
+            "max_relative_denominator_floor": 0.001,
+            "max_relative_error": 16.858871459960938,
+            "mean_abs_error": 0.01729688048362732,
+            "rmse": 0.021716563031077385
+          }
+        },
+        "atlas_p0243": {
+          "acceptance": {
+            "passed": true,
+            "thresholds": {
+              "cosine_min": 0.995,
+              "max_abs_error": 0.125,
+              "max_relative_denominator_floor": 0.001,
+              "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+            }
+          },
+          "capture_regions": [
+            "matmul_242",
+            "add_197"
+          ],
+          "cycles": 573715,
+          "device_output": {
+            "dtype": "bf16",
+            "path": "capture_semantics_action_in_proj/device_output.bf16.bin",
+            "raw_sha256": "3d59ee095dc78da88ba172f78414424c1072029d563ab8c00f52cf355a8884c1",
+            "shape": [
+              50,
+              720
+            ]
+          },
+          "fqn": "model.action_in_proj",
+          "quantized_domain_reference_comparison": {
+            "cosine_similarity": 0.9999971985816956,
+            "max_abs_error": 0.019068241119384766,
+            "max_relative_denominator_floor": 0.001,
+            "max_relative_error": 0.3333333432674408,
+            "mean_abs_error": 0.001317181857302785,
+            "rmse": 0.0020705321803689003
+          },
+          "raw_gsim_receipt": {
+            "assertion_clean": true,
+            "cycles": 573715,
+            "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+            "final_pc_available": false,
+            "halt_reason": -1,
+            "halted": true,
+            "path": "capture_semantics_action_in_proj/raw_gsim_receipt.json",
+            "spec_sha256": "a49aff702e67e04a1c4d7fbf30309ad96870fe1ee1d68c3fa23663be110c6c41",
+            "stderr_observation": "empty",
+            "stdout_sha256": "cf8a2506c1d50fbdf0c843682be4311942346036502aae287563cfcc3d0599a9"
+          },
+          "source_f32_comparison": {
+            "cosine_similarity": 0.9993289113044739,
+            "max_abs_error": 0.10736548900604248,
+            "max_relative_denominator_floor": 0.001,
+            "max_relative_error": 47.1974983215332,
+            "mean_abs_error": 0.017213188111782074,
+            "rmse": 0.02191220037639141
+          }
         }
       },
-      "capture_regions": [
-        "matmul_97",
-        "add_99"
-      ],
-      "cycles": 154458,
-      "device_output": {
-        "dtype": "bf16",
-        "path": "capture_semantics_state_proj/device_output.bf16.bin",
-        "raw_sha256": "9e6c88fd324ad0629a7506653ff063361570175a2ed2999cf79f62dded542ba7",
-        "shape": [
-          1,
-          960
-        ]
+      "preferred_50x720x32_blocker": {
+        "activation_origin": "host region dtype_cast_471 via view_1321",
+        "fqn": "model.action_out_proj",
+        "geometry": {
+          "K": 720,
+          "M": 50,
+          "N": 32
+        },
+        "partition_id": "atlas_p0390",
+        "reason": "requires the unresolved preceding host prefix; no captured source activation is bound"
       },
-      "fqn": "model.state_proj",
-      "partition_id": "atlas_p0098",
-      "qualified_partitions": 1,
-      "quantized_domain_reference_comparison": {
-        "cosine_similarity": 0.9999973773956299,
-        "max_abs_error": 0.012991905212402344,
-        "max_relative_denominator_floor": 0.001,
-        "max_relative_error": 0.08831901103258133,
-        "mean_abs_error": 0.001478539314121008,
-        "rmse": 0.0023077691439539194
-      },
-      "raw_gsim_receipt": {
-        "assertion_clean": true,
-        "cycles": 154458,
-        "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
-        "final_pc_available": false,
-        "halt_reason": -1,
-        "halted": true,
-        "path": "capture_semantics_state_proj/raw_gsim_receipt.json",
-        "spec_sha256": "a0a0174e8b2963b0dcc79bf0b72a2b49958a10543b5719fbcc91050247b5c872",
-        "stderr_observation": "empty",
-        "stdout_sha256": "5ba040625c1c5a8aa85f897cd2dd218eaaf3982ea7148ffebecea7d1185c44dd"
-      },
-      "source_f32_comparison": {
-        "cosine_similarity": 0.9994547367095947,
-        "max_abs_error": 0.07092868536710739,
-        "max_relative_denominator_floor": 0.001,
-        "max_relative_error": 16.858871459960938,
-        "mean_abs_error": 0.01729688048362732,
-        "rmse": 0.021716563031077385
-      },
+      "qualified_partitions": 2,
       "structural_partitions_total": 391
     },
     "recovery_status": "representative_rtl_numeric",
@@ -246,7 +325,19 @@
       }
     },
     "rtl_numeric_smolvla_coverage": {
+      "capture_semantics_physical_occurrences": 2,
       "cases": {
+        "real_action_in_proj_50_32_720": {
+          "cycles": 573715,
+          "instruction_words": 15175,
+          "shape": [
+            50,
+            32,
+            720
+          ],
+          "source_cosine_similarity": 0.9993289113044739,
+          "source_max_abs_error": 0.10736548900604248
+        },
         "smolvla_state_proj_1_32_960": {
           "cycles": 154458,
           "instruction_words": 1509,
@@ -269,10 +360,9 @@
           ]
         }
       },
-      "outputs_checked": 2560,
-      "physical_contraction_occurrences": 2,
+      "outputs_checked": 38560,
       "physical_contraction_occurrences_total": 391,
-      "unique_contraction_shapes": 2,
+      "unique_contraction_shapes": 3,
       "unique_contraction_shapes_total": 28
     },
     "schema": "atlas_smolvla_command_image_validation_v3",

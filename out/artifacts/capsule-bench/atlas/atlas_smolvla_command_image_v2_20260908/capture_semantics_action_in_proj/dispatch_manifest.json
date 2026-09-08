@@ -1,0 +1,119 @@
+{
+  "abi": {
+    "inputs": [
+      {
+        "capture_bytes": 6400,
+        "capture_type": "tensor<50x32xf32>",
+        "device_bytes": 1600,
+        "device_dtype": "fp8_e4m3",
+        "name": "A0",
+        "origin": {
+          "argument_index": 512,
+          "bridges": [
+            {
+              "op": "tensor.expand_shape",
+              "region_id": "view_787"
+            },
+            {
+              "op": "tensor.collapse_shape",
+              "region_id": "view_787"
+            }
+          ],
+          "kind": "function_argument"
+        }
+      },
+      {
+        "capture_bytes": 92160,
+        "capture_type": "tensor<32x720xf32>",
+        "device_bytes": 23040,
+        "device_dtype": "fp8_e4m3",
+        "name": "W",
+        "origin": {
+          "argument_index": 492,
+          "bridges": [
+            {
+              "op": "linalg.transpose",
+              "region_id": null
+            }
+          ],
+          "kind": "function_argument"
+        }
+      },
+      {
+        "capture_bytes": 2880,
+        "capture_type": "tensor<720xf32>",
+        "device_bytes": 1440,
+        "device_dtype": "bf16",
+        "name": "B",
+        "origin": {
+          "argument_index": 493,
+          "bridges": [],
+          "kind": "function_argument"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "capture_bytes": 144000,
+        "capture_type": "tensor<50x720xf32>",
+        "consumers": [
+          {
+            "op": "tensor.collapse_shape",
+            "op_index": 8288,
+            "region_id": "view_788",
+            "semantic": "view"
+          }
+        ],
+        "device_bytes": 72000,
+        "device_dtype": "bf16",
+        "frontier_consumers": [
+          {
+            "kind": "host_region",
+            "op": "tensor.concat",
+            "op_index": 8357,
+            "region_id": "cat_51",
+            "semantic": "cat"
+          }
+        ],
+        "name": "Y0"
+      }
+    ]
+  },
+  "calibration_contract": "calibration_contract.json",
+  "capture_regions": [
+    "matmul_242",
+    "add_197"
+  ],
+  "claim": "host/device skeleton for one partition; no whole-model dispatch claim",
+  "events": [
+    {
+      "capture_op_index": 8285,
+      "phase": "bind_capture_inputs"
+    },
+    {
+      "capture_op_index": 8285,
+      "phase": "quantize_A0_W_and_fold_B"
+    },
+    {
+      "capture_op_index": 8285,
+      "phase": "launch_device_image"
+    },
+    {
+      "capture_op_index": 8287,
+      "phase": "dequantize_and_publish_Y0"
+    },
+    {
+      "capture_op_index": 8357,
+      "phase": "release_Y0_after_frontier"
+    }
+  ],
+  "fqn": "model.action_in_proj",
+  "kernel_id": "matmul_50_32_720_bias",
+  "lifetime": {
+    "definition_op_index": 8287,
+    "last_frontier_use_op_index": 8357
+  },
+  "partition_id": "atlas_p0243",
+  "qualified_capture_semantics": true,
+  "schema": "atlas_single_partition_dispatch_v1"
+}

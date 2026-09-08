@@ -9,19 +9,19 @@
     }
   },
   "capture_regions": [
-    "matmul_97",
-    "add_99"
+    "matmul_242",
+    "add_197"
   ],
-  "capture_semantics_executable_partitions": 1,
-  "claim": "one real SmolVLA state_proj partition executed on elaborated RTL",
-  "cycles": 154458,
+  "capture_semantics_executable_partitions": 2,
+  "claim": "one real SmolVLA action_in_proj partition executed on elaborated RTL",
+  "cycles": 573715,
   "device_output": {
     "dtype": "bf16",
-    "path": "capture_semantics_state_proj/device_output.bf16.bin",
-    "raw_sha256": "9e6c88fd324ad0629a7506653ff063361570175a2ed2999cf79f62dded542ba7",
+    "path": "capture_semantics_action_in_proj/device_output.bf16.bin",
+    "raw_sha256": "3d59ee095dc78da88ba172f78414424c1072029d563ab8c00f52cf355a8884c1",
     "shape": [
-      1,
-      960
+      50,
+      720
     ]
   },
   "engine": {
@@ -44,14 +44,14 @@
       "wrapper": "gsim_run.py"
     }
   },
-  "fqn": "model.state_proj",
+  "fqn": "model.action_in_proj",
   "image": {
-    "command_buffer": "whole_capture_plan/command_buffers/matmul_1_32_960_bias.json",
-    "command_buffer_sha256_without_preloads": "4c56b59fdded260ae09ef2e40fde0b9c2498d077d8870dfdf5d01beef8e8d7d1",
-    "instruction_words": 1509,
-    "kernel": "whole_capture_plan/kernels/matmul_1_32_960_bias.S.gz",
-    "kernel_gzip_sha256": "e7274270f76653c8eeb4647eae4f13097593955f3ccc50fd3682ac25776d89f4",
-    "kernel_uncompressed_sha256": "0e94ad0ad262a1aafa4f18973b90f4ddaa94dde2d8ce690b0ae525e5870ee11e"
+    "command_buffer": "whole_capture_plan/command_buffers/matmul_50_32_720_bias.json",
+    "command_buffer_sha256_without_preloads": "84948d5f75b482708b6f651d6946eb305c0977dfa8cb9b948c64f7c4a0e492dd",
+    "instruction_words": 15175,
+    "kernel": "whole_capture_plan/kernels/matmul_50_32_720_bias.S.gz",
+    "kernel_gzip_sha256": "da9a4f0bef2c03bd9cfb1da896c080a1aaef7e2a6bac9a5df81f137c591d85d3",
+    "kernel_uncompressed_sha256": "3bd1ba2d8df77aa057903a898252a2a5e0e336d7c0b14f7b8202cc61eb7e22aa"
   },
   "not_claimed": [
     "whole-model dispatch",
@@ -59,16 +59,16 @@
     "source bit-exactness",
     "whole-model performance"
   ],
-  "partition_id": "atlas_p0098",
+  "partition_id": "atlas_p0243",
   "quantized_domain_reference_comparison": {
-    "cosine_similarity": 0.9999973773956299,
-    "max_abs_error": 0.012991905212402344,
+    "cosine_similarity": 0.9999971985816956,
+    "max_abs_error": 0.019068241119384766,
     "max_relative_denominator_floor": 0.001,
-    "max_relative_error": 0.08831901103258133,
-    "mean_abs_error": 0.001478539314121008,
-    "rmse": 0.0023077691439539194
+    "max_relative_error": 0.3333333432674408,
+    "mean_abs_error": 0.001317181857302785,
+    "rmse": 0.0020705321803689003
   },
-  "raw_gsim_receipt": "capture_semantics_state_proj/raw_gsim_receipt.json",
+  "raw_gsim_receipt": "capture_semantics_action_in_proj/raw_gsim_receipt.json",
   "scale_equation": {
     "activation": "qA = E4M3FN_RNE(A / sA)",
     "bias": "qB = BF16_RNE(B / (sA * sW))",
@@ -77,12 +77,12 @@
   },
   "schema": "atlas_real_capture_partition_qualification_v1",
   "source_f32_comparison": {
-    "cosine_similarity": 0.9994547367095947,
-    "max_abs_error": 0.07092868536710739,
+    "cosine_similarity": 0.9993289113044739,
+    "max_abs_error": 0.10736548900604248,
     "max_relative_denominator_floor": 0.001,
-    "max_relative_error": 16.858871459960938,
-    "mean_abs_error": 0.01729688048362732,
-    "rmse": 0.021716563031077385
+    "max_relative_error": 47.1974983215332,
+    "mean_abs_error": 0.017213188111782074,
+    "rmse": 0.02191220037639141
   },
   "structural_partitions_total": 391
 }

@@ -65,8 +65,9 @@ not executable f32-capture coverage: every partition still requires calibrated
 f32-to-FP8 input/weight conversion and BF16-to-f32 output conversion, so the
 base planner manifest explicitly reports zero capture-semantics-executable
 partitions because that snapshot describes the structural emitter alone.  The
-new calibrated bridge subsequently qualifies exactly **1/391** real capture
-partitions: `atlas_p0098`, `model.state_proj` (`matmul_97` + `add_99`).
+bounded calibrated bridges subsequently qualify exactly **2/391** real capture
+partitions: `atlas_p0098`, `model.state_proj` (`matmul_97` + `add_99`), and
+`atlas_p0243`, `model.action_in_proj` (`matmul_242` + `add_197`).
 
 For that partition the bridge loads the original `state` input and
 `model.state_proj.{weight,bias}` tensors, applies the recorded weight transpose,
@@ -79,7 +80,7 @@ qB = BF16_RNE(B / (sA * sW))
 Y_f32 = f32(Y_bf16_device) * (sA * sW)
 ```
 
-The bias is therefore added in the device quantization domain before output
+Bias is therefore added in the device quantization domain before output
 dequantization; it is not compared as an unscaled BF16 value.  The fixed,
 predeclared gate in `calibration_contract.json` is max absolute error <= 0.125
 and cosine similarity >= 0.995.  On elaborated RTL the real partition passes at
@@ -91,6 +92,24 @@ an independently reconstructed quantized-domain reference, max absolute error
 is 0.012992 and cosine similarity is 0.999997.  Folding the bias contributes at
 most 0.000459 absolute error after rescaling.  The unchanged 1,509-word image
 halts in 154,458 GSIM cycles.
+
+The second bridge binds `noise` directly from captured `inputs.npz:in5`, checks
+its exact `tensor.expand_shape`/`tensor.collapse_shape` view chain, and binds the
+original `model.action_in_proj.{weight,bias}` tensors. The resulting real
+50x32x720 projection executes the planned 15,175-word image on assertion-enabled
+GSIM in 573,715 cycles. It passes the same fixed gate with 0.107365 max absolute
+error, 0.017213 mean absolute error, 0.021912 RMSE, and 0.999329 cosine
+similarity versus the independently recomputed f32 source result. Against the
+quantized-domain reference, max absolute error is 0.019068 and cosine similarity
+is 0.999997. Its dispatch manifest publishes at capture op 8287 and retains the
+output through its last consumer frontier at op 8357.
+
+The preferred real 50x720x32 `model.action_out_proj` partition
+(`atlas_p0390`) is not counted as qualified. Its A0 originates in host-required
+`dtype_cast_471`, behind `view_1321`, so the captured inputs do not contain the
+partition activation. Substituting the model's final output would invalidate
+the test. This partition remains blocked until the preceding host prefix is
+executed and its value is handed to the device ABI.
 
 `capture_semantics_state_proj/dispatch_manifest.json` records bind, conversion,
 launch, publication at op 2827, and release after the final frontier consumer at
@@ -112,12 +131,16 @@ the final JSON result page).
 `device_output.bf16.bin` retains those device words. Validation verifies all
 receipt hashes, reloads the original source tensors and device words, and
 recomputes both comparisons; it also verifies that a deliberate output
-perturbation fails the fixed gate. This is approximate FP8 qualification of one
-partition, not source bit-exactness or whole-model execution.
+perturbation fails the fixed gate. The parallel
+`capture_semantics_action_in_proj/` directory retains equivalent no-golden raw
+simulator evidence, independently recomputed references, and a separate
+negative control. This is approximate FP8 qualification of two partitions, not
+source bit-exactness or whole-model execution.
 
-RTL numeric coverage is currently 2/28 unique shapes and 2/391 physical
-contraction instances, plus the small dependency/ABI controls above. The new
-state-projection case caught and fixed a real defect: compact FP8 matmul had
+RTL numeric coverage is currently 3/28 unique contraction shapes; real
+capture-semantic coverage is exactly 2/391 physical contraction instances,
+plus the small dependency/ABI controls above. The new state-projection case
+caught and fixed a real defect: compact FP8 matmul had
 silently omitted `bias_add`; a first fix used `VREDSUM` as a broadcast and
 permuted lanes on RTL. The backend now materializes the exact two-register row
 layout, adds bias before ReLU, and rejects compact scale/ReLU combinations until
@@ -172,7 +195,8 @@ From this artifact directory:
 MERLIN_REPO_PYTHON=../../../../../.venv/bin/python
 $MERLIN_REPO_PYTHON -m pytest -q test_parser_compat.py test_full_graph_inventory.py test_first_partition.py test_compact_loops.py test_command_image.py test_partition_plan.py test_capture_bridge.py
 $MERLIN_REPO_PYTHON validate_recovery.py
-MERLIN_ATLAS_GSIM_DIR=/path/to/atlas-gsim MERLIN_MLIR_INSTALL=/path/to/llvm-install $MERLIN_REPO_PYTHON run_capture_partition.py
+MERLIN_ATLAS_GSIM_DIR=/path/to/atlas-gsim MERLIN_MLIR_INSTALL=/path/to/llvm-install $MERLIN_REPO_PYTHON run_capture_partition.py state_proj
+MERLIN_ATLAS_GSIM_DIR=/path/to/atlas-gsim MERLIN_MLIR_INSTALL=/path/to/llvm-install $MERLIN_REPO_PYTHON run_capture_partition.py action_in_proj
 $MERLIN_REPO_PYTHON run_integration.py chained --engine gsim --max-cycles 200000
 $MERLIN_REPO_PYTHON run_integration.py smolvla_tail_50_720_32 --engine gsim --max-cycles 50000000
 $MERLIN_REPO_PYTHON run_integration.py smolvla_state_proj_1_32_960 --engine gsim --max-cycles 1000000
