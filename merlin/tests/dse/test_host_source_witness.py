@@ -262,6 +262,65 @@ func.return %p1, %p2 : tensor<3x3xi8>, tensor<3x3xi8>'''
     np.testing.assert_array_equal(observed[1], wrap(values.astype(np.int32)*2-1))
     with pytest.raises(ValueError, match="no supported complete-use"):
         extract_pointwise_chain(source, [0, 1, 2, 3], mechanism="fanout")
+
+
+POINTWISE_CONCAT = '''builtin.module {
+  func.func @forward(%left: tensor<5x7xf32>, %right: tensor<5x2xf32>) -> tensor<5x9xf32> {
+    %empty = tensor.empty() : tensor<5x7xf32>
+    %negative = linalg.generic {
+        indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, affine_map<(d0,d1)->(d0,d1)>],
+        iterator_types = ["parallel", "parallel"]}
+      ins(%left : tensor<5x7xf32>) outs(%empty : tensor<5x7xf32>) {
+    ^bb0(%value: f32, %unused: f32):
+      %negated = arith.negf %value : f32
+      linalg.yield %negated : f32
+    } -> tensor<5x7xf32>
+    %joined = "tensor.concat"(%negative, %right) <{dim = 1 : i64}>
+      : (tensor<5x7xf32>, tensor<5x2xf32>) -> tensor<5x9xf32>
+    func.return %joined : tensor<5x9xf32>
+  }
+}'''
+
+
+def test_pointwise_concat_clones_actual_axis_segments_and_exact_scalar_semantics():
+    from merlin.perf.host_source_witness import extract_pointwise_concat
+
+    probe, receipt = extract_pointwise_concat(
+        POINTWISE_CONCAT, [0, 1, 2], max_extent=3, max_elements=64)
+
+    assert receipt["source_indices"] == [1, 2]
+    assert receipt["concat_axis"] == 1
+    assert receipt["source_operand_shapes"] == [[5, 7], [5, 2]]
+    assert receipt["probe_operand_shapes"] == [[3, 3], [3, 2]]
+    assert receipt["probe_result_shape"] == [3, 5]
+    assert receipt["probe_intermediate_payload_bytes"] == 36
+    assert receipt["bounded_tensor_elements"] == 39
+    assert receipt["all_source_producer_uses_preserved"] is True
+    left = np.asarray([
+        [0.0, -0.0, 2**-24],
+        [1.0, -1.0, 2**20],
+        [-2**-20, 127.0, -127.0],
+    ], dtype=np.float32)
+    right = np.asarray([[4.0, -4.0], [5.0, -5.0], [6.0, -6.0]], dtype=np.float32)
+    expected = np.concatenate((np.negative(left, dtype=np.float32), right), axis=1)
+    actual = evaluate_pointwise_source(probe, [left, right])[0]
+    assert actual.tobytes() == expected.tobytes()
+
+
+def test_pointwise_concat_refuses_shared_producer_and_oversized_probe():
+    from merlin.perf.host_source_witness import extract_pointwise_concat
+
+    shared = POINTWISE_CONCAT.replace(
+        "tensor<5x9xf32>", "tensor<5x16xf32>").replace(
+        '"tensor.concat"(%negative, %right)',
+        '"tensor.concat"(%negative, %negative, %right)').replace(
+        ": (tensor<5x7xf32>, tensor<5x2xf32>) -> tensor<5x16xf32>",
+        ": (tensor<5x7xf32>, tensor<5x7xf32>, tensor<5x2xf32>) -> tensor<5x16xf32>")
+    with pytest.raises(ValueError, match="sole-use pointwise-to-concat"):
+        extract_pointwise_concat(shared, [0, 1, 2])
+    with pytest.raises(ValueError, match="tensor-element budget"):
+        extract_pointwise_concat(
+            POINTWISE_CONCAT, [0, 1, 2], max_extent=3, max_elements=38)
 DEQUANT_CONTRACTION = '''builtin.module {
   func.func @forward(%w: tensor<3x4xi8>, %s: tensor<4xf32>, %z: tensor<4xi32>,
                      %a: tensor<1x3xf32>, %initial: tensor<1x4xf32>) -> tensor<1x4xf32> {
@@ -503,14 +562,14 @@ def test_changed_region_extraction_exhausts_best_task_mechanisms_before_next_tas
     best = ((100, True, 20), {"task_index": 7}, [200, 100])
     second = ((10, True, 5), {"task_index": 8}, [20, 10])
     options = list(qualifier._ranked_source_witness_options([second, best]))
-    kinds = [kind for kind, _ in options[:8]]
+    kinds = [kind for kind, _ in options[:9]]
 
-    assert [row[1][1]["task_index"] for row in options[:8]] == [7] * 8
+    assert [row[1][1]["task_index"] for row in options[:9]] == [7] * 9
     assert kinds == [
-        "insert_slice", "bounded_gather", "named_reduction", "generic_reduction",
+        "pointwise_concat", "insert_slice", "bounded_gather", "named_reduction", "generic_reduction",
         "pointwise_reduction", "dequant_contraction", "fanout", "chain",
     ]
-    assert options[8][1][1]["task_index"] == 8
+    assert options[9][1][1]["task_index"] == 8
 
 
 @pytest.mark.parametrize("mutation", [None, "partial_overlap", "mixed_lane"])
@@ -596,3 +655,50 @@ def test_insert_slice_codegen_change_requires_deleted_overwritten_payload():
         before, {**after, "load_payload_bytes": 32}, extraction)["status"] == "changed_reduced_materialization"
     assert reduced_materialization_change(
         before, {**after, "store_payload_bytes": 24}, extraction)["status"] == "NO_RELEVANT_REDUCED_CHANGE"
+
+
+def test_pointwise_concat_change_requires_exact_producer_materialization_deletion():
+    from merlin.perf.host_region_qualifier import reduced_materialization_change
+
+    before = {"status": "derived", "static_allocation_payload_bytes": 96,
+              "load_payload_bytes": 180, "store_payload_bytes": 156}
+    after = {"status": "derived", "static_allocation_payload_bytes": 60,
+             "load_payload_bytes": 144, "store_payload_bytes": 120}
+    extraction = {"mechanism": "pointwise_concat", "probe_intermediate_payload_bytes": 36}
+    proof = reduced_materialization_change(before, after, extraction)
+    assert proof["status"] == "changed_reduced_materialization"
+    assert proof["expected_producer_payload_bytes"] == 36
+    assert reduced_materialization_change(
+        before, {**after, "static_allocation_payload_bytes": 64}, extraction
+    )["status"] == "NO_RELEVANT_REDUCED_CHANGE"
+
+
+def test_pointwise_concat_emission_requires_direct_scalar_to_concat_output():
+    from merlin.perf.host_region_qualifier import pointwise_concat_emission_evidence
+
+    extraction = {"schema": "actual_source_pointwise_concat_witness_v1",
+                  "mechanism": "pointwise_concat",
+                  "producer_result_scalar_operation": "arith.negf",
+                  "scalar_region_sha256": "a" * 64,
+                  "concat_axis": 1,
+                  "probe_operand_shapes": [[3, 3], [3, 2]],
+                  "probe_result_shape": [3, 5],
+                  "probe_intermediate_payload_bytes": 36,
+                  "all_source_producer_uses_preserved": True}
+    before = {"status": "derived", "dynamic_operations": {
+        "floating_arithmetic": 9, "conversion": 0}}
+    after = {"status": "derived", "dynamic_operations": {
+        "floating_arithmetic": 9, "conversion": 0}}
+    delta = {"status": "changed_reduced_materialization",
+             "deleted_payload_bytes": {"static_allocation_payload_bytes": 36,
+                                       "load_payload_bytes": 36,
+                                       "store_payload_bytes": 36}}
+    evidence = pointwise_concat_emission_evidence(
+        extraction, before, after, emitted_operation_names=["llvm.fneg", "llvm.store"],
+        direct_output=True, materialization_delta=delta)
+    assert evidence["status"] == "demonstrated_changed_pointwise_in_concat"
+    assert evidence["actual_result_scalar_operations"] == 1
+    assert evidence["floating_arithmetic_and_conversion_counts_preserved"] is True
+    assert pointwise_concat_emission_evidence(
+        extraction, before, after, emitted_operation_names=["llvm.store"],
+        direct_output=True, materialization_delta=delta)["status"] == "NOT_DEMONSTRATED"

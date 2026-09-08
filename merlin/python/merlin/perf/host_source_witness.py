@@ -41,6 +41,7 @@ def _info(op, *, allow_gather: bool = False, allow_quantized_epilogue: bool = Fa
     if list(body.args[-1].uses):
         return None
     supported = {"arith.constant", "arith.addf", "arith.subf", "arith.mulf", "arith.divf",
+                 "arith.negf",
                  "arith.addi", "arith.subi", "arith.muli", "arith.extsi", "arith.extui",
                  "arith.trunci", "arith.sitofp", "arith.uitofp", "arith.fptosi", "arith.fptoui",
                  "math.tanh", "math.erf", "math.sqrt", "math.rsqrt", "math.exp", "linalg.yield"}
@@ -408,6 +409,207 @@ def extract_bounded_gather(source_text: str, source_indices: Sequence[int], *,
                   "all_source_intermediate_uses_preserved": True,
                   "geometry": "original bounded mechanism extents; no full layer or model",
                   "scope": "source-cloned gather/index/padding/views/scalars; proper subgraph only"}
+
+
+def extract_pointwise_concat(source_text: str, source_indices: Sequence[int], *,
+                             max_extent: int = 3,
+                             max_elements: int = 4096) -> tuple[str, dict[str, Any]]:
+    """Clone one sole-use pointwise producer and its static concat consumer.
+
+    The concat axis and segment order come from the actual source.  Every non-concatenated
+    dimension is reduced uniformly, while each concatenated segment is reduced independently.
+    A producer with any use other than the selected concat is refused: recomputing it in one
+    concat copy loop would otherwise silently drop or duplicate a source-visible value.
+    """
+    from xdsl.dialects.builtin import FunctionType, ModuleOp, TensorType
+    from xdsl.dialects.func import FuncOp, ReturnOp
+    from xdsl.ir import Block, Region
+    from xdsl.ir.affine import AffineConstantExpr, AffineDimExpr
+    from xdsl.printer import Printer
+    from xdsl.rewriter import Rewriter
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+
+    if (type(max_extent) is not int or not 1 <= max_extent <= 8
+            or type(max_elements) is not int or not 1 <= max_elements <= 16_384):
+        raise ValueError("pointwise concat witness requires bounded extents and tensor elements")
+    module = parse_mlir_text(source_text)
+    functions = [op for op in module.body.block.ops
+                 if op.name == "func.func" and len(op.body.blocks)]
+    if len(functions) != 1 or len(functions[0].body.blocks) != 1:
+        raise ValueError("pointwise concat witness requires one unoutlined source function")
+    function = functions[0]
+    ops = [op for op in function.body.block.ops if op.name != "func.return"]
+    positions = {op: index for index, op in enumerate(ops)}
+    permitted = set(source_indices)
+    if any(type(index) is not int or not 0 <= index < len(ops) for index in permitted):
+        raise ValueError("pointwise concat source indices are outside the source function")
+
+    options = []
+    supported_dtypes = {"f32", "i8", "i16", "i32", "i64"}
+    for producer_index in sorted(permitted):
+        producer = ops[producer_index]
+        producer_info = _info(producer)
+        uses = list(producer.results[0].uses) if producer_info is not None else []
+        if len(uses) != 1:
+            continue
+        use = uses[0]
+        concat = use.operation
+        concat_index = positions.get(concat)
+        if (concat.name != "tensor.concat" or concat_index not in permitted
+                or len(concat.results) != 1 or len(concat.operands) < 2
+                or not 0 <= use.index < len(concat.operands)
+                or concat.operands[use.index] is not producer.results[0]):
+            continue
+        values = [*concat.operands, concat.results[0]]
+        if any(not isinstance(value.type, TensorType) for value in values):
+            continue
+        operand_shapes = [tuple(value.type.get_shape()) for value in concat.operands]
+        result_shape = tuple(concat.results[0].type.get_shape())
+        rank = len(result_shape)
+        try:
+            axis = int(_props(concat, "dim").value.data)
+        except (AttributeError, TypeError, ValueError):
+            continue
+        dtype = str(concat.results[0].type.get_element_type())
+        if (rank == 0 or not 0 <= axis < rank or dtype not in supported_dtypes
+                or any(len(shape) != rank or any(extent <= 0 for extent in shape)
+                       for shape in [*operand_shapes, result_shape])
+                or producer_info[0] != operand_shapes[use.index]
+                or any(str(value.type.get_element_type()) != dtype for value in values)
+                or any(shape[dimension] != result_shape[dimension]
+                       for shape in operand_shapes for dimension in range(rank)
+                       if dimension != axis)
+                or sum(shape[axis] for shape in operand_shapes) != result_shape[axis]):
+            continue
+        body = producer.regions[0].blocks[0]
+        terminator = body.last_op
+        scalar_result = terminator.operands[0].owner if terminator is not None else None
+        if (terminator is None or terminator.name != "linalg.yield"
+                or scalar_result is body or not hasattr(scalar_result, "name")):
+            continue
+        options.append((math.prod(operand_shapes[use.index]), -producer_index,
+                        producer_index, concat_index, use.index, producer_info,
+                        operand_shapes, result_shape, axis, dtype,
+                        scalar_result.name))
+    if not options:
+        raise ValueError("changed source task has no supported sole-use pointwise-to-concat edge")
+    (_, _, producer_index, concat_index, producer_operand, producer_info,
+     operand_shapes, result_shape, axis, dtype, scalar_result_name) = max(options)
+    producer, concat = ops[producer_index], ops[concat_index]
+
+    probe_operand_shapes = []
+    for source_shape in operand_shapes:
+        probe_operand_shapes.append(tuple(
+            min(extent, max_extent) for extent in source_shape))
+    probe_result_shape = list(probe_operand_shapes[0])
+    probe_result_shape[axis] = sum(shape[axis] for shape in probe_operand_shapes)
+    probe_result_shape = tuple(probe_result_shape)
+    shapes = {value: shape for value, shape in zip(concat.operands, probe_operand_shapes)}
+    shapes[concat.results[0]] = probe_result_shape
+
+    producer_shape, maps, _ = producer_info
+    reduced_producer_shape = probe_operand_shapes[producer_operand]
+    output_permutation = [expr.position for expr in maps[-1].results]
+    loop_bounds = [reduced_producer_shape[output_permutation.index(dimension)]
+                   for dimension in range(len(producer_shape))]
+    for value, amap in zip(producer.operands, maps):
+        needed = tuple(loop_bounds[expr.position] if isinstance(expr, AffineDimExpr)
+                       else expr.value + 1 if isinstance(expr, AffineConstantExpr) else -1
+                       for expr in amap.results)
+        original = tuple(value.type.get_shape())
+        if (len(needed) != len(original) or any(extent <= 0 or extent > source_extent
+                                               for extent, source_extent in zip(needed, original))):
+            raise ValueError("pointwise producer indexing does not admit bounded concat extents")
+        if value in shapes and shapes[value] != needed:
+            raise ValueError("pointwise concat witness has conflicting source tensor extents")
+        shapes[value] = needed
+
+    keep = {producer, concat}
+    pending = [producer]
+    constant_like = {"arith.constant", "tensor.empty", "tensor.splat", "linalg.fill"}
+    while pending:
+        for nested in pending.pop().walk():
+            for value in nested.operands:
+                owner = value.owner
+                if owner in positions and owner not in keep and owner.name in constant_like:
+                    keep.add(owner)
+                    pending.append(owner)
+    kept = [op for op in ops if op in keep]
+    for op in reversed(kept):
+        if op.name == "linalg.fill" and op.results[0] in shapes:
+            shapes[op.operands[-1]] = shapes[op.results[0]]
+    produced = {value for op in kept for value in op.results}
+    boundary = []
+    for op in kept:
+        for nested in op.walk():
+            for value in nested.operands:
+                if ((value.owner is function.body.block or value.owner in positions)
+                        and value not in produced and value not in boundary):
+                    boundary.append(value)
+    if any(not isinstance(value.type, TensorType) or value not in shapes for value in boundary):
+        raise ValueError("pointwise concat source boundary is not a statically bounded tensor")
+    bounded_elements = (sum(math.prod(shapes[value]) for value in boundary)
+                        + math.prod(reduced_producer_shape) + math.prod(probe_result_shape))
+    if bounded_elements > max_elements:
+        raise ValueError("source-derived pointwise concat exceeds the tensor-element budget")
+
+    def value_type(value):
+        if not isinstance(value.type, TensorType):
+            return value.type
+        if value not in shapes:
+            raise ValueError("pointwise concat source tensor has no witness extent")
+        return TensorType(value.type.get_element_type(), shapes[value])
+
+    block = Block(arg_types=[value_type(value) for value in boundary])
+    mapping = dict(zip(boundary, block.args))
+    for op in kept:
+        clone = op.clone(value_mapper=mapping)
+        block.add_op(clone)
+        for old, new in zip(op.results, list(clone.results)):
+            mapping[old] = Rewriter.replace_value_with_new_type(new, value_type(old))
+    result = mapping[concat.results[0]]
+    block.add_op(ReturnOp(result))
+    witness = ModuleOp([FuncOp("forward", FunctionType.from_lists(
+        [value.type for value in block.args], [result.type]), Region([block]))])
+    witness.verify()
+    stream = io.StringIO()
+    Printer(stream=stream, print_generic_format=True).print_op(witness)
+    text = stream.getvalue()
+    scalar_stream = io.StringIO()
+    scalar_printer = Printer(stream=scalar_stream, print_generic_format=True)
+    for scalar_op in producer.regions[0].blocks[0].ops:
+        scalar_printer.print_op(scalar_op)
+    width = int(dtype[1:])
+    spec = lambda value: {"shape": list(shapes[value]),
+                          "dtype": str(value.type.get_element_type())}
+    return text, {
+        "schema": "actual_source_pointwise_concat_witness_v1",
+        "mechanism": "pointwise_concat",
+        "source_indices": [producer_index, concat_index],
+        "auxiliary_source_indices": [positions[op] for op in kept
+                                     if op not in {producer, concat}],
+        "source_sha256": hashlib.sha256(source_text.encode()).hexdigest(),
+        "probe_source_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "scalar_region_sha256": hashlib.sha256(scalar_stream.getvalue().encode()).hexdigest(),
+        "producer_source_index": producer_index,
+        "concat_source_index": concat_index,
+        "producer_concat_operand": producer_operand,
+        "producer_result_scalar_operation": scalar_result_name,
+        "concat_axis": axis,
+        "source_operand_shapes": [list(shape) for shape in operand_shapes],
+        "source_result_shape": list(result_shape),
+        "probe_operand_shapes": [list(shape) for shape in probe_operand_shapes],
+        "probe_result_shape": list(probe_result_shape),
+        "inputs": [spec(value) for value in boundary],
+        "outputs": [spec(concat.results[0])],
+        "output": spec(concat.results[0]),
+        "probe_intermediate_payload_bytes": math.prod(reduced_producer_shape) * ((width + 7) // 8),
+        "probe_output_payload_bytes": math.prod(probe_result_shape) * ((width + 7) // 8),
+        "bounded_tensor_elements": bounded_elements,
+        "all_source_producer_uses_preserved": True,
+        "geometry": "actual concat axis and operand order; uniformly reduced non-concat extents and independently reduced segment extents",
+        "scope": "one exact source-cloned sole-use pointwise producer fused into its static concat copy",
+    }
 
 
 def extract_pointwise_chain(source_text: str, source_indices: Sequence[int], *,
@@ -1301,6 +1503,8 @@ def evaluate_pointwise_source(source_text: str, inputs: Sequence[Any], *,
             value = values[0] - values[1]
         elif name in {"arith.mulf", "arith.muli"}:
             value = values[0] * values[1]
+        elif name == "arith.negf":
+            value = -values[0]
         elif name in {"arith.maxsi", "arith.minsi"}:
             value = (max if name == "arith.maxsi" else min)(values)
         elif name in {"arith.maxui", "arith.minui"}:
@@ -1437,6 +1641,19 @@ def evaluate_pointwise_source(source_text: str, inputs: Sequence[Any], *,
             result[tuple(slice(off, off + size * stride, stride)
                          for off, size, stride in zip(offsets, sizes, strides))] = values
             env[op.results[0]] = result
+        elif op.name == "tensor.concat":
+            arrays = [env[value] for value in op.operands]
+            result_shape = tuple(op.results[0].type.get_shape())
+            axis = _props(op, "dim").value.data
+            if (not arrays or len(result_shape) == 0 or not 0 <= axis < len(result_shape)
+                    or any(array.ndim != len(result_shape) for array in arrays)
+                    or any(array.shape[dimension] != result_shape[dimension]
+                           for array in arrays for dimension in range(len(result_shape))
+                           if dimension != axis)
+                    or sum(array.shape[axis] for array in arrays) != result_shape[axis]
+                    or any(array.dtype != arrays[0].dtype for array in arrays)):
+                raise ValueError("independent concat requires exact static segment geometry")
+            env[op.results[0]] = np.concatenate(arrays, axis=axis)
         elif op.name == "linalg.generic":
             info = _info(op, allow_gather=True, allow_quantized_epilogue=allow_quantized_epilogue)
             reduction_info = _generic_reduction_info(op) if info is None else None
