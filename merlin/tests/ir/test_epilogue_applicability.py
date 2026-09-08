@@ -171,6 +171,17 @@ class TestTheGateIsScopedByWhatATargetDECLARES:
         other = self._backend("muon")
         assert not callable(getattr(other, "readout_epilogue_capability", None))
 
+    def test_an_external_target_with_no_same_named_backend_is_unavailable_not_a_crash(self):
+        """Radiance-style targets may run through a bespoke oracle rather than a runtime backend.
+
+        The gate documents missing readout capabilities as unavailable.  Backend discovery must not
+        turn that state into a runner crash before the bespoke oracle can execute.
+        """
+        from merlin.targetgen import capsule_runner
+
+        assert capsule_runner._readout_epilogue_capabilities(
+            "fixture-external-target-with-no-runtime-backend") is None
+
     def test_the_recorded_block_is_self_describing_even_when_nothing_applies(self):
         """An absent key reads as "this axis does not apply" -- the same shape as the defect.
 

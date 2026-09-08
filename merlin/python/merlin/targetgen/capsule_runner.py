@@ -381,6 +381,22 @@ def _did_not_halt_failure(msg: str) -> "CertFailure":
                        "halts.")
 
 
+def _readout_epilogue_capabilities(target: str):
+    """Return a backend's readout declaration, or ``None`` when it has none.
+
+    Some out-of-tree targets are executed exclusively through a bespoke oracle adapter and therefore
+    have no same-named runtime backend.  Absence is the documented ``unavailable`` state for this
+    advisory gate; allowing :func:`get_backend`'s ``KeyError`` to escape instead turns every capsule for
+    such a target into a runner crash before its oracle can start.
+    """
+    try:
+        backend = _backends_mod.get_backend(target)
+    except KeyError:
+        return None
+    reader = getattr(backend, "readout_epilogue_capability", None)
+    return reader() if callable(reader) else None
+
+
 def _spike_verilator_adapter(sim: str, target: str, selection: dict | None = None) -> Callable:
     """Adapter for one declared chipyard sim engine. ``selection`` is the engine-policy record that
     CHOSE this engine — carried into the result so the tier can record not just which simulator answered
@@ -3848,9 +3864,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # than refusing every capsule -- an undeclared target is not a broken one, and the reason is
         # recorded so "not checked" never reads as "checked and fine".
         from merlin.verify import epilogue_applicability as _EPI
-        _readouts_reader = getattr(_backends_mod.get_backend(eff_target),
-                                   "readout_epilogue_capability", None)
-        _declared = _readouts_reader() if callable(_readouts_reader) else None
+        _declared = _readout_epilogue_capabilities(eff_target)
         if _declared:
             _epi = _EPI.assess(cb, [_EPI.ReadoutCapability(
                 str(r["selector"]), frozenset(str(x) for x in r.get("applies") or ()),
