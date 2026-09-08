@@ -86,11 +86,13 @@
   "coverage": {
     "host_signature_regions_by_semantic": {
       "add": 215,
+      "arange": 63,
       "compare": 4,
       "cos": 57,
       "div": 56,
       "dtype_cast": 472,
       "elementwise": 3,
+      "fill": 50,
       "gelu": 12,
       "minmax": 2,
       "mul": 536,
@@ -101,10 +103,10 @@
       "sin": 57,
       "sub": 68
     },
-    "host_signature_regions_implemented": 1749,
+    "host_signature_regions_implemented": 1862,
     "layout_bridge_candidates": 2033,
     "materialized_copy_bridges": 112,
-    "missing_host_semantics_reduction": 1727,
+    "missing_host_semantics_reduction": 1840,
     "partition_host_region_overlap": [
       "conv_0"
     ],
@@ -129,9 +131,8 @@
   },
   "event_count": 6104,
   "fail_closed": {
-    "missing_host_semantics": 681,
+    "missing_host_semantics": 568,
     "missing_host_semantics_by_semantic": {
-      "arange": 63,
       "aten_min_dim": 8,
       "bitwise": 16,
       "bucketize": 2,
@@ -139,7 +140,6 @@
       "convolution_im2col_matmul": 1,
       "cumsum": 4,
       "embedding": 2,
-      "fill": 50,
       "index_gather": 1,
       "index_put": 1,
       "layer_norm": 25,
@@ -157,11 +157,11 @@
   },
   "full_schedule": {
     "path": "whole_capture_plan/hybrid_schedule.json",
-    "sha256": "ef98fce5c8db527cdd6f478fc26128c871ca9506e70441491689a8963d2ca496"
+    "sha256": "71298b46397b3a02302b8e242794459eda70d8d3a1e2d5bac663385b2caf8485"
   },
   "generic_host_chain": {
     "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-    "dependency_edges": 14,
+    "dependency_edges": 17,
     "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
     "fresh_inputs": [
       {
@@ -171,35 +171,37 @@
         "shape": [
           360
         ]
-      },
-      {
-        "dtype": "int64",
-        "ordinal": 1,
-        "sha256": "9598c6903d8af21c8a80e6e5f53ed0e6646e153bc2a8ae560cd5f12adf2dd307",
-        "shape": [
-          360
-        ]
       }
     ],
     "label": "pow_reciprocal",
     "outputs": [
       {
+        "dtype": "int64",
+        "finite": true,
+        "region_id": "iota_38",
+        "semantic": "arange",
+        "sha256": "c5b5d89abc3aae5b9debf1091964dedb9e385c3348ba8746fecd1165ae058289",
+        "shape": [
+          360
+        ]
+      },
+      {
         "dtype": "bool",
         "finite": true,
         "region_id": "compare_2",
         "semantic": "compare",
-        "sha256": "215e3a8e99cb68cf0fa5d6d385f62cc558894c87524255d5b0df7faec29afa09",
+        "sha256": "aba82a03ac15ce5e38f244e4a53c7bd94fafec7f8a4ef1a9f258af0d846b123e",
         "shape": [
           360
         ],
-        "true_elements": 171
+        "true_elements": 17
       },
       {
         "dtype": "float64",
         "finite": true,
         "region_id": "dtype_cast_242",
         "semantic": "dtype_cast",
-        "sha256": "5ed0947cf8962fc8ec4727a969c52459f07be56100367191546730058f869384",
+        "sha256": "b34f4331dfd8ecd84c011c07582cedbe5d638ba8fa8261a7f6723a543b9daac5",
         "shape": [
           360
         ]
@@ -209,7 +211,7 @@
         "finite": true,
         "region_id": "mul_293",
         "semantic": "mul",
-        "sha256": "f0a5b7795cf95e99f598aa76652af3f8e9da8342b3edd12f70e77348c8b5d53d",
+        "sha256": "e6c8e932186c8a66176217cf4ec6f4e14629bb4eb2b14372b9584f10b2131847",
         "shape": [
           360
         ]
@@ -219,7 +221,7 @@
         "finite": true,
         "region_id": "add_198",
         "semantic": "add",
-        "sha256": "f0a5b7795cf95e99f598aa76652af3f8e9da8342b3edd12f70e77348c8b5d53d",
+        "sha256": "e6c8e932186c8a66176217cf4ec6f4e14629bb4eb2b14372b9584f10b2131847",
         "shape": [
           360
         ]
@@ -229,7 +231,7 @@
         "finite": true,
         "region_id": "sub_33",
         "semantic": "sub",
-        "sha256": "702506c1bf12b56ce8b03738fa9cbbf9e62c8e2953b3a90384918370f77030e4",
+        "sha256": "abb4a7aaccdd380bef57410acbe8d5a78c595b0d3f64b93d1b101709c669efeb",
         "shape": [
           360
         ]
@@ -239,7 +241,7 @@
         "finite": true,
         "region_id": "dtype_cast_243",
         "semantic": "dtype_cast",
-        "sha256": "3c82bffc26acd8fa9ccbfd42099cdcf7e4f746de0a2fc965e8a98051792fc502",
+        "sha256": "6b830e9258f9b1c41b12584267be95d6bd0e0450aaf0d2a5435e1c32ba64142e",
         "shape": [
           360
         ]
@@ -249,7 +251,7 @@
         "finite": true,
         "region_id": "mul_294",
         "semantic": "mul",
-        "sha256": "0c9e01e63bd78e35e28465f6214a2a23ae4450678ffd5ecefedbb0ba07232a0f",
+        "sha256": "dba71943b70e7000bb0f63b10d8783e0e095c9774e2940f3083ed3427d554602",
         "shape": [
           360
         ]
@@ -259,7 +261,7 @@
         "finite": true,
         "region_id": "sub_34",
         "semantic": "sub",
-        "sha256": "02492f76c6cfb2e3cf4cfe4de13ebbb4b17ccf5ad468f4d904e4c0710a577a19",
+        "sha256": "58826b8124c6c49c37578874c7f86244fd53c067c918b19b6772e26edc1e58ec",
         "shape": [
           360
         ]
@@ -269,7 +271,7 @@
         "finite": true,
         "region_id": "select_30",
         "semantic": "select",
-        "sha256": "24761f4a10fb82b2b8600babbcea0bd0c5e7c6e50f1b8638bb46f0478b0e4651",
+        "sha256": "98ee148193583cf7b49dee97611b4b9ef3fcc2d8cf2be498f13f9b54bca15823",
         "shape": [
           360
         ]
@@ -279,7 +281,7 @@
         "finite": true,
         "region_id": "pow_65",
         "semantic": "pow",
-        "sha256": "993390e34c0f549a6d3938f47541c7f8295792e16f153cfcf04293bd5c425849",
+        "sha256": "975007aa38e95959ca1d275454f420aa5aa10f68049bd3635e646a3a03846f27",
         "shape": [
           360
         ]
@@ -289,7 +291,7 @@
         "finite": true,
         "region_id": "mul_295",
         "semantic": "mul",
-        "sha256": "c5124a11a3b6d819e698ff2dcdb76842b4fce04bae9a96bfd9d69f0e2c09c720",
+        "sha256": "d1dc2144cdb33dd179753036bf1f6eed604ec786d40ba0a668052370318a734a",
         "shape": [
           360
         ]
@@ -299,7 +301,7 @@
         "finite": true,
         "region_id": "elementwise_2",
         "semantic": "elementwise",
-        "sha256": "51cc2d6be7873c840acf06505b323574b8ff77ee9809b43411f1b1527a0bc2a0",
+        "sha256": "d31f0515bc25a0901476fadcad0d5eca5a798f78f82844f9dbf45b207bf49b00",
         "shape": [
           360
         ]
@@ -309,7 +311,7 @@
         "finite": true,
         "region_id": "mul_296",
         "semantic": "mul",
-        "sha256": "51cc2d6be7873c840acf06505b323574b8ff77ee9809b43411f1b1527a0bc2a0",
+        "sha256": "d31f0515bc25a0901476fadcad0d5eca5a798f78f82844f9dbf45b207bf49b00",
         "shape": [
           360
         ]
@@ -319,7 +321,7 @@
         "finite": true,
         "region_id": "mul_297",
         "semantic": "mul",
-        "sha256": "4aa413f2201af711390f3bc04b82ca40f3e8d3d59407f78f520d9fdd7b5dc628",
+        "sha256": "2044aaf8a79414835f768b48e4592311046a4b84b44e7c0c63afb0bafd2ec9db",
         "shape": [
           360
         ]
@@ -329,14 +331,15 @@
         "finite": true,
         "region_id": "mul_298",
         "semantic": "mul",
-        "sha256": "fcef2dec0467c65f0ecc009f7c6ca99404b377f02ff47c23f2c95b15d0d3c9db",
+        "sha256": "5a6f723196b35ee4f536cd9f0abc07141c5efb063a07b079a6c2fb876e6fa990",
         "shape": [
           360
         ]
       }
     ],
-    "region_count": 15,
+    "region_count": 16,
     "region_ids": [
+      "iota_38",
       "compare_2",
       "dtype_cast_242",
       "mul_293",
@@ -357,6 +360,7 @@
     "schema": "atlas_real_capture_host_semantic_chain_v1",
     "selection": "first stable-ranked consecutive qualified run containing semantic set elementwise,pow",
     "semantics": [
+      "arange",
       "compare",
       "dtype_cast",
       "mul",
@@ -378,7 +382,7 @@
   "generic_host_numeric_witnesses": [
     {
       "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-      "dependency_edges": 14,
+      "dependency_edges": 17,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
         {
@@ -388,35 +392,37 @@
           "shape": [
             360
           ]
-        },
-        {
-          "dtype": "int64",
-          "ordinal": 1,
-          "sha256": "9598c6903d8af21c8a80e6e5f53ed0e6646e153bc2a8ae560cd5f12adf2dd307",
-          "shape": [
-            360
-          ]
         }
       ],
       "label": "pow_reciprocal",
       "outputs": [
         {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "iota_38",
+          "semantic": "arange",
+          "sha256": "c5b5d89abc3aae5b9debf1091964dedb9e385c3348ba8746fecd1165ae058289",
+          "shape": [
+            360
+          ]
+        },
+        {
           "dtype": "bool",
           "finite": true,
           "region_id": "compare_2",
           "semantic": "compare",
-          "sha256": "215e3a8e99cb68cf0fa5d6d385f62cc558894c87524255d5b0df7faec29afa09",
+          "sha256": "aba82a03ac15ce5e38f244e4a53c7bd94fafec7f8a4ef1a9f258af0d846b123e",
           "shape": [
             360
           ],
-          "true_elements": 171
+          "true_elements": 17
         },
         {
           "dtype": "float64",
           "finite": true,
           "region_id": "dtype_cast_242",
           "semantic": "dtype_cast",
-          "sha256": "5ed0947cf8962fc8ec4727a969c52459f07be56100367191546730058f869384",
+          "sha256": "b34f4331dfd8ecd84c011c07582cedbe5d638ba8fa8261a7f6723a543b9daac5",
           "shape": [
             360
           ]
@@ -426,7 +432,7 @@
           "finite": true,
           "region_id": "mul_293",
           "semantic": "mul",
-          "sha256": "f0a5b7795cf95e99f598aa76652af3f8e9da8342b3edd12f70e77348c8b5d53d",
+          "sha256": "e6c8e932186c8a66176217cf4ec6f4e14629bb4eb2b14372b9584f10b2131847",
           "shape": [
             360
           ]
@@ -436,7 +442,7 @@
           "finite": true,
           "region_id": "add_198",
           "semantic": "add",
-          "sha256": "f0a5b7795cf95e99f598aa76652af3f8e9da8342b3edd12f70e77348c8b5d53d",
+          "sha256": "e6c8e932186c8a66176217cf4ec6f4e14629bb4eb2b14372b9584f10b2131847",
           "shape": [
             360
           ]
@@ -446,7 +452,7 @@
           "finite": true,
           "region_id": "sub_33",
           "semantic": "sub",
-          "sha256": "702506c1bf12b56ce8b03738fa9cbbf9e62c8e2953b3a90384918370f77030e4",
+          "sha256": "abb4a7aaccdd380bef57410acbe8d5a78c595b0d3f64b93d1b101709c669efeb",
           "shape": [
             360
           ]
@@ -456,7 +462,7 @@
           "finite": true,
           "region_id": "dtype_cast_243",
           "semantic": "dtype_cast",
-          "sha256": "3c82bffc26acd8fa9ccbfd42099cdcf7e4f746de0a2fc965e8a98051792fc502",
+          "sha256": "6b830e9258f9b1c41b12584267be95d6bd0e0450aaf0d2a5435e1c32ba64142e",
           "shape": [
             360
           ]
@@ -466,7 +472,7 @@
           "finite": true,
           "region_id": "mul_294",
           "semantic": "mul",
-          "sha256": "0c9e01e63bd78e35e28465f6214a2a23ae4450678ffd5ecefedbb0ba07232a0f",
+          "sha256": "dba71943b70e7000bb0f63b10d8783e0e095c9774e2940f3083ed3427d554602",
           "shape": [
             360
           ]
@@ -476,7 +482,7 @@
           "finite": true,
           "region_id": "sub_34",
           "semantic": "sub",
-          "sha256": "02492f76c6cfb2e3cf4cfe4de13ebbb4b17ccf5ad468f4d904e4c0710a577a19",
+          "sha256": "58826b8124c6c49c37578874c7f86244fd53c067c918b19b6772e26edc1e58ec",
           "shape": [
             360
           ]
@@ -486,7 +492,7 @@
           "finite": true,
           "region_id": "select_30",
           "semantic": "select",
-          "sha256": "24761f4a10fb82b2b8600babbcea0bd0c5e7c6e50f1b8638bb46f0478b0e4651",
+          "sha256": "98ee148193583cf7b49dee97611b4b9ef3fcc2d8cf2be498f13f9b54bca15823",
           "shape": [
             360
           ]
@@ -496,7 +502,7 @@
           "finite": true,
           "region_id": "pow_65",
           "semantic": "pow",
-          "sha256": "993390e34c0f549a6d3938f47541c7f8295792e16f153cfcf04293bd5c425849",
+          "sha256": "975007aa38e95959ca1d275454f420aa5aa10f68049bd3635e646a3a03846f27",
           "shape": [
             360
           ]
@@ -506,7 +512,7 @@
           "finite": true,
           "region_id": "mul_295",
           "semantic": "mul",
-          "sha256": "c5124a11a3b6d819e698ff2dcdb76842b4fce04bae9a96bfd9d69f0e2c09c720",
+          "sha256": "d1dc2144cdb33dd179753036bf1f6eed604ec786d40ba0a668052370318a734a",
           "shape": [
             360
           ]
@@ -516,7 +522,7 @@
           "finite": true,
           "region_id": "elementwise_2",
           "semantic": "elementwise",
-          "sha256": "51cc2d6be7873c840acf06505b323574b8ff77ee9809b43411f1b1527a0bc2a0",
+          "sha256": "d31f0515bc25a0901476fadcad0d5eca5a798f78f82844f9dbf45b207bf49b00",
           "shape": [
             360
           ]
@@ -526,7 +532,7 @@
           "finite": true,
           "region_id": "mul_296",
           "semantic": "mul",
-          "sha256": "51cc2d6be7873c840acf06505b323574b8ff77ee9809b43411f1b1527a0bc2a0",
+          "sha256": "d31f0515bc25a0901476fadcad0d5eca5a798f78f82844f9dbf45b207bf49b00",
           "shape": [
             360
           ]
@@ -536,7 +542,7 @@
           "finite": true,
           "region_id": "mul_297",
           "semantic": "mul",
-          "sha256": "4aa413f2201af711390f3bc04b82ca40f3e8d3d59407f78f520d9fdd7b5dc628",
+          "sha256": "2044aaf8a79414835f768b48e4592311046a4b84b44e7c0c63afb0bafd2ec9db",
           "shape": [
             360
           ]
@@ -546,14 +552,15 @@
           "finite": true,
           "region_id": "mul_298",
           "semantic": "mul",
-          "sha256": "fcef2dec0467c65f0ecc009f7c6ca99404b377f02ff47c23f2c95b15d0d3c9db",
+          "sha256": "5a6f723196b35ee4f536cd9f0abc07141c5efb063a07b079a6c2fb876e6fa990",
           "shape": [
             360
           ]
         }
       ],
-      "region_count": 15,
+      "region_count": 16,
       "region_ids": [
+        "iota_38",
         "compare_2",
         "dtype_cast_242",
         "mul_293",
@@ -574,6 +581,7 @@
       "schema": "atlas_real_capture_host_semantic_chain_v1",
       "selection": "first stable-ranked consecutive qualified run containing semantic set elementwise,pow",
       "semantics": [
+        "arange",
         "compare",
         "dtype_cast",
         "mul",
@@ -867,6 +875,160 @@
         "mul",
         "sin",
         "cos"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 2,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "float32",
+          "ordinal": 0,
+          "sha256": "bae7df0a2090645ca87483a2414d2393f9da4978d27117f4a95885c2fe9487fd",
+          "shape": [
+            1,
+            50,
+            15,
+            64
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "8d0a773425e1800d31eba670610550ad8f16fcd4378e57f4a360556421d493b9",
+          "shape": [
+            1,
+            50,
+            5,
+            64
+          ]
+        }
+      ],
+      "label": "arange_dependency",
+      "outputs": [
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "dtype_cast_248",
+          "semantic": "dtype_cast",
+          "sha256": "6260be1b82d029dc6f5c71492a5da3dd4141f343c8e2fbfe8d983037f4b709ab",
+          "shape": [
+            1,
+            50,
+            15,
+            64
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "dtype_cast_249",
+          "semantic": "dtype_cast",
+          "sha256": "8d0a773425e1800d31eba670610550ad8f16fcd4378e57f4a360556421d493b9",
+          "shape": [
+            1,
+            50,
+            5,
+            64
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "iota_40",
+          "semantic": "arange",
+          "sha256": "0c43f2957858ef1a2ee3e2cec548164d548995c05a42c6588927998cd6dd10d7",
+          "shape": [
+            32
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_309",
+          "semantic": "mul",
+          "sha256": "b1eee243e3e549c8e2d9ea6e582fd5c4ecc4dd5b31f9dfcc66e7c02d7aa21df8",
+          "shape": [
+            32
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "pow_68",
+          "semantic": "pow",
+          "sha256": "4907bb2421b1dff12928f9e2d73b62a9bb9a6fe670e384f86b5e28ff7da86b2e",
+          "shape": [
+            32
+          ]
+        }
+      ],
+      "region_count": 5,
+      "region_ids": [
+        "dtype_cast_248",
+        "dtype_cast_249",
+        "iota_40",
+        "mul_309",
+        "pow_68"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run where a captured arange output feeds a successor",
+      "semantics": [
+        "dtype_cast",
+        "dtype_cast",
+        "arange",
+        "mul",
+        "pow"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 1,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [],
+      "label": "fill_dependency",
+      "outputs": [
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "fill_0",
+          "semantic": "fill",
+          "sha256": "e9bac255f4adc7cb4ada9298e193a5ff66b434d15afabd458505325f29c398c7",
+          "shape": [
+            1,
+            32,
+            32
+          ]
+        },
+        {
+          "dtype": "bool",
+          "finite": true,
+          "region_id": "dtype_cast_0",
+          "semantic": "dtype_cast",
+          "sha256": "5a648d8015900d89664e00e125df179636301a2d8fa191c1aa2bd9358ea53a69",
+          "shape": [
+            1,
+            32,
+            32
+          ],
+          "true_elements": 1024
+        }
+      ],
+      "region_count": 2,
+      "region_ids": [
+        "fill_0",
+        "dtype_cast_0"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run where a captured fill output feeds a successor",
+      "semantics": [
+        "fill",
+        "dtype_cast"
       ],
       "status": "fresh_numeric_execution_exactly_replayed"
     },

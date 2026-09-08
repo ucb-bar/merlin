@@ -1,4 +1,4 @@
-"""Fail-closed NumPy execution for structurally proven host pointwise regions.
+"""Fail-closed NumPy execution for structurally proven host regions.
 
 Provenance names are hints, not executable semantics.  This lane admits a
 region only after checking its linalg iteration space, affine operand maps,
@@ -50,10 +50,26 @@ _COMPOSITE_PATTERNS = {
     }),
     "minmax": frozenset({("arith.constant", "arith.minimumf")}),
 }
-_CAST_OPS = frozenset({"arith.extf", "arith.truncf", "arith.sitofp", "arith.fptosi"})
+_CONSTRUCTOR_PATTERNS = {
+    "arange": frozenset({
+        (
+            "linalg.index", "arith.index_cast", "arith.sitofp",
+            "arith.constant", "arith.mulf", "arith.constant", "arith.addf",
+        ),
+        (
+            "linalg.index", "arith.index_cast", "arith.constant",
+            "arith.muli", "arith.constant", "arith.addi",
+        ),
+    }),
+}
+_CAST_OPS = frozenset({
+    "arith.extf", "arith.truncf", "arith.sitofp", "arith.fptosi",
+    "arith.index_cast",
+})
 _SCALAR_OPS = frozenset().union(*_SEMANTIC_ROOTS.values(), {
-    "arith.constant", "arith.negf", "arith.minimumf",
-    "math.cos", "math.erf", "math.exp", "math.powf", "math.rsqrt", "math.sin",
+    "arith.constant", "arith.index_cast", "arith.negf", "arith.minimumf",
+    "linalg.index", "math.cos", "math.erf", "math.exp", "math.powf",
+    "math.rsqrt", "math.sin",
 })
 _REGION_SCAFFOLD = frozenset({"arith.constant", "tensor.splat", "tensor.empty", "linalg.generic"})
 
@@ -108,6 +124,23 @@ def _constant_value(op):
     if raw is None:
         raise UnsupportedHostRegion("arith.constant has no scalar numeric value")
     return np.asarray(raw, dtype=_numpy_dtype(str(op.results[0].type)))
+
+
+def _constant_signature(op) -> dict:
+    """Retain the exact printed attribute, including infinities and signed zeros."""
+    _constant_value(op)
+    return {
+        "result_type": str(op.results[0].type),
+        "attribute": str(op.properties["value"]),
+    }
+
+
+def _index_dimension(op) -> int:
+    value = op.properties.get("dim")
+    result = getattr(getattr(value, "value", None), "data", None)
+    if result is None:
+        raise UnsupportedHostRegion("linalg.index has no dimension")
+    return int(result)
 
 
 def _affine_map_signature(mapping, input_shape: tuple[int, ...], output_shape: tuple[int, ...]):
@@ -248,14 +281,45 @@ class HostRegionProgram:
     semantic: str
     aten: str
     operations: tuple
-    generic: object
+    generic: object | None
+    input_values: tuple
+    output_value: object
     signature: dict
 
 
 def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     semantic = _str_attr(operations[0], "prov.op")
     aten = _str_attr(operations[0], "prov.aten")
-    if semantic not in _SEMANTIC_ROOTS and semantic not in _COMPOSITE_PATTERNS:
+    if semantic == "fill":
+        if tuple(op.name for op in operations) != ("arith.constant", "tensor.splat"):
+            raise UnsupportedHostRegion("fill is not one scalar constant followed by tensor.splat")
+        constant, splat = operations
+        if tuple(splat.operands) != (constant.results[0],):
+            raise UnsupportedHostRegion("fill splat does not consume its captured constant")
+        output_shape = _tensor_shape(splat.results[0])
+        if output_shape is None or any(extent < 0 for extent in output_shape):
+            raise UnsupportedHostRegion("fill output is not a static ranked tensor")
+        output_dtype = _dtype_name(splat.results[0])
+        _numpy_dtype(output_dtype)
+        constant_record = _constant_signature(constant)
+        signature = {
+            "schema": "atlas_host_constructor_signature_v1",
+            "semantic": semantic,
+            "aten": aten,
+            "input_shapes": [],
+            "input_dtypes": [],
+            "output_shape": list(output_shape),
+            "output_dtype": output_dtype,
+            "operand_maps": [],
+            "scalar_ops": ["arith.constant", "tensor.splat"],
+            "scalar_constants": [constant_record],
+            "materialization_rule": "exact scalar constant splatted to the static output shape",
+        }
+        return HostRegionProgram(
+            region_id, semantic, aten, operations, None, (), splat.results[0], signature
+        )
+    if (semantic not in _SEMANTIC_ROOTS and semantic not in _COMPOSITE_PATTERNS
+            and semantic not in _CONSTRUCTOR_PATTERNS):
         raise UnsupportedHostRegion(f"semantic {semantic} has no host pointwise implementation")
     if any(op.name not in _REGION_SCAFFOLD for op in operations):
         raise UnsupportedHostRegion("region contains non-pointwise scaffold operations")
@@ -263,7 +327,9 @@ def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     if len(generics) != 1 or operations[-1] is not generics[0]:
         raise UnsupportedHostRegion("region is not one terminal linalg.generic")
     generic = generics[0]
-    if len(generic.inputs) not in {1, 2, 3} or len(generic.outputs) != 1 or len(generic.results) != 1:
+    allowed_arities = {0} if semantic == "arange" else {1, 2, 3}
+    if (len(generic.inputs) not in allowed_arities or len(generic.outputs) != 1
+            or len(generic.results) != 1):
         raise UnsupportedHostRegion("generic operand/result arity is unsupported")
     output_shape = _tensor_shape(generic.results[0])
     if output_shape is None or any(extent < 0 for extent in output_shape):
@@ -302,8 +368,14 @@ def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
             raise UnsupportedHostRegion("scalar root does not implement the declared semantic")
         if any(op.name not in _CAST_OPS for op in compute[:-1]):
             raise UnsupportedHostRegion("only widening/narrowing casts may precede the scalar root")
-    elif names not in _COMPOSITE_PATTERNS[semantic]:
+    elif semantic in _COMPOSITE_PATTERNS and names not in _COMPOSITE_PATTERNS[semantic]:
         raise UnsupportedHostRegion("scalar DAG does not match a captured semantic pattern")
+    elif semantic == "arange":
+        if names not in _CONSTRUCTOR_PATTERNS[semantic]:
+            raise UnsupportedHostRegion("scalar DAG does not match a captured constructor pattern")
+        indices = [op for op in compute if op.name == "linalg.index"]
+        if len(indices) != 1 or _index_dimension(indices[0]) != 0 or len(output_shape) != 1:
+            raise UnsupportedHostRegion("arange must use dimension zero of a rank-one output")
     # The output accumulator block argument must not influence a pure pointwise result.
     allowed_values = set(block.args[:len(generic.inputs)])
     for op in compute:
@@ -312,7 +384,10 @@ def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
         allowed_values.update(op.results)
 
     signature = {
-        "schema": "atlas_host_pointwise_signature_v1",
+        "schema": (
+            "atlas_host_constructor_signature_v1" if semantic == "arange"
+            else "atlas_host_pointwise_signature_v1"
+        ),
         "semantic": semantic,
         "aten": aten,
         "input_shapes": [list(_tensor_shape(value) or ()) for value in generic.inputs],
@@ -321,12 +396,23 @@ def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
         "output_dtype": _dtype_name(generic.results[0]),
         "operand_maps": input_maps,
         "scalar_ops": [op.name for op in compute],
+        "scalar_constants": [
+            _constant_signature(op) for op in compute if op.name == "arith.constant"
+        ],
         "comparison_predicate": (
             _predicate(root) if root.name in {"arith.cmpi", "arith.cmpf"} else None
         ),
         "broadcast_rule": "affine dimensions plus exact constant-zero axes",
     }
-    return HostRegionProgram(region_id, semantic, aten, operations, generic, signature)
+    if semantic == "arange":
+        signature["materialization_rule"] = (
+            "rank-one dimension-zero index, cast as captured, multiplied by exact "
+            "step constant, then added to exact start constant"
+        )
+    return HostRegionProgram(
+        region_id, semantic, aten, operations, generic,
+        tuple(generic.inputs), generic.results[0], signature,
+    )
 
 
 class HostSemanticLane:
@@ -399,10 +485,16 @@ class HostSemanticLane:
                         result = _cast(result, program.signature["output_dtype"])
                         values[op.results[0]] = np.ascontiguousarray(result)
                     else:
-                        scalar_values[scalar_op.results[0]] = _execute_scalar(
-                            scalar_op, [scalar_values[value] for value in scalar_op.operands]
-                        )
-        return values[program.generic.results[0]]
+                        if scalar_op.name == "linalg.index":
+                            dimension = _index_dimension(scalar_op)
+                            scalar_values[scalar_op.results[0]] = np.indices(
+                                output_shape, dtype=np.int64
+                            )[dimension]
+                        else:
+                            scalar_values[scalar_op.results[0]] = _execute_scalar(
+                                scalar_op, [scalar_values[value] for value in scalar_op.operands]
+                            )
+        return values[program.output_value]
 
     def seed_external_values(self, region_ids: list[str]) -> dict:
         """Create deterministic fresh inputs for a real captured region chain."""
@@ -412,8 +504,8 @@ class HostSemanticLane:
         values = {}
         seed_index = 0
         for region_id in region_ids:
-            generic = self.programs[region_id].generic
-            for value in generic.inputs:
+            program = self.programs[region_id]
+            for value in program.input_values:
                 if getattr(value, "owner", None) in selected_ops or value in values:
                     continue
                 shape = _tensor_shape(value)
@@ -464,7 +556,7 @@ class HostSemanticLane:
             external = set()
             for region_id in run:
                 program = self.programs[region_id]
-                for value in program.generic.inputs:
+                for value in program.input_values:
                     if value in produced:
                         dependencies += 1
                     elif getattr(value, "owner", None) not in selected_ops:

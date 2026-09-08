@@ -151,7 +151,7 @@ def _execute_host_witness(
     dependency_edges = 0
     for region_id in region_ids:
         program = lane.programs[region_id]
-        dependency_edges += sum(value in produced for value in program.generic.inputs)
+        dependency_edges += sum(value in produced for value in program.input_values)
         produced.update(value for op in program.operations for value in op.results)
     return {
         "schema": "atlas_real_capture_host_semantic_chain_v1",
@@ -190,6 +190,34 @@ def generic_host_witnesses(workload) -> tuple[dict, list[dict]]:
             selection=(
                 "first stable-ranked consecutive qualified run containing semantic set "
                 + ",".join(sorted(required))
+            ),
+        ))
+
+    def constructor_feeds_successor(run: dict, semantic: str) -> bool:
+        constructor_outputs = set()
+        for region_id in run["region_ids"]:
+            program = lane.programs[region_id]
+            if any(value in constructor_outputs for value in program.input_values):
+                return True
+            if program.semantic == semantic:
+                constructor_outputs.add(program.output_value)
+        return False
+
+    for label, semantic in (("arange_dependency", "arange"), ("fill_dependency", "fill")):
+        already_selected = {tuple(row["region_ids"]) for row in selected}
+        run = next(
+            row for row in runs
+            if (semantic in row["semantics"]
+                and constructor_feeds_successor(row, semantic)
+                and tuple(row["region_ids"]) not in already_selected)
+        )
+        selected.append(_execute_host_witness(
+            lane,
+            run["region_ids"],
+            label=label,
+            selection=(
+                "first stable-ranked consecutive qualified run where a captured "
+                f"{semantic} output feeds a successor"
             ),
         ))
 
