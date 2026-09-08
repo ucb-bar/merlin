@@ -198,16 +198,61 @@ def _veril_acquire(n_slots: int) -> Path | None:
             f"Set TMPDIR to a directory you own (this project uses a per-user one under /scratch).")
     for i in range(n_slots):
         slot = GLOBAL_VERIL_SLOTS / f"slot_{i}"
-        try:
-            fd = os.open(str(slot), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode()); os.close(fd)
-            return slot
-        except FileExistsError:
-            continue                                   # busy: try the next one
-        except PermissionError as e:
-            raise VerilSlotsUnusable(
-                f"cannot create {slot}: {e}. No L3 job can run until the slot directory is writable.") from e
+        for _attempt in (0, 1):                        # second pass runs only after a stale reclaim
+            try:
+                fd = os.open(str(slot), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(os.getpid()).encode()); os.close(fd)
+                return slot
+            except FileExistsError:
+                if _attempt == 0 and _reclaim_if_stale(slot):
+                    continue                           # holder is gone; retry this same slot once
+                break                                  # genuinely busy: try the next one
+            except PermissionError as e:
+                raise VerilSlotsUnusable(
+                    f"cannot create {slot}: {e}. No L3 job can run until the slot directory is "
+                    f"writable.") from e
     return None
+
+
+def _reclaim_if_stale(slot: Path) -> bool:
+    """Free ``slot`` if the process that wrote its pid is gone. True when it was reclaimed.
+
+    A slot is released by the broker that took it (``slot.unlink``), so a broker that dies without
+    running its cleanup leaks the slot FOREVER -- and the acquire loop reads a leaked slot as "busy".
+    With the default two slots, two such deaths disable verilator L3 for every future run by this user,
+    silently: the loop simply returns None and the agent sees L3 never happening. MEASURED 2026-09-08 --
+    both slots were held by pid 2187933, dead since 2026-09-02, and nothing would ever have released
+    them. The host's memory monitor killing a broker is enough to cause this, which is not a rare event.
+
+    Deliberately narrow. It reclaims ONLY when the pid file is readable, parses as an integer, and that
+    pid does not exist; an unreadable or malformed slot is left alone rather than guessed at, because
+    stealing a slot from a LIVE verilator is worse than failing to acquire one -- it would oversubscribe
+    the exact resource this semaphore exists to bound. pid reuse is possible in principle; a reused pid
+    reads as live, so the slot stays held, which fails safe in the same direction.
+    """
+    try:
+        holder = slot.read_text().strip()
+    except OSError:
+        return False
+    if not holder.isdigit():
+        return False
+    try:
+        os.kill(int(holder), 0)
+    except ProcessLookupError:
+        pass                                           # holder is gone -- the slot is stale
+    except PermissionError:
+        return False                                   # alive and owned by someone else: leave it
+    except OSError:
+        return False
+    else:
+        return False                                   # holder is alive: genuinely busy
+    try:
+        slot.unlink()
+    except OSError:
+        return False                                   # another broker reclaimed it first
+    print(f"[simjob] reclaimed stale verilator slot {slot.name} (holder pid {holder} is gone)",
+          flush=True)
+    return True
 
 
 def _sim_via() -> str:
