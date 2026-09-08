@@ -1218,6 +1218,7 @@ class GlobalPerfExperiment:
         self.source_snapshot_files_sha256 = source_snapshot_files_sha256
         self.machine_build_policy = _current_machine_build_policy(target)
         self.iterations: list[dict[str, Any]] = []
+        self._iteration_record_sha256: dict[int, str] = {}
         self._analysis_lock = threading.Lock()
         # Semantic providers compose several strict public accessors. Keep their verified current
         # revision thread-local for one synchronous host action; explicit external-execution
@@ -1437,6 +1438,16 @@ class GlobalPerfExperiment:
         with path.open("xb") as stream:
             stream.write(payload)
         path.chmod(0o444)
+        return path
+
+    def _write_iteration(self, record: Mapping[str, Any]) -> Path:
+        """Seal one static iteration and retain its original byte identity in memory."""
+        iteration = record.get("iteration")
+        if (not isinstance(iteration, int) or isinstance(iteration, bool) or iteration < 0
+                or iteration in self._iteration_record_sha256):
+            raise ValueError("global static iteration identity is invalid or already sealed")
+        path = self._write(f"iteration_{iteration:04d}.json", record)
+        self._iteration_record_sha256[iteration] = PAS._sha256_file(path)
         return path
 
     def _compiler_dependencies(self, candidate: Path) -> dict[str, Any]:
@@ -1803,18 +1814,32 @@ class GlobalPerfExperiment:
         self._check_inputs()
         if self.mechanism_work_order_analysis_binding is not None:
             iteration = record.get("iteration")
-            iteration_path = self.output / f"iteration_{iteration:04d}.json" if isinstance(
-                iteration, int) and not isinstance(iteration, bool) else None
             stored = next((row for row in self.iterations
                            if row.get("iteration") == iteration), None)
-            if (iteration_path is None or iteration_path.is_symlink()
-                    or not iteration_path.is_file()
-                    or stored is None
-                    or PAS._document_sha256(PAS._mapping_file(iteration_path))
-                    != PAS._document_sha256(stored)
-                    or record.get("candidate_sha256") != stored.get("candidate_sha256")
-                    or record.get("compiler_dependencies") != stored.get("compiler_dependencies")
-                    or (record.get("portfolio") or {}).get("portfolio_sha256")
+            reuse_binding = record.get("analysis_reuse_binding")
+            immutable = (self._immutable_reusable_iteration(stored, binding=reuse_binding)
+                         if isinstance(stored, Mapping) and isinstance(reuse_binding, Mapping)
+                         else None)
+            # Semantic and probe actions deliberately add elapsed time and receipt references to
+            # the in-memory row after iteration_NNNN.json was sealed.  Those mutable action fields
+            # are not static-analysis evidence.  Resolve the persisted iteration through the same
+            # exact reuse verifier used by analyze(), then require every static identity carried by
+            # the caller to match it.  This permits continuation accounting without accepting a
+            # substituted candidate, portfolio, analysis, or mechanism binding.
+            static_fields = (
+                "schema", "iteration", "candidate_sha256", "submitted_snapshot",
+                "compiler_dependencies", "analysis_reuse_binding",
+                "cross_run_static_analysis_binding", "baseline_sha256",
+                "optimization_baseline_sha256", "optimization_baseline",
+                "compiler_mechanism_catalog", "compiler_mechanism_work_order",
+                "mechanism_work_order_analysis", "round_mechanism_attribution",
+                "analysis", "readiness", "portfolio", "static_comparison",
+                "static_analysis_bundle", "relative_semantic_evidence",
+            )
+            if (immutable is None
+                    or PAS._document_sha256({name: record.get(name) for name in static_fields})
+                    != PAS._document_sha256({name: immutable.get(name) for name in static_fields})
+                    or (immutable.get("portfolio") or {}).get("portfolio_sha256")
                     != self.portfolio_identity_sha256):
                 raise ValueError(
                     "compiler mechanism work order has no immutable current portfolio analysis")
@@ -2709,7 +2734,7 @@ class GlobalPerfExperiment:
             record, primary_artifacts, portfolio_artifacts=current_artifacts)
         assert static_bundle is not None
         record["static_analysis_bundle"] = static_bundle
-        self._write("iteration_0000.json", record)
+        self._write_iteration(record)
         self.iterations.append(record)
         self._portfolio_artifacts = current_artifacts
         self._artifacts = primary_artifacts
@@ -2741,6 +2766,8 @@ class GlobalPerfExperiment:
         path = self.output / f"iteration_{iteration:04d}.json"
         try:
             if (path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o222):
+                return None
+            if (self._iteration_record_sha256.get(iteration) != PAS._sha256_file(path)):
                 return None
             source = PAS._mapping_file(path)
             if (source.get("schema") != "global_perf_iteration_v1"
@@ -2977,7 +3004,7 @@ class GlobalPerfExperiment:
             },
             "full_model_simulation_allowed": False,
         }
-        self._write(f"iteration_{result_iteration:04d}.json", record)
+        self._write_iteration(record)
         self.iterations.append(record)
         self._previous_artifacts = previous_artifacts
         self._artifacts = current_artifacts
@@ -3265,7 +3292,7 @@ class GlobalPerfExperiment:
             record, retained, portfolio_artifacts=portfolio_artifacts)
         if static_bundle is not None:
             record["static_analysis_bundle"] = static_bundle
-        self._write(f"iteration_{record['iteration']:04d}.json", record)
+        self._write_iteration(record)
         self.iterations.append(record)
         self._previous_artifacts, self._artifacts = self._artifacts, retained
         self._previous_portfolio_artifacts = self._portfolio_artifacts or None

@@ -2281,6 +2281,82 @@ def test_sustained_sequence_bootstraps_work_order_before_first_authoring_round(t
         experiment.mechanism_work_order_analysis_binding
 
 
+def test_sustained_sequence_reuses_immutable_current_analysis_across_work_order_rounds(tmp_path):
+    experiment, candidate, calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    _freeze_test_mechanism_work_order(experiment, candidate, tmp_path)
+
+    def author(current, *, round_index, round_timeout_s):
+        experiment.begin_mechanism_round(current, round_index=round_index)
+        current_analysis = experiment.analyze(
+            current, hypothesis=f"inspect immutable round {round_index} analysis")
+        assert experiment.bind_mechanism_work_order_analysis(current_analysis) == \
+            experiment.mechanism_work_order_analysis_binding
+        (current / "compiler.py").write_text(
+            f"def optimize():\n    return {round_index + 2}\n\ndef schedule():\n    return 1\n")
+        assert experiment.finalize_mechanism_round(
+            current, round_index=round_index)["status"] == "allowed"
+        experiment.analyze(current, hypothesis=f"execute epilogue round {round_index}")
+        if round_index == 0:
+            # Real rounds charge bounded semantic/probe work after the immutable static record was
+            # written.  Continuation must derive that static record instead of mistaking mutable
+            # action accounting for evidence drift.
+            experiment.charge_probe_preparation(current, 0.25)
+        return {"status": "authored"}
+
+    result = G.run_global_agent_sequence(
+        experiment, candidate, run_round=author, stage_root=tmp_path / "stage",
+        max_rounds=2, total_authoring_seconds=60, round_seconds=30,
+        on_round_failure="stop")
+
+    assert result["status"] == "budget_complete"
+    assert result["failures"] == []
+    assert len(result["checkpoints"]) == 3
+    assert len(calls) == 3
+    assert experiment.iterations[-1]["candidate_sha256"] == \
+        result["last_good_checkpoint"]["candidate_sha256"]
+    assert experiment.iterations[-1]["mechanism_work_order_analysis"] == \
+        experiment.mechanism_work_order_analysis_binding
+
+
+@pytest.mark.parametrize("mutation", ["returned_analysis", "sealed_iteration_bytes"])
+def test_work_order_continuation_static_analysis_bindings_still_fail_closed(tmp_path, mutation):
+    experiment, candidate, _calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    _freeze_test_mechanism_work_order(experiment, candidate, tmp_path)
+    initial = experiment.analyze(candidate, hypothesis="bind initial exact analysis")
+    experiment.bind_mechanism_work_order_analysis(initial)
+    experiment.begin_mechanism_round(candidate, round_index=0)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 2\n\ndef schedule():\n    return 1\n")
+    experiment.finalize_mechanism_round(candidate, round_index=0)
+    current = experiment.analyze(candidate, hypothesis="analyze edited compiler")
+
+    if mutation == "returned_analysis":
+        current["analysis"]["diagnostics"]["verified_global_plan_emission"][
+            "plan_digest"] = "0" * 64
+    else:
+        iteration_path = experiment.output / f"iteration_{current['iteration']:04d}.json"
+        document = PAS._mapping_file(iteration_path)
+        document["hypothesis"] = "tampered after the immutable iteration was sealed"
+        iteration_path.chmod(0o644)
+        iteration_path.write_bytes(PAS._canonical_json(document))
+        iteration_path.chmod(0o444)
+
+    with pytest.raises(ValueError, match="no immutable current portfolio analysis"):
+        experiment.bind_mechanism_work_order_analysis(current)
+
+
 @pytest.mark.parametrize("mutation", ["candidate", "catalog", "portfolio", "self_hash",
                                       "flat_sites", "missing_member"])
 def test_mechanism_work_order_identity_mutations_fail_closed(tmp_path, mutation):
