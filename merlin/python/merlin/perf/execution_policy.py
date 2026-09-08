@@ -8,7 +8,9 @@ so no library caller can bypass the queue by importing a convenient runner.
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 
 
@@ -28,6 +30,8 @@ FIRESIM_LIFECYCLE = (
     ("firesim", "runworkload"),
     ("firesim", "kill"),
 )
+FIRESIM_QUEUE_OPERATION = "runworkload-full"
+FIRESIM_QUEUE_PHASES = ("STAGING", "INFRASETUP", "RUNNING", "TEARDOWN")
 _PROFILE_METRICS = frozenset({
     "total_compute_cycles",
     "resource_busy_cycles",
@@ -254,15 +258,79 @@ def occupancy_from_warm_receipt(
 
 
 @dataclass(frozen=True)
+class FireSimQueuePreflight:
+    """A single, directly-executed queue submission pinned by its raw executable path.
+
+    ``expected_queue_executable`` is an explicit host policy input.  Keeping it outside this
+    target-neutral module lets another installation pin its own queue while still making path drift
+    part of the receipt.
+    """
+
+    expected_queue_executable: str
+    submission: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        expected = Path(self.expected_queue_executable)
+        if not expected.is_absolute() or not self.expected_queue_executable.strip():
+            raise ValueError("the FireSim queue executable policy must be an absolute raw path")
+        if len(self.submission) < 2:
+            raise ValueError("FireSim requires one complete firesim-queue submission")
+        if self.submission[:2] != (
+                self.expected_queue_executable, FIRESIM_QUEUE_OPERATION):
+            raise ValueError(
+                "direct FireSim invocation is forbidden; submit exactly one "
+                f"{self.expected_queue_executable} {FIRESIM_QUEUE_OPERATION} command")
+        if any(not isinstance(token, str) or not token for token in self.submission):
+            raise ValueError("the FireSim queue submission must contain nonempty string arguments")
+        shell_controls = frozenset({";", "&&", "||", "|", "&"})
+        if any(token in shell_controls or "\n" in token or "\0" in token
+               for token in self.submission):
+            raise ValueError("the FireSim queue submission cannot contain shell control syntax")
+        if any(Path(token).name == "firesim" for token in self.submission):
+            raise ValueError("direct firesim commands cannot be nested in the queue submission")
+
+
+@dataclass(frozen=True)
+class QueueLogEvidence:
+    """Content-bound plain-file evidence captured for one queue job."""
+
+    role: str
+    path: str
+    sha256: str
+
+    def __post_init__(self) -> None:
+        if not self.role.strip():
+            raise ValueError("queue log evidence must have a role")
+        self.verified_bytes()
+
+    def verified_bytes(self) -> bytes:
+        """Read the still-plain artifact and refuse content drift."""
+        artifact = Path(self.path)
+        if not artifact.is_absolute() or artifact.is_symlink() or not artifact.is_file():
+            raise ValueError("queue log evidence must name an absolute plain file")
+        payload = artifact.read_bytes()
+        observed = hashlib.sha256(payload).hexdigest()
+        if self.sha256 != observed:
+            raise ValueError(f"queue log evidence hash mismatch for {self.role}")
+        return payload
+
+
+@dataclass(frozen=True)
 class QueuedFireSimReceipt:
-    queue_request_id: str
+    queue_job_id: int
     queue_owned: bool
+    preflight: FireSimQueuePreflight
+    queue_phases: tuple[str, ...]
     commands: tuple[tuple[str, ...], ...]
+    logs: tuple[QueueLogEvidence, ...]
     warm_profile: WarmComputeReceipt
 
     def __post_init__(self) -> None:
-        if not self.queue_owned or not self.queue_request_id.strip():
+        if not self.queue_owned or self.queue_job_id < 1:
             raise ValueError("FireSim milestone execution must be owned by the FireSim queue")
+        if self.queue_phases != FIRESIM_QUEUE_PHASES:
+            raise ValueError(
+                f"FireSim queue phases must be exactly {FIRESIM_QUEUE_PHASES}")
         prefixes = tuple(tuple(command[:2]) for command in self.commands)
         if prefixes != FIRESIM_LIFECYCLE:
             rendered = tuple(" ".join(item) for item in prefixes)
@@ -271,3 +339,67 @@ class QueuedFireSimReceipt:
                 f"FireSim lifecycle must be exactly {expected}, observed {rendered}")
         if any(len(command) < 2 for command in self.commands):
             raise ValueError("every FireSim lifecycle command must name its subcommand")
+        roles = tuple(evidence.role for evidence in self.logs)
+        required_roles = ("queue_client", "queue_daemon", "uart")
+        if roles != required_roles:
+            raise ValueError(
+                f"FireSim receipt logs must be exactly {required_roles}, observed {roles}")
+        if str(self.queue_job_id) not in Path(self.logs[1].path).parts:
+            raise ValueError("queue daemon log is not bound to the recorded queue job id")
+        client_text = self.logs[0].verified_bytes().decode("utf-8", errors="replace")
+        if (f"job_id={self.queue_job_id}" not in client_text
+                or "terminal state=DONE" not in client_text):
+            raise ValueError("queue client log does not prove this job id completed DONE")
+        daemon_text = self.logs[1].verified_bytes().decode("utf-8", errors="replace")
+        daemon_markers = (
+            f"=== [firesim-queue] phase=STAGING job_id={self.queue_job_id}",
+            f"=== [firesim-queue] phase=INFRASETUP job_id={self.queue_job_id}",
+            "Running: kill",
+            "Running: infrasetup",
+            f"=== [firesim-queue] phase=RUNNING job_id={self.queue_job_id}",
+            "Running: runworkload",
+            f"=== [firesim-queue] phase=TEARDOWN job_id={self.queue_job_id}",
+            "Running: kill",
+        )
+        cursor = 0
+        for marker in daemon_markers:
+            position = daemon_text.find(marker, cursor)
+            if position < 0:
+                raise ValueError(
+                    f"queue daemon log does not prove ordered lifecycle marker {marker!r}")
+            cursor = position + len(marker)
+        if self.warm_profile.contract.captured_metrics != frozenset({"total_compute_cycles"}):
+            raise ValueError("final FireSim receipt may capture only measured compute cycles")
+        uart_text = self.logs[2].verified_bytes().decode("utf-8", errors="replace")
+        metric_lines = [line.split() for line in uart_text.splitlines()
+                        if line.startswith("METRIC ")]
+        if len(metric_lines) != 1 or len(metric_lines[0]) != 3:
+            raise ValueError("final FireSim UART must contain exactly one metric line")
+        metric = metric_lines[0]
+        if metric[:2] != ["METRIC", "cycles"]:
+            raise ValueError("final FireSim UART may capture only measured compute cycles")
+        try:
+            observed_cycles = int(metric[2])
+        except ValueError as exc:
+            raise ValueError("final FireSim UART cycle metric must be an integer") from exc
+        if observed_cycles != self.warm_profile.total_compute_cycles:
+            raise ValueError("FireSim UART cycles do not match the warm profile receipt")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the complete queue, lifecycle, log, and measured-window evidence."""
+        for evidence in self.logs:
+            evidence.verified_bytes()
+        return {
+            "queue_job_id": self.queue_job_id,
+            "queue_owned": self.queue_owned,
+            "queue_executable": self.preflight.expected_queue_executable,
+            "queue_submission": list(self.preflight.submission),
+            "queue_operation": FIRESIM_QUEUE_OPERATION,
+            "queue_phases": list(self.queue_phases),
+            "firesim_lifecycle": [list(command) for command in self.commands],
+            "logs": {
+                evidence.role: {"path": evidence.path, "sha256": evidence.sha256}
+                for evidence in self.logs
+            },
+            "warm_profile": self.warm_profile.to_dict(),
+        }

@@ -6,8 +6,8 @@ Keeping them separate prevents a generic deployment wrapper from spelling an
 accelerator-specific fence while still making it impossible to close the cycle
 window before the target has completed.
 
-The successful runtime protocol intentionally contains one performance metric:
-``MERLIN_METRIC cycles=...``.  Correctness diagnostics may be printed by the
+The successful runtime protocol intentionally contains one performance metric in the repository's
+existing parser format: ``METRIC cycles ...``.  Correctness diagnostics may be printed by the
 validation hook, but validation itself runs after the cycle window closes and a
 failed validation emits no performance metric.
 """
@@ -26,7 +26,7 @@ class WarmProfileHarnessError(ValueError):
 _RESERVED_SOURCE_TOKENS = (
     "MERLIN_INVOCATIONS",
     "MERLIN_PROFILE",
-    "MERLIN_METRIC",
+    "METRIC cycles",
     "merlin_profile_",
 )
 
@@ -134,7 +134,7 @@ def render_warm_then_measure_main(
          "merlin_profile_validation_rc);"),
         "    return merlin_profile_validation_rc;",
         "  }",
-        ('  printf("MERLIN_METRIC cycles=%llu\\n", (unsigned long long)'
+        ('  printf("METRIC cycles %llu\\n", (unsigned long long)'
          "(merlin_profile_cycle_end - merlin_profile_cycle_start));"),
         '  printf("MERLIN_PROFILE measured end rc=0\\n");',
         "  return 0;",

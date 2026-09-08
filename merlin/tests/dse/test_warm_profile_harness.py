@@ -32,7 +32,7 @@ def test_one_warm_then_one_completed_measured_invocation() -> None:
     assert source.count("synthetic_launch(model_context);") == 2
     assert source.count("synthetic_wait();") == 2
     assert source.count("synthetic_cycles();") == 2
-    assert source.count("MERLIN_METRIC cycles=") == 1
+    assert source.count("METRIC cycles ") == 1
     assert "MERLIN_INVOCATIONS warmup=1 measured=1" in source
 
     warm_begin = source.index("MERLIN_PROFILE warmup begin")
@@ -45,7 +45,7 @@ def test_one_warm_then_one_completed_measured_invocation() -> None:
     measured_wait = source.index("synthetic_wait();", measured_launch)
     cycle_end = source.index("merlin_profile_cycle_end", measured_wait)
     validation = source.index("validate_outputs_after_timing()", cycle_end)
-    metric = source.index("MERLIN_METRIC cycles=", validation)
+    metric = source.index("METRIC cycles ", validation)
     measured_end = source.index("MERLIN_PROFILE measured end rc=0", metric)
     assert (warm_begin < warm_launch < warm_wait < warm_end < measured_begin
             < cycle_start < measured_launch < measured_wait < cycle_end
@@ -67,7 +67,7 @@ def test_failed_validation_has_no_metric_before_the_failure_branch() -> None:
     source = _source()
     validation = source.index("const int merlin_profile_validation_rc")
     failure = source.index("if (merlin_profile_validation_rc != 0)", validation)
-    metric = source.index("MERLIN_METRIC cycles=", failure)
+    metric = source.index("METRIC cycles ", failure)
     assert "return merlin_profile_validation_rc;" in source[failure:metric]
 
 
@@ -105,7 +105,7 @@ def test_profile_refuses_extra_metrics_and_protocol_injection() -> None:
         )
     with pytest.raises(WarmProfileHarnessError, match="reserved profile tokens"):
         TargetInvocationHooks(
-            'printf("MERLIN_METRIC cycles=0\\n");', "wait();")
+            'printf("METRIC cycles 0\\n");', "wait();")
 
 
 def test_profile_uses_no_target_specific_vocabulary() -> None:
@@ -167,5 +167,5 @@ static void *model_context;
     assert built.returncode == 0, built.stderr
     ran = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
     assert ran.returncode == 0, ran.stderr
-    assert ran.stdout.count("MERLIN_METRIC cycles=") == 1
-    assert "MERLIN_METRIC cycles=37\n" in ran.stdout
+    assert ran.stdout.count("METRIC cycles ") == 1
+    assert "METRIC cycles 37\n" in ran.stdout

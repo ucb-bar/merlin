@@ -1,7 +1,12 @@
 """Search stays bounded; citable full models stay queue-owned and warm."""
+import hashlib
+
 import pytest
 
 from merlin.perf.execution_policy import (
+    FIRESIM_QUEUE_PHASES,
+    FireSimQueuePreflight,
+    QueueLogEvidence,
     QueuedFireSimReceipt,
     SimulationBudget,
     WarmComputeReceipt,
@@ -10,6 +15,9 @@ from merlin.perf.execution_policy import (
     occupancy_from_warm_receipt,
     require_probe_execution,
 )
+
+
+_LOCAL_QUEUE = "/scratch2/agustin/firesim_queue/bin/firesim-queue"
 
 
 def _warm() -> WarmComputeReceipt:
@@ -21,6 +29,67 @@ def _warm() -> WarmComputeReceipt:
         resource_busy_cycles=(("array", 1000), ("dma", 300)),
         movement_bytes=4096,
     )
+
+
+def _cycle_only_warm() -> WarmComputeReceipt:
+    return WarmComputeReceipt(
+        "whole_model", 1234, WarmProfileContract(), "same-process post-warm counter")
+
+
+def _daemon_lifecycle_log() -> str:
+    return "\n".join((
+        "=== [firesim-queue] phase=STAGING job_id=41 ===",
+        "=== [firesim-queue] phase=INFRASETUP job_id=41 ===",
+        "Running: kill",
+        "Running: infrasetup",
+        "=== [firesim-queue] phase=RUNNING job_id=41 ===",
+        "Running: runworkload",
+        "=== [firesim-queue] phase=TEARDOWN job_id=41 ===",
+        "Running: kill",
+    ))
+
+
+def _log(tmp_path, role: str, relative: str, content: str | None = None) -> QueueLogEvidence:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content if content is not None else f"{role}\n", encoding="utf-8")
+    return QueueLogEvidence(role, str(path), hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def _queued_receipt(tmp_path, **changes) -> QueuedFireSimReceipt:
+    preflight = FireSimQueuePreflight(
+        _LOCAL_QUEUE,
+        (_LOCAL_QUEUE, "runworkload-full", "--stage-from", "/artifacts/model.elf"),
+    )
+    fields = {
+        "queue_job_id": 41,
+        "queue_owned": True,
+        "preflight": preflight,
+        "queue_phases": FIRESIM_QUEUE_PHASES,
+        "commands": (
+            ("firesim", "kill"),
+            ("firesim", "infrasetup"),
+            ("firesim", "runworkload", "--workload", "model.json"),
+            ("firesim", "kill"),
+        ),
+        "logs": (
+            _log(
+                tmp_path, "queue_client", "receipts/client.log",
+                "job_id=41\nterminal state=DONE\n",
+            ),
+            _log(
+                tmp_path, "queue_daemon", "queue/jobs/41/stdout.log",
+                _daemon_lifecycle_log(),
+            ),
+            _log(
+                tmp_path, "uart", "receipts/uartlog",
+                "METRIC cycles 1234\nDONE\n",
+            ),
+        ),
+        "warm_profile": _cycle_only_warm(),
+    }
+    fields.update(changes)
+    return QueuedFireSimReceipt(**fields)
 
 
 def test_rejects_the_old_seven_hour_reference_timeout() -> None:
@@ -90,21 +159,125 @@ def test_profile_is_warm_and_rejects_counters_outside_the_minimal_contract() -> 
             "total_compute_cycles", "wall_time", "every_pc_sample"}))
 
 
-def test_firesim_receipt_requires_queue_and_exact_lifecycle_order() -> None:
-    receipt = QueuedFireSimReceipt(
-        "request-1", True,
-        (("firesim", "kill"), ("firesim", "infrasetup"),
-         ("firesim", "runworkload", "--workload", "model.json"),
-         ("firesim", "kill")),
-        _warm())
+def test_firesim_receipt_requires_queue_and_exact_lifecycle_order(tmp_path) -> None:
+    receipt = _queued_receipt(tmp_path)
     assert receipt.queue_owned
+    assert receipt.preflight.submission[:2] == (_LOCAL_QUEUE, "runworkload-full")
 
     with pytest.raises(ValueError, match="exactly"):
-        QueuedFireSimReceipt(
-            "request-2", True,
-            (("firesim", "infrasetup"), ("firesim", "kill"),
-             ("firesim", "runworkload"), ("firesim", "kill")),
-            _warm())
+        _queued_receipt(
+            tmp_path,
+            commands=(("firesim", "infrasetup"), ("firesim", "kill"),
+                      ("firesim", "runworkload"), ("firesim", "kill")),
+        )
+
+
+@pytest.mark.parametrize("submission", [
+    ("firesim", "runworkload"),
+    ("/another/queue/bin/firesim-queue", "runworkload-full"),
+    (_LOCAL_QUEUE, "status"),
+    (_LOCAL_QUEUE, "runworkload-full", ";", "firesim", "kill"),
+])
+def test_firesim_preflight_rejects_direct_or_unpinned_execution(submission) -> None:
+    with pytest.raises(ValueError, match="direct FireSim|shell control"):
+        FireSimQueuePreflight(_LOCAL_QUEUE, submission)
+
+
+def test_firesim_receipt_binds_queue_job_and_all_logs(tmp_path) -> None:
+    receipt = _queued_receipt(tmp_path)
+
+    assert receipt.queue_job_id == 41
+    assert tuple(log.role for log in receipt.logs) == ("queue_client", "queue_daemon", "uart")
+    document = receipt.to_dict()
+    assert document["queue_submission"][:2] == [_LOCAL_QUEUE, "runworkload-full"]
+    assert document["queue_job_id"] == 41
+    assert tuple(document["logs"]) == ("queue_client", "queue_daemon", "uart")
+    assert document["warm_profile"]["profile"]["captured_metrics"] == [
+        "total_compute_cycles"]
+
+    wrong_job_log = _log(
+        tmp_path, "queue_daemon", "queue/jobs/99/stdout.log",
+        _daemon_lifecycle_log(),
+    )
+    with pytest.raises(ValueError, match="recorded queue job id"):
+        _queued_receipt(
+            tmp_path,
+            logs=(receipt.logs[0], wrong_job_log, receipt.logs[2]),
+        )
+
+
+def test_firesim_log_evidence_refuses_tampering(tmp_path) -> None:
+    evidence = _log(tmp_path, "queue_client", "client.log")
+    path = tmp_path / "client.log"
+    path.write_text("changed\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        QueueLogEvidence(evidence.role, evidence.path, evidence.sha256)
+
+
+def test_firesim_receipt_serialization_refuses_log_drift(tmp_path) -> None:
+    receipt = _queued_receipt(tmp_path)
+    (tmp_path / "receipts/client.log").write_text(
+        "job_id=41\nterminal state=DONE\nchanged\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        receipt.to_dict()
+
+
+def test_firesim_receipt_refuses_unproven_daemon_phase_order(tmp_path) -> None:
+    receipt = _queued_receipt(tmp_path)
+    reversed_log = _log(
+        tmp_path, "queue_daemon", "queue/jobs/41/reversed.log",
+        "\n".join(
+            f"=== [firesim-queue] phase={phase}" for phase in reversed(FIRESIM_QUEUE_PHASES)),
+    )
+
+    with pytest.raises(ValueError, match="ordered lifecycle marker"):
+        _queued_receipt(tmp_path, logs=(receipt.logs[0], reversed_log, receipt.logs[2]))
+
+
+def test_firesim_receipt_refuses_unproven_command_order_inside_phases(tmp_path) -> None:
+    receipt = _queued_receipt(tmp_path)
+    wrong_commands = _log(
+        tmp_path, "queue_daemon", "queue/jobs/41/wrong-commands.log",
+        _daemon_lifecycle_log().replace(
+            "Running: kill\nRunning: infrasetup",
+            "Running: infrasetup\nRunning: kill",
+            1,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Running: infrasetup"):
+        _queued_receipt(tmp_path, logs=(receipt.logs[0], wrong_commands, receipt.logs[2]))
+
+
+def test_firesim_receipt_refuses_client_job_id_mismatch(tmp_path) -> None:
+    receipt = _queued_receipt(tmp_path)
+    wrong_client = _log(
+        tmp_path, "queue_client", "receipts/wrong-client.log",
+        "job_id=99\nterminal state=DONE\n",
+    )
+
+    with pytest.raises(ValueError, match="this job id completed DONE"):
+        _queued_receipt(tmp_path, logs=(wrong_client, receipt.logs[1], receipt.logs[2]))
+
+
+def test_final_firesim_receipt_rejects_nonminimal_profile(tmp_path) -> None:
+    with pytest.raises(ValueError, match="only measured compute cycles"):
+        _queued_receipt(tmp_path, warm_profile=_warm())
+
+
+@pytest.mark.parametrize("uart", [
+    "METRIC cycles 1234\nMETRIC idle_cycles 0\nDONE\n",
+    "METRIC cycles 999\nDONE\n",
+    "DONE\n",
+])
+def test_final_firesim_receipt_refuses_nonexact_uart_metric(tmp_path, uart) -> None:
+    receipt = _queued_receipt(tmp_path)
+    uart_log = _log(tmp_path, "uart", "receipts/other-uartlog", uart)
+
+    with pytest.raises(ValueError, match="exactly one metric|only measured|do not match"):
+        _queued_receipt(tmp_path, logs=(receipt.logs[0], receipt.logs[1], uart_log))
 
 
 def test_warm_profile_becomes_target_neutral_occupancy_without_guessing_roles() -> None:
@@ -131,7 +304,7 @@ def test_warm_profile_becomes_target_neutral_occupancy_without_guessing_roles() 
     assert occupancy.missing == ()
 
 
-def test_partial_warm_profile_keeps_latency_hiding_unknown() -> None:
+def test_partial_warm_profile_keeps_latency_hiding_unknown(tmp_path) -> None:
     occupancy = occupancy_from_warm_receipt(
         _warm(), {"array": "compute", "dma": "movement"})
 
@@ -140,11 +313,7 @@ def test_partial_warm_profile_keeps_latency_hiding_unknown() -> None:
     assert occupancy.encoding_transitions is None
     assert "movement/compute overlap cycles" in occupancy.missing
     with pytest.raises(ValueError, match="owned by the FireSim queue"):
-        QueuedFireSimReceipt(
-            "request-3", False,
-            (("firesim", "kill"), ("firesim", "infrasetup"),
-             ("firesim", "runworkload"), ("firesim", "kill")),
-            _warm())
+        _queued_receipt(tmp_path, queue_owned=False)
 
 
 def test_warm_conversion_preserves_declared_but_unobserved_engine():

@@ -223,6 +223,15 @@ $Q/bin/firesim-queue runworkload-full \
     --priority 5 --project my-project --timeout 900
 ```
 
+The final promoted ResNet-50 measurement on the Agustin host pins the raw client path to
+`/scratch2/agustin/firesim_queue/bin/firesim-queue`. Submit exactly one `runworkload-full` job. The
+ELF performs its unmeasured warm invocation and its one measured invocation internally; submitting
+separate warm and measured queue jobs would discard the warmed process state. The final receipt must
+record the queue job ID and content hashes for the client log, daemon job log, and UART log. It is
+invalid if it came from a direct `firesim` invocation, if the daemon evidence does not show the exact
+`kill -> infrasetup -> runworkload -> kill` lifecycle, or if the UART exposes any profile metric
+other than the single measured compute-cycle count.
+
 The daemon rewrites that one key in the per-job `config_runtime.yaml` and leaves every other setting —
 and the shared template — untouched. Omit the flag to inherit the template, which is the older
 behaviour. Registered designs come from `deploy/config_hwdb.yaml`; **check which one the template
