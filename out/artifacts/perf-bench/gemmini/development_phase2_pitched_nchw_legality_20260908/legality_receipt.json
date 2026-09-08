@@ -1,0 +1,43 @@
+{
+  "schema": "gemmini_pitched_nchw_loop_conv_legality_v1",
+  "status": "compiler_legality_proved_performance_disabled",
+  "scope": {
+    "model": "torchvision_resnet50_imagenet1k_v2_w8a8",
+    "source_convolutions": 53,
+    "semantically_representable": 53,
+    "automatically_selected": 0,
+    "hardware_promoted": 0
+  },
+  "pitch_census": [
+    {"logical_width": 224, "physical_pitch": 224, "convolutions": 1},
+    {"logical_width": 56, "physical_pitch": 64, "convolutions": 13},
+    {"logical_width": 28, "physical_pitch": 32, "convolutions": 13},
+    {"logical_width": 14, "physical_pitch": 16, "convolutions": 19},
+    {"logical_width": 7, "physical_pitch": 16, "convolutions": 7}
+  ],
+  "rtl_authority": {
+    "chipyard_commit": "e27c6561c0066c1f60bf4eb4885a38391c850ac0",
+    "gemmini_submodule_commit": "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca",
+    "loop_conv_scala_sha256": "8609d9f27ff037ffdeaba53f70e8c0a9b3a994c3871e9eacbee20e58d3dc6c6d",
+    "transposed_input_address_line": 284,
+    "in_col_dim_decode_line": 1318
+  },
+  "compiler_contract": {
+    "batch": 1,
+    "input_layout": "NCHW_batch1",
+    "descriptor_trans_input_3120": true,
+    "descriptor_in_col_dim": "physical_pitch",
+    "input_base_elements": "kch * H * physical_pitch + row * physical_pitch + col",
+    "logical_output_width_unchanged": true,
+    "malformed_storage_encoding": "fail_closed",
+    "whole_model_auto_selection": false
+  },
+  "profitability_guard": {
+    "authority": "FireSim queue q545 versus accepted q535",
+    "q535_cycles": 1316619699,
+    "q545_cycles": 1383906735,
+    "delta_cycles": 67287036,
+    "regression_percent": 5.110590089,
+    "reason": "trans_input_3120 maps systolic I to min(batch,DIM), so batch one underfills 15 of 16 rows"
+  }
+}
