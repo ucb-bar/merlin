@@ -3,7 +3,6 @@ from hashlib import sha256
 from pathlib import Path
 import json
 import re
-import subprocess
 
 HERE = Path(__file__).resolve().parent
 receipt = json.loads((HERE / "receipt.json").read_text())
@@ -17,6 +16,7 @@ checks = {
     HERE / "build/readback_main.c": receipt["instrument"]["generated_readback_main_sha256"],
     HERE / "build/rp10.readback.radiance.elf": receipt["binaries"]["muon_elf_sha256"],
     HERE / "build/rp10.readback.soc.elf": receipt["binaries"]["soc_elf_sha256"],
+    HERE / "build/readback_symbols.txt": receipt["binaries"]["symbol_manifest_sha256"],
     HERE / "gsim_bounded_console.log": receipt["run"]["console_sha256"],
     Path(receipt["emulator"]["path"]): receipt["emulator"]["sha256"],
 }
@@ -24,11 +24,9 @@ for path, expected in checks.items():
     actual = digest(path)
     assert actual == expected, f"hash mismatch: {path}: {actual} != {expected}"
 
-elf = HERE / "build/rp10.readback.soc.elf"
-symbols = subprocess.run(["readelf", "-Ws", str(elf)], check=True,
-                         capture_output=True, text=True).stdout
-assert "0000000080000086" in symbols and "rp10_numeric_pass" in symbols
-assert "00000000800000c6" in symbols and "rp10_numeric_fail" in symbols
+symbols = (HERE / "build/readback_symbols.txt").read_text()
+assert "rp10_numeric_pass 0x0000000080000086" in symbols
+assert "rp10_numeric_fail 0x00000000800000c6" in symbols
 
 log = (HERE / "gsim_bounded_console.log").read_text(errors="replace")
 final = re.search(r"\[gsim-probe final\] rocket_pc=(0x[0-9a-f]+)", log)

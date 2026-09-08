@@ -69,3 +69,21 @@ env = dict(os.environ, CROSS64=str(cross), RV32_ELF=str(BUILD / "rp10.readback.r
            RV64_CFLAGS="-march=rv64gc -mabi=lp64 -ffreestanding -nostdlib -mcmodel=medany")
 subprocess.run(["bash", str(fuse_dir / "fuse_rv32_into_rv64.sh")], cwd=BUILD,
                env=env, check=True)
+
+# The upstream fuse helper names raw-segment symbols after a mktemp directory,
+# which makes the non-loadable symbol table nondeterministic.  Retain the three
+# semantic addresses, then strip that table so the runnable ELF is byte-stable.
+soc = BUILD / "rp10.readback.soc.elf"
+symbols = subprocess.run(["readelf", "-Ws", str(soc)], check=True,
+                         capture_output=True, text=True).stdout
+wanted = ("rp10_numeric_pass", "rp10_numeric_fail", "main")
+addresses = {}
+for line in symbols.splitlines():
+    fields = line.split()
+    if len(fields) >= 8 and fields[-1] in wanted:
+        addresses[fields[-1]] = f"0x{fields[1]}"
+if set(addresses) != set(wanted):
+    raise SystemExit(f"missing semantic symbols before strip: {addresses}")
+(BUILD / "readback_symbols.txt").write_text(
+    "".join(f"{name} {addresses[name]}\n" for name in wanted))
+subprocess.run([f"{cross}-strip", "--strip-all", str(soc)], check=True)

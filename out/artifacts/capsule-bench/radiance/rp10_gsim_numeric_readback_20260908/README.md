@@ -16,7 +16,7 @@ capsule's checked-in golden under the capsule's declared policy:
 The carrier contains distinct retained symbols for the two outcomes.  The final
 and steady Rocket PC is `0x80000086`, exactly `rp10_numeric_pass`; the fail symbol
 is `0x800000c6` and is never observed.  The run reaches the deliberate
-120,000-cycle observation bound in 42.91 s simulator time (43.03 s process wall)
+120,000-cycle observation bound in 40.76 s simulator time (40.88 s process wall)
 with 81,408 KiB maximum RSS.  This bound is an observation window, not a kernel
 cycle measurement: the Muon manager is intentionally parked so GPU-idle cannot
 terminate GSIM before Rocket records the comparison.
@@ -50,6 +50,9 @@ From the repository root:
 ```
 
 Run `python verify.py` in this directory to verify hashes and the PASS witness.
+The build records the outcome-symbol addresses in `build/readback_symbols.txt`
+and strips the fuse helper's randomly named temporary symbols, making the SoC
+ELF byte-identical across repeated builds.
 The two logs under `diagnostics/` retain the rejected UART and HTIF approaches;
 neither is evidence for the final PASS.
 

@@ -22,7 +22,7 @@
     "pass_symbol": "0x80000086",
     "fail_symbol": "0x800000c6",
     "readback_carrier_sha256": "538df09c6d424656430099ad5728642e7ac992290380c98735b349c58097f6a0",
-    "build_script_sha256": "ee1356565ab9566114da2e0d82d04f703f5d5d3513553bda23b604f70553f3de",
+    "build_script_sha256": "623fe669f4b213e82269b9675a1dda1f1536bdc783c58df0dce55eed7df7c927",
     "generated_readback_main_sha256": "74c4c6af0d53e731f00eecb252aca0497fc17a223e22872a0ef91b71c26d9523"
   },
   "emulator": {
@@ -31,13 +31,14 @@
   },
   "binaries": {
     "muon_elf_sha256": "421cb472f42afa80d3d3669c0a0e32167b4e260d27590db4dbddd6d7ae73a9af",
-    "soc_elf_sha256": "738a4dc422928d181b4f62ea1d040a4dad27e347827c1701e20c8d95a4160258"
+    "soc_elf_sha256": "3cff5620bcd6d66ac47dc2acf785ef69d8a3f9d24b0b49f197cf803cba8d8797",
+    "symbol_manifest_sha256": "6b8a072757c99915c5c7edac260cfa5b9e44d02d63935f1fbce4cd3de206a25d"
   },
   "run": {
     "max_cycles": 120000,
     "wall_timeout_seconds": 180,
-    "simulator_wall_seconds": 42.91,
-    "process_wall_seconds": 43.03,
+    "simulator_wall_seconds": 40.76,
+    "process_wall_seconds": 40.88,
     "max_rss_kib": 81408,
     "exit_code": 0,
     "final_rocket_pc": "0x80000086",
@@ -46,7 +47,7 @@
     "dram_w": 4,
     "last_aw": "0x110010060",
     "cvfpu_accepts": 2048,
-    "console_sha256": "d5bdd078455e982d33844336f0642a8aa80e14c96992e3c0eb905440cfa7faf7"
+    "console_sha256": "953b7ce77ea3156a84fafce35ee24d8ab2c6deafaa9d0a5be16b43a146df20c0"
   },
   "limitations": [
     "single instrumented capsule, not the complete Radiance suite",
