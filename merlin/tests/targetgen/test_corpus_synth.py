@@ -187,6 +187,32 @@ def test_an_application_capsule_carries_a_concrete_shape_and_says_where_it_came_
     assert "an_app" in entry["source_reference"] and "squareish_gemm" in entry["source_reference"]
 
 
+def test_an_application_quantization_gap_survives_as_corpus_provenance():
+    """No invented capsule is the right answer only if the missing model semantics stay visible."""
+    doc = _spec("gemmini")
+    gap = {
+        "schema": "application_missing_capability_v1",
+        "capability": "explicit_block_scaled_contraction_operands",
+        "status": "missing",
+        "required_formats": [{"format": "mxfp8", "scale_kind": "block_e8m0", "block": 32,
+                              "quant_ext_type": "mx_tensor"}],
+        "action": "recapture with model-owned MX operand and scale metadata",
+    }
+    doc["application_shapes"] = {
+        "required": [],
+        "missing_capabilities": [gap],
+        "cert_budget_s": 300.0,
+    }
+
+    made = CS.synthesize(doc)
+
+    assert made["provenance"]["application_missing_capabilities"] == [gap]
+    assert not [
+        entry for entry in made["capsules"]
+        if (entry.get("generalization") or {}).get("generalization_axis") == "application"
+    ]
+
+
 def test_an_l2_only_application_capsule_names_the_sibling_it_extends():
     """A large capsule resting on nothing is the failure this axis exists to avoid. The cap and the
     sibling travel together on the entry so the generator can enforce both."""

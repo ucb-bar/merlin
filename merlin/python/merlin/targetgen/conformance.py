@@ -741,15 +741,6 @@ def _application_axis(target: str, *, captures: dict | None = None,
     if not captures:
         return {"required": [], "refused": [], "declared_applications": 0, **basis}
 
-    grouped = APP.classify_captures(captures, target)
-    fit = CC.fit_for(target)
-    try:
-        from merlin.targetgen.corpus_spec import _tile_dim  # noqa: PLC2701
-        from merlin.targetgen.target_registry import load_contract
-        tile = int(_tile_dim(target, load_contract(target)) or 0)
-    except Exception:                              # noqa: BLE001 -- no edge is a real answer
-        tile = 0
-
     # ⚠️ AN APPLICATION CLASS THE HARDWARE DOES NOT ADMIT IS HOST-LANE WORK, NOT AN ACCELERATOR
     # OBLIGATION. The classes come from what the captures CONTAIN, and a real model contains plenty of
     # arithmetic this target cannot take -- measured on an int8-only array, 32 of 46 sized classes were
@@ -767,6 +758,31 @@ def _application_axis(target: str, *, captures: dict | None = None,
                 admitted_pairs.add((str(_fam), capsule_dtype(str(_d))))
             except Exception:                      # noqa: BLE001
                 admitted_pairs.add((str(_fam), str(_d)))
+
+    # A block-scaled format admitted by the target is not automatically present in a model whose
+    # checkpoint merely stores narrow weights. Ask the application reader to retain an explicit
+    # missing-capability record when none of the declared bundles carries the compute + scale
+    # semantics. This does not widen the required cells or relabel a float contraction.
+    from merlin.common import quant_formats as _qf
+    block_scaled_formats = set()
+    for family, dtype in admitted_pairs:
+        if family != "contraction":
+            continue
+        try:
+            fmt = _qf.get(dtype)
+        except Exception:                          # noqa: BLE001 -- unknown cannot prove block scaling
+            continue
+        if fmt.scale.kind == "block_e8m0":
+            block_scaled_formats.add(fmt.name)
+    grouped = APP.classify_captures(
+        captures, target, required_block_scaled_formats=block_scaled_formats)
+    fit = CC.fit_for(target)
+    try:
+        from merlin.targetgen.corpus_spec import _tile_dim  # noqa: PLC2701
+        from merlin.targetgen.target_registry import load_contract
+        tile = int(_tile_dim(target, load_contract(target)) or 0)
+    except Exception:                              # noqa: BLE001 -- no edge is a real answer
+        tile = 0
 
     required, refused = [], []
     for row in grouped.get("classes") or ():
@@ -801,6 +817,7 @@ def _application_axis(target: str, *, captures: dict | None = None,
         "n_regions": grouped.get("n_regions", 0),
         "total_work": grouped.get("total_work", 0),
         "captures_unreadable": grouped.get("captures_unreadable") or {},
+        "missing_capabilities": grouped.get("missing_capabilities") or [],
         "cost_model": fit.to_dict() if fit is not None else None,
         **basis,
     }

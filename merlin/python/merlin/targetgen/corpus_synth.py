@@ -1558,6 +1558,10 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 "capsule for. The classes that WERE emitted carry the real M/K/N of the heaviest region "
                 "in the class, and their tier follows that size: one too large to certify inside the "
                 "budget is graded at the loop tier and names the certified sibling it rests on"),
+            # A missing model-owned quantization representation must survive corpus synthesis. Without
+            # this field, regeneration would honestly emit no MX application capsule but erase why,
+            # leaving the absence indistinguishable from an axis nobody asked for.
+            "application_missing_capabilities": list(_app.get("missing_capabilities") or ()),
             "accumulation_depth_unsizable": unsized_depth,
             "accumulation_depth_note": (
                 "a reduction depth this target could not size. Kept separate from "

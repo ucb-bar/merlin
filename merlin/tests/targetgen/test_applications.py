@@ -17,6 +17,8 @@ here is about the grouping rather than about any one model.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from merlin.targetgen import applications as APP
@@ -112,6 +114,53 @@ def test_an_unreadable_capture_is_reported_not_skipped(tmp_path):
     assert out["n_classes"] == 0
     assert out["total_work"] == 0
     assert out["work_coverage"] is None, "no work observed is not full coverage"
+
+
+def test_weight_only_e4m3_f32_is_refused_as_block_scaled_application_evidence(tmp_path):
+    """Narrow checkpoint storage is not MX compute: the graph needs activation codes and scales."""
+    bundle = tmp_path / "weight_only_fp8"
+    bundle.mkdir()
+    model = _module((32, 32, 16)).replace(
+        "module {", 'module attributes {prov.quantization = "float8_weight_only_e4m3"} {', 1)
+    (bundle / "model.mlir").write_text(model, encoding="utf-8")
+    (bundle / "weights.safetensors.manifest.json").write_text(json.dumps({
+        "0": {
+            "weight": "layer.parametrizations.weight.original0",
+            "kind": "param",
+            "dtype": "float8_e4m3fn",
+            "shape": [32, 16],
+        }
+    }), encoding="utf-8")
+
+    out = APP.classify_captures(
+        {"fp8_named_bundle": bundle / "model.mlir"}, _TARGET,
+        required_block_scaled_formats={"mxfp8"})
+
+    assert {row["dtype"] for row in out["classes"]} == {"f32"}
+    gap = out["missing_capabilities"][0]
+    assert gap["schema"] == "application_missing_capability_v1"
+    assert gap["required_formats"] == [{
+        "format": "mxfp8", "scale_kind": "block_e8m0", "block": 32,
+        "quant_ext_type": "mx_tensor",
+    }]
+    capture = gap["captures"][0]
+    assert capture["declared_quantization"] == "float8_weight_only_e4m3"
+    assert capture["stored_weight_formats"] == ["fp8_e4m3"]
+    assert capture["compute_formats"] == ["f32"]
+    assert capture["verdict"] == "rejected_weight_only_e4m3_f32"
+    assert "activation-and-weight MX quantization" in gap["action"]
+
+
+def test_explicit_block_scaled_compute_suppresses_the_missing_capability(monkeypatch, tmp_path):
+    evidence = APP.ClassEvidence(
+        region_class=APP.RegionClass("contraction", "mxfp8", "aligned", "unknown", 2, "squareish_gemm"),
+        m=16, k=32, n=16, batch=1, multiplicity=1, work=8192,
+        work_complete=True, source="mx_bundle")
+    monkeypatch.setattr(APP, "classify_capture", lambda *_args, **_kwargs: [evidence])
+    out = APP.classify_captures(
+        {"mx_bundle": tmp_path / "mx_bundle" / "model.mlir"}, _TARGET,
+        required_block_scaled_formats={"mxfp8"})
+    assert "missing_capabilities" not in out
 
 
 def test_the_axis_states_its_basis(tmp_path):

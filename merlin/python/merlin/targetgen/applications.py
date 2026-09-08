@@ -204,7 +204,116 @@ def classify_capture(capture: str | Path, target: str, *,
     return out
 
 
-def classify_captures(captures: dict, target: str) -> dict:
+def _capture_quantization_summary(label: str, capture: str | Path,
+                                  evidence: list[ClassEvidence],
+                                  requested: set[str]) -> dict:
+    """What one bundle actually exposes to application-axis derivation.
+
+    A bundle name or top-level quantization label is not compute semantics.  In particular, a
+    weight-only E4M3 checkpoint whose graph dequantizes to f32 cannot witness an MX contraction:
+    the activation codes and per-block E8M0 scales do not exist.  This summary deliberately joins
+    the graph's observed operand types with the storage sidecar so the resulting refusal says which
+    half is missing instead of silently treating narrow storage as narrow arithmetic.
+    """
+    from merlin.targetgen import model_coverage as mc
+
+    path = Path(capture)
+    scheme = None
+    try:
+        module = mc.load_module(path)
+        attr = module.attributes.get("prov.quantization")
+        value = getattr(attr, "data", None)
+        scheme = value if isinstance(value, str) and value else None
+    except Exception:  # noqa: BLE001 -- the main classifier reports unreadable captures separately
+        pass
+
+    compute_formats = sorted({ev.region_class.dtype for ev in evidence})
+    manifest = path.parent / "weights.safetensors.manifest.json"
+    stored_formats: list[str] = []
+    if manifest.is_file():
+        try:
+            stored_formats = sorted(set(mc.storage_precisions(manifest).values()))
+        except Exception:  # noqa: BLE001 -- malformed sidecar is absence of usable evidence
+            pass
+
+    if requested & set(compute_formats):
+        verdict = "explicit_block_scaled_compute"
+        reason = "the compute graph exposes a requested block-scaled operand format"
+    else:
+        scheme_tokens = set((scheme or "").split("_"))
+        weight_only = {"weight", "only"} <= scheme_tokens
+        e4m3_storage = "fp8_e4m3" in stored_formats
+        if weight_only and e4m3_storage and set(compute_formats) <= {"fp32", "f32"}:
+            verdict = "rejected_weight_only_e4m3_f32"
+            reason = (
+                "E4M3 is weight storage only and every observed contraction computes in f32; "
+                "there are no block-scaled activation operands or E8M0 scale planes"
+            )
+        else:
+            verdict = "no_explicit_block_scaled_compute"
+            reason = (
+                "no observed contraction exposes a requested block-scaled operand format with "
+                "its scale semantics"
+            )
+    return {
+        "application": str(label),
+        "capture": path.parent.name,
+        "declared_quantization": scheme or "none",
+        "stored_weight_formats": stored_formats,
+        "compute_formats": compute_formats,
+        "verdict": verdict,
+        "reason": reason,
+    }
+
+
+def _missing_block_scaled_capability(captures: dict, capture_evidence: dict,
+                                     requested_formats: set[str]) -> dict | None:
+    """Actionable refusal when admitted block-scaled arithmetic is absent from applications."""
+    if not requested_formats:
+        return None
+    summaries = [
+        _capture_quantization_summary(str(label), path, capture_evidence.get(str(label), []),
+                                      requested_formats)
+        for label, path in sorted((captures or {}).items())
+    ]
+    if any(row["verdict"] == "explicit_block_scaled_compute" for row in summaries):
+        return None
+
+    from merlin.common import quant_formats as qf
+
+    formats = []
+    for name in sorted(requested_formats):
+        fmt = qf.get(name)
+        formats.append({
+            "format": name,
+            "scale_kind": fmt.scale.kind,
+            "block": fmt.scale.block,
+            "quant_ext_type": fmt.quant_ext_type,
+        })
+    return {
+        "schema": "application_missing_capability_v1",
+        "capability": "explicit_block_scaled_contraction_operands",
+        "status": "missing",
+        "required_formats": formats,
+        "reason": (
+            "the target admits block-scaled contraction formats, but no declared application bundle "
+            "carries those semantics; storage precision or a bundle label cannot be relabelled as compute"
+        ),
+        "captures": summaries,
+        "required_evidence": [
+            "activation and weight compute operands represented in a registered block-scaled format",
+            "explicit per-block scale metadata matching the format registry and related to each operand",
+            "ordinary tensor values or model-owned element/scale codes independent of a capsule golden",
+        ],
+        "action": (
+            "recapture an application with activation-and-weight MX quantization preserved in quant_ext "
+            "metadata (including block scales), then regenerate the conformance spec and corpus"
+        ),
+    }
+
+
+def classify_captures(captures: dict, target: str, *,
+                      required_block_scaled_formats: set[str] | frozenset[str] = frozenset()) -> dict:
     """Every application's classes, merged, with the work coverage the representatives account for.
 
     ``captures`` is ``{label: path}`` -- the same shape the conformance axes already take, so an
@@ -217,12 +326,14 @@ def classify_captures(captures: dict, target: str) -> dict:
     """
     merged: dict[RegionClass, ClassEvidence] = {}
     unreadable: dict[str, str] = {}
+    capture_evidence: dict[str, list[ClassEvidence]] = {}
     for label, path in sorted((captures or {}).items()):
         try:
             evidence = classify_capture(path, target)
         except Exception as exc:                   # noqa: BLE001 -- reported, never skipped silently
             unreadable[str(label)] = f"{type(exc).__name__}: {str(exc)[-160:]}"
             continue
+        capture_evidence[str(label)] = evidence
         for ev in evidence:
             prior = merged.get(ev.region_class)
             if prior is None:
@@ -240,7 +351,7 @@ def classify_captures(captures: dict, target: str) -> dict:
 
     classes = sorted(merged.values(), key=lambda e: (-e.work, e.region_class.key()))
     total = sum(e.work for e in classes)
-    return {
+    result = {
         "classes": [e.to_dict() for e in classes],
         "n_classes": len(classes),
         "n_regions": sum(e.multiplicity for e in classes),
@@ -255,6 +366,11 @@ def classify_captures(captures: dict, target: str) -> dict:
             "cut would rest on a threshold nobody can defend. Grouping by behaviour bounds the "
             "capsule count by the lattice instead of by the size of the model"),
     }
+    missing = _missing_block_scaled_capability(
+        captures, capture_evidence, set(required_block_scaled_formats))
+    if missing is not None:
+        result["missing_capabilities"] = [missing]
+    return result
 
 
 # ---------------------------------------------------------------------------------------------
