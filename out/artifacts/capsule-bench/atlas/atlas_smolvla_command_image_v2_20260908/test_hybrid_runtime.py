@@ -54,26 +54,32 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "host_signature_regions_by_semantic": {
             "add": 215,
             "arange": 63,
+            "aten_min_dim": 8,
             "compare": 4,
             "cos": 57,
+            "cumsum": 4,
             "div": 56,
             "dtype_cast": 472,
             "elementwise": 3,
             "fill": 50,
             "gelu": 12,
+            "layer_norm": 25,
             "minmax": 2,
             "mul": 536,
             "pow": 123,
+            "reduce_mean": 66,
+            "reduce_sum": 3,
             "rsqrt": 66,
             "select": 45,
             "sigmoid": 33,
             "sin": 57,
+            "softmax": 44,
             "sub": 68,
         },
-        "host_signature_regions_implemented": 1862,
+        "host_signature_regions_implemented": 2012,
         "layout_bridge_candidates": 2033,
         "materialized_copy_bridges": 112,
-        "missing_host_semantics_reduction": 1840,
+        "missing_host_semantics_reduction": 1990,
         "partition_host_region_overlap": ["conv_0"],
         "previous_bounded_host_regions_implemented": 22,
         "previous_missing_host_semantics": 2408,
@@ -83,7 +89,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391,
     }
-    assert schedule["fail_closed"]["missing_host_semantics"] == 568
+    assert schedule["fail_closed"]["missing_host_semantics"] == 418
     assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
     assert schedule["fail_closed"]["unrealized_layout_bridges"] == 358
     assert schedule["conversion_boundaries"] == {
@@ -102,7 +108,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         row for row in schedule["events"]
         if row["kind"] == "host_region" and row["executable"]
     ]
-    assert len(qualified_host) == 1862
+    assert len(qualified_host) == 2012
     assert all(len(row["operation_signature_sha256"]) == 64 for row in qualified_host)
     rejected_select = next(
         row for row in schedule["events"]
@@ -155,7 +161,8 @@ def test_new_scalar_families_have_fresh_real_capture_numeric_witnesses() -> None
     assert [row["label"] for row in witnesses] == [
         "pow_reciprocal", "rsqrt_normalization", "sigmoid_gate",
         "trigonometric_fanout", "arange_dependency", "fill_dependency",
-        "gelu_standalone",
+        "cumsum_reduce_mean", "masked_softmax", "argmin_successor",
+        "reduce_sum_successor", "layer_norm_standalone", "gelu_standalone",
     ]
     covered = set()
     for row in witnesses:
@@ -163,11 +170,13 @@ def test_new_scalar_families_have_fresh_real_capture_numeric_witnesses() -> None
         assert row["status"] == "fresh_numeric_execution_exactly_replayed"
         assert row["replay_hashes_equal"] is True
         assert all(output["finite"] for output in row["outputs"])
-        if row["label"] != "gelu_standalone":
+        if row["label"] not in {"gelu_standalone", "layer_norm_standalone"}:
             assert row["dependency_edges"] > 0
     assert {
         "pow", "elementwise", "rsqrt", "sigmoid", "sin", "cos", "gelu",
         "arange", "fill",
+        "reduce_mean", "softmax", "layer_norm", "aten_min_dim", "cumsum",
+        "reduce_sum",
     } <= covered
 
 
@@ -214,6 +223,214 @@ def test_all_real_constructor_regions_are_extracted_and_execute_exactly(
             assert np.all(np.isneginf(actual))
         else:
             assert np.all(actual == actual.reshape(-1)[0])
+
+
+def _left_fold_last_axis(source: np.ndarray, initial, operation) -> np.ndarray:
+    accumulator = np.full(source.shape[:-1], initial, dtype=source.dtype)
+    for index in range(source.shape[-1]):
+        accumulator = np.asarray(
+            operation(source[..., index], accumulator), dtype=source.dtype
+        )
+    return accumulator
+
+
+def test_all_real_reduction_signatures_qualify_and_representatives_are_exact(
+    real_lane: HostSemanticLane,
+) -> None:
+    expected_counts = {
+        "reduce_mean": 66,
+        "softmax": 44,
+        "layer_norm": 25,
+        "aten_min_dim": 8,
+        "cumsum": 4,
+        "reduce_sum": 3,
+    }
+    reductions = [
+        program for program in real_lane.programs.values()
+        if program.semantic in expected_counts
+    ]
+    assert Counter(program.semantic for program in reductions) == expected_counts
+    assert all(
+        program.signature["schema"] == "atlas_host_reduction_signature_v1"
+        and program.signature["accumulation_rule"].startswith("captured row-major")
+        for program in reductions
+    )
+
+    mean = min(
+        (program for program in reductions if program.semantic == "reduce_mean"),
+        key=lambda program: program.signature["input_shapes"],
+    )
+    mean_input = (
+        (np.arange(np.prod(mean.signature["input_shapes"][0]), dtype=np.float32) % 31)
+        / np.float32(7)
+    ).reshape(mean.signature["input_shapes"][0])
+    mean_sum = _left_fold_last_axis(mean_input, np.float32(0), np.add)
+    mean_expected = (mean_sum / np.float32(mean_input.shape[-1]))[..., None]
+    np.testing.assert_array_equal(
+        real_lane.execute(mean.region_id, {mean.input_values[0]: mean_input}), mean_expected
+    )
+
+    softmax = min(
+        (program for program in reductions if program.semantic == "softmax"),
+        key=lambda program: np.prod(program.signature["input_shapes"][0]),
+    )
+    softmax_input = (
+        (np.arange(np.prod(softmax.signature["input_shapes"][0]), dtype=np.float32) % 19)
+        / np.float32(5)
+    ).reshape(softmax.signature["input_shapes"][0])
+    maximum = _left_fold_last_axis(softmax_input, np.float32(-np.inf), np.maximum)
+    shifted = np.asarray(softmax_input - maximum[..., None], dtype=np.float32)
+    exponent = np.asarray(np.exp(shifted), dtype=np.float32)
+    denominator = _left_fold_last_axis(exponent, np.float32(0), np.add)
+    softmax_expected = np.asarray(exponent / denominator[..., None], dtype=np.float32)
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            softmax.region_id, {softmax.input_values[0]: softmax_input}
+        ),
+        softmax_expected,
+    )
+
+    layer_norm = next(
+        program for program in reductions if program.semantic == "layer_norm"
+    )
+    source_shape = layer_norm.signature["input_shapes"][0]
+    source = (
+        (np.arange(np.prod(source_shape), dtype=np.float32) % 23) / np.float32(9)
+    ).reshape(source_shape)
+    gamma = np.linspace(
+        np.float32(0.5), np.float32(1.5), source_shape[-1], dtype=np.float32
+    )
+    beta = np.linspace(
+        np.float32(-0.25), np.float32(0.25), source_shape[-1], dtype=np.float32
+    )
+    layer_mean = np.asarray(
+        _left_fold_last_axis(source, np.float32(0), np.add)
+        / np.float32(source_shape[-1]),
+        dtype=np.float32,
+    )
+    centered = np.asarray(source - layer_mean[..., None], dtype=np.float32)
+    squared = np.asarray(centered * centered, dtype=np.float32)
+    variance = np.asarray(
+        _left_fold_last_axis(squared, np.float32(0), np.add)
+        / np.float32(source_shape[-1]),
+        dtype=np.float32,
+    )
+    inverse_std = np.asarray(
+        np.reciprocal(np.sqrt(np.asarray(variance + np.float32(1e-6), dtype=np.float32))),
+        dtype=np.float32,
+    )
+    layer_expected = np.asarray(
+        np.asarray(centered * inverse_std[..., None], dtype=np.float32) * gamma + beta,
+        dtype=np.float32,
+    )
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            layer_norm.region_id,
+            {
+                layer_norm.input_values[0]: source,
+                layer_norm.input_values[1]: gamma,
+                layer_norm.input_values[2]: beta,
+            },
+        ),
+        layer_expected,
+    )
+
+    argmin = next(
+        program for program in reductions if program.semantic == "aten_min_dim"
+    )
+    argmin_input = np.arange(50, 0, -1, dtype=np.int64).reshape(1, 50)
+    argmin_values = {argmin.input_values[0]: argmin_input}
+    np.testing.assert_array_equal(
+        real_lane.execute(argmin.region_id, argmin_values),
+        np.array([[1]], dtype=np.int64),
+    )
+    np.testing.assert_array_equal(
+        argmin_values[argmin.operations[-1].results[0]],
+        np.array([[49]], dtype=np.int64),
+    )
+
+    cumsum = next(
+        program for program in reductions
+        if program.semantic == "cumsum" and program.signature["output_dtype"] == "f32"
+    )
+    cumsum_input = np.arange(1, 51, dtype=np.float32).reshape(1, 50)
+    cumsum_expected = np.add.accumulate(cumsum_input, axis=1, dtype=np.float32)
+    np.testing.assert_array_equal(
+        real_lane.execute(cumsum.region_id, {cumsum.input_values[0]: cumsum_input}),
+        cumsum_expected,
+    )
+
+    reduce_sum = next(
+        program for program in reductions if program.semantic == "reduce_sum"
+    )
+    bool_input = (np.arange(32).reshape(1, 32) % 3) == 0
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            reduce_sum.region_id, {reduce_sum.input_values[0]: bool_input}
+        ),
+        np.array([11], dtype=np.int64),
+    )
+
+
+def test_declared_reduction_with_incomplete_topology_fails_closed() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%arg: tensor<1x4xf32>) -> tensor<1x4xf32> {
+        %empty = tensor.empty() : tensor<1x4xf32>
+        %result = linalg.generic {
+          indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                           affine_map<(d0, d1) -> (d0, d1)>],
+          iterator_types = ["parallel", "parallel"]
+        } ins(%arg : tensor<1x4xf32>) outs(%empty : tensor<1x4xf32>)
+          attrs = {prov.region_id = "false_mean", prov.op = "reduce_mean",
+                   prov.family = "reduce", prov.aten = "aten.mean.dim"} {
+        ^bb0(%value: f32, %old: f32):
+          linalg.yield %value : f32
+        } -> tensor<1x4xf32>
+        return %result : tensor<1x4xf32>
+      }
+    }''')
+    lane = HostSemanticLane(workload)
+    assert lane.signature_for("false_mean") is None
+    assert lane.rejections["false_mean"] == (
+        "region does not match its complete captured reduction pattern"
+    )
+
+
+def test_reduce_sum_with_wrong_accumulator_body_fails_closed() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%arg: tensor<1x4xi1>) -> tensor<1xi64> {
+        %converted_empty = tensor.empty() : tensor<1x4xi64>
+        %converted = linalg.generic {
+          indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                           affine_map<(d0, d1) -> (d0, d1)>],
+          iterator_types = ["parallel", "parallel"]
+        } ins(%arg : tensor<1x4xi1>) outs(%converted_empty : tensor<1x4xi64>)
+          attrs = {prov.region_id = "false_sum", prov.op = "reduce_sum",
+                   prov.family = "reduce", prov.aten = "aten.sum.dim_IntList"} {
+        ^bb0(%value: i1, %old: i64):
+          %wide = arith.extui %value : i1 to i64
+          linalg.yield %wide : i64
+        } -> tensor<1x4xi64>
+        %zero = arith.constant {
+          prov.region_id = "false_sum", prov.op = "reduce_sum",
+          prov.family = "reduce", prov.aten = "aten.sum.dim_IntList"
+        } 0 : i64
+        %init = tensor.splat %zero {
+          prov.region_id = "false_sum", prov.op = "reduce_sum",
+          prov.family = "reduce", prov.aten = "aten.sum.dim_IntList"
+        } : tensor<1xi64>
+        %result = linalg.reduce ins(%converted : tensor<1x4xi64>)
+          outs(%init : tensor<1xi64>) dimensions = [1]
+          (%value: i64, %acc: i64) {
+            %wrong = arith.muli %value, %acc : i64
+            linalg.yield %wrong : i64
+          }
+        return %result : tensor<1xi64>
+      }
+    }''')
+    lane = HostSemanticLane(workload)
+    assert lane.signature_for("false_sum") is None
+    assert lane.rejections["false_sum"] == "linalg.reduce scalar body is unsupported"
 
 
 def test_declared_arange_with_wrong_scalar_dag_fails_closed() -> None:

@@ -65,17 +65,21 @@ Importantly, the inventory's 2,033 layout-bridge candidates are not all aliases.
 The executable proof classifies 1,675 `view`/`unsqueeze` regions as metadata
 aliases, while 246 `expand` regions still need a strided descriptor and 112
 `copy` regions require materialization. There are separately 2,430 semantic
-host-required regions. The fail-closed generic host lane now accepts 1,862 of
+host-required regions. The fail-closed generic host lane now accepts 2,012 of
 them from their complete extracted pointwise/cast/scalar-DAG signature,
 including exact affine constant-zero broadcasting. The second tranche adds all
 353 captured `pow`/`rsqrt`/trigonometric/sigmoid/GELU/reciprocal/clamp regions,
 with declared intermediate dtype conversion and BF16 round-to-nearest-even.
 The constructor tranche adds all 63 `arange` and 50 `fill` regions from their
 exact scalar DAGs, constants, dtypes, and static shapes. It
+also admits all 150 captured reduction/composite regions: mean, stable softmax,
+two-pass layer norm, arg-min, cumsum, and boolean-to-integer sum. Their complete
+iterator/reduction topology, scalar SSA dataflow, constants, comparison
+predicates, and per-step dtype rules are signed and executed directly. It
 distinguishes 45 conditional
 `aten.where` selects from two same-named slice/reshape regions, which remain
 rejected. Relative to the prior scoped-bridge baseline of 2,408 missing host
-regions, the exact missing count is now 568, a reduction of 1,840. The
+regions, the exact missing count is now 418, a reduction of 1,990. The
 existing real p0243-to-p0244 bridge still replays 27 regions and exactly
 reproduces the saved p0244 activation hash, but the schedule no longer treats
 scoped provenance membership alone as executable semantic evidence. The
@@ -86,12 +90,13 @@ The builder also finds, rather than names, a 16-region consecutive real capture
 chain spanning arange/compare/cast/arithmetic/select/pow/reciprocal, seeds one
 fresh input, executes all 17 SSA dependencies, and obtains identical per-region
 hashes on a second run. Additional signature-selected real witnesses exercise
-rsqrt normalization, sigmoid gating, trigonometric fan-out, constructor-fed
-arange/fill chains, and the smallest GELU instance. This is fresh host numeric
-evidence only.
+cumsum-to-mean normalization, masked softmax, arg-min/reduction-sum successors,
+sigmoid gating, trigonometric fan-out, constructor-fed arange/fill chains, and
+standalone layer norm and GELU instances where accelerator boundaries prevent
+a host dependency. This is fresh host numeric evidence only.
 
 Consequently the hybrid schedule remains explicitly `e2e_blocked_fail_closed`:
-568 host semantic regions, 388 accelerator partitions, and 358 layout bridges
+418 host semantic regions, 388 accelerator partitions, and 358 layout bridges
 remain unresolved. See `HYBRID_RUNTIME_REPORT.md` and
 `whole_capture_plan/hybrid_schedule_summary.json`. No E2E or performance claim
 is added.

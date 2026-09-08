@@ -221,6 +221,47 @@ def generic_host_witnesses(workload) -> tuple[dict, list[dict]]:
             ),
         ))
 
+    reduction_requirements = [
+        ("cumsum_reduce_mean", {"cumsum", "reduce_mean"}),
+        ("masked_softmax", {"softmax"}),
+        ("argmin_successor", {"aten_min_dim"}),
+        ("reduce_sum_successor", {"reduce_sum"}),
+    ]
+    for label, required in reduction_requirements:
+        already_selected = {tuple(row["region_ids"]) for row in selected}
+        run = next(
+            row for row in runs
+            if required <= set(row["semantics"])
+            and tuple(row["region_ids"]) not in already_selected
+        )
+        selected.append(_execute_host_witness(
+            lane,
+            run["region_ids"],
+            label=label,
+            selection=(
+                "first stable-ranked consecutive qualified run containing reduction set "
+                + ",".join(sorted(required))
+            ),
+        ))
+
+    # Native layer-norm instances are isolated from other qualified host
+    # regions by accelerator partitions.  Exercise the smallest real instance
+    # without inventing a host-host dependency.
+    layer_norm = min(
+        (program for program in lane.programs.values() if program.semantic == "layer_norm"),
+        key=lambda program: (
+            sum(int(np.prod(shape, dtype=np.int64))
+                for shape in program.signature["input_shapes"]),
+            program.region_id,
+        ),
+    )
+    selected.append(_execute_host_witness(
+        lane,
+        [layer_norm.region_id],
+        label="layer_norm_standalone",
+        selection="smallest qualified real layer norm; adjacent regions are accelerator partitions",
+    ))
+
     # GELU instances are isolated by accelerator partitions in this capture.
     # Select the smallest real one by tensor extent and execute it standalone;
     # do not manufacture a false dependency chain around it.

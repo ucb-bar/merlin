@@ -94,26 +94,32 @@
     "host_signature_regions_by_semantic": {
       "add": 215,
       "arange": 63,
+      "aten_min_dim": 8,
       "compare": 4,
       "cos": 57,
+      "cumsum": 4,
       "div": 56,
       "dtype_cast": 472,
       "elementwise": 3,
       "fill": 50,
       "gelu": 12,
+      "layer_norm": 25,
       "minmax": 2,
       "mul": 536,
       "pow": 123,
+      "reduce_mean": 66,
+      "reduce_sum": 3,
       "rsqrt": 66,
       "select": 45,
       "sigmoid": 33,
       "sin": 57,
+      "softmax": 44,
       "sub": 68
     },
-    "host_signature_regions_implemented": 1862,
+    "host_signature_regions_implemented": 2012,
     "layout_bridge_candidates": 2033,
     "materialized_copy_bridges": 112,
-    "missing_host_semantics_reduction": 1840,
+    "missing_host_semantics_reduction": 1990,
     "partition_host_region_overlap": [
       "conv_0"
     ],
@@ -3437,12 +3443,13 @@
     {
       "capture_op_index": 31,
       "event_index": 11,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_sum has no host pointwise implementation",
+      "operation_signature_sha256": "9f02c1519b9cdab5b6bbc4ce10b5586229a15383f07a660372314f6813182879",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_0",
       "semantic": "reduce_sum",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 35,
@@ -3457,12 +3464,13 @@
     {
       "capture_op_index": 39,
       "event_index": 13,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_sum has no host pointwise implementation",
+      "operation_signature_sha256": "9f02c1519b9cdab5b6bbc4ce10b5586229a15383f07a660372314f6813182879",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_1",
       "semantic": "reduce_sum",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 44,
@@ -3956,12 +3964,13 @@
     {
       "capture_op_index": 161,
       "event_index": 61,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_0",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 195,
@@ -4593,12 +4602,13 @@
     {
       "capture_op_index": 268,
       "event_index": 99,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_0",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 285,
@@ -4930,12 +4940,13 @@
     {
       "capture_op_index": 315,
       "event_index": 118,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_1",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 349,
@@ -5206,12 +5217,13 @@
     {
       "capture_op_index": 377,
       "event_index": 135,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_2",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 411,
@@ -5843,12 +5855,13 @@
     {
       "capture_op_index": 484,
       "event_index": 173,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_1",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 501,
@@ -6180,12 +6193,13 @@
     {
       "capture_op_index": 531,
       "event_index": 192,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_3",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 565,
@@ -6456,12 +6470,13 @@
     {
       "capture_op_index": 593,
       "event_index": 209,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_4",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 627,
@@ -7093,12 +7108,13 @@
     {
       "capture_op_index": 700,
       "event_index": 247,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_2",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 717,
@@ -7430,12 +7446,13 @@
     {
       "capture_op_index": 747,
       "event_index": 266,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_5",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 781,
@@ -7706,12 +7723,13 @@
     {
       "capture_op_index": 809,
       "event_index": 283,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_6",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 843,
@@ -8343,12 +8361,13 @@
     {
       "capture_op_index": 916,
       "event_index": 321,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_3",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 933,
@@ -8680,12 +8699,13 @@
     {
       "capture_op_index": 963,
       "event_index": 340,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_7",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 997,
@@ -8956,12 +8976,13 @@
     {
       "capture_op_index": 1025,
       "event_index": 357,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_8",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1059,
@@ -9593,12 +9614,13 @@
     {
       "capture_op_index": 1132,
       "event_index": 395,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_4",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1149,
@@ -9930,12 +9952,13 @@
     {
       "capture_op_index": 1179,
       "event_index": 414,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_9",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1213,
@@ -10206,12 +10229,13 @@
     {
       "capture_op_index": 1241,
       "event_index": 431,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_10",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1275,
@@ -10843,12 +10867,13 @@
     {
       "capture_op_index": 1348,
       "event_index": 469,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_5",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1365,
@@ -11180,12 +11205,13 @@
     {
       "capture_op_index": 1395,
       "event_index": 488,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_11",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1429,
@@ -11456,12 +11482,13 @@
     {
       "capture_op_index": 1457,
       "event_index": 505,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_12",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1491,
@@ -12093,12 +12120,13 @@
     {
       "capture_op_index": 1564,
       "event_index": 543,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_6",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1581,
@@ -12430,12 +12458,13 @@
     {
       "capture_op_index": 1611,
       "event_index": 562,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_13",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1645,
@@ -12706,12 +12735,13 @@
     {
       "capture_op_index": 1673,
       "event_index": 579,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_14",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1707,
@@ -13343,12 +13373,13 @@
     {
       "capture_op_index": 1780,
       "event_index": 617,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_7",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1797,
@@ -13680,12 +13711,13 @@
     {
       "capture_op_index": 1827,
       "event_index": 636,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_15",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1861,
@@ -13956,12 +13988,13 @@
     {
       "capture_op_index": 1889,
       "event_index": 653,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_16",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 1923,
@@ -14593,12 +14626,13 @@
     {
       "capture_op_index": 1996,
       "event_index": 691,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_8",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2013,
@@ -14930,12 +14964,13 @@
     {
       "capture_op_index": 2043,
       "event_index": 710,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_17",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2077,
@@ -15206,12 +15241,13 @@
     {
       "capture_op_index": 2105,
       "event_index": 727,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_18",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2139,
@@ -15843,12 +15879,13 @@
     {
       "capture_op_index": 2212,
       "event_index": 765,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_9",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2229,
@@ -16180,12 +16217,13 @@
     {
       "capture_op_index": 2259,
       "event_index": 784,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_19",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2293,
@@ -16456,12 +16494,13 @@
     {
       "capture_op_index": 2321,
       "event_index": 801,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_20",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2355,
@@ -17093,12 +17132,13 @@
     {
       "capture_op_index": 2428,
       "event_index": 839,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_10",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2445,
@@ -17430,12 +17470,13 @@
     {
       "capture_op_index": 2475,
       "event_index": 858,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_21",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2509,
@@ -17706,12 +17747,13 @@
     {
       "capture_op_index": 2537,
       "event_index": 875,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_22",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2571,
@@ -18343,12 +18385,13 @@
     {
       "capture_op_index": 2644,
       "event_index": 913,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "0de706b944587d6b68199a37266f32ad8b4b1fc91d1d0a0dcbed2735a55e7e22",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_11",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2661,
@@ -18680,12 +18723,13 @@
     {
       "capture_op_index": 2691,
       "event_index": 932,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_23",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2725,
@@ -18956,12 +19000,13 @@
     {
       "capture_op_index": 2753,
       "event_index": 949,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic layer_norm has no host pointwise implementation",
+      "operation_signature_sha256": "4504fb3fdd6fa4c3fbc6dfaf8089f61f1a93a0d09054c8b181cbd0d872d336a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "layer_norm_24",
       "semantic": "layer_norm",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2787,
@@ -19352,12 +19397,13 @@
     {
       "capture_op_index": 2839,
       "event_index": 976,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic cumsum has no host pointwise implementation",
+      "operation_signature_sha256": "61983fad897e5179d86d8760f2befe85fb1fa149d741c9c47a44310e54eac30b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "scan_0",
       "semantic": "cumsum",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2842,
@@ -19434,12 +19480,13 @@
     {
       "capture_op_index": 2856,
       "event_index": 984,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic cumsum has no host pointwise implementation",
+      "operation_signature_sha256": "61983fad897e5179d86d8760f2befe85fb1fa149d741c9c47a44310e54eac30b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "scan_1",
       "semantic": "cumsum",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2859,
@@ -19466,12 +19513,13 @@
     {
       "capture_op_index": 2865,
       "event_index": 987,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_2",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 2874,
@@ -20745,12 +20793,13 @@
     {
       "capture_op_index": 3074,
       "event_index": 1092,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_12",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3091,
@@ -21129,12 +21178,13 @@
     {
       "capture_op_index": 3133,
       "event_index": 1116,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_3",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3142,
@@ -21605,12 +21655,13 @@
     {
       "capture_op_index": 3204,
       "event_index": 1150,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_4",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3213,
@@ -22884,12 +22935,13 @@
     {
       "capture_op_index": 3413,
       "event_index": 1255,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_13",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3430,
@@ -23257,12 +23309,13 @@
     {
       "capture_op_index": 3470,
       "event_index": 1278,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_5",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3479,
@@ -23733,12 +23786,13 @@
     {
       "capture_op_index": 3541,
       "event_index": 1312,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_6",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3550,
@@ -25012,12 +25066,13 @@
     {
       "capture_op_index": 3750,
       "event_index": 1417,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_14",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3767,
@@ -25385,12 +25440,13 @@
     {
       "capture_op_index": 3807,
       "event_index": 1440,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_7",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3816,
@@ -25861,12 +25917,13 @@
     {
       "capture_op_index": 3878,
       "event_index": 1474,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_8",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 3887,
@@ -27140,12 +27197,13 @@
     {
       "capture_op_index": 4087,
       "event_index": 1579,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_15",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4104,
@@ -27513,12 +27571,13 @@
     {
       "capture_op_index": 4144,
       "event_index": 1602,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_9",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4153,
@@ -27989,12 +28048,13 @@
     {
       "capture_op_index": 4215,
       "event_index": 1636,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_10",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4224,
@@ -29268,12 +29328,13 @@
     {
       "capture_op_index": 4424,
       "event_index": 1741,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_16",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4441,
@@ -29641,12 +29702,13 @@
     {
       "capture_op_index": 4481,
       "event_index": 1764,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_11",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4490,
@@ -30117,12 +30179,13 @@
     {
       "capture_op_index": 4552,
       "event_index": 1798,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_12",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4561,
@@ -31396,12 +31459,13 @@
     {
       "capture_op_index": 4761,
       "event_index": 1903,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_17",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4778,
@@ -31769,12 +31833,13 @@
     {
       "capture_op_index": 4818,
       "event_index": 1926,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_13",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4827,
@@ -32245,12 +32310,13 @@
     {
       "capture_op_index": 4889,
       "event_index": 1960,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_14",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 4898,
@@ -33524,12 +33590,13 @@
     {
       "capture_op_index": 5098,
       "event_index": 2065,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_18",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5115,
@@ -33897,12 +33964,13 @@
     {
       "capture_op_index": 5155,
       "event_index": 2088,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_15",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5164,
@@ -34373,12 +34441,13 @@
     {
       "capture_op_index": 5226,
       "event_index": 2122,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_16",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5235,
@@ -35652,12 +35721,13 @@
     {
       "capture_op_index": 5435,
       "event_index": 2227,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_19",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5452,
@@ -36025,12 +36095,13 @@
     {
       "capture_op_index": 5492,
       "event_index": 2250,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_17",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5501,
@@ -36501,12 +36572,13 @@
     {
       "capture_op_index": 5563,
       "event_index": 2284,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_18",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5572,
@@ -37780,12 +37852,13 @@
     {
       "capture_op_index": 5772,
       "event_index": 2389,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_20",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5789,
@@ -38153,12 +38226,13 @@
     {
       "capture_op_index": 5829,
       "event_index": 2412,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_19",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5838,
@@ -38629,12 +38703,13 @@
     {
       "capture_op_index": 5900,
       "event_index": 2446,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_20",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 5909,
@@ -39908,12 +39983,13 @@
     {
       "capture_op_index": 6109,
       "event_index": 2551,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_21",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6126,
@@ -40281,12 +40357,13 @@
     {
       "capture_op_index": 6166,
       "event_index": 2574,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_21",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6175,
@@ -40757,12 +40834,13 @@
     {
       "capture_op_index": 6237,
       "event_index": 2608,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_22",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6246,
@@ -42036,12 +42114,13 @@
     {
       "capture_op_index": 6446,
       "event_index": 2713,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_22",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6463,
@@ -42409,12 +42488,13 @@
     {
       "capture_op_index": 6503,
       "event_index": 2736,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_23",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6512,
@@ -42885,12 +42965,13 @@
     {
       "capture_op_index": 6574,
       "event_index": 2770,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_24",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6583,
@@ -44164,12 +44245,13 @@
     {
       "capture_op_index": 6783,
       "event_index": 2875,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_23",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6800,
@@ -44537,12 +44619,13 @@
     {
       "capture_op_index": 6840,
       "event_index": 2898,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_25",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6849,
@@ -45013,12 +45096,13 @@
     {
       "capture_op_index": 6911,
       "event_index": 2932,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_26",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 6920,
@@ -46292,12 +46376,13 @@
     {
       "capture_op_index": 7120,
       "event_index": 3037,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_24",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7137,
@@ -46665,12 +46750,13 @@
     {
       "capture_op_index": 7177,
       "event_index": 3060,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_27",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7186,
@@ -47141,12 +47227,13 @@
     {
       "capture_op_index": 7248,
       "event_index": 3094,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_28",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7257,
@@ -48420,12 +48507,13 @@
     {
       "capture_op_index": 7457,
       "event_index": 3199,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_25",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7474,
@@ -48793,12 +48881,13 @@
     {
       "capture_op_index": 7514,
       "event_index": 3222,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_29",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7523,
@@ -49269,12 +49358,13 @@
     {
       "capture_op_index": 7585,
       "event_index": 3256,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_30",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7594,
@@ -50548,12 +50638,13 @@
     {
       "capture_op_index": 7794,
       "event_index": 3361,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_26",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7811,
@@ -50921,12 +51012,13 @@
     {
       "capture_op_index": 7851,
       "event_index": 3384,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_31",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7860,
@@ -51397,12 +51489,13 @@
     {
       "capture_op_index": 7922,
       "event_index": 3418,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_32",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 7931,
@@ -52676,12 +52769,13 @@
     {
       "capture_op_index": 8131,
       "event_index": 3523,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "38c9360cde01d584228e31c6c3b564f82f205cab96f8388d86ac6b6851160a4b",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_27",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8148,
@@ -53049,12 +53143,13 @@
     {
       "capture_op_index": 8188,
       "event_index": 3546,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_33",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8197,
@@ -53525,12 +53620,13 @@
     {
       "capture_op_index": 8259,
       "event_index": 3580,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "85e4934a0ecba4f0df3fd5e3e2fcd56627eac7d463871c59439a284265f9bc97",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_34",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8268,
@@ -54317,12 +54413,13 @@
     {
       "capture_op_index": 8397,
       "event_index": 3641,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic cumsum has no host pointwise implementation",
+      "operation_signature_sha256": "9b2399edb30598e85eb0014731b12f6c118ce82a3c41d6ebab26aa699f658ff2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "scan_2",
       "semantic": "cumsum",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8400,
@@ -54409,12 +54506,13 @@
     {
       "capture_op_index": 8416,
       "event_index": 3650,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_sum has no host pointwise implementation",
+      "operation_signature_sha256": "4cacf31c5c67fa068e5a376eb03485fd9b87c8c0fd0832207cb3c8e30c6d9a36",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_35",
       "semantic": "reduce_sum",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8420,
@@ -54429,12 +54527,13 @@
     {
       "capture_op_index": 8421,
       "event_index": 3652,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic cumsum has no host pointwise implementation",
+      "operation_signature_sha256": "bbe1d7e578ec20d5c6583e76b1950c56d593ff5a87fc4ba058b9072d4f53d660",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "scan_3",
       "semantic": "cumsum",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8425,
@@ -54472,12 +54571,13 @@
     {
       "capture_op_index": 8432,
       "event_index": 3656,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_36",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8441,
@@ -55771,12 +55871,13 @@
     {
       "capture_op_index": 8643,
       "event_index": 3763,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "6eea8ed8a6017337b1ff9d7083d056abbbe0dba597224e151a25ce57634ebf9e",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_28",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8660,
@@ -56155,12 +56256,13 @@
     {
       "capture_op_index": 8702,
       "event_index": 3787,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_37",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8711,
@@ -56631,12 +56733,13 @@
     {
       "capture_op_index": 8773,
       "event_index": 3821,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_38",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8782,
@@ -57087,12 +57190,13 @@
     {
       "capture_op_index": 8838,
       "event_index": 3852,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic aten_min_dim has no host pointwise implementation",
+      "operation_signature_sha256": "a668d34055a31287e52d4e7bf28d804131041b545dee4be61ab697ffd8153244",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "arg_reduce_0",
       "semantic": "aten_min_dim",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8846,
@@ -57729,12 +57833,13 @@
     {
       "capture_op_index": 8946,
       "event_index": 3904,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "662d61e964968b64ef3cb704b8286c95c85f792f524c856085c5778979eb6ff1",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_29",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 8965,
@@ -58098,12 +58203,13 @@
     {
       "capture_op_index": 9003,
       "event_index": 3927,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_39",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9012,
@@ -58574,12 +58680,13 @@
     {
       "capture_op_index": 9074,
       "event_index": 3961,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_40",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9083,
@@ -59873,12 +59980,13 @@
     {
       "capture_op_index": 9285,
       "event_index": 4068,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "6eea8ed8a6017337b1ff9d7083d056abbbe0dba597224e151a25ce57634ebf9e",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_30",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9302,
@@ -60246,12 +60354,13 @@
     {
       "capture_op_index": 9342,
       "event_index": 4091,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_41",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9351,
@@ -60722,12 +60831,13 @@
     {
       "capture_op_index": 9413,
       "event_index": 4125,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_42",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9422,
@@ -61178,12 +61288,13 @@
     {
       "capture_op_index": 9478,
       "event_index": 4156,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic aten_min_dim has no host pointwise implementation",
+      "operation_signature_sha256": "a668d34055a31287e52d4e7bf28d804131041b545dee4be61ab697ffd8153244",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "arg_reduce_1",
       "semantic": "aten_min_dim",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9486,
@@ -61820,12 +61931,13 @@
     {
       "capture_op_index": 9586,
       "event_index": 4208,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "662d61e964968b64ef3cb704b8286c95c85f792f524c856085c5778979eb6ff1",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_31",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9605,
@@ -62189,12 +62301,13 @@
     {
       "capture_op_index": 9643,
       "event_index": 4231,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_43",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9652,
@@ -62665,12 +62778,13 @@
     {
       "capture_op_index": 9714,
       "event_index": 4265,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_44",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9723,
@@ -63964,12 +64078,13 @@
     {
       "capture_op_index": 9925,
       "event_index": 4372,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "6eea8ed8a6017337b1ff9d7083d056abbbe0dba597224e151a25ce57634ebf9e",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_32",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9942,
@@ -64337,12 +64452,13 @@
     {
       "capture_op_index": 9982,
       "event_index": 4395,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_45",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 9991,
@@ -64813,12 +64929,13 @@
     {
       "capture_op_index": 10053,
       "event_index": 4429,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_46",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10062,
@@ -65269,12 +65386,13 @@
     {
       "capture_op_index": 10118,
       "event_index": 4460,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic aten_min_dim has no host pointwise implementation",
+      "operation_signature_sha256": "a668d34055a31287e52d4e7bf28d804131041b545dee4be61ab697ffd8153244",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "arg_reduce_2",
       "semantic": "aten_min_dim",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10126,
@@ -65911,12 +66029,13 @@
     {
       "capture_op_index": 10226,
       "event_index": 4512,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "662d61e964968b64ef3cb704b8286c95c85f792f524c856085c5778979eb6ff1",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_33",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10245,
@@ -66280,12 +66399,13 @@
     {
       "capture_op_index": 10283,
       "event_index": 4535,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_47",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10292,
@@ -66756,12 +66876,13 @@
     {
       "capture_op_index": 10354,
       "event_index": 4569,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_48",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10363,
@@ -68055,12 +68176,13 @@
     {
       "capture_op_index": 10565,
       "event_index": 4676,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "6eea8ed8a6017337b1ff9d7083d056abbbe0dba597224e151a25ce57634ebf9e",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_34",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10582,
@@ -68428,12 +68550,13 @@
     {
       "capture_op_index": 10622,
       "event_index": 4699,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_49",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10631,
@@ -68904,12 +69027,13 @@
     {
       "capture_op_index": 10693,
       "event_index": 4733,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_50",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10702,
@@ -69360,12 +69484,13 @@
     {
       "capture_op_index": 10758,
       "event_index": 4764,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic aten_min_dim has no host pointwise implementation",
+      "operation_signature_sha256": "a668d34055a31287e52d4e7bf28d804131041b545dee4be61ab697ffd8153244",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "arg_reduce_3",
       "semantic": "aten_min_dim",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10766,
@@ -70002,12 +70127,13 @@
     {
       "capture_op_index": 10866,
       "event_index": 4816,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "662d61e964968b64ef3cb704b8286c95c85f792f524c856085c5778979eb6ff1",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_35",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10885,
@@ -70371,12 +70497,13 @@
     {
       "capture_op_index": 10923,
       "event_index": 4839,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_51",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 10932,
@@ -70847,12 +70974,13 @@
     {
       "capture_op_index": 10994,
       "event_index": 4873,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_52",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11003,
@@ -72146,12 +72274,13 @@
     {
       "capture_op_index": 11205,
       "event_index": 4980,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "6eea8ed8a6017337b1ff9d7083d056abbbe0dba597224e151a25ce57634ebf9e",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_36",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11222,
@@ -72519,12 +72648,13 @@
     {
       "capture_op_index": 11262,
       "event_index": 5003,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_53",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11271,
@@ -72995,12 +73125,13 @@
     {
       "capture_op_index": 11333,
       "event_index": 5037,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_54",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11342,
@@ -73451,12 +73582,13 @@
     {
       "capture_op_index": 11398,
       "event_index": 5068,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic aten_min_dim has no host pointwise implementation",
+      "operation_signature_sha256": "a668d34055a31287e52d4e7bf28d804131041b545dee4be61ab697ffd8153244",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "arg_reduce_4",
       "semantic": "aten_min_dim",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11406,
@@ -74093,12 +74225,13 @@
     {
       "capture_op_index": 11506,
       "event_index": 5120,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "662d61e964968b64ef3cb704b8286c95c85f792f524c856085c5778979eb6ff1",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_37",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11525,
@@ -74462,12 +74595,13 @@
     {
       "capture_op_index": 11563,
       "event_index": 5143,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_55",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11572,
@@ -74938,12 +75072,13 @@
     {
       "capture_op_index": 11634,
       "event_index": 5177,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_56",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11643,
@@ -76237,12 +76372,13 @@
     {
       "capture_op_index": 11845,
       "event_index": 5284,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "6eea8ed8a6017337b1ff9d7083d056abbbe0dba597224e151a25ce57634ebf9e",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_38",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11862,
@@ -76610,12 +76746,13 @@
     {
       "capture_op_index": 11902,
       "event_index": 5307,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_57",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11911,
@@ -77086,12 +77223,13 @@
     {
       "capture_op_index": 11973,
       "event_index": 5341,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_58",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 11982,
@@ -77542,12 +77680,13 @@
     {
       "capture_op_index": 12038,
       "event_index": 5372,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic aten_min_dim has no host pointwise implementation",
+      "operation_signature_sha256": "a668d34055a31287e52d4e7bf28d804131041b545dee4be61ab697ffd8153244",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "arg_reduce_5",
       "semantic": "aten_min_dim",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12046,
@@ -78184,12 +78323,13 @@
     {
       "capture_op_index": 12146,
       "event_index": 5424,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "662d61e964968b64ef3cb704b8286c95c85f792f524c856085c5778979eb6ff1",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_39",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12165,
@@ -78553,12 +78693,13 @@
     {
       "capture_op_index": 12203,
       "event_index": 5447,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_59",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12212,
@@ -79029,12 +79170,13 @@
     {
       "capture_op_index": 12274,
       "event_index": 5481,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_60",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12283,
@@ -80328,12 +80470,13 @@
     {
       "capture_op_index": 12485,
       "event_index": 5588,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "6eea8ed8a6017337b1ff9d7083d056abbbe0dba597224e151a25ce57634ebf9e",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_40",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12502,
@@ -80701,12 +80844,13 @@
     {
       "capture_op_index": 12542,
       "event_index": 5611,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_61",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12551,
@@ -81177,12 +81321,13 @@
     {
       "capture_op_index": 12613,
       "event_index": 5645,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_62",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12622,
@@ -81633,12 +81778,13 @@
     {
       "capture_op_index": 12678,
       "event_index": 5676,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic aten_min_dim has no host pointwise implementation",
+      "operation_signature_sha256": "a668d34055a31287e52d4e7bf28d804131041b545dee4be61ab697ffd8153244",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "arg_reduce_6",
       "semantic": "aten_min_dim",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12686,
@@ -82275,12 +82421,13 @@
     {
       "capture_op_index": 12786,
       "event_index": 5728,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "662d61e964968b64ef3cb704b8286c95c85f792f524c856085c5778979eb6ff1",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_41",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12805,
@@ -82644,12 +82791,13 @@
     {
       "capture_op_index": 12843,
       "event_index": 5751,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_63",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12852,
@@ -83120,12 +83268,13 @@
     {
       "capture_op_index": 12914,
       "event_index": 5785,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_64",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 12923,
@@ -84419,12 +84568,13 @@
     {
       "capture_op_index": 13125,
       "event_index": 5892,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "6eea8ed8a6017337b1ff9d7083d056abbbe0dba597224e151a25ce57634ebf9e",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_42",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 13142,
@@ -84792,12 +84942,13 @@
     {
       "capture_op_index": 13182,
       "event_index": 5915,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_65",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 13191,
@@ -85268,12 +85419,13 @@
     {
       "capture_op_index": 13253,
       "event_index": 5949,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_66",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 13262,
@@ -85724,12 +85876,13 @@
     {
       "capture_op_index": 13318,
       "event_index": 5980,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic aten_min_dim has no host pointwise implementation",
+      "operation_signature_sha256": "a668d34055a31287e52d4e7bf28d804131041b545dee4be61ab697ffd8153244",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "arg_reduce_7",
       "semantic": "aten_min_dim",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 13326,
@@ -86366,12 +86519,13 @@
     {
       "capture_op_index": 13426,
       "event_index": 6032,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic softmax has no host pointwise implementation",
+      "operation_signature_sha256": "662d61e964968b64ef3cb704b8286c95c85f792f524c856085c5778979eb6ff1",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "softmax_43",
       "semantic": "softmax",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 13445,
@@ -86735,12 +86889,13 @@
     {
       "capture_op_index": 13483,
       "event_index": 6055,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_67",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 13492,
@@ -87211,12 +87366,13 @@
     {
       "capture_op_index": 13554,
       "event_index": 6089,
-      "executable": false,
+      "executable": true,
       "kind": "host_region",
-      "reason": "semantic reduce_mean has no host pointwise implementation",
+      "operation_signature_sha256": "aa9332ea9bedf8c9d8ab38abebbcec07cedf57c5647da1c1d6c6fdb7271506a2",
+      "reason": "complete pointwise signature accepted by the generic host lane",
       "region_id": "reduce_68",
       "semantic": "reduce_mean",
-      "status": "missing_host_semantics"
+      "status": "extracted_host_semantics_qualified"
     },
     {
       "capture_op_index": 13563,
@@ -87421,9 +87577,7 @@
     "missing_host_region_ids": [
       "conv_0",
       "select_0",
-      "reduce_0",
       "select_1",
-      "reduce_1",
       "search_0",
       "search_1",
       "mask_gather_0",
@@ -87432,62 +87586,22 @@
       "bitwise_0",
       "gather_1",
       "bitwise_1",
-      "layer_norm_0",
       "bitwise_2",
-      "softmax_0",
-      "layer_norm_1",
-      "layer_norm_2",
       "bitwise_3",
-      "softmax_1",
-      "layer_norm_3",
-      "layer_norm_4",
       "bitwise_4",
-      "softmax_2",
-      "layer_norm_5",
-      "layer_norm_6",
       "bitwise_5",
-      "softmax_3",
-      "layer_norm_7",
-      "layer_norm_8",
       "bitwise_6",
-      "softmax_4",
-      "layer_norm_9",
-      "layer_norm_10",
       "bitwise_7",
-      "softmax_5",
-      "layer_norm_11",
-      "layer_norm_12",
       "bitwise_8",
-      "softmax_6",
-      "layer_norm_13",
-      "layer_norm_14",
       "bitwise_9",
-      "softmax_7",
-      "layer_norm_15",
-      "layer_norm_16",
       "bitwise_10",
-      "softmax_8",
-      "layer_norm_17",
-      "layer_norm_18",
       "bitwise_11",
-      "softmax_9",
-      "layer_norm_19",
-      "layer_norm_20",
       "bitwise_12",
-      "softmax_10",
-      "layer_norm_21",
-      "layer_norm_22",
       "bitwise_13",
-      "softmax_11",
-      "layer_norm_23",
-      "layer_norm_24",
       "gather_2",
       "cat_0",
       "cat_1",
-      "scan_0",
       "bitwise_14",
-      "scan_1",
-      "reduce_2",
       "cat_2",
       "cat_3",
       "cat_4",
@@ -87501,9 +87615,6 @@
       "slice_scatter_2",
       "slice_3",
       "slice_scatter_3",
-      "softmax_12",
-      "reduce_3",
-      "reduce_4",
       "cat_5",
       "cat_6",
       "cat_7",
@@ -87517,9 +87628,6 @@
       "slice_scatter_6",
       "slice_7",
       "slice_scatter_7",
-      "softmax_13",
-      "reduce_5",
-      "reduce_6",
       "cat_8",
       "cat_9",
       "cat_10",
@@ -87533,9 +87641,6 @@
       "slice_scatter_10",
       "slice_11",
       "slice_scatter_11",
-      "softmax_14",
-      "reduce_7",
-      "reduce_8",
       "cat_11",
       "cat_12",
       "cat_13",
@@ -87549,9 +87654,6 @@
       "slice_scatter_14",
       "slice_15",
       "slice_scatter_15",
-      "softmax_15",
-      "reduce_9",
-      "reduce_10",
       "cat_14",
       "cat_15",
       "cat_16",
@@ -87565,9 +87667,6 @@
       "slice_scatter_18",
       "slice_19",
       "slice_scatter_19",
-      "softmax_16",
-      "reduce_11",
-      "reduce_12",
       "cat_17",
       "cat_18",
       "cat_19",
@@ -87581,9 +87680,6 @@
       "slice_scatter_22",
       "slice_23",
       "slice_scatter_23",
-      "softmax_17",
-      "reduce_13",
-      "reduce_14",
       "cat_20",
       "cat_21",
       "cat_22",
@@ -87597,9 +87693,6 @@
       "slice_scatter_26",
       "slice_27",
       "slice_scatter_27",
-      "softmax_18",
-      "reduce_15",
-      "reduce_16",
       "cat_23",
       "cat_24",
       "cat_25",
@@ -87613,9 +87706,6 @@
       "slice_scatter_30",
       "slice_31",
       "slice_scatter_31",
-      "softmax_19",
-      "reduce_17",
-      "reduce_18",
       "cat_26",
       "cat_27",
       "cat_28",
@@ -87629,9 +87719,6 @@
       "slice_scatter_34",
       "slice_35",
       "slice_scatter_35",
-      "softmax_20",
-      "reduce_19",
-      "reduce_20",
       "cat_29",
       "cat_30",
       "cat_31",
@@ -87645,9 +87732,6 @@
       "slice_scatter_38",
       "slice_39",
       "slice_scatter_39",
-      "softmax_21",
-      "reduce_21",
-      "reduce_22",
       "cat_32",
       "cat_33",
       "cat_34",
@@ -87661,9 +87745,6 @@
       "slice_scatter_42",
       "slice_43",
       "slice_scatter_43",
-      "softmax_22",
-      "reduce_23",
-      "reduce_24",
       "cat_35",
       "cat_36",
       "cat_37",
@@ -87677,9 +87758,6 @@
       "slice_scatter_46",
       "slice_47",
       "slice_scatter_47",
-      "softmax_23",
-      "reduce_25",
-      "reduce_26",
       "cat_38",
       "cat_39",
       "cat_40",
@@ -87693,9 +87771,6 @@
       "slice_scatter_50",
       "slice_51",
       "slice_scatter_51",
-      "softmax_24",
-      "reduce_27",
-      "reduce_28",
       "cat_41",
       "cat_42",
       "cat_43",
@@ -87709,9 +87784,6 @@
       "slice_scatter_54",
       "slice_55",
       "slice_scatter_55",
-      "softmax_25",
-      "reduce_29",
-      "reduce_30",
       "cat_44",
       "cat_45",
       "cat_46",
@@ -87725,9 +87797,6 @@
       "slice_scatter_58",
       "slice_59",
       "slice_scatter_59",
-      "softmax_26",
-      "reduce_31",
-      "reduce_32",
       "cat_47",
       "cat_48",
       "cat_49",
@@ -87741,19 +87810,12 @@
       "slice_scatter_62",
       "slice_63",
       "slice_scatter_63",
-      "softmax_27",
-      "reduce_33",
-      "reduce_34",
       "cat_50",
       "cat_51",
       "cat_52",
       "cat_53",
-      "scan_2",
       "bitwise_15",
       "cat_54",
-      "reduce_35",
-      "scan_3",
-      "reduce_36",
       "cat_55",
       "cat_56",
       "cat_57",
@@ -87769,10 +87831,6 @@
       "slice_scatter_67",
       "cat_58",
       "cat_59",
-      "softmax_28",
-      "reduce_37",
-      "reduce_38",
-      "arg_reduce_0",
       "slice_68",
       "slice_69",
       "split_34",
@@ -87780,9 +87838,6 @@
       "slice_scatter_68",
       "slice_71",
       "slice_scatter_69",
-      "softmax_29",
-      "reduce_39",
-      "reduce_40",
       "cat_60",
       "cat_61",
       "cat_62",
@@ -87798,10 +87853,6 @@
       "slice_scatter_73",
       "cat_63",
       "cat_64",
-      "softmax_30",
-      "reduce_41",
-      "reduce_42",
-      "arg_reduce_1",
       "slice_76",
       "slice_77",
       "split_37",
@@ -87809,9 +87860,6 @@
       "slice_scatter_74",
       "slice_79",
       "slice_scatter_75",
-      "softmax_31",
-      "reduce_43",
-      "reduce_44",
       "cat_65",
       "cat_66",
       "cat_67",
@@ -87827,10 +87875,6 @@
       "slice_scatter_79",
       "cat_68",
       "cat_69",
-      "softmax_32",
-      "reduce_45",
-      "reduce_46",
-      "arg_reduce_2",
       "slice_84",
       "slice_85",
       "split_40",
@@ -87838,9 +87882,6 @@
       "slice_scatter_80",
       "slice_87",
       "slice_scatter_81",
-      "softmax_33",
-      "reduce_47",
-      "reduce_48",
       "cat_70",
       "cat_71",
       "cat_72",
@@ -87856,10 +87897,6 @@
       "slice_scatter_85",
       "cat_73",
       "cat_74",
-      "softmax_34",
-      "reduce_49",
-      "reduce_50",
-      "arg_reduce_3",
       "slice_92",
       "slice_93",
       "split_43",
@@ -87867,9 +87904,6 @@
       "slice_scatter_86",
       "slice_95",
       "slice_scatter_87",
-      "softmax_35",
-      "reduce_51",
-      "reduce_52",
       "cat_75",
       "cat_76",
       "cat_77",
@@ -87885,10 +87919,6 @@
       "slice_scatter_91",
       "cat_78",
       "cat_79",
-      "softmax_36",
-      "reduce_53",
-      "reduce_54",
-      "arg_reduce_4",
       "slice_100",
       "slice_101",
       "split_46",
@@ -87896,9 +87926,6 @@
       "slice_scatter_92",
       "slice_103",
       "slice_scatter_93",
-      "softmax_37",
-      "reduce_55",
-      "reduce_56",
       "cat_80",
       "cat_81",
       "cat_82",
@@ -87914,10 +87941,6 @@
       "slice_scatter_97",
       "cat_83",
       "cat_84",
-      "softmax_38",
-      "reduce_57",
-      "reduce_58",
-      "arg_reduce_5",
       "slice_108",
       "slice_109",
       "split_49",
@@ -87925,9 +87948,6 @@
       "slice_scatter_98",
       "slice_111",
       "slice_scatter_99",
-      "softmax_39",
-      "reduce_59",
-      "reduce_60",
       "cat_85",
       "cat_86",
       "cat_87",
@@ -87943,10 +87963,6 @@
       "slice_scatter_103",
       "cat_88",
       "cat_89",
-      "softmax_40",
-      "reduce_61",
-      "reduce_62",
-      "arg_reduce_6",
       "slice_116",
       "slice_117",
       "split_52",
@@ -87954,9 +87970,6 @@
       "slice_scatter_104",
       "slice_119",
       "slice_scatter_105",
-      "softmax_41",
-      "reduce_63",
-      "reduce_64",
       "cat_90",
       "cat_91",
       "cat_92",
@@ -87972,10 +87985,6 @@
       "slice_scatter_109",
       "cat_93",
       "cat_94",
-      "softmax_42",
-      "reduce_65",
-      "reduce_66",
-      "arg_reduce_7",
       "slice_124",
       "slice_125",
       "split_55",
@@ -87983,30 +87992,21 @@
       "slice_scatter_110",
       "slice_127",
       "slice_scatter_111",
-      "softmax_43",
-      "reduce_67",
-      "reduce_68",
       "slice_128"
     ],
-    "missing_host_semantics": 568,
+    "missing_host_semantics": 418,
     "missing_host_semantics_by_semantic": {
-      "aten_min_dim": 8,
       "bitwise": 16,
       "bucketize": 2,
       "cat": 95,
       "convolution_im2col_matmul": 1,
-      "cumsum": 4,
       "embedding": 2,
       "index_gather": 1,
       "index_put": 1,
-      "layer_norm": 25,
       "mask_gather": 1,
-      "reduce_mean": 66,
-      "reduce_sum": 3,
       "select": 2,
       "slice": 129,
       "slice_scatter": 112,
-      "softmax": 44,
       "split": 56
     },
     "unqualified_accelerator_partitions": 388,
@@ -88845,23 +88845,31 @@
     },
     {
       "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-      "dependency_edges": 4,
+      "dependency_edges": 8,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "ordinal": 0,
-          "sha256": "cf2e5ec6fb928ffba3c00aa9e13ede006bc38f9301e13e1ae6e15aaad8155521",
+          "sha256": "0483a0802eacfef5ec6c650b8f72eacbff44b59409695f6648213ac55fa0740c",
           "shape": [
             1,
-            50,
+            50
+          ]
+        },
+        {
+          "dtype": "int64",
+          "ordinal": 1,
+          "sha256": "d86e8112f3c4c4442126f8e9f44f16867da487f29052bf91b810457db34209a4",
+          "shape": [
+            1,
             1
           ]
         },
         {
           "dtype": "float32",
-          "ordinal": 1,
-          "sha256": "27dcd14d7dbc7c437d066a39a6ff6193e4f96cbd7633185d1baadbe11c7181a3",
+          "ordinal": 2,
+          "sha256": "ef84d5cfce4283fa6a85e4883df1ad6464cbd43b7e60c46ec8d99eae26480e69",
           "shape": [
             1,
             50,
@@ -88870,8 +88878,8 @@
         },
         {
           "dtype": "float32",
-          "ordinal": 2,
-          "sha256": "a5c73dd94d80a9b27c51b72f0119830635ad716d9f91dc06625fbf05d1507d7e",
+          "ordinal": 3,
+          "sha256": "cfa8d2b85310357c6582bf0e78278196d5959d87e3adf7cdfde70b02fbcdc7bd",
           "shape": [
             720
           ]
@@ -88880,11 +88888,68 @@
       "label": "rsqrt_normalization",
       "outputs": [
         {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "scan_3",
+          "semantic": "cumsum",
+          "sha256": "85b117aedd9185b5609a91e2321afafdc8c8c28fa09e37afdbbced5f7e6818a5",
+          "shape": [
+            1,
+            50
+          ]
+        },
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "add_201",
+          "semantic": "add",
+          "sha256": "b032128dd2cb9d66ca16019471ffe14f6d96bd86ffe88060298d1b7254526915",
+          "shape": [
+            1,
+            50
+          ]
+        },
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "sub_35",
+          "semantic": "sub",
+          "sha256": "a6cf5161e085e0f1b5446777ea007c621375278cc814369fb807715e60510c0e",
+          "shape": [
+            1,
+            50
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "pow_66",
+          "semantic": "pow",
+          "sha256": "3fe344c3eee0cb73860874f3f453aadaeae3f6595cadfc8b98ade0e1ea263c81",
+          "shape": [
+            1,
+            50,
+            720
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "reduce_36",
+          "semantic": "reduce_mean",
+          "sha256": "555afe2a8f588f11eded0d8820d18794bbff235d06a2fef35ada3811533b6160",
+          "shape": [
+            1,
+            50,
+            1
+          ]
+        },
+        {
           "dtype": "float32",
           "finite": true,
           "region_id": "add_202",
           "semantic": "add",
-          "sha256": "48a4467a801ae787bf40ff34c5636c9dcfa432ed710b3f6c3d59ce63d891fae7",
+          "sha256": "802a341f6b3d57cf101cc5cb35f5cefc976fe3b89861ea86799c429864b13184",
           "shape": [
             1,
             50,
@@ -88896,7 +88961,7 @@
           "finite": true,
           "region_id": "rsqrt_33",
           "semantic": "rsqrt",
-          "sha256": "25b75c190616a13c0cedaafc105f1db61ecf7cf4f6b28be950287c4a1529d230",
+          "sha256": "999ef6b6fb979ce0c5184fbd500a3e9708db0a3755c0b4136acdbb31b9d97831",
           "shape": [
             1,
             50,
@@ -88908,7 +88973,7 @@
           "finite": true,
           "region_id": "mul_302",
           "semantic": "mul",
-          "sha256": "bf918f95061ae310381c8e355de3a09635c6de9c01f29ca65d9b2fd468cdd72b",
+          "sha256": "7d69d3c6af552905ef4275315f464635042b8be044d46512236fdbcba42ce45e",
           "shape": [
             1,
             50,
@@ -88920,7 +88985,7 @@
           "finite": true,
           "region_id": "mul_303",
           "semantic": "mul",
-          "sha256": "8d69f8882bc172d52e858476f7d9bb8000a1311a51acd604c2446a9db847c7e2",
+          "sha256": "840653362ac52943b0348e60e8eab61ab30055ee55f9ca2e93937beb118af38e",
           "shape": [
             1,
             50,
@@ -88932,7 +88997,7 @@
           "finite": true,
           "region_id": "dtype_cast_245",
           "semantic": "dtype_cast",
-          "sha256": "e795c4b2dff4bbec834f9d394ec46e0fe29bf1e454f3903c3b6e7ca8248a5da8",
+          "sha256": "d184ee836452f61c0c2356ce0686c86c90e3e22806a05936835efcd87dae423a",
           "shape": [
             1,
             50,
@@ -88940,8 +89005,13 @@
           ]
         }
       ],
-      "region_count": 5,
+      "region_count": 10,
       "region_ids": [
+        "scan_3",
+        "add_201",
+        "sub_35",
+        "pow_66",
+        "reduce_36",
         "add_202",
         "rsqrt_33",
         "mul_302",
@@ -88952,6 +89022,11 @@
       "schema": "atlas_real_capture_host_semantic_chain_v1",
       "selection": "first stable-ranked consecutive qualified run containing semantic set rsqrt",
       "semantics": [
+        "cumsum",
+        "add",
+        "sub",
+        "pow",
+        "reduce_mean",
         "add",
         "rsqrt",
         "mul",
@@ -89230,48 +89305,596 @@
     },
     {
       "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-      "dependency_edges": 1,
+      "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
-      "fresh_inputs": [],
+      "fresh_inputs": [
+        {
+          "dtype": "bool",
+          "ordinal": 0,
+          "sha256": "979d1885aa334213c0147e31b6673bbefcdb50c076291a5f9514f5857f4e7475",
+          "shape": [
+            1,
+            1,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "db71ee35486c6164d9a37fcb93be341253dc5fdeff4a733b0218c385905343ec",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        }
+      ],
       "label": "fill_dependency",
       "outputs": [
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "fill_0",
+          "region_id": "fill_34",
           "semantic": "fill",
-          "sha256": "e9bac255f4adc7cb4ada9298e193a5ff66b434d15afabd458505325f29c398c7",
+          "sha256": "abc4c4e7eee2ce04c6be04358adf5b3d0958255a80f712a8b6d4f4fdda588276",
+          "shape": []
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "select_31",
+          "semantic": "select",
+          "sha256": "aaabeac572e9ef1af02afdfec3f3e0b42aa27d2b84a02ce6328ac322cbb6f263",
           "shape": [
             1,
-            32,
-            32
+            15,
+            50,
+            163
           ]
         },
         {
-          "dtype": "bool",
+          "dtype": "float32",
           "finite": true,
-          "region_id": "dtype_cast_0",
-          "semantic": "dtype_cast",
-          "sha256": "5a648d8015900d89664e00e125df179636301a2d8fa191c1aa2bd9358ea53a69",
+          "region_id": "softmax_28",
+          "semantic": "softmax",
+          "sha256": "e83dd2d26673eb5759139b23689d863567f392e857db99ca89cb656dc6f3ac23",
           "shape": [
             1,
-            32,
-            32
-          ],
-          "true_elements": 1024
+            15,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "dtype_cast_254",
+          "semantic": "dtype_cast",
+          "sha256": "9848c18aa4eb4d8cdf10046d8004e0d2015aa750528923554364da03866b4469",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
         }
       ],
-      "region_count": 2,
+      "region_count": 4,
       "region_ids": [
-        "fill_0",
-        "dtype_cast_0"
+        "fill_34",
+        "select_31",
+        "softmax_28",
+        "dtype_cast_254"
       ],
       "replay_hashes_equal": true,
       "schema": "atlas_real_capture_host_semantic_chain_v1",
       "selection": "first stable-ranked consecutive qualified run where a captured fill output feeds a successor",
       "semantics": [
         "fill",
+        "select",
+        "softmax",
         "dtype_cast"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 7,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "bool",
+          "ordinal": 0,
+          "sha256": "fb8937ea34be3f1275ff0b1fe9cda933b48b5d5eb4ea477163317d4957679d1c",
+          "shape": [
+            1,
+            113
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "bf3f7126d764dcd6eae22155d8e700c36a28712298d451f7fa89dc1550c3097e",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 2,
+          "sha256": "ccf075fdefcf16bf568a961923301c0fc8b86abe10d1233b9b60ec9a0d676a31",
+          "shape": [
+            960
+          ]
+        }
+      ],
+      "label": "cumsum_reduce_mean",
+      "outputs": [
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "scan_1",
+          "semantic": "cumsum",
+          "sha256": "f848e03c21770de91df7a80e447b5a1c1bfa66548da274775ee2c65e809521df",
+          "shape": [
+            1,
+            113
+          ]
+        },
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "sub_0",
+          "semantic": "sub",
+          "sha256": "76bf989adb4c3de080cf706d04e3c7b8d3e28152a6b1e307cba52772494df9ca",
+          "shape": [
+            1,
+            113
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "pow_0",
+          "semantic": "pow",
+          "sha256": "797137876db2707d1aad2d2408ba898a97c1cf2f1bbbdbb0066216ba05c78d0c",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "reduce_2",
+          "semantic": "reduce_mean",
+          "sha256": "e23c73f73c4b816136e39b5ac0637a4dc84377b1f6cf5d03cd510d4c3d36cca1",
+          "shape": [
+            1,
+            113,
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "add_100",
+          "semantic": "add",
+          "sha256": "4d6bc42bc4ec7331f5b56e4155c8cf427b354db673ca309bb052b801f6e3d59d",
+          "shape": [
+            1,
+            113,
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "rsqrt_0",
+          "semantic": "rsqrt",
+          "sha256": "6cdc654fefdcd65faba4d6157267a5e715e6fe37f8a8dcdb6e2ec727ed2e9e43",
+          "shape": [
+            1,
+            113,
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_20",
+          "semantic": "mul",
+          "sha256": "ff64069e6dfbcde27d13e3bd0717e6f3ac7cb046de0a3c4c5c2ecdf5ff6b3691",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_21",
+          "semantic": "mul",
+          "sha256": "3dfc604ab21e1056aba5eb32a0d423cd43178f8d7e861d791f7e0e545b5896b8",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "dtype_cast_1",
+          "semantic": "dtype_cast",
+          "sha256": "5353dfe531d9b1c6d96e37d66e607291956f982f1c36fefeb8683e2dbb774a50",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        }
+      ],
+      "region_count": 9,
+      "region_ids": [
+        "scan_1",
+        "sub_0",
+        "pow_0",
+        "reduce_2",
+        "add_100",
+        "rsqrt_0",
+        "mul_20",
+        "mul_21",
+        "dtype_cast_1"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run containing reduction set cumsum,reduce_mean",
+      "semantics": [
+        "cumsum",
+        "sub",
+        "pow",
+        "reduce_mean",
+        "add",
+        "rsqrt",
+        "mul",
+        "mul",
+        "dtype_cast"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 3,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "bool",
+          "ordinal": 0,
+          "sha256": "979d1885aa334213c0147e31b6673bbefcdb50c076291a5f9514f5857f4e7475",
+          "shape": [
+            1,
+            1,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "db71ee35486c6164d9a37fcb93be341253dc5fdeff4a733b0218c385905343ec",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        }
+      ],
+      "label": "masked_softmax",
+      "outputs": [
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "fill_36",
+          "semantic": "fill",
+          "sha256": "abc4c4e7eee2ce04c6be04358adf5b3d0958255a80f712a8b6d4f4fdda588276",
+          "shape": []
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "select_33",
+          "semantic": "select",
+          "sha256": "aaabeac572e9ef1af02afdfec3f3e0b42aa27d2b84a02ce6328ac322cbb6f263",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "softmax_30",
+          "semantic": "softmax",
+          "sha256": "e83dd2d26673eb5759139b23689d863567f392e857db99ca89cb656dc6f3ac23",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "dtype_cast_283",
+          "semantic": "dtype_cast",
+          "sha256": "9848c18aa4eb4d8cdf10046d8004e0d2015aa750528923554364da03866b4469",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        }
+      ],
+      "region_count": 4,
+      "region_ids": [
+        "fill_36",
+        "select_33",
+        "softmax_30",
+        "dtype_cast_283"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run containing reduction set softmax",
+      "semantics": [
+        "fill",
+        "select",
+        "softmax",
+        "dtype_cast"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 1,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "int64",
+          "ordinal": 0,
+          "sha256": "e5d02fac15088a1956875ed5d3e0c00189d240f93f1557ab45750be34c319917",
+          "shape": [
+            1,
+            50
+          ]
+        }
+      ],
+      "label": "argmin_successor",
+      "outputs": [
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "arg_reduce_0",
+          "semantic": "aten_min_dim",
+          "sha256": "7c9fa136d4413fa6173637e883b6998d32e1d675f88cddff9dcbcf331820f4b8",
+          "shape": [
+            1,
+            1
+          ]
+        },
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "sub_38",
+          "semantic": "sub",
+          "sha256": "1137d16834c82855b7ad335f3ab876ed5f42872dc13f1f9e63eeef5eb03afbb3",
+          "shape": [
+            1,
+            50
+          ]
+        }
+      ],
+      "region_count": 2,
+      "region_ids": [
+        "arg_reduce_0",
+        "sub_38"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run containing reduction set aten_min_dim",
+      "semantics": [
+        "aten_min_dim",
+        "sub"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 3,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "bool",
+          "ordinal": 0,
+          "sha256": "2926bb930e93586b572e17b461e959d2fafffb4861737e5d4bd848a781b29078",
+          "shape": [
+            1,
+            32
+          ]
+        },
+        {
+          "dtype": "int64",
+          "ordinal": 1,
+          "sha256": "d86e8112f3c4c4442126f8e9f44f16867da487f29052bf91b810457db34209a4",
+          "shape": [
+            1
+          ]
+        }
+      ],
+      "label": "reduce_sum_successor",
+      "outputs": [
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "reduce_1",
+          "semantic": "reduce_sum",
+          "sha256": "debcea1f166010e428df48387304e45c0bf7843a1fa7f1beb38f852228df789b",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "elementwise_0",
+          "semantic": "elementwise",
+          "sha256": "d99e58435243d9fef9c88273b8d553b4fba4d0baf8009d29eae74fa99e0d9f57",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_0",
+          "semantic": "mul",
+          "sha256": "d99e58435243d9fef9c88273b8d553b4fba4d0baf8009d29eae74fa99e0d9f57",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "elementwise_1",
+          "semantic": "elementwise",
+          "sha256": "c6348901c2f58b37293ffcaf611086ed8936f24c8f118b39606a316ca7e45bd4",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_1",
+          "semantic": "mul",
+          "sha256": "c6348901c2f58b37293ffcaf611086ed8936f24c8f118b39606a316ca7e45bd4",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "iota_1",
+          "semantic": "arange",
+          "sha256": "0c43f2957858ef1a2ee3e2cec548164d548995c05a42c6588927998cd6dd10d7",
+          "shape": [
+            32
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "iota_2",
+          "semantic": "arange",
+          "sha256": "0c43f2957858ef1a2ee3e2cec548164d548995c05a42c6588927998cd6dd10d7",
+          "shape": [
+            32
+          ]
+        }
+      ],
+      "region_count": 7,
+      "region_ids": [
+        "reduce_1",
+        "elementwise_0",
+        "mul_0",
+        "elementwise_1",
+        "mul_1",
+        "iota_1",
+        "iota_2"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run containing reduction set reduce_sum",
+      "semantics": [
+        "reduce_sum",
+        "elementwise",
+        "mul",
+        "elementwise",
+        "mul",
+        "arange",
+        "arange"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 0,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "float32",
+          "ordinal": 0,
+          "sha256": "d604c5d333e92ea42591506031d66dda2b19299e2a13b15c96ecbdb5288c3ab2",
+          "shape": [
+            1,
+            1024,
+            768
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "ed4b7a56783b66c4871eac9823a111ba108b33a98887d0494d55c90242ce678e",
+          "shape": [
+            768
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 2,
+          "sha256": "de6ba209715169467f7f891668d421eaf88e3bc44ff8d64f74249e9b01979839",
+          "shape": [
+            768
+          ]
+        }
+      ],
+      "label": "layer_norm_standalone",
+      "outputs": [
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "layer_norm_0",
+          "semantic": "layer_norm",
+          "sha256": "51f6a70be875385572ffc0052fc1140081322ecd0e2318e01a6fc972138a65d0",
+          "shape": [
+            1,
+            1024,
+            768
+          ]
+        }
+      ],
+      "region_count": 1,
+      "region_ids": [
+        "layer_norm_0"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "smallest qualified real layer norm; adjacent regions are accelerator partitions",
+      "semantics": [
+        "layer_norm"
       ],
       "status": "fresh_numeric_execution_exactly_replayed"
     },

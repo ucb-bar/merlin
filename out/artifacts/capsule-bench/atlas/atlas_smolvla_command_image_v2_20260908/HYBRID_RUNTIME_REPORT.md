@@ -42,10 +42,20 @@ consumed by one `tensor.splat`; scalar tensors, booleans, finite values, and
 negative infinity are preserved in their declared dtype. Provenance alone is
 not sufficient for either constructor.
 
+The reduction/composite tranche admits all 150 captured regions: 66
+`reduce_mean`, 44 stable `softmax`, 25 two-pass `layer_norm`, eight
+`aten_min_dim`, four `cumsum`, and three boolean-to-integer `reduce_sum`.
+Admission checks the complete top-level operation sequence, affine maps,
+iterator kinds, reduction dimensions, scalar SSA dataflow, comparison
+predicates, index dimensions, constants, dtypes, and reshape element counts.
+Execution follows the captured row-major left fold and casts after every scalar
+operation. In particular, `cumsum` direction and `aten_min_dim` first-tie
+behavior come from their actual SSA operands rather than their provenance name.
+
 The scheduler marks a host region executable only when that extracted
-signature is accepted. It now qualifies 1,862 regions. Missing host semantics
-fall from the prior 2,408 to 568, an exact net reduction of 1,840. The
-difference between 1,862 qualified signatures and the 1,840 net reduction is
+signature is accepted. It now qualifies 2,012 regions. Missing host semantics
+fall from the prior 2,408 to 418, an exact net reduction of 1,990. The
+difference between 2,012 qualified signatures and the 1,990 net reduction is
 the old 22-region scoped baseline; it is not hidden or double-counted.
 
 The schedule covers all 391 structural accelerator partitions, with explicit
@@ -74,17 +84,18 @@ qualified host regions with a true SSA dependency; no region IDs or expected
 outputs are encoded in the selection. The resulting 16-region real capture
 chain starts with integer `arange`, extends through `pow` and reciprocal, and
 has 17 SSA dependency edges plus one fresh 360-element integer input.
-Additional signature-selected witnesses cover an `rsqrt` normalization chain,
-a sigmoid gating chain, a trigonometric fan-out, and separate real chains in
-which `arange` and `fill` outputs feed successor regions. The fill-to-cast chain
-needs no seeded input; its value is entirely determined by the captured
-constructor. GELU is isolated by accelerator partitions in this capture, so the
+Additional signature-selected witnesses cover a cumsum-to-mean normalization
+chain, masked softmax, arg-min and reduction-sum successor chains, sigmoid
+gating, trigonometric fan-out, and separate real chains in which `arange` and
+`fill` outputs feed successor regions. Native layer norm and GELU are isolated
+by accelerator partitions in this capture, so the
 builder truthfully selects and executes the smallest real GELU standalone
-rather than manufacturing a dependency. Every witness replays to identical
-per-region hashes. This is host-only pointwise evidence, not device or
+rather than manufacturing a dependency, and does the same for layer norm.
+Every witness replays to identical per-region hashes. This is host-only
+semantic evidence, not device or
 whole-model execution.
 
-The exact blockers are therefore measurable: 568 missing host semantic
+The exact blockers are therefore measurable: 418 missing host semantic
 implementations, 388 unqualified accelerator partitions, and 358 unrealized
 layout bridges. Full schedule and compact summary are in
 `whole_capture_plan/hybrid_schedule.json` and
@@ -92,22 +103,17 @@ layout bridges. Full schedule and compact summary are in
 
 ## Prioritized enablement ladder
 
-1. Add dependence-aware reduction/composite execution for 150 regions: 66
-   `reduce_mean`, 44 `softmax`, 25 `layer_norm`, eight `aten_min_dim`, four
-   `cumsum`, and three `reduce_sum`. Exact accumulation order and dtype rules
-   are part of the signature and cannot be delegated to an arbitrary NumPy
-   default.
-2. Implement the remaining 418 movement/indexing regions: 129 `slice`, 112
+1. Implement the remaining 418 movement/indexing regions: 129 `slice`, 112
    `slice_scatter`, 95 `cat`, 56 `split`, 16 `bitwise`, two `select` slices, two
    `bucketize`, two `embedding`, and one each of `mask_gather`, `index_put`,
    `index_gather`, and the host-refused im2col convolution. This reaches all
-   568 currently missing host regions if the earlier groups qualify fully.
-3. Realize all 358 blocking layout bridges. The 246 `expand` regions need
+   418 currently missing host regions if these groups qualify fully.
+2. Realize all 358 blocking layout bridges. The 246 `expand` regions need
    zero-stride descriptors or exact materialization; the 112 `copy` regions
    require real storage and copy events. Host materialization is sufficient for
    a first correctness run; descriptor propagation is the later performance
    path. The 1,675 already proven metadata aliases require no data movement.
-4. Continue accelerator numeric qualification across the 28 emitted kernel
+3. Continue accelerator numeric qualification across the 28 emitted kernel
    variants. Fresh batch evidence now compiles all 28/28 variants and maps them
    onto all 391 occurrences. RTL numerics tested four variants: three rank-2
    shapes pass, while batched `15x50x64x113` fails closed on VMEM capacity.
@@ -118,7 +124,7 @@ layout bridges. Full schedule and compact summary are in
    record. The schedule currently has 1,238 unqualified conversions: 688
    host-to-device activations/weights, 74 bias quantizations, 88 device
    requantizations, and 388 device-to-host dequantizations.
-5. Turn the symbolic schedule into a runtime: execute all 6,104 ordered events,
+4. Turn the symbolic schedule into a runtime: execute all 6,104 ordered events,
    materialize host/device conversions, launch split command images, propagate
    failures, and bind the 391 interval allocations. The proven allocator reuses
    387 allocations and has a 29,884,416-byte peak, but the current GSIM harness
@@ -126,7 +132,7 @@ layout bridges. Full schedule and compact summary are in
    sliced/staged unless that harness is changed and requalified.
 
 The first honest E2E becomes possible only when all four gates are zero at the
-same time: 568 missing host semantics, 358 unrealized bridges, 388
+same time: 418 missing host semantics, 358 unrealized bridges, 388
 unqualified partitions (and their 1,238 conversion events), and the absent
 physical event/DMA runtime. At that point one fresh full input must traverse the
 entire schedule and be compared with the source-model output. Kernel-variant

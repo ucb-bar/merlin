@@ -87,26 +87,32 @@
     "host_signature_regions_by_semantic": {
       "add": 215,
       "arange": 63,
+      "aten_min_dim": 8,
       "compare": 4,
       "cos": 57,
+      "cumsum": 4,
       "div": 56,
       "dtype_cast": 472,
       "elementwise": 3,
       "fill": 50,
       "gelu": 12,
+      "layer_norm": 25,
       "minmax": 2,
       "mul": 536,
       "pow": 123,
+      "reduce_mean": 66,
+      "reduce_sum": 3,
       "rsqrt": 66,
       "select": 45,
       "sigmoid": 33,
       "sin": 57,
+      "softmax": 44,
       "sub": 68
     },
-    "host_signature_regions_implemented": 1862,
+    "host_signature_regions_implemented": 2012,
     "layout_bridge_candidates": 2033,
     "materialized_copy_bridges": 112,
-    "missing_host_semantics_reduction": 1840,
+    "missing_host_semantics_reduction": 1990,
     "partition_host_region_overlap": [
       "conv_0"
     ],
@@ -131,25 +137,19 @@
   },
   "event_count": 6104,
   "fail_closed": {
-    "missing_host_semantics": 568,
+    "missing_host_semantics": 418,
     "missing_host_semantics_by_semantic": {
-      "aten_min_dim": 8,
       "bitwise": 16,
       "bucketize": 2,
       "cat": 95,
       "convolution_im2col_matmul": 1,
-      "cumsum": 4,
       "embedding": 2,
       "index_gather": 1,
       "index_put": 1,
-      "layer_norm": 25,
       "mask_gather": 1,
-      "reduce_mean": 66,
-      "reduce_sum": 3,
       "select": 2,
       "slice": 129,
       "slice_scatter": 112,
-      "softmax": 44,
       "split": 56
     },
     "unqualified_accelerator_partitions": 388,
@@ -157,7 +157,7 @@
   },
   "full_schedule": {
     "path": "whole_capture_plan/hybrid_schedule.json",
-    "sha256": "71298b46397b3a02302b8e242794459eda70d8d3a1e2d5bac663385b2caf8485"
+    "sha256": "4b8b62123504b7a883575d91fc75fbbc354e2c2e93fbf03f07e319dfc2a73a99"
   },
   "generic_host_chain": {
     "claim": "host pointwise execution only; no device execution and not whole-model E2E",
@@ -602,23 +602,31 @@
     },
     {
       "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-      "dependency_edges": 4,
+      "dependency_edges": 8,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "ordinal": 0,
-          "sha256": "cf2e5ec6fb928ffba3c00aa9e13ede006bc38f9301e13e1ae6e15aaad8155521",
+          "sha256": "0483a0802eacfef5ec6c650b8f72eacbff44b59409695f6648213ac55fa0740c",
           "shape": [
             1,
-            50,
+            50
+          ]
+        },
+        {
+          "dtype": "int64",
+          "ordinal": 1,
+          "sha256": "d86e8112f3c4c4442126f8e9f44f16867da487f29052bf91b810457db34209a4",
+          "shape": [
+            1,
             1
           ]
         },
         {
           "dtype": "float32",
-          "ordinal": 1,
-          "sha256": "27dcd14d7dbc7c437d066a39a6ff6193e4f96cbd7633185d1baadbe11c7181a3",
+          "ordinal": 2,
+          "sha256": "ef84d5cfce4283fa6a85e4883df1ad6464cbd43b7e60c46ec8d99eae26480e69",
           "shape": [
             1,
             50,
@@ -627,8 +635,8 @@
         },
         {
           "dtype": "float32",
-          "ordinal": 2,
-          "sha256": "a5c73dd94d80a9b27c51b72f0119830635ad716d9f91dc06625fbf05d1507d7e",
+          "ordinal": 3,
+          "sha256": "cfa8d2b85310357c6582bf0e78278196d5959d87e3adf7cdfde70b02fbcdc7bd",
           "shape": [
             720
           ]
@@ -637,11 +645,68 @@
       "label": "rsqrt_normalization",
       "outputs": [
         {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "scan_3",
+          "semantic": "cumsum",
+          "sha256": "85b117aedd9185b5609a91e2321afafdc8c8c28fa09e37afdbbced5f7e6818a5",
+          "shape": [
+            1,
+            50
+          ]
+        },
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "add_201",
+          "semantic": "add",
+          "sha256": "b032128dd2cb9d66ca16019471ffe14f6d96bd86ffe88060298d1b7254526915",
+          "shape": [
+            1,
+            50
+          ]
+        },
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "sub_35",
+          "semantic": "sub",
+          "sha256": "a6cf5161e085e0f1b5446777ea007c621375278cc814369fb807715e60510c0e",
+          "shape": [
+            1,
+            50
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "pow_66",
+          "semantic": "pow",
+          "sha256": "3fe344c3eee0cb73860874f3f453aadaeae3f6595cadfc8b98ade0e1ea263c81",
+          "shape": [
+            1,
+            50,
+            720
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "reduce_36",
+          "semantic": "reduce_mean",
+          "sha256": "555afe2a8f588f11eded0d8820d18794bbff235d06a2fef35ada3811533b6160",
+          "shape": [
+            1,
+            50,
+            1
+          ]
+        },
+        {
           "dtype": "float32",
           "finite": true,
           "region_id": "add_202",
           "semantic": "add",
-          "sha256": "48a4467a801ae787bf40ff34c5636c9dcfa432ed710b3f6c3d59ce63d891fae7",
+          "sha256": "802a341f6b3d57cf101cc5cb35f5cefc976fe3b89861ea86799c429864b13184",
           "shape": [
             1,
             50,
@@ -653,7 +718,7 @@
           "finite": true,
           "region_id": "rsqrt_33",
           "semantic": "rsqrt",
-          "sha256": "25b75c190616a13c0cedaafc105f1db61ecf7cf4f6b28be950287c4a1529d230",
+          "sha256": "999ef6b6fb979ce0c5184fbd500a3e9708db0a3755c0b4136acdbb31b9d97831",
           "shape": [
             1,
             50,
@@ -665,7 +730,7 @@
           "finite": true,
           "region_id": "mul_302",
           "semantic": "mul",
-          "sha256": "bf918f95061ae310381c8e355de3a09635c6de9c01f29ca65d9b2fd468cdd72b",
+          "sha256": "7d69d3c6af552905ef4275315f464635042b8be044d46512236fdbcba42ce45e",
           "shape": [
             1,
             50,
@@ -677,7 +742,7 @@
           "finite": true,
           "region_id": "mul_303",
           "semantic": "mul",
-          "sha256": "8d69f8882bc172d52e858476f7d9bb8000a1311a51acd604c2446a9db847c7e2",
+          "sha256": "840653362ac52943b0348e60e8eab61ab30055ee55f9ca2e93937beb118af38e",
           "shape": [
             1,
             50,
@@ -689,7 +754,7 @@
           "finite": true,
           "region_id": "dtype_cast_245",
           "semantic": "dtype_cast",
-          "sha256": "e795c4b2dff4bbec834f9d394ec46e0fe29bf1e454f3903c3b6e7ca8248a5da8",
+          "sha256": "d184ee836452f61c0c2356ce0686c86c90e3e22806a05936835efcd87dae423a",
           "shape": [
             1,
             50,
@@ -697,8 +762,13 @@
           ]
         }
       ],
-      "region_count": 5,
+      "region_count": 10,
       "region_ids": [
+        "scan_3",
+        "add_201",
+        "sub_35",
+        "pow_66",
+        "reduce_36",
         "add_202",
         "rsqrt_33",
         "mul_302",
@@ -709,6 +779,11 @@
       "schema": "atlas_real_capture_host_semantic_chain_v1",
       "selection": "first stable-ranked consecutive qualified run containing semantic set rsqrt",
       "semantics": [
+        "cumsum",
+        "add",
+        "sub",
+        "pow",
+        "reduce_mean",
         "add",
         "rsqrt",
         "mul",
@@ -987,48 +1062,596 @@
     },
     {
       "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-      "dependency_edges": 1,
+      "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
-      "fresh_inputs": [],
+      "fresh_inputs": [
+        {
+          "dtype": "bool",
+          "ordinal": 0,
+          "sha256": "979d1885aa334213c0147e31b6673bbefcdb50c076291a5f9514f5857f4e7475",
+          "shape": [
+            1,
+            1,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "db71ee35486c6164d9a37fcb93be341253dc5fdeff4a733b0218c385905343ec",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        }
+      ],
       "label": "fill_dependency",
       "outputs": [
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "fill_0",
+          "region_id": "fill_34",
           "semantic": "fill",
-          "sha256": "e9bac255f4adc7cb4ada9298e193a5ff66b434d15afabd458505325f29c398c7",
+          "sha256": "abc4c4e7eee2ce04c6be04358adf5b3d0958255a80f712a8b6d4f4fdda588276",
+          "shape": []
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "select_31",
+          "semantic": "select",
+          "sha256": "aaabeac572e9ef1af02afdfec3f3e0b42aa27d2b84a02ce6328ac322cbb6f263",
           "shape": [
             1,
-            32,
-            32
+            15,
+            50,
+            163
           ]
         },
         {
-          "dtype": "bool",
+          "dtype": "float32",
           "finite": true,
-          "region_id": "dtype_cast_0",
-          "semantic": "dtype_cast",
-          "sha256": "5a648d8015900d89664e00e125df179636301a2d8fa191c1aa2bd9358ea53a69",
+          "region_id": "softmax_28",
+          "semantic": "softmax",
+          "sha256": "e83dd2d26673eb5759139b23689d863567f392e857db99ca89cb656dc6f3ac23",
           "shape": [
             1,
-            32,
-            32
-          ],
-          "true_elements": 1024
+            15,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "dtype_cast_254",
+          "semantic": "dtype_cast",
+          "sha256": "9848c18aa4eb4d8cdf10046d8004e0d2015aa750528923554364da03866b4469",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
         }
       ],
-      "region_count": 2,
+      "region_count": 4,
       "region_ids": [
-        "fill_0",
-        "dtype_cast_0"
+        "fill_34",
+        "select_31",
+        "softmax_28",
+        "dtype_cast_254"
       ],
       "replay_hashes_equal": true,
       "schema": "atlas_real_capture_host_semantic_chain_v1",
       "selection": "first stable-ranked consecutive qualified run where a captured fill output feeds a successor",
       "semantics": [
         "fill",
+        "select",
+        "softmax",
         "dtype_cast"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 7,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "bool",
+          "ordinal": 0,
+          "sha256": "fb8937ea34be3f1275ff0b1fe9cda933b48b5d5eb4ea477163317d4957679d1c",
+          "shape": [
+            1,
+            113
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "bf3f7126d764dcd6eae22155d8e700c36a28712298d451f7fa89dc1550c3097e",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 2,
+          "sha256": "ccf075fdefcf16bf568a961923301c0fc8b86abe10d1233b9b60ec9a0d676a31",
+          "shape": [
+            960
+          ]
+        }
+      ],
+      "label": "cumsum_reduce_mean",
+      "outputs": [
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "scan_1",
+          "semantic": "cumsum",
+          "sha256": "f848e03c21770de91df7a80e447b5a1c1bfa66548da274775ee2c65e809521df",
+          "shape": [
+            1,
+            113
+          ]
+        },
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "sub_0",
+          "semantic": "sub",
+          "sha256": "76bf989adb4c3de080cf706d04e3c7b8d3e28152a6b1e307cba52772494df9ca",
+          "shape": [
+            1,
+            113
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "pow_0",
+          "semantic": "pow",
+          "sha256": "797137876db2707d1aad2d2408ba898a97c1cf2f1bbbdbb0066216ba05c78d0c",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "reduce_2",
+          "semantic": "reduce_mean",
+          "sha256": "e23c73f73c4b816136e39b5ac0637a4dc84377b1f6cf5d03cd510d4c3d36cca1",
+          "shape": [
+            1,
+            113,
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "add_100",
+          "semantic": "add",
+          "sha256": "4d6bc42bc4ec7331f5b56e4155c8cf427b354db673ca309bb052b801f6e3d59d",
+          "shape": [
+            1,
+            113,
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "rsqrt_0",
+          "semantic": "rsqrt",
+          "sha256": "6cdc654fefdcd65faba4d6157267a5e715e6fe37f8a8dcdb6e2ec727ed2e9e43",
+          "shape": [
+            1,
+            113,
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_20",
+          "semantic": "mul",
+          "sha256": "ff64069e6dfbcde27d13e3bd0717e6f3ac7cb046de0a3c4c5c2ecdf5ff6b3691",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_21",
+          "semantic": "mul",
+          "sha256": "3dfc604ab21e1056aba5eb32a0d423cd43178f8d7e861d791f7e0e545b5896b8",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "dtype_cast_1",
+          "semantic": "dtype_cast",
+          "sha256": "5353dfe531d9b1c6d96e37d66e607291956f982f1c36fefeb8683e2dbb774a50",
+          "shape": [
+            1,
+            113,
+            960
+          ]
+        }
+      ],
+      "region_count": 9,
+      "region_ids": [
+        "scan_1",
+        "sub_0",
+        "pow_0",
+        "reduce_2",
+        "add_100",
+        "rsqrt_0",
+        "mul_20",
+        "mul_21",
+        "dtype_cast_1"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run containing reduction set cumsum,reduce_mean",
+      "semantics": [
+        "cumsum",
+        "sub",
+        "pow",
+        "reduce_mean",
+        "add",
+        "rsqrt",
+        "mul",
+        "mul",
+        "dtype_cast"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 3,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "bool",
+          "ordinal": 0,
+          "sha256": "979d1885aa334213c0147e31b6673bbefcdb50c076291a5f9514f5857f4e7475",
+          "shape": [
+            1,
+            1,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "db71ee35486c6164d9a37fcb93be341253dc5fdeff4a733b0218c385905343ec",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        }
+      ],
+      "label": "masked_softmax",
+      "outputs": [
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "fill_36",
+          "semantic": "fill",
+          "sha256": "abc4c4e7eee2ce04c6be04358adf5b3d0958255a80f712a8b6d4f4fdda588276",
+          "shape": []
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "select_33",
+          "semantic": "select",
+          "sha256": "aaabeac572e9ef1af02afdfec3f3e0b42aa27d2b84a02ce6328ac322cbb6f263",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "softmax_30",
+          "semantic": "softmax",
+          "sha256": "e83dd2d26673eb5759139b23689d863567f392e857db99ca89cb656dc6f3ac23",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "dtype_cast_283",
+          "semantic": "dtype_cast",
+          "sha256": "9848c18aa4eb4d8cdf10046d8004e0d2015aa750528923554364da03866b4469",
+          "shape": [
+            1,
+            15,
+            50,
+            163
+          ]
+        }
+      ],
+      "region_count": 4,
+      "region_ids": [
+        "fill_36",
+        "select_33",
+        "softmax_30",
+        "dtype_cast_283"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run containing reduction set softmax",
+      "semantics": [
+        "fill",
+        "select",
+        "softmax",
+        "dtype_cast"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 1,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "int64",
+          "ordinal": 0,
+          "sha256": "e5d02fac15088a1956875ed5d3e0c00189d240f93f1557ab45750be34c319917",
+          "shape": [
+            1,
+            50
+          ]
+        }
+      ],
+      "label": "argmin_successor",
+      "outputs": [
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "arg_reduce_0",
+          "semantic": "aten_min_dim",
+          "sha256": "7c9fa136d4413fa6173637e883b6998d32e1d675f88cddff9dcbcf331820f4b8",
+          "shape": [
+            1,
+            1
+          ]
+        },
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "sub_38",
+          "semantic": "sub",
+          "sha256": "1137d16834c82855b7ad335f3ab876ed5f42872dc13f1f9e63eeef5eb03afbb3",
+          "shape": [
+            1,
+            50
+          ]
+        }
+      ],
+      "region_count": 2,
+      "region_ids": [
+        "arg_reduce_0",
+        "sub_38"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run containing reduction set aten_min_dim",
+      "semantics": [
+        "aten_min_dim",
+        "sub"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 3,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "bool",
+          "ordinal": 0,
+          "sha256": "2926bb930e93586b572e17b461e959d2fafffb4861737e5d4bd848a781b29078",
+          "shape": [
+            1,
+            32
+          ]
+        },
+        {
+          "dtype": "int64",
+          "ordinal": 1,
+          "sha256": "d86e8112f3c4c4442126f8e9f44f16867da487f29052bf91b810457db34209a4",
+          "shape": [
+            1
+          ]
+        }
+      ],
+      "label": "reduce_sum_successor",
+      "outputs": [
+        {
+          "dtype": "int64",
+          "finite": true,
+          "region_id": "reduce_1",
+          "semantic": "reduce_sum",
+          "sha256": "debcea1f166010e428df48387304e45c0bf7843a1fa7f1beb38f852228df789b",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "elementwise_0",
+          "semantic": "elementwise",
+          "sha256": "d99e58435243d9fef9c88273b8d553b4fba4d0baf8009d29eae74fa99e0d9f57",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_0",
+          "semantic": "mul",
+          "sha256": "d99e58435243d9fef9c88273b8d553b4fba4d0baf8009d29eae74fa99e0d9f57",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "elementwise_1",
+          "semantic": "elementwise",
+          "sha256": "c6348901c2f58b37293ffcaf611086ed8936f24c8f118b39606a316ca7e45bd4",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "mul_1",
+          "semantic": "mul",
+          "sha256": "c6348901c2f58b37293ffcaf611086ed8936f24c8f118b39606a316ca7e45bd4",
+          "shape": [
+            1
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "iota_1",
+          "semantic": "arange",
+          "sha256": "0c43f2957858ef1a2ee3e2cec548164d548995c05a42c6588927998cd6dd10d7",
+          "shape": [
+            32
+          ]
+        },
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "iota_2",
+          "semantic": "arange",
+          "sha256": "0c43f2957858ef1a2ee3e2cec548164d548995c05a42c6588927998cd6dd10d7",
+          "shape": [
+            32
+          ]
+        }
+      ],
+      "region_count": 7,
+      "region_ids": [
+        "reduce_1",
+        "elementwise_0",
+        "mul_0",
+        "elementwise_1",
+        "mul_1",
+        "iota_1",
+        "iota_2"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "first stable-ranked consecutive qualified run containing reduction set reduce_sum",
+      "semantics": [
+        "reduce_sum",
+        "elementwise",
+        "mul",
+        "elementwise",
+        "mul",
+        "arange",
+        "arange"
+      ],
+      "status": "fresh_numeric_execution_exactly_replayed"
+    },
+    {
+      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 0,
+      "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+      "fresh_inputs": [
+        {
+          "dtype": "float32",
+          "ordinal": 0,
+          "sha256": "d604c5d333e92ea42591506031d66dda2b19299e2a13b15c96ecbdb5288c3ab2",
+          "shape": [
+            1,
+            1024,
+            768
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 1,
+          "sha256": "ed4b7a56783b66c4871eac9823a111ba108b33a98887d0494d55c90242ce678e",
+          "shape": [
+            768
+          ]
+        },
+        {
+          "dtype": "float32",
+          "ordinal": 2,
+          "sha256": "de6ba209715169467f7f891668d421eaf88e3bc44ff8d64f74249e9b01979839",
+          "shape": [
+            768
+          ]
+        }
+      ],
+      "label": "layer_norm_standalone",
+      "outputs": [
+        {
+          "dtype": "float32",
+          "finite": true,
+          "region_id": "layer_norm_0",
+          "semantic": "layer_norm",
+          "sha256": "51f6a70be875385572ffc0052fc1140081322ecd0e2318e01a6fc972138a65d0",
+          "shape": [
+            1,
+            1024,
+            768
+          ]
+        }
+      ],
+      "region_count": 1,
+      "region_ids": [
+        "layer_norm_0"
+      ],
+      "replay_hashes_equal": true,
+      "schema": "atlas_real_capture_host_semantic_chain_v1",
+      "selection": "smallest qualified real layer norm; adjacent regions are accelerator partitions",
+      "semantics": [
+        "layer_norm"
       ],
       "status": "fresh_numeric_execution_exactly_replayed"
     },

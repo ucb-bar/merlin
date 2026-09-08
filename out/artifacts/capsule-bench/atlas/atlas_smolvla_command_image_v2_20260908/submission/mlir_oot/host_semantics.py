@@ -62,12 +62,47 @@ _CONSTRUCTOR_PATTERNS = {
         ),
     }),
 }
+_REDUCTION_TOP_PATTERNS = {
+    "reduce_mean": (
+        "arith.constant", "tensor.splat", "linalg.reduce", "arith.constant",
+        "tensor.splat", "tensor.empty", "linalg.generic",
+        "tensor.collapse_shape", "tensor.expand_shape",
+    ),
+    "softmax": (
+        "arith.constant", "tensor.splat", "linalg.reduce",
+        "tensor.collapse_shape", "tensor.expand_shape", "tensor.empty",
+        "linalg.generic", "tensor.empty", "linalg.generic", "arith.constant",
+        "tensor.splat", "linalg.reduce", "tensor.collapse_shape",
+        "tensor.expand_shape", "tensor.empty", "linalg.generic",
+    ),
+    "layer_norm": (
+        "arith.constant", "tensor.splat", "linalg.reduce", "arith.constant",
+        "tensor.splat", "tensor.empty", "linalg.generic",
+        "tensor.collapse_shape", "tensor.expand_shape", "tensor.empty",
+        "linalg.generic", "tensor.empty", "linalg.generic", "arith.constant",
+        "tensor.splat", "linalg.reduce", "arith.constant", "tensor.splat",
+        "tensor.empty", "linalg.generic", "tensor.collapse_shape",
+        "tensor.expand_shape", "arith.constant", "tensor.splat", "tensor.empty",
+        "linalg.generic", "tensor.empty", "linalg.generic", "tensor.empty",
+        "linalg.generic", "tensor.empty", "linalg.generic", "tensor.empty",
+        "linalg.generic",
+    ),
+    "aten_min_dim": (
+        "arith.constant", "arith.constant", "tensor.splat", "tensor.splat",
+        "linalg.generic", "tensor.expand_shape", "tensor.expand_shape",
+    ),
+    "cumsum": ("arith.constant", "tensor.splat", "linalg.generic"),
+    "reduce_sum": (
+        "linalg.generic", "arith.constant", "tensor.splat", "linalg.reduce",
+    ),
+}
 _CAST_OPS = frozenset({
     "arith.extf", "arith.truncf", "arith.sitofp", "arith.fptosi",
     "arith.index_cast",
 })
 _SCALAR_OPS = frozenset().union(*_SEMANTIC_ROOTS.values(), {
-    "arith.constant", "arith.index_cast", "arith.negf", "arith.minimumf",
+    "arith.constant", "arith.extui", "arith.index_cast", "arith.maximumf",
+    "arith.negf", "arith.minimumf",
     "linalg.index", "math.cos", "math.erf", "math.exp", "math.powf",
     "math.rsqrt", "math.sin",
 })
@@ -235,6 +270,8 @@ def _execute_scalar(op, arguments: list[np.ndarray]):
         return _constant_value(op)
     if name in _CAST_OPS:
         return _cast(arguments[0], str(op.results[0].type))
+    if name == "arith.extui":
+        return _cast(arguments[0], str(op.results[0].type))
     if name in {"arith.addf", "arith.addi"}:
         result = np.add(arguments[0], arguments[1])
     elif name in {"arith.subf", "arith.subi"}:
@@ -247,6 +284,8 @@ def _execute_scalar(op, arguments: list[np.ndarray]):
         result = np.negative(arguments[0])
     elif name == "arith.minimumf":
         result = np.minimum(arguments[0], arguments[1])
+    elif name == "arith.maximumf":
+        result = np.maximum(arguments[0], arguments[1])
     elif name == "math.sin":
         result = np.sin(arguments[0])
     elif name == "math.cos":
@@ -275,6 +314,293 @@ def _execute_scalar(op, arguments: list[np.ndarray]):
     return _cast(result, str(op.results[0].type))
 
 
+def _general_affine_map_signature(mapping, shape: tuple[int, ...], loop_rank: int):
+    affine = mapping.data
+    if affine.num_symbols != 0 or affine.num_dims != loop_rank:
+        raise UnsupportedHostRegion("generic affine map has symbols or the wrong loop rank")
+    if len(affine.results) != len(shape):
+        raise UnsupportedHostRegion("generic affine map rank differs from its tensor")
+    result = []
+    for expr, extent in zip(affine.results, shape):
+        if isinstance(expr, AffineDimExpr):
+            dim = int(expr.position)
+            if dim >= loop_rank:
+                raise UnsupportedHostRegion("generic affine map dimension is out of range")
+            result.append({"kind": "dim", "position": dim, "extent": int(extent)})
+        elif isinstance(expr, AffineConstantExpr) and int(expr.value) == 0:
+            if int(extent) < 1:
+                raise UnsupportedHostRegion("zero-index generic map has an empty tensor extent")
+            result.append({"kind": "constant", "value": 0, "extent": int(extent)})
+        else:
+            raise UnsupportedHostRegion("generic affine map is not dimension/constant-zero only")
+    return result
+
+
+def _scalar_dataflow_signature(block, compute: list, yielded) -> dict:
+    references = {
+        value: {"kind": "block_argument", "index": index}
+        for index, value in enumerate(block.args)
+    }
+    records = []
+    for operation_index, op in enumerate(compute):
+        operands = []
+        for value in op.operands:
+            reference = references.get(value)
+            if reference is None:
+                owner = getattr(value, "owner", None)
+                if getattr(owner, "name", None) != "arith.constant":
+                    raise UnsupportedHostRegion("scalar dataflow contains an unknown source")
+                reference = {
+                    "kind": "external_constant",
+                    "constant": _constant_signature(owner),
+                }
+            operands.append(reference)
+        records.append({"op": op.name, "operands": operands})
+        for result_index, value in enumerate(op.results):
+            references[value] = {
+                "kind": "operation_result",
+                "operation": operation_index,
+                "result": result_index,
+            }
+    try:
+        yields = [references[value] for value in yielded.operands]
+    except KeyError as error:
+        raise UnsupportedHostRegion("scalar yield contains an unknown source") from error
+    return {"operations": records, "yields": yields}
+
+
+def _generic_signature(op) -> dict:
+    if len(op.outputs) < 1 or len(op.results) != len(op.outputs):
+        raise UnsupportedHostRegion("generic output/result arity is inconsistent")
+    iterator_types = [getattr(item.data, "value", str(item.data)) for item in op.iterator_types]
+    loop_rank = len(iterator_types)
+    mappings = list(op.indexing_maps)
+    operands = list(op.inputs) + list(op.outputs)
+    if len(mappings) != len(operands):
+        raise UnsupportedHostRegion("generic indexing-map arity is inconsistent")
+    map_records = []
+    loop_shape: list[int | None] = [None] * loop_rank
+    for value, mapping in zip(operands, mappings):
+        shape = _tensor_shape(value)
+        if shape is None or any(extent < 0 for extent in shape):
+            raise UnsupportedHostRegion("generic operand is not a static ranked tensor")
+        _numpy_dtype(_dtype_name(value))
+        record = _general_affine_map_signature(mapping, shape, loop_rank)
+        for item in record:
+            if item["kind"] != "dim":
+                continue
+            position, extent = item["position"], item["extent"]
+            prior = loop_shape[position]
+            if prior is not None and prior != extent:
+                raise UnsupportedHostRegion("generic maps assign conflicting loop extents")
+            loop_shape[position] = extent
+        map_records.append(record)
+    if any(extent is None for extent in loop_shape):
+        raise UnsupportedHostRegion("generic loop extent cannot be inferred from its maps")
+
+    block = op.body.blocks[0]
+    if len(block.args) != len(operands):
+        raise UnsupportedHostRegion("generic block argument arity is inconsistent")
+    scalar_ops = list(block.ops)
+    if not scalar_ops or scalar_ops[-1].name != "linalg.yield":
+        raise UnsupportedHostRegion("generic scalar body has no terminal yield")
+    compute = scalar_ops[:-1]
+    if not compute or any(item.name not in _SCALAR_OPS for item in compute):
+        raise UnsupportedHostRegion("generic scalar body contains an unsupported operation")
+    if len(scalar_ops[-1].operands) != len(op.outputs):
+        raise UnsupportedHostRegion("generic yield/output arity is inconsistent")
+    allowed_values = set(block.args)
+    for item in compute:
+        external_constants = {
+            value for value in item.operands
+            if (value not in allowed_values
+                and getattr(getattr(value, "owner", None), "name", None) == "arith.constant")
+        }
+        if any(value not in allowed_values | external_constants for value in item.operands):
+            raise UnsupportedHostRegion("generic scalar body reads an unknown value")
+        allowed_values.update(item.results)
+    if any(value not in allowed_values for value in scalar_ops[-1].operands):
+        raise UnsupportedHostRegion("generic yield reads an unknown value")
+    return {
+        "input_shapes": [list(_tensor_shape(value) or ()) for value in op.inputs],
+        "input_dtypes": [_dtype_name(value) for value in op.inputs],
+        "output_shapes": [list(_tensor_shape(value) or ()) for value in op.results],
+        "output_dtypes": [_dtype_name(value) for value in op.results],
+        "iterator_types": iterator_types,
+        "loop_shape": [int(extent) for extent in loop_shape],
+        "operand_maps": [
+            [{key: value for key, value in item.items() if key != "extent"} for item in record]
+            for record in map_records
+        ],
+        "scalar_ops": [item.name for item in compute],
+        "comparison_predicates": [
+            _predicate(item) for item in compute if item.name in {"arith.cmpi", "arith.cmpf"}
+        ],
+        "index_dimensions": [
+            _index_dimension(item) for item in compute if item.name == "linalg.index"
+        ],
+        "scalar_constants": [
+            _constant_signature(item) for item in compute if item.name == "arith.constant"
+        ],
+        "scalar_dataflow": _scalar_dataflow_signature(block, compute, scalar_ops[-1]),
+    }
+
+
+def _reduce_signature(op) -> dict:
+    if len(op.operands) != 2 or len(op.results) != 1:
+        raise UnsupportedHostRegion("linalg.reduce arity is unsupported")
+    source_shape = _tensor_shape(op.operands[0])
+    output_shape = _tensor_shape(op.results[0])
+    if source_shape is None or output_shape is None:
+        raise UnsupportedHostRegion("linalg.reduce requires static ranked tensors")
+    dimensions = tuple(int(value) for value in op.dimensions.get_values())
+    if (not dimensions or tuple(sorted(set(dimensions))) != dimensions
+            or any(value >= len(source_shape) for value in dimensions)):
+        raise UnsupportedHostRegion("linalg.reduce dimensions are invalid")
+    expected_output = tuple(
+        extent for axis, extent in enumerate(source_shape) if axis not in dimensions
+    )
+    if tuple(output_shape) != expected_output:
+        raise UnsupportedHostRegion("linalg.reduce output shape does not remove its dimensions")
+    block = op.region.blocks[0]
+    scalar_ops = list(block.ops)
+    if (len(block.args) != 2 or len(scalar_ops) != 2
+            or scalar_ops[-1].name != "linalg.yield"
+            or scalar_ops[0].name not in {"arith.addf", "arith.addi", "arith.maximumf"}
+            or tuple(scalar_ops[-1].operands) != tuple(scalar_ops[0].results)):
+        raise UnsupportedHostRegion("linalg.reduce scalar body is unsupported")
+    _numpy_dtype(_dtype_name(op.operands[0]))
+    _numpy_dtype(_dtype_name(op.results[0]))
+    return {
+        "input_shape": list(source_shape),
+        "input_dtype": _dtype_name(op.operands[0]),
+        "output_shape": list(output_shape),
+        "output_dtype": _dtype_name(op.results[0]),
+        "dimensions": list(dimensions),
+        "scalar_ops": [scalar_ops[0].name],
+        "scalar_dataflow": _scalar_dataflow_signature(
+            block, [scalar_ops[0]], scalar_ops[-1]
+        ),
+    }
+
+
+def _map_index(mapping: list[dict], coordinates: tuple[int, ...]) -> tuple[int, ...]:
+    return tuple(
+        coordinates[item["position"]] if item["kind"] == "dim" else 0
+        for item in mapping
+    )
+
+
+def _execute_generic(op, values: MutableMapping, signature: dict) -> None:
+    loop_shape = tuple(signature["loop_shape"])
+    operand_maps = signature["operand_maps"]
+    outputs = []
+    for operand, dtype, shape in zip(
+        op.outputs, signature["output_dtypes"], signature["output_shapes"]
+    ):
+        initial = values.get(operand)
+        if initial is None:
+            initial = np.empty(tuple(shape), dtype=_numpy_dtype(dtype))
+        outputs.append(np.array(initial, dtype=_numpy_dtype(dtype), copy=True, order="C"))
+
+    block = op.body.blocks[0]
+    identity = [
+        {"kind": "dim", "position": axis} for axis in range(len(loop_shape))
+    ]
+    if (signature["iterator_types"] == ["parallel"] * len(loop_shape)
+            and len(outputs) == 1 and operand_maps[-1] == identity):
+        scalar_values = {}
+        for argument, operand, mapping in zip(
+            block.args[:len(op.inputs)], op.inputs, operand_maps[:len(op.inputs)]
+        ):
+            if operand not in values:
+                raise ValueError("missing runtime value for generic input")
+            scalar_values[argument] = _broadcast_operand(values[operand], mapping, loop_shape)
+        scalar_values[block.args[len(op.inputs)]] = outputs[0]
+        for scalar_op in block.ops:
+            if scalar_op.name == "linalg.yield":
+                values[op.results[0]] = np.array(
+                    _cast(scalar_values[scalar_op.operands[0]], signature["output_dtypes"][0]),
+                    copy=True,
+                    order="C",
+                )
+            elif scalar_op.name == "linalg.index":
+                scalar_values[scalar_op.results[0]] = np.indices(
+                    loop_shape, dtype=np.int64
+                )[_index_dimension(scalar_op)]
+            else:
+                scalar_values[scalar_op.results[0]] = _execute_scalar(
+                    scalar_op, [scalar_values[value] for value in scalar_op.operands]
+                )
+        return
+
+    for coordinates in np.ndindex(loop_shape):
+        scalar_values = {}
+        for argument, operand, mapping in zip(
+            block.args[:len(op.inputs)], op.inputs, operand_maps[:len(op.inputs)]
+        ):
+            if operand not in values:
+                raise ValueError("missing runtime value for generic input")
+            scalar_values[argument] = values[operand][_map_index(mapping, coordinates)]
+        for argument, output, mapping in zip(
+            block.args[len(op.inputs):], outputs, operand_maps[len(op.inputs):]
+        ):
+            scalar_values[argument] = output[_map_index(mapping, coordinates)]
+        for scalar_op in block.ops:
+            if scalar_op.name == "linalg.yield":
+                for result, output, mapping, dtype in zip(
+                    scalar_op.operands, outputs, operand_maps[len(op.inputs):],
+                    signature["output_dtypes"],
+                ):
+                    output[_map_index(mapping, coordinates)] = _cast(
+                        scalar_values[result], dtype
+                    )
+            elif scalar_op.name == "linalg.index":
+                scalar_values[scalar_op.results[0]] = np.asarray(
+                    coordinates[_index_dimension(scalar_op)], dtype=np.int64
+                )
+            else:
+                result = _execute_scalar(
+                    scalar_op, [
+                        scalar_values[value] if value in scalar_values else values[value]
+                        for value in scalar_op.operands
+                    ]
+                )
+                scalar_values[scalar_op.results[0]] = result
+    for result, output in zip(op.results, outputs):
+        values[result] = output
+
+
+def _execute_reduce(op, values: MutableMapping, signature: dict) -> None:
+    source = values[op.operands[0]]
+    output = np.array(values[op.operands[1]], copy=True, order="C")
+    dimensions = set(signature["dimensions"])
+    block = op.region.blocks[0]
+    scalar_op = list(block.ops)[0]
+    if len(dimensions) == 1:
+        axis = next(iter(dimensions))
+        seeded = np.concatenate((np.expand_dims(output, axis=axis), source), axis=axis)
+        operation = {
+            "arith.addf": np.add,
+            "arith.addi": np.add,
+            "arith.maximumf": np.maximum,
+        }[scalar_op.name]
+        accumulated = operation.accumulate(
+            seeded, axis=axis, dtype=_numpy_dtype(signature["output_dtype"])
+        )
+        values[op.results[0]] = np.take(accumulated, -1, axis=axis)
+        return
+    for coordinates in np.ndindex(tuple(signature["input_shape"])):
+        output_coordinates = tuple(
+            coordinate for axis, coordinate in enumerate(coordinates) if axis not in dimensions
+        )
+        reduced = _execute_scalar(
+            scalar_op, [source[coordinates], output[output_coordinates]]
+        )
+        output[output_coordinates] = _cast(reduced, signature["output_dtype"])
+    values[op.results[0]] = output
+
+
 @dataclass(frozen=True)
 class HostRegionProgram:
     region_id: str
@@ -287,9 +613,139 @@ class HostRegionProgram:
     signature: dict
 
 
+_REDUCTION_GENERIC_SEQUENCES = {
+    "reduce_mean": [("arith.divf",)],
+    "softmax": [("arith.subf",), ("math.exp",), ("arith.divf",)],
+    "layer_norm": [
+        ("arith.divf",), ("arith.subf",), ("arith.mulf",), ("arith.divf",),
+        ("arith.addf",), ("math.rsqrt",), ("arith.mulf",),
+        ("arith.mulf",), ("arith.addf",),
+    ],
+    "aten_min_dim": [
+        (
+            "linalg.index", "arith.index_cast", "arith.cmpi",
+            "arith.select", "arith.select",
+        ),
+    ],
+    "cumsum": [
+        (
+            "linalg.index", "linalg.index", "arith.cmpi", "arith.extui",
+            "arith.select", "arith.addi",
+        ),
+        (
+            "linalg.index", "linalg.index", "arith.cmpi", "arith.select",
+            "arith.addf",
+        ),
+    ],
+    "reduce_sum": [("arith.extui",)],
+}
+_REDUCTION_BODY_SEQUENCES = {
+    "reduce_mean": [("arith.addf",)],
+    "softmax": [("arith.maximumf",), ("arith.addf",)],
+    "layer_norm": [("arith.addf",), ("arith.addf",)],
+    "aten_min_dim": [],
+    "cumsum": [],
+    "reduce_sum": [("arith.addi",)],
+}
+
+
+def _extract_reduction_program(
+    region_id: str, semantic: str, aten: str, operations: tuple,
+) -> HostRegionProgram:
+    names = tuple(op.name for op in operations)
+    if names != _REDUCTION_TOP_PATTERNS[semantic]:
+        raise UnsupportedHostRegion("region does not match its complete captured reduction pattern")
+
+    generic_signatures = [_generic_signature(op) for op in operations if op.name == "linalg.generic"]
+    reduction_signatures = [_reduce_signature(op) for op in operations if op.name == "linalg.reduce"]
+    generic_sequences = [tuple(row["scalar_ops"]) for row in generic_signatures]
+    if semantic == "cumsum":
+        if len(generic_sequences) != 1 or generic_sequences[0] not in (
+            _REDUCTION_GENERIC_SEQUENCES[semantic]
+        ):
+            raise UnsupportedHostRegion("generic bodies do not match the captured reduction semantic")
+    elif generic_sequences != _REDUCTION_GENERIC_SEQUENCES[semantic]:
+        raise UnsupportedHostRegion("generic bodies do not match the captured reduction semantic")
+    if ([tuple(row["scalar_ops"]) for row in reduction_signatures]
+            != _REDUCTION_BODY_SEQUENCES[semantic]):
+        raise UnsupportedHostRegion("reduce bodies do not match the captured reduction semantic")
+    predicates = [
+        predicate for row in generic_signatures for predicate in row["comparison_predicates"]
+    ]
+    index_dimensions = [
+        dimension for row in generic_signatures for dimension in row["index_dimensions"]
+    ]
+    if semantic == "aten_min_dim" and (predicates != [2] or index_dimensions != [1]):
+        raise UnsupportedHostRegion("aten_min_dim comparison/index signature is unsupported")
+    if semantic == "cumsum" and (predicates != [7] or index_dimensions != [1, 2]):
+        raise UnsupportedHostRegion("cumsum comparison/index signature is unsupported")
+
+    operation_set = set(operations)
+    input_values = []
+    for op in operations:
+        if op.name == "linalg.generic":
+            read_operands = op.inputs
+        elif op.name == "linalg.reduce":
+            read_operands = op.operands[:1]
+        elif op.name in {"tensor.collapse_shape", "tensor.expand_shape", "tensor.splat"}:
+            read_operands = op.operands
+        else:
+            read_operands = ()
+        for value in read_operands:
+            if getattr(value, "owner", None) not in operation_set and value not in input_values:
+                input_values.append(value)
+
+    for op in operations:
+        if op.name == "tensor.splat":
+            if getattr(op.operands[0], "owner", None) not in operation_set:
+                raise UnsupportedHostRegion("reduction splat does not consume an in-region constant")
+        elif op.name in {"tensor.collapse_shape", "tensor.expand_shape"}:
+            source_shape = _tensor_shape(op.operands[0])
+            result_shape = _tensor_shape(op.results[0])
+            if (source_shape is None or result_shape is None
+                    or int(np.prod(source_shape, dtype=np.int64))
+                    != int(np.prod(result_shape, dtype=np.int64))
+                    or _dtype_name(op.operands[0]) != _dtype_name(op.results[0])):
+                raise UnsupportedHostRegion("reduction reshape is not an exact static alias")
+
+    if semantic == "aten_min_dim":
+        output_values = (operations[-2].results[0], operations[-1].results[0])
+    else:
+        output_values = (operations[-1].results[0],)
+    for value in tuple(input_values) + output_values:
+        shape = _tensor_shape(value)
+        if shape is None or any(extent < 0 for extent in shape):
+            raise UnsupportedHostRegion("reduction boundary is not a static ranked tensor")
+        _numpy_dtype(_dtype_name(value))
+    signature = {
+        "schema": "atlas_host_reduction_signature_v1",
+        "semantic": semantic,
+        "aten": aten,
+        "operation_sequence": list(names),
+        "input_shapes": [list(_tensor_shape(value) or ()) for value in input_values],
+        "input_dtypes": [_dtype_name(value) for value in input_values],
+        "output_shapes": [list(_tensor_shape(value) or ()) for value in output_values],
+        "output_dtypes": [_dtype_name(value) for value in output_values],
+        "output_shape": list(_tensor_shape(output_values[0]) or ()),
+        "output_dtype": _dtype_name(output_values[0]),
+        "scalar_constants": [
+            _constant_signature(op) for op in operations if op.name == "arith.constant"
+        ],
+        "generics": generic_signatures,
+        "reductions": reduction_signatures,
+        "accumulation_rule": "captured row-major left fold with cast after every scalar operation",
+    }
+    return HostRegionProgram(
+        region_id, semantic, aten, operations, None, tuple(input_values),
+        output_values[0], signature,
+    )
+
+
 def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     semantic = _str_attr(operations[0], "prov.op")
     aten = _str_attr(operations[0], "prov.aten")
+    if semantic in _REDUCTION_TOP_PATTERNS:
+        return _extract_reduction_program(region_id, semantic, aten, operations)
     if semantic == "fill":
         if tuple(op.name for op in operations) != ("arith.constant", "tensor.splat"):
             raise UnsupportedHostRegion("fill is not one scalar constant followed by tensor.splat")
@@ -423,14 +879,26 @@ class HostSemanticLane:
         if len(funcs) != 1:
             raise ValueError(f"expected one func.func, found {len(funcs)}")
         self.block = funcs[0].body.blocks[0]
+        block_operations = list(self.block.ops)
+        operation_indices = {op: index for index, op in enumerate(block_operations)}
         grouped: OrderedDict[str, list] = OrderedDict()
-        for op in self.block.ops:
+        for op in block_operations:
             region_id = _str_attr(op, "prov.region_id")
             if region_id:
                 grouped.setdefault(region_id, []).append(op)
         self.programs: OrderedDict[str, HostRegionProgram] = OrderedDict()
         self.rejections: OrderedDict[str, str] = OrderedDict()
         for region_id, operations in grouped.items():
+            semantic = _str_attr(operations[0], "prov.op")
+            if semantic in _REDUCTION_TOP_PATTERNS:
+                start = operation_indices[operations[0]]
+                stop = operation_indices[operations[-1]]
+                if semantic == "reduce_sum":
+                    candidate = stop + 1
+                    if (candidate < len(block_operations)
+                            and block_operations[candidate].name == "linalg.reduce"):
+                        stop = candidate
+                operations = block_operations[start:stop + 1]
             try:
                 self.programs[region_id] = _extract_program(region_id, tuple(operations))
             except UnsupportedHostRegion as error:
@@ -444,6 +912,45 @@ class HostSemanticLane:
         if region_id not in self.programs:
             raise UnsupportedHostRegion(self.rejections.get(region_id, f"unknown region {region_id}"))
         program = self.programs[region_id]
+        if program.signature["schema"] == "atlas_host_reduction_signature_v1":
+            generic_index = 0
+            reduction_index = 0
+            for op in program.operations:
+                if op.name == "arith.constant":
+                    values[op.results[0]] = _constant_value(op)
+                elif op.name == "tensor.splat":
+                    shape = _tensor_shape(op.results[0])
+                    if shape is None or op.operands[0] not in values:
+                        raise ValueError("reduction tensor.splat input or shape is unavailable")
+                    dtype = _dtype_name(op.results[0])
+                    values[op.results[0]] = _cast(
+                        np.full(shape, values[op.operands[0]], dtype=_numpy_dtype(dtype)), dtype
+                    )
+                elif op.name == "tensor.empty":
+                    shape = _tensor_shape(op.results[0])
+                    values[op.results[0]] = np.empty(
+                        shape, dtype=_numpy_dtype(_dtype_name(op.results[0]))
+                    )
+                elif op.name in {"tensor.collapse_shape", "tensor.expand_shape"}:
+                    if op.operands[0] not in values:
+                        raise ValueError("reduction reshape input is unavailable")
+                    shape = tuple(_tensor_shape(op.results[0]) or ())
+                    values[op.results[0]] = np.reshape(values[op.operands[0]], shape)
+                elif op.name == "linalg.generic":
+                    _execute_generic(
+                        op, values, program.signature["generics"][generic_index]
+                    )
+                    generic_index += 1
+                elif op.name == "linalg.reduce":
+                    _execute_reduce(
+                        op, values, program.signature["reductions"][reduction_index]
+                    )
+                    reduction_index += 1
+                else:
+                    raise UnsupportedHostRegion(
+                        f"unsupported captured reduction operation {op.name}"
+                    )
+            return values[program.output_value]
         for op in program.operations:
             if op.name == "arith.constant":
                 values[op.results[0]] = _constant_value(op)
@@ -492,7 +999,11 @@ class HostSemanticLane:
                             )[dimension]
                         else:
                             scalar_values[scalar_op.results[0]] = _execute_scalar(
-                                scalar_op, [scalar_values[value] for value in scalar_op.operands]
+                                scalar_op, [
+                                    scalar_values[value]
+                                    if value in scalar_values else values[value]
+                                    for value in scalar_op.operands
+                                ],
                             )
         return values[program.output_value]
 
