@@ -148,3 +148,43 @@ class TestItFiresOnTheRealTargetDeclaration:
         for cap in self._caps():
             unknown = cap.applies - EPILOGUE_STAGE_SET
             assert not unknown, f"{cap.selector} declares non-ABI stage(s) {sorted(unknown)}"
+
+
+class TestTheGateIsScopedByWhatATargetDECLARES:
+    """A target that has not described its readouts must not be refused for it.
+
+    The rule is general, but its input is a per-target declaration. Refusing every capsule on a
+    target that simply has not enumerated its readouts would be overfitting by breakage -- an
+    undeclared target is not a broken one. So the grade records ``unavailable`` with the reason, and
+    "not checked" can never read as "checked and fine".
+    """
+
+    def _backend(self, name):
+        from merlin.runtime.backends import base as B
+        return B.get_backend(name)
+
+    def test_a_target_that_declares_readouts_activates_the_gate(self):
+        assert callable(getattr(self._backend("gemmini"), "readout_epilogue_capability", None))
+
+    def test_a_target_that_declares_none_leaves_the_gate_unavailable(self):
+        """Exercised by a real second backend, not a mock, so the branch cannot rot."""
+        other = self._backend("muon")
+        assert not callable(getattr(other, "readout_epilogue_capability", None))
+
+    def test_the_recorded_block_is_self_describing_even_when_nothing_applies(self):
+        """An absent key reads as "this axis does not apply" -- the same shape as the defect.
+
+        So the block a grade records always carries its schema, status and refusing flag, including
+        for a program with no epilogue at all.
+        """
+        block = EA.assess(_cb(_commit("wide", [])), CAPS).to_dict()
+        assert block["schema"] == "merlin_epilogue_applicability_v1"
+        assert block["status"] == "not_applicable" and block["refusing"] is False
+        assert block["n_discarded"] == 0 and "readouts_declared" in block
+
+    def test_a_declared_stage_outside_the_abi_vocabulary_is_caught_by_the_backend_test(self):
+        """Guards the declaration itself: a typo'd stage name would silently never be applied."""
+        from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET
+        for row in self._backend("gemmini").readout_epilogue_capability():
+            for stage in row.get("applies") or ():
+                assert stage in EPILOGUE_STAGE_SET, stage

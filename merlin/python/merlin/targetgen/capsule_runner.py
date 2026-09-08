@@ -46,6 +46,7 @@ _CALIBRATION_CAP = 3
 
 from . import capsule_golden as CG
 from ..runtime import commandbuffer as _CB
+from ..runtime.backends import base as _backends_mod
 from .rocc import decode as RD
 from . import trace_check as TCK
 from .contract import compile as oot_compile
@@ -3435,6 +3436,7 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
                              tiers: dict, trace_check_res: dict, numeric: dict, required,
                              no_oracle: bool, eff_target: str, paths, run_id: str, cfg,
                              contract=None, executability: dict | None = None,
+                             epilogue_applicability: dict | None = None,
                              declined: dict | None = None, extra: dict | None = None,
                              submission: dict | None = None) -> dict:
     """Turn a graded capsule's parts into its result row, and write it.
@@ -3652,6 +3654,11 @@ def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: 
     # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
     if executability:
         result["executability"] = executability
+    # Whether the target's readout applied every epilogue stage the program declared. Recorded even
+    # when the answer is "not checked": an absent key reads as "this axis does not apply", which is
+    # the same shape as the defect -- a declared activation that silently never happened.
+    if epilogue_applicability:
+        result["epilogue_applicability"] = epilogue_applicability
     # The refusal rides the result BY NAME AND SHAPE, so the round feedback can quote what was declined
     # rather than reporting a numeric mismatch on a program that was never emitted.
     if declined:
@@ -3781,6 +3788,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     whole_program = False
     numeric = {"status": "skipped"}
     executability: dict = {}                      # advisory RTL-executability smoke result(s), by tier
+    epilogue_applicability: dict = {}             # did the readout apply what the program declared?
     failure: dict | None = None
     declined: dict | None = None                  # the backend's STATED refusal ({reason, shape, op})
     status = "pass"
@@ -3826,6 +3834,37 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         if _lowering.get("status") in _LOB.REFUSING_STATUSES:
             raise CertFailure("lowering_obligation", _cat("PROTOCOL_VIOLATION"),
                               str(_lowering.get("detail")))
+
+        # AN EPILOGUE THE READOUT DOES NOT APPLY IS A WRONG ANSWER, NOT A MISSED OPTIMIZATION.
+        #
+        # Measured: a capsule declaring `output_dtype='i32' epilogue=['relu']` returned 126 of 256
+        # outputs negative (min -85), which is the raw accumulator, while the command-buffer numeric
+        # floor and trace both passed -- the compiler's intent was right and the device discarded the
+        # activation. Judged here for the same reason as the obligation above: before anything is
+        # spent grading a program that computes something other than what it declares.
+        #
+        # The rule is target-independent and lives in merlin.verify; the CAPABILITY is the target's
+        # own declaration. A backend that declares no readouts leaves the check UNAVAILABLE rather
+        # than refusing every capsule -- an undeclared target is not a broken one, and the reason is
+        # recorded so "not checked" never reads as "checked and fine".
+        from merlin.verify import epilogue_applicability as _EPI
+        _readouts_reader = getattr(_backends_mod.get_backend(eff_target),
+                                   "readout_epilogue_capability", None)
+        _declared = _readouts_reader() if callable(_readouts_reader) else None
+        if _declared:
+            _epi = _EPI.assess(cb, [_EPI.ReadoutCapability(
+                str(r["selector"]), frozenset(str(x) for x in r.get("applies") or ()),
+                str(r.get("evidence") or "")) for r in _declared])
+            epilogue_applicability = _epi.to_dict()
+            if _epi.refusing:
+                raise CertFailure("epilogue_applicability", _cat("PROTOCOL_VIOLATION"),
+                                  str(_epi.detail))
+        else:
+            epilogue_applicability = {
+                "schema": "merlin_epilogue_applicability_v1", "status": "unavailable",
+                "detail": (f"target {eff_target!r} declares no readout epilogue capability, so "
+                           f"whether its readouts apply a declared stage cannot be established"),
+                "refusing": False}
 
         # --- golden + L0/L1 -----------------------------------------------------------------
         # The golden is the INDEPENDENT oracle's answer. For an integer capsule (gemmini / exact_int /
@@ -4633,7 +4672,8 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
         trace_check_res=trace_check_res, numeric=numeric, required=required,
         no_oracle=no_oracle, eff_target=eff_target, paths=paths, run_id=run_id,
-        cfg=cfg, contract=contract, executability=executability, declined=declined,
+        cfg=cfg, contract=contract, executability=executability,
+        epilogue_applicability=epilogue_applicability, declined=declined,
         extra={"work_volume": _work_volume, "command_buffer_artifact": _cb_artifact,
                "movement_volume": _movement_volume, **_lane_extra})
 
