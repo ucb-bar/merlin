@@ -9,11 +9,16 @@
   "capture_bytes": 4346305,
   "capture_sha256": "27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c",
   "claim": "bounded integration probe only",
-  "command_buffer_produced": false,
-  "elapsed_seconds": 4.34839877000195,
+  "command_buffer_produced": true,
+  "command_count": 0,
+  "declined": {
+    "op": "model",
+    "reason": "whole-model f32 graph exceeds the current Atlas device lowering"
+  },
+  "elapsed_seconds": 7.641285834994051,
   "returncode": 1,
   "schema": "atlas_full_capture_probe_v1",
-  "stderr_bytes": 364,
+  "stderr_bytes": 107,
   "stdout_bytes": 0,
   "timed_out": false,
   "timeout_seconds": 60

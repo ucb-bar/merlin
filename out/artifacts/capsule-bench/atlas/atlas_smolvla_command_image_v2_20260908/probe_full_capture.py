@@ -15,6 +15,7 @@ TOOL = ROOT / "submission/mlir_oot/atlas-opt"
 CB = ROOT / "full_capture_command_buffer.json"
 
 argv = [str(TOOL), f"--emit-command-buffer={CB}", "--emit-target-artifact", str(CAPTURE)]
+CB.unlink(missing_ok=True)
 started = time.monotonic()
 try:
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=60)
@@ -29,6 +30,7 @@ except subprocess.TimeoutExpired as exc:
 
 (ROOT / "full_capture.stdout").write_text(stdout)
 (ROOT / "full_capture.stderr").write_text(stderr)
+command_buffer = json.loads(CB.read_text()) if CB.is_file() else None
 record = {
     "schema": "atlas_full_capture_probe_v1",
     "argv": argv,
@@ -40,6 +42,8 @@ record = {
     "timed_out": timed_out,
     "returncode": returncode,
     "command_buffer_produced": CB.is_file(),
+    "command_count": len(command_buffer["commands"]) if command_buffer else None,
+    "declined": command_buffer.get("declined") if command_buffer else None,
     "stdout_bytes": len(stdout.encode()),
     "stderr_bytes": len(stderr.encode()),
     "claim": "bounded integration probe only",

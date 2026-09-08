@@ -1,4 +1,5 @@
 """Structural xDSL front end for both frozen interface grammars."""
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -129,8 +130,40 @@ def _context():
     return ctx
 
 
+_MULTI_RESULT_REGION_TYPES = re.compile(
+    r"^(?P<prefix>[ \t]*\}[ \t]*->[ \t]*)"
+    r"\((?P<types>tensor<[^()\n]+>(?:[ \t]*,[ \t]*tensor<[^()\n]+>)+)\)"
+    r"(?P<suffix>[ \t]*)$",
+    re.MULTILINE,
+)
+
+
+def normalize_xdsl_parser_compat(text: str) -> tuple[str, int]:
+    """Bridge canonical multi-result region syntax to xDSL's parser grammar.
+
+    The xDSL revision frozen in this environment has an internal
+    parser/printer inconsistency for multi-result ``linalg.generic`` ops: its
+    printer emits ``} -> (tensor<...>, tensor<...>)`` while its parser expects
+    the same result list without the tuple delimiters.  The parentheses carry
+    no result-type information, so removing only this tightly-scoped wrapper
+    preserves every SSA result type and every operation attribute.
+
+    This is deliberately a parser-input normalization.  It neither rewrites
+    the source capture on disk nor contains any Atlas-specific policy.
+    """
+    count = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal count
+        count += 1
+        return match.group("prefix") + match.group("types") + match.group("suffix")
+
+    return _MULTI_RESULT_REGION_TYPES.sub(replace, text), count
+
+
 def parse_verified(text: str) -> Workload:
-    module = Parser(_context(), text).parse_module()
+    normalized, _ = normalize_xdsl_parser_compat(text)
+    module = Parser(_context(), normalized).parse_module()
     module.verify()
     iface_tensors = [op for op in module.walk() if op.name == "merlin_iface.tensor"]
     if iface_tensors:

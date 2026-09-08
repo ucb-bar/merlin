@@ -1515,6 +1515,11 @@ def _emit_batched_matmul(p, workload, cb, item):
 
 def emit_program(workload):
     cb = build_command_buffer(workload)
+    if "declined" in cb:
+        declined = cb["declined"]
+        raise ValueError(
+            f"declined {declined['op']} workload: {declined['reason']}"
+        )
     p = Program()
     p.li(5, 0)
     p.li(10, 0)

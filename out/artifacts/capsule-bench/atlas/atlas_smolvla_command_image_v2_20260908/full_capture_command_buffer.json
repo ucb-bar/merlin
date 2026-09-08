@@ -1,0 +1,6504 @@
+{
+  "abi_version": "0.1",
+  "target": "atlas",
+  "backend": "atlas-xdsl",
+  "tensors": {
+    "I0": {
+      "shape": [
+        768,
+        3,
+        16,
+        16
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2415919104
+    },
+    "I1": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2418278400
+    },
+    "I2": {
+      "shape": [
+        1024,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2418281472
+    },
+    "I3": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2421427200
+    },
+    "I4": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2423786496
+    },
+    "I5": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2423789568
+    },
+    "I6": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2426148864
+    },
+    "I7": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2426151936
+    },
+    "I8": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2428511232
+    },
+    "I9": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2428514304
+    },
+    "I10": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2430873600
+    },
+    "I11": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2430876672
+    },
+    "I12": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2430879744
+    },
+    "I13": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2430882816
+    },
+    "I14": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2440320000
+    },
+    "I15": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2440332288
+    },
+    "I16": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2449769472
+    },
+    "I17": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2449772544
+    },
+    "I18": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2449775616
+    },
+    "I19": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2449778688
+    },
+    "I20": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2452137984
+    },
+    "I21": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2452141056
+    },
+    "I22": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2454500352
+    },
+    "I23": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2454503424
+    },
+    "I24": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2456862720
+    },
+    "I25": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2456865792
+    },
+    "I26": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2459225088
+    },
+    "I27": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2459228160
+    },
+    "I28": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2459231232
+    },
+    "I29": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2459234304
+    },
+    "I30": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2468671488
+    },
+    "I31": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2468683776
+    },
+    "I32": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2478120960
+    },
+    "I33": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2478124032
+    },
+    "I34": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2478127104
+    },
+    "I35": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2478130176
+    },
+    "I36": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2480489472
+    },
+    "I37": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2480492544
+    },
+    "I38": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2482851840
+    },
+    "I39": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2482854912
+    },
+    "I40": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2485214208
+    },
+    "I41": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2485217280
+    },
+    "I42": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2487576576
+    },
+    "I43": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2487579648
+    },
+    "I44": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2487582720
+    },
+    "I45": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2487585792
+    },
+    "I46": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2497022976
+    },
+    "I47": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2497035264
+    },
+    "I48": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2506472448
+    },
+    "I49": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2506475520
+    },
+    "I50": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2506478592
+    },
+    "I51": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2506481664
+    },
+    "I52": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2508840960
+    },
+    "I53": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2508844032
+    },
+    "I54": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2511203328
+    },
+    "I55": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2511206400
+    },
+    "I56": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2513565696
+    },
+    "I57": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2513568768
+    },
+    "I58": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2515928064
+    },
+    "I59": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2515931136
+    },
+    "I60": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2515934208
+    },
+    "I61": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2515937280
+    },
+    "I62": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2525374464
+    },
+    "I63": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2525386752
+    },
+    "I64": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2534823936
+    },
+    "I65": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2534827008
+    },
+    "I66": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2534830080
+    },
+    "I67": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2534833152
+    },
+    "I68": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2537192448
+    },
+    "I69": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2537195520
+    },
+    "I70": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2539554816
+    },
+    "I71": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2539557888
+    },
+    "I72": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2541917184
+    },
+    "I73": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2541920256
+    },
+    "I74": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2544279552
+    },
+    "I75": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2544282624
+    },
+    "I76": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2544285696
+    },
+    "I77": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2544288768
+    },
+    "I78": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2553725952
+    },
+    "I79": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2553738240
+    },
+    "I80": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2563175424
+    },
+    "I81": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2563178496
+    },
+    "I82": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2563181568
+    },
+    "I83": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2563184640
+    },
+    "I84": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2565543936
+    },
+    "I85": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2565547008
+    },
+    "I86": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2567906304
+    },
+    "I87": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2567909376
+    },
+    "I88": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2570268672
+    },
+    "I89": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2570271744
+    },
+    "I90": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2572631040
+    },
+    "I91": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2572634112
+    },
+    "I92": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2572637184
+    },
+    "I93": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2572640256
+    },
+    "I94": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2582077440
+    },
+    "I95": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2582089728
+    },
+    "I96": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2591526912
+    },
+    "I97": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2591529984
+    },
+    "I98": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2591533056
+    },
+    "I99": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2591536128
+    },
+    "I100": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2593895424
+    },
+    "I101": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2593898496
+    },
+    "I102": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2596257792
+    },
+    "I103": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2596260864
+    },
+    "I104": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2598620160
+    },
+    "I105": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2598623232
+    },
+    "I106": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2600982528
+    },
+    "I107": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2600985600
+    },
+    "I108": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2600988672
+    },
+    "I109": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2600991744
+    },
+    "I110": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2610428928
+    },
+    "I111": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2610441216
+    },
+    "I112": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2619878400
+    },
+    "I113": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2619881472
+    },
+    "I114": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2619884544
+    },
+    "I115": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2619887616
+    },
+    "I116": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2622246912
+    },
+    "I117": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2622249984
+    },
+    "I118": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2624609280
+    },
+    "I119": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2624612352
+    },
+    "I120": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2626971648
+    },
+    "I121": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2626974720
+    },
+    "I122": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2629334016
+    },
+    "I123": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2629337088
+    },
+    "I124": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2629340160
+    },
+    "I125": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2629343232
+    },
+    "I126": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2638780416
+    },
+    "I127": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2638792704
+    },
+    "I128": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2648229888
+    },
+    "I129": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2648232960
+    },
+    "I130": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2648236032
+    },
+    "I131": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2648239104
+    },
+    "I132": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2650598400
+    },
+    "I133": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2650601472
+    },
+    "I134": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2652960768
+    },
+    "I135": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2652963840
+    },
+    "I136": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2655323136
+    },
+    "I137": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2655326208
+    },
+    "I138": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2657685504
+    },
+    "I139": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2657688576
+    },
+    "I140": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2657691648
+    },
+    "I141": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2657694720
+    },
+    "I142": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2667131904
+    },
+    "I143": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2667144192
+    },
+    "I144": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2676581376
+    },
+    "I145": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2676584448
+    },
+    "I146": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2676587520
+    },
+    "I147": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2676590592
+    },
+    "I148": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2678949888
+    },
+    "I149": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2678952960
+    },
+    "I150": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2681312256
+    },
+    "I151": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2681315328
+    },
+    "I152": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2683674624
+    },
+    "I153": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2683677696
+    },
+    "I154": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2686036992
+    },
+    "I155": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2686040064
+    },
+    "I156": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2686043136
+    },
+    "I157": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2686046208
+    },
+    "I158": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2695483392
+    },
+    "I159": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2695495680
+    },
+    "I160": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2704932864
+    },
+    "I161": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2704935936
+    },
+    "I162": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2704939008
+    },
+    "I163": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2704942080
+    },
+    "I164": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2707301376
+    },
+    "I165": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2707304448
+    },
+    "I166": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2709663744
+    },
+    "I167": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2709666816
+    },
+    "I168": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2712026112
+    },
+    "I169": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2712029184
+    },
+    "I170": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2714388480
+    },
+    "I171": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2714391552
+    },
+    "I172": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2714394624
+    },
+    "I173": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2714397696
+    },
+    "I174": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2723834880
+    },
+    "I175": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2723847168
+    },
+    "I176": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2733284352
+    },
+    "I177": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2733287424
+    },
+    "I178": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2733290496
+    },
+    "I179": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2733293568
+    },
+    "I180": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2735652864
+    },
+    "I181": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2735655936
+    },
+    "I182": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2738015232
+    },
+    "I183": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2738018304
+    },
+    "I184": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2740377600
+    },
+    "I185": {
+      "shape": [
+        768,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2740380672
+    },
+    "I186": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2742739968
+    },
+    "I187": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2742743040
+    },
+    "I188": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2742746112
+    },
+    "I189": {
+      "shape": [
+        3072,
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2742749184
+    },
+    "I190": {
+      "shape": [
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2752186368
+    },
+    "I191": {
+      "shape": [
+        768,
+        3072
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2752198656
+    },
+    "I192": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2761635840
+    },
+    "I193": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2761638912
+    },
+    "I194": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2761641984
+    },
+    "I195": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2761645056
+    },
+    "I196": {
+      "shape": [
+        768
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2761648128
+    },
+    "I197": {
+      "shape": [
+        960,
+        12288
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 2761651200
+    },
+    "I198": {
+      "shape": [
+        49280,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2808837120
+    },
+    "I199": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2903454720
+    },
+    "I200": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2905297920
+    },
+    "I201": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2905912320
+    },
+    "I202": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2906526720
+    },
+    "I203": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2908369920
+    },
+    "I204": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2913285120
+    },
+    "I205": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2918200320
+    },
+    "I206": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2923115520
+    },
+    "I207": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2923117440
+    },
+    "I208": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2923119360
+    },
+    "I209": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2924962560
+    },
+    "I210": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2925576960
+    },
+    "I211": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2926191360
+    },
+    "I212": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2928034560
+    },
+    "I213": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2932949760
+    },
+    "I214": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2937864960
+    },
+    "I215": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2942780160
+    },
+    "I216": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2942782080
+    },
+    "I217": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2942784000
+    },
+    "I218": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2944627200
+    },
+    "I219": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2945241600
+    },
+    "I220": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2945856000
+    },
+    "I221": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2947699200
+    },
+    "I222": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2952614400
+    },
+    "I223": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2957529600
+    },
+    "I224": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2962444800
+    },
+    "I225": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2962446720
+    },
+    "I226": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2962448640
+    },
+    "I227": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2964291840
+    },
+    "I228": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2964906240
+    },
+    "I229": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2965520640
+    },
+    "I230": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2967363840
+    },
+    "I231": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2972279040
+    },
+    "I232": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2977194240
+    },
+    "I233": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2982109440
+    },
+    "I234": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2982111360
+    },
+    "I235": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2982113280
+    },
+    "I236": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2983956480
+    },
+    "I237": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2984570880
+    },
+    "I238": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2985185280
+    },
+    "I239": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2987028480
+    },
+    "I240": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2991943680
+    },
+    "I241": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2996858880
+    },
+    "I242": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3001774080
+    },
+    "I243": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3001776000
+    },
+    "I244": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3001777920
+    },
+    "I245": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3003621120
+    },
+    "I246": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3004235520
+    },
+    "I247": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3004849920
+    },
+    "I248": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3006693120
+    },
+    "I249": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3011608320
+    },
+    "I250": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3016523520
+    },
+    "I251": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3021438720
+    },
+    "I252": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3021440640
+    },
+    "I253": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3021442560
+    },
+    "I254": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3023285760
+    },
+    "I255": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3023900160
+    },
+    "I256": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3024514560
+    },
+    "I257": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3026357760
+    },
+    "I258": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3031272960
+    },
+    "I259": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3036188160
+    },
+    "I260": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3041103360
+    },
+    "I261": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3041105280
+    },
+    "I262": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3041107200
+    },
+    "I263": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3042950400
+    },
+    "I264": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3043564800
+    },
+    "I265": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3044179200
+    },
+    "I266": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3046022400
+    },
+    "I267": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3050937600
+    },
+    "I268": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3055852800
+    },
+    "I269": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3060768000
+    },
+    "I270": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3060769920
+    },
+    "I271": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3060771840
+    },
+    "I272": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3062615040
+    },
+    "I273": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3063229440
+    },
+    "I274": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3063843840
+    },
+    "I275": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3065687040
+    },
+    "I276": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3070602240
+    },
+    "I277": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3075517440
+    },
+    "I278": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3080432640
+    },
+    "I279": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3080434560
+    },
+    "I280": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3080436480
+    },
+    "I281": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3082279680
+    },
+    "I282": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3082894080
+    },
+    "I283": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3083508480
+    },
+    "I284": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3085351680
+    },
+    "I285": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3090266880
+    },
+    "I286": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3095182080
+    },
+    "I287": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3100097280
+    },
+    "I288": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3100099200
+    },
+    "I289": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3100101120
+    },
+    "I290": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3101944320
+    },
+    "I291": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3102558720
+    },
+    "I292": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3103173120
+    },
+    "I293": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3105016320
+    },
+    "I294": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3109931520
+    },
+    "I295": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3114846720
+    },
+    "I296": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3119761920
+    },
+    "I297": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3119763840
+    },
+    "I298": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3119765760
+    },
+    "I299": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3121608960
+    },
+    "I300": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3122223360
+    },
+    "I301": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3122837760
+    },
+    "I302": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3124680960
+    },
+    "I303": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3129596160
+    },
+    "I304": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3134511360
+    },
+    "I305": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3139426560
+    },
+    "I306": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3139428480
+    },
+    "I307": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3139430400
+    },
+    "I308": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3141273600
+    },
+    "I309": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3141888000
+    },
+    "I310": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3142502400
+    },
+    "I311": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3144345600
+    },
+    "I312": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3149260800
+    },
+    "I313": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3154176000
+    },
+    "I314": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3159091200
+    },
+    "I315": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3159093120
+    },
+    "I316": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3159095040
+    },
+    "I317": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3160938240
+    },
+    "I318": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3161552640
+    },
+    "I319": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3162167040
+    },
+    "I320": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3164010240
+    },
+    "I321": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3168925440
+    },
+    "I322": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3173840640
+    },
+    "I323": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3178755840
+    },
+    "I324": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3178757760
+    },
+    "I325": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3178759680
+    },
+    "I326": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3180602880
+    },
+    "I327": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3181217280
+    },
+    "I328": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3181831680
+    },
+    "I329": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3183674880
+    },
+    "I330": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3188590080
+    },
+    "I331": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3193505280
+    },
+    "I332": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3198420480
+    },
+    "I333": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3198422400
+    },
+    "I334": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3198424320
+    },
+    "I335": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3200267520
+    },
+    "I336": {
+      "shape": [
+        320,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3200881920
+    },
+    "I337": {
+      "shape": [
+        960,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3201496320
+    },
+    "I338": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3203339520
+    },
+    "I339": {
+      "shape": [
+        2560,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3208254720
+    },
+    "I340": {
+      "shape": [
+        960,
+        2560
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3213169920
+    },
+    "I341": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3218085120
+    },
+    "I342": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3218087040
+    },
+    "I343": {
+      "shape": [
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3218088960
+    },
+    "I344": {
+      "shape": [
+        49280,
+        960
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3218090880
+    },
+    "I345": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3407326080
+    },
+    "I346": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3408708480
+    },
+    "I347": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3409169280
+    },
+    "I348": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3409630080
+    },
+    "I349": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3411012480
+    },
+    "I350": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3413961600
+    },
+    "I351": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3416910720
+    },
+    "I352": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3419859840
+    },
+    "I353": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3419861280
+    },
+    "I354": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3419862720
+    },
+    "I355": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3421245120
+    },
+    "I356": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3421654720
+    },
+    "I357": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3422064320
+    },
+    "I358": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3423446720
+    },
+    "I359": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3426395840
+    },
+    "I360": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3429344960
+    },
+    "I361": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3432294080
+    },
+    "I362": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3432295520
+    },
+    "I363": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3432296960
+    },
+    "I364": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3433679360
+    },
+    "I365": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3434140160
+    },
+    "I366": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3434600960
+    },
+    "I367": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3435983360
+    },
+    "I368": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3438932480
+    },
+    "I369": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3441881600
+    },
+    "I370": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3444830720
+    },
+    "I371": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3444832160
+    },
+    "I372": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3444833600
+    },
+    "I373": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3446216000
+    },
+    "I374": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3446625600
+    },
+    "I375": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3447035200
+    },
+    "I376": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3448417600
+    },
+    "I377": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3451366720
+    },
+    "I378": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3454315840
+    },
+    "I379": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3457264960
+    },
+    "I380": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3457266400
+    },
+    "I381": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3457267840
+    },
+    "I382": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3458650240
+    },
+    "I383": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3459111040
+    },
+    "I384": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3459571840
+    },
+    "I385": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3460954240
+    },
+    "I386": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3463903360
+    },
+    "I387": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3466852480
+    },
+    "I388": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3469801600
+    },
+    "I389": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3469803040
+    },
+    "I390": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3469804480
+    },
+    "I391": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3471186880
+    },
+    "I392": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3471596480
+    },
+    "I393": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3472006080
+    },
+    "I394": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3473388480
+    },
+    "I395": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3476337600
+    },
+    "I396": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3479286720
+    },
+    "I397": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3482235840
+    },
+    "I398": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3482237280
+    },
+    "I399": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3482238720
+    },
+    "I400": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3483621120
+    },
+    "I401": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3484081920
+    },
+    "I402": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3484542720
+    },
+    "I403": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3485925120
+    },
+    "I404": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3488874240
+    },
+    "I405": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3491823360
+    },
+    "I406": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3494772480
+    },
+    "I407": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3494773920
+    },
+    "I408": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3494775360
+    },
+    "I409": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3496157760
+    },
+    "I410": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3496567360
+    },
+    "I411": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3496976960
+    },
+    "I412": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3498359360
+    },
+    "I413": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3501308480
+    },
+    "I414": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3504257600
+    },
+    "I415": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3507206720
+    },
+    "I416": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3507208160
+    },
+    "I417": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3507209600
+    },
+    "I418": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3508592000
+    },
+    "I419": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3509052800
+    },
+    "I420": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3509513600
+    },
+    "I421": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3510896000
+    },
+    "I422": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3513845120
+    },
+    "I423": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3516794240
+    },
+    "I424": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3519743360
+    },
+    "I425": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3519744800
+    },
+    "I426": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3519746240
+    },
+    "I427": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3521128640
+    },
+    "I428": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3521538240
+    },
+    "I429": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3521947840
+    },
+    "I430": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3523330240
+    },
+    "I431": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3526279360
+    },
+    "I432": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3529228480
+    },
+    "I433": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3532177600
+    },
+    "I434": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3532179040
+    },
+    "I435": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3532180480
+    },
+    "I436": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3533562880
+    },
+    "I437": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3534023680
+    },
+    "I438": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3534484480
+    },
+    "I439": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3535866880
+    },
+    "I440": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3538816000
+    },
+    "I441": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3541765120
+    },
+    "I442": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3544714240
+    },
+    "I443": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3544715680
+    },
+    "I444": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3544717120
+    },
+    "I445": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3546099520
+    },
+    "I446": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3546509120
+    },
+    "I447": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3546918720
+    },
+    "I448": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3548301120
+    },
+    "I449": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3551250240
+    },
+    "I450": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3554199360
+    },
+    "I451": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3557148480
+    },
+    "I452": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3557149920
+    },
+    "I453": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3557151360
+    },
+    "I454": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3558533760
+    },
+    "I455": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3558994560
+    },
+    "I456": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3559455360
+    },
+    "I457": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3560837760
+    },
+    "I458": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3563786880
+    },
+    "I459": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3566736000
+    },
+    "I460": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3569685120
+    },
+    "I461": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3569686560
+    },
+    "I462": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3569688000
+    },
+    "I463": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3571070400
+    },
+    "I464": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3571480000
+    },
+    "I465": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3571889600
+    },
+    "I466": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3573272000
+    },
+    "I467": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3576221120
+    },
+    "I468": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3579170240
+    },
+    "I469": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3582119360
+    },
+    "I470": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3582120800
+    },
+    "I471": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3582122240
+    },
+    "I472": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3583504640
+    },
+    "I473": {
+      "shape": [
+        320,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3583965440
+    },
+    "I474": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3584426240
+    },
+    "I475": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3585808640
+    },
+    "I476": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3588757760
+    },
+    "I477": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3591706880
+    },
+    "I478": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3594656000
+    },
+    "I479": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3594657440
+    },
+    "I480": {
+      "shape": [
+        960,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3594658880
+    },
+    "I481": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3596041280
+    },
+    "I482": {
+      "shape": [
+        320,
+        320
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3596450880
+    },
+    "I483": {
+      "shape": [
+        720,
+        960
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3596860480
+    },
+    "I484": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3598242880
+    },
+    "I485": {
+      "shape": [
+        2048,
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3601192000
+    },
+    "I486": {
+      "shape": [
+        720,
+        2048
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3604141120
+    },
+    "I487": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3607090240
+    },
+    "I488": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3607091680
+    },
+    "I489": {
+      "shape": [
+        720
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 3607093120
+    },
+    "I490": {
+      "shape": [
+        960,
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3607094560
+    },
+    "I491": {
+      "shape": [
+        960
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3607217440
+    },
+    "I492": {
+      "shape": [
+        720,
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3607221280
+    },
+    "I493": {
+      "shape": [
+        720
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3607313440
+    },
+    "I494": {
+      "shape": [
+        32,
+        720
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3607316320
+    },
+    "I495": {
+      "shape": [
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3607408480
+    },
+    "I496": {
+      "shape": [
+        720,
+        1440
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3607408608
+    },
+    "I497": {
+      "shape": [
+        720
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3611555808
+    },
+    "I498": {
+      "shape": [
+        720,
+        720
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3611558688
+    },
+    "I499": {
+      "shape": [
+        720
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3613632288
+    },
+    "I500": {
+      "shape": [],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3613635168
+    },
+    "I501": {
+      "shape": [
+        113
+      ],
+      "dtype": "i1",
+      "role": "input",
+      "base": 3613635200
+    },
+    "I502": {
+      "shape": [
+        50
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3613635680
+    },
+    "I503": {
+      "shape": [
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3613635904
+    },
+    "I504": {
+      "shape": [
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3613636032
+    },
+    "I505": {
+      "shape": [
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3613636160
+    },
+    "I506": {
+      "shape": [
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3613636288
+    },
+    "I507": {
+      "shape": [
+        1,
+        3,
+        512,
+        512
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3613636416
+    },
+    "I508": {
+      "shape": [
+        1
+      ],
+      "dtype": "i1",
+      "role": "input",
+      "base": 3616782144
+    },
+    "I509": {
+      "shape": [
+        1,
+        48
+      ],
+      "dtype": "i64",
+      "role": "input",
+      "base": 3616782176
+    },
+    "I510": {
+      "shape": [
+        1,
+        48
+      ],
+      "dtype": "i1",
+      "role": "input",
+      "base": 3616782560
+    },
+    "I511": {
+      "shape": [
+        1,
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3616782752
+    },
+    "I512": {
+      "shape": [
+        1,
+        50,
+        32
+      ],
+      "dtype": "f32",
+      "role": "input",
+      "base": 3616782880
+    },
+    "Y0": {
+      "shape": [
+        1,
+        50,
+        32
+      ],
+      "dtype": "f32",
+      "role": "output",
+      "base": 3616789280
+    }
+  },
+  "commands": [],
+  "declined": {
+    "op": "model",
+    "reason": "whole-model f32 graph exceeds the current Atlas device lowering"
+  },
+  "kernel_abi": {
+    "kind": "whole_program",
+    "args": [
+      {
+        "tensor": "I0",
+        "access": "read"
+      },
+      {
+        "tensor": "I1",
+        "access": "read"
+      },
+      {
+        "tensor": "I2",
+        "access": "read"
+      },
+      {
+        "tensor": "I3",
+        "access": "read"
+      },
+      {
+        "tensor": "I4",
+        "access": "read"
+      },
+      {
+        "tensor": "I5",
+        "access": "read"
+      },
+      {
+        "tensor": "I6",
+        "access": "read"
+      },
+      {
+        "tensor": "I7",
+        "access": "read"
+      },
+      {
+        "tensor": "I8",
+        "access": "read"
+      },
+      {
+        "tensor": "I9",
+        "access": "read"
+      },
+      {
+        "tensor": "I10",
+        "access": "read"
+      },
+      {
+        "tensor": "I11",
+        "access": "read"
+      },
+      {
+        "tensor": "I12",
+        "access": "read"
+      },
+      {
+        "tensor": "I13",
+        "access": "read"
+      },
+      {
+        "tensor": "I14",
+        "access": "read"
+      },
+      {
+        "tensor": "I15",
+        "access": "read"
+      },
+      {
+        "tensor": "I16",
+        "access": "read"
+      },
+      {
+        "tensor": "I17",
+        "access": "read"
+      },
+      {
+        "tensor": "I18",
+        "access": "read"
+      },
+      {
+        "tensor": "I19",
+        "access": "read"
+      },
+      {
+        "tensor": "I20",
+        "access": "read"
+      },
+      {
+        "tensor": "I21",
+        "access": "read"
+      },
+      {
+        "tensor": "I22",
+        "access": "read"
+      },
+      {
+        "tensor": "I23",
+        "access": "read"
+      },
+      {
+        "tensor": "I24",
+        "access": "read"
+      },
+      {
+        "tensor": "I25",
+        "access": "read"
+      },
+      {
+        "tensor": "I26",
+        "access": "read"
+      },
+      {
+        "tensor": "I27",
+        "access": "read"
+      },
+      {
+        "tensor": "I28",
+        "access": "read"
+      },
+      {
+        "tensor": "I29",
+        "access": "read"
+      },
+      {
+        "tensor": "I30",
+        "access": "read"
+      },
+      {
+        "tensor": "I31",
+        "access": "read"
+      },
+      {
+        "tensor": "I32",
+        "access": "read"
+      },
+      {
+        "tensor": "I33",
+        "access": "read"
+      },
+      {
+        "tensor": "I34",
+        "access": "read"
+      },
+      {
+        "tensor": "I35",
+        "access": "read"
+      },
+      {
+        "tensor": "I36",
+        "access": "read"
+      },
+      {
+        "tensor": "I37",
+        "access": "read"
+      },
+      {
+        "tensor": "I38",
+        "access": "read"
+      },
+      {
+        "tensor": "I39",
+        "access": "read"
+      },
+      {
+        "tensor": "I40",
+        "access": "read"
+      },
+      {
+        "tensor": "I41",
+        "access": "read"
+      },
+      {
+        "tensor": "I42",
+        "access": "read"
+      },
+      {
+        "tensor": "I43",
+        "access": "read"
+      },
+      {
+        "tensor": "I44",
+        "access": "read"
+      },
+      {
+        "tensor": "I45",
+        "access": "read"
+      },
+      {
+        "tensor": "I46",
+        "access": "read"
+      },
+      {
+        "tensor": "I47",
+        "access": "read"
+      },
+      {
+        "tensor": "I48",
+        "access": "read"
+      },
+      {
+        "tensor": "I49",
+        "access": "read"
+      },
+      {
+        "tensor": "I50",
+        "access": "read"
+      },
+      {
+        "tensor": "I51",
+        "access": "read"
+      },
+      {
+        "tensor": "I52",
+        "access": "read"
+      },
+      {
+        "tensor": "I53",
+        "access": "read"
+      },
+      {
+        "tensor": "I54",
+        "access": "read"
+      },
+      {
+        "tensor": "I55",
+        "access": "read"
+      },
+      {
+        "tensor": "I56",
+        "access": "read"
+      },
+      {
+        "tensor": "I57",
+        "access": "read"
+      },
+      {
+        "tensor": "I58",
+        "access": "read"
+      },
+      {
+        "tensor": "I59",
+        "access": "read"
+      },
+      {
+        "tensor": "I60",
+        "access": "read"
+      },
+      {
+        "tensor": "I61",
+        "access": "read"
+      },
+      {
+        "tensor": "I62",
+        "access": "read"
+      },
+      {
+        "tensor": "I63",
+        "access": "read"
+      },
+      {
+        "tensor": "I64",
+        "access": "read"
+      },
+      {
+        "tensor": "I65",
+        "access": "read"
+      },
+      {
+        "tensor": "I66",
+        "access": "read"
+      },
+      {
+        "tensor": "I67",
+        "access": "read"
+      },
+      {
+        "tensor": "I68",
+        "access": "read"
+      },
+      {
+        "tensor": "I69",
+        "access": "read"
+      },
+      {
+        "tensor": "I70",
+        "access": "read"
+      },
+      {
+        "tensor": "I71",
+        "access": "read"
+      },
+      {
+        "tensor": "I72",
+        "access": "read"
+      },
+      {
+        "tensor": "I73",
+        "access": "read"
+      },
+      {
+        "tensor": "I74",
+        "access": "read"
+      },
+      {
+        "tensor": "I75",
+        "access": "read"
+      },
+      {
+        "tensor": "I76",
+        "access": "read"
+      },
+      {
+        "tensor": "I77",
+        "access": "read"
+      },
+      {
+        "tensor": "I78",
+        "access": "read"
+      },
+      {
+        "tensor": "I79",
+        "access": "read"
+      },
+      {
+        "tensor": "I80",
+        "access": "read"
+      },
+      {
+        "tensor": "I81",
+        "access": "read"
+      },
+      {
+        "tensor": "I82",
+        "access": "read"
+      },
+      {
+        "tensor": "I83",
+        "access": "read"
+      },
+      {
+        "tensor": "I84",
+        "access": "read"
+      },
+      {
+        "tensor": "I85",
+        "access": "read"
+      },
+      {
+        "tensor": "I86",
+        "access": "read"
+      },
+      {
+        "tensor": "I87",
+        "access": "read"
+      },
+      {
+        "tensor": "I88",
+        "access": "read"
+      },
+      {
+        "tensor": "I89",
+        "access": "read"
+      },
+      {
+        "tensor": "I90",
+        "access": "read"
+      },
+      {
+        "tensor": "I91",
+        "access": "read"
+      },
+      {
+        "tensor": "I92",
+        "access": "read"
+      },
+      {
+        "tensor": "I93",
+        "access": "read"
+      },
+      {
+        "tensor": "I94",
+        "access": "read"
+      },
+      {
+        "tensor": "I95",
+        "access": "read"
+      },
+      {
+        "tensor": "I96",
+        "access": "read"
+      },
+      {
+        "tensor": "I97",
+        "access": "read"
+      },
+      {
+        "tensor": "I98",
+        "access": "read"
+      },
+      {
+        "tensor": "I99",
+        "access": "read"
+      },
+      {
+        "tensor": "I100",
+        "access": "read"
+      },
+      {
+        "tensor": "I101",
+        "access": "read"
+      },
+      {
+        "tensor": "I102",
+        "access": "read"
+      },
+      {
+        "tensor": "I103",
+        "access": "read"
+      },
+      {
+        "tensor": "I104",
+        "access": "read"
+      },
+      {
+        "tensor": "I105",
+        "access": "read"
+      },
+      {
+        "tensor": "I106",
+        "access": "read"
+      },
+      {
+        "tensor": "I107",
+        "access": "read"
+      },
+      {
+        "tensor": "I108",
+        "access": "read"
+      },
+      {
+        "tensor": "I109",
+        "access": "read"
+      },
+      {
+        "tensor": "I110",
+        "access": "read"
+      },
+      {
+        "tensor": "I111",
+        "access": "read"
+      },
+      {
+        "tensor": "I112",
+        "access": "read"
+      },
+      {
+        "tensor": "I113",
+        "access": "read"
+      },
+      {
+        "tensor": "I114",
+        "access": "read"
+      },
+      {
+        "tensor": "I115",
+        "access": "read"
+      },
+      {
+        "tensor": "I116",
+        "access": "read"
+      },
+      {
+        "tensor": "I117",
+        "access": "read"
+      },
+      {
+        "tensor": "I118",
+        "access": "read"
+      },
+      {
+        "tensor": "I119",
+        "access": "read"
+      },
+      {
+        "tensor": "I120",
+        "access": "read"
+      },
+      {
+        "tensor": "I121",
+        "access": "read"
+      },
+      {
+        "tensor": "I122",
+        "access": "read"
+      },
+      {
+        "tensor": "I123",
+        "access": "read"
+      },
+      {
+        "tensor": "I124",
+        "access": "read"
+      },
+      {
+        "tensor": "I125",
+        "access": "read"
+      },
+      {
+        "tensor": "I126",
+        "access": "read"
+      },
+      {
+        "tensor": "I127",
+        "access": "read"
+      },
+      {
+        "tensor": "I128",
+        "access": "read"
+      },
+      {
+        "tensor": "I129",
+        "access": "read"
+      },
+      {
+        "tensor": "I130",
+        "access": "read"
+      },
+      {
+        "tensor": "I131",
+        "access": "read"
+      },
+      {
+        "tensor": "I132",
+        "access": "read"
+      },
+      {
+        "tensor": "I133",
+        "access": "read"
+      },
+      {
+        "tensor": "I134",
+        "access": "read"
+      },
+      {
+        "tensor": "I135",
+        "access": "read"
+      },
+      {
+        "tensor": "I136",
+        "access": "read"
+      },
+      {
+        "tensor": "I137",
+        "access": "read"
+      },
+      {
+        "tensor": "I138",
+        "access": "read"
+      },
+      {
+        "tensor": "I139",
+        "access": "read"
+      },
+      {
+        "tensor": "I140",
+        "access": "read"
+      },
+      {
+        "tensor": "I141",
+        "access": "read"
+      },
+      {
+        "tensor": "I142",
+        "access": "read"
+      },
+      {
+        "tensor": "I143",
+        "access": "read"
+      },
+      {
+        "tensor": "I144",
+        "access": "read"
+      },
+      {
+        "tensor": "I145",
+        "access": "read"
+      },
+      {
+        "tensor": "I146",
+        "access": "read"
+      },
+      {
+        "tensor": "I147",
+        "access": "read"
+      },
+      {
+        "tensor": "I148",
+        "access": "read"
+      },
+      {
+        "tensor": "I149",
+        "access": "read"
+      },
+      {
+        "tensor": "I150",
+        "access": "read"
+      },
+      {
+        "tensor": "I151",
+        "access": "read"
+      },
+      {
+        "tensor": "I152",
+        "access": "read"
+      },
+      {
+        "tensor": "I153",
+        "access": "read"
+      },
+      {
+        "tensor": "I154",
+        "access": "read"
+      },
+      {
+        "tensor": "I155",
+        "access": "read"
+      },
+      {
+        "tensor": "I156",
+        "access": "read"
+      },
+      {
+        "tensor": "I157",
+        "access": "read"
+      },
+      {
+        "tensor": "I158",
+        "access": "read"
+      },
+      {
+        "tensor": "I159",
+        "access": "read"
+      },
+      {
+        "tensor": "I160",
+        "access": "read"
+      },
+      {
+        "tensor": "I161",
+        "access": "read"
+      },
+      {
+        "tensor": "I162",
+        "access": "read"
+      },
+      {
+        "tensor": "I163",
+        "access": "read"
+      },
+      {
+        "tensor": "I164",
+        "access": "read"
+      },
+      {
+        "tensor": "I165",
+        "access": "read"
+      },
+      {
+        "tensor": "I166",
+        "access": "read"
+      },
+      {
+        "tensor": "I167",
+        "access": "read"
+      },
+      {
+        "tensor": "I168",
+        "access": "read"
+      },
+      {
+        "tensor": "I169",
+        "access": "read"
+      },
+      {
+        "tensor": "I170",
+        "access": "read"
+      },
+      {
+        "tensor": "I171",
+        "access": "read"
+      },
+      {
+        "tensor": "I172",
+        "access": "read"
+      },
+      {
+        "tensor": "I173",
+        "access": "read"
+      },
+      {
+        "tensor": "I174",
+        "access": "read"
+      },
+      {
+        "tensor": "I175",
+        "access": "read"
+      },
+      {
+        "tensor": "I176",
+        "access": "read"
+      },
+      {
+        "tensor": "I177",
+        "access": "read"
+      },
+      {
+        "tensor": "I178",
+        "access": "read"
+      },
+      {
+        "tensor": "I179",
+        "access": "read"
+      },
+      {
+        "tensor": "I180",
+        "access": "read"
+      },
+      {
+        "tensor": "I181",
+        "access": "read"
+      },
+      {
+        "tensor": "I182",
+        "access": "read"
+      },
+      {
+        "tensor": "I183",
+        "access": "read"
+      },
+      {
+        "tensor": "I184",
+        "access": "read"
+      },
+      {
+        "tensor": "I185",
+        "access": "read"
+      },
+      {
+        "tensor": "I186",
+        "access": "read"
+      },
+      {
+        "tensor": "I187",
+        "access": "read"
+      },
+      {
+        "tensor": "I188",
+        "access": "read"
+      },
+      {
+        "tensor": "I189",
+        "access": "read"
+      },
+      {
+        "tensor": "I190",
+        "access": "read"
+      },
+      {
+        "tensor": "I191",
+        "access": "read"
+      },
+      {
+        "tensor": "I192",
+        "access": "read"
+      },
+      {
+        "tensor": "I193",
+        "access": "read"
+      },
+      {
+        "tensor": "I194",
+        "access": "read"
+      },
+      {
+        "tensor": "I195",
+        "access": "read"
+      },
+      {
+        "tensor": "I196",
+        "access": "read"
+      },
+      {
+        "tensor": "I197",
+        "access": "read"
+      },
+      {
+        "tensor": "I198",
+        "access": "read"
+      },
+      {
+        "tensor": "I199",
+        "access": "read"
+      },
+      {
+        "tensor": "I200",
+        "access": "read"
+      },
+      {
+        "tensor": "I201",
+        "access": "read"
+      },
+      {
+        "tensor": "I202",
+        "access": "read"
+      },
+      {
+        "tensor": "I203",
+        "access": "read"
+      },
+      {
+        "tensor": "I204",
+        "access": "read"
+      },
+      {
+        "tensor": "I205",
+        "access": "read"
+      },
+      {
+        "tensor": "I206",
+        "access": "read"
+      },
+      {
+        "tensor": "I207",
+        "access": "read"
+      },
+      {
+        "tensor": "I208",
+        "access": "read"
+      },
+      {
+        "tensor": "I209",
+        "access": "read"
+      },
+      {
+        "tensor": "I210",
+        "access": "read"
+      },
+      {
+        "tensor": "I211",
+        "access": "read"
+      },
+      {
+        "tensor": "I212",
+        "access": "read"
+      },
+      {
+        "tensor": "I213",
+        "access": "read"
+      },
+      {
+        "tensor": "I214",
+        "access": "read"
+      },
+      {
+        "tensor": "I215",
+        "access": "read"
+      },
+      {
+        "tensor": "I216",
+        "access": "read"
+      },
+      {
+        "tensor": "I217",
+        "access": "read"
+      },
+      {
+        "tensor": "I218",
+        "access": "read"
+      },
+      {
+        "tensor": "I219",
+        "access": "read"
+      },
+      {
+        "tensor": "I220",
+        "access": "read"
+      },
+      {
+        "tensor": "I221",
+        "access": "read"
+      },
+      {
+        "tensor": "I222",
+        "access": "read"
+      },
+      {
+        "tensor": "I223",
+        "access": "read"
+      },
+      {
+        "tensor": "I224",
+        "access": "read"
+      },
+      {
+        "tensor": "I225",
+        "access": "read"
+      },
+      {
+        "tensor": "I226",
+        "access": "read"
+      },
+      {
+        "tensor": "I227",
+        "access": "read"
+      },
+      {
+        "tensor": "I228",
+        "access": "read"
+      },
+      {
+        "tensor": "I229",
+        "access": "read"
+      },
+      {
+        "tensor": "I230",
+        "access": "read"
+      },
+      {
+        "tensor": "I231",
+        "access": "read"
+      },
+      {
+        "tensor": "I232",
+        "access": "read"
+      },
+      {
+        "tensor": "I233",
+        "access": "read"
+      },
+      {
+        "tensor": "I234",
+        "access": "read"
+      },
+      {
+        "tensor": "I235",
+        "access": "read"
+      },
+      {
+        "tensor": "I236",
+        "access": "read"
+      },
+      {
+        "tensor": "I237",
+        "access": "read"
+      },
+      {
+        "tensor": "I238",
+        "access": "read"
+      },
+      {
+        "tensor": "I239",
+        "access": "read"
+      },
+      {
+        "tensor": "I240",
+        "access": "read"
+      },
+      {
+        "tensor": "I241",
+        "access": "read"
+      },
+      {
+        "tensor": "I242",
+        "access": "read"
+      },
+      {
+        "tensor": "I243",
+        "access": "read"
+      },
+      {
+        "tensor": "I244",
+        "access": "read"
+      },
+      {
+        "tensor": "I245",
+        "access": "read"
+      },
+      {
+        "tensor": "I246",
+        "access": "read"
+      },
+      {
+        "tensor": "I247",
+        "access": "read"
+      },
+      {
+        "tensor": "I248",
+        "access": "read"
+      },
+      {
+        "tensor": "I249",
+        "access": "read"
+      },
+      {
+        "tensor": "I250",
+        "access": "read"
+      },
+      {
+        "tensor": "I251",
+        "access": "read"
+      },
+      {
+        "tensor": "I252",
+        "access": "read"
+      },
+      {
+        "tensor": "I253",
+        "access": "read"
+      },
+      {
+        "tensor": "I254",
+        "access": "read"
+      },
+      {
+        "tensor": "I255",
+        "access": "read"
+      },
+      {
+        "tensor": "I256",
+        "access": "read"
+      },
+      {
+        "tensor": "I257",
+        "access": "read"
+      },
+      {
+        "tensor": "I258",
+        "access": "read"
+      },
+      {
+        "tensor": "I259",
+        "access": "read"
+      },
+      {
+        "tensor": "I260",
+        "access": "read"
+      },
+      {
+        "tensor": "I261",
+        "access": "read"
+      },
+      {
+        "tensor": "I262",
+        "access": "read"
+      },
+      {
+        "tensor": "I263",
+        "access": "read"
+      },
+      {
+        "tensor": "I264",
+        "access": "read"
+      },
+      {
+        "tensor": "I265",
+        "access": "read"
+      },
+      {
+        "tensor": "I266",
+        "access": "read"
+      },
+      {
+        "tensor": "I267",
+        "access": "read"
+      },
+      {
+        "tensor": "I268",
+        "access": "read"
+      },
+      {
+        "tensor": "I269",
+        "access": "read"
+      },
+      {
+        "tensor": "I270",
+        "access": "read"
+      },
+      {
+        "tensor": "I271",
+        "access": "read"
+      },
+      {
+        "tensor": "I272",
+        "access": "read"
+      },
+      {
+        "tensor": "I273",
+        "access": "read"
+      },
+      {
+        "tensor": "I274",
+        "access": "read"
+      },
+      {
+        "tensor": "I275",
+        "access": "read"
+      },
+      {
+        "tensor": "I276",
+        "access": "read"
+      },
+      {
+        "tensor": "I277",
+        "access": "read"
+      },
+      {
+        "tensor": "I278",
+        "access": "read"
+      },
+      {
+        "tensor": "I279",
+        "access": "read"
+      },
+      {
+        "tensor": "I280",
+        "access": "read"
+      },
+      {
+        "tensor": "I281",
+        "access": "read"
+      },
+      {
+        "tensor": "I282",
+        "access": "read"
+      },
+      {
+        "tensor": "I283",
+        "access": "read"
+      },
+      {
+        "tensor": "I284",
+        "access": "read"
+      },
+      {
+        "tensor": "I285",
+        "access": "read"
+      },
+      {
+        "tensor": "I286",
+        "access": "read"
+      },
+      {
+        "tensor": "I287",
+        "access": "read"
+      },
+      {
+        "tensor": "I288",
+        "access": "read"
+      },
+      {
+        "tensor": "I289",
+        "access": "read"
+      },
+      {
+        "tensor": "I290",
+        "access": "read"
+      },
+      {
+        "tensor": "I291",
+        "access": "read"
+      },
+      {
+        "tensor": "I292",
+        "access": "read"
+      },
+      {
+        "tensor": "I293",
+        "access": "read"
+      },
+      {
+        "tensor": "I294",
+        "access": "read"
+      },
+      {
+        "tensor": "I295",
+        "access": "read"
+      },
+      {
+        "tensor": "I296",
+        "access": "read"
+      },
+      {
+        "tensor": "I297",
+        "access": "read"
+      },
+      {
+        "tensor": "I298",
+        "access": "read"
+      },
+      {
+        "tensor": "I299",
+        "access": "read"
+      },
+      {
+        "tensor": "I300",
+        "access": "read"
+      },
+      {
+        "tensor": "I301",
+        "access": "read"
+      },
+      {
+        "tensor": "I302",
+        "access": "read"
+      },
+      {
+        "tensor": "I303",
+        "access": "read"
+      },
+      {
+        "tensor": "I304",
+        "access": "read"
+      },
+      {
+        "tensor": "I305",
+        "access": "read"
+      },
+      {
+        "tensor": "I306",
+        "access": "read"
+      },
+      {
+        "tensor": "I307",
+        "access": "read"
+      },
+      {
+        "tensor": "I308",
+        "access": "read"
+      },
+      {
+        "tensor": "I309",
+        "access": "read"
+      },
+      {
+        "tensor": "I310",
+        "access": "read"
+      },
+      {
+        "tensor": "I311",
+        "access": "read"
+      },
+      {
+        "tensor": "I312",
+        "access": "read"
+      },
+      {
+        "tensor": "I313",
+        "access": "read"
+      },
+      {
+        "tensor": "I314",
+        "access": "read"
+      },
+      {
+        "tensor": "I315",
+        "access": "read"
+      },
+      {
+        "tensor": "I316",
+        "access": "read"
+      },
+      {
+        "tensor": "I317",
+        "access": "read"
+      },
+      {
+        "tensor": "I318",
+        "access": "read"
+      },
+      {
+        "tensor": "I319",
+        "access": "read"
+      },
+      {
+        "tensor": "I320",
+        "access": "read"
+      },
+      {
+        "tensor": "I321",
+        "access": "read"
+      },
+      {
+        "tensor": "I322",
+        "access": "read"
+      },
+      {
+        "tensor": "I323",
+        "access": "read"
+      },
+      {
+        "tensor": "I324",
+        "access": "read"
+      },
+      {
+        "tensor": "I325",
+        "access": "read"
+      },
+      {
+        "tensor": "I326",
+        "access": "read"
+      },
+      {
+        "tensor": "I327",
+        "access": "read"
+      },
+      {
+        "tensor": "I328",
+        "access": "read"
+      },
+      {
+        "tensor": "I329",
+        "access": "read"
+      },
+      {
+        "tensor": "I330",
+        "access": "read"
+      },
+      {
+        "tensor": "I331",
+        "access": "read"
+      },
+      {
+        "tensor": "I332",
+        "access": "read"
+      },
+      {
+        "tensor": "I333",
+        "access": "read"
+      },
+      {
+        "tensor": "I334",
+        "access": "read"
+      },
+      {
+        "tensor": "I335",
+        "access": "read"
+      },
+      {
+        "tensor": "I336",
+        "access": "read"
+      },
+      {
+        "tensor": "I337",
+        "access": "read"
+      },
+      {
+        "tensor": "I338",
+        "access": "read"
+      },
+      {
+        "tensor": "I339",
+        "access": "read"
+      },
+      {
+        "tensor": "I340",
+        "access": "read"
+      },
+      {
+        "tensor": "I341",
+        "access": "read"
+      },
+      {
+        "tensor": "I342",
+        "access": "read"
+      },
+      {
+        "tensor": "I343",
+        "access": "read"
+      },
+      {
+        "tensor": "I344",
+        "access": "read"
+      },
+      {
+        "tensor": "I345",
+        "access": "read"
+      },
+      {
+        "tensor": "I346",
+        "access": "read"
+      },
+      {
+        "tensor": "I347",
+        "access": "read"
+      },
+      {
+        "tensor": "I348",
+        "access": "read"
+      },
+      {
+        "tensor": "I349",
+        "access": "read"
+      },
+      {
+        "tensor": "I350",
+        "access": "read"
+      },
+      {
+        "tensor": "I351",
+        "access": "read"
+      },
+      {
+        "tensor": "I352",
+        "access": "read"
+      },
+      {
+        "tensor": "I353",
+        "access": "read"
+      },
+      {
+        "tensor": "I354",
+        "access": "read"
+      },
+      {
+        "tensor": "I355",
+        "access": "read"
+      },
+      {
+        "tensor": "I356",
+        "access": "read"
+      },
+      {
+        "tensor": "I357",
+        "access": "read"
+      },
+      {
+        "tensor": "I358",
+        "access": "read"
+      },
+      {
+        "tensor": "I359",
+        "access": "read"
+      },
+      {
+        "tensor": "I360",
+        "access": "read"
+      },
+      {
+        "tensor": "I361",
+        "access": "read"
+      },
+      {
+        "tensor": "I362",
+        "access": "read"
+      },
+      {
+        "tensor": "I363",
+        "access": "read"
+      },
+      {
+        "tensor": "I364",
+        "access": "read"
+      },
+      {
+        "tensor": "I365",
+        "access": "read"
+      },
+      {
+        "tensor": "I366",
+        "access": "read"
+      },
+      {
+        "tensor": "I367",
+        "access": "read"
+      },
+      {
+        "tensor": "I368",
+        "access": "read"
+      },
+      {
+        "tensor": "I369",
+        "access": "read"
+      },
+      {
+        "tensor": "I370",
+        "access": "read"
+      },
+      {
+        "tensor": "I371",
+        "access": "read"
+      },
+      {
+        "tensor": "I372",
+        "access": "read"
+      },
+      {
+        "tensor": "I373",
+        "access": "read"
+      },
+      {
+        "tensor": "I374",
+        "access": "read"
+      },
+      {
+        "tensor": "I375",
+        "access": "read"
+      },
+      {
+        "tensor": "I376",
+        "access": "read"
+      },
+      {
+        "tensor": "I377",
+        "access": "read"
+      },
+      {
+        "tensor": "I378",
+        "access": "read"
+      },
+      {
+        "tensor": "I379",
+        "access": "read"
+      },
+      {
+        "tensor": "I380",
+        "access": "read"
+      },
+      {
+        "tensor": "I381",
+        "access": "read"
+      },
+      {
+        "tensor": "I382",
+        "access": "read"
+      },
+      {
+        "tensor": "I383",
+        "access": "read"
+      },
+      {
+        "tensor": "I384",
+        "access": "read"
+      },
+      {
+        "tensor": "I385",
+        "access": "read"
+      },
+      {
+        "tensor": "I386",
+        "access": "read"
+      },
+      {
+        "tensor": "I387",
+        "access": "read"
+      },
+      {
+        "tensor": "I388",
+        "access": "read"
+      },
+      {
+        "tensor": "I389",
+        "access": "read"
+      },
+      {
+        "tensor": "I390",
+        "access": "read"
+      },
+      {
+        "tensor": "I391",
+        "access": "read"
+      },
+      {
+        "tensor": "I392",
+        "access": "read"
+      },
+      {
+        "tensor": "I393",
+        "access": "read"
+      },
+      {
+        "tensor": "I394",
+        "access": "read"
+      },
+      {
+        "tensor": "I395",
+        "access": "read"
+      },
+      {
+        "tensor": "I396",
+        "access": "read"
+      },
+      {
+        "tensor": "I397",
+        "access": "read"
+      },
+      {
+        "tensor": "I398",
+        "access": "read"
+      },
+      {
+        "tensor": "I399",
+        "access": "read"
+      },
+      {
+        "tensor": "I400",
+        "access": "read"
+      },
+      {
+        "tensor": "I401",
+        "access": "read"
+      },
+      {
+        "tensor": "I402",
+        "access": "read"
+      },
+      {
+        "tensor": "I403",
+        "access": "read"
+      },
+      {
+        "tensor": "I404",
+        "access": "read"
+      },
+      {
+        "tensor": "I405",
+        "access": "read"
+      },
+      {
+        "tensor": "I406",
+        "access": "read"
+      },
+      {
+        "tensor": "I407",
+        "access": "read"
+      },
+      {
+        "tensor": "I408",
+        "access": "read"
+      },
+      {
+        "tensor": "I409",
+        "access": "read"
+      },
+      {
+        "tensor": "I410",
+        "access": "read"
+      },
+      {
+        "tensor": "I411",
+        "access": "read"
+      },
+      {
+        "tensor": "I412",
+        "access": "read"
+      },
+      {
+        "tensor": "I413",
+        "access": "read"
+      },
+      {
+        "tensor": "I414",
+        "access": "read"
+      },
+      {
+        "tensor": "I415",
+        "access": "read"
+      },
+      {
+        "tensor": "I416",
+        "access": "read"
+      },
+      {
+        "tensor": "I417",
+        "access": "read"
+      },
+      {
+        "tensor": "I418",
+        "access": "read"
+      },
+      {
+        "tensor": "I419",
+        "access": "read"
+      },
+      {
+        "tensor": "I420",
+        "access": "read"
+      },
+      {
+        "tensor": "I421",
+        "access": "read"
+      },
+      {
+        "tensor": "I422",
+        "access": "read"
+      },
+      {
+        "tensor": "I423",
+        "access": "read"
+      },
+      {
+        "tensor": "I424",
+        "access": "read"
+      },
+      {
+        "tensor": "I425",
+        "access": "read"
+      },
+      {
+        "tensor": "I426",
+        "access": "read"
+      },
+      {
+        "tensor": "I427",
+        "access": "read"
+      },
+      {
+        "tensor": "I428",
+        "access": "read"
+      },
+      {
+        "tensor": "I429",
+        "access": "read"
+      },
+      {
+        "tensor": "I430",
+        "access": "read"
+      },
+      {
+        "tensor": "I431",
+        "access": "read"
+      },
+      {
+        "tensor": "I432",
+        "access": "read"
+      },
+      {
+        "tensor": "I433",
+        "access": "read"
+      },
+      {
+        "tensor": "I434",
+        "access": "read"
+      },
+      {
+        "tensor": "I435",
+        "access": "read"
+      },
+      {
+        "tensor": "I436",
+        "access": "read"
+      },
+      {
+        "tensor": "I437",
+        "access": "read"
+      },
+      {
+        "tensor": "I438",
+        "access": "read"
+      },
+      {
+        "tensor": "I439",
+        "access": "read"
+      },
+      {
+        "tensor": "I440",
+        "access": "read"
+      },
+      {
+        "tensor": "I441",
+        "access": "read"
+      },
+      {
+        "tensor": "I442",
+        "access": "read"
+      },
+      {
+        "tensor": "I443",
+        "access": "read"
+      },
+      {
+        "tensor": "I444",
+        "access": "read"
+      },
+      {
+        "tensor": "I445",
+        "access": "read"
+      },
+      {
+        "tensor": "I446",
+        "access": "read"
+      },
+      {
+        "tensor": "I447",
+        "access": "read"
+      },
+      {
+        "tensor": "I448",
+        "access": "read"
+      },
+      {
+        "tensor": "I449",
+        "access": "read"
+      },
+      {
+        "tensor": "I450",
+        "access": "read"
+      },
+      {
+        "tensor": "I451",
+        "access": "read"
+      },
+      {
+        "tensor": "I452",
+        "access": "read"
+      },
+      {
+        "tensor": "I453",
+        "access": "read"
+      },
+      {
+        "tensor": "I454",
+        "access": "read"
+      },
+      {
+        "tensor": "I455",
+        "access": "read"
+      },
+      {
+        "tensor": "I456",
+        "access": "read"
+      },
+      {
+        "tensor": "I457",
+        "access": "read"
+      },
+      {
+        "tensor": "I458",
+        "access": "read"
+      },
+      {
+        "tensor": "I459",
+        "access": "read"
+      },
+      {
+        "tensor": "I460",
+        "access": "read"
+      },
+      {
+        "tensor": "I461",
+        "access": "read"
+      },
+      {
+        "tensor": "I462",
+        "access": "read"
+      },
+      {
+        "tensor": "I463",
+        "access": "read"
+      },
+      {
+        "tensor": "I464",
+        "access": "read"
+      },
+      {
+        "tensor": "I465",
+        "access": "read"
+      },
+      {
+        "tensor": "I466",
+        "access": "read"
+      },
+      {
+        "tensor": "I467",
+        "access": "read"
+      },
+      {
+        "tensor": "I468",
+        "access": "read"
+      },
+      {
+        "tensor": "I469",
+        "access": "read"
+      },
+      {
+        "tensor": "I470",
+        "access": "read"
+      },
+      {
+        "tensor": "I471",
+        "access": "read"
+      },
+      {
+        "tensor": "I472",
+        "access": "read"
+      },
+      {
+        "tensor": "I473",
+        "access": "read"
+      },
+      {
+        "tensor": "I474",
+        "access": "read"
+      },
+      {
+        "tensor": "I475",
+        "access": "read"
+      },
+      {
+        "tensor": "I476",
+        "access": "read"
+      },
+      {
+        "tensor": "I477",
+        "access": "read"
+      },
+      {
+        "tensor": "I478",
+        "access": "read"
+      },
+      {
+        "tensor": "I479",
+        "access": "read"
+      },
+      {
+        "tensor": "I480",
+        "access": "read"
+      },
+      {
+        "tensor": "I481",
+        "access": "read"
+      },
+      {
+        "tensor": "I482",
+        "access": "read"
+      },
+      {
+        "tensor": "I483",
+        "access": "read"
+      },
+      {
+        "tensor": "I484",
+        "access": "read"
+      },
+      {
+        "tensor": "I485",
+        "access": "read"
+      },
+      {
+        "tensor": "I486",
+        "access": "read"
+      },
+      {
+        "tensor": "I487",
+        "access": "read"
+      },
+      {
+        "tensor": "I488",
+        "access": "read"
+      },
+      {
+        "tensor": "I489",
+        "access": "read"
+      },
+      {
+        "tensor": "I490",
+        "access": "read"
+      },
+      {
+        "tensor": "I491",
+        "access": "read"
+      },
+      {
+        "tensor": "I492",
+        "access": "read"
+      },
+      {
+        "tensor": "I493",
+        "access": "read"
+      },
+      {
+        "tensor": "I494",
+        "access": "read"
+      },
+      {
+        "tensor": "I495",
+        "access": "read"
+      },
+      {
+        "tensor": "I496",
+        "access": "read"
+      },
+      {
+        "tensor": "I497",
+        "access": "read"
+      },
+      {
+        "tensor": "I498",
+        "access": "read"
+      },
+      {
+        "tensor": "I499",
+        "access": "read"
+      },
+      {
+        "tensor": "I500",
+        "access": "read"
+      },
+      {
+        "tensor": "I501",
+        "access": "read"
+      },
+      {
+        "tensor": "I502",
+        "access": "read"
+      },
+      {
+        "tensor": "I503",
+        "access": "read"
+      },
+      {
+        "tensor": "I504",
+        "access": "read"
+      },
+      {
+        "tensor": "I505",
+        "access": "read"
+      },
+      {
+        "tensor": "I506",
+        "access": "read"
+      },
+      {
+        "tensor": "I507",
+        "access": "read"
+      },
+      {
+        "tensor": "I508",
+        "access": "read"
+      },
+      {
+        "tensor": "I509",
+        "access": "read"
+      },
+      {
+        "tensor": "I510",
+        "access": "read"
+      },
+      {
+        "tensor": "I511",
+        "access": "read"
+      },
+      {
+        "tensor": "I512",
+        "access": "read"
+      },
+      {
+        "tensor": "Y0",
+        "access": "write"
+      }
+    ],
+    "outputs": [
+      "Y0"
+    ]
+  }
+}

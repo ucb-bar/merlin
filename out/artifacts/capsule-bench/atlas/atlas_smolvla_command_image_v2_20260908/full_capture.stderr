@@ -1,4 +1,1 @@
-atlas-opt: error: <unknown>:17083:5
-    %16614 = tensor.expand_shape %16604 [[0 : i64, 1 : i64]] output_shape [1, 1] {prov.region_id = "arg_reduce_0", prov.family = "arg_reduce", prov._pattern_hint = "aten_min_dim", prov.op = "aten_min_dim", prov.aten = "aten.min.dim", prov.orig_dtype = "int64"} : tensor<1xi64> into tensor<1x1xi64>
-    ^^^^^^
-    Expected '->'
+atlas-opt: error: declined model workload: whole-model f32 graph exceeds the current Atlas device lowering

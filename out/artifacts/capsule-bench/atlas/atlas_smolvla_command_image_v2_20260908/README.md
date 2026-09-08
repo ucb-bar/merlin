@@ -65,19 +65,37 @@ The command list is generated from the same workload and its tensor ABI drives
 RTL preload/readback, but Atlas executes the emitted kernel words; the JSON
 command list itself is descriptive and is not interpreted by the RTL harness.
 
-The unchanged 4.35-MB full capture was probed with a 60-second bound.  It fails
-in 4.35 seconds at the first `tensor.expand_shape` with the current xDSL parser
-(`Expected '->'`) and produces no command buffer.  Even beyond that syntax
-boundary, the backend explicitly declines semantic `model` workloads because it
-has no full-graph partition/dispatch lowering.  The 28 unique contraction
-programs total 379,142 words and therefore cannot form one resident 32,768-word
-IMEM image.  A real end-to-end SmolVLA result still requires:
+The unchanged 4.35-MB full capture now parses and verifies in about 7.7 seconds.
+The apparent first `tensor.expand_shape` failure was actually an xDSL
+multi-result `linalg.generic` parser/printer inconsistency: this xDSL revision
+prints `} -> (tensor<T0>, tensor<T1>)` but parses only the equivalent unwrapped
+result list.  `normalize_xdsl_parser_compat` removes exactly eight such wrappers
+in memory; it does not modify the capture, its types, attributes, or SSA graph.
 
-1. capture-dialect normalization compatible with the parser;
-2. graph lowering for non-contraction operations;
-3. partitioning into IMEM-resident kernels and host/device dispatch;
-4. intermediate lifetime/address planning across partitions;
-5. broad FP8 numeric qualification and full-model golden comparison.
+The probe now reaches the real full-graph boundary.  It writes a 514-tensor
+command-buffer schema with an explicit zero-command decline, then fails target
+emission instead of manufacturing an ECALL-only image.  The verified inventory
+contains 4,930 provenance regions and 391 physical contractions (303 rank-2 and
+88 batched).  Exactly 2,131 regions have no isolated semantic emitter.  A
+further 299 vector-semantic regions have dtypes, ranks, or extents outside the
+existing emitter, making the current effective host-required total 2,430.
+
+One concrete partition is retained under `partitions/first_addmm_matmul_0`.
+It fuses capture regions `matmul_0` and `add_3` (the first target-compatible
+physical contraction after the unsupported patch convolution), names all three
+inputs and its output at the host/device boundary, folds the bias into commit,
+and compiles to 5,692 words: 17.4% of the 32,768-word IMEM.  This proves a real
+partition can be selected and emitted from the full-capture inventory.  It is
+compile-only: FP8/BF16 calibration and numeric comparison to the f32 capture
+remain required.
+
+The 28 unique contraction programs still total 379,142 words and therefore
+cannot form one resident image.  A real end-to-end SmolVLA result still requires:
+
+1. extraction/dispatch for all graph partitions, including 2,430 current host regions;
+2. IMEM-bounded scheduling of the remaining contractions;
+3. intermediate lifetime/address planning across partitions;
+4. broad FP8 numeric qualification and full-model golden comparison.
 
 No whole-model image, whole-model numeric result, performance result, or new
 capsule score is claimed.
@@ -87,13 +105,15 @@ capsule score is claimed.
 From this artifact directory:
 
 ```bash
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python -m pytest -q test_compact_loops.py test_command_image.py
+/scratch/agustin/projects/oscar-merlin/.venv/bin/python -m pytest -q test_parser_compat.py test_full_graph_inventory.py test_first_partition.py test_compact_loops.py test_command_image.py
 python3 validate_recovery.py
 python3 run_integration.py chained --engine gsim --max-cycles 200000
 python3 run_integration.py smolvla_tail_50_720_32 --engine gsim --max-cycles 50000000
 python3 run_raw_gsim.py
 python3 run_negative_control.py
 python3 probe_full_capture.py
+python3 inventory_full_capture.py
+python3 build_first_partition.py
 ```
 
 `validation.json` and `receipt.json` are the machine-readable summary.  The

@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[4]
@@ -79,6 +81,21 @@ def test_oracle_controls_detect_instrument_mismatch_and_no_echo() -> None:
     negative = _load("cases/bf16_movements/halt_control_result.json")
     assert negative["control_failed_as_expected"] is True
     assert all(value["nonzero_readback"] == 0 for value in negative["comparisons"].values())
+
+
+def test_declined_whole_model_cannot_emit_a_trivial_image() -> None:
+    interface = """builtin.module attributes {prov.weights_file = "weights.safetensors"} {
+  func.func @forward(%x: tensor<1x1xf32>) -> tensor<1x1xf32> {
+    %z = tensor.empty() : tensor<1x1xf32>
+    %y = linalg.matmul {prov.op = "matmul"} ins(%x, %x : tensor<1x1xf32>, tensor<1x1xf32>) outs(%z : tensor<1x1xf32>) -> tensor<1x1xf32>
+    return %y : tensor<1x1xf32>
+  }
+}
+"""
+    workload = parse_verified(interface)
+    assert workload.ops[0]["op"] == "model"
+    with pytest.raises(ValueError, match="declined model workload"):
+        emit_program(workload)
 
 
 if __name__ == "__main__":

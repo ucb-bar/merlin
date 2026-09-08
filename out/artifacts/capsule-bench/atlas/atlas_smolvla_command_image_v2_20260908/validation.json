@@ -1,13 +1,40 @@
 {
-  "backend_source_tree_sha256": "ec6ffb91ef670e276834029d471cbcdc542dff4aec1020236d904e935335bbbe",
+  "backend_source_tree_sha256": "f923597b711fdcaec474fd445381da39eadb43fa5bad876a25dd2cedc04ad44f",
+  "first_concrete_partition": {
+    "capture_regions": [
+      "matmul_0",
+      "add_3"
+    ],
+    "command_count": 4,
+    "fits_imem": true,
+    "imem_words": 32768,
+    "instruction_words": 5692,
+    "numeric_qualified": false
+  },
   "focused_tests": {
     "failed": 0,
-    "passed": 6
+    "passed": 11
   },
   "full_capture_probe": {
-    "command_buffer_produced": false,
-    "first_blocker": "xDSL parser rejects captured tensor.expand_shape syntax: Expected '->'",
+    "command_buffer_produced": true,
+    "command_count": 0,
+    "first_blocker": "whole-model f32 graph exceeds the current Atlas device lowering",
+    "parser_compat_rewrites": 8,
     "returncode": 1
+  },
+  "full_graph_inventory": {
+    "effective_candidate_windows": 698,
+    "host_required_breakdown": {
+      "effective_total": 2430,
+      "emitter_shape_or_dtype_refused": 299,
+      "no_semantic_emitter": 2131
+    },
+    "logical_regions": 4930,
+    "physical_contractions": {
+      "batched_matmul": 88,
+      "rank2_matmul": 303,
+      "total": 391
+    }
   },
   "functional_model": {
     "definitive_decoder_mismatch": "DMA_CONFIG funct7=0 in RTL/compiler, funct7=1 in functional ISA",
@@ -101,7 +128,8 @@
   "schema": "atlas_smolvla_command_image_validation_v2",
   "unproven": [
     "whole SmolVLA image",
-    "full-graph lowering/partition/dispatch",
+    "extraction/dispatch for every full-graph partition",
+    "numeric qualification of the first concrete partition",
     "arbitrary FP8 accumulation correctness",
     "performance of the full model",
     "capsule score of this changed package"

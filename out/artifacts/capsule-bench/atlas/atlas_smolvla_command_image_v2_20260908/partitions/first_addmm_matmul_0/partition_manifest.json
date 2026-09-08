@@ -1,0 +1,84 @@
+{
+  "capture": {
+    "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/recaptures/smolvla_fp32_consistent/model.mlir",
+    "sha256": "27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c"
+  },
+  "capture_boundary": {
+    "host_device_edges": {
+      "read": 3,
+      "write": 1
+    },
+    "inputs": [
+      {
+        "capture_type": "tensor<1024x768xf32>",
+        "capture_value": "%929",
+        "device_type": "tensor<1024x768xf8E4M3FN>",
+        "name": "A0",
+        "producer_region": "view_5",
+        "upstream_region": "layer_norm_0"
+      },
+      {
+        "capture_type": "tensor<768x768xf32>",
+        "capture_value": "%931",
+        "device_type": "tensor<768x768xf8E4M3FN>",
+        "host_aot_preprocess": "transpose permutation [1, 0], then quantize to fp8_e4m3",
+        "name": "W",
+        "producer": "unattributed linalg.transpose of function argument %7"
+      },
+      {
+        "capture_type": "tensor<768xf32>",
+        "capture_value": "%8",
+        "device_type": "tensor<768xbf16>",
+        "host_aot_preprocess": "quantize to bf16",
+        "name": "B",
+        "producer": "function argument %8"
+      }
+    ],
+    "outputs": [
+      {
+        "capture_type": "tensor<1024x768xf32>",
+        "capture_value": "%937",
+        "device_type": "tensor<1024x768xbf16>",
+        "name": "Y0",
+        "next_consumer_region": "view_6",
+        "producer_region": "add_3"
+      }
+    ]
+  },
+  "claim": "one compile-only device partition selected from the full capture",
+  "image": {
+    "command_count": 4,
+    "command_opcodes": [
+      "RES_PACK",
+      "MATMUL_RESIDENT",
+      "COMMIT",
+      "EVICT"
+    ],
+    "fits_imem": true,
+    "imem_words": 32768,
+    "instruction_words": 5692,
+    "measurement": "exact emitted .word count"
+  },
+  "remaining_proofs": [
+    "derive full-model FP8/BF16 calibration rather than merely choosing storage types",
+    "grade this partition numerically against the captured f32 region",
+    "schedule the other six mesh operations in the source candidate window",
+    "connect view_5/view_6 without a redundant materialization"
+  ],
+  "schema": "atlas_smolvla_concrete_partition_v1",
+  "selection": {
+    "fused_capture_regions": [
+      "matmul_0",
+      "add_3"
+    ],
+    "kind": "first target-compatible physical contraction after the unsupported patch convolution",
+    "provenance_fqn": "model.vlm_with_expert.vlm.model.vision_model.encoder.layers.0.self_attn.q_proj",
+    "semantic": "aten.addmm.default",
+    "source_candidate_window": {
+      "first_region": "view_5",
+      "index": 10,
+      "last_region": "view_16",
+      "logical_region_count": 21
+    }
+  }
+}
