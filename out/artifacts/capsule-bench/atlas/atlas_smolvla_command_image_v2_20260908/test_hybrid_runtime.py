@@ -13,7 +13,7 @@ import pytest
 
 from submission.mlir_oot.frontend import parse_verified
 from submission.mlir_oot.hybrid_runtime import allocate_intervals
-from submission.mlir_oot.host_semantics import HostSemanticLane, UnsupportedHostRegion
+from submission.mlir_oot.host_semantics import HostSemanticLane
 
 
 ROOT = Path(__file__).resolve().parent
@@ -55,6 +55,9 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
             "add": 215,
             "arange": 63,
             "aten_min_dim": 8,
+            "bitwise": 16,
+            "bucketize": 2,
+            "cat": 95,
             "compare": 4,
             "cos": 57,
             "cumsum": 4,
@@ -70,16 +73,19 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
             "reduce_mean": 66,
             "reduce_sum": 3,
             "rsqrt": 66,
-            "select": 45,
+            "select": 47,
             "sigmoid": 33,
             "sin": 57,
+            "slice": 129,
+            "slice_scatter": 112,
             "softmax": 44,
+            "split": 56,
             "sub": 68,
         },
-        "host_signature_regions_implemented": 2012,
+        "host_signature_regions_implemented": 2424,
         "layout_bridge_candidates": 2033,
         "materialized_copy_bridges": 112,
-        "missing_host_semantics_reduction": 1990,
+        "missing_host_semantics_reduction": 2402,
         "partition_host_region_overlap": ["conv_0"],
         "previous_bounded_host_regions_implemented": 22,
         "previous_missing_host_semantics": 2408,
@@ -89,7 +95,14 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391,
     }
-    assert schedule["fail_closed"]["missing_host_semantics"] == 418
+    assert schedule["fail_closed"]["missing_host_semantics"] == 6
+    assert schedule["fail_closed"]["missing_host_semantics_by_semantic"] == {
+        "convolution_im2col_matmul": 1,
+        "embedding": 2,
+        "index_gather": 1,
+        "index_put": 1,
+        "mask_gather": 1,
+    }
     assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
     assert schedule["fail_closed"]["unrealized_layout_bridges"] == 358
     assert schedule["conversion_boundaries"] == {
@@ -108,14 +121,15 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         row for row in schedule["events"]
         if row["kind"] == "host_region" and row["executable"]
     ]
-    assert len(qualified_host) == 2012
+    assert len(qualified_host) == 2424
     assert all(len(row["operation_signature_sha256"]) == 64 for row in qualified_host)
-    rejected_select = next(
+    rejected_embedding = next(
         row for row in schedule["events"]
-        if row.get("region_id") == "select_0"
+        if row.get("region_id") == "gather_0"
     )
-    assert rejected_select["executable"] is False
-    assert "operation_signature_sha256" not in rejected_select
+    assert rejected_embedding["semantic"] == "embedding"
+    assert rejected_embedding["executable"] is False
+    assert "operation_signature_sha256" not in rejected_embedding
     assert schedule["device_activation_arena"]["allocation_count"] == 391
     assert schedule["device_activation_arena"]["reuse_count"] > 0
     assert schedule["device_activation_arena"]["peak_bytes"] < (
@@ -162,7 +176,10 @@ def test_new_scalar_families_have_fresh_real_capture_numeric_witnesses() -> None
         "pow_reciprocal", "rsqrt_normalization", "sigmoid_gate",
         "trigonometric_fanout", "arange_dependency", "fill_dependency",
         "cumsum_reduce_mean", "masked_softmax", "argmin_successor",
-        "reduce_sum_successor", "layer_norm_standalone", "gelu_standalone",
+        "reduce_sum_successor", "layer_norm_standalone",
+        "static_split_slice", "slice_scatter_successor", "concat_successor",
+        "bitwise_reduction", "bucketize_chain", "static_select_slice_chain",
+        "gelu_standalone",
     ]
     covered = set()
     for row in witnesses:
@@ -176,7 +193,8 @@ def test_new_scalar_families_have_fresh_real_capture_numeric_witnesses() -> None
         "pow", "elementwise", "rsqrt", "sigmoid", "sin", "cos", "gelu",
         "arange", "fill",
         "reduce_mean", "softmax", "layer_norm", "aten_min_dim", "cumsum",
-        "reduce_sum",
+        "reduce_sum", "slice", "split", "slice_scatter", "cat", "bitwise",
+        "bucketize", "select",
     } <= covered
 
 
@@ -372,6 +390,233 @@ def test_all_real_reduction_signatures_qualify_and_representatives_are_exact(
     )
 
 
+def _captured_slices(record: dict) -> tuple[slice, ...]:
+    return tuple(
+        slice(offset, offset + size * stride, stride)
+        for offset, size, stride in zip(
+            record["offsets"], record["sizes"], record["strides"]
+        )
+    )
+
+
+def test_all_real_movement_signatures_qualify_and_representatives_are_exact(
+    real_lane: HostSemanticLane,
+) -> None:
+    expected_counts = {
+        "slice": 129,
+        "split": 56,
+        "slice_scatter": 112,
+        "cat": 95,
+        "select": 2,
+        "bitwise": 16,
+        "bucketize": 2,
+    }
+    movement = [
+        program for program in real_lane.programs.values()
+        if (program.semantic in expected_counts
+            and program.signature["schema"] == "atlas_host_movement_signature_v1")
+    ]
+    assert Counter(program.semantic for program in movement) == expected_counts
+    assert all(
+        program.signature["materialization_rule"]
+        == "execute captured static indexing/concat/generic operations in order"
+        for program in movement
+    )
+
+    extraction = next(program for program in movement if program.semantic == "slice")
+    extraction_input = np.arange(
+        np.prod(extraction.signature["input_shapes"][0]), dtype=np.float32
+    ).reshape(extraction.signature["input_shapes"][0])
+    extraction_expected = np.array(
+        extraction_input[_captured_slices(extraction.signature["static_slices"][0])],
+        copy=True,
+    )
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            extraction.region_id, {extraction.input_values[0]: extraction_input}
+        ),
+        extraction_expected,
+    )
+
+    split = next(program for program in movement if program.semantic == "split")
+    split_input = np.arange(
+        np.prod(split.signature["input_shapes"][0]), dtype=np.float32
+    ).reshape(split.signature["input_shapes"][0])
+    split_values = {split.input_values[0]: split_input}
+    first = real_lane.execute(split.region_id, split_values)
+    np.testing.assert_array_equal(
+        first,
+        split_input[_captured_slices(split.signature["static_slices"][0])],
+    )
+    np.testing.assert_array_equal(
+        split_values[split.operations[1].results[0]],
+        split_input[_captured_slices(split.signature["static_slices"][1])],
+    )
+
+    scatter = next(
+        program for program in movement if program.semantic == "slice_scatter"
+    )
+    source = -np.arange(
+        1, np.prod(scatter.signature["input_shapes"][0]) + 1, dtype=np.float32
+    ).reshape(scatter.signature["input_shapes"][0])
+    destination = np.arange(
+        np.prod(scatter.signature["input_shapes"][1]), dtype=np.float32
+    ).reshape(scatter.signature["input_shapes"][1])
+    scatter_expected = destination.copy()
+    scatter_expected[_captured_slices(scatter.signature["static_slices"][0])] = source
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            scatter.region_id,
+            {
+                scatter.input_values[0]: source,
+                scatter.input_values[1]: destination,
+            },
+        ),
+        scatter_expected,
+    )
+
+    concat = next(
+        program for program in movement
+        if (program.semantic == "cat"
+            and program.signature["operation_sequence"]
+            == ["linalg.generic", "tensor.concat"])
+    )
+    concat_inputs = [
+        (np.arange(np.prod(shape), dtype=np.float32) + 1000 * index).reshape(shape)
+        for index, shape in enumerate(concat.signature["input_shapes"])
+    ]
+    concat_sources = dict(zip(concat.input_values, concat_inputs))
+    concat_sources[concat.operations[0].results[0]] = concat_inputs[0]
+    expected_concat = np.concatenate(
+        [concat_sources[value] for value in concat.operations[-1].operands],
+        axis=concat.signature["concats"][0]["dimension"],
+    )
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            concat.region_id,
+            dict(zip(concat.input_values, concat_inputs)),
+        ),
+        expected_concat,
+    )
+
+    select = next(program for program in movement if program.semantic == "select")
+    select_input = (
+        np.arange(np.prod(select.signature["input_shapes"][0])).reshape(
+            select.signature["input_shapes"][0]
+        ) % 3
+    ) == 0
+    selected = select_input[
+        _captured_slices(select.signature["static_slices"][0])
+    ].reshape(select.signature["output_shape"])
+    np.testing.assert_array_equal(
+        real_lane.execute(select.region_id, {select.input_values[0]: select_input}),
+        selected,
+    )
+
+    bitwise_and = next(
+        program for program in movement
+        if (program.semantic == "bitwise"
+            and program.region_id == "bitwise_15")
+    )
+    lhs = (
+        np.arange(np.prod(bitwise_and.signature["input_shapes"][0])).reshape(
+            bitwise_and.signature["input_shapes"][0]
+        ) % 2
+    ) == 0
+    rhs = (
+        np.arange(np.prod(bitwise_and.signature["input_shapes"][1])).reshape(
+            bitwise_and.signature["input_shapes"][1]
+        ) % 3
+    ) == 0
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            bitwise_and.region_id,
+            {bitwise_and.input_values[0]: lhs, bitwise_and.input_values[1]: rhs},
+        ),
+        np.bitwise_and(lhs, rhs),
+    )
+
+    bitwise_not = next(
+        program for program in movement
+        if (program.semantic == "bitwise"
+            and program.signature["generics"][0]["scalar_ops"]
+            == ["arith.constant", "arith.xori"])
+    )
+    not_input = (
+        np.arange(np.prod(bitwise_not.signature["input_shapes"][0])).reshape(
+            bitwise_not.signature["input_shapes"][0]
+        ) % 5
+    ) == 0
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            bitwise_not.region_id, {bitwise_not.input_values[0]: not_input}
+        ),
+        np.logical_not(not_input),
+    )
+
+    bucketize = next(program for program in movement if program.semantic == "bucketize")
+    bucket_values = np.linspace(-2, 2, 32, dtype=np.float32).reshape(1, 32)
+    boundaries = np.linspace(-1, 1, 31, dtype=np.float32)
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            bucketize.region_id,
+            {
+                bucketize.input_values[0]: bucket_values,
+                bucketize.input_values[1]: boundaries,
+            },
+        ),
+        np.searchsorted(boundaries, bucket_values, side="right"),
+    )
+
+
+def test_declared_slice_with_two_extractions_fails_closed() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%arg: tensor<1x4xf32>) -> tensor<1x2xf32> {
+        %first = "tensor.extract_slice"(%arg) <{
+          static_offsets = array<i64: 0, 0>, static_sizes = array<i64: 1, 2>,
+          static_strides = array<i64: 1, 1>, operandSegmentSizes = array<i32: 1, 0, 0, 0>
+        }> {prov.region_id = "false_slice", prov.op = "slice",
+             prov.family = "layout", prov.aten = "aten.slice.Tensor"}
+          : (tensor<1x4xf32>) -> tensor<1x2xf32>
+        %second = "tensor.extract_slice"(%arg) <{
+          static_offsets = array<i64: 0, 2>, static_sizes = array<i64: 1, 2>,
+          static_strides = array<i64: 1, 1>, operandSegmentSizes = array<i32: 1, 0, 0, 0>
+        }> {prov.region_id = "false_slice", prov.op = "slice",
+             prov.family = "layout", prov.aten = "aten.slice.Tensor"}
+          : (tensor<1x4xf32>) -> tensor<1x2xf32>
+        return %second : tensor<1x2xf32>
+      }
+    }''')
+    lane = HostSemanticLane(workload)
+    assert lane.signature_for("false_slice") is None
+    assert lane.rejections["false_slice"] == "slice is not one exact static extraction"
+
+
+def test_declared_bitwise_with_wrong_scalar_body_fails_closed() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%lhs: tensor<4xi1>, %rhs: tensor<4xi1>) -> tensor<4xi1> {
+        %empty = tensor.empty() : tensor<4xi1>
+        %result = linalg.generic {
+          indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>,
+                           affine_map<(d0) -> (d0)>],
+          iterator_types = ["parallel"]
+        } ins(%lhs, %rhs : tensor<4xi1>, tensor<4xi1>) outs(%empty : tensor<4xi1>)
+          attrs = {prov.region_id = "false_bitwise", prov.op = "bitwise",
+                   prov.family = "bitwise", prov.aten = "aten.bitwise_or.Tensor"} {
+        ^bb0(%left: i1, %right: i1, %old: i1):
+          %wrong = arith.ori %left, %right : i1
+          linalg.yield %wrong : i1
+        } -> tensor<4xi1>
+        return %result : tensor<4xi1>
+      }
+    }''')
+    lane = HostSemanticLane(workload)
+    assert lane.signature_for("false_bitwise") is None
+    assert lane.rejections["false_bitwise"] == (
+        "generic scalar body contains an unsupported operation"
+    )
+
+
 def test_declared_reduction_with_incomplete_topology_fails_closed() -> None:
     workload = parse_verified(r'''builtin.module {
       func.func @forward(%arg: tensor<1x4xf32>) -> tensor<1x4xf32> {
@@ -549,17 +794,15 @@ def test_real_div_uses_its_extracted_cross_axis_broadcast(real_lane: HostSemanti
     np.testing.assert_array_equal(actual, lhs / rhs)
 
 
-def test_select_provenance_does_not_qualify_a_slice_as_pointwise_where(
+def test_select_slice_is_qualified_only_as_an_exact_movement_chain(
     real_lane: HostSemanticLane,
 ) -> None:
-    assert real_lane.signature_for("select_0") is None
-    assert "non-pointwise scaffold" in real_lane.rejections["select_0"]
-    try:
-        real_lane.execute("select_0", {})
-    except UnsupportedHostRegion:
-        pass
-    else:
-        raise AssertionError("a provenance-only tensor slice must fail closed")
+    signature = real_lane.signature_for("select_0")
+    assert signature is not None
+    assert signature["schema"] == "atlas_host_movement_signature_v1"
+    assert signature["operation_sequence"] == [
+        "tensor.extract_slice", "tensor.collapse_shape", "tensor.expand_shape",
+    ]
 
 
 def test_hybrid_schedule_is_byte_stable_across_rebuilds() -> None:

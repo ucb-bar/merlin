@@ -23,7 +23,8 @@ requires one terminal
 only of distinct loop dimensions and constant-zero broadcast axes, supported
 tensor dtypes, and a scalar body whose root matches the declared semantic.
 Two other `select` regions are actually `aten.select.int` slice/reshape chains;
-they correctly remain rejected.
+they are excluded from this pointwise tranche and handled by the exact movement
+signature below.
 
 The second tranche admits all 353 captured unary/scalar-expression regions by
 their complete scalar DAG: 123 `pow`, 66 `rsqrt`, 57 each of `sin` and `cos`,
@@ -52,10 +53,21 @@ Execution follows the captured row-major left fold and casts after every scalar
 operation. In particular, `cumsum` direction and `aten_min_dim` first-tie
 behavior come from their actual SSA operands rather than their provenance name.
 
+The movement/indexing tranche admits 412 more regions: 129 static `slice`, 112
+static `slice_scatter`, 95 `cat`, 56 two-output `split`, 16 exact boolean
+`bitwise`, two static `select` slice/view chains, and two `bucketize` reductions.
+Every slice records and bounds-checks its static offsets, sizes, and strides;
+concat checks its axis and every non-concat extent; view steps must preserve
+element count and dtype. The optional BF16-to-F32 concat cast and the bitwise and
+not scalar bodies are extracted, not inferred from provenance. `bucketize`
+admits only the captured ordered-less-equal/count reduction and executes as a
+row-major reduction. Fresh real-capture chains exercise every admitted family,
+and malformed multi-slice and unsupported-bitwise controls fail closed.
+
 The scheduler marks a host region executable only when that extracted
-signature is accepted. It now qualifies 2,012 regions. Missing host semantics
-fall from the prior 2,408 to 418, an exact net reduction of 1,990. The
-difference between 2,012 qualified signatures and the 1,990 net reduction is
+signature is accepted. It now qualifies 2,424 regions. Missing host semantics
+fall from the prior 2,408 to six, an exact net reduction of 2,402. The
+difference between 2,424 qualified signatures and the 2,402 net reduction is
 the old 22-region scoped baseline; it is not hidden or double-counted.
 
 The schedule covers all 391 structural accelerator partitions, with explicit
@@ -87,15 +99,16 @@ has 17 SSA dependency edges plus one fresh 360-element integer input.
 Additional signature-selected witnesses cover a cumsum-to-mean normalization
 chain, masked softmax, arg-min and reduction-sum successor chains, sigmoid
 gating, trigonometric fan-out, and separate real chains in which `arange` and
-`fill` outputs feed successor regions. Native layer norm and GELU are isolated
-by accelerator partitions in this capture, so the
+`fill` outputs feed successor regions. They now also cover static split/slice,
+slice-scatter, concat, bitwise, bucketize, and static-select chains. Native
+layer norm and GELU are isolated by accelerator partitions in this capture, so the
 builder truthfully selects and executes the smallest real GELU standalone
 rather than manufacturing a dependency, and does the same for layer norm.
 Every witness replays to identical per-region hashes. This is host-only
 semantic evidence, not device or
 whole-model execution.
 
-The exact blockers are therefore measurable: 418 missing host semantic
+The exact blockers are therefore measurable: six missing host semantic
 implementations, 388 unqualified accelerator partitions, and 358 unrealized
 layout bridges. Full schedule and compact summary are in
 `whole_capture_plan/hybrid_schedule.json` and
@@ -103,11 +116,10 @@ layout bridges. Full schedule and compact summary are in
 
 ## Prioritized enablement ladder
 
-1. Implement the remaining 418 movement/indexing regions: 129 `slice`, 112
-   `slice_scatter`, 95 `cat`, 56 `split`, 16 `bitwise`, two `select` slices, two
-   `bucketize`, two `embedding`, and one each of `mask_gather`, `index_put`,
-   `index_gather`, and the host-refused im2col convolution. This reaches all
-   418 currently missing host regions if these groups qualify fully.
+1. Implement the remaining six irregular host regions: two `embedding`, and one
+   each of `mask_gather`, `index_put`, `index_gather`, and the host-refused
+   im2col convolution. These require exact indexed-memory and convolution
+   semantics; they are deliberately not approximated as affine movement.
 2. Realize all 358 blocking layout bridges. The 246 `expand` regions need
    zero-stride descriptors or exact materialization; the 112 `copy` regions
    require real storage and copy events. Host materialization is sufficient for
@@ -132,7 +144,7 @@ layout bridges. Full schedule and compact summary are in
    sliced/staged unless that harness is changed and requalified.
 
 The first honest E2E becomes possible only when all four gates are zero at the
-same time: 418 missing host semantics, 358 unrealized bridges, 388
+same time: six missing host semantics, 358 unrealized bridges, 388
 unqualified partitions (and their 1,238 conversion events), and the absent
 physical event/DMA runtime. At that point one fresh full input must traverse the
 entire schedule and be compared with the source-model output. Kernel-variant

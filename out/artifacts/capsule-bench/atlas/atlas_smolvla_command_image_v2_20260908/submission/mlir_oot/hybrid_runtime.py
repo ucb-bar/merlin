@@ -231,7 +231,7 @@ def build_hybrid_schedule(
                            else "missing_host_semantics"),
                 "executable": executable,
                 "reason": (
-                    "complete pointwise signature accepted by the generic host lane"
+                    "complete operation signature accepted by the fail-closed host lane"
                     if executable else host_lane.rejections.get(
                         row["region_id"], row["category_reason"]
                     )

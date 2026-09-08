@@ -96,12 +96,14 @@ _REDUCTION_TOP_PATTERNS = {
         "linalg.generic", "arith.constant", "tensor.splat", "linalg.reduce",
     ),
 }
+_MOVEMENT_SEMANTICS = frozenset({"slice", "split", "slice_scatter", "cat"})
 _CAST_OPS = frozenset({
     "arith.extf", "arith.truncf", "arith.sitofp", "arith.fptosi",
     "arith.index_cast",
 })
 _SCALAR_OPS = frozenset().union(*_SEMANTIC_ROOTS.values(), {
-    "arith.constant", "arith.extui", "arith.index_cast", "arith.maximumf",
+    "arith.andi", "arith.constant", "arith.extui", "arith.index_cast",
+    "arith.maximumf", "arith.xori",
     "arith.negf", "arith.minimumf",
     "linalg.index", "math.cos", "math.erf", "math.exp", "math.powf",
     "math.rsqrt", "math.sin",
@@ -286,6 +288,10 @@ def _execute_scalar(op, arguments: list[np.ndarray]):
         result = np.minimum(arguments[0], arguments[1])
     elif name == "arith.maximumf":
         result = np.maximum(arguments[0], arguments[1])
+    elif name == "arith.andi":
+        result = np.bitwise_and(arguments[0], arguments[1])
+    elif name == "arith.xori":
+        result = np.bitwise_xor(arguments[0], arguments[1])
     elif name == "math.sin":
         result = np.sin(arguments[0])
     elif name == "math.cos":
@@ -741,11 +747,223 @@ def _extract_reduction_program(
     )
 
 
+def _dense_ints(op, name: str) -> tuple[int, ...]:
+    attribute = op.properties.get(name)
+    if attribute is None or not hasattr(attribute, "get_values"):
+        raise UnsupportedHostRegion(f"{op.name} has no static {name}")
+    return tuple(int(value) for value in attribute.get_values())
+
+
+def _integer_property(op, name: str) -> int:
+    attribute = op.properties.get(name)
+    value = getattr(getattr(attribute, "value", None), "data", None)
+    if value is None:
+        raise UnsupportedHostRegion(f"{op.name} has no integer {name}")
+    return int(value)
+
+
+def _static_slice_signature(op, *, insertion: bool) -> dict:
+    expected_operands = 2 if insertion else 1
+    if len(op.operands) != expected_operands or len(op.results) != 1:
+        raise UnsupportedHostRegion("static slice operation has dynamic or unexpected operands")
+    source_shape = _tensor_shape(op.operands[0])
+    destination_shape = _tensor_shape(op.operands[1]) if insertion else source_shape
+    result_shape = _tensor_shape(op.results[0])
+    if source_shape is None or destination_shape is None or result_shape is None:
+        raise UnsupportedHostRegion("static slice requires ranked tensors")
+    offsets = _dense_ints(op, "static_offsets")
+    sizes = _dense_ints(op, "static_sizes")
+    strides = _dense_ints(op, "static_strides")
+    rank = len(destination_shape)
+    if not (len(offsets) == len(sizes) == len(strides) == rank):
+        raise UnsupportedHostRegion("static slice metadata rank is inconsistent")
+    if any(offset < 0 or size < 0 or stride <= 0
+           for offset, size, stride in zip(offsets, sizes, strides)):
+        raise UnsupportedHostRegion("static slice has negative bounds or nonpositive stride")
+    if any(size and offset + (size - 1) * stride >= extent
+           for offset, size, stride, extent in zip(offsets, sizes, strides, destination_shape)):
+        raise UnsupportedHostRegion("static slice is out of bounds")
+    if insertion:
+        if tuple(source_shape) != sizes or tuple(result_shape) != tuple(destination_shape):
+            raise UnsupportedHostRegion("insert_slice source/result shapes disagree with metadata")
+        dtypes = (_dtype_name(op.operands[0]), _dtype_name(op.operands[1]), _dtype_name(op.results[0]))
+    else:
+        if tuple(result_shape) != sizes:
+            raise UnsupportedHostRegion("extract_slice result shape disagrees with metadata")
+        dtypes = (_dtype_name(op.operands[0]), _dtype_name(op.results[0]))
+    if len(set(dtypes)) != 1:
+        raise UnsupportedHostRegion("static slice changes element dtype")
+    _numpy_dtype(dtypes[0])
+    return {
+        "operation": op.name,
+        "offsets": list(offsets),
+        "sizes": list(sizes),
+        "strides": list(strides),
+        "source_shape": list(source_shape),
+        "result_shape": list(result_shape),
+        "dtype": dtypes[0],
+    }
+
+
+def _extract_movement_program(
+    region_id: str, semantic: str, aten: str, operations: tuple,
+) -> HostRegionProgram:
+    names = tuple(op.name for op in operations)
+    slice_signatures = []
+    generic_signatures = []
+    concat_signatures = []
+    if semantic == "slice":
+        if names != ("tensor.extract_slice",):
+            raise UnsupportedHostRegion("slice is not one exact static extraction")
+    elif semantic == "split":
+        if names != ("tensor.extract_slice", "tensor.extract_slice"):
+            raise UnsupportedHostRegion("split is not two exact static extractions")
+        if operations[0].operands[0] is not operations[1].operands[0]:
+            raise UnsupportedHostRegion("split outputs do not share one captured input")
+    elif semantic == "slice_scatter":
+        if names != ("tensor.insert_slice",):
+            raise UnsupportedHostRegion("slice_scatter is not one exact static insertion")
+    elif semantic == "select":
+        if names != (
+            "tensor.extract_slice", "tensor.collapse_shape", "tensor.expand_shape"
+        ):
+            raise UnsupportedHostRegion("select is not the captured static slice/view chain")
+    elif semantic == "cat":
+        if names not in {("tensor.concat",), ("linalg.generic", "tensor.concat")}:
+            raise UnsupportedHostRegion("cat is not the captured optional-cast concat chain")
+    elif semantic == "bitwise":
+        if names != ("linalg.generic",):
+            raise UnsupportedHostRegion("bitwise is not one captured generic")
+    elif semantic == "bucketize":
+        if names != (
+            "arith.constant", "arith.constant", "tensor.splat", "linalg.generic"
+        ):
+            raise UnsupportedHostRegion("bucketize is not the captured reduction topology")
+    else:
+        raise UnsupportedHostRegion(f"movement semantic {semantic} is unsupported")
+
+    for op in operations:
+        if op.name == "tensor.extract_slice":
+            slice_signatures.append(_static_slice_signature(op, insertion=False))
+        elif op.name == "tensor.insert_slice":
+            slice_signatures.append(_static_slice_signature(op, insertion=True))
+        elif op.name == "linalg.generic":
+            generic_signatures.append(_generic_signature(op))
+        elif op.name == "tensor.concat":
+            if len(op.operands) < 1 or len(op.results) != 1:
+                raise UnsupportedHostRegion("tensor.concat has no inputs or one result")
+            shapes = [_tensor_shape(value) for value in op.operands]
+            result_shape = _tensor_shape(op.results[0])
+            if any(shape is None for shape in shapes) or result_shape is None:
+                raise UnsupportedHostRegion("tensor.concat requires static ranked tensors")
+            dimension = _integer_property(op, "dim")
+            rank = len(result_shape)
+            if dimension < 0 or dimension >= rank or any(len(shape) != rank for shape in shapes):
+                raise UnsupportedHostRegion("tensor.concat rank or dimension is invalid")
+            expected = list(shapes[0])
+            expected[dimension] = sum(shape[dimension] for shape in shapes)
+            if (tuple(expected) != tuple(result_shape)
+                    or any(shape[axis] != result_shape[axis]
+                           for shape in shapes for axis in range(rank) if axis != dimension)):
+                raise UnsupportedHostRegion("tensor.concat shapes are inconsistent")
+            dtypes = [_dtype_name(value) for value in tuple(op.operands) + tuple(op.results)]
+            if len(set(dtypes)) != 1:
+                raise UnsupportedHostRegion("tensor.concat changes element dtype")
+            _numpy_dtype(dtypes[0])
+            concat_signatures.append({
+                "dimension": dimension,
+                "input_shapes": [list(shape) for shape in shapes],
+                "result_shape": list(result_shape),
+                "dtype": dtypes[0],
+            })
+        elif op.name in {"tensor.collapse_shape", "tensor.expand_shape"}:
+            source_shape = _tensor_shape(op.operands[0])
+            result_shape = _tensor_shape(op.results[0])
+            if (source_shape is None or result_shape is None
+                    or int(np.prod(source_shape, dtype=np.int64))
+                    != int(np.prod(result_shape, dtype=np.int64))
+                    or _dtype_name(op.operands[0]) != _dtype_name(op.results[0])):
+                raise UnsupportedHostRegion("movement reshape is not an exact static alias")
+        elif op.name not in {"arith.constant", "tensor.splat"}:
+            raise UnsupportedHostRegion(f"unsupported captured movement operation {op.name}")
+
+    for op in operations:
+        if op.name == "tensor.splat" and getattr(op.operands[0], "owner", None) not in set(operations):
+            raise UnsupportedHostRegion("movement splat does not consume an in-region constant")
+
+    if semantic == "cat" and generic_signatures:
+        if [row["scalar_ops"] for row in generic_signatures] != [["arith.extf"]]:
+            raise UnsupportedHostRegion("cat's optional cast does not match the capture")
+    if semantic == "bitwise":
+        body = generic_signatures[0]["scalar_ops"]
+        if body not in [["arith.andi"], ["arith.constant", "arith.xori"]]:
+            raise UnsupportedHostRegion("bitwise scalar body does not match the capture")
+    if semantic == "bucketize":
+        generic = generic_signatures[0]
+        if (generic["scalar_ops"] != ["arith.cmpf", "arith.select", "arith.addi"]
+                or generic["comparison_predicates"] != [5]
+                or generic["iterator_types"] != ["parallel", "parallel", "reduction"]):
+            raise UnsupportedHostRegion("bucketize scalar/reduction signature does not match")
+
+    operation_set = set(operations)
+    input_values = []
+    for op in operations:
+        if op.name == "linalg.generic":
+            read_operands = op.inputs
+        elif op.name == "tensor.insert_slice":
+            read_operands = op.operands[:2]
+        elif op.name in {
+            "tensor.extract_slice", "tensor.concat", "tensor.collapse_shape",
+            "tensor.expand_shape", "tensor.splat",
+        }:
+            read_operands = op.operands
+        else:
+            read_operands = ()
+        for value in read_operands:
+            if getattr(value, "owner", None) not in operation_set and value not in input_values:
+                input_values.append(value)
+    if semantic == "split":
+        output_values = tuple(op.results[0] for op in operations)
+    else:
+        output_values = (operations[-1].results[0],)
+    for value in tuple(input_values) + output_values:
+        shape = _tensor_shape(value)
+        if shape is None or any(extent < 0 for extent in shape):
+            raise UnsupportedHostRegion("movement boundary is not a static ranked tensor")
+        _numpy_dtype(_dtype_name(value))
+    signature = {
+        "schema": "atlas_host_movement_signature_v1",
+        "semantic": semantic,
+        "aten": aten,
+        "operation_sequence": list(names),
+        "input_shapes": [list(_tensor_shape(value) or ()) for value in input_values],
+        "input_dtypes": [_dtype_name(value) for value in input_values],
+        "output_shapes": [list(_tensor_shape(value) or ()) for value in output_values],
+        "output_dtypes": [_dtype_name(value) for value in output_values],
+        "output_shape": list(_tensor_shape(output_values[0]) or ()),
+        "output_dtype": _dtype_name(output_values[0]),
+        "static_slices": slice_signatures,
+        "generics": generic_signatures,
+        "concats": concat_signatures,
+        "scalar_constants": [
+            _constant_signature(op) for op in operations if op.name == "arith.constant"
+        ],
+        "materialization_rule": "execute captured static indexing/concat/generic operations in order",
+    }
+    return HostRegionProgram(
+        region_id, semantic, aten, operations, None, tuple(input_values),
+        output_values[0], signature,
+    )
+
+
 def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     semantic = _str_attr(operations[0], "prov.op")
     aten = _str_attr(operations[0], "prov.aten")
     if semantic in _REDUCTION_TOP_PATTERNS:
         return _extract_reduction_program(region_id, semantic, aten, operations)
+    if (semantic in _MOVEMENT_SEMANTICS or semantic in {"bitwise", "bucketize"}
+            or (semantic == "select" and operations[0].name == "tensor.extract_slice")):
+        return _extract_movement_program(region_id, semantic, aten, operations)
     if semantic == "fill":
         if tuple(op.name for op in operations) != ("arith.constant", "tensor.splat"):
             raise UnsupportedHostRegion("fill is not one scalar constant followed by tensor.splat")
@@ -912,6 +1130,59 @@ class HostSemanticLane:
         if region_id not in self.programs:
             raise UnsupportedHostRegion(self.rejections.get(region_id, f"unknown region {region_id}"))
         program = self.programs[region_id]
+        if program.signature["schema"] == "atlas_host_movement_signature_v1":
+            generic_index = 0
+            slice_index = 0
+            concat_index = 0
+            for op in program.operations:
+                if op.name == "arith.constant":
+                    values[op.results[0]] = _constant_value(op)
+                elif op.name == "tensor.splat":
+                    shape = _tensor_shape(op.results[0])
+                    if shape is None or op.operands[0] not in values:
+                        raise ValueError("movement tensor.splat input or shape is unavailable")
+                    dtype = _dtype_name(op.results[0])
+                    values[op.results[0]] = _cast(
+                        np.full(shape, values[op.operands[0]], dtype=_numpy_dtype(dtype)), dtype
+                    )
+                elif op.name == "linalg.generic":
+                    _execute_generic(
+                        op, values, program.signature["generics"][generic_index]
+                    )
+                    generic_index += 1
+                elif op.name in {"tensor.extract_slice", "tensor.insert_slice"}:
+                    record = program.signature["static_slices"][slice_index]
+                    slices = tuple(
+                        slice(offset, offset + size * stride, stride)
+                        for offset, size, stride in zip(
+                            record["offsets"], record["sizes"], record["strides"]
+                        )
+                    )
+                    if op.name == "tensor.extract_slice":
+                        values[op.results[0]] = np.array(
+                            values[op.operands[0]][slices], copy=True, order="C"
+                        )
+                    else:
+                        result = np.array(values[op.operands[1]], copy=True, order="C")
+                        result[slices] = values[op.operands[0]]
+                        values[op.results[0]] = result
+                    slice_index += 1
+                elif op.name == "tensor.concat":
+                    record = program.signature["concats"][concat_index]
+                    values[op.results[0]] = np.concatenate(
+                        [values[value] for value in op.operands],
+                        axis=record["dimension"],
+                    )
+                    concat_index += 1
+                elif op.name in {"tensor.collapse_shape", "tensor.expand_shape"}:
+                    values[op.results[0]] = np.reshape(
+                        values[op.operands[0]], tuple(_tensor_shape(op.results[0]) or ())
+                    )
+                else:
+                    raise UnsupportedHostRegion(
+                        f"unsupported captured movement operation {op.name}"
+                    )
+            return values[program.output_value]
         if program.signature["schema"] == "atlas_host_reduction_signature_v1":
             generic_index = 0
             reduction_index = 0

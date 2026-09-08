@@ -262,6 +262,44 @@ def generic_host_witnesses(workload) -> tuple[dict, list[dict]]:
         selection="smallest qualified real layer norm; adjacent regions are accelerator partitions",
     ))
 
+    movement_requirements = [
+        ("static_split_slice", {"split", "slice"}),
+        ("slice_scatter_successor", {"slice_scatter"}),
+        ("concat_successor", {"cat"}),
+        ("bitwise_reduction", {"bitwise", "cumsum"}),
+        ("bucketize_chain", {"bucketize"}),
+    ]
+    for label, required in movement_requirements:
+        run = next(
+            row for row in runs
+            if required <= set(row["semantics"])
+        )
+        selected.append(_execute_host_witness(
+            lane,
+            run["region_ids"],
+            label=label,
+            selection=(
+                "first stable-ranked consecutive qualified run containing movement set "
+                + ",".join(sorted(required))
+            ),
+        ))
+
+    static_select_run = next(
+        row for row in runs
+        if any(
+            lane.programs[region_id].semantic == "select"
+            and lane.programs[region_id].signature["schema"]
+            == "atlas_host_movement_signature_v1"
+            for region_id in row["region_ids"]
+        )
+    )
+    selected.append(_execute_host_witness(
+        lane,
+        static_select_run["region_ids"],
+        label="static_select_slice_chain",
+        selection="first stable-ranked run containing an exact static aten.select.int chain",
+    ))
+
     # GELU instances are isolated by accelerator partitions in this capture.
     # Select the smallest real one by tensor extent and execute it standalone;
     # do not manufacture a false dependency chain around it.
