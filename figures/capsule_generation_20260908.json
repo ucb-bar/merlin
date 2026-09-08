@@ -1,0 +1,226 @@
+{
+  "schema": "merlin.figure.capsule_generation/v1",
+  "generated_utc": "2026-09-08T02:22:43Z",
+  "repo_sha": "e38defbc",
+  "targets": [
+    "atlas",
+    "gemmini",
+    "mx_gemmini",
+    "radiance"
+  ],
+  "per_target": {
+    "atlas": {
+      "kinds": {
+        "isa": 41,
+        "layer": 4,
+        "model_slice": 22,
+        "model": 5
+      },
+      "labels": {
+        "public": 62,
+        "dev": 0,
+        "hidden": 10
+      },
+      "coverage": {
+        "cells": [
+          18,
+          18
+        ],
+        "composition": [
+          6,
+          6
+        ],
+        "memory_mapping": [
+          1,
+          3
+        ],
+        "shape_geometry": [
+          6,
+          7
+        ],
+        "host_only": [
+          2,
+          2
+        ],
+        "host_lane": [
+          6,
+          11
+        ],
+        "epilogue": [
+          2,
+          2
+        ],
+        "conv_geometry": [
+          0,
+          10
+        ]
+      },
+      "not_built": 4,
+      "forbid_not_provable": 1
+    },
+    "gemmini": {
+      "kinds": {
+        "isa": 43,
+        "layer": 46,
+        "model_slice": 31,
+        "model": 8
+      },
+      "labels": {
+        "public": 113,
+        "dev": 0,
+        "hidden": 15
+      },
+      "coverage": {
+        "cells": [
+          12,
+          12
+        ],
+        "composition": [
+          6,
+          6
+        ],
+        "memory_mapping": [
+          3,
+          3
+        ],
+        "shape_geometry": [
+          6,
+          7
+        ],
+        "host_only": [
+          1,
+          1
+        ],
+        "host_lane": [
+          10,
+          11
+        ],
+        "epilogue": [
+          5,
+          5
+        ],
+        "conv_geometry": [
+          10,
+          10
+        ]
+      },
+      "not_built": 0,
+      "forbid_not_provable": 0
+    },
+    "mx_gemmini": {
+      "kinds": {
+        "isa": 26,
+        "layer": 2,
+        "model_slice": 14,
+        "model": 3
+      },
+      "labels": {
+        "public": 38,
+        "dev": 0,
+        "hidden": 7
+      },
+      "coverage": {
+        "cells": [
+          9,
+          9
+        ],
+        "composition": [
+          1,
+          1
+        ],
+        "memory_mapping": [
+          0,
+          0
+        ],
+        "shape_geometry": [
+          5,
+          5
+        ],
+        "host_only": [
+          3,
+          4
+        ],
+        "host_lane": [
+          7,
+          10
+        ],
+        "epilogue": [
+          0,
+          0
+        ],
+        "conv_geometry": null
+      },
+      "not_built": 0,
+      "forbid_not_provable": 1
+    },
+    "radiance": {
+      "kinds": {
+        "isa": 92,
+        "layer": 41,
+        "model_slice": 37,
+        "model": 8
+      },
+      "labels": {
+        "public": 166,
+        "dev": 0,
+        "hidden": 12
+      },
+      "coverage": {
+        "cells": [
+          72,
+          72
+        ],
+        "composition": [
+          3,
+          6
+        ],
+        "memory_mapping": [
+          3,
+          3
+        ],
+        "shape_geometry": [
+          6,
+          7
+        ],
+        "host_only": null,
+        "host_lane": [
+          0,
+          1
+        ],
+        "epilogue": [
+          0,
+          0
+        ],
+        "conv_geometry": [
+          10,
+          10
+        ]
+      },
+      "not_built": 0,
+      "forbid_not_provable": 0
+    }
+  },
+  "totals_by_kind": {
+    "isa": 202,
+    "layer": 93,
+    "model_slice": 104,
+    "model": 24
+  },
+  "totals_by_label": {
+    "public": 379,
+    "dev": 0,
+    "hidden": 44
+  },
+  "unmaterializable": {
+    "total": 6,
+    "reasons": {
+      "M2MUnavailable: AssertionError: Float8 dynamic activation quantization is only supported on CUDA>=8.9 and MI300+": 4,
+      "'SY_host_lane_attention_bf16' forbids `on_mesh`, but 'atlas' classifies its program as 'A->H->A' rather than host-only: ": 1,
+      "'SY_host_lane_attention_bf16' forbids `on_mesh`, but 'mx_gemmini' classifies its program as 'routing' rather than host-o": 1
+    }
+  },
+  "held_out_manifest": {
+    "n_generated": 10,
+    "n_hand_authored": 5
+  }
+}

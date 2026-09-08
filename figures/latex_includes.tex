@@ -34,3 +34,23 @@
   than ExecuTorch at one and eight cores, respectively.}
   \label{fig:k1-executorch-status}
 \end{figure*}
+
+% Single-column (`figure`, \columnwidth) -- every other block here spans two columns.
+% Counts are derived from the live corpus, not typed: rerun --derive if the corpus moves.
+% Regenerate with: python figures/gen_capsule_generation.py
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/capsule_generation.pdf}
+  \caption{\textbf{Capability-derived capsule generation.} Merlin derives an executable coverage
+  contract before compiler authoring. (a)~Pinned target specifications, RTL-derived capabilities and
+  workload requirements define a compiler-independent coverage space: eight axes and 111 required
+  cells across four targets. (b)~Representative obligations are materialized as target-bound ISA,
+  layer, model-slice and model capsules. (c)~Each capsule exposes the program the compiler compiles
+  against, while the numerical golden and the structural instruction-coverage surface remain hidden
+  from it. (d)~Per target, the corpus by capsule kind; obligations that could not be materialized
+  stay visible as hatched segments rather than shrinking the coverage denominator---four atlas roster
+  models whose quantization scheme the host cannot capture, and two host-lane assertions the target
+  admits work for and so cannot prove. Public capsules guide Phase~1 authoring; capability-derived
+  hidden capsules, counted here but never named, evaluate the frozen compiler afterwards.}
+  \label{fig:capsule-generation}
+\end{figure}
