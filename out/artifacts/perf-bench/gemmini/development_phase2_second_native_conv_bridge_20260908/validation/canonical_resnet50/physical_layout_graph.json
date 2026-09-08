@@ -1,0 +1,6129 @@
+{
+  "canonical_layout": "NCHW",
+  "layouts": [
+    "NCHW",
+    "NHWC"
+  ],
+  "ops": [
+    {
+      "couple": true,
+      "inputs": [
+        "arg216"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_0",
+      "outputs": [
+        "v58_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v58_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_54",
+      "outputs": [
+        "v63_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v63_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_0",
+      "outputs": [
+        "v81_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v81_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_0",
+      "outputs": [
+        "v83_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": false,
+      "inputs": [
+        "v83_0"
+      ],
+      "kind": "fixed_boundary",
+      "name": "max_pool2d_0",
+      "outputs": [
+        "v89_0"
+      ],
+      "preference_weight": 1,
+      "reason": "current lowering is fixed to the canonical activation layout",
+      "supported_layouts": [
+        "NCHW"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v89_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_1",
+      "outputs": [
+        "v94_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v94_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_55",
+      "outputs": [
+        "v99_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v94_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_56",
+      "outputs": [
+        "v104_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v104_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_1",
+      "outputs": [
+        "v119_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v119_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_1",
+      "outputs": [
+        "v121_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v121_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_2",
+      "outputs": [
+        "v126_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v126_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_57",
+      "outputs": [
+        "v131_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v131_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_2",
+      "outputs": [
+        "v149_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v149_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_2",
+      "outputs": [
+        "v151_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v151_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_3",
+      "outputs": [
+        "v156_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v156_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_58",
+      "outputs": [
+        "v161_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v161_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_3",
+      "outputs": [
+        "v176_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v99_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_4",
+      "outputs": [
+        "v191_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v176_0",
+        "v191_0"
+      ],
+      "kind": "residual",
+      "name": "add_0",
+      "outputs": [
+        "v193_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v193_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_3",
+      "outputs": [
+        "v195_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v195_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_4",
+      "outputs": [
+        "v200_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v200_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_59",
+      "outputs": [
+        "v205_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v205_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_5",
+      "outputs": [
+        "v220_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v220_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_4",
+      "outputs": [
+        "v222_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v222_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_5",
+      "outputs": [
+        "v227_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v227_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_60",
+      "outputs": [
+        "v232_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v232_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_6",
+      "outputs": [
+        "v250_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v250_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_5",
+      "outputs": [
+        "v252_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v252_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_6",
+      "outputs": [
+        "v257_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v257_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_61",
+      "outputs": [
+        "v262_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v262_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_7",
+      "outputs": [
+        "v277_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v277_0",
+        "v195_0"
+      ],
+      "kind": "residual",
+      "name": "add_1",
+      "outputs": [
+        "v279_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v279_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_6",
+      "outputs": [
+        "v281_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v281_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_7",
+      "outputs": [
+        "v286_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v286_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_62",
+      "outputs": [
+        "v291_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v291_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_8",
+      "outputs": [
+        "v306_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v306_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_7",
+      "outputs": [
+        "v308_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v308_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_8",
+      "outputs": [
+        "v313_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v313_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_63",
+      "outputs": [
+        "v318_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v318_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_9",
+      "outputs": [
+        "v336_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v336_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_8",
+      "outputs": [
+        "v338_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v338_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_9",
+      "outputs": [
+        "v343_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v343_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_64",
+      "outputs": [
+        "v348_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v348_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_10",
+      "outputs": [
+        "v363_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v363_0",
+        "v281_0"
+      ],
+      "kind": "residual",
+      "name": "add_2",
+      "outputs": [
+        "v365_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v365_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_9",
+      "outputs": [
+        "v367_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v367_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_10",
+      "outputs": [
+        "v372_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v372_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_65",
+      "outputs": [
+        "v377_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v372_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_66",
+      "outputs": [
+        "v382_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v382_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_11",
+      "outputs": [
+        "v397_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v397_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_10",
+      "outputs": [
+        "v399_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v399_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_11",
+      "outputs": [
+        "v404_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v404_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_67",
+      "outputs": [
+        "v409_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v409_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_12",
+      "outputs": [
+        "v427_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v427_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_11",
+      "outputs": [
+        "v429_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v429_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_12",
+      "outputs": [
+        "v434_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v434_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_68",
+      "outputs": [
+        "v439_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v439_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_13",
+      "outputs": [
+        "v454_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v377_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_14",
+      "outputs": [
+        "v469_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v454_0",
+        "v469_0"
+      ],
+      "kind": "residual",
+      "name": "add_3",
+      "outputs": [
+        "v471_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v471_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_12",
+      "outputs": [
+        "v473_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v473_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_13",
+      "outputs": [
+        "v478_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v478_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_69",
+      "outputs": [
+        "v483_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v483_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_15",
+      "outputs": [
+        "v498_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v498_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_13",
+      "outputs": [
+        "v500_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v500_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_14",
+      "outputs": [
+        "v505_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v505_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_70",
+      "outputs": [
+        "v510_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v510_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_16",
+      "outputs": [
+        "v528_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v528_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_14",
+      "outputs": [
+        "v530_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v530_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_15",
+      "outputs": [
+        "v535_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v535_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_71",
+      "outputs": [
+        "v540_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v540_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_17",
+      "outputs": [
+        "v555_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v555_0",
+        "v473_0"
+      ],
+      "kind": "residual",
+      "name": "add_4",
+      "outputs": [
+        "v557_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v557_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_15",
+      "outputs": [
+        "v559_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v559_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_16",
+      "outputs": [
+        "v564_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v564_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_72",
+      "outputs": [
+        "v569_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v569_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_18",
+      "outputs": [
+        "v584_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v584_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_16",
+      "outputs": [
+        "v586_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v586_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_17",
+      "outputs": [
+        "v591_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v591_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_73",
+      "outputs": [
+        "v596_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v596_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_19",
+      "outputs": [
+        "v614_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v614_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_17",
+      "outputs": [
+        "v616_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v616_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_18",
+      "outputs": [
+        "v621_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v621_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_74",
+      "outputs": [
+        "v626_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v626_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_20",
+      "outputs": [
+        "v641_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v641_0",
+        "v559_0"
+      ],
+      "kind": "residual",
+      "name": "add_5",
+      "outputs": [
+        "v643_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v643_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_18",
+      "outputs": [
+        "v645_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v645_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_19",
+      "outputs": [
+        "v650_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v650_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_75",
+      "outputs": [
+        "v655_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v655_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_21",
+      "outputs": [
+        "v670_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v670_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_19",
+      "outputs": [
+        "v672_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v672_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_20",
+      "outputs": [
+        "v677_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v677_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_76",
+      "outputs": [
+        "v682_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v682_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_22",
+      "outputs": [
+        "v700_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v700_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_20",
+      "outputs": [
+        "v702_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v702_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_21",
+      "outputs": [
+        "v707_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v707_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_77",
+      "outputs": [
+        "v712_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v712_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_23",
+      "outputs": [
+        "v727_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v727_0",
+        "v645_0"
+      ],
+      "kind": "residual",
+      "name": "add_6",
+      "outputs": [
+        "v729_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v729_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_21",
+      "outputs": [
+        "v731_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v731_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_22",
+      "outputs": [
+        "v736_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v736_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_78",
+      "outputs": [
+        "v741_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v736_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_79",
+      "outputs": [
+        "v746_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v746_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_24",
+      "outputs": [
+        "v761_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v761_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_22",
+      "outputs": [
+        "v763_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v763_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_23",
+      "outputs": [
+        "v768_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v768_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_80",
+      "outputs": [
+        "v773_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v773_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_25",
+      "outputs": [
+        "v791_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v791_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_23",
+      "outputs": [
+        "v793_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v793_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_24",
+      "outputs": [
+        "v798_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v798_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_81",
+      "outputs": [
+        "v803_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v803_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_26",
+      "outputs": [
+        "v818_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v741_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_27",
+      "outputs": [
+        "v833_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v818_0",
+        "v833_0"
+      ],
+      "kind": "residual",
+      "name": "add_7",
+      "outputs": [
+        "v835_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v835_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_24",
+      "outputs": [
+        "v837_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v837_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_25",
+      "outputs": [
+        "v842_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v842_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_82",
+      "outputs": [
+        "v847_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v847_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_28",
+      "outputs": [
+        "v862_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v862_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_25",
+      "outputs": [
+        "v864_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v864_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_26",
+      "outputs": [
+        "v869_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v869_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_83",
+      "outputs": [
+        "v874_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v874_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_29",
+      "outputs": [
+        "v892_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v892_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_26",
+      "outputs": [
+        "v894_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v894_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_27",
+      "outputs": [
+        "v899_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v899_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_84",
+      "outputs": [
+        "v904_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v904_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_30",
+      "outputs": [
+        "v919_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v919_0",
+        "v837_0"
+      ],
+      "kind": "residual",
+      "name": "add_8",
+      "outputs": [
+        "v921_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v921_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_27",
+      "outputs": [
+        "v923_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v923_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_28",
+      "outputs": [
+        "v928_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v928_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_85",
+      "outputs": [
+        "v933_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v933_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_31",
+      "outputs": [
+        "v948_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v948_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_28",
+      "outputs": [
+        "v950_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v950_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_29",
+      "outputs": [
+        "v955_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v955_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_86",
+      "outputs": [
+        "v960_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v960_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_32",
+      "outputs": [
+        "v978_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v978_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_29",
+      "outputs": [
+        "v980_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v980_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_30",
+      "outputs": [
+        "v985_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v985_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_87",
+      "outputs": [
+        "v990_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v990_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_33",
+      "outputs": [
+        "v1005_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1005_0",
+        "v923_0"
+      ],
+      "kind": "residual",
+      "name": "add_9",
+      "outputs": [
+        "v1007_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1007_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_30",
+      "outputs": [
+        "v1009_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1009_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_31",
+      "outputs": [
+        "v1014_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1014_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_88",
+      "outputs": [
+        "v1019_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1019_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_34",
+      "outputs": [
+        "v1034_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1034_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_31",
+      "outputs": [
+        "v1036_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1036_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_32",
+      "outputs": [
+        "v1041_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1041_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_89",
+      "outputs": [
+        "v1046_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1046_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_35",
+      "outputs": [
+        "v1064_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1064_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_32",
+      "outputs": [
+        "v1066_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1066_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_33",
+      "outputs": [
+        "v1071_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1071_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_90",
+      "outputs": [
+        "v1076_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1076_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_36",
+      "outputs": [
+        "v1091_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1091_0",
+        "v1009_0"
+      ],
+      "kind": "residual",
+      "name": "add_10",
+      "outputs": [
+        "v1093_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1093_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_33",
+      "outputs": [
+        "v1095_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1095_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_34",
+      "outputs": [
+        "v1100_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1100_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_91",
+      "outputs": [
+        "v1105_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1105_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_37",
+      "outputs": [
+        "v1120_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1120_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_34",
+      "outputs": [
+        "v1122_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1122_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_35",
+      "outputs": [
+        "v1127_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1127_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_92",
+      "outputs": [
+        "v1132_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1132_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_38",
+      "outputs": [
+        "v1150_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1150_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_35",
+      "outputs": [
+        "v1152_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1152_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_36",
+      "outputs": [
+        "v1157_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1157_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_93",
+      "outputs": [
+        "v1162_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1162_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_39",
+      "outputs": [
+        "v1177_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1177_0",
+        "v1095_0"
+      ],
+      "kind": "residual",
+      "name": "add_11",
+      "outputs": [
+        "v1179_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1179_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_36",
+      "outputs": [
+        "v1181_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1181_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_37",
+      "outputs": [
+        "v1186_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1186_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_94",
+      "outputs": [
+        "v1191_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1191_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_40",
+      "outputs": [
+        "v1206_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1206_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_37",
+      "outputs": [
+        "v1208_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1208_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_38",
+      "outputs": [
+        "v1213_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1213_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_95",
+      "outputs": [
+        "v1218_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1218_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_41",
+      "outputs": [
+        "v1236_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1236_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_38",
+      "outputs": [
+        "v1238_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1238_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_39",
+      "outputs": [
+        "v1243_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1243_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_96",
+      "outputs": [
+        "v1248_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1248_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_42",
+      "outputs": [
+        "v1263_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1263_0",
+        "v1181_0"
+      ],
+      "kind": "residual",
+      "name": "add_12",
+      "outputs": [
+        "v1265_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1265_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_39",
+      "outputs": [
+        "v1267_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1267_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_40",
+      "outputs": [
+        "v1272_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1272_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_97",
+      "outputs": [
+        "v1277_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1272_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_98",
+      "outputs": [
+        "v1282_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1282_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_43",
+      "outputs": [
+        "v1297_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1297_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_40",
+      "outputs": [
+        "v1299_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1299_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_41",
+      "outputs": [
+        "v1304_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1304_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_99",
+      "outputs": [
+        "v1309_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1309_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_44",
+      "outputs": [
+        "v1327_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1327_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_41",
+      "outputs": [
+        "v1329_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1329_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_42",
+      "outputs": [
+        "v1334_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1334_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_100",
+      "outputs": [
+        "v1339_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1339_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_45",
+      "outputs": [
+        "v1354_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1277_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_46",
+      "outputs": [
+        "v1369_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1354_0",
+        "v1369_0"
+      ],
+      "kind": "residual",
+      "name": "add_13",
+      "outputs": [
+        "v1371_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1371_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_42",
+      "outputs": [
+        "v1373_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1373_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_43",
+      "outputs": [
+        "v1378_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1378_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_101",
+      "outputs": [
+        "v1383_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1383_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_47",
+      "outputs": [
+        "v1398_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1398_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_43",
+      "outputs": [
+        "v1400_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1400_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_44",
+      "outputs": [
+        "v1405_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1405_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_102",
+      "outputs": [
+        "v1410_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1410_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_48",
+      "outputs": [
+        "v1428_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1428_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_44",
+      "outputs": [
+        "v1430_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1430_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_45",
+      "outputs": [
+        "v1435_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1435_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_103",
+      "outputs": [
+        "v1440_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1440_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_49",
+      "outputs": [
+        "v1455_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1455_0",
+        "v1373_0"
+      ],
+      "kind": "residual",
+      "name": "add_14",
+      "outputs": [
+        "v1457_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1457_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_45",
+      "outputs": [
+        "v1459_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1459_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_46",
+      "outputs": [
+        "v1464_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1464_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_104",
+      "outputs": [
+        "v1469_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1469_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_50",
+      "outputs": [
+        "v1484_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1484_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_46",
+      "outputs": [
+        "v1486_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1486_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_47",
+      "outputs": [
+        "v1491_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1491_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_105",
+      "outputs": [
+        "v1496_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1496_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_51",
+      "outputs": [
+        "v1514_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1514_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_47",
+      "outputs": [
+        "v1516_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1516_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "quantize_48",
+      "outputs": [
+        "v1521_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1521_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "dequantize_106",
+      "outputs": [
+        "v1526_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1526_0"
+      ],
+      "kind": "accelerator",
+      "name": "conv_52",
+      "outputs": [
+        "v1541_0"
+      ],
+      "preference_weight": 1,
+      "preferred_layout": "NHWC",
+      "reason": "accelerator activation ports share one selectable physical layout",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1541_0",
+        "v1459_0"
+      ],
+      "kind": "residual",
+      "name": "add_15",
+      "outputs": [
+        "v1543_0"
+      ],
+      "preference_weight": 1,
+      "reason": "residual inputs and output must agree physically",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": true,
+      "inputs": [
+        "v1543_0"
+      ],
+      "kind": "layout_preserving",
+      "name": "minmax_48",
+      "outputs": [
+        "v1545_0"
+      ],
+      "preference_weight": 1,
+      "reason": "element indexing is independent of physical activation axis order",
+      "supported_layouts": [
+        "NCHW",
+        "NHWC"
+      ]
+    },
+    {
+      "couple": false,
+      "inputs": [],
+      "kind": "fixed_boundary",
+      "name": "reduce_0",
+      "outputs": [
+        "v1554_0"
+      ],
+      "preference_weight": 1,
+      "reason": "current lowering is fixed to the canonical activation layout",
+      "supported_layouts": [
+        "NCHW"
+      ]
+    },
+    {
+      "couple": false,
+      "inputs": [
+        "v1554_0"
+      ],
+      "kind": "unsafe_view_boundary",
+      "name": "view_0",
+      "outputs": [],
+      "preference_weight": 1,
+      "reason": "view changes rank or shape and has no proved physical-axis mapping",
+      "supported_layouts": [
+        "NCHW"
+      ]
+    },
+    {
+      "couple": false,
+      "inputs": [
+        "v1545_0"
+      ],
+      "kind": "unattributed_boundary",
+      "name": "unattributed_1548_linalg.reduce",
+      "outputs": [],
+      "preference_weight": 1,
+      "reason": "activation operation has no provenance/layout contract",
+      "supported_layouts": [
+        "NCHW"
+      ]
+    },
+    {
+      "couple": false,
+      "inputs": [],
+      "kind": "graph_input",
+      "name": "graph_input_216",
+      "outputs": [
+        "arg216"
+      ],
+      "preference_weight": 1,
+      "reason": "entry ABI declares canonical physical layout",
+      "supported_layouts": [
+        "NCHW"
+      ]
+    }
+  ],
+  "schema": "target_neutral_physical_layout_graph_v1",
+  "source": {
+    "bytes": 592476,
+    "kind": "provenance_annotated_linalg",
+    "payload_included": false,
+    "sha256": "6225862d8897e18db21c7d21ac98f5a267862d5acf743537b1bbdb9df6093316"
+  },
+  "values": {
+    "arg216": {
+      "dtype": "f32",
+      "nbytes": 602112,
+      "shape": [
+        1,
+        3,
+        224,
+        224
+      ]
+    },
+    "v1005_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1007_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1009_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1014_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1019_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1034_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1036_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1041_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1046_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v104_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v1064_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1066_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1071_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1076_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1091_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1093_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1095_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1100_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1105_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1120_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1122_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1127_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1132_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1150_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1152_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1157_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1162_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1177_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1179_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1181_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1186_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1191_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v119_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v1206_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1208_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1213_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1218_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v121_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v1236_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1238_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1243_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1248_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v1263_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1265_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1267_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v126_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v1272_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1277_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1282_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v1297_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        512,
+        14,
+        14
+      ]
+    },
+    "v1299_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        512,
+        14,
+        14
+      ]
+    },
+    "v1304_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        14,
+        14
+      ]
+    },
+    "v1309_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        512,
+        14,
+        14
+      ]
+    },
+    "v131_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v1327_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1329_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1334_0": {
+      "dtype": "i8",
+      "nbytes": 25088,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1339_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1354_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1369_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1371_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1373_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1378_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1383_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1398_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1400_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1405_0": {
+      "dtype": "i8",
+      "nbytes": 25088,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1410_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1428_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1430_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1435_0": {
+      "dtype": "i8",
+      "nbytes": 25088,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1440_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1455_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1457_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1459_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1464_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1469_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1484_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1486_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1491_0": {
+      "dtype": "i8",
+      "nbytes": 25088,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1496_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v149_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v1514_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1516_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v151_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v1521_0": {
+      "dtype": "i8",
+      "nbytes": 25088,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1526_0": {
+      "dtype": "f32",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        512,
+        7,
+        7
+      ]
+    },
+    "v1541_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1543_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1545_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    "v1554_0": {
+      "dtype": "f32",
+      "nbytes": 8192,
+      "shape": [
+        1,
+        2048,
+        1,
+        1
+      ]
+    },
+    "v156_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v161_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v176_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v191_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v193_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v195_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v200_0": {
+      "dtype": "i8",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v205_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v220_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v222_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v227_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v232_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v250_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v252_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v257_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v262_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v277_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v279_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v281_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v286_0": {
+      "dtype": "i8",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v291_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v306_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v308_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v313_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v318_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v336_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v338_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v343_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v348_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v363_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v365_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v367_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v372_0": {
+      "dtype": "i8",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v377_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v382_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    "v397_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        128,
+        56,
+        56
+      ]
+    },
+    "v399_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        128,
+        56,
+        56
+      ]
+    },
+    "v404_0": {
+      "dtype": "i8",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        56,
+        56
+      ]
+    },
+    "v409_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        128,
+        56,
+        56
+      ]
+    },
+    "v427_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v429_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v434_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v439_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v454_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v469_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v471_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v473_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v478_0": {
+      "dtype": "i8",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v483_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v498_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v500_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v505_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v510_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v528_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v530_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v535_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v540_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v555_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v557_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v559_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v564_0": {
+      "dtype": "i8",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v569_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v584_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v586_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v58_0": {
+      "dtype": "i8",
+      "nbytes": 150528,
+      "shape": [
+        1,
+        3,
+        224,
+        224
+      ]
+    },
+    "v591_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v596_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v614_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v616_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v621_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v626_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v63_0": {
+      "dtype": "f32",
+      "nbytes": 602112,
+      "shape": [
+        1,
+        3,
+        224,
+        224
+      ]
+    },
+    "v641_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v643_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v645_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v650_0": {
+      "dtype": "i8",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v655_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v670_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v672_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v677_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v682_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v700_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v702_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v707_0": {
+      "dtype": "i8",
+      "nbytes": 100352,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v712_0": {
+      "dtype": "f32",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        128,
+        28,
+        28
+      ]
+    },
+    "v727_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v729_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v731_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v736_0": {
+      "dtype": "i8",
+      "nbytes": 401408,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v741_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v746_0": {
+      "dtype": "f32",
+      "nbytes": 1605632,
+      "shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    "v761_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        256,
+        28,
+        28
+      ]
+    },
+    "v763_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        256,
+        28,
+        28
+      ]
+    },
+    "v768_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        28,
+        28
+      ]
+    },
+    "v773_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        256,
+        28,
+        28
+      ]
+    },
+    "v791_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v793_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v798_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v803_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v818_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v81_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "v833_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v835_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v837_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v83_0": {
+      "dtype": "f32",
+      "nbytes": 3211264,
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "v842_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v847_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v862_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v864_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v869_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v874_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v892_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v894_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v899_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v89_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v904_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v919_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v921_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v923_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v928_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v933_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    "v948_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v94_0": {
+      "dtype": "i8",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    },
+    "v950_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v955_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v960_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v978_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v980_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v985_0": {
+      "dtype": "i8",
+      "nbytes": 50176,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v990_0": {
+      "dtype": "f32",
+      "nbytes": 200704,
+      "shape": [
+        1,
+        256,
+        14,
+        14
+      ]
+    },
+    "v99_0": {
+      "dtype": "f32",
+      "nbytes": 802816,
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ]
+    }
+  }
+}

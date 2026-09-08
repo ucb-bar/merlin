@@ -22,6 +22,18 @@
     "diagnostic_switch": "--diagnostic-transposed-nchw-loop-conv",
     "spike_prediction_rejected": "-1.98% simulated cycles did not rank hardware correctly"
   },
+  "physical_layout_planning": {
+    "status": "structurally_planned_not_runtime_lowered",
+    "preferred_layout": "NHWC",
+    "convolutions_planned": 53,
+    "residual_merges_constrained": 16,
+    "layout_preserving_regions": 151,
+    "activation_values": 223,
+    "components": 3,
+    "required_boundaries": 4,
+    "source_ir_conversion_bytes": 5017600,
+    "runtime_speed_claimed": false
+  },
   "target_identity": {
     "production_target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859",
     "q535_target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859",
@@ -29,7 +41,7 @@
     "q545_target_sha256": "ac1fb50a5176c3749c6abea51be254f68108174e7f7831c813caca3a872dc673"
   },
   "tests": {
-    "passed": 55,
+    "passed": 62,
     "subtests_passed": 6,
     "command": "PYTHONPATH=$PWD/compiler:../../../../../merlin/python python -m pytest -q tests"
   },

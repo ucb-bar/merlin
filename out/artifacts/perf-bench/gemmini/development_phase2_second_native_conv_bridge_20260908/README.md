@@ -77,6 +77,41 @@ Until the controller/store contract changes, q535's streamed-row im2col + `LOOP_
 hardware-ranked implementation for all 53 convolutions.  A compiler cost model should reject
 batch-one `trans_input_3120` compute-only selection rather than trusting Spike's -1.98% estimate.
 
+## Executable whole-graph layout plan
+
+`compiler/mlir_oot/lowering/physical_layout.py` now implements the missing bounded planning layer
+without target assumptions.  It joins producer/consumer values across layout-polymorphic operators,
+makes residual-branch agreement a hard constraint, maximizes accelerated operators in their preferred
+layout, and places conversions only on non-polymorphic ports.  The operation vocabulary and supported
+layouts are caller-provided data.
+
+`compiler/mlir_oot/frontend/capture_layout.py` constructs that graph structurally from xDSL IR and
+fails closed on unattributed activation operations.  Running `analyze_physical_layout.py` on the
+canonical per-tensor ResNet capture produces the payload-free graph and census under
+`validation/canonical_resnet50/`:
+
+| structural result | count |
+|---|---:|
+| convolutions selected in preferred NHWC | 53 / 53 |
+| residual merges with branch agreement enforced | 16 / 16 |
+| rank-4 quantize/dequantize/ReLU regions propagated | 151 |
+| activation values | 223 |
+| joined layout components | 3 |
+| required current-codegen boundaries | 4 |
+| source-IR bytes at those boundaries | 5,017,600 |
+
+The four conversions are exact and explainable: canonical ABI input to NHWC, NHWC to/from the
+currently NCHW-only maxpool lowering, and NHWC to canonical layout before the final average-pool
+reduction.  The latter `linalg.reduce` has no provenance annotation in the capture, so the extractor
+correctly records it as an unattributed boundary.  The terminal rank-changing view also fails closed,
+but it follows a canonical-layout reduction and therefore adds no conversion.
+
+This is a **structural plan, not a runtime result**.  Enabling it requires backend implementations for
+NHWC buffer allocation/index maps and the four conversion sites.  Making maxpool layout-polymorphic
+would remove two of those sites; restoring provenance and adding a physical-axis contract to the
+average-pool reduction is the next graph-level blocker.  The verifier re-solves the packaged graph and
+checks all 53 convolutions and 16 residual constraints, so the census cannot silently drift.
+
 At whole-graph level, the current command buffer still exposes 119 host regions: 50
 `quantize_per_tensor`, 49 min/max, 16 residual adds, one maxpool, one avgpool, one view, and one
 miscellaneous region.  The highest-value automatic path is therefore NHWC propagation plus an
