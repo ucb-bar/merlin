@@ -84,7 +84,16 @@ class LaneCost:
     #: (role, dtype) -> bytes, for every tensor whose footprint was derivable.
     bytes_by_role_dtype: Mapping[tuple[str, str], int]
     footprint_bytes: int
-    #: Lower bound on DRAM traffic per invocation: round-trip roles counted twice, others once.
+    #: DRAM traffic per invocation, counting round-trip roles twice and others once.
+    #:
+    #: ⚠️ This is a lower bound ONLY for tensors that are streamed in full. It is an UPPER bound for
+    #: one that is randomly accessed -- an embedding table read by token lookup touches `seq_len`
+    #: rows, not all of them, and nothing in a command buffer says which access pattern a host-side
+    #: input gets. MEASURED consequence: a 2.6B-parameter model's f32 embedding table is
+    #: 2,250 MiB here and is referenced by no accelerator command at all, so treating that figure as
+    #: traffic overstates it by however much of the table a single inference never touches. Compare
+    #: traffic across two compiles of the SAME graph (where the access patterns are identical) and
+    #: it is sound; read one number as an absolute and it is not.
     traffic_bytes: int
     #: (lane, family) -> region count, from the program's own lane record; empty when absent.
     regions_by_lane_family: Mapping[tuple[str, str], int]
