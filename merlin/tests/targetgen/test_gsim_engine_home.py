@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -50,6 +51,47 @@ def _write_receipt(target: str, binary_sha256: str, **over) -> None:
            "tools": {"gsim_emitter": {"sha256": "e" * 64}}}
     doc.update(over)
     (GE.gsim_home(target) / GE.RECEIPT_NAME).write_text(json.dumps(doc), encoding="utf-8")
+
+
+def _write_strict_receipt(target: str, binary) -> dict:
+    home = GE.gsim_home(target)
+    pinned = {}
+    for name in ("firrtl", "model_manifest", "gsim_emitter", "cxx_wrapper", "cxx_compiler",
+                 "harness"):
+        path = home / name
+        path.write_text(f"exact {name}\n", encoding="utf-8")
+        from merlin.common import provenance
+        pinned[name] = {"path": str(path.resolve()), "sha256": provenance.file_digest(path)}
+    from merlin.common import provenance
+    binary_pin = {"path": str(binary.resolve()), "sha256": provenance.file_digest(binary)}
+    inputs = [{"role": "harness", **pinned["harness"]}]
+    commands = [
+        {"stage": "emit", "cwd": str(home.resolve()),
+         "argv": [pinned["gsim_emitter"]["path"], "design.fir"]},
+        {"stage": "compile", "cwd": str(home.resolve()),
+         "argv": [pinned["cxx_wrapper"]["path"], "model.cpp"]},
+        {"stage": "link", "cwd": str(home.resolve()),
+         "argv": [pinned["cxx_wrapper"]["path"], "model.o"]},
+    ]
+    doc = {
+        "schema_version": GE.STRICT_RECEIPT_SCHEMA,
+        "status": "complete",
+        "provenance": {"firrtl_boundary": GE.FIRRTL_BOUNDARY_ADOPTED,
+                       "elaboration_performed": False,
+                       "warning": GE.ADOPTED_FIRRTL_WARNING},
+        "firrtl_sha256": pinned["firrtl"]["sha256"],
+        "model_manifest_sha256": pinned["model_manifest"]["sha256"],
+        "binary_sha256": binary_pin["sha256"],
+        "artifacts": {"firrtl": pinned["firrtl"], "model_manifest": pinned["model_manifest"],
+                      "binary": binary_pin},
+        "tools": {name: pinned[name] for name in ("gsim_emitter", "cxx_wrapper", "cxx_compiler")},
+        "inputs": inputs,
+        "inputs_sha256": GE._canonical_sha(inputs),
+        "commands": commands,
+        "commands_sha256": GE._canonical_sha(commands),
+    }
+    (home / GE.RECEIPT_NAME).write_text(json.dumps(doc), encoding="utf-8")
+    return doc
 
 
 # --- present -> selected ------------------------------------------------------------------------
@@ -164,6 +206,40 @@ def test_a_matching_receipt_binds_the_lineage_and_the_citation_carries_it(out_ro
     assert cite["available"] is True and cite["refused"] is False
     assert cite["binary_sha256"] == provenance.file_digest(emu)
     assert cite["receipt"]["tools"]["gsim_emitter"] == "e" * 64
+
+
+def test_a_v3_adopted_firrtl_receipt_binds_only_after_all_bytes_validate(out_root):
+    target = "fixture_strict"
+    emu = _install_binary(target)
+    doc = _write_strict_receipt(target, emu)
+
+    res = GE.resolve(target)
+    assert res.ok is True and res.receipt_status == "bound", res.reason
+    assert res.receipt["firrtl_sha256"] == doc["firrtl_sha256"]
+    assert res.receipt["provenance"]["elaboration_performed"] is False
+
+
+def test_a_v3_receipt_is_refused_when_a_pinned_input_changes(out_root):
+    target = "fixture_strict_changed"
+    emu = _install_binary(target)
+    doc = _write_strict_receipt(target, emu)
+    Path(doc["inputs"][0]["path"]).write_text("changed harness\n", encoding="utf-8")
+
+    res = GE.resolve(target)
+    assert res.ok is False and res.refused is True
+    assert "input pin changed" in res.reason
+
+
+def test_a_v3_adopted_receipt_is_refused_without_the_required_warning(out_root):
+    target = "fixture_strict_warning"
+    emu = _install_binary(target)
+    doc = _write_strict_receipt(target, emu)
+    doc["provenance"].pop("warning")
+    (GE.gsim_home(target) / GE.RECEIPT_NAME).write_text(json.dumps(doc), encoding="utf-8")
+
+    res = GE.resolve(target)
+    assert res.ok is False and res.refused is True
+    assert "provenance contradicts" in res.reason
 
 
 def test_an_unreceipted_emulator_says_so_and_can_be_made_fatal(out_root, monkeypatch):

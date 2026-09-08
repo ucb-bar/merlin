@@ -37,7 +37,14 @@ except ModuleNotFoundError:  # imported by a location-based unit test
 
 CAPTURE_SCHEMA = "merlin.gsim-xval-case.v1"
 MODEL_MANIFEST_SCHEMA = "merlin.gsim-generated-model.v1"
-BUILD_RECEIPT_SCHEMA = "merlin.gsim-model-build.v2"
+BUILD_RECEIPT_SCHEMA_V2 = "merlin.gsim-model-build.v2"
+BUILD_RECEIPT_SCHEMA = "merlin.gsim-model-build.v3"
+FIRRTL_BOUNDARY_ELABORATED = "elaborated_in_build"
+FIRRTL_BOUNDARY_ADOPTED = "adopted_preexisting"
+ADOPTED_FIRRTL_WARNING = (
+    "FIRRTL was adopted as a pre-existing byte-pinned input; this receipt does not establish "
+    "the RTL revision or command that originally elaborated it."
+)
 REFUSAL_SCHEMA = "merlin.gsim-certificate-refusal.v1"
 
 
@@ -250,7 +257,8 @@ def build_receipt_document(*, firrtl: str | Path, model_manifest: str | Path,
                            binary: str | Path, emitter: str | Path,
                            cxx_wrapper: str | Path, cxx_compiler: str | Path,
                            inputs: Sequence[tuple[str, str | Path]],
-                           commands: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+                           commands: Sequence[Mapping[str, Any]],
+                           firrtl_boundary: str = FIRRTL_BOUNDARY_ELABORATED) -> dict[str, Any]:
     """Seal the complete, ordered native-model build lineage.
 
     ``inputs`` includes every source repair, harness/support source, static library, and upstream
@@ -287,12 +295,31 @@ def build_receipt_document(*, firrtl: str | Path, model_manifest: str | Path,
             raise ProducerError(f"build command {index} has no exact argv")
         command_rows.append({"stage": stage.strip(), "cwd": cwd, "argv": list(argv)})
     stages = [row["stage"] for row in command_rows]
-    if "elaborate" not in stages or "emit" not in stages or "compile" not in stages \
-            or not stages or stages[-1] != "link":
-        raise ProducerError("build transcript must contain elaborate, emit, compile, and final link stages")
+    if "emit" not in stages or "compile" not in stages or not stages or stages[-1] != "link":
+        raise ProducerError("build transcript must contain emit, compile, and final link stages")
+    if firrtl_boundary == FIRRTL_BOUNDARY_ELABORATED:
+        if "elaborate" not in stages:
+            raise ProducerError("an elaborated-in-build receipt must contain an elaborate command")
+        provenance = {"firrtl_boundary": firrtl_boundary, "elaboration_performed": True}
+    elif firrtl_boundary == FIRRTL_BOUNDARY_ADOPTED:
+        if "elaborate" in stages:
+            raise ProducerError("an adopted-preexisting receipt must not claim an elaborate command")
+        provenance = {"firrtl_boundary": firrtl_boundary, "elaboration_performed": False,
+                      "warning": ADOPTED_FIRRTL_WARNING}
+    else:
+        raise ProducerError(f"unknown FIRRTL provenance boundary {firrtl_boundary!r}")
+    emit_argv0 = {row["argv"][0] for row in command_rows if row["stage"] == "emit"}
+    compile_argv0 = {row["argv"][0] for row in command_rows if row["stage"] == "compile"}
+    link_argv0 = {row["argv"][0] for row in command_rows if row["stage"] == "link"}
+    if tool_pins["gsim_emitter"]["path"] not in emit_argv0:
+        raise ProducerError("emit transcript does not invoke the pinned GSIM emitter")
+    accepted_cxx = {tool_pins["cxx_wrapper"]["path"], tool_pins["cxx_compiler"]["path"]}
+    if not compile_argv0.intersection(accepted_cxx) or not link_argv0.intersection(accepted_cxx):
+        raise ProducerError("compile/link transcript does not invoke the pinned C++ toolchain")
     return {
         "schema_version": BUILD_RECEIPT_SCHEMA,
         "status": "complete",
+        "provenance": provenance,
         "firrtl_sha256": firrtl_pin["sha256"],
         "model_manifest_sha256": manifest_pin["sha256"],
         "binary_sha256": binary_pin["sha256"],
@@ -318,7 +345,9 @@ def validate_build_receipt(path: str | Path, *, pins: Mapping[str, Mapping[str, 
     """Prove the sealed source manifest/FIRRTL were the inputs to the pinned GSIM binary."""
     receipt_path = Path(path)
     doc = _load_mapping(receipt_path)
-    if doc.get("schema_version") != BUILD_RECEIPT_SCHEMA or doc.get("status") != "complete":
+    schema = doc.get("schema_version")
+    if schema not in {BUILD_RECEIPT_SCHEMA_V2, BUILD_RECEIPT_SCHEMA} \
+            or doc.get("status") != "complete":
         raise ProducerError("GSIM build receipt is absent, incomplete, or has the wrong schema")
     expected = {
         "firrtl_sha256": pins["gsim_firrtl"]["sha256"],
@@ -359,9 +388,34 @@ def validate_build_receipt(path: str | Path, *, pins: Mapping[str, Mapping[str, 
                 or not all(isinstance(arg, str) for arg in argv):
             raise ProducerError(f"GSIM build receipt command {index} lacks stage/cwd/exact argv")
         stages.append(stage)
-    if "elaborate" not in stages or "emit" not in stages or "compile" not in stages \
-            or stages[-1] != "link":
+    if "emit" not in stages or "compile" not in stages or stages[-1] != "link":
         raise ProducerError("GSIM build receipt command transcript is incomplete or unordered")
+    if schema == BUILD_RECEIPT_SCHEMA_V2:
+        if "elaborate" not in stages:
+            raise ProducerError("GSIM v2 build receipt command transcript lacks elaboration")
+    else:
+        provenance = doc.get("provenance")
+        if not isinstance(provenance, Mapping):
+            raise ProducerError("GSIM v3 build receipt lacks its FIRRTL provenance boundary")
+        boundary = provenance.get("firrtl_boundary")
+        if boundary == FIRRTL_BOUNDARY_ELABORATED:
+            if provenance.get("elaboration_performed") is not True or "elaborate" not in stages:
+                raise ProducerError("GSIM elaborated-in-build receipt contradicts its command transcript")
+        elif boundary == FIRRTL_BOUNDARY_ADOPTED:
+            if provenance.get("elaboration_performed") is not False \
+                    or provenance.get("warning") != ADOPTED_FIRRTL_WARNING \
+                    or "elaborate" in stages:
+                raise ProducerError("GSIM adopted-preexisting receipt contradicts its provenance boundary")
+        else:
+            raise ProducerError("GSIM v3 build receipt has an unknown FIRRTL provenance boundary")
+        emit_argv0 = {row["argv"][0] for row in commands if row["stage"] == "emit"}
+        compile_argv0 = {row["argv"][0] for row in commands if row["stage"] == "compile"}
+        link_argv0 = {row["argv"][0] for row in commands if row["stage"] == "link"}
+        if tools["gsim_emitter"]["path"] not in emit_argv0:
+            raise ProducerError("GSIM v3 receipt does not invoke its pinned emitter")
+        accepted_cxx = {tools["cxx_wrapper"]["path"], tools["cxx_compiler"]["path"]}
+        if not compile_argv0.intersection(accepted_cxx) or not link_argv0.intersection(accepted_cxx):
+            raise ProducerError("GSIM v3 receipt does not invoke its pinned C++ toolchain")
     if doc.get("commands_sha256") != _document_sha(commands):
         raise ProducerError("GSIM build receipt command transcript digest is invalid")
     return {"path": str(receipt_path.resolve()), "sha256": _sha_file(receipt_path),
@@ -860,6 +914,10 @@ def _parser() -> argparse.ArgumentParser:
     receipt.add_argument("--input", action="append", required=True, metavar="ROLE=PATH")
     receipt.add_argument("--commands", required=True,
                          help="JSON list of ordered {stage,cwd,argv} records")
+    receipt.add_argument("--firrtl-boundary", choices=(FIRRTL_BOUNDARY_ELABORATED,
+                                                        FIRRTL_BOUNDARY_ADOPTED),
+                         default=FIRRTL_BOUNDARY_ELABORATED,
+                         help="whether this transcript elaborated FIRRTL or adopted pinned existing bytes")
     receipt.add_argument("--output", required=True)
 
     capture = commands.add_parser("capture", help="run one same-ELF GSIM/Verilator capture")
@@ -924,7 +982,7 @@ def main(argv: list[str] | None = None) -> int:
             output=args.output, firrtl=args.firrtl, model_manifest=args.model_manifest,
             binary=args.binary, emitter=args.emitter, cxx_wrapper=args.cxx_wrapper,
             cxx_compiler=args.cxx_compiler, inputs=[_role_path(value) for value in args.input],
-            commands=command_rows)
+            commands=command_rows, firrtl_boundary=args.firrtl_boundary)
         return 0
     artifacts = _artifact_paths(args)
     if args.action == "capture":

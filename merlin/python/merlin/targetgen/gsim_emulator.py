@@ -38,6 +38,7 @@ directory is derived from it, and the digests come from the bytes on disk.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -65,6 +66,13 @@ WRAPPER_SUFFIX = "_run.py"
 #: pinned here — a newer receipt schema still binds its binary the same way, and refusing an emulator
 #: because its receipt is a version newer than this module would fail closed on the wrong thing.
 RECEIPT_SCHEMA_PREFIX = "merlin.gsim-model-build."
+STRICT_RECEIPT_SCHEMA = "merlin.gsim-model-build.v3"
+FIRRTL_BOUNDARY_ELABORATED = "elaborated_in_build"
+FIRRTL_BOUNDARY_ADOPTED = "adopted_preexisting"
+ADOPTED_FIRRTL_WARNING = (
+    "FIRRTL was adopted as a pre-existing byte-pinned input; this receipt does not establish "
+    "the RTL revision or command that originally elaborated it."
+)
 
 #: Set to make an UNRECEIPTED emulator unusable rather than merely loudly unattributed. Off by default:
 #: a developer who just built a model locally must be able to run it; a run that publishes a verdict
@@ -215,8 +223,91 @@ def _receipt_block(doc: dict[str, Any], path: Path, digest: str) -> dict[str, An
         "model_manifest_sha256": doc.get("model_manifest_sha256") or _sha(arts.get("model_manifest")),
         "inputs_sha256": doc.get("inputs_sha256"),
         "commands_sha256": doc.get("commands_sha256"),
+        "provenance": doc.get("provenance"),
         "tools": {k: _sha(v) for k, v in tools.items() if isinstance(v, dict)},
     }
+
+
+def _canonical_sha(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
+    """Validate every byte/transcript commitment introduced by the v3 receipt."""
+    artifacts, tools, inputs, commands = (doc.get("artifacts"), doc.get("tools"),
+                                          doc.get("inputs"), doc.get("commands"))
+    if not isinstance(artifacts, dict) or set(artifacts) != {"firrtl", "model_manifest", "binary"}:
+        return "v3 receipt lacks exact FIRRTL/model/binary artifact pins"
+    if not isinstance(tools, dict) or set(tools) != {"gsim_emitter", "cxx_wrapper", "cxx_compiler"}:
+        return "v3 receipt lacks exact emitter/compiler/wrapper pins"
+    if not isinstance(inputs, list) or not inputs:
+        return "v3 receipt has no sealed harness/support/library inputs"
+
+    for label, rows in (("artifact", artifacts.values()), ("tool", tools.values()), ("input", inputs)):
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("sha256"), str):
+                return f"v3 receipt has a malformed {label} pin"
+            path = Path(str(row.get("path") or ""))
+            if not path.is_absolute() or path.is_symlink() or not path.is_file():
+                return f"v3 receipt {label} pin is absent, relative, or a symlink: {path}"
+            if _digest(path) != row["sha256"]:
+                return f"v3 receipt {label} pin changed: {path}"
+    expected_top = {
+        "firrtl_sha256": artifacts["firrtl"]["sha256"],
+        "model_manifest_sha256": artifacts["model_manifest"]["sha256"],
+        "binary_sha256": artifacts["binary"]["sha256"],
+    }
+    for key, value in expected_top.items():
+        if doc.get(key) != value:
+            return f"v3 receipt top-level {key} does not match its artifact pin"
+    roles = [row.get("role") for row in inputs]
+    if any(not isinstance(role, str) or not role for role in roles) or len(set(roles)) != len(roles):
+        return "v3 receipt input roles are absent or duplicated"
+    if doc.get("inputs_sha256") != _canonical_sha(inputs):
+        return "v3 receipt input commitment is invalid"
+
+    if not isinstance(commands, list) or not commands:
+        return "v3 receipt has no ordered command transcript"
+    stages = []
+    for index, row in enumerate(commands):
+        if not isinstance(row, dict):
+            return f"v3 receipt command {index} is malformed"
+        stage, cwd, argv = row.get("stage"), row.get("cwd"), row.get("argv")
+        if not isinstance(stage, str) or not isinstance(cwd, str) or not Path(cwd).is_absolute() \
+                or not isinstance(argv, list) or not argv \
+                or not all(isinstance(arg, str) for arg in argv):
+            return f"v3 receipt command {index} lacks stage/cwd/exact argv"
+        stages.append(stage)
+    if "emit" not in stages or "compile" not in stages or stages[-1] != "link":
+        return "v3 receipt command transcript lacks emit, compile, or final link"
+    if doc.get("commands_sha256") != _canonical_sha(commands):
+        return "v3 receipt command commitment is invalid"
+
+    provenance = doc.get("provenance")
+    if not isinstance(provenance, dict):
+        return "v3 receipt lacks its FIRRTL provenance boundary"
+    boundary = provenance.get("firrtl_boundary")
+    if boundary == FIRRTL_BOUNDARY_ELABORATED:
+        if provenance.get("elaboration_performed") is not True or "elaborate" not in stages:
+            return "v3 elaborated-in-build provenance contradicts its transcript"
+    elif boundary == FIRRTL_BOUNDARY_ADOPTED:
+        if provenance.get("elaboration_performed") is not False \
+                or provenance.get("warning") != ADOPTED_FIRRTL_WARNING \
+                or "elaborate" in stages:
+            return "v3 adopted-preexisting provenance contradicts its transcript"
+    else:
+        return "v3 receipt has an unknown FIRRTL provenance boundary"
+
+    emit_argv0 = {row["argv"][0] for row in commands if row["stage"] == "emit"}
+    compile_argv0 = {row["argv"][0] for row in commands if row["stage"] == "compile"}
+    link_argv0 = {row["argv"][0] for row in commands if row["stage"] == "link"}
+    if tools["gsim_emitter"]["path"] not in emit_argv0:
+        return "v3 receipt emit transcript does not invoke the pinned emitter"
+    accepted_cxx = {tools["cxx_wrapper"]["path"], tools["cxx_compiler"]["path"]}
+    if not compile_argv0.intersection(accepted_cxx) or not link_argv0.intersection(accepted_cxx):
+        return "v3 receipt compile/link transcript does not invoke the pinned C++ toolchain"
+    return None
 
 
 def _validate_receipt(target: str, binary: Path, digest: str,
@@ -252,6 +343,10 @@ def _validate_receipt(target: str, binary: Path, digest: str,
         return "invalid", (f"build receipt {receipt.name} binds {declared[:12]} but {binary.name} is "
                            f"{digest[:12]} — the receipt describes a DIFFERENT binary, so its RTL and "
                            f"tool identity say nothing about these bytes"), None
+    if schema == STRICT_RECEIPT_SCHEMA:
+        strict_error = _strict_receipt_error(doc)
+        if strict_error is not None:
+            return "invalid", strict_error, None
     return "bound", f"lineage bound by {receipt.name}", _receipt_block(doc, receipt, digest)
 
 

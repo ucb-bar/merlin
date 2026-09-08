@@ -86,9 +86,12 @@ def _make_certificate(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
         extra[name].write_text(f"exact-{name}", encoding="utf-8")
     commands = [
         {"stage": "elaborate", "cwd": str(tmp_path), "argv": ["java", "Generator"]},
-        {"stage": "emit", "cwd": str(tmp_path), "argv": ["gsim", "input.fir"]},
-        {"stage": "compile", "cwd": str(tmp_path), "argv": ["clang++", "model.cpp"]},
-        {"stage": "link", "cwd": str(tmp_path), "argv": ["clang++", "model.o", "-o", "gsim"]},
+        {"stage": "emit", "cwd": str(tmp_path),
+         "argv": [str(extra["gsim_emitter"].resolve()), "input.fir"]},
+        {"stage": "compile", "cwd": str(tmp_path),
+         "argv": [str(extra["cxx_wrapper"].resolve()), "model.cpp"]},
+        {"stage": "link", "cwd": str(tmp_path),
+         "argv": [str(extra["cxx_wrapper"].resolve()), "model.o", "-o", "gsim"]},
     ]
     inputs = [
         {"role": "harness", "path": str(extra["harness"]), "sha256": _sha(extra["harness"]),
@@ -99,6 +102,8 @@ def _make_certificate(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
     build_receipt = tmp_path / "gsim_build_receipt.json"
     build_receipt.write_text(json.dumps({
         "schema_version": GATE.BUILD_RECEIPT_SCHEMA, "status": "complete",
+        "provenance": {"firrtl_boundary": GATE.FIRRTL_BOUNDARY_ELABORATED,
+                       "elaboration_performed": True},
         "firrtl_sha256": _sha(artifacts["gsim_firrtl"]),
         "model_manifest_sha256": _sha(artifacts["gsim_model"]),
         "binary_sha256": _sha(artifacts["gsim_binary"]),

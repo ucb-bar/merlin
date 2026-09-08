@@ -26,7 +26,14 @@ GSIM_ENGINE = "gsim"
 REFERENCE_ENGINE = "verilator"
 STRONG_EVIDENCE = "output_bytes"
 OUTPUT_ENCODING = "command_buffer_declared_tensor_little_endian.v1"
-BUILD_RECEIPT_SCHEMA = "merlin.gsim-model-build.v2"
+BUILD_RECEIPT_SCHEMA_V2 = "merlin.gsim-model-build.v2"
+BUILD_RECEIPT_SCHEMA = "merlin.gsim-model-build.v3"
+FIRRTL_BOUNDARY_ELABORATED = "elaborated_in_build"
+FIRRTL_BOUNDARY_ADOPTED = "adopted_preexisting"
+ADOPTED_FIRRTL_WARNING = (
+    "FIRRTL was adopted as a pre-existing byte-pinned input; this receipt does not establish "
+    "the RTL revision or command that originally elaborated it."
+)
 CERTIFICATE_NAMES = ("gsim_equivalence_certificate.json",)
 RAW_REPORT_NAMES = ("xval_bytes.json", "xval_gm.json", "xval_gm_bytes.json")
 PHASES = frozenset(("development_correctness", "final_correctness", "final_performance"))
@@ -214,7 +221,8 @@ def _validate_build_binding(raw: Any, *, certificate_path: Path,
         receipt = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise GsimGateError(f"cannot read pinned GSIM build receipt: {exc}") from exc
-    if not isinstance(receipt, Mapping) or receipt.get("schema_version") != BUILD_RECEIPT_SCHEMA \
+    if not isinstance(receipt, Mapping) \
+            or receipt.get("schema_version") not in {BUILD_RECEIPT_SCHEMA_V2, BUILD_RECEIPT_SCHEMA} \
             or receipt.get("status") != "complete":
         raise GsimGateError("pinned GSIM build receipt is incomplete or has the wrong schema")
     expected = {
@@ -254,9 +262,34 @@ def _validate_build_binding(raw: Any, *, certificate_path: Path,
                 or not all(isinstance(arg, str) for arg in argv):
             raise GsimGateError(f"pinned GSIM build command {index} lacks stage/cwd/exact argv")
         stages.append(stage)
-    if "elaborate" not in stages or "emit" not in stages or "compile" not in stages \
-            or stages[-1] != "link":
+    if "emit" not in stages or "compile" not in stages or stages[-1] != "link":
         raise GsimGateError("pinned GSIM build command transcript is incomplete or unordered")
+    if receipt["schema_version"] == BUILD_RECEIPT_SCHEMA_V2:
+        if "elaborate" not in stages:
+            raise GsimGateError("pinned GSIM v2 build command transcript lacks elaboration")
+    else:
+        provenance = receipt.get("provenance")
+        if not isinstance(provenance, Mapping):
+            raise GsimGateError("pinned GSIM v3 build receipt lacks its FIRRTL provenance boundary")
+        boundary = provenance.get("firrtl_boundary")
+        if boundary == FIRRTL_BOUNDARY_ELABORATED:
+            if provenance.get("elaboration_performed") is not True or "elaborate" not in stages:
+                raise GsimGateError("pinned GSIM build provenance contradicts its transcript")
+        elif boundary == FIRRTL_BOUNDARY_ADOPTED:
+            if provenance.get("elaboration_performed") is not False \
+                    or provenance.get("warning") != ADOPTED_FIRRTL_WARNING \
+                    or "elaborate" in stages:
+                raise GsimGateError("pinned GSIM adopted-FIRRTL provenance contradicts its transcript")
+        else:
+            raise GsimGateError("pinned GSIM v3 build receipt has an unknown FIRRTL boundary")
+        emit_argv0 = {row["argv"][0] for row in commands if row["stage"] == "emit"}
+        compile_argv0 = {row["argv"][0] for row in commands if row["stage"] == "compile"}
+        link_argv0 = {row["argv"][0] for row in commands if row["stage"] == "link"}
+        if tools["gsim_emitter"]["path"] not in emit_argv0:
+            raise GsimGateError("pinned GSIM v3 receipt does not invoke its pinned emitter")
+        accepted_cxx = {tools["cxx_wrapper"]["path"], tools["cxx_compiler"]["path"]}
+        if not compile_argv0.intersection(accepted_cxx) or not link_argv0.intersection(accepted_cxx):
+            raise GsimGateError("pinned GSIM v3 receipt does not invoke its pinned C++ toolchain")
     command_digest = _digest_bytes(canonical_json(commands).encode("utf-8"))
     if receipt.get("commands_sha256") != command_digest or raw.get("commands_sha256") != command_digest:
         raise GsimGateError("pinned GSIM build command commitment is invalid")

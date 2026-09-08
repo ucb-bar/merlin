@@ -79,10 +79,13 @@ def _artifacts(tmp_path: Path) -> tuple[PRODUCER.ArtifactPaths, Path]:
         inputs=[("harness", tools["harness"]), ("static_library", tools["library"])],
         commands=[
             {"stage": "elaborate", "cwd": str(tmp_path), "argv": ["java", "Generator"]},
-            {"stage": "emit", "cwd": str(tmp_path), "argv": ["gsim", "input.fir"]},
-            {"stage": "compile", "cwd": str(tmp_path), "argv": ["clang++", "ChipTop0.cpp"]},
+            {"stage": "emit", "cwd": str(tmp_path),
+             "argv": [str(tools["emitter"].resolve()), "input.fir"]},
+            {"stage": "compile", "cwd": str(tmp_path),
+             "argv": [str(tools["wrapper"].resolve()), "ChipTop0.cpp"]},
             {"stage": "link", "cwd": str(tmp_path),
-             "argv": ["clang++", "ChipTop0.o", "harness.o", "-o", "gsim_binary"]},
+             "argv": [str(tools["wrapper"].resolve()), "ChipTop0.o", "harness.o", "-o",
+                      "gsim_binary"]},
         ])
     return artifacts, receipt
 
@@ -462,4 +465,69 @@ def test_build_receipt_rehashes_tools_and_ordered_transcript(tmp_path: Path) -> 
     doc["commands_sha256"] = PRODUCER._document_sha(doc["commands"])
     receipt.write_text(json.dumps(doc), encoding="utf-8")
     with pytest.raises(PRODUCER.ProducerError, match="incomplete or unordered"):
+        PRODUCER.validate_build_receipt(receipt, pins=artifacts.pinned())
+
+
+def test_build_receipt_can_honestly_adopt_preexisting_firrtl(tmp_path: Path) -> None:
+    artifacts, original = _artifacts(tmp_path)
+    doc = json.loads(original.read_text())
+    tools = doc["tools"]
+    inputs = [(row["role"], row["path"]) for row in doc["inputs"]]
+    receipt = tmp_path / "adopted_build_receipt.json"
+    commands = [row for row in doc["commands"] if row["stage"] != "elaborate"]
+    PRODUCER.write_build_receipt(
+        output=receipt,
+        firrtl=artifacts.gsim_firrtl,
+        model_manifest=artifacts.gsim_model,
+        binary=artifacts.gsim_binary,
+        emitter=tools["gsim_emitter"]["path"],
+        cxx_wrapper=tools["cxx_wrapper"]["path"],
+        cxx_compiler=tools["cxx_compiler"]["path"],
+        inputs=inputs,
+        commands=commands,
+        firrtl_boundary=PRODUCER.FIRRTL_BOUNDARY_ADOPTED,
+    )
+
+    adopted = json.loads(receipt.read_text())
+    assert adopted["schema_version"] == "merlin.gsim-model-build.v3"
+    assert adopted["provenance"] == {
+        "firrtl_boundary": "adopted_preexisting",
+        "elaboration_performed": False,
+        "warning": PRODUCER.ADOPTED_FIRRTL_WARNING,
+    }
+    assert all(row["stage"] != "elaborate" for row in adopted["commands"])
+    PRODUCER.validate_build_receipt(receipt, pins=artifacts.pinned())
+
+
+def test_adopted_firrtl_receipt_rejects_claimed_elaboration(tmp_path: Path) -> None:
+    artifacts, original = _artifacts(tmp_path)
+    doc = json.loads(original.read_text())
+    tools = doc["tools"]
+    inputs = [(row["role"], row["path"]) for row in doc["inputs"]]
+    with pytest.raises(PRODUCER.ProducerError, match="must not claim an elaborate command"):
+        PRODUCER.build_receipt_document(
+            firrtl=artifacts.gsim_firrtl,
+            model_manifest=artifacts.gsim_model,
+            binary=artifacts.gsim_binary,
+            emitter=tools["gsim_emitter"]["path"],
+            cxx_wrapper=tools["cxx_wrapper"]["path"],
+            cxx_compiler=tools["cxx_compiler"]["path"],
+            inputs=inputs,
+            commands=doc["commands"],
+            firrtl_boundary=PRODUCER.FIRRTL_BOUNDARY_ADOPTED,
+        )
+
+
+def test_adopted_firrtl_receipt_warning_is_load_bearing(tmp_path: Path) -> None:
+    artifacts, receipt = _artifacts(tmp_path)
+    doc = json.loads(receipt.read_text())
+    doc["commands"] = [row for row in doc["commands"] if row["stage"] != "elaborate"]
+    doc["commands_sha256"] = PRODUCER._document_sha(doc["commands"])
+    doc["provenance"] = {
+        "firrtl_boundary": PRODUCER.FIRRTL_BOUNDARY_ADOPTED,
+        "elaboration_performed": False,
+        "warning": "the important caveat was dropped",
+    }
+    receipt.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(PRODUCER.ProducerError, match="contradicts its provenance boundary"):
         PRODUCER.validate_build_receipt(receipt, pins=artifacts.pinned())
