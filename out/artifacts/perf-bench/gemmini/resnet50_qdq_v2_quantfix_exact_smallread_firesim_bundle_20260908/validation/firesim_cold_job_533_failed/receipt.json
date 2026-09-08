@@ -1,0 +1,47 @@
+{
+  "schema": "merlin_firesim_hardware_qualification_v1",
+  "status": "failed",
+  "qualification": "hardware_numeric_failure",
+  "queue_job": {
+    "id": 533,
+    "state": "DONE",
+    "return_code": 0,
+    "payload_status": "FAILED",
+    "payload_tohost": 1,
+    "terminal_wall_seconds": 360
+  },
+  "artifact_identity": {
+    "elf_sha256": "57eec4696c0fabc9e874b834dee1ad6735c812dc827d1da8e3a660d227d83e22",
+    "staged_elf_sha256": "57eec4696c0fabc9e874b834dee1ad6735c812dc827d1da8e3a660d227d83e22",
+    "executed_elf_sha256": "57eec4696c0fabc9e874b834dee1ad6735c812dc827d1da8e3a660d227d83e22",
+    "hwdb_sha256": "f7b38eb172f8748dd5331a6f8a0be942c277aa9f2079a525cf19e8e113eb3197",
+    "bitstream_archive_sha256": "8a9a907fbaef00048a96af97afe6197d14da5625998181244cb6c75f4a273ee2",
+    "flashed_bitstream_sha256": "5a3cfa9377b62dea05237891768e3796bdb3c057393ade5fcc6869b864bd7384",
+    "driver_sha256": "710ed4aecff8975ad47406a04805650d6fcf44f33c8079b039e1ae08e18458b3",
+    "deploy_quintuplet": "xilinx_alveo_u250-firesim-FireSim-FireSimUniversalResNet50GemminiRocketConfig-BaseXilinxAlveoU250Config"
+  },
+  "measurement": {
+    "protocol": "cold_no_warmup_batch_1",
+    "cycles": 3633774166,
+    "instret": 1842000666,
+    "target_cycles_total": 5017926797,
+    "accepted_for_performance": false
+  },
+  "correctness": {
+    "logits_checked": 1000,
+    "bad": 999,
+    "nonfinite": 0,
+    "top1": 749,
+    "expected_top1": 258,
+    "checksum_fnv1a64": "c6ea2a632a0912a3",
+    "status": "failed"
+  },
+  "root_cause": {
+    "target_fact": "execution_restrictions.hardcode_d_to_garbage_address=true",
+    "invalid_compiler_assumption": "radix-128 recovery can preload the previous digit correction through Gemmini D",
+    "spike_limitation": "the Spike model executed the unsupported live-D path and therefore produced a false target qualification",
+    "repair": "target profile now imports the D-preload restriction and refuses radix recovery on this RTL",
+    "next_codegen_path": "fuse convolution bias, per-channel requantization and activation into a narrow INT8 output plan, using native LOOP_CONV where representable"
+  },
+  "warm_arm_submitted": false
+}

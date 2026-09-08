@@ -1,0 +1,21 @@
+{
+  "schema": "merlin_firesim_queue_view_identity_v1",
+  "view": "/scratch/firesim_queue/queue_chipyard_views/view.vy3zlkhg",
+  "workload": "merlin-resnet50-quantfix-smallread-cold-57eec4696c0fabc9",
+  "bootbinary": "merlin-resnet50-quantfix-smallread-cold-57eec4696c0fabc9.elf",
+  "bootbinary_sha256": "57eec4696c0fabc9e874b834dee1ad6735c812dc827d1da8e3a660d227d83e22",
+  "workload_template": "/scratch/jack/chipyard/sims/firesim/deploy/workloads/merlin-l4-20-resnet50-generated.json",
+  "workload_template_sha256": "b922bf4792902b0f5e09339ecd3ace4f068c7aba6a790b326a53275e270fde30",
+  "generated_workload_json_sha256": "c3903c5892a144e34cf2e6b1de9ed240c7c009a14a65ec469a786f66a3ef3746",
+  "deploy_quintuplet": "xilinx_alveo_u250-firesim-FireSim-FireSimUniversalResNet50GemminiRocketConfig-BaseXilinxAlveoU250Config",
+  "bitstream": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/firesim.tar.gz",
+  "bitstream_sha256": "8a9a907fbaef00048a96af97afe6197d14da5625998181244cb6c75f4a273ee2",
+  "driver": "/scratch/jack/chipyard/sims/firesim/sim/output/xilinx_alveo_u250/xilinx_alveo_u250-firesim-FireSim-FireSimUniversalResNet50GemminiRocketConfig-BaseXilinxAlveoU250Config/FireSim-xilinx_alveo_u250",
+  "driver_sha256": "710ed4aecff8975ad47406a04805650d6fcf44f33c8079b039e1ae08e18458b3",
+  "queue_owned_lifecycle": [
+    "firesim kill",
+    "firesim infrasetup",
+    "firesim runworkload",
+    "firesim kill"
+  ]
+}

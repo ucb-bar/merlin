@@ -1,0 +1,14 @@
+{
+  "job_id": 533,
+  "user": "agustin",
+  "priority": 10,
+  "project": "merlin-gemmini-resnet50-quantfix-smallread-cold-isolated",
+  "chipyard": "/scratch/firesim_queue/queue_chipyard_views/view.vy3zlkhg",
+  "workload": "merlin-resnet50-quantfix-smallread-cold-57eec4696c0fabc9",
+  "bootbinary": "merlin-resnet50-quantfix-smallread-cold-57eec4696c0fabc9.elf",
+  "stage_from": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/resnet50_merlin_cold.elf",
+  "timeout": 3600,
+  "hw_config": "universal_resnet50_gemmini_u250_20260906",
+  "hwdb_config_artifact": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/firesim/built-hwdb-entry.yaml",
+  "hwdb_config_artifact_sha256": "f7b38eb172f8748dd5331a6f8a0be942c277aa9f2079a525cf19e8e113eb3197"
+}
