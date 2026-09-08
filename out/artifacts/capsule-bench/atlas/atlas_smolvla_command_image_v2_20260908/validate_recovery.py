@@ -11,6 +11,7 @@ import test_capture_bridge as bridge_tests
 import test_compact_loops as compact_tests
 import test_first_partition as partition_tests
 import test_full_graph_inventory as graph_tests
+import test_hybrid_runtime as hybrid_tests
 import test_parser_compat as parser_tests
 import test_partition_plan as plan_tests
 
@@ -60,6 +61,10 @@ bridge_tests.test_capture_bridge_fails_closed_on_semantic_or_value_drift()
 bridge_tests.test_saved_real_capture_qualification_is_scoped_and_passes_fixed_tolerance()
 bridge_tests.test_action_in_projection_binds_real_noise_and_independently_passes()
 bridge_tests.test_action_time_mlp_in_three_dispatches_independently_reconstruct_full_result()
+hybrid_tests.test_interval_allocator_respects_inclusive_lifetimes_and_reuses_storage()
+hybrid_tests.test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed()
+hybrid_tests.test_bounded_real_chain_replays_host_semantics_and_retains_scoped_evidence()
+hybrid_tests.test_hybrid_schedule_is_byte_stable_across_rebuilds()
 
 full = load(ROOT / "full_capture_probe.json")
 raw = load(ROOT / "cases/smolvla_tail_50_720_32/raw_readback.json")
@@ -67,6 +72,7 @@ state_proj = load(ROOT / "cases/smolvla_state_proj_1_32_960/gsim_result.json")
 inventory = load(ROOT / "full_capture_partition_inventory.json")
 partition = load(ROOT / "partitions/first_addmm_matmul_0/compile_receipt.json")
 plan = load(ROOT / "whole_capture_plan/partition_plan.json")
+hybrid = load(ROOT / "whole_capture_plan/hybrid_schedule_summary.json")
 capture_qualifications = {
     "atlas_p0098": load(ROOT / "capture_semantics_state_proj/result.json"),
     "atlas_p0243": load(ROOT / "capture_semantics_action_in_proj/result.json"),
@@ -141,7 +147,7 @@ verdict = {
     "ok": True,
     "recovery_status": "representative_rtl_numeric",
     "backend_source_tree_sha256": tree_digest(ROOT / "submission"),
-    "focused_tests": {"passed": 27, "failed": 0},
+    "focused_tests": {"passed": 31, "failed": 0},
     "full_capture_structural_compile_coverage": plan["compile_coverage"],
     "rtl_numeric_smolvla_coverage": {
         "unique_contraction_shapes": 3,
@@ -210,6 +216,7 @@ verdict = {
         "maximal_accelerator_islands": plan["maximal_accelerator_island_count"],
         "capture_semantics_executable_partitions": plan["capture_semantics_executable_partition_count"],
     },
+    "hybrid_capture_schedule": hybrid,
     "real_capture_semantics_qualification": {
         "qualified_partitions": 3,
         "structural_partitions_total": 391,
@@ -273,6 +280,18 @@ receipt = {
             "whole_capture_plan/lifetime_manifest.json",
             "whole_capture_plan/abi_manifest.json",
         ],
+    },
+    "hybrid_capture_schedule": {
+        "implementation": "submission/mlir_oot/hybrid_runtime.py",
+        "builder": "build_hybrid_schedule.py",
+        "summary": "whole_capture_plan/hybrid_schedule_summary.json",
+        "full_schedule": hybrid["full_schedule"],
+        "status": hybrid["status"],
+        "runnable_e2e": hybrid["runnable_e2e"],
+        "coverage": hybrid["coverage"],
+        "fail_closed": hybrid["fail_closed"],
+        "device_activation_arena": hybrid["device_activation_arena"],
+        "bounded_chain": hybrid["bounded_chain"],
     },
     "capture_semantics_bridges": {
         "qualified_partitions": 3,

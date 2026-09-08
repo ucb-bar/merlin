@@ -60,6 +60,119 @@
     "partitions": 391,
     "path": "submission/mlir_oot/planner.py"
   },
+  "hybrid_capture_schedule": {
+    "bounded_chain": {
+      "claim": "fresh deterministic host-bridge replay joined to retained RTL evidence; device partitions were not rerun and this is not whole-model execution",
+      "events": [
+        "retained_assertion_clean_atlas_p0243",
+        "device_to_host_dequantize",
+        "execute_27_region_host_bridge",
+        "host_to_device_quantize",
+        "retained_assertion_clean_atlas_p0244_three_dispatches",
+        "device_to_host_dequantize"
+      ],
+      "host_bridge_f32_sha256": "464589f62018aeff339d40a7c82c62d631228dfdcd986a2b6dc85f73d9c1376f",
+      "host_bridge_region_count": 27,
+      "host_bridge_regions": [
+        "iota_38",
+        "compare_2",
+        "dtype_cast_242",
+        "mul_293",
+        "add_198",
+        "sub_33",
+        "dtype_cast_243",
+        "mul_294",
+        "sub_34",
+        "select_30",
+        "pow_65",
+        "mul_295",
+        "elementwise_2",
+        "mul_296",
+        "mul_297",
+        "mul_298",
+        "unsqueeze_198",
+        "unsqueeze_199",
+        "mul_299",
+        "sin_32",
+        "cos_32",
+        "cat_50",
+        "dtype_cast_244",
+        "unsqueeze_200",
+        "expand_147",
+        "cat_51",
+        "view_789"
+      ],
+      "p0244_activation_f32_sha256": "23457ea06c994031379dcfc4491e866b1f9e5558a2ad4c5ad5a310366145bcce",
+      "p0244_activation_shape": [
+        50,
+        1440
+      ],
+      "partition_path": [
+        "atlas_p0243",
+        "atlas_p0244"
+      ],
+      "retained_results": [
+        {
+          "device_output_sha256": "3d59ee095dc78da88ba172f78414424c1072029d563ab8c00f52cf355a8884c1",
+          "partition_id": "atlas_p0243",
+          "path": "capture_semantics_action_in_proj/result.json",
+          "sha256": "ee581411e832471865c39288271d487013ec45f50262d337fed63f0c505733d7"
+        },
+        {
+          "cycles": 15211545,
+          "device_output_sha256": "3d890e73e992bbf47420fcd34634b9fa99de6c8ce393bb450a9c31f8167e172b",
+          "dispatches": 3,
+          "partition_id": "atlas_p0244",
+          "path": "capture_semantics_action_time_mlp_in/result.json",
+          "sha256": "78bc9dc3cc007454ac68047a382500de112d5a5d00ebe04795e1dd55ba38ee18"
+        }
+      ],
+      "saved_calibration": {
+        "path": "capture_semantics_action_time_mlp_in/calibration.json",
+        "sha256": "83b4abc4c4f4e8c8136149b7c01c52399f05f6957b94f0411e4ef07c6ab27dc5"
+      },
+      "schema": "atlas_bounded_real_hybrid_chain_v1",
+      "status": "host_replay_matches_retained_qualified_rtl_chain"
+    },
+    "builder": "build_hybrid_schedule.py",
+    "coverage": {
+      "bounded_host_regions_implemented": 22,
+      "layout_bridge_candidates": 2033,
+      "materialized_copy_bridges": 112,
+      "partition_host_region_overlap": [
+        "conv_0"
+      ],
+      "proven_metadata_aliases": 1675,
+      "qualified_accelerator_partitions": 3,
+      "semantic_host_required_regions": 2430,
+      "strided_broadcast_bridges": 246,
+      "structural_accelerator_partitions": 391
+    },
+    "device_activation_arena": {
+      "alignment_bytes": 32,
+      "alignment_source": "the existing Atlas command-buffer allocator's 32-byte tensor-base alignment",
+      "allocation_count": 391,
+      "interval_semantics": "inclusive capture operation ordinals",
+      "naive_no_reuse_bytes": 550404032,
+      "peak_bytes": 29884416,
+      "reuse_count": 387,
+      "saved_bytes": 520519616,
+      "schema": "device_activation_interval_allocation_v1"
+    },
+    "fail_closed": {
+      "missing_host_semantics": 2408,
+      "unqualified_accelerator_partitions": 388,
+      "unrealized_layout_bridges": 358
+    },
+    "full_schedule": {
+      "path": "whole_capture_plan/hybrid_schedule.json",
+      "sha256": "d9053e03196c84fb4b942666aaf48cad3acdc14e0c8217837e0a49961b097728"
+    },
+    "implementation": "submission/mlir_oot/hybrid_runtime.py",
+    "runnable_e2e": false,
+    "status": "e2e_blocked_fail_closed",
+    "summary": "whole_capture_plan/hybrid_schedule_summary.json"
+  },
   "hypotheses_ranked_before_fix": [
     "missing commit-result SSA registration",
     "intermediate tensor allocation/role overlap",
@@ -82,7 +195,7 @@
   "schema": "atlas_smolvla_command_image_receipt_v3",
   "status": "representative_rtl_numeric",
   "validation": {
-    "backend_source_tree_sha256": "eeb2e3c183a125fac2ac64d1a1e4eff2ef885f86508aa1b4557e4c84e0fcbe70",
+    "backend_source_tree_sha256": "7ab6498ec4aed46f1ba293e64434a84a8ab0dd666a243d830b677f39dba4abd7",
     "first_concrete_partition": {
       "capture_regions": [
         "matmul_0",
@@ -96,7 +209,7 @@
     },
     "focused_tests": {
       "failed": 0,
-      "passed": 27
+      "passed": 31
     },
     "full_capture_partition_plan": {
       "accelerator_dependency_edges": 88,
@@ -137,6 +250,129 @@
       "definitive_decoder_mismatch": "DMA_CONFIG funct7=0 in RTL/compiler, funct7=1 in functional ISA",
       "only_known_defect": false,
       "usable_as_numeric_oracle_for_emitted_atlas_isa": false
+    },
+    "hybrid_capture_schedule": {
+      "bounded_chain": {
+        "claim": "fresh deterministic host-bridge replay joined to retained RTL evidence; device partitions were not rerun and this is not whole-model execution",
+        "events": [
+          "retained_assertion_clean_atlas_p0243",
+          "device_to_host_dequantize",
+          "execute_27_region_host_bridge",
+          "host_to_device_quantize",
+          "retained_assertion_clean_atlas_p0244_three_dispatches",
+          "device_to_host_dequantize"
+        ],
+        "host_bridge_f32_sha256": "464589f62018aeff339d40a7c82c62d631228dfdcd986a2b6dc85f73d9c1376f",
+        "host_bridge_region_count": 27,
+        "host_bridge_regions": [
+          "iota_38",
+          "compare_2",
+          "dtype_cast_242",
+          "mul_293",
+          "add_198",
+          "sub_33",
+          "dtype_cast_243",
+          "mul_294",
+          "sub_34",
+          "select_30",
+          "pow_65",
+          "mul_295",
+          "elementwise_2",
+          "mul_296",
+          "mul_297",
+          "mul_298",
+          "unsqueeze_198",
+          "unsqueeze_199",
+          "mul_299",
+          "sin_32",
+          "cos_32",
+          "cat_50",
+          "dtype_cast_244",
+          "unsqueeze_200",
+          "expand_147",
+          "cat_51",
+          "view_789"
+        ],
+        "p0244_activation_f32_sha256": "23457ea06c994031379dcfc4491e866b1f9e5558a2ad4c5ad5a310366145bcce",
+        "p0244_activation_shape": [
+          50,
+          1440
+        ],
+        "partition_path": [
+          "atlas_p0243",
+          "atlas_p0244"
+        ],
+        "retained_results": [
+          {
+            "device_output_sha256": "3d59ee095dc78da88ba172f78414424c1072029d563ab8c00f52cf355a8884c1",
+            "partition_id": "atlas_p0243",
+            "path": "capture_semantics_action_in_proj/result.json",
+            "sha256": "ee581411e832471865c39288271d487013ec45f50262d337fed63f0c505733d7"
+          },
+          {
+            "cycles": 15211545,
+            "device_output_sha256": "3d890e73e992bbf47420fcd34634b9fa99de6c8ce393bb450a9c31f8167e172b",
+            "dispatches": 3,
+            "partition_id": "atlas_p0244",
+            "path": "capture_semantics_action_time_mlp_in/result.json",
+            "sha256": "78bc9dc3cc007454ac68047a382500de112d5a5d00ebe04795e1dd55ba38ee18"
+          }
+        ],
+        "saved_calibration": {
+          "path": "capture_semantics_action_time_mlp_in/calibration.json",
+          "sha256": "83b4abc4c4f4e8c8136149b7c01c52399f05f6957b94f0411e4ef07c6ab27dc5"
+        },
+        "schema": "atlas_bounded_real_hybrid_chain_v1",
+        "status": "host_replay_matches_retained_qualified_rtl_chain"
+      },
+      "claim": "deterministic schedule and symbolic allocation; not whole-model execution",
+      "conversion_boundaries": {
+        "by_conversion": {
+          "device_requantize": 88,
+          "device_to_host_dequantize": 391,
+          "host_to_device_quantize": 694,
+          "host_to_device_quantize_bias": 77
+        },
+        "count": 1250,
+        "qualified": 12
+      },
+      "coverage": {
+        "bounded_host_regions_implemented": 22,
+        "layout_bridge_candidates": 2033,
+        "materialized_copy_bridges": 112,
+        "partition_host_region_overlap": [
+          "conv_0"
+        ],
+        "proven_metadata_aliases": 1675,
+        "qualified_accelerator_partitions": 3,
+        "semantic_host_required_regions": 2430,
+        "strided_broadcast_bridges": 246,
+        "structural_accelerator_partitions": 391
+      },
+      "device_activation_arena": {
+        "alignment_bytes": 32,
+        "alignment_source": "the existing Atlas command-buffer allocator's 32-byte tensor-base alignment",
+        "allocation_count": 391,
+        "interval_semantics": "inclusive capture operation ordinals",
+        "naive_no_reuse_bytes": 550404032,
+        "peak_bytes": 29884416,
+        "reuse_count": 387,
+        "saved_bytes": 520519616,
+        "schema": "device_activation_interval_allocation_v1"
+      },
+      "event_count": 6104,
+      "fail_closed": {
+        "missing_host_semantics": 2408,
+        "unqualified_accelerator_partitions": 388,
+        "unrealized_layout_bridges": 358
+      },
+      "full_schedule": {
+        "path": "whole_capture_plan/hybrid_schedule.json",
+        "sha256": "d9053e03196c84fb4b942666aaf48cad3acdc14e0c8217837e0a49961b097728"
+      },
+      "runnable_e2e": false,
+      "schema": "atlas_hybrid_capture_schedule_summary_v1",
+      "status": "e2e_blocked_fail_closed"
     },
     "ok": true,
     "real_capture_semantics_qualification": {

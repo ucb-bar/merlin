@@ -55,6 +55,27 @@ assert that this is its only defect.
 
 ## Honest coverage and remaining boundary
 
+The new hybrid runtime slice turns the whole-capture manifests into a
+deterministic 6,104-event host/device schedule and assigns all 391 accelerator
+outputs to a 32-byte-aligned, lifetime-reused activation arena. The symbolic
+arena peaks at 29,884,416 bytes instead of 550,404,032 bytes with dedicated
+storage. This is allocation planning, not a measured runtime result.
+
+Importantly, the inventory's 2,033 layout-bridge candidates are not all aliases.
+The executable proof classifies 1,675 `view`/`unsqueeze` regions as metadata
+aliases, while 246 `expand` regions still need a strided descriptor and 112
+`copy` regions require materialization. There are separately 2,430 semantic
+host-required regions. The existing real p0243-to-p0244 host bridge implements
+22 of those host regions and five layout regions; its 27-region replay exactly
+reproduces the saved p0244 activation hash. The neighboring device evidence is
+retained, assertion-clean RTL evidence and was not rerun by this builder.
+
+Consequently the hybrid schedule remains explicitly `e2e_blocked_fail_closed`:
+2,408 host semantic regions, 388 accelerator partitions, and 358 layout bridges
+remain unresolved. See `HYBRID_RUNTIME_REPORT.md` and
+`whole_capture_plan/hybrid_schedule_summary.json`. No E2E or performance claim
+is added.
+
 The deterministic full-capture planner identifies 391 structural contraction
 partitions, 28 kernel variants, 88 direct accelerator dependencies, and 303
 maximal accelerator islands (239 singletons, 40 pairs, and 24 triples). Stable
@@ -231,6 +252,7 @@ $MERLIN_REPO_PYTHON inventory_full_capture.py
 $MERLIN_REPO_PYTHON inventory_capture_bindings.py --check
 $MERLIN_REPO_PYTHON build_first_partition.py
 $MERLIN_REPO_PYTHON build_partition_plan.py
+$MERLIN_REPO_PYTHON build_hybrid_schedule.py
 ```
 
 `validation.json` and `receipt.json` are the machine-readable summary.  The
