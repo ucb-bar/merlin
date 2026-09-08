@@ -491,6 +491,28 @@ def test_host_task_relevance_follows_source_not_renumbered_task_ids():
     assert not choices and unresolved[0]["source_op_indices"] == [4, 5]
 
 
+def test_changed_region_extraction_exhausts_best_task_mechanisms_before_next_task():
+    """A large model must not be reparsed for every task under one extractor first.
+
+    The V14 qualifier grouped its search by extractor kind.  Forty-five changed TinyLlama
+    tasks therefore paid a full 4.66 MB parse for every unsupported kind before the likely
+    pointwise-chain extractor was reached, turning a 60-second action into a 784-second stall.
+    """
+    from merlin.perf import host_region_qualifier as qualifier
+
+    best = ((100, True, 20), {"task_index": 7}, [200, 100])
+    second = ((10, True, 5), {"task_index": 8}, [20, 10])
+    options = list(qualifier._ranked_source_witness_options([second, best]))
+    kinds = [kind for kind, _ in options[:8]]
+
+    assert [row[1][1]["task_index"] for row in options[:8]] == [7] * 8
+    assert kinds == [
+        "insert_slice", "bounded_gather", "named_reduction", "generic_reduction",
+        "pointwise_reduction", "dequant_contraction", "fanout", "chain",
+    ]
+    assert options[8][1][1]["task_index"] == 8
+
+
 @pytest.mark.parametrize("mutation", [None, "partial_overlap", "mixed_lane"])
 def test_host_task_relevance_handles_complete_task_fusion_not_partial_overlap(mutation):
     from merlin.perf.host_region_qualifier import changed_host_task_candidates

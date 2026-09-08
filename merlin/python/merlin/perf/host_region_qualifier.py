@@ -90,6 +90,25 @@ def changed_host_task_candidates(before_tasks, after_tasks, tables):
     return candidates, unresolved
 
 
+_SOURCE_WITNESS_KINDS = (
+    "insert_slice", "bounded_gather", "named_reduction", "generic_reduction",
+    "pointwise_reduction", "dequant_contraction", "fanout", "chain",
+)
+
+
+def _ranked_source_witness_options(candidates):
+    """Try every supported mechanism on the best changed task before the next task.
+
+    Each extractor currently parses the source module. Grouping by mechanism made a large graph pay
+    one full parse for every changed task before reaching its likely pointwise mechanism. Task-major
+    order preserves the payload/integer-work ranking and bounds the common successful path to at most
+    one pass through the extractor set.
+    """
+    return ((kind, row)
+            for row in sorted(candidates, key=lambda candidate: candidate[0], reverse=True)
+            for kind in _SOURCE_WITNESS_KINDS)
+
+
 def reduced_materialization_change(before: Mapping[str, Any], after: Mapping[str, Any],
                                    extraction: Mapping[str, Any], *,
                                    before_lowered_sha256: str | None = None,
@@ -276,12 +295,15 @@ class HostChangedRegionQualifier:
             candidates, unresolved = changed_host_task_candidates(
                 previous["command_buffer"]["params"]["global_program_plan"]["tasks"], tasks, tables)
             record["unresolved_host_task_attribution"] = unresolved
-            options = [(kind, row) for kind in ("insert_slice", "bounded_gather", "named_reduction", "generic_reduction", "pointwise_reduction", "dequant_contraction", "fanout", "chain")
-                       for row in sorted(candidates, key=lambda row: row[0], reverse=True)]
+            options = _ranked_source_witness_options(candidates)
             record["probe_selection_attempts"] = []
             if not callable(getattr(experiment, "compile_previous_probe_candidate", None)):
                 raise ValueError("changed-region qualification needs an exact preceding-compiler probe compilation hook")
             for kind, (_, task, payload) in options:
+                # Extraction parses host-owned source and therefore consumes this same action's
+                # budget. Check before every attempt so an unsupported mechanism on a large graph
+                # cannot silently start another complete parse after the deadline has expired.
+                remaining()
                 try:
                     if kind == "insert_slice":
                         probe_text, extraction = extract_insert_slice(source_text, task["source_op_indices"])

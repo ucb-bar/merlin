@@ -836,6 +836,31 @@ def test_native_codex_accepts_only_an_exact_bash_lc_broker_payload(tmp_path, mon
     assert audit["broker_invocations"][0]["action"] == "candidate-parse"
 
 
+def test_native_codex_accepts_multiline_single_quoted_read_only_payload(tmp_path, monkeypatch):
+    """V14 line 114: a quoted jq program may span physical shell lines.
+
+    The outer ``bash -lc`` payload is one valid shell command.  Auditing each physical line
+    independently used to accuse the opening and closing jq-quote fragments of being malformed,
+    even though the command executed successfully and only read frozen evidence.
+    """
+    candidate = tmp_path / "submission"
+    candidate.mkdir()
+    (candidate / "manifest.yaml").write_text("entrypoints: {tool: target-opt}\n")
+    monkeypatch.setattr(PAS, "audit_tokens", lambda _: {
+        "answer": (), "grader": (), "oracle_subpath": ()})
+    monkeypatch.setattr(PAS.TC, "required_tool_probes", lambda _: [])
+    payload = "jq -n '\n  def width(d): if d == 8 then 1 else 4 end;\n  [8, 32] | map(width(.))\n'"
+    command = "/bin/bash -lc " + shlex.quote(payload)
+
+    audit = PAS.audit_codex_transcript(
+        _native_codex_transcript(tmp_path / "multiline-jq.jsonl", command),
+        SimpleNamespace(), candidate, ())
+
+    assert audit["clean"] is True
+    assert audit["hits"] == []
+    assert audit["commands_seen"] == 1
+
+
 @pytest.mark.parametrize("payload", [
     'rg -n "def .*sha|candidate_sha256|directory.*sha|tree.*hash" /perf-control/perf_tool.py /perf-control 2>/dev/null | head -100',
     '/usr/bin/rg -n candidate_sha256 /perf-control/perf_tool.py',

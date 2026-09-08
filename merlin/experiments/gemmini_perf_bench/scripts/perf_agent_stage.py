@@ -5648,24 +5648,45 @@ def audit_codex_transcript(path: Path, target_experiment: TargetExperiment,
 
             Splitting the raw string on separators is wrong: it cuts inside quotes and leaves
             fragments the lexer then reports as `malformed_shell_command` (measured: 8 spurious hits
-            on a real round). Lex each LINE first -- the lexer treats a newline as plain whitespace,
-            so a one-call-per-line batch would otherwise collapse into a single run-on command -- then
-            split the resulting tokens on separator TOKENS, which the lexer has already distinguished
-            from separator characters appearing inside quotes.
+            on a real round). Lex each shell LOGICAL LINE first -- a quoted jq/awk program or a
+            backslash continuation may span physical lines -- while retaining an unquoted newline as
+            a command boundary. Then split the resulting tokens on separator TOKENS, which the lexer
+            has already distinguished from separator characters appearing inside quotes.
             """
             groups: list[list[str]] = []
-            for raw_line in text.replace("\r", "\n").split("\n"):
-                if not raw_line.strip():
-                    continue
+            pending: list[str] = []
+
+            def lex_logical_line(raw_line: str) -> list[str] | None:
                 try:
                     line_lexer = shlex.shlex(raw_line, posix=True, punctuation_chars=";&|<>()")
                     line_lexer.whitespace_split = True
                     line_lexer.commenters = ""
-                    line_words = list(line_lexer)
+                    return list(line_lexer)
+                except ValueError as error:
+                    # These two errors mean a physical line is incomplete, not malformed. The
+                    # enclosing payload has already passed a whole-command shlex parse above, so
+                    # accumulating the next physical line cannot turn invalid outer shell into a
+                    # valid audited command. V14 line 114 was a valid multi-line single-quoted jq
+                    # program and previously received two false malformed-command hits here.
+                    if str(error) in {"No closing quotation", "No escaped character"}:
+                        return None
+                    raise
+
+            for raw_line in text.replace("\r", "\n").split("\n"):
+                if not pending and not raw_line.strip():
+                    continue
+                pending.append(raw_line)
+                logical_line = "\n".join(pending)
+                try:
+                    line_words = lex_logical_line(logical_line)
                 except ValueError:
                     hits.append({"kind": "malformed_shell_command", "line": str(line_number),
                                  "command_sha256": _sha256(command.encode("utf-8"))})
+                    pending = []
                     continue
+                if line_words is None:
+                    continue
+                pending = []
                 # A REDIRECT TARGET IS DATA, NOT A COMMAND. Splitting on `<`/`>` as if they were
                 # command separators turned `broker ... > out.mlir` into TWO simple commands: a valid
                 # invocation plus a bare filename. The filename tripped the mixing rule AND resolved
@@ -5691,6 +5712,9 @@ def audit_codex_transcript(path: Path, target_experiment: TargetExperiment,
                         current.append(token)
                 if current:
                     groups.append(current)
+            if pending:
+                hits.append({"kind": "malformed_shell_command", "line": str(line_number),
+                             "command_sha256": _sha256(command.encode("utf-8"))})
             return groups
 
         simple_total = 0
