@@ -53,16 +53,24 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "host_signature_regions_by_semantic": {
             "add": 215,
             "compare": 4,
+            "cos": 57,
             "div": 56,
             "dtype_cast": 472,
+            "elementwise": 3,
+            "gelu": 12,
+            "minmax": 2,
             "mul": 536,
+            "pow": 123,
+            "rsqrt": 66,
             "select": 45,
+            "sigmoid": 33,
+            "sin": 57,
             "sub": 68,
         },
-        "host_signature_regions_implemented": 1396,
+        "host_signature_regions_implemented": 1749,
         "layout_bridge_candidates": 2033,
         "materialized_copy_bridges": 112,
-        "missing_host_semantics_reduction": 1374,
+        "missing_host_semantics_reduction": 1727,
         "partition_host_region_overlap": ["conv_0"],
         "previous_bounded_host_regions_implemented": 22,
         "previous_missing_host_semantics": 2408,
@@ -72,7 +80,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391,
     }
-    assert schedule["fail_closed"]["missing_host_semantics"] == 1034
+    assert schedule["fail_closed"]["missing_host_semantics"] == 681
     assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
     assert schedule["fail_closed"]["unrealized_layout_bridges"] == 358
     assert schedule["conversion_boundaries"] == {
@@ -91,7 +99,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         row for row in schedule["events"]
         if row["kind"] == "host_region" and row["executable"]
     ]
-    assert len(qualified_host) == 1396
+    assert len(qualified_host) == 1749
     assert all(len(row["operation_signature_sha256"]) == 64 for row in qualified_host)
     rejected_select = next(
         row for row in schedule["events"]
@@ -122,18 +130,62 @@ def test_bounded_real_chain_replays_host_semantics_and_retains_scoped_evidence()
 def test_real_host_chain_is_capture_discovered_fresh_and_dependency_carrying() -> None:
     chain = load(PLAN_ROOT / "hybrid_schedule.json")["generic_host_chain"]
     assert chain["status"] == "fresh_numeric_execution_exactly_replayed"
-    assert chain["selection"].startswith("longest consecutive qualified capture-region run")
-    assert chain["region_count"] == 9
-    assert chain["dependency_edges"] == 8
+    assert chain["selection"].startswith("first stable-ranked consecutive qualified run")
+    assert chain["region_count"] == 15
+    assert chain["dependency_edges"] == 14
     assert chain["semantics"] == [
         "compare", "dtype_cast", "mul", "add", "sub",
-        "dtype_cast", "mul", "sub", "select",
+        "dtype_cast", "mul", "sub", "select", "pow", "mul",
+        "elementwise", "mul", "mul", "mul",
     ]
     assert len(chain["fresh_inputs"]) == 2
     assert all(row["finite"] for row in chain["outputs"])
     assert chain["outputs"][0]["true_elements"] == 171
     assert chain["replay_hashes_equal"] is True
     assert "not whole-model E2E" in chain["claim"]
+
+
+def test_new_scalar_families_have_fresh_real_capture_numeric_witnesses() -> None:
+    witnesses = load(PLAN_ROOT / "hybrid_schedule.json")[
+        "generic_host_numeric_witnesses"
+    ]
+    assert [row["label"] for row in witnesses] == [
+        "pow_reciprocal", "rsqrt_normalization", "sigmoid_gate",
+        "trigonometric_fanout", "gelu_standalone",
+    ]
+    covered = set()
+    for row in witnesses:
+        covered.update(row["semantics"])
+        assert row["status"] == "fresh_numeric_execution_exactly_replayed"
+        assert row["replay_hashes_equal"] is True
+        assert all(output["finite"] for output in row["outputs"])
+        if row["label"] != "gelu_standalone":
+            assert row["dependency_edges"] > 0
+    assert {"pow", "elementwise", "rsqrt", "sigmoid", "sin", "cos", "gelu"} <= covered
+
+
+def test_declared_unary_semantic_with_wrong_scalar_dag_fails_closed() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%arg: tensor<4xf32>) -> tensor<4xf32> {
+        %empty = tensor.empty() : tensor<4xf32>
+        %result = linalg.generic {
+          indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
+          iterator_types = ["parallel"]
+        } ins(%arg : tensor<4xf32>) outs(%empty : tensor<4xf32>)
+          attrs = {prov.region_id = "false_sigmoid", prov.op = "sigmoid",
+                   prov.family = "elementwise", prov.aten = "aten.sigmoid.default"} {
+        ^bb0(%value: f32, %old: f32):
+          %wrong = arith.negf %value : f32
+          linalg.yield %wrong : f32
+        } -> tensor<4xf32>
+        return %result : tensor<4xf32>
+      }
+    }''')
+    lane = HostSemanticLane(workload)
+    assert lane.signature_for("false_sigmoid") is None
+    assert lane.rejections["false_sigmoid"] == (
+        "scalar DAG does not match a captured semantic pattern"
+    )
 
 
 def test_generic_host_lane_executes_exact_affine_broadcast_not_numpy_shape_guessing() -> None:

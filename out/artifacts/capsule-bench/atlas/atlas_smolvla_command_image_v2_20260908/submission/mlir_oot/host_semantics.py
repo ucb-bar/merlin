@@ -12,6 +12,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from typing import MutableMapping
 
 import numpy as np
@@ -31,8 +32,29 @@ _SEMANTIC_ROOTS = {
     "compare": frozenset({"arith.cmpf", "arith.cmpi"}),
     "select": frozenset({"arith.select"}),
 }
+_COMPOSITE_PATTERNS = {
+    "pow": frozenset({("arith.constant", "math.powf")}),
+    "rsqrt": frozenset({("math.rsqrt",)}),
+    "sin": frozenset({("math.sin",)}),
+    "cos": frozenset({("math.cos",)}),
+    "sigmoid": frozenset({(
+        "arith.constant", "arith.negf", "math.exp", "arith.addf", "arith.divf",
+    )}),
+    "gelu": frozenset({(
+        "arith.constant", "arith.constant", "arith.constant", "arith.mulf",
+        "math.erf", "arith.addf", "arith.mulf", "arith.mulf",
+    )}),
+    "elementwise": frozenset({
+        ("arith.sitofp", "arith.constant", "arith.divf"),
+        ("arith.constant", "arith.divf"),
+    }),
+    "minmax": frozenset({("arith.constant", "arith.minimumf")}),
+}
 _CAST_OPS = frozenset({"arith.extf", "arith.truncf", "arith.sitofp", "arith.fptosi"})
-_SCALAR_OPS = frozenset().union(*_SEMANTIC_ROOTS.values())
+_SCALAR_OPS = frozenset().union(*_SEMANTIC_ROOTS.values(), {
+    "arith.constant", "arith.negf", "arith.minimumf",
+    "math.cos", "math.erf", "math.exp", "math.powf", "math.rsqrt", "math.sin",
+})
 _REGION_SCAFFOLD = frozenset({"arith.constant", "tensor.splat", "tensor.empty", "linalg.generic"})
 
 
@@ -176,6 +198,8 @@ def _predicate(op) -> int:
 
 def _execute_scalar(op, arguments: list[np.ndarray]):
     name = op.name
+    if name == "arith.constant":
+        return _constant_value(op)
     if name in _CAST_OPS:
         return _cast(arguments[0], str(op.results[0].type))
     if name in {"arith.addf", "arith.addi"}:
@@ -186,6 +210,27 @@ def _execute_scalar(op, arguments: list[np.ndarray]):
         result = np.multiply(arguments[0], arguments[1])
     elif name == "arith.divf":
         result = np.divide(arguments[0], arguments[1])
+    elif name == "arith.negf":
+        result = np.negative(arguments[0])
+    elif name == "arith.minimumf":
+        result = np.minimum(arguments[0], arguments[1])
+    elif name == "math.sin":
+        result = np.sin(arguments[0])
+    elif name == "math.cos":
+        result = np.cos(arguments[0])
+    elif name == "math.exp":
+        result = np.exp(arguments[0])
+    elif name == "math.powf":
+        result = np.power(arguments[0], arguments[1])
+    elif name == "math.rsqrt":
+        result = np.reciprocal(np.sqrt(arguments[0]))
+    elif name == "math.erf":
+        source = np.asarray(arguments[0])
+        result = np.fromiter(
+            (math.erf(float(value)) for value in source.flat),
+            dtype=np.float64,
+            count=source.size,
+        ).reshape(source.shape)
     elif name == "arith.cmpi":
         return _integer_predicate(arguments[0], arguments[1], _predicate(op))
     elif name == "arith.cmpf":
@@ -210,7 +255,7 @@ class HostRegionProgram:
 def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     semantic = _str_attr(operations[0], "prov.op")
     aten = _str_attr(operations[0], "prov.aten")
-    if semantic not in _SEMANTIC_ROOTS:
+    if semantic not in _SEMANTIC_ROOTS and semantic not in _COMPOSITE_PATTERNS:
         raise UnsupportedHostRegion(f"semantic {semantic} has no host pointwise implementation")
     if any(op.name not in _REGION_SCAFFOLD for op in operations):
         raise UnsupportedHostRegion("region contains non-pointwise scaffold operations")
@@ -249,10 +294,16 @@ def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     if not compute or any(op.name not in _SCALAR_OPS for op in compute):
         raise UnsupportedHostRegion("generic scalar body contains an unsupported operation")
     root = getattr(scalar_ops[-1].operands[0], "owner", None)
-    if root is not compute[-1] or root.name not in _SEMANTIC_ROOTS[semantic]:
-        raise UnsupportedHostRegion("scalar root does not implement the declared semantic")
-    if any(op.name not in _CAST_OPS for op in compute[:-1]):
-        raise UnsupportedHostRegion("only widening/narrowing casts may precede the scalar root")
+    if root is not compute[-1]:
+        raise UnsupportedHostRegion("scalar yield does not consume the terminal operation")
+    names = tuple(op.name for op in compute)
+    if semantic in _SEMANTIC_ROOTS:
+        if root.name not in _SEMANTIC_ROOTS[semantic]:
+            raise UnsupportedHostRegion("scalar root does not implement the declared semantic")
+        if any(op.name not in _CAST_OPS for op in compute[:-1]):
+            raise UnsupportedHostRegion("only widening/narrowing casts may precede the scalar root")
+    elif names not in _COMPOSITE_PATTERNS[semantic]:
+        raise UnsupportedHostRegion("scalar DAG does not match a captured semantic pattern")
     # The output accumulator block argument must not influence a pure pointwise result.
     allowed_values = set(block.args[:len(generic.inputs)])
     for op in compute:
@@ -386,8 +437,8 @@ class HostSemanticLane:
                 seed_index += 1
         return values
 
-    def discover_contiguous_chain(self, *, max_external_elements: int = 1_000_000) -> list[str]:
-        """Choose the longest capture-order run with a true SSA dependency."""
+    def discover_contiguous_runs(self, *, max_external_elements: int = 1_000_000) -> list[dict]:
+        """Return capture-order supported runs carrying at least one SSA edge."""
         ordered = []
         seen = set()
         for op in self.block.ops:
@@ -422,11 +473,26 @@ class HostSemanticLane:
             elements = sum(int(np.prod(_tensor_shape(value) or (), dtype=np.int64))
                            for value in external)
             if dependencies and elements <= max_external_elements:
-                candidates.append((len(run), dependencies, -elements, run))
+                candidates.append({
+                    "region_ids": run,
+                    "region_count": len(run),
+                    "dependency_edges": dependencies,
+                    "external_elements": elements,
+                    "semantics": [self.programs[region_id].semantic for region_id in run],
+                })
             start = stop
         if not candidates:
             raise ValueError("capture has no bounded contiguous supported host chain")
-        return max(candidates)[3]
+        return sorted(candidates, key=lambda row: (
+            -row["region_count"], -row["dependency_edges"], row["external_elements"],
+            row["region_ids"],
+        ))
+
+    def discover_contiguous_chain(self, *, max_external_elements: int = 1_000_000) -> list[str]:
+        """Choose the longest capture-order run with a true SSA dependency."""
+        return self.discover_contiguous_runs(
+            max_external_elements=max_external_elements
+        )[0]["region_ids"]
 
 
 def array_sha256(value: np.ndarray) -> str:

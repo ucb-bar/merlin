@@ -110,10 +110,10 @@ def bounded_chain_witness() -> tuple[dict, set[str]]:
     }, set(bridge_regions))
 
 
-def generic_host_chain_witness(workload) -> dict:
-    """Execute a capture-discovered, dependency-carrying pointwise chain twice."""
-    lane = HostSemanticLane(workload)
-    region_ids = lane.discover_contiguous_chain()
+def _execute_host_witness(
+    lane: HostSemanticLane, region_ids: list[str], *, label: str, selection: str,
+) -> dict:
+    """Execute fresh values through selected real regions and prove replay stability."""
     first_values = lane.seed_external_values(region_ids)
     seeds = [
         {
@@ -155,12 +155,10 @@ def generic_host_chain_witness(workload) -> dict:
         produced.update(value for op in program.operations for value in op.results)
     return {
         "schema": "atlas_real_capture_host_semantic_chain_v1",
+        "label": label,
         "status": "fresh_numeric_execution_exactly_replayed",
         "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-        "selection": (
-            "longest consecutive qualified capture-region run with an SSA dependency and "
-            "at most 1000000 external input elements"
-        ),
+        "selection": selection,
         "region_ids": region_ids,
         "semantics": [lane.programs[region_id].semantic for region_id in region_ids],
         "region_count": len(region_ids),
@@ -172,6 +170,48 @@ def generic_host_chain_witness(workload) -> dict:
     }
 
 
+def generic_host_witnesses(workload) -> tuple[dict, list[dict]]:
+    """Discover dependency chains covering each newly implemented scalar family."""
+    lane = HostSemanticLane(workload)
+    runs = lane.discover_contiguous_runs()
+    selected = []
+    requirements = [
+        ("pow_reciprocal", {"pow", "elementwise"}),
+        ("rsqrt_normalization", {"rsqrt"}),
+        ("sigmoid_gate", {"sigmoid"}),
+        ("trigonometric_fanout", {"sin", "cos"}),
+    ]
+    for label, required in requirements:
+        run = next(row for row in runs if required <= set(row["semantics"]))
+        selected.append(_execute_host_witness(
+            lane,
+            run["region_ids"],
+            label=label,
+            selection=(
+                "first stable-ranked consecutive qualified run containing semantic set "
+                + ",".join(sorted(required))
+            ),
+        ))
+
+    # GELU instances are isolated by accelerator partitions in this capture.
+    # Select the smallest real one by tensor extent and execute it standalone;
+    # do not manufacture a false dependency chain around it.
+    gelu = min(
+        (program for program in lane.programs.values() if program.semantic == "gelu"),
+        key=lambda program: (
+            int(np.prod(program.signature["output_shape"], dtype=np.int64)),
+            program.region_id,
+        ),
+    )
+    selected.append(_execute_host_witness(
+        lane,
+        [gelu.region_id],
+        label="gelu_standalone",
+        selection="smallest qualified real GELU; capture has no adjacent qualified dependency",
+    ))
+    return selected[0], selected
+
+
 def main() -> int:
     source_path = CAPTURE / "model.mlir"
     source = source_path.read_text(encoding="utf-8")
@@ -179,7 +219,7 @@ def main() -> int:
     inventory = load(ROOT / "full_capture_partition_inventory.json")
     workload = parse_verified(source)
     chain, bounded_regions = bounded_chain_witness()
-    host_chain = generic_host_chain_witness(workload)
+    host_chain, host_witnesses = generic_host_witnesses(workload)
     schedule = build_hybrid_schedule(
         workload, plan, inventory,
         qualified_partitions=set(QUALIFIED),
@@ -193,6 +233,7 @@ def main() -> int:
     })
     schedule["bounded_chain"] = chain
     schedule["generic_host_chain"] = host_chain
+    schedule["generic_host_numeric_witnesses"] = host_witnesses
     schedule["device_activation_arena"]["alignment_source"] = (
         "the existing Atlas command-buffer allocator's 32-byte tensor-base alignment"
     )
@@ -216,6 +257,7 @@ def main() -> int:
         "event_count": len(schedule["events"]),
         "bounded_chain": chain,
         "generic_host_chain": host_chain,
+        "generic_host_numeric_witnesses": host_witnesses,
         "full_schedule": {
             "path": schedule_path.relative_to(ROOT).as_posix(),
             "sha256": sha256_file(schedule_path),
