@@ -1795,6 +1795,22 @@ class GlobalPerfExperiment:
         if self.mechanism_work_order_binding is None:
             return None
         self._check_inputs()
+        if self.mechanism_work_order_analysis_binding is not None:
+            iteration = record.get("iteration")
+            iteration_path = self.output / f"iteration_{iteration:04d}.json" if isinstance(
+                iteration, int) and not isinstance(iteration, bool) else None
+            stored = next((row for row in self.iterations
+                           if row.get("iteration") == iteration), None)
+            if (iteration_path is None or iteration_path.is_symlink()
+                    or not iteration_path.is_file()
+                    or stored is None or PAS._mapping_file(iteration_path) != stored
+                    or record.get("candidate_sha256") != stored.get("candidate_sha256")
+                    or record.get("compiler_dependencies") != stored.get("compiler_dependencies")
+                    or (record.get("portfolio") or {}).get("portfolio_sha256")
+                    != self.portfolio_identity_sha256):
+                raise ValueError(
+                    "compiler mechanism work order has no immutable current portfolio analysis")
+            return copy.deepcopy(self.mechanism_work_order_analysis_binding)
         if (record.get("candidate_sha256")
                 != self.mechanism_work_order["round_start_candidate_sha256"]
                 or (record.get("portfolio") or {}).get("portfolio_sha256")
@@ -1847,14 +1863,28 @@ class GlobalPerfExperiment:
             "sha256": PAS._sha256_file(iteration_path),
         }
         binding = {**body, "sha256": PAS._document_sha256(body)}
-        if self.mechanism_work_order_analysis_binding is not None:
-            if binding != self.mechanism_work_order_analysis_binding:
-                raise ValueError("compiler mechanism work-order analysis binding changed")
-            return copy.deepcopy(binding)
         self.mechanism_work_order_analysis_binding = binding
         self._write("compiler_mechanism_work_order_analysis.json", binding)
         self._check_inputs()
         return copy.deepcopy(binding)
+
+    def record_bound_mechanism_work_order_seed(
+            self, candidate: Path, record: Mapping[str, Any]) -> dict[str, Any]:
+        """Append an immutable no-compile seed record carrying the new work-order binding."""
+        binding = self.bind_mechanism_work_order_analysis(record)
+        if binding is None or record.get("mechanism_work_order_analysis") == binding:
+            return copy.deepcopy(dict(record))
+        started = time.monotonic()
+        return self._reuse_prior_analysis(
+            candidate,
+            hypothesis="Bind the host work order to the initial complete-model static evidence",
+            source=record,
+            binding=record["analysis_reuse_binding"],
+            mechanism_attribution=self._inspect_active_mechanism_round(
+                candidate, require_semantic_edit=False),
+            started=started,
+            budget_seconds=self.timeout_s,
+        )
 
     def begin_mechanism_round(self, candidate: Path, *, round_index: int) -> dict[str, Any] | None:
         """Capture immutable round-start bytes before an author receives the workspace."""
@@ -1904,17 +1934,17 @@ class GlobalPerfExperiment:
         self._check_inputs()
         active = self._active_mechanism_round
         candidate_sha256 = hash_tree(candidate)["sha256"]
-        if (self.mechanism_work_order_binding is not None
-                and self.mechanism_work_order_analysis_binding is None
-                and (require_semantic_edit or active is None
-                     or candidate_sha256 != active.get("candidate_sha256"))):
-            raise ValueError("compiler mechanism work order has no current static-analysis binding")
         if active is None:
             if candidate_sha256 != self.edit_scope_binding["initial_candidate_sha256"]:
                 raise ValueError("edited compiler analysis has no immutable mechanism round start")
             return {"schema": "global_compiler_mechanism_seed_analysis_v1",
                     "status": "initial_seed", "candidate_sha256": candidate_sha256,
                     "mechanism_catalog_sha256": self._mechanism_catalog_binding_sha256}
+        if (self.mechanism_work_order_binding is not None
+                and self.mechanism_work_order_analysis_binding is None
+                and (require_semantic_edit
+                     or candidate_sha256 != active.get("candidate_sha256"))):
+            raise ValueError("compiler mechanism work order has no current static-analysis binding")
         start = Path(active["round_start_path"])
         start_receipt = Path(active["round_start_receipt"]["path"])
         if (Path(candidate).resolve() != Path(active["candidate_path"])
@@ -5569,7 +5599,10 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
         raise ValueError("invalid sustained global authoring bounds or continuation policy")
     experiment._check_inputs()
     policy = copy.deepcopy(experiment.host_policy)
-    experiment.analyze(candidate, hypothesis="Bind initial seed for safe checkpoint continuation")
+    initial_analysis = experiment.analyze(
+        candidate, hypothesis="Bind initial seed for safe checkpoint continuation")
+    if experiment.mechanism_work_order_binding is not None:
+        experiment.record_bound_mechanism_work_order_seed(candidate, initial_analysis)
     initial_row = experiment._matching_current(candidate, require_ready=False)
     initial_ready = initial_row["readiness"]["status"] == "ready_for_probe_admission"
     initial_seal = (experiment.seal(candidate, name="initial_seed_candidate") if initial_ready

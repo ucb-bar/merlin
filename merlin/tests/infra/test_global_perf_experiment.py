@@ -2051,19 +2051,26 @@ def test_mechanism_work_order_is_immutable_and_binds_current_member_artifacts(tm
     }])
     _path, binding = _freeze_test_mechanism_work_order(
         experiment, candidate, tmp_path)
-    experiment.begin_mechanism_round(candidate, round_index=0)
     initial = experiment.analyze(candidate, hypothesis="bind exact work-order artifacts")
     analysis_binding = experiment.bind_mechanism_work_order_analysis(initial)
+    bound_seed = experiment.record_bound_mechanism_work_order_seed(candidate, initial)
+    assert bound_seed["iteration"] == initial["iteration"] + 1
+    assert bound_seed["mechanism_work_order_analysis"] == analysis_binding
+    seed_checkpoint = experiment.seal(candidate, name="bound_seed")
+    assert G.consume_global_candidate(seed_checkpoint)[
+        "mechanism_work_order_analysis"] == analysis_binding
     assert analysis_binding["candidate_sha256"] == hash_tree(candidate)["sha256"]
     assert analysis_binding["members"][0]["site_binding_sha256"] == PAS._document_sha256(
         experiment.mechanism_work_order["portfolio_site_bindings"][0])
     assert PAS._mapping_file(Path(binding["frozen_path"])) == binding["work_order"]
     assert len(calls) == 1
+    experiment.begin_mechanism_round(candidate, round_index=0)
     compiler = candidate / "compiler.py"
     compiler.write_text(compiler.read_text().replace("return 1", "return 2", 1))
     assert experiment.finalize_mechanism_round(
         candidate, round_index=0)["selected_mechanism_id"] == "epilogue"
     row = experiment.analyze(candidate, hypothesis="execute exact assigned mechanism")
+    assert experiment.bind_mechanism_work_order_analysis(row) == analysis_binding
     assert row["compiler_mechanism_work_order"] == binding
     assert row["mechanism_work_order_analysis"] == analysis_binding
     checkpoint = experiment.seal(candidate)
@@ -2075,6 +2082,45 @@ def test_mechanism_work_order_is_immutable_and_binds_current_member_artifacts(tm
     analysis_receipt.write_bytes(b"{}\n")
     with pytest.raises(ValueError, match="work-order analysis"):
         G.consume_global_candidate(checkpoint)
+
+
+def test_sustained_sequence_bootstraps_work_order_before_first_authoring_round(tmp_path):
+    experiment, candidate, calls = setup_experiment(tmp_path)
+    (candidate / "compiler.py").write_text(
+        "def optimize():\n    return 1\n\ndef schedule():\n    return 1\n")
+    _freeze_test_mechanism_catalog(experiment, candidate, tmp_path, [{
+        "id": "epilogue", "selectors": [
+            {"kind": "function", "path": "compiler.py", "symbol": "optimize"}],
+    }])
+    _freeze_test_mechanism_work_order(experiment, candidate, tmp_path)
+
+    def author(current, *, round_index, round_timeout_s):
+        experiment.begin_mechanism_round(current, round_index=round_index)
+        current_analysis = experiment.analyze(
+            current, hypothesis="inspect bound work-order seed")
+        assert experiment.bind_mechanism_work_order_analysis(current_analysis) == \
+            experiment.mechanism_work_order_analysis_binding
+        compiler = current / "compiler.py"
+        compiler.write_text(compiler.read_text().replace("return 1", "return 2", 1))
+        assert experiment.finalize_mechanism_round(
+            current, round_index=round_index)["status"] == "allowed"
+        experiment.analyze(current, hypothesis="execute assigned epilogue mechanism")
+        return {"status": "authored"}
+
+    result = G.run_global_agent_sequence(
+        experiment, candidate, run_round=author, stage_root=tmp_path / "stage",
+        max_rounds=1, total_authoring_seconds=30, round_seconds=30,
+        on_round_failure="stop")
+
+    assert result["status"] == "budget_complete"
+    assert result["failures"] == []
+    assert len(calls) == 2
+    assert experiment.iterations[0]["mechanism_work_order_analysis"] is None
+    assert experiment.iterations[1]["mechanism_work_order_analysis"] == \
+        experiment.mechanism_work_order_analysis_binding
+    consumed = G.consume_global_candidate(Path(result["last_good_checkpoint"]["path"]))
+    assert consumed["mechanism_work_order_analysis"] == \
+        experiment.mechanism_work_order_analysis_binding
 
 
 @pytest.mark.parametrize("mutation", ["candidate", "catalog", "portfolio", "self_hash",
