@@ -1803,7 +1803,9 @@ class GlobalPerfExperiment:
                            if row.get("iteration") == iteration), None)
             if (iteration_path is None or iteration_path.is_symlink()
                     or not iteration_path.is_file()
-                    or stored is None or PAS._mapping_file(iteration_path) != stored
+                    or stored is None
+                    or PAS._document_sha256(PAS._mapping_file(iteration_path))
+                    != PAS._document_sha256(stored)
                     or record.get("candidate_sha256") != stored.get("candidate_sha256")
                     or record.get("compiler_dependencies") != stored.get("compiler_dependencies")
                     or (record.get("portfolio") or {}).get("portfolio_sha256")
@@ -1856,7 +1858,8 @@ class GlobalPerfExperiment:
             iteration, int) and not isinstance(iteration, bool) else None
         if (iteration_path is None or iteration_path.is_symlink()
                 or not iteration_path.is_file()
-                or PAS._mapping_file(iteration_path) != record):
+                or PAS._document_sha256(PAS._mapping_file(iteration_path))
+                != PAS._document_sha256(record)):
             raise ValueError("compiler mechanism work order has no immutable analysis iteration")
         body["iteration_record"] = {
             "path": str(iteration_path.resolve()),

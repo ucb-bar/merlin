@@ -2052,6 +2052,8 @@ def test_mechanism_work_order_is_immutable_and_binds_current_member_artifacts(tm
     _path, binding = _freeze_test_mechanism_work_order(
         experiment, candidate, tmp_path)
     initial = experiment.analyze(candidate, hypothesis="bind exact work-order artifacts")
+    required_lanes = initial["portfolio"]["members"][0]["identity"]["required_lanes"]
+    initial["portfolio"]["members"][0]["identity"]["required_lanes"] = tuple(required_lanes)
     analysis_binding = experiment.bind_mechanism_work_order_analysis(initial)
     bound_seed = experiment.record_bound_mechanism_work_order_seed(candidate, initial)
     assert bound_seed["iteration"] == initial["iteration"] + 1
