@@ -626,7 +626,7 @@ diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimod
      return MixedBuilder(module, wl).build()
 diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/native_conv_selector.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/native_conv_selector.py
 --- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 04:08:23.142282950 -0700
-+++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 05:56:18.303130136 -0700
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 06:36:41.991032900 -0700
 @@ -9,7 +9,8 @@
  from ..tables import rtl_facts as F
  
@@ -637,7 +637,7 @@ diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimod
                              ) -> tuple[bool, str]:
      """Return whether ``c`` is exactly representable by the pinned LOOP_CONV_WS contract."""
      if not F.HAS_LOOP_CONV:
-@@ -20,10 +21,24 @@
+@@ -20,10 +21,31 @@
              or dst.dtype != F.OPERAND_DTYPE):
          # LoopConvSt hardwires read_full=false; accepting i32 would silently saturate.
          return False, "loop_conv_store_is_narrow_only"
@@ -649,6 +649,13 @@ diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimod
 +    allowed = {"bias", "bias_add", "acc_scale", "relu"}
 +    if any(stage not in allowed for stage in stages):
 +        return False, "native_loop_conv_epilogue_not_representable"
++    ordered = ["bias" if stage == "bias_add" else stage for stage in stages]
++    rank = {"bias": 0, "acc_scale": 1, "relu": 2}
++    if len(set(ordered)) != len(ordered) or ordered != sorted(ordered, key=rank.__getitem__):
++        # LOOP_CONV initializes accumulator rows from LOAD3, then the store path scales and finally
++        # applies activation. Membership in the stage set is insufficient: silently accepting a
++        # different source order changes floating-point rounding and activation semantics.
++        return False, "native_loop_conv_epilogue_order_must_be_bias_scale_activation"
 +    bias_stages = [i for i, stage in enumerate(stages) if stage in {"bias", "bias_add"}]
 +    if bias_stages and (len(bias_stages) != 1 or bias_stages[0] != 0):
 +        return False, "native_loop_conv_bias_must_initialize_accumulator"

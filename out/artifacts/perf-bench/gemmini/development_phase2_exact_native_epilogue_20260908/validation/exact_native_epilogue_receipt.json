@@ -10,13 +10,13 @@
     "candidate": "out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908"
   },
   "candidate_identity": {
-    "compiler_tree_sha256": "c6429ca7055b8b9df3ae2fc4dc0bf311a0b0d92678cc7661fbe75fdc5f6b61fa",
+    "compiler_tree_sha256": "30fbb259610c35dd47047819c27478b21ddf389059560a6a5392fd9b91bdf42b",
     "compiler_tree_files": 43,
-    "tests_tree_sha256": "0a2a419fc88924991f02308f7f6948449c2b7a52487ba9d026f34b44bab47ec4",
+    "tests_tree_sha256": "7cf5532b8d5938aece7ed11c1824485831c864fbde61b3694716fb7d7f4c4f54",
     "tests_tree_files": 14,
     "compiler_patch": "exact_native_epilogue_compiler.patch",
-    "compiler_patch_sha256": "0e882560625d17c1ff9840d26670f0a492e4c5a24d4cbdef9ee0d9fa600ae88a",
-    "compiler_patch_lines": 942
+    "compiler_patch_sha256": "7d0fa12d2a0a13dc138d6d6d393d21e3656a45144935605bb8ae615b44c08e3b",
+    "compiler_patch_lines": 949
   },
   "semantic_contract": {
     "source_formation": "target-neutral ordered quantized epilogue",
@@ -42,8 +42,8 @@
   },
   "focused_tests": {
     "status": "passed",
-    "passed": 44,
-    "seconds": 1.14,
+    "passed": 45,
+    "seconds": 1.18,
     "includes": [
       "exact selected matmul epilogue",
       "runtime per-channel refusal",

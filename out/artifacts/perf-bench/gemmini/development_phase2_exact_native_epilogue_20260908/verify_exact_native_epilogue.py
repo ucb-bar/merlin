@@ -48,13 +48,13 @@ def main() -> int:
     check("receipt-status", receipt["status"] == "passed_scoped_exact_no_resnet_codegen_change",
           receipt["status"])
     check("compiler-tree", hash_tree(BUNDLE / "compiler") ==
-          ("c6429ca7055b8b9df3ae2fc4dc0bf311a0b0d92678cc7661fbe75fdc5f6b61fa", 43),
+          ("30fbb259610c35dd47047819c27478b21ddf389059560a6a5392fd9b91bdf42b", 43),
           hash_tree(BUNDLE / "compiler"))
     check("tests-tree", hash_tree(BUNDLE / "tests") ==
-          ("0a2a419fc88924991f02308f7f6948449c2b7a52487ba9d026f34b44bab47ec4", 14),
+          ("7cf5532b8d5938aece7ed11c1824485831c864fbde61b3694716fb7d7f4c4f54", 14),
           hash_tree(BUNDLE / "tests"))
     check("review-patch", sha256(BUNDLE / "exact_native_epilogue_compiler.patch") ==
-          "0e882560625d17c1ff9840d26670f0a492e4c5a24d4cbdef9ee0d9fa600ae88a",
+          "7d0fa12d2a0a13dc138d6d6d393d21e3656a45144935605bb8ae615b44c08e3b",
           sha256(BUNDLE / "exact_native_epilogue_compiler.patch"))
 
     baseline = json.loads((BUNDLE / "validation/exact_epilogue_warm_spike/baseline/receipt.json").read_text())
